@@ -50,13 +50,13 @@ void printHex(ubyte[] buffer, size_t lineLength)
 void testPrintMemAddress()
 {
 	writeln(memAddrDisp32(0x11223344));
-	writeln(memAddrIndexDisp32(Reg32.EAX, SibScale(0), 0x11223344));
-	writeln(memAddrBase(Reg32.EAX));
-	writeln(memAddrBaseDisp32(Reg32.EAX, 0x11223344));
-	writeln(memAddrBaseIndex(Reg32.EAX, Reg32.EBX, SibScale(2)));
-	writeln(memAddrBaseIndexDisp32(Reg32.EAX, Reg32.EBX, SibScale(2), 0x11223344));
-	writeln(memAddrBaseDisp8(Reg32.EAX, 0xFE));
-	writeln(memAddrBaseIndexDisp8(Reg32.EAX, Reg32.EBX, SibScale(3), 0xFE));
+	writeln(memAddrIndexDisp32(Register.AX, SibScale(0), 0x11223344));
+	writeln(memAddrBase(Register.AX));
+	writeln(memAddrBaseDisp32(Register.AX, 0x11223344));
+	writeln(memAddrBaseIndex(Register.AX, Register.BX, SibScale(2)));
+	writeln(memAddrBaseIndexDisp32(Register.AX, Register.BX, SibScale(2), 0x11223344));
+	writeln(memAddrBaseDisp8(Register.AX, 0xFE));
+	writeln(memAddrBaseIndexDisp8(Register.AX, Register.BX, SibScale(3), 0xFE));
 }
 
 void emit_code_into_memory(ubyte[] m)
