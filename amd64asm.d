@@ -200,28 +200,35 @@ struct CodeGen_x86_64(Sink)
 		ret();
 	}
 
-	void movByte(Register dst_rm, Register src_reg) { putInstrRegReg!(ArgType.BYTE) (0x88, dst_rm, src_reg); }
-	void movWord(Register dst_rm, Register src_reg) { putInstrRegReg!(ArgType.WORD) (0x89, dst_rm, src_reg); }
+	void mov(Arg1, Arg2)(Arg1 dst, Arg2 src, ArgType argType) {
+		final switch(argType) {
+			case ArgType.BYTE:  movByte (dst, src); break;
+			case ArgType.WORD:  movWord (dst, src); break;
+			case ArgType.DWORD: movDword(dst, src); break;
+			case ArgType.QWORD: movQword(dst, src); break; }
+	}
+	void movByte (Register dst_rm, Register src_reg) { putInstrRegReg!(ArgType.BYTE) (0x88, dst_rm, src_reg); }
+	void movWord (Register dst_rm, Register src_reg) { putInstrRegReg!(ArgType.WORD) (0x89, dst_rm, src_reg); }
 	void movDword(Register dst_rm, Register src_reg) { putInstrRegReg!(ArgType.DWORD)(0x89, dst_rm, src_reg); }
 	void movQword(Register dst_rm, Register src_reg) { putInstrRegReg!(ArgType.QWORD)(0x89, dst_rm, src_reg); }
 
-	void movByte(Register dst_rm, Imm8  src_imm) { putInstrRegImm!(ArgType.BYTE)(0xB0, dst_rm, src_imm); }
-	void movWord(Register dst_rm, Imm16 src_imm) { putInstrRegImm!(ArgType.WORD)(0xB8, dst_rm, src_imm); }
+	void movByte (Register dst_rm, Imm8  src_imm) { putInstrRegImm!(ArgType.BYTE) (0xB0, dst_rm, src_imm); }
+	void movWord (Register dst_rm, Imm16 src_imm) { putInstrRegImm!(ArgType.WORD) (0xB8, dst_rm, src_imm); }
 	void movDword(Register dst_rm, Imm32 src_imm) { putInstrRegImm!(ArgType.DWORD)(0xB8, dst_rm, src_imm); }
 	void movQword(Register dst_rm, Imm64 src_imm) { putInstrRegImm!(ArgType.QWORD)(0xB8, dst_rm, src_imm); }
 
-	void movByte(Register dst_reg, MemAddress src_rm) { putInstrRegMem!(ArgType.BYTE)(0x8A, dst_reg, src_rm); }
-	void movWord(Register dst_reg, MemAddress src_rm) { putInstrRegMem!(ArgType.WORD)(0x8B, dst_reg, src_rm); }
+	void movByte (Register dst_reg, MemAddress src_rm) { putInstrRegMem!(ArgType.BYTE) (0x8A, dst_reg, src_rm); }
+	void movWord (Register dst_reg, MemAddress src_rm) { putInstrRegMem!(ArgType.WORD) (0x8B, dst_reg, src_rm); }
 	void movDword(Register dst_reg, MemAddress src_rm) { putInstrRegMem!(ArgType.DWORD)(0x8B, dst_reg, src_rm); }
 	void movQword(Register dst_reg, MemAddress src_rm) { putInstrRegMem!(ArgType.QWORD)(0x8B, dst_reg, src_rm); }
 
-	void movByte(MemAddress dst_rm, Register src_reg) { putInstrRegMem!(ArgType.BYTE)(0x88, src_reg, dst_rm); }
-	void movWord(MemAddress dst_rm, Register src_reg) { putInstrRegMem!(ArgType.WORD)(0x89, src_reg, dst_rm); }
+	void movByte (MemAddress dst_rm, Register src_reg) { putInstrRegMem!(ArgType.BYTE) (0x88, src_reg, dst_rm); }
+	void movWord (MemAddress dst_rm, Register src_reg) { putInstrRegMem!(ArgType.WORD) (0x89, src_reg, dst_rm); }
 	void movDword(MemAddress dst_rm, Register src_reg) { putInstrRegMem!(ArgType.DWORD)(0x89, src_reg, dst_rm); }
 	void movQword(MemAddress dst_rm, Register src_reg) { putInstrRegMem!(ArgType.QWORD)(0x89, src_reg, dst_rm); }
 
-	void movByte(MemAddress dst_rm, Imm8  src_imm) { putInstrMemImm!(ArgType.BYTE)(0xC6, dst_rm, src_imm); }
-	void movWord(MemAddress dst_rm, Imm16 src_imm) { putInstrMemImm!(ArgType.WORD)(0xC7, dst_rm, src_imm); }
+	void movByte (MemAddress dst_rm, Imm8  src_imm) { putInstrMemImm!(ArgType.BYTE) (0xC6, dst_rm, src_imm); }
+	void movWord (MemAddress dst_rm, Imm16 src_imm) { putInstrMemImm!(ArgType.WORD) (0xC7, dst_rm, src_imm); }
 	void movDword(MemAddress dst_rm, Imm32 src_imm) { putInstrMemImm!(ArgType.DWORD)(0xC7, dst_rm, src_imm); }
 	void movQword(MemAddress dst_rm, Imm32 src_imm) { putInstrMemImm!(ArgType.QWORD)(0xC7, dst_rm, src_imm); }
 
