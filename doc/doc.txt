@@ -131,13 +131,11 @@ RCX  RDX  R8   R9
 Intel Manual 2A
 
 Instruction structure
-0-4 prefixes   Opcode (1-3 bytes)   ModR/M  SIB   Displacement   Immediate
-
++----------------+----------------------+----------+-------+----------------+-------------+
+|  0-4 prefixes  |  Opcode (1-3 bytes)  |  ModR/M  |  SIB  |  Displacement  |  Immediate  |
++----------------+----------------------+----------+-------+----------------+-------------+
 
 instruction-size limit = 15 bytes
-
-
-
 
 ----------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------
@@ -198,6 +196,19 @@ REX prefix | Opcode |   mod  reg  r/m |
       | +------------------------v
       +-------------------> Rrrr Bbbb
 
+# is addressing mode. It is the same for encodings with or without SIB byte
+
+#  Mod    Addressing      R/M
+1  00   [RIP + disp32]  BP,R13
+3  00   [R/M         ]  !SP,BP,R12,R13
+S  00   [SIB         ]  SP,R12
+7  01   [R/M +  disp8]  !SP,R12
+S  01   [SIB +  disp8]  SP,R12
+4  10   [R/M + disp32]  !SP,R12
+S  10   [SIB + disp32]  SP,R12
+S uses SIB byte
+! means any except following registers
+
 
 Figure 2-6. Memory Addressing With a SIB Byte
              |        |   ModR/M Byte   |       SIB Byte       |
@@ -208,22 +219,19 @@ REX prefix   | Opcode |   mod  reg  r/m |   scale  index  base |
        +--------------------> Rrrr                  Xxxx  Bbbb
 
 
-#  Index^ Base  Mod              Addressing           Exists
-                        [                           ]    NO
-1  ESP    EBP    00     [                     disp32]   YES
-                        [       (index * s)         ]    NO
-2  ANY    EBP    00     [       (index * s) + disp32]   YES
-3  ESP    ANY    00     [base                       ]   YES
-4  ESP    ANY    10     [base +             + disp32]   YES
-5  ANY    ANY    00     [base + (index * s)         ]   YES
-6  ANY    ANY    10     [base + (index * s) + disp32]   YES
+#  Index  Base  Mod              Addressing
+1   SP     BP-   00     [                     disp32]
+2  ANY^    BP-   00     [       (index * s) + disp32]
+3   SP    ANY*   00     [base                       ]
+4   SP    ANY    10     [base +             + disp32]
+5  ANY^   ANY*   00     [base + (index * s)         ]
+6  ANY^   ANY    10     [base + (index * s) + disp32]
+7   SP    ANY    01     [base +             + disp8 ]
+8  ANY^   ANY    01     [base + (index * s) + disp8 ]
 
-7  ESP    ANY    01     [base +             + disp8 ]   YES
-8  ANY    ANY    01     [base + (index * s) + disp8 ]   YES
-
-* EBP can be replaced with R13 here
-* ANY can be any GPR except EBP
-^ ANY can be any GPR except ESP
+- BP can be replaced with R13 here
+* ANY can be any GPR except BP, R13
+^ ANY can be any GPR except SP
 See: http://wiki.osdev.org/X86-64_Instruction_Encoding#32.2F64-bit_addressing
 You can see here 8 addressing variants arranged as binary number. Two of them cannot be encoded.
 Instead there are two extra addressing types with 8 bit displacement.

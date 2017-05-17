@@ -1,0 +1,141 @@
+LC RX OP RM
+      f6 d0     not al
+      f6 d1     not cl
+      f6 d2     not dl
+      f6 d3     not bl
+   40 f6 d4     not spl
+   40 f6 d5     not bpl
+   40 f6 d6     not sil
+   40 f6 d7     not dil
+   41 f6 d0     not r8b
+   41 f6 d1     not r9b
+   41 f6 d2     not r10b
+   41 f6 d3     not r11b
+   41 f6 d4     not r12b
+   41 f6 d5     not r13b
+   41 f6 d6     not r14b
+   41 f6 d7     not r15b
+
+66    f7 d0     not ax
+66    f7 d1     not cx
+66    f7 d2     not dx
+66    f7 d3     not bx
+66    f7 d4     not sp
+66    f7 d5     not bp
+66    f7 d6     not si
+66    f7 d7     not di
+66 41 f7 d0     not r8w
+66 41 f7 d1     not r9w
+66 41 f7 d2     not r10w
+66 41 f7 d3     not r11w
+66 41 f7 d4     not r12w
+66 41 f7 d5     not r13w
+66 41 f7 d6     not r14w
+66 41 f7 d7     not r15w
+
+      f7 d0     not eax
+      f7 d1     not ecx
+      f7 d2     not edx
+      f7 d3     not ebx
+      f7 d4     not esp
+      f7 d5     not ebp
+      f7 d6     not esi
+      f7 d7     not edi
+   41 f7 d0     not r8d
+   41 f7 d1     not r9d
+   41 f7 d2     not r10d
+   41 f7 d3     not r11d
+   41 f7 d4     not r12d
+   41 f7 d5     not r13d
+   41 f7 d6     not r14d
+   41 f7 d7     not r15d
+
+   48 f7 d0     not rax
+   48 f7 d1     not rcx
+   48 f7 d2     not rdx
+   48 f7 d3     not rbx
+   48 f7 d4     not rsp
+   48 f7 d5     not rbp
+   48 f7 d6     not rsi
+   48 f7 d7     not rdi
+   49 f7 d0     not r8
+   49 f7 d1     not r9
+   49 f7 d2     not r10
+   49 f7 d3     not r11
+   49 f7 d4     not r12
+   49 f7 d5     not r13
+   49 f7 d6     not r14
+   49 f7 d7     not r15
+
+MD REG  RM
+11 010 000
+11 010 001
+11 010 010
+
+      f6 10             not    BYTE PTR [rax]
+      f6 11             not    BYTE PTR [rcx]
+      f6 12             not    BYTE PTR [rdx]
+      f6 13             not    BYTE PTR [rbx]
+      f6 14 24          not    BYTE PTR [rsp]
+      f6 55 00          not    BYTE PTR [rbp+0x0]
+      f6 16             not    BYTE PTR [rsi]
+      f6 17             not    BYTE PTR [rdi]
+   41 f6 10             not    BYTE PTR [r8]
+   41 f6 11             not    BYTE PTR [r9]
+   41 f6 12             not    BYTE PTR [r10]
+   41 f6 13             not    BYTE PTR [r11]
+   41 f6 14 24          not    BYTE PTR [r12]
+   41 f6 55 00          not    BYTE PTR [r13+0x0]
+   41 f6 16             not    BYTE PTR [r14]
+   41 f6 17             not    BYTE PTR [r15] 
+
+66    f7 10             not    WORD PTR [rax]
+66    f7 11             not    WORD PTR [rcx]
+66    f7 12             not    WORD PTR [rdx]
+66    f7 13             not    WORD PTR [rbx]
+66    f7 14 24          not    WORD PTR [rsp]
+66    f7 55 00          not    WORD PTR [rbp+0x0]
+66    f7 16             not    WORD PTR [rsi]
+66    f7 17             not    WORD PTR [rdi]
+66 41 f7 10             not    WORD PTR [r8]
+66 41 f7 11             not    WORD PTR [r9]
+66 41 f7 12             not    WORD PTR [r10]
+66 41 f7 13             not    WORD PTR [r11]
+66 41 f7 14 24          not    WORD PTR [r12]
+66 41 f7 55 00          not    WORD PTR [r13+0x0]
+66 41 f7 16             not    WORD PTR [r14]
+66 41 f7 17             not    WORD PTR [r15] 
+
+      f7 10             not    DWORD PTR [rax]
+      f7 11             not    DWORD PTR [rcx]
+      f7 12             not    DWORD PTR [rdx]
+      f7 13             not    DWORD PTR [rbx]
+      f7 14 24          not    DWORD PTR [rsp]
+      f7 55 00          not    DWORD PTR [rbp+0x0]
+      f7 16             not    DWORD PTR [rsi]
+      f7 17             not    DWORD PTR [rdi]
+   41 f7 10             not    DWORD PTR [r8]
+   41 f7 11             not    DWORD PTR [r9]
+   41 f7 12             not    DWORD PTR [r10]
+   41 f7 13             not    DWORD PTR [r11]
+   41 f7 14 24          not    DWORD PTR [r12]
+   41 f7 55 00          not    DWORD PTR [r13+0x0]
+   41 f7 16             not    DWORD PTR [r14]
+   41 f7 17             not    DWORD PTR [r15] 
+
+   48 f7 10             not    QWORD PTR [rax]
+   48 f7 11             not    QWORD PTR [rcx]
+   48 f7 12             not    QWORD PTR [rdx]
+   48 f7 13             not    QWORD PTR [rbx]
+   48 f7 14 24          not    QWORD PTR [rsp]
+   48 f7 55 00          not    QWORD PTR [rbp+0x0]
+   48 f7 16             not    QWORD PTR [rsi]
+   48 f7 17             not    QWORD PTR [rdi]
+   49 f7 10             not    QWORD PTR [r8]
+   49 f7 11             not    QWORD PTR [r9]
+   49 f7 12             not    QWORD PTR [r10]
+   49 f7 13             not    QWORD PTR [r11]
+   49 f7 14 24          not    QWORD PTR [r12]
+   49 f7 55 00          not    QWORD PTR [r13+0x0]
+   49 f7 16             not    QWORD PTR [r14]
+   49 f7 17             not    QWORD PTR [r15] 

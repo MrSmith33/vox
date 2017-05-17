@@ -8,36 +8,56 @@ module sandbox;
 import std.stdio;
 import amd64asm;
 import test.mov;
+import test.not;
 import utils;
+
+enum Reg8  : ubyte {AL, CL, DL, BL, SPL,BPL,SIL,DIL,R8B,R9B,R10B,R11B,R12B,R13B,R14B,R15B}
+enum Reg16 : ubyte {AX, CX, DX, BX, SP, BP, SI, DI, R8W,R9W,R10W,R11W,R12W,R13W,R14W,R15W}
+enum Reg32 : ubyte {EAX,ECX,EDX,EBX,ESP,EBP,ESI,EDI,R8D,R9D,R10D,R11D,R12D,R13D,R14D,R15D}
+enum Reg64 : ubyte {RAX,RCX,RDX,RBX,RSP,RBP,RSI,RDI,R8, R9, R10, R11, R12, R13, R14, R15 }
 
 void main()
 {
-	testMov();
+	testAll();
+
 	//run_from_rwx();
 	//testPrintMemAddress();
 
 	CodeGen_x86_64!ArraySink codeGen;
 	//writefln("MOV byte ptr %s, 0x%X", memAddrDisp32(0x55667788), 0xAA);
 
+	//writefln("%08b", Register.SP);
+	//writefln("%08b", Register.BP);
+	//writefln("%08b", Register.R12);
+	//writefln("%08b", Register.R13);
 /*
-	alias R = Reg64;
-	enum Rmax = Reg64Max;
-	foreach (R regB; R.min..Rmax)
+	alias R = Reg8;
+	enum regMax = cast(R)(R.max+1);
+	foreach (R regB; R.min..regMax)
 	{
-		writefln("MOV %s, %s", R.min, regB);
-		codeGen.mov(R.min, regB);
-	}
-*/
-	//codeGen.mov(Reg64.RAX, Reg64.RCX);
+		//writefln("NOT %s", memAddrDisp32(0xAABBAABB));
+		writefln("NOT %s", regB);
+		codeGen.notb(cast(Register)regB);
+	}*/
+	codeGen.notb(memAddrBase(Register.DI));
+
+	//codeGen.movq(Register.AX, Register.CX);
+	//codeGen.addb(Register.AX, Imm8(4));
 	//codeGen.ret();
-	//codeGen.mov(Reg64.RAX, Reg64.RSP);
-	//printHex(codeGen.sink.data, 3);
+	printHex(codeGen.sink.data, 0);
+}
+
+void testAll()
+{
+	testMov();
+	testNot();
 }
 
 void printHex(ubyte[] buffer, size_t lineLength)
 {
 	size_t index = 0;
-	while (index + lineLength <= buffer.length)
+	if (lineLength)
+		while (index + lineLength <= buffer.length)
 	{
 		writefln("%(%02X %)", buffer[index..index+lineLength]);
 		index += lineLength;
