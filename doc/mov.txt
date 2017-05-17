@@ -1,0 +1,130 @@
+0:  b0 ff                   mov    al,0xff
+2:  b1 ff                   mov    cl,0xff
+4:  b2 ff                   mov    dl,0xff
+6:  b3 ff                   mov    bl,0xff
+8:  40 b4 ff                mov    spl,0xff
+b:  40 b5 ff                mov    bpl,0xff
+e:  40 b6 ff                mov    sil,0xff
+11: 40 b7 ff                mov    dil,0xff
+14: 41 b0 ff                mov    r8b,0xff
+17: 41 b1 ff                mov    r9b,0xff
+1a: 41 b2 ff                mov    r10b,0xff
+1d: 41 b3 ff                mov    r11b,0xff
+20: 41 b4 ff                mov    r12b,0xff
+23: 41 b5 ff                mov    r13b,0xff
+26: 41 b6 ff                mov    r14b,0xff
+29: 41 b7 ff                mov    r15b,0xff
+
+8:  b4 ff                mov    ah, 0xff
+b:  b5 ff                mov    ch, 0xff
+e:  b6 ff                mov    dh, 0xff
+11: b7 ff                mov    bh, 0xff
+
+
+0:  48 8b 04 25   88 77 66 55   mov    rax,QWORD PTR ds:0x55667788
+8:  48 8b 0c 25   88 77 66 55   mov    rcx,QWORD PTR ds:0x55667788
+10: 48 8b 14 25   88 77 66 55   mov    rdx,QWORD PTR ds:0x55667788
+18: 48 8b 1c 25   88 77 66 55   mov    rbx,QWORD PTR ds:0x55667788
+20: 48 8b 24 25   88 77 66 55   mov    rsp,QWORD PTR ds:0x55667788
+28: 48 8b 2c 25   88 77 66 55   mov    rbp,QWORD PTR ds:0x55667788
+30: 48 8b 34 25   88 77 66 55   mov    rsi,QWORD PTR ds:0x55667788
+38: 48 8b 3c 25   88 77 66 55   mov    rdi,QWORD PTR ds:0x55667788
+40: 4c 8b 04 25   88 77 66 55   mov    r8, QWORD PTR ds:0x55667788
+48: 4c 8b 0c 25   88 77 66 55   mov    r9, QWORD PTR ds:0x55667788
+50: 4c 8b 14 25   88 77 66 55   mov    r10,QWORD PTR ds:0x55667788
+58: 4c 8b 1c 25   88 77 66 55   mov    r11,QWORD PTR ds:0x55667788
+60: 4c 8b 24 25   88 77 66 55   mov    r12,QWORD PTR ds:0x55667788
+68: 4c 8b 2c 25   88 77 66 55   mov    r13,QWORD PTR ds:0x55667788
+70: 4c 8b 34 25   88 77 66 55   mov    r14,QWORD PTR ds:0x55667788
+78: 4c 8b 3c 25   88 77 66 55   mov    r15,QWORD PTR ds:0x55667788
+
+     WRXB |   Opcode  | MOD  REG  RM | Scale Index Base
+0100 1000 | 1000 1011 | 00   000 100 | 00    100   101 | 48 8b 04 25   mov    rax,QWORD PTR ds:0x55667788
+0100 1000 | 1000 1011 | 00   001 100 | 00    100   101 | 48 8b 0c 25   mov    rcx,QWORD PTR ds:0x55667788
+0100 1000 | 1000 1011 | 00   010 100 | 00    100   101 | 48 8b 14 25   mov    rdx,QWORD PTR ds:0x55667788
+0100 1000 | 1000 1011 | 00   011 100 | 00    100   101 | 48 8b 1c 25   mov    rbx,QWORD PTR ds:0x55667788
+0100 1000 | 1000 1011 | 00   100 100 | 00    100   101 | 48 8b 24 25   mov    rsp,QWORD PTR ds:0x55667788
+0100 1000 | 1000 1011 | 00   101 100 | 00    100   101 | 48 8b 2c 25   mov    rbp,QWORD PTR ds:0x55667788
+0100 1000 | 1000 1011 | 00   110 100 | 00    100   101 | 48 8b 34 25   mov    rsi,QWORD PTR ds:0x55667788
+0100 1000 | 1000 1011 | 00   111 100 | 00    100   101 | 48 8b 3c 25   mov    rdi,QWORD PTR ds:0x55667788
+0100 1100 | 1000 1011 | 00   000 100 | 00    100   101 | 4c 8b 04 25   mov    r8, QWORD PTR ds:0x55667788
+0100 1100 | 1000 1011 | 00   001 100 | 00    100   101 | 4c 8b 0c 25   mov    r9, QWORD PTR ds:0x55667788
+0100 1100 | 1000 1011 | 00   010 100 | 00    100   101 | 4c 8b 14 25   mov    r10,QWORD PTR ds:0x55667788
+0100 1100 | 1000 1011 | 00   011 100 | 00    100   101 | 4c 8b 1c 25   mov    r11,QWORD PTR ds:0x55667788
+0100 1100 | 1000 1011 | 00   100 100 | 00    100   101 | 4c 8b 24 25   mov    r12,QWORD PTR ds:0x55667788
+0100 1100 | 1000 1011 | 00   101 100 | 00    100   101 | 4c 8b 2c 25   mov    r13,QWORD PTR ds:0x55667788
+0100 1100 | 1000 1011 | 00   110 100 | 00    100   101 | 4c 8b 34 25   mov    r14,QWORD PTR ds:0x55667788
+0100 1100 | 1000 1011 | 00   111 100 | 00    100   101 | 4c 8b 3c 25   mov    r15,QWORD PTR ds:0x55667788
+
+   8a 04 25 88 77 66 55    mov    al,BYTE PTR ds:0x55667788
+   8a 0c 25 88 77 66 55    mov    cl,BYTE PTR ds:0x55667788
+   8a 14 25 88 77 66 55    mov    dl,BYTE PTR ds:0x55667788
+   8a 1c 25 88 77 66 55    mov    bl,BYTE PTR ds:0x55667788
+40 8a 24 25 88 77 66 55    mov    spl,BYTE PTR ds:0x55667788
+40 8a 2c 25 88 77 66 55    mov    bpl,BYTE PTR ds:0x55667788
+40 8a 34 25 88 77 66 55    mov    sil,BYTE PTR ds:0x55667788
+40 8a 3c 25 88 77 66 55    mov    dil,BYTE PTR ds:0x55667788
+44 8a 04 25 88 77 66 55    mov    r8b,BYTE PTR ds:0x55667788
+44 8a 0c 25 88 77 66 55    mov    r9b,BYTE PTR ds:0x55667788
+44 8a 14 25 88 77 66 55    mov    r10b,BYTE PTR ds:0x55667788
+44 8a 1c 25 88 77 66 55    mov    r11b,BYTE PTR ds:0x55667788
+44 8a 24 25 88 77 66 55    mov    r12b,BYTE PTR ds:0x55667788
+44 8a 2c 25 88 77 66 55    mov    r13b,BYTE PTR ds:0x55667788
+44 8a 34 25 88 77 66 55    mov    r14b,BYTE PTR ds:0x55667788
+44 8a 3c 25 88 77 66 55    mov    r15b,BYTE PTR ds:0x55667788 
+
+   88 04 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, al
+   88 0c 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, cl
+   88 14 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, dl
+   88 1c 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, bl
+40 88 24 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, spl
+40 88 2c 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, bpl
+40 88 34 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, sil
+40 88 3c 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, dil
+44 88 04 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, r8b
+44 88 0c 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, r9b
+44 88 14 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, r10b
+44 88 1c 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, r11b
+44 88 24 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, r12b
+44 88 2c 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, r13b
+44 88 34 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, r14b
+44 88 3c 25 88 77 66 55    mov    BYTE PTR ds:0x55667788, r15b
+
+   c6 04 25    88 77 66 55   aa           mov     BYTE PTR ds:0x55667788, 0xaa
+66 c7 04 25    88 77 66 55   bb aa        mov     WORD PTR ds:0x55667788, 0xaabb
+   c7 04 25    88 77 66 55   dd cc bb aa  mov    DWORD PTR ds:0x55667788, 0xaabbccdd
+48 c7 04 25    88 77 66 55   22 11 ff ee dd cc bb aa  mov    DWORD PTR ds:0x55667788, 0xAABBCCDDEEFF1122
+48 B8          22 11 FF EE DD CC BB AA    mov RAX, 0xAABBCCDDEEFF1122
+
+mov  byte ptr [0x55667788], 0xAA
+mov  word ptr [0x55667788], 0xAABB
+mov dword ptr [0x55667788], 0xAABBCCDD
+mov qword ptr [0x55667788], 0xAABBCCDD
+
+
+
+MOV – Move Data
+
+40          88          c0
+REX         Opcode      MOD R/M byte     
+0100 0R0B : 1000 100w : 11 reg1 reg2				register1 to register2
+0100 1R0B : 1000 1001 : 11 qwordeg1 qwordreg2		qwordregister1 to qwordregister2
+0100 0R0B : 1000 101w : 11 reg1 reg2				register2 to register1
+0100 1R0B : 1000 1011 : 11 qwordreg1 qwordreg2		qwordregister2 to qwordregister1
+0100 0RXB : 1000 101w : mod reg r/m					memory to reg
+0100 1RXB : 1000 1011 : mod qwordreg r/m			memory64 to qwordregister
+0100 0RXB : 1000 100w : mod reg r/m					reg to memory
+0100 1RXB : 1000 1001 : mod qwordreg r/m			qwordregister to memory64
+
+0100 000B : 1100 011w : 11 000 reg : imm			imm to reg
+0100 100B : 1100 0111 : 11 000 qwordreg : imm32		imm32 to reg64 (zero extend)
+0100 000B : 1011 wreg : imm							imm to reg (alternate encoding)
+0100 100B : 1011 1000 reg : imm64					imm64 to reg64 (alternate encoding)
+0100 00XB : 1100 011w : mod 000 r/m : imm			imm to mem
+0100 10XB : 1100 0111 : mod 000 r/m : imm32			imm32 to mem64 (zero extend)
+
+            A
+0100 0000 : 1010 000w : displacement				memory to AL, AX, or EAX
+0100 1000 : 1010 0001 : displacement64				memory64 to RAX
+0100 0000 : 1010 001w : displacement				AL, AX, or EAX to memory
+0100 1000 : 1010 0011 : displacement64				RAX to memory64
