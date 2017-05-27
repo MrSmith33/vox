@@ -7,10 +7,10 @@ module sandbox;
 
 import std.stdio;
 import amd64asm;
-import test.mov;
-import test.not;
 import utils;
+import test.utils;
 
+// for printing
 enum Reg8  : ubyte {AL, CL, DL, BL, SPL,BPL,SIL,DIL,R8B,R9B,R10B,R11B,R12B,R13B,R14B,R15B}
 enum Reg16 : ubyte {AX, CX, DX, BX, SP, BP, SI, DI, R8W,R9W,R10W,R11W,R12W,R13W,R14W,R15W}
 enum Reg32 : ubyte {EAX,ECX,EDX,EBX,ESP,EBP,ESI,EDI,R8D,R9D,R10D,R11D,R12D,R13D,R14D,R15D}
@@ -30,41 +30,33 @@ void main()
 	//writefln("%08b", Register.BP);
 	//writefln("%08b", Register.R12);
 	//writefln("%08b", Register.R13);
-/*
-	alias R = Reg8;
+
+	alias R = Reg64;
 	enum regMax = cast(R)(R.max+1);
 	foreach (R regB; R.min..regMax)
 	{
 		//writefln("NOT %s", memAddrDisp32(0xAABBAABB));
-		writefln("NOT %s", regB);
-		codeGen.notb(cast(Register)regB);
-	}*/
-	codeGen.notb(memAddrBase(Register.DI));
+		writefln("inc %s", regB);
+		codeGen.mulb(cast(Register)regB);
+	}
+	//codeGen.notb(memAddrBase(Register.DI));
 
 	//codeGen.movq(Register.AX, Register.CX);
 	//codeGen.addb(Register.AX, Imm8(4));
 	//codeGen.ret();
-	printHex(codeGen.sink.data, 0);
+	//printHex(codeGen.sink.data, 0);
 }
 
 void testAll()
 {
+	import test.mov;
+	import test.not;
+	import test.mul;
+	import test.inc;
 	testMov();
 	testNot();
-}
-
-void printHex(ubyte[] buffer, size_t lineLength)
-{
-	size_t index = 0;
-	if (lineLength)
-		while (index + lineLength <= buffer.length)
-	{
-		writefln("%(%02X %)", buffer[index..index+lineLength]);
-		index += lineLength;
-	}
-
-	if (index < buffer.length)
-		writefln("%(%02X %)", buffer[index..buffer.length]);
+	testMul();
+	testInc();
 }
 
 void testPrintMemAddress()

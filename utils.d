@@ -71,6 +71,21 @@ void printMemLines(void* ptr, size_t lines, size_t width = 8)
 	}
 }
 
+void printHex(ubyte[] buffer, size_t lineLength)
+{
+	import std.stdio;
+	size_t index = 0;
+	if (lineLength)
+		while (index + lineLength <= buffer.length)
+	{
+		writefln("%(%02X %)", buffer[index..index+lineLength]);
+		index += lineLength;
+	}
+
+	if (index < buffer.length)
+		writefln("%(%02X %)", buffer[index..buffer.length]);
+}
+
 T nextPOT(T)(T x)
 {
 	--x;
