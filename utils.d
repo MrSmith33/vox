@@ -5,6 +5,8 @@ Authors: Andrey Penechko.
 */
 module utils;
 
+import std.traits : isIntegral;
+
 version(Posix)
 {
 	ubyte[] allocate(size_t bytes, bool is_executable)
@@ -78,12 +80,12 @@ void printHex(ubyte[] buffer, size_t lineLength)
 	if (lineLength)
 		while (index + lineLength <= buffer.length)
 	{
-		writefln("%(%02X %)", buffer[index..index+lineLength]);
+		writefln("%(%02X%)", buffer[index..index+lineLength]);
 		index += lineLength;
 	}
 
 	if (index < buffer.length)
-		writefln("%(%02X %)", buffer[index..buffer.length]);
+		writefln("%(%02X%)", buffer[index..buffer.length]);
 }
 
 T nextPOT(T)(T x)
@@ -100,6 +102,16 @@ T nextPOT(T)(T x)
 	return x;
 }
 
+T alignValue(T)(T value, T alignment) pure
+{
+	return cast(T)((value + (alignment-1)) & ~(alignment-1));
+}
+
+T paddingSize(T)(T address, T alignment)
+{
+	return cast(T)(alignValue(address, alignment) - address);
+}
+
 struct ArraySink {
 	import amd64asm;
 	ubyte[] buffer;
@@ -111,35 +123,50 @@ struct ArraySink {
 		}
 	}
 	void reset() { length = 0; }
+	void pad(size_t numBytes) {
+		reserve(numBytes);
+		length += numBytes;
+	}
 	void put(ubyte val) {
 		reserve(1);
 		buffer[length++] = val;
 	}
+	void put(ubyte[] val) {
+		reserve(val.length);
+		buffer[length..length+val.length] = val;
+		length += val.length;
+	}
+	void put(Int)(Int value)
+		if (isIntegral!Int)
+	{
+		reserve(value.sizeof);
+		static if (value.sizeof >= 1) {
+			put((value >>  0) & 0xFF);
+		}
+		static if (value.sizeof >= 2) {
+			put((value >>  8) & 0xFF);
+		}
+		static if (value.sizeof >= 4) {
+			put((value >> 16) & 0xFF);
+			put((value >> 24) & 0xFF);
+		}
+		static if (value.sizeof >= 8) {
+			put((value >> 32) & 0xFF);
+			put((value >> 40) & 0xFF);
+			put((value >> 48) & 0xFF);
+			put((value >> 56) & 0xFF);
+		}
+	}
 	void put(Imm8 u8) {
-		reserve(1);
 		put(u8.value);
 	}
 	void put(Imm16 u16) {
-		reserve(2);
-		put((u16.value >>  0) & 0xFF);
-		put((u16.value >>  8) & 0xFF);
+		put(u16.value);
 	}
 	void put(Imm32 u32) {
-		reserve(4);
-		put((u32.value >>  0) & 0xFF);
-		put((u32.value >>  8) & 0xFF);
-		put((u32.value >> 16) & 0xFF);
-		put((u32.value >> 24) & 0xFF);
+		put(u32.value);
 	}
 	void put(Imm64 u64) {
-		reserve(8);
-		put((u64.value >>  0) & 0xFF);
-		put((u64.value >>  8) & 0xFF);
-		put((u64.value >> 16) & 0xFF);
-		put((u64.value >> 24) & 0xFF);
-		put((u64.value >> 32) & 0xFF);
-		put((u64.value >> 40) & 0xFF);
-		put((u64.value >> 48) & 0xFF);
-		put((u64.value >> 56) & 0xFF);
+		put(u64.value);
 	}
 }

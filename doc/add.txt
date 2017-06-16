@@ -1,0 +1,64 @@
+0:  04 24                   add    al,0x24
+2:  80 c1 24                add    cl,0x24
+5:  80 c2 24                add    dl,0x24
+8:  80 c3 24                add    bl,0x24
+b:  40 80 c4 24             add    spl,0x24
+f:  40 80 c5 24             add    bpl,0x24
+13: 40 80 c6 24             add    sil,0x24
+17: 40 80 c7 24             add    dil,0x24
+1b: 41 80 c0 24             add    r8b,0x24
+1f: 41 80 c1 24             add    r9b,0x24
+23: 41 80 c2 24             add    r10b,0x24
+27: 41 80 c3 24             add    r11b,0x24
+2b: 41 80 c4 24             add    r12b,0x24
+2f: 41 80 c5 24             add    r13b,0x24
+33: 41 80 c6 24             add    r14b,0x24
+37: 41 80 c7 24             add    r15b,0x24 
+
+0:  48 83 c0 24             add    rax,0x24
+4:  48 83 c1 24             add    rcx,0x24
+8:  48 83 c2 24             add    rdx,0x24
+c:  48 83 c3 24             add    rbx,0x24
+10: 48 83 c4 24             add    rsp,0x24
+14: 48 83 c5 24             add    rbp,0x24
+18: 48 83 c6 24             add    rsi,0x24
+1c: 48 83 c7 24             add    rdi,0x24
+20: 49 83 c0 24             add    r8,0x24
+24: 49 83 c1 24             add    r9,0x24
+28: 49 83 c2 24             add    r10,0x24
+2c: 49 83 c3 24             add    r11,0x24
+30: 49 83 c4 24             add    r12,0x24
+34: 49 83 c5 24             add    r13,0x24
+38: 49 83 c6 24             add    r14,0x24
+3c: 49 83 c7 24             add    r15,0x24 
+
+
+0:  80 24 81 24             and    BYTE PTR [rcx+rax*4],0x24
+4:  82                      (bad)
+5:  24 83                   and    al,0x83
+7:  24 40                   and    al,0x40
+9:  84 24 40                test   BYTE PTR [rax+rax*2],ah
+c:  85 24 40                test   DWORD PTR [rax+rax*2],esp
+f:  86 24 40                xchg   BYTE PTR [rax+rax*2],ah
+12: 87 24 41                xchg   DWORD PTR [rcx+rax*2],esp
+15: 80 24 41 81             and    BYTE PTR [rcx+rax*2],0x81
+19: 24 41                   and    al,0x41
+1b: 82                      (bad)
+1c: 24 41                   and    al,0x41
+1e: 83 24 41 84             and    DWORD PTR [rcx+rax*2],0xffffff84
+22: 24 41                   and    al,0x41
+24: 85 24 41                test   DWORD PTR [rcx+rax*2],esp
+27: 86 24 41                xchg   BYTE PTR [rcx+rax*2],ah
+2a: 87                      .byte 0x87
+2b: 24                      .byte 0x24 
+
+
+ADD – Add
+                             Opcode
+register1 to register2       0000 000w : 11 reg1 reg2
+register2 to register1       0000 001w : 11 reg1 reg2
+memory to register           0000 001w : mod reg r/m
+register to memory           0000 000w : mod reg r/m
+immediate to register        1000 00sw : 11 000 reg :  immediate data
+immediate to AL, AX, or EAX  0000 010w :               immediate data
+immediate to memory          1000 00sw : mod 000 r/m : immediate data

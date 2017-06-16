@@ -156,11 +156,11 @@ X | Extension of the SIB index field
 B | Extension of the ModR/M r/m field, SIB base field, or Opcode reg field
 
 
-ModR/M byte MOD|REG/Mem
+ModR/M byte MOD|REG|R/M
 ----+----------+
 MOD |11        |
 REG |   001    | /digit (Opcode)
-MEM |       000|
+R/M |       000|
 ----+----------+
     |11 001 000| 0xC8
 

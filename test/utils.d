@@ -14,8 +14,8 @@ version(unittest)
 	CodeGen_x86_64!ArraySink testCodeGen;
 
 	void assertHexAndReset(string file = __MODULE__, size_t line = __LINE__)(string expected) {
-		assertEqual!(file, line)(expected, toHexString(testCodeGen.sink.data));
-		testCodeGen.sink.reset;
+		assertEqual!(file, line)(expected, toHexString(testCodeGen.encoder.sink.data));
+		testCodeGen.encoder.sink.reset;
 	}
 
 	private string toHexString(ubyte[] arr)
@@ -29,6 +29,7 @@ version(unittest)
 		{
 			writefln("%s expected", expected);
 			writefln("%s generated", generated);
+			stdout.flush();
 			writefln("at %s:%s", file, line);
 
 			assert(false);

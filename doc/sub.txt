@@ -1,0 +1,33 @@
+0:  2c 24                   sub    al,0x24
+2:  80 e9 24                sub    cl,0x24
+5:  80 ea 24                sub    dl,0x24
+8:  80 eb 24                sub    bl,0x24
+b:  40 80 ec 24             sub    spl,0x24
+f:  40 80 ed 24             sub    bpl,0x24
+13: 40 80 ee 24             sub    sil,0x24
+17: 40 80 ef 24             sub    dil,0x24
+1b: 41 80 e8 24             sub    r8b,0x24
+1f: 41 80 e9 24             sub    r9b,0x24
+23: 41 80 ea 24             sub    r10b,0x24
+27: 41 80 eb 24             sub    r11b,0x24
+2b: 41 80 ec 24             sub    r12b,0x24
+2f: 41 80 ed 24             sub    r13b,0x24
+33: 41 80 ee 24             sub    r14b,0x24
+37: 41 80 ef 24             sub    r15b,0x24 
+
+0:  48 83 e8 24             sub    rax,0x24
+4:  48 83 e9 24             sub    rcx,0x24
+8:  48 83 ea 24             sub    rdx,0x24
+c:  48 83 eb 24             sub    rbx,0x24
+10: 48 83 ec 24             sub    rsp,0x24
+14: 48 83 ed 24             sub    rbp,0x24
+18: 48 83 ee 24             sub    rsi,0x24
+1c: 48 83 ef 24             sub    rdi,0x24
+20: 49 83 e8 24             sub    r8,0x24
+24: 49 83 e9 24             sub    r9,0x24
+28: 49 83 ea 24             sub    r10,0x24
+2c: 49 83 eb 24             sub    r11,0x24
+30: 49 83 ec 24             sub    r12,0x24
+34: 49 83 ed 24             sub    r13,0x24
+38: 49 83 ee 24             sub    r14,0x24
+3c: 49 83 ef 24             sub    r15,0x24 

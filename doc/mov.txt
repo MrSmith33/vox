@@ -13,12 +13,63 @@ e:  40 b6 ff                mov    sil,0xff
 20: 41 b4 ff                mov    r12b,0xff
 23: 41 b5 ff                mov    r13b,0xff
 26: 41 b6 ff                mov    r14b,0xff
-29: 41 b7 ff                mov    r15b,0xff
+29: 41 b7 ff                mov    r15b,0xff 
 
-8:  b4 ff                mov    ah, 0xff
-b:  b5 ff                mov    ch, 0xff
-e:  b6 ff                mov    dh, 0xff
-11: b7 ff                mov    bh, 0xff
+8:  b4 ff                   mov    ah, 0xff
+b:  b5 ff                   mov    ch, 0xff
+e:  b6 ff                   mov    dh, 0xff
+11: b7 ff                   mov    bh, 0xff
+
+0:  66 b8 ff ff             mov    ax,0xffff
+4:  66 b9 ff ff             mov    cx,0xffff
+8:  66 ba ff ff             mov    dx,0xffff
+c:  66 bb ff ff             mov    bx,0xffff
+10: 66 bc ff ff             mov    sp,0xffff
+14: 66 bd ff ff             mov    bp,0xffff
+18: 66 be ff ff             mov    si,0xffff
+1c: 66 bf ff ff             mov    di,0xffff
+20: 66 41 b8 ff ff          mov    r8w,0xffff
+25: 66 41 b9 ff ff          mov    r9w,0xffff
+2a: 66 41 ba ff ff          mov    r10w,0xffff
+2f: 66 41 bb ff ff          mov    r11w,0xffff
+34: 66 41 bc ff ff          mov    r12w,0xffff
+39: 66 41 bd ff ff          mov    r13w,0xffff
+3e: 66 41 be ff ff          mov    r14w,0xffff
+43: 66 41 bf ff ff          mov    r15w,0xffff 
+
+0:  b8 ff ff ff ff          mov    eax,0xffffffff
+5:  b9 ff ff ff ff          mov    ecx,0xffffffff
+a:  ba ff ff ff ff          mov    edx,0xffffffff
+f:  bb ff ff ff ff          mov    ebx,0xffffffff
+14: bc ff ff ff ff          mov    esp,0xffffffff
+19: bd ff ff ff ff          mov    ebp,0xffffffff
+1e: be ff ff ff ff          mov    esi,0xffffffff
+23: bf ff ff ff ff          mov    edi,0xffffffff
+28: 41 b8 ff ff ff ff       mov    r8d,0xffffffff
+2e: 41 b9 ff ff ff ff       mov    r9d,0xffffffff
+34: 41 ba ff ff ff ff       mov    r10d,0xffffffff
+3a: 41 bb ff ff ff ff       mov    r11d,0xffffffff
+40: 41 bc ff ff ff ff       mov    r12d,0xffffffff
+46: 41 bd ff ff ff ff       mov    r13d,0xffffffff
+4c: 41 be ff ff ff ff       mov    r14d,0xffffffff
+52: 41 bf ff ff ff ff       mov    r15d,0xffffffff 
+
+0:  48 c7 c0 ff ff ff ff    mov    rax,0xffffffffffffffff
+7:  48 c7 c1 ff ff ff ff    mov    rcx,0xffffffffffffffff
+e:  48 c7 c2 ff ff ff ff    mov    rdx,0xffffffffffffffff
+15: 48 c7 c3 ff ff ff ff    mov    rbx,0xffffffffffffffff
+1c: 48 c7 c4 ff ff ff ff    mov    rsp,0xffffffffffffffff
+23: 48 c7 c5 ff ff ff ff    mov    rbp,0xffffffffffffffff
+2a: 48 c7 c6 ff ff ff ff    mov    rsi,0xffffffffffffffff
+31: 48 c7 c7 ff ff ff ff    mov    rdi,0xffffffffffffffff
+38: 49 c7 c0 ff ff ff ff    mov    r8,0xffffffffffffffff
+3f: 49 c7 c1 ff ff ff ff    mov    r9,0xffffffffffffffff
+46: 49 c7 c2 ff ff ff ff    mov    r10,0xffffffffffffffff
+4d: 49 c7 c3 ff ff ff ff    mov    r11,0xffffffffffffffff
+54: 49 c7 c4 ff ff ff ff    mov    r12,0xffffffffffffffff
+5b: 49 c7 c5 ff ff ff ff    mov    r13,0xffffffffffffffff
+62: 49 c7 c6 ff ff ff ff    mov    r14,0xffffffffffffffff
+69: 49 c7 c7 ff ff ff ff    mov    r15,0xffffffffffffffff 
 
 
 0:  48 8b 04 25   88 77 66 55   mov    rax,QWORD PTR ds:0x55667788

@@ -1,0 +1,9 @@
+/webassembly
+/asm
+.vs
+*.pdb
+*.ilk
+*.obj
+*.exe
+*.sublime-project
+*.sublime-workspace

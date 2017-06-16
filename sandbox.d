@@ -18,41 +18,39 @@ enum Reg64 : ubyte {RAX,RCX,RDX,RBX,RSP,RBP,RSI,RDI,R8, R9, R10, R11, R12, R13, 
 
 void main()
 {
-	testAll();
-
 	//run_from_rwx();
 	//testPrintMemAddress();
 
 	CodeGen_x86_64!ArraySink codeGen;
 	//writefln("MOV byte ptr %s, 0x%X", memAddrDisp32(0x55667788), 0xAA);
 
-	//writefln("%08b", Register.SP);
-	//writefln("%08b", Register.BP);
-	//writefln("%08b", Register.R12);
-	//writefln("%08b", Register.R13);
-
 	alias R = Reg64;
 	enum regMax = cast(R)(R.max+1);
 	foreach (R regB; R.min..regMax)
 	{
 		//writefln("NOT %s", memAddrDisp32(0xAABBAABB));
-		writefln("inc %s", regB);
-		codeGen.mulb(cast(Register)regB);
+		writefln("mov %s, %s", regB, Imm64(0x24364758AABBCCDD));
+		codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
 	}
+	//foreach (Register regA; Register.min..RegisterMax) testCodeGen.movq(regA, Imm64(0x24364758AABBCCDD));
+
 	//codeGen.notb(memAddrBase(Register.DI));
 
 	//codeGen.movq(Register.AX, Register.CX);
 	//codeGen.addb(Register.AX, Imm8(4));
 	//codeGen.ret();
-	//printHex(codeGen.sink.data, 0);
+	//printHex(codeGen.encoder.sink.data, 10);
+	testAll();
 }
 
 void testAll()
 {
+	import test.add;
 	import test.mov;
 	import test.not;
 	import test.mul;
 	import test.inc;
+	testAdd();
 	testMov();
 	testNot();
 	testMul();

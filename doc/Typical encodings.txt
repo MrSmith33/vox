@@ -1,7 +1,8 @@
 Typical encodings
                                       WRXB
 putInstrBinaryRegReg  |  [L.OS]  [REX.WR r]  Opcode      ModR/r
-putInstrBinaryRegImm  |  [L.OS]  [REX.W  R]  Opcode|reg                        Imm8/16/32/64
+putInstrBinaryRegImm  |  [L.OS]  [REX.W  R]  Opcode|R                          Imm8/16/32/64
+putInstrBinaryRegImm  |  [L.OS]  [REX.W  R]  Opcode      ModR/M                Imm8/16/32/64
 putInstrBinaryRegMem  |  [L.OS]  [REX.WRIB]  Opcode      ModR/M  SIB  Disp8/32
 putInstrBinaryOpMem   |  [L.OS]  [REX.W IB]  Opcode      ModO/M  SIB  Disp8/32
 putInstrBinaryMemImm  |  [L.OS]  [REX.W IB]  Opcode      ModM    SIB  Disp8/32 Imm8/16/32
@@ -17,3 +18,13 @@ O - opcode (some instructions can replace register fields with 4-bit(?3) opcode 
 R - register
 r - register, this variant is used when second register is encoded.
 M - SP register in memory encoding
+
+
+add
+dec
+div
+inc
+mov
+mul
+not
+sub
