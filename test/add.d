@@ -32,7 +32,6 @@ void testAdd()
 
 	// Add reg8, imm8
 	foreach (Register regA; Register.min..RegisterMax) testCodeGen.addb(regA, Imm8(0x24));
-	printHex(testCodeGen.encoder.sink.data, 0);
 	assertHexAndReset("80C02480C12480C22480C3244080C4244080C5244080C6244080C7244180C0244180C1244180C2244180C3244180C4244180C5244180C6244180C724");
 
 	// Add reg16, imm8

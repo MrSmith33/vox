@@ -139,9 +139,10 @@ MemAddress memAddrBaseDisp8(Register baseReg, ubyte disp8) {
 MemAddress memAddrBaseIndexDisp8(Register baseReg, Register indexReg, SibScale scale, ubyte disp8) {
 	return MemAddress(MemAddrType.baseIndexDisp8, indexReg, baseReg, scale, disp8); }
 
-struct Encoder(Sink)
+struct Encoder
 {
-	Sink sink;
+	import utils : ArraySink;
+	ArraySink sink;
 
 	void putRexByteChecked(ArgType argType)(ubyte bits, bool forceRex = false) {
 		//writefln("REX bits %08b force %s", bits, forceRex);
@@ -268,10 +269,31 @@ struct Encoder(Sink)
 	}
 }
 
-// Sink defines put(T) for ubyte, ubyte[], Imm8, Imm16, Imm32, Imm64
-struct CodeGen_x86_64(Sink)
+struct Fixup
 {
-	Encoder!Sink encoder;
+	private CodeGen_x86_64* codeGen;
+	private int fixupOffset;
+
+	void opDispatch(string member, Args...)(Args args) {
+		int temp = cast(int)codeGen.encoder.sink.length;
+		codeGen.encoder.sink.length = fixupOffset;
+		mixin("codeGen."~member~"(args);");
+		codeGen.encoder.sink.length = temp;
+	}
+}
+
+// Sink defines put(T) for ubyte, ubyte[], Imm8, Imm16, Imm32, Imm64
+struct CodeGen_x86_64
+{
+	Encoder encoder;
+
+	Fixup saveFixup() {
+		return Fixup(&this, currentOffset());
+	}
+
+	int currentOffset() {
+		return cast(int)encoder.sink.length;
+	}
 
 	/// Used for versions of instructions without argument size suffix.
 	/// mov, add, sub, instead of movq, addb, subd.
@@ -341,14 +363,6 @@ struct CodeGen_x86_64(Sink)
 	void addd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x81, 0, dst, src); }
 	void addq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x81, 0, dst, src); }
 
-	mixin unaryInstr_Reg!("dec", [0xFE,0xFF], 1);
-	mixin unaryInstr_Mem!("dec", [0xFE,0xFF], 1);
-
-	mixin unaryInstr_Reg!("div", [0xF6,0xF7], 6);
-	mixin unaryInstr_Mem!("div", [0xF6,0xF7], 6);
-
-	mixin unaryInstr_Reg!("inc", [0xFE,0xFF], 0);
-	mixin unaryInstr_Mem!("inc", [0xFE,0xFF], 0);
 
 	void movb(Register dst, Imm8  src){ encoder.putInstrBinaryRegImm1!(ArgType.BYTE) (0xB0, dst, src); }
 	void movw(Register dst, Imm16 src){ encoder.putInstrBinaryRegImm1!(ArgType.WORD) (0xB8, dst, src); }
@@ -376,11 +390,6 @@ struct CodeGen_x86_64(Sink)
 	void movd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0xC7, 0, dst, src); }
 	void movq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0xC7, 0, dst, src); }
 
-	mixin unaryInstr_Reg!("mul", [0xF6,0xF7], 4);
-	mixin unaryInstr_Mem!("mul", [0xF6,0xF7], 4);
-
-	mixin unaryInstr_Reg!("not", [0xF6,0xF7], 2);
-	mixin unaryInstr_Mem!("not", [0xF6,0xF7], 2);
 
 	void subb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (0x28, src, dst); }
 	void subw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (0x29, src, dst); }
@@ -411,7 +420,31 @@ struct CodeGen_x86_64(Sink)
 	void subd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x81, 5, dst, src); }
 	void subq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x81, 5, dst, src); }
 
+
+	mixin unaryInstr_Reg!("inc", [0xFE,0xFF], 0);
+	mixin unaryInstr_Mem!("inc", [0xFE,0xFF], 0);
+
+	mixin unaryInstr_Reg!("dec", [0xFE,0xFF], 1);
+	mixin unaryInstr_Mem!("dec", [0xFE,0xFF], 1);
+
+	mixin unaryInstr_Reg!("mul", [0xF6,0xF7], 4);
+	mixin unaryInstr_Mem!("mul", [0xF6,0xF7], 4);
+
+	mixin unaryInstr_Reg!("div", [0xF6,0xF7], 6);
+	mixin unaryInstr_Mem!("div", [0xF6,0xF7], 6);
+
+	mixin unaryInstr_Reg!("not", [0xF6,0xF7], 2);
+	mixin unaryInstr_Mem!("not", [0xF6,0xF7], 2);
+
+
 	void nop() { encoder.sink.put(0x90); }
+
+	// relative call to target virtual address.
+	void call(Imm32 target) {
+		int rip_offset = cast(int)(target.value - encoder.sink.length - 5); // relative to start of next instr
+		encoder.sink.put(0xE8);
+		encoder.sink.put(rip_offset);
+	}
 
 	void popw(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.WORD )(0x58, dst); }
 	void popq(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.DWORD)(0x58, dst); } // use DWORD to omit REX.W

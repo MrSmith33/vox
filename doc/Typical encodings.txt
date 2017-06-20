@@ -24,15 +24,22 @@ M - SP register in memory encoding
 
 add
 sub
-
-div
-mul
-
-dec
 inc
-
+dec
+mul
+div
 mov
 not
-
+nop
+ret
 pop
 push
+call
+
+Implemented instructions
+add sub mul div dec inc mov not nop pop push ret call
+
+TODO
+jmp
+cmp
+

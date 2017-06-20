@@ -11,7 +11,7 @@ version(unittest)
 	import utils;
 	import std.stdio;
 	import std.string : format;
-	CodeGen_x86_64!ArraySink testCodeGen;
+	CodeGen_x86_64 testCodeGen;
 
 	void assertHexAndReset(string file = __MODULE__, size_t line = __LINE__)(string expected) {
 		assertEqual!(file, line)(expected, toHexString(testCodeGen.encoder.sink.data));

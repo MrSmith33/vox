@@ -1,0 +1,20 @@
+Opcode        | Instruction      | Op/ | 64-bit  | Compat/Leg | Description
+              |                  | En  | Mode    | Mode       | 
+-------       +------------------+-----+---------+------------+---------------------------------------------
+E8 cw         | CALL rel16       | M   | N.S.    | Valid      | Call near, relative, displacement relative to next instruction.
+E8 cd         | CALL rel32       | M   | Valid   | Valid      | Call near, relative, displacement relative to next instruction.
+                                                              | 32-bit displacement sign extended to 64-bits in 64-bit mode.
+FF /2         | CALL r/m16       | M   | N.E.    | Valid      | Call near, absolute indirect, address given in r/m16.
+FF /2         | CALL r/m32       | M   | N.E.    | Valid      | Call near, absolute indirect, address given in r/m32.
+FF /2         | CALL r/m64       | M   | Valid   | N.E.       | Call near, absolute indirect, address given in r/m64.
+9A cd         | CALL ptr16:16    | D   | Invalid | Valid      | Call far, absolute, address given in operand.
+9A cp         | CALL ptr16:32    | D   | Invalid | Valid      | Call far, absolute, address given in operand.
+FF /3         | CALL m16:16      | M   | Valid   | Valid      | Call  far, absolute indirect address given in m16:16.
+                                                              | In 32-bit mode: if selector points to a gate, then RIP = 32-bit zero extended displacement taken from gate;
+                                                              | else RIP = zero extended 16-bit offset from far pointer referenced in the instruction.
+FF /3         | CALL m16:32      | M   | Valid   | Valid      | In 64-bit mode: If selector points to a gate,
+                                                              | then RIP = 64-bit displacement taken from gate;
+                                                              | else RIP = zero extended 32-bit offset from far pointer referenced in the instruction.
+REX.W + FF /3 | CALL m16:64      | M   | Valid   | N.E.       | In 64-bit mode: If selector points to a gate, then RIP
+                                                              | = 64-bit displacement taken from gate; else RIP =
+                                                              | 64-bit offset from far pointer referenced in the instruction

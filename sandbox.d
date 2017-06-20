@@ -21,15 +21,14 @@ void main()
 	run_from_rwx();
 	//testPrintMemAddress();
 
-	CodeGen_x86_64!ArraySink codeGen;
+	CodeGen_x86_64 codeGen;
 	//writefln("MOV byte ptr %s, 0x%X", memAddrDisp32(0x55667788), 0xAA);
 
 	alias R = Reg64;
 	enum regMax = cast(R)(R.max+1);
 	foreach (R regB; R.min..regMax)
 	{
-		//writefln("NOT %s", memAddrDisp32(0xAABBAABB));
-		writefln("pop WORD PTR [%s]", regB);
+		//writefln("pop WORD PTR [%s]", regB);
 		codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
 	}
 	//foreach (Register regA; Register.min..RegisterMax) testCodeGen.movq(regA, Imm64(0x24364758AABBCCDD));
@@ -77,7 +76,7 @@ void run_from_rwx()
 {
 	const size_t SIZE = 4096;
 	ubyte[] mem = alloc_executable_memory(SIZE);
-	writefln("alloc %s %s", mem.ptr, mem.length);
+	writefln("alloc %s bytes at %s", mem.length, mem.ptr);
 
 	emit_code_into_memory(mem);
 
@@ -91,12 +90,20 @@ void run_from_rwx()
 
 void emit_code_into_memory(ubyte[] mem)
 {
-	CodeGen_x86_64!ArraySink codeGen;
+	CodeGen_x86_64 codeGen;
 	version(Windows)
 	{
+		// main
 		codeGen.beginFunction();
-		codeGen.movq(Register.AX, Register.CX);
-		codeGen.addq(Register.AX, Imm8(4));
+		auto sub_call = codeGen.saveFixup();
+		codeGen.call(Imm32(0));
+		codeGen.endFunction();
+
+		sub_call.call(Imm32(codeGen.currentOffset));
+
+		// sub_fun
+		codeGen.beginFunction();
+		codeGen.movq(Register.AX, Imm32(42));
 		codeGen.endFunction();
 	}
 	else version(Posix)

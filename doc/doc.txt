@@ -6,6 +6,10 @@ https://www3.nd.edu/~dthain/courses/cse40243/fall2015/intel-intro.html   Introdu
 http://www.intel.com/products/processor/manuals/                         Intel manuals
 http://www.x86-64.org/documentation.html                                 amd64 ABI
 
+
+cl /c /O1 simple.c
+link /nologo /ENTRY:main /NODEFAULTLIB /SUBSYSTEM:WINDOWS /ALIGN:1 simple.obj
+
 Vol 1. Chapter 3.4
 EAX — Accumulator for operands and results data
 EBX — Pointer to data in the DS segment
@@ -125,6 +129,10 @@ ret 44h
 }
 n-3  n-2  n-1  n
 RCX  RDX  R8   R9
+
+
+3.4.1.5 - Assembly/Compiler Coding Rule 12. (M impact, H generality)
+All branch targets should be 16-byte aligned.
 
 
 
@@ -252,6 +260,11 @@ REX prefix | Opcode|reg |
    sre means segment register specifier - a code of any segment registers (3 bits, bit index 0 or 3). See also S30 and S33 addressing methods. 0FA0 PUSH
    mf means bit field MF (2 bits, bit index 1, memory format); used only with x87 FPU instructions coded with second floating-point instruction format. DA/0 FIADD
 
+
+
+# OS
+
+_DllMainCRTStartup
 
 
 MOV RAX, RAX

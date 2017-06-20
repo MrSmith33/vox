@@ -20,9 +20,20 @@ void main()
 
 	// Code gen
 	import amd64asm;
-	CodeGen_x86_64!ArraySink codeGen;
+	CodeGen_x86_64 codeGen;
+
+	// main
+	codeGen.beginFunction();
+	auto sub_call = codeGen.saveFixup();
+	codeGen.call(Imm32(0));
+	codeGen.endFunction();
+
+	sub_call.call(Imm32(codeGen.currentOffset));
+
+	// sub_fun
+	codeGen.beginFunction();
 	codeGen.movq(Register.AX, Imm32(42));
-	codeGen.ret();
+	codeGen.endFunction();
 
 	// Code section
 	Section textSection;
@@ -39,16 +50,17 @@ void main()
 
 	createExecutable(sink, FileParameters(), sections[]);
 
-    // write exe
+	// write exe
 	string outputFilename = "out.exe";
 	auto f = File(outputFilename, "wb");
-    f.rawWrite(sink.data);
-    f.close();
+	f.rawWrite(sink.data);
+	f.close();
 
-    // test exe
-    import std.process;
-    auto result = execute("out.exe");
-    writefln("out.exe exited with %s", result.status);
+	// test exe
+	import std.process;
+	auto result = execute("out.exe");
+	writefln("out.exe exited with %s", result.status);
+	assert(result.status == 42);
 }
 
 void createExecutable(ref ArraySink sink, FileParameters params, Section[] sections)
