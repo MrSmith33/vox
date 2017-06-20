@@ -18,7 +18,7 @@ enum Reg64 : ubyte {RAX,RCX,RDX,RBX,RSP,RBP,RSI,RDI,R8, R9, R10, R11, R12, R13, 
 
 void main()
 {
-	//run_from_rwx();
+	run_from_rwx();
 	//testPrintMemAddress();
 
 	CodeGen_x86_64!ArraySink codeGen;
@@ -29,7 +29,7 @@ void main()
 	foreach (R regB; R.min..regMax)
 	{
 		//writefln("NOT %s", memAddrDisp32(0xAABBAABB));
-		writefln("mov %s, %s", regB, Imm64(0x24364758AABBCCDD));
+		writefln("mov %s, %s", regB, Imm32(0x24364758));
 		codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
 	}
 	//foreach (Register regA; Register.min..RegisterMax) testCodeGen.movq(regA, Imm64(0x24364758AABBCCDD));
@@ -69,41 +69,40 @@ void testPrintMemAddress()
 	writeln(memAddrBaseIndexDisp8(Register.AX, Register.BX, SibScale(3), 0xFE));
 }
 
-void emit_code_into_memory(ubyte[] m)
-{
-	m[0..code.length] = code;
-}
-
 void run_from_rwx()
 {
 	const size_t SIZE = 4096;
-	ubyte[] m = alloc_executable_memory(SIZE);
-	writefln("alloc %s %s", m.ptr, m.length);
+	ubyte[] mem = alloc_executable_memory(SIZE);
+	writefln("alloc %s %s", mem.ptr, mem.length);
 
-	emit_code_into_memory(m);
+	emit_code_into_memory(mem);
 
 	alias JittedFunc = long function(long);
-	JittedFunc func = cast(JittedFunc)m.ptr;
+	JittedFunc func = cast(JittedFunc)mem.ptr;
 
 	long result = func(2);
 
-	writefln("result = %s", result);
+	writefln("func(2) == %s", result);
 }
 
-version(Windows)
+void emit_code_into_memory(ubyte[] mem)
 {
-	ubyte[] code = [
-		0x48, 0x89, 0xC8,       // mov    rax,rcx
-		0x48, 0x83, 0xC0, 0x04, // add    rax,4
-		0xC3,                   // ret
-	];
-}
-else version(Posix)
-{
-	ubyte[] code = [
-		0x48, 0x89, 0xf8,       // mov    rax,rdi
-		0x48, 0x83, 0xc0, 0x04, // add    rax,0x4
-		0xC7, 0x44, 0x20, 0x0, 0x22, 0x11, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, // mov [rax+0x55], 0xAABBCCDDEEFF1122
-		0xc3,                   // ret
-	];
+	CodeGen_x86_64!ArraySink codeGen;
+	version(Windows)
+	{
+		codeGen.beginFunction();
+		codeGen.movq(Register.AX, Register.CX);
+		codeGen.addq(Register.AX, Imm8(4));
+		codeGen.endFunction();
+	}
+	else version(Posix)
+	{
+		codeGen.movq(Register.AX, Register.DI);
+		codeGen.addq(Register.AX, Imm8(4));
+		codeGen.movq(memAddrBaseDisp32(Register.AX, 0x55), Imm32(0xAABBCCDD));
+		codeGen.ret();
+	}
+	ubyte[] code = codeGen.encoder.sink.data;
+	printHex(code, 16);
+	mem[0..code.length] = code;
 }

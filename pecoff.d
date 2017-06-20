@@ -21,7 +21,7 @@ void main()
 	// Code gen
 	import amd64asm;
 	CodeGen_x86_64!ArraySink codeGen;
-	codeGen.movd(Register.AX, Imm32(42));
+	codeGen.movq(Register.AX, Imm32(42));
 	codeGen.ret();
 
 	// Code section

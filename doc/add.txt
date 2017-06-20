@@ -1,4 +1,6 @@
 0:  04 24                   add    al,0x24
+
+0:  80 c0 24                add    al,0x24
 2:  80 c1 24                add    cl,0x24
 5:  80 c2 24                add    dl,0x24
 8:  80 c3 24                add    bl,0x24
@@ -14,6 +16,43 @@ f:  40 80 c5 24             add    bpl,0x24
 2f: 41 80 c5 24             add    r13b,0x24
 33: 41 80 c6 24             add    r14b,0x24
 37: 41 80 c7 24             add    r15b,0x24 
+80C02480C12480C22480C3244080C4244080C5244080C6244080C7244180C0244180C1244180C2244180C3244180C4244180C5244180C6244180C724
+
+0:  66 83 c0 24             add    ax,0x24
+4:  66 83 c1 24             add    cx,0x24
+8:  66 83 c2 24             add    dx,0x24
+c:  66 83 c3 24             add    bx,0x24
+10: 66 83 c4 24             add    sp,0x24
+14: 66 83 c5 24             add    bp,0x24
+18: 66 83 c6 24             add    si,0x24
+1c: 66 83 c7 24             add    di,0x24
+20: 66 41 83 c0 24          add    r8w,0x24
+25: 66 41 83 c1 24          add    r9w,0x24
+2a: 66 41 83 c2 24          add    r10w,0x24
+2f: 66 41 83 c3 24          add    r11w,0x24
+34: 66 41 83 c4 24          add    r12w,0x24
+39: 66 41 83 c5 24          add    r13w,0x24
+3e: 66 41 83 c6 24          add    r14w,0x24
+43: 66 41 83 c7 24          add    r15w,0x24 
+6683C0246683C1246683C2246683C3246683C4246683C5246683C6246683C724664183C024664183C124664183C224664183C324664183C424664183C524664183C624664183C724
+
+0:  83 c0 24                add    eax,0x24
+3:  83 c1 24                add    ecx,0x24
+6:  83 c2 24                add    edx,0x24
+9:  83 c3 24                add    ebx,0x24
+c:  83 c4 24                add    esp,0x24
+f:  83 c5 24                add    ebp,0x24
+12: 83 c6 24                add    esi,0x24
+15: 83 c7 24                add    edi,0x24
+18: 41 83 c0 24             add    r8d,0x24
+1c: 41 83 c1 24             add    r9d,0x24
+20: 41 83 c2 24             add    r10d,0x24
+24: 41 83 c3 24             add    r11d,0x24
+28: 41 83 c4 24             add    r12d,0x24
+2c: 41 83 c5 24             add    r13d,0x24
+30: 41 83 c6 24             add    r14d,0x24
+34: 41 83 c7 24             add    r15d,0x24 
+83C02483C12483C22483C32483C42483C52483C62483C7244183C0244183C1244183C2244183C3244183C4244183C5244183C6244183C724
 
 0:  48 83 c0 24             add    rax,0x24
 4:  48 83 c1 24             add    rcx,0x24
@@ -31,6 +70,67 @@ c:  48 83 c3 24             add    rbx,0x24
 34: 49 83 c5 24             add    r13,0x24
 38: 49 83 c6 24             add    r14,0x24
 3c: 49 83 c7 24             add    r15,0x24 
+4883C0244883C1244883C2244883C3244883C4244883C5244883C6244883C7244983C0244983C1244983C2244983C3244983C4244983C5244983C6244983C724
+
+0:  66 05 36 24             add    ax,0x2436
+
+0:  66 81 c0 36 24          add    ax,0x2436
+4:  66 81 c1 36 24          add    cx,0x2436
+9:  66 81 c2 36 24          add    dx,0x2436
+e:  66 81 c3 36 24          add    bx,0x2436
+13: 66 81 c4 36 24          add    sp,0x2436
+18: 66 81 c5 36 24          add    bp,0x2436
+1d: 66 81 c6 36 24          add    si,0x2436
+22: 66 81 c7 36 24          add    di,0x2436
+27: 66 41 81 c0 36 24       add    r8w,0x2436
+2d: 66 41 81 c1 36 24       add    r9w,0x2436
+33: 66 41 81 c2 36 24       add    r10w,0x2436
+39: 66 41 81 c3 36 24       add    r11w,0x2436
+3f: 66 41 81 c4 36 24       add    r12w,0x2436
+45: 66 41 81 c5 36 24       add    r13w,0x2436
+4b: 66 41 81 c6 36 24       add    r14w,0x2436
+51: 66 41 81 c7 36 24       add    r15w,0x2436
+6681C036246681C136246681C236246681C336246681C436246681C536246681C636246681C73624664181C03624664181C13624664181C23624664181C33624664181C43624664181C53624664181C63624664181C73624
+
+0:  05 58 47 36 24          add    eax,0x24364758
+
+0:  81 c0 58 47 36 24       add    eax,0x24364758
+5:  81 c1 58 47 36 24       add    ecx,0x24364758
+b:  81 c2 58 47 36 24       add    edx,0x24364758
+11: 81 c3 58 47 36 24       add    ebx,0x24364758
+17: 81 c4 58 47 36 24       add    esp,0x24364758
+1d: 81 c5 58 47 36 24       add    ebp,0x24364758
+23: 81 c6 58 47 36 24       add    esi,0x24364758
+29: 81 c7 58 47 36 24       add    edi,0x24364758
+2f: 41 81 c0 58 47 36 24    add    r8d,0x24364758
+36: 41 81 c1 58 47 36 24    add    r9d,0x24364758
+3d: 41 81 c2 58 47 36 24    add    r10d,0x24364758
+44: 41 81 c3 58 47 36 24    add    r11d,0x24364758
+4b: 41 81 c4 58 47 36 24    add    r12d,0x24364758
+52: 41 81 c5 58 47 36 24    add    r13d,0x24364758
+59: 41 81 c6 58 47 36 24    add    r14d,0x24364758
+60: 41 81 c7 58 47 36 24    add    r15d,0x24364758 
+81C05847362481C15847362481C25847362481C35847362481C45847362481C55847362481C65847362481C7584736244181C0584736244181C1584736244181C2584736244181C3584736244181C4584736244181C5584736244181C6584736244181C758473624
+
+0:  48 05 58 47 36 24       add    rax,0x24364758
+
+0:  48 81 c0 58 47 36 24    add    rax,0x24364758
+6:  48 81 c1 58 47 36 24    add    rcx,0x24364758
+d:  48 81 c2 58 47 36 24    add    rdx,0x24364758
+14: 48 81 c3 58 47 36 24    add    rbx,0x24364758
+1b: 48 81 c4 58 47 36 24    add    rsp,0x24364758
+22: 48 81 c5 58 47 36 24    add    rbp,0x24364758
+29: 48 81 c6 58 47 36 24    add    rsi,0x24364758
+30: 48 81 c7 58 47 36 24    add    rdi,0x24364758
+37: 49 81 c0 58 47 36 24    add    r8,0x24364758
+3e: 49 81 c1 58 47 36 24    add    r9,0x24364758
+45: 49 81 c2 58 47 36 24    add    r10,0x24364758
+4c: 49 81 c3 58 47 36 24    add    r11,0x24364758
+53: 49 81 c4 58 47 36 24    add    r12,0x24364758
+5a: 49 81 c5 58 47 36 24    add    r13,0x24364758
+61: 49 81 c6 58 47 36 24    add    r14,0x24364758
+68: 49 81 c7 58 47 36 24    add    r15,0x24364758 
+4881C0584736244881C1584736244881C2584736244881C3584736244881C4584736244881C5584736244881C6584736244881C7584736244981C0584736244981C1584736244981C2584736244981C3584736244981C4584736244981C5584736244981C6584736244981C758473624
 
 
 0:  80 24 81 24             and    BYTE PTR [rcx+rax*4],0x24
@@ -62,3 +162,30 @@ register to memory           0000 000w : mod reg r/m
 immediate to register        1000 00sw : 11 000 reg :  immediate data
 immediate to AL, AX, or EAX  0000 010w :               immediate data
 immediate to memory          1000 00sw : mod 000 r/m : immediate data
+
+
+Opcode           | Instruction      | Op/ | 64-bit | Compat/Leg | Description
+                 |                  | En  | Mode   | Mode       | 
+-----------------+------------------+-----+--------+------------+---------------------------------------------
+04 ib            | ADD AL, imm8     | I   | Valid  | Valid      | Add imm8 to AL.
+05 iw            | ADD AX, imm16    | I   | Valid  | Valid      | Add imm16 to AX.
+05 id            | ADD EAX, imm32   | I   | Valid  | Valid      | Add imm32 to EAX.
+REX.W + 05 id    | ADD RAX, imm32   | I   | Valid  | N.E.       | Add imm32 sign-extended to 64-bits to RAX.
+80 /0 ib         | ADD r/m8, imm8   | MI  | Valid  | Valid      | Add imm8 to r/m8.
+REX + 80 /0 ib   | ADD r/m8*, imm8  | MI  | Valid  | N.E.       | Add sign-extended imm8 to r/m8.
+81 /0 iw         | ADD r/m16, imm16 | MI  | Valid  | Valid      | Add imm16 to r/m16.
+81 /0 id         | ADD r/m32, imm32 | MI  | Valid  | Valid      | Add imm32 to r/m32.
+REX.W + 81 /0 id | ADD r/m64, imm32 | MI  | Valid  | N.E.       | Add imm32 sign-extended to 64-bits to r/m64.
+83 /0 ib         | ADD r/m16, imm8  | MI  | Valid  | Valid      | Add sign-extended imm8 to r/m16.
+83 /0 ib         | ADD r/m32, imm8  | MI  | Valid  | Valid      | Add sign-extended imm8 to r/m32.
+REX.W + 83 /0 ib | ADD r/m64, imm8  | MI  | Valid  | N.E.       | Add sign-extended imm8 to r/m64.
+00 /r            | ADD r/m8, r8     | MR  | Valid  | Valid      | Add r8 to r/m8.
+REX + 00 /r      | ADD r/m8*, r8*   | MR  | Valid  | N.E.       | Add r8 to r/m8.
+01 /r            | ADD r/m16, r16   | MR  | Valid  | Valid      | Add r16 to r/m16.
+01 /r            | ADD r/m32, r32   | MR  | Valid  | Valid      | Add r32 to r/m32.
+REX.W + 01 /r    | ADD r/m64, r64   | MR  | Valid  | N.E.       | Add r64 to r/m64.
+02 /r            | ADD r8, r/m8     | RM  | Valid  | Valid      | Add r/m8 to r8.
+REX + 02 /r      | ADD r8*, r/m8*   | RM  | Valid  | N.E.       | Add r/m8 to r8.
+03 /r            | ADD r16, r/m16   | RM  | Valid  | Valid      | Add r/m16 to r16.
+03 /r            | ADD r32, r/m32   | RM  | Valid  | Valid      | Add r/m32 to r32.
+REX.W + 03 /r    | ADD r64, r/m64   | RM  | Valid  | N.E.       | Add r/m64 to r64.
