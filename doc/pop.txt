@@ -1,0 +1,92 @@
+Opcode | Instruction | Op/ | 64-bit  | Compat/Leg | Description
+       |             | En  | Mode    | Mode       | 
+-------+-------------+-----+---------+------------+---------------------------------------------
+8F /0  | POP r/m16   | M   | Valid   | Valid      | Pop top of stack into m16; increment stack pointer.
+8F /0  | POP r/m32   | M   | N.E.    | Valid      | Pop top of stack into m32; increment stack pointer.
+8F /0  | POP r/m64   | M   | Valid   | N.E.       | Pop top of stack into m64; increment stack pointer. Cannot encode 32-bit operand size.
+-------+-------------+-----+---------+------------+---------------------------------------------
+58+ rw | POP r16     | O   | Valid   | Valid      | Pop top of stack into r16; increment stack pointer.
+58+ rd | POP r32     | O   | N.E.    | Valid      | Pop top of stack into r32; increment stack pointer.
+58+ rd | POP r64     | O   | Valid   | N.E.       | Pop top of stack into r64; increment stack pointer. Cannot encode 32-bit operand size.
+-------+-------------+-----+---------+------------+---------------------------------------------
+1F     | POP DS      | ZO  | Invalid | Valid      | Pop top of stack into DS; increment stack pointer.
+07     | POP ES      | ZO  | Invalid | Valid      | Pop top of stack into ES; increment stack pointer.
+17     | POP SS      | ZO  | Invalid | Valid      | Pop top of stack into SS; increment stack pointer.
+0F A1  | POP FS      | ZO  | Valid   | Valid      | Pop top of stack into FS; increment stack pointer by 16 bits.
+0F A1  | POP FS      | ZO  | N.E.    | Valid      | Pop top of stack into FS; increment stack pointer by 32 bits.
+0F A1  | POP FS      | ZO  | Valid   | N.E.       | Pop top of stack into FS; increment stack pointer by 64 bits.
+0F A9  | POP GS      | ZO  | Valid   | Valid      | Pop top of stack into GS; increment stack pointer by 16 bits.
+0F A9  | POP GS      | ZO  | N.E.    | Valid      | Pop top of stack into GS; increment stack pointer by 32 bits.
+0F A9  | POP GS      | ZO  | Valid   | N.E.       | Pop top of stack into GS; increment stack pointer by 64 bits
+
+0:  66 58                   pop    ax
+2:  66 59                   pop    cx
+4:  66 5a                   pop    dx
+6:  66 5b                   pop    bx
+8:  66 5c                   pop    sp
+a:  66 5d                   pop    bp
+c:  66 5e                   pop    si
+e:  66 5f                   pop    di
+10: 66 41 58                pop    r8w
+13: 66 41 59                pop    r9w
+16: 66 41 5a                pop    r10w
+19: 66 41 5b                pop    r11w
+1c: 66 41 5c                pop    r12w
+1f: 66 41 5d                pop    r13w
+22: 66 41 5e                pop    r14w
+25: 66 41 5f                pop    r15w 
+66586659665A665B665C665D665E665F66415866415966415A66415B66415C66415D66415E66415F
+
+0:  58                      pop    rax
+1:  59                      pop    rcx
+2:  5a                      pop    rdx
+3:  5b                      pop    rbx
+4:  5c                      pop    rsp
+5:  5d                      pop    rbp
+6:  5e                      pop    rsi
+7:  5f                      pop    rdi
+8:  41 58                   pop    r8
+a:  41 59                   pop    r9
+c:  41 5a                   pop    r10
+e:  41 5b                   pop    r11
+10: 41 5c                   pop    r12
+12: 41 5d                   pop    r13
+14: 41 5e                   pop    r14
+16: 41 5f                   pop    r15 
+58595A5B5C5D5E5F41584159415A415B415C415D415E415F
+
+0:  66 8f 00                pop    WORD PTR [rax]
+3:  66 8f 01                pop    WORD PTR [rcx]
+6:  66 8f 02                pop    WORD PTR [rdx]
+9:  66 8f 03                pop    WORD PTR [rbx]
+c:  66 8f 04 24             pop    WORD PTR [rsp]
+10: 66 8f 45 00             pop    WORD PTR [rbp+0x0]
+14: 66 8f 06                pop    WORD PTR [rsi]
+17: 66 8f 07                pop    WORD PTR [rdi]
+1a: 66 41 8f 00             pop    WORD PTR [r8]
+1e: 66 41 8f 01             pop    WORD PTR [r9]
+22: 66 41 8f 02             pop    WORD PTR [r10]
+26: 66 41 8f 03             pop    WORD PTR [r11]
+2a: 66 41 8f 04 24          pop    WORD PTR [r12]
+2f: 66 41 8f 45 00          pop    WORD PTR [r13+0x0]
+34: 66 41 8f 06             pop    WORD PTR [r14]
+38: 66 41 8f 07             pop    WORD PTR [r15] 
+668F00668F01668F02668F03668F0424668F4500668F06668F0766418F0066418F0166418F0266418F0366418F042466418F450066418F0666418F07
+
+0:  8f 00                   pop    QWORD PTR [rax]
+2:  8f 01                   pop    QWORD PTR [rcx]
+4:  8f 02                   pop    QWORD PTR [rdx]
+6:  8f 03                   pop    QWORD PTR [rbx]
+8:  8f 04 24                pop    QWORD PTR [rsp]
+b:  8f 45 00                pop    QWORD PTR [rbp+0x0]
+e:  8f 06                   pop    QWORD PTR [rsi]
+10: 8f 07                   pop    QWORD PTR [rdi]
+12: 41 8f 00                pop    QWORD PTR [r8]
+15: 41 8f 01                pop    QWORD PTR [r9]
+18: 41 8f 02                pop    QWORD PTR [r10]
+1b: 41 8f 03                pop    QWORD PTR [r11]
+1e: 41 8f 04 24             pop    QWORD PTR [r12]
+22: 41 8f 45 00             pop    QWORD PTR [r13+0x0]
+26: 41 8f 06                pop    QWORD PTR [r14]
+29: 41 8f 07                pop    QWORD PTR [r15] 
+8F008F018F028F038F04248F45008F068F07418F00418F01418F02418F03418F0424418F4500418F06418F07

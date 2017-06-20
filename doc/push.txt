@@ -1,0 +1,91 @@
+Opcode | Instruction | Op/ | 64-bit  | Compat/Leg | Description
+       |             | En  | Mode    | Mode       | 
+-------+-------------+-----+---------+------------+---------------------------------------------
+FF /6  | PUSH r/m16  | M   | Valid   | Valid      | Push r/m16.
+FF /6  | PUSH r/m32  | M   | N.E.    | Valid      | Push r/m32.
+FF /6  | PUSH r/m64  | M   | Valid   | N.E.       | Push r/m64.
+50+rw  | PUSH r16    | O   | Valid   | Valid      | Push r16.
+50+rd  | PUSH r32    | O   | N.E.    | Valid      | Push r32.
+50+rd  | PUSH r64    | O   | Valid   | N.E.       | Push r64.
+6A ib  | PUSH imm8   | I   | Valid   | Valid      | Push imm8.
+68 iw  | PUSH imm16  | I   | Valid   | Valid      | Push imm16.
+68 id  | PUSH imm32  | I   | Valid   | Valid      | Push imm32.
+0E     | PUSH CS     | ZO  | Invalid | Valid      | Push CS.
+16     | PUSH SS     | ZO  | Invalid | Valid      | Push SS.
+1E     | PUSH DS     | ZO  | Invalid | Valid      | Push DS.
+06     | PUSH ES     | ZO  | Invalid | Valid      | Push ES.
+0F A0  | PUSH FS     | ZO  | Valid   | Valid      | Push FS.
+0F A8  | PUSH GS     | ZO  | Valid   | Valid      | Push GS
+
+0:  66 50                   push   ax
+2:  66 51                   push   cx
+4:  66 52                   push   dx
+6:  66 53                   push   bx
+8:  66 54                   push   sp
+a:  66 55                   push   bp
+c:  66 56                   push   si
+e:  66 57                   push   di
+10: 66 41 50                push   r8w
+13: 66 41 51                push   r9w
+16: 66 41 52                push   r10w
+19: 66 41 53                push   r11w
+1c: 66 41 54                push   r12w
+1f: 66 41 55                push   r13w
+22: 66 41 56                push   r14w
+25: 66 41 57                push   r15w 
+66506651665266536654665566566657664150664151664152664153664154664155664156664157
+
+
+0:  50                      push   rax
+1:  51                      push   rcx
+2:  52                      push   rdx
+3:  53                      push   rbx
+4:  54                      push   rsp
+5:  55                      push   rbp
+6:  56                      push   rsi
+7:  57                      push   rdi
+8:  41 50                   push   r8
+a:  41 51                   push   r9
+c:  41 52                   push   r10
+e:  41 53                   push   r11
+10: 41 54                   push   r12
+12: 41 55                   push   r13
+14: 41 56                   push   r14
+16: 41 57                   push   r15 
+505152535455565741504151415241534154415541564157
+
+0:  66 ff 30                push   WORD PTR [rax]
+3:  66 ff 31                push   WORD PTR [rcx]
+6:  66 ff 32                push   WORD PTR [rdx]
+9:  66 ff 33                push   WORD PTR [rbx]
+c:  66 ff 34 24             push   WORD PTR [rsp]
+10: 66 ff 75 00             push   WORD PTR [rbp+0x0]
+14: 66 ff 36                push   WORD PTR [rsi]
+17: 66 ff 37                push   WORD PTR [rdi]
+1a: 66 41 ff 30             push   WORD PTR [r8]
+1e: 66 41 ff 31             push   WORD PTR [r9]
+22: 66 41 ff 32             push   WORD PTR [r10]
+26: 66 41 ff 33             push   WORD PTR [r11]
+2a: 66 41 ff 34 24          push   WORD PTR [r12]
+2f: 66 41 ff 75 00          push   WORD PTR [r13+0x0]
+34: 66 41 ff 36             push   WORD PTR [r14]
+38: 66 41 ff 37             push   WORD PTR [r15] 
+66FF3066FF3166FF3266FF3366FF342466FF750066FF3666FF376641FF306641FF316641FF326641FF336641FF34246641FF75006641FF366641FF37
+
+0:  ff 30                   push   QWORD PTR [rax]
+2:  ff 31                   push   QWORD PTR [rcx]
+4:  ff 32                   push   QWORD PTR [rdx]
+6:  ff 33                   push   QWORD PTR [rbx]
+8:  ff 34 24                push   QWORD PTR [rsp]
+b:  ff 75 00                push   QWORD PTR [rbp+0x0]
+e:  ff 36                   push   QWORD PTR [rsi]
+10: ff 37                   push   QWORD PTR [rdi]
+12: 41 ff 30                push   QWORD PTR [r8]
+15: 41 ff 31                push   QWORD PTR [r9]
+18: 41 ff 32                push   QWORD PTR [r10]
+1b: 41 ff 33                push   QWORD PTR [r11]
+1e: 41 ff 34 24             push   QWORD PTR [r12]
+22: 41 ff 75 00             push   QWORD PTR [r13+0x0]
+26: 41 ff 36                push   QWORD PTR [r14]
+29: 41 ff 37                push   QWORD PTR [r15] 
+FF30FF31FF32FF33FF3424FF7500FF36FF3741FF3041FF3141FF3241FF3341FF342441FF750041FF3641FF37

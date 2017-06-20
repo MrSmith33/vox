@@ -29,7 +29,7 @@ void main()
 	foreach (R regB; R.min..regMax)
 	{
 		//writefln("NOT %s", memAddrDisp32(0xAABBAABB));
-		writefln("mov %s, %s", regB, Imm32(0x24364758));
+		writefln("pop WORD PTR [%s]", regB);
 		codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
 	}
 	//foreach (Register regA; Register.min..RegisterMax) testCodeGen.movq(regA, Imm64(0x24364758AABBCCDD));
@@ -50,11 +50,15 @@ void testAll()
 	import test.not;
 	import test.mul;
 	import test.inc;
+	import test.pop;
+	import test.push;
 	testAdd();
 	testMov();
 	testNot();
 	testMul();
 	testInc();
+	testPop();
+	testPush();
 }
 
 void testPrintMemAddress()

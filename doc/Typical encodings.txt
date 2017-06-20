@@ -9,6 +9,7 @@ putInstrBinaryMemImm  |  [L.OS]  [REX.W IB]  Opcode      ModO/M  SIB  Disp8/32 I
 
 putInstrUnaryRegOpMod |  [L.OS]  [REX.W  R]  Opcode      ModO/R
 putInstrUnaryMemOpMod |  [L.OS]  [REX.W  B]  Opcode      ModO/B
+putInstrUnaryReg      |  [L.OS]  [REX.W  R]  Opcode|R
 
 
 L.OS - LegacyPrefix.OPERAND_SIZE
@@ -22,10 +23,16 @@ M - SP register in memory encoding
 
 
 add
-dec
-div
-inc
-mov
-mul
-not
 sub
+
+div
+mul
+
+dec
+inc
+
+mov
+not
+
+pop
+push
