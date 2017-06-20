@@ -31,6 +31,8 @@ void main()
 		//writefln("pop WORD PTR [%s]", regB);
 		codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
 	}
+	//foreach (R regA; R.min..regMax) writefln("cmp %s, %s", regA, R.min);
+	//foreach (R regB; R.min..regMax) writefln("cmp %s, %s", R.min, regB);
 	//foreach (Register regA; Register.min..RegisterMax) testCodeGen.movq(regA, Imm64(0x24364758AABBCCDD));
 
 	//codeGen.notb(memAddrBase(Register.DI));
@@ -51,6 +53,7 @@ void testAll()
 	import test.inc;
 	import test.pop;
 	import test.push;
+	import test.cmp;
 	testAdd();
 	testMov();
 	testNot();
@@ -58,6 +61,7 @@ void testAll()
 	testInc();
 	testPop();
 	testPush();
+	testCmp();
 }
 
 void testPrintMemAddress()

@@ -35,11 +35,12 @@ ret
 pop
 push
 call
+cmp
 
 Implemented instructions
-add sub mul div dec inc mov not nop pop push ret call
+add sub mul div dec inc mov not nop pop push ret call cmp
 
 TODO
 jmp
-cmp
 
+add sub and cmp use nearly identical encoding

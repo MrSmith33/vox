@@ -421,6 +421,36 @@ struct CodeGen_x86_64
 	void subq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x81, 5, dst, src); }
 
 
+	void cmpb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (0x38, src, dst); }
+	void cmpw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (0x39, src, dst); }
+	void cmpd(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(0x39, src, dst); }
+	void cmpq(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(0x39, src, dst); }
+
+	void cmpb(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (0x38, dst, src); }
+	void cmpw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (0x39, dst, src); }
+	void cmpd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(0x39, dst, src); }
+	void cmpq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(0x39, dst, src); }
+
+	void cmpb(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (0x3A, dst, src); }
+	void cmpw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (0x3B, dst, src); }
+	void cmpd(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(0x3B, dst, src); }
+	void cmpq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(0x3B, dst, src); }
+
+	void cmpb(Register dst,   Imm8  src){ encoder.putInstrBinaryRegImm2!(ArgType.BYTE) (0x80, 7, dst, src); }
+	void cmpw(Register dst,   Imm16 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x81, 7, dst, src); }
+	void cmpd(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x81, 7, dst, src); }
+	void cmpq(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x81, 7, dst, src); }
+
+	void cmpw(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x83, 7, dst, src); }
+	void cmpd(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x83, 7, dst, src); }
+	void cmpq(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x83, 7, dst, src); }
+
+	void cmpb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (0x80, 7, dst, src); }
+	void cmpw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (0x81, 7, dst, src); }
+	void cmpd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x81, 7, dst, src); }
+	void cmpq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x81, 7, dst, src); }
+
+
 	mixin unaryInstr_Reg!("inc", [0xFE,0xFF], 0);
 	mixin unaryInstr_Mem!("inc", [0xFE,0xFF], 0);
 

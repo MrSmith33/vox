@@ -1,0 +1,269 @@
+0:  38 c0                   cmp    al,al
+2:  38 c1                   cmp    cl,al
+4:  38 c2                   cmp    dl,al
+6:  38 c3                   cmp    bl,al
+8:  40 38 c4                cmp    spl,al
+b:  40 38 c5                cmp    bpl,al
+e:  40 38 c6                cmp    sil,al
+11: 40 38 c7                cmp    dil,al
+14: 41 38 c0                cmp    r8b,al
+17: 41 38 c1                cmp    r9b,al
+1a: 41 38 c2                cmp    r10b,al
+1d: 41 38 c3                cmp    r11b,al
+20: 41 38 c4                cmp    r12b,al
+23: 41 38 c5                cmp    r13b,al
+26: 41 38 c6                cmp    r14b,al
+29: 41 38 c7                cmp    r15b,al
+2c: 38 c0                   cmp    al,al
+2e: 38 c8                   cmp    al,cl
+30: 38 d0                   cmp    al,dl
+32: 38 d8                   cmp    al,bl
+34: 40 38 e0                cmp    al,spl
+37: 40 38 e8                cmp    al,bpl
+3a: 40 38 f0                cmp    al,sil
+3d: 40 38 f8                cmp    al,dil
+40: 44 38 c0                cmp    al,r8b
+43: 44 38 c8                cmp    al,r9b
+46: 44 38 d0                cmp    al,r10b
+49: 44 38 d8                cmp    al,r11b
+4c: 44 38 e0                cmp    al,r12b
+4f: 44 38 e8                cmp    al,r13b
+52: 44 38 f0                cmp    al,r14b
+55: 44 38 f8                cmp    al,r15b 
+38C038C138C238C34038C44038C54038C64038C74138C04138C14138C24138C34138C44138C54138C64138C738C038C838D038D84038E04038E84038F04038F84438C04438C84438D04438D84438E04438E84438F04438F8
+
+0:  66 39 c0                cmp    ax,ax
+3:  66 39 c1                cmp    cx,ax
+6:  66 39 c2                cmp    dx,ax
+9:  66 39 c3                cmp    bx,ax
+c:  66 39 c4                cmp    sp,ax
+f:  66 39 c5                cmp    bp,ax
+12: 66 39 c6                cmp    si,ax
+15: 66 39 c7                cmp    di,ax
+18: 66 41 39 c0             cmp    r8w,ax
+1c: 66 41 39 c1             cmp    r9w,ax
+20: 66 41 39 c2             cmp    r10w,ax
+24: 66 41 39 c3             cmp    r11w,ax
+28: 66 41 39 c4             cmp    r12w,ax
+2c: 66 41 39 c5             cmp    r13w,ax
+30: 66 41 39 c6             cmp    r14w,ax
+34: 66 41 39 c7             cmp    r15w,ax
+38: 66 39 c0                cmp    ax,ax
+3b: 66 39 c8                cmp    ax,cx
+3e: 66 39 d0                cmp    ax,dx
+41: 66 39 d8                cmp    ax,bx
+44: 66 39 e0                cmp    ax,sp
+47: 66 39 e8                cmp    ax,bp
+4a: 66 39 f0                cmp    ax,si
+4d: 66 39 f8                cmp    ax,di
+50: 66 44 39 c0             cmp    ax,r8w
+54: 66 44 39 c8             cmp    ax,r9w
+58: 66 44 39 d0             cmp    ax,r10w
+5c: 66 44 39 d8             cmp    ax,r11w
+60: 66 44 39 e0             cmp    ax,r12w
+64: 66 44 39 e8             cmp    ax,r13w
+68: 66 44 39 f0             cmp    ax,r14w
+6c: 66 44 39 f8             cmp    ax,r15w 
+6639C06639C16639C26639C36639C46639C56639C66639C7664139C0664139C1664139C2664139C3664139C4664139C5664139C6664139C76639C06639C86639D06639D86639E06639E86639F06639F8664439C0664439C8664439D0664439D8664439E0664439E8664439F0664439F8
+
+0:  39 c0                   cmp    eax,eax
+2:  39 c1                   cmp    ecx,eax
+4:  39 c2                   cmp    edx,eax
+6:  39 c3                   cmp    ebx,eax
+8:  39 c4                   cmp    esp,eax
+a:  39 c5                   cmp    ebp,eax
+c:  39 c6                   cmp    esi,eax
+e:  39 c7                   cmp    edi,eax
+10: 41 39 c0                cmp    r8d,eax
+13: 41 39 c1                cmp    r9d,eax
+16: 41 39 c2                cmp    r10d,eax
+19: 41 39 c3                cmp    r11d,eax
+1c: 41 39 c4                cmp    r12d,eax
+1f: 41 39 c5                cmp    r13d,eax
+22: 41 39 c6                cmp    r14d,eax
+25: 41 39 c7                cmp    r15d,eax
+28: 39 c0                   cmp    eax,eax
+2a: 39 c8                   cmp    eax,ecx
+2c: 39 d0                   cmp    eax,edx
+2e: 39 d8                   cmp    eax,ebx
+30: 39 e0                   cmp    eax,esp
+32: 39 e8                   cmp    eax,ebp
+34: 39 f0                   cmp    eax,esi
+36: 39 f8                   cmp    eax,edi
+38: 44 39 c0                cmp    eax,r8d
+3b: 44 39 c8                cmp    eax,r9d
+3e: 44 39 d0                cmp    eax,r10d
+41: 44 39 d8                cmp    eax,r11d
+44: 44 39 e0                cmp    eax,r12d
+47: 44 39 e8                cmp    eax,r13d
+4a: 44 39 f0                cmp    eax,r14d
+4d: 44 39 f8                cmp    eax,r15d 
+39C039C139C239C339C439C539C639C74139C04139C14139C24139C34139C44139C54139C64139C739C039C839D039D839E039E839F039F84439C04439C84439D04439D84439E04439E84439F04439F8
+
+0:  48 39 c0                cmp    rax,rax
+3:  48 39 c1                cmp    rcx,rax
+6:  48 39 c2                cmp    rdx,rax
+9:  48 39 c3                cmp    rbx,rax
+c:  48 39 c4                cmp    rsp,rax
+f:  48 39 c5                cmp    rbp,rax
+12: 48 39 c6                cmp    rsi,rax
+15: 48 39 c7                cmp    rdi,rax
+18: 49 39 c0                cmp    r8,rax
+1b: 49 39 c1                cmp    r9,rax
+1e: 49 39 c2                cmp    r10,rax
+21: 49 39 c3                cmp    r11,rax
+24: 49 39 c4                cmp    r12,rax
+27: 49 39 c5                cmp    r13,rax
+2a: 49 39 c6                cmp    r14,rax
+2d: 49 39 c7                cmp    r15,rax
+30: 48 39 c0                cmp    rax,rax
+33: 48 39 c8                cmp    rax,rcx
+36: 48 39 d0                cmp    rax,rdx
+39: 48 39 d8                cmp    rax,rbx
+3c: 48 39 e0                cmp    rax,rsp
+3f: 48 39 e8                cmp    rax,rbp
+42: 48 39 f0                cmp    rax,rsi
+45: 48 39 f8                cmp    rax,rdi
+48: 4c 39 c0                cmp    rax,r8
+4b: 4c 39 c8                cmp    rax,r9
+4e: 4c 39 d0                cmp    rax,r10
+51: 4c 39 d8                cmp    rax,r11
+54: 4c 39 e0                cmp    rax,r12
+57: 4c 39 e8                cmp    rax,r13
+5a: 4c 39 f0                cmp    rax,r14
+5d: 4c 39 f8                cmp    rax,r15 
+4839C04839C14839C24839C34839C44839C54839C64839C74939C04939C14939C24939C34939C44939C54939C64939C74839C04839C84839D04839D84839E04839E84839F04839F84C39C04C39C84C39D04C39D84C39E04C39E84C39F04C39F8
+
+0:  3c 24                   cmp    al,0x24
+
+0:  80 f8 24                cmp    al,0x24
+2:  80 f9 24                cmp    cl,0x24
+5:  80 fa 24                cmp    dl,0x24
+8:  80 fb 24                cmp    bl,0x24
+b:  40 80 fc 24             cmp    spl,0x24
+f:  40 80 fd 24             cmp    bpl,0x24
+13: 40 80 fe 24             cmp    sil,0x24
+17: 40 80 ff 24             cmp    dil,0x24
+1b: 41 80 f8 24             cmp    r8b,0x24
+1f: 41 80 f9 24             cmp    r9b,0x24
+23: 41 80 fa 24             cmp    r10b,0x24
+27: 41 80 fb 24             cmp    r11b,0x24
+2b: 41 80 fc 24             cmp    r12b,0x24
+2f: 41 80 fd 24             cmp    r13b,0x24
+33: 41 80 fe 24             cmp    r14b,0x24
+37: 41 80 ff 24             cmp    r15b,0x24 
+80F82480F92480FA2480FB244080FC244080FD244080FE244080FF244180F8244180F9244180FA244180FB244180FC244180FD244180FE244180FF24
+
+0:  66 83 f8 24             cmp    ax,0x24
+4:  66 83 f9 24             cmp    cx,0x24
+8:  66 83 fa 24             cmp    dx,0x24
+c:  66 83 fb 24             cmp    bx,0x24
+10: 66 83 fc 24             cmp    sp,0x24
+14: 66 83 fd 24             cmp    bp,0x24
+18: 66 83 fe 24             cmp    si,0x24
+1c: 66 83 ff 24             cmp    di,0x24
+20: 66 41 83 f8 24          cmp    r8w,0x24
+25: 66 41 83 f9 24          cmp    r9w,0x24
+2a: 66 41 83 fa 24          cmp    r10w,0x24
+2f: 66 41 83 fb 24          cmp    r11w,0x24
+34: 66 41 83 fc 24          cmp    r12w,0x24
+39: 66 41 83 fd 24          cmp    r13w,0x24
+3e: 66 41 83 fe 24          cmp    r14w,0x24
+43: 66 41 83 ff 24          cmp    r15w,0x24
+6683F8246683F9246683FA246683FB246683FC246683FD246683FE246683FF24664183F824664183F924664183FA24664183FB24664183FC24664183FD24664183FE24664183FF24
+
+0:  83 f8 24                cmp    eax,0x24
+3:  83 f9 24                cmp    ecx,0x24
+6:  83 fa 24                cmp    edx,0x24
+9:  83 fb 24                cmp    ebx,0x24
+c:  83 fc 24                cmp    esp,0x24
+f:  83 fd 24                cmp    ebp,0x24
+12: 83 fe 24                cmp    esi,0x24
+15: 83 ff 24                cmp    edi,0x24
+18: 41 83 f8 24             cmp    r8d,0x24
+1c: 41 83 f9 24             cmp    r9d,0x24
+20: 41 83 fa 24             cmp    r10d,0x24
+24: 41 83 fb 24             cmp    r11d,0x24
+28: 41 83 fc 24             cmp    r12d,0x24
+2c: 41 83 fd 24             cmp    r13d,0x24
+30: 41 83 fe 24             cmp    r14d,0x24
+34: 41 83 ff 24             cmp    r15d,0x24 
+83F82483F92483FA2483FB2483FC2483FD2483FE2483FF244183F8244183F9244183FA244183FB244183FC244183FD244183FE244183FF24
+
+0:  48 83 f8 24             cmp    rax,0x24
+4:  48 83 f9 24             cmp    rcx,0x24
+8:  48 83 fa 24             cmp    rdx,0x24
+c:  48 83 fb 24             cmp    rbx,0x24
+10: 48 83 fc 24             cmp    rsp,0x24
+14: 48 83 fd 24             cmp    rbp,0x24
+18: 48 83 fe 24             cmp    rsi,0x24
+1c: 48 83 ff 24             cmp    rdi,0x24
+20: 49 83 f8 24             cmp    r8,0x24
+24: 49 83 f9 24             cmp    r9,0x24
+28: 49 83 fa 24             cmp    r10,0x24
+2c: 49 83 fb 24             cmp    r11,0x24
+30: 49 83 fc 24             cmp    r12,0x24
+34: 49 83 fd 24             cmp    r13,0x24
+38: 49 83 fe 24             cmp    r14,0x24
+3c: 49 83 ff 24             cmp    r15,0x24
+4883F8244883F9244883FA244883FB244883FC244883FD244883FE244883FF244983F8244983F9244983FA244983FB244983FC244983FD244983FE244983FF24
+
+4:  66 3d 36 24             cmp    ax,0x2436
+
+4:  66 81 f8 36 24          cmp    ax,0x2436
+8:  66 81 f9 36 24          cmp    cx,0x2436
+d:  66 81 fa 36 24          cmp    dx,0x2436
+12: 66 81 fb 36 24          cmp    bx,0x2436
+17: 66 81 fc 36 24          cmp    sp,0x2436
+1c: 66 81 fd 36 24          cmp    bp,0x2436
+21: 66 81 fe 36 24          cmp    si,0x2436
+26: 66 81 ff 36 24          cmp    di,0x2436
+2b: 66 41 81 f8 36 24       cmp    r8w,0x2436
+31: 66 41 81 f9 36 24       cmp    r9w,0x2436
+37: 66 41 81 fa 36 24       cmp    r10w,0x2436
+3d: 66 41 81 fb 36 24       cmp    r11w,0x2436
+43: 66 41 81 fc 36 24       cmp    r12w,0x2436
+49: 66 41 81 fd 36 24       cmp    r13w,0x2436
+4f: 66 41 81 fe 36 24       cmp    r14w,0x2436
+55: 66 41 81 ff 36 24       cmp    r15w,0x2436 
+6681F836246681F936246681FA36246681FB36246681FC36246681FD36246681FE36246681FF3624664181F83624664181F93624664181FA3624664181FB3624664181FC3624664181FD3624664181FE3624664181FF3624
+
+0:  3d 58 47 36 24          cmp    eax,0x24364758
+
+0:  81 f8 58 47 36 24       cmp    eax,0x24364758
+5:  81 f9 58 47 36 24       cmp    ecx,0x24364758
+b:  81 fa 58 47 36 24       cmp    edx,0x24364758
+11: 81 fb 58 47 36 24       cmp    ebx,0x24364758
+17: 81 fc 58 47 36 24       cmp    esp,0x24364758
+1d: 81 fd 58 47 36 24       cmp    ebp,0x24364758
+23: 81 fe 58 47 36 24       cmp    esi,0x24364758
+29: 81 ff 58 47 36 24       cmp    edi,0x24364758
+2f: 41 81 f8 58 47 36 24    cmp    r8d,0x24364758
+36: 41 81 f9 58 47 36 24    cmp    r9d,0x24364758
+3d: 41 81 fa 58 47 36 24    cmp    r10d,0x24364758
+44: 41 81 fb 58 47 36 24    cmp    r11d,0x24364758
+4b: 41 81 fc 58 47 36 24    cmp    r12d,0x24364758
+52: 41 81 fd 58 47 36 24    cmp    r13d,0x24364758
+59: 41 81 fe 58 47 36 24    cmp    r14d,0x24364758
+60: 41 81 ff 58 47 36 24    cmp    r15d,0x24364758 
+81F85847362481F95847362481FA5847362481FB5847362481FC5847362481FD5847362481FE5847362481FF584736244181F8584736244181F9584736244181FA584736244181FB584736244181FC584736244181FD584736244181FE584736244181FF58473624
+
+0:  48 3d 58 47 36 24       cmp    rax,0x24364758
+
+0:  48 81 f8 58 47 36 24    cmp    rax,0x24364758
+6:  48 81 f9 58 47 36 24    cmp    rcx,0x24364758
+d:  48 81 fa 58 47 36 24    cmp    rdx,0x24364758
+14: 48 81 fb 58 47 36 24    cmp    rbx,0x24364758
+1b: 48 81 fc 58 47 36 24    cmp    rsp,0x24364758
+22: 48 81 fd 58 47 36 24    cmp    rbp,0x24364758
+29: 48 81 fe 58 47 36 24    cmp    rsi,0x24364758
+30: 48 81 ff 58 47 36 24    cmp    rdi,0x24364758
+37: 49 81 f8 58 47 36 24    cmp    r8,0x24364758
+3e: 49 81 f9 58 47 36 24    cmp    r9,0x24364758
+45: 49 81 fa 58 47 36 24    cmp    r10,0x24364758
+4c: 49 81 fb 58 47 36 24    cmp    r11,0x24364758
+53: 49 81 fc 58 47 36 24    cmp    r12,0x24364758
+5a: 49 81 fd 58 47 36 24    cmp    r13,0x24364758
+61: 49 81 fe 58 47 36 24    cmp    r14,0x24364758
+68: 49 81 ff 58 47 36 24    cmp    r15,0x24364758 
+4881F8584736244881F9584736244881FA584736244881FB584736244881FC584736244881FD584736244881FE584736244881FF584736244981F8584736244981F9584736244981FA584736244981FB584736244981FC584736244981FD584736244981FE584736244981FF58473624
