@@ -52,13 +52,13 @@ cmp
 jmp
 jcc
 setcc
-
-Implemented instructions
-add sub mul div dec inc mov not nop pop push ret call cmp jmp jcc setcc
-
-TODO
 test
 movzx
+
+Implemented instructions
+add sub mul div dec inc mov not nop pop push ret call cmp jmp jcc setcc test movzx
+
+TODO
 
 movsx
 xchg
@@ -66,6 +66,7 @@ xchg
 and
 or
 xor
+lea
 
 add sub and cmp use nearly identical encoding
 
