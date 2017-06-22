@@ -207,7 +207,7 @@ REX prefix | Opcode |   mod  reg  r/m |
 # is addressing mode. It is the same for encodings with or without SIB byte
 
 #  Mod    Addressing      R/M
-1  00   [RIP + disp32]  BP,R13
+9  00   [RIP + disp32]  BP,R13
 3  00   [R/M         ]  !SP,BP,R12,R13
 S  00   [SIB         ]  SP,R12
 7  01   [R/M +  disp8]  !SP,R12
@@ -216,6 +216,7 @@ S  01   [SIB +  disp8]  SP,R12
 S  10   [SIB + disp32]  SP,R12
 S uses SIB byte
 ! means any except following registers
+R/M is Base register here
 
 
 Figure 2-6. Memory Addressing With a SIB Byte
@@ -236,6 +237,7 @@ REX prefix   | Opcode |   mod  reg  r/m |   scale  index  base |
 6  ANY^   ANY    10     [base + (index * s) + disp32]
 7   SP    ANY    01     [base +             + disp8 ]
 8  ANY^   ANY    01     [base + (index * s) + disp8 ]
+9   -      -     --     [RIP  +             + disp32] without SIB
 
 - BP can be replaced with R13 here
 * ANY can be any GPR except BP, R13

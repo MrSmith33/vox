@@ -57,6 +57,11 @@ ubyte[] alloc_executable_memory(size_t bytes)
 	return allocate(bytes, true);
 }
 
+bool free_executable_memory(ubyte[] bytes)
+{
+	return deallocate(bytes);
+}
+
 void printMemBytes(void* ptr, size_t bytes, size_t width = 8)
 {
 	size_t lines = bytes % width == 0 ? bytes/width : bytes/width + 1;

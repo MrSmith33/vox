@@ -97,4 +97,7 @@ void testMov()
 	// mov QWORD PTR [rsp-8], 0xffffffffaabbccdd
 	testCodeGen.movq(memAddrBaseDisp8(Register.SP, cast(ubyte)(-8)), Imm32(0xAABBCCDD)); // -8
 	assertHexAndReset("48C74424F8DDCCBBAA");
+
+	testCodeGen.movd(Register.AX, memAddrBaseDisp8(Register.AX, 0x20));
+	assertHexAndReset("8B4020");
 }

@@ -12,6 +12,19 @@ putInstrUnaryMemOpMod |  [L.OS]  [REX.W  B]  Opcode      ModO/B
 putInstrUnaryReg      |  [L.OS]  [REX.W  R]  Opcode|R
 
 
+Memory
+
+With SIB byte
+[L.OS] [REX.WRIB] [0F] Opcode ModR/M SIB Disp8/32
+[L.OS] [REX.W IB] [0F] Opcode Mod0/M SIB Disp8/32 Imm8/16/32
+[L.OS] [REX.WR  ] [0F] Opcode ModR/M SIB Disp32
+[L.OS] [REX.W   ] [0F] Opcode Mod0/M SIB Disp32   Imm8/16/32
+
+Without SIB byte
+[L.OS] [REX.WR B] [0F] Opcode ModR/M Disp8/32                 [base]
+[L.OS] [REX.W  B] [0F] Opcode Mod0/M Disp8/32 Imm8/16/32      [base+disp8/32]
+
+
 L.OS - LegacyPrefix.OPERAND_SIZE
 S - scale
 I - index
@@ -36,11 +49,17 @@ pop
 push
 call
 cmp
+jmp
+jcc
+setcc
 
 Implemented instructions
-add sub mul div dec inc mov not nop pop push ret call cmp
+add sub mul div dec inc mov not nop pop push ret call cmp jmp
 
 TODO
-jmp
+setcc
 
 add sub and cmp use nearly identical encoding
+
+
+

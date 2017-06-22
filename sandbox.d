@@ -18,7 +18,7 @@ enum Reg64 : ubyte {RAX,RCX,RDX,RBX,RSP,RBP,RSI,RDI,R8, R9, R10, R11, R12, R13, 
 
 void main()
 {
-	run_from_rwx();
+	//run_from_rwx();
 	//testPrintMemAddress();
 
 	CodeGen_x86_64 codeGen;
@@ -28,8 +28,9 @@ void main()
 	enum regMax = cast(R)(R.max+1);
 	foreach (R regB; R.min..regMax)
 	{
-		//writefln("pop WORD PTR [%s]", regB);
-		codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
+		//codeGen.addq(memAddrBase(cast(Register)regB), Imm8(1));
+		//writefln("add qword ptr [%s], 1", regB);
+		//codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
 	}
 	//foreach (R regA; R.min..regMax) writefln("cmp %s, %s", regA, R.min);
 	//foreach (R regB; R.min..regMax) writefln("cmp %s, %s", R.min, regB);
@@ -38,7 +39,7 @@ void main()
 	//codeGen.notb(memAddrBase(Register.DI));
 
 	//codeGen.movq(Register.AX, Register.CX);
-	//codeGen.addb(Register.AX, Imm8(4));
+	//codeGen.addq(memAddrBase(Register.AX), Imm8(1));
 	//codeGen.ret();
 	//printHex(codeGen.encoder.sink.data, 10);
 	testAll();
@@ -70,7 +71,7 @@ void testPrintMemAddress()
 	writeln(memAddrIndexDisp32(Register.AX, SibScale(0), 0x11223344));
 	writeln(memAddrBase(Register.AX));
 	writeln(memAddrBaseDisp32(Register.AX, 0x11223344));
-	writeln(memAddrBaseIndex(Register.AX, Register.BX, SibScale(2)));
+	writeln(memAddrBaseIndex(Register.AX, Register.BX, SibScale(1)));
 	writeln(memAddrBaseIndexDisp32(Register.AX, Register.BX, SibScale(2), 0x11223344));
 	writeln(memAddrBaseDisp8(Register.AX, 0xFE));
 	writeln(memAddrBaseIndexDisp8(Register.AX, Register.BX, SibScale(3), 0xFE));
@@ -100,10 +101,10 @@ void emit_code_into_memory(ubyte[] mem)
 		// main
 		codeGen.beginFunction();
 		auto sub_call = codeGen.saveFixup();
-		codeGen.call(Imm32(0));
+		codeGen.call(0);
 		codeGen.endFunction();
 
-		sub_call.call(Imm32(codeGen.currentOffset));
+		sub_call.call(codeGen.currentOffset);
 
 		// sub_fun
 		codeGen.beginFunction();
