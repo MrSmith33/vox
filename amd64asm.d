@@ -120,8 +120,8 @@ struct MemAddress {
 			case MemAddrType.baseDisp32: return format("[%s + 0x%x]", baseReg, disp32.value);
 			case MemAddrType.baseIndex: return format("[%s + (%s*%s)]", baseReg, indexReg, scale.value);
 			case MemAddrType.baseIndexDisp32: return format("[%s + (%s*%s) + 0x%x]", baseReg, indexReg, scale.value, disp32.value);
-			case MemAddrType.baseDisp8: return format("[0x%x]", disp8.value);
-			case MemAddrType.baseIndexDisp8: return format("[(%s*%s) + 0x%x]", indexReg, scale.value, disp8.value);
+			case MemAddrType.baseDisp8: return format("[%s + 0x%x]", baseReg, disp8.value);
+			case MemAddrType.baseIndexDisp8: return format("[%s + (%s*%s) + 0x%x]", baseReg, indexReg, scale.value, disp8.value);
 		}
 	}
 }
@@ -132,6 +132,7 @@ MemAddress memAddrDisp32(uint disp32) {
 }
 // variant 2  [(index * s) + disp32]
 MemAddress memAddrIndexDisp32(Register indexReg, SibScale scale, uint disp32) {
+	assert(indexReg != Register.SP, "Cannot encode [RSP * scale + disp32]");
 	return MemAddress(sibAddrType(MemAddrType.indexDisp32), indexReg, Register.BP, scale, disp32); // with SIB
 }
 // variant 3  [base]
@@ -152,10 +153,15 @@ MemAddress memAddrBaseDisp32(Register baseReg, uint disp32) {
 }
 // variant 5  [base + index * s]
 MemAddress memAddrBaseIndex(Register baseReg, Register indexReg, SibScale scale) {
-	return MemAddress(sibAddrType(MemAddrType.baseIndex), indexReg, baseReg, scale); // with SIB
+	assert(indexReg != Register.SP, "Cannot encode [base + RSP * scale]");
+	if (is_BP_or_R13(baseReg)) // fallback to variant 8 [base + (index * s) + disp8]
+		return memAddrBaseIndexDisp8(baseReg, indexReg, scale, 0); // with SIB
+	else
+		return MemAddress(sibAddrType(MemAddrType.baseIndex), indexReg, baseReg, scale); // with SIB
 }
 // variant 6  [base + index * s + disp32]
 MemAddress memAddrBaseIndexDisp32(Register baseReg, Register indexReg, SibScale scale, uint disp32) {
+	assert(indexReg != Register.SP, "Cannot encode [base + RSP * scale + disp32]");
 	return MemAddress(sibAddrType(MemAddrType.baseIndexDisp32), indexReg, baseReg, scale, disp32); // with SIB
 }
 // variant 7  [base + disp8]
@@ -167,6 +173,7 @@ MemAddress memAddrBaseDisp8(Register baseReg, ubyte disp8) {
 }
 // variant 8  [base + (index * s) + disp8]
 MemAddress memAddrBaseIndexDisp8(Register baseReg, Register indexReg, SibScale scale, ubyte disp8) {
+	assert(indexReg != Register.SP, "Cannot encode [base + RSP * scale + disp8]");
 	return MemAddress(sibAddrType(MemAddrType.baseIndexDisp8), indexReg, baseReg, scale, disp8); // with SIB
 }
 
@@ -354,6 +361,10 @@ struct CodeGen_x86_64
 	void addd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x81, 0, dst, src); }
 	void addq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x81, 0, dst, src); }
 
+	void addw(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (0x83, 0, dst, src); }
+	void addd(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x83, 0, dst, src); }
+	void addq(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x83, 0, dst, src); }
+
 
 	void movb(Register dst, Imm8  src){ encoder.putInstrBinaryRegImm1!(ArgType.BYTE) (0xB0, dst, src); }
 	void movw(Register dst, Imm16 src){ encoder.putInstrBinaryRegImm1!(ArgType.WORD) (0xB8, dst, src); }
@@ -411,6 +422,10 @@ struct CodeGen_x86_64
 	void subd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x81, 5, dst, src); }
 	void subq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x81, 5, dst, src); }
 
+	void subw(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (0x83, 5, dst, src); }
+	void subd(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x83, 5, dst, src); }
+	void subq(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x83, 5, dst, src); }
+
 
 	void cmpb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (0x38, src, dst); }
 	void cmpw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (0x39, src, dst); }
@@ -440,6 +455,10 @@ struct CodeGen_x86_64
 	void cmpw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (0x81, 7, dst, src); }
 	void cmpd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x81, 7, dst, src); }
 	void cmpq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x81, 7, dst, src); }
+
+	void cmpw(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (0x83, 7, dst, src); }
+	void cmpd(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(0x83, 7, dst, src); }
+	void cmpq(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(0x83, 7, dst, src); }
 
 
 	mixin unaryInstr_Reg!("inc", [0xFE,0xFF], 0);

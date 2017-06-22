@@ -29,7 +29,7 @@ void main()
 	foreach (R regB; R.min..regMax)
 	{
 		//codeGen.addq(memAddrBase(cast(Register)regB), Imm8(1));
-		//writefln("add qword ptr [%s], 1", regB);
+		//writefln("mov %s, qword ptr %s", regB, memAddrBaseIndexDisp8(cast(Register)regB, cast(Register)regB, SibScale(3), 0xFE));
 		//codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
 	}
 	//foreach (R regA; R.min..regMax) writefln("cmp %s, %s", regA, R.min);
