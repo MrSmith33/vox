@@ -106,7 +106,7 @@ void emit_code_into_memory(ubyte[] mem)
 		codeGen.call(0);
 		codeGen.endFunction();
 
-		sub_call.call(codeGen.currentOffset);
+		sub_call.call(codeGen.currentIP);
 
 		// sub_fun
 		codeGen.beginFunction();

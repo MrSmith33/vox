@@ -54,6 +54,41 @@ enum LegacyPrefix : ubyte {
 	ADDRESS_SIZE = 0x67, // Address-size override prefix
 }
 
+/// The terms "less" and "greater" are used for comparisons of signed integers.
+/// The terms "above" and "below" are used for unsigned integers.
+enum Condition : ubyte {
+	O   = 0x0, /// overflow (OF=1).
+	NO  = 0x1, /// not overflow (OF=0).
+	B   = 0x2, /// below (CF=1).
+	C   = 0x2, /// carry (CF=1).
+	NAE = 0x2, /// not above or equal (CF=1).
+	AE  = 0x3, /// above or equal (CF=0).
+	NB  = 0x3, /// not below (CF=0).
+	NC  = 0x3, /// not carry (CF=0).
+	E   = 0x4, /// equal (ZF=1).
+	Z   = 0x4, /// zero (ZF = 1).
+	NE  = 0x5, /// not equal (ZF=0).
+	NZ  = 0x5, /// not zero (ZF=0).
+	BE  = 0x6, /// below or equal (CF=1 or ZF=1).
+	NA  = 0x6, /// not above (CF=1 or ZF=1).
+	A   = 0x7, /// above (CF=0 and ZF=0).
+	NBE = 0x7, /// not below or equal (CF=0 andZF=0).
+	S   = 0x8, /// sign (SF=1).
+	NS  = 0x9, /// not sign (SF=0).
+	P   = 0xA, /// parity (PF=1).
+	PE  = 0xA, /// parity even (PF=1).
+	NP  = 0xB, /// not parity (PF=0).
+	PO  = 0xB, /// parity odd (PF=0).
+	L   = 0xC, /// less (SF≠ OF).
+	NGE = 0xC, /// not greater or equal (SF≠ OF).
+	GE  = 0xD, /// greater or equal (SF=OF).
+	NL  = 0xD, /// not less (SF=OF).
+	LE  = 0xE, /// less or equal (ZF=1 or SF≠ OF).
+	NG  = 0xE, /// not greater (ZF=1 or SF≠ OF).
+	G   = 0xF, /// greater (ZF=0 and SF=OF).
+	NLE = 0xF, /// not less or equal (ZF=0 andSF=OF).
+}
+
 // place 1 MSB of register into appropriate bit field of REX prefix
 ubyte regTo_Rex_W(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 0; } // 0100 WRXB
 ubyte regTo_Rex_R(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 1; } // 0100 WRXB
@@ -282,10 +317,10 @@ struct CodeGen_x86_64
 	Encoder encoder;
 
 	Fixup saveFixup() {
-		return Fixup(&this, currentOffset());
+		return Fixup(&this, currentIP());
 	}
 
-	int currentOffset() {
+	int currentIP() {
 		return cast(int)encoder.sink.length;
 	}
 
@@ -487,15 +522,11 @@ struct CodeGen_x86_64
 	void jmp(Imm32 offset) { encoder.putInstrNullaryImm(OP1(0xE9), offset);	}
 
 	/// jump relative to next instr.
-	void je (Imm8  offset) { encoder.putInstrNullaryImm(OP1(0x74), offset); }
-	void je (Imm32 offset) { encoder.putInstrNullaryImm(OP2(0x0F, 0x84), offset); }
-	void jne(Imm8  offset) { encoder.putInstrNullaryImm(OP1(0x75), offset); }
-	void jne(Imm32 offset) { encoder.putInstrNullaryImm(OP2(0x0F, 0x85), offset); }
+	void jcc(Condition condition, Imm8  offset) { encoder.putInstrNullaryImm(OP1(0x70 | condition), offset); }
+	void jcc(Condition condition, Imm32 offset) { encoder.putInstrNullaryImm(OP2(0x0F, 0x80 | condition), offset); }
 
-	void sete (Register dst)   { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP2(0x0F, 0x94), 0, dst); }
-	void sete (MemAddress dst) { encoder.putInstrUnaryMem !(ArgType.BYTE)(OP2(0x0F, 0x94), 0, dst); }
-	void setne(Register dst)   { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP2(0x0F, 0x95), 0, dst); }
-	void setne(MemAddress dst) { encoder.putInstrUnaryMem !(ArgType.BYTE)(OP2(0x0F, 0x95), 0, dst); }
+	void setcc(Condition condition, Register dst)   { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP2(0x0F, 0x90 | condition), 0, dst); }
+	void setcc(Condition condition, MemAddress dst) { encoder.putInstrUnaryMem !(ArgType.BYTE)(OP2(0x0F, 0x90 | condition), 0, dst); }
 
 	void popw(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.WORD )(0x58, dst); }
 	void popq(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.DWORD)(0x58, dst); } // use DWORD to omit REX.W

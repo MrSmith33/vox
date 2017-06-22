@@ -98,3 +98,48 @@ E3 cb    | JRCXZ rel8 | D   | Valid  | N.E.       | Jump short if RCX register i
 0F 8E cw | JNG rel16  | D   | N.S.   | Valid      | Jump near if not greater (ZF=1 or SF≠ OF). Not supported in 64-bit mode.
 0F 8F cw | JG rel16   | D   | N.S.   | Valid      | Jump near if greater (ZF=0 and SF=OF). Not supported in 64-bit mode.
 0F 8F cw | JNLE rel16 | D   | N.S.   | Valid      | Jump near if not less or equal (ZF=0 and SF=OF). Not supported in 64-bit mode.
+
+
+Checks the state of one or more of the status flags in the EFLAGS register (CF,
+OF, PF, SF, and ZF) and, if the flags are in the specified state (condition),
+performs a jump to the target instruction specified by the destination operand.
+A condition code (cc) is associated with each instruction to indicate the condition
+being tested for. If the condition is not satisfied, the jump is not performed
+and execution continues with the instruction following the Jcc instruction.
+
+The target instruction is specified with a relative offset (a signed offset
+relative to the current value of the instruction pointer in the EIP register).
+A relative offset (rel8, rel16, or rel32) is generally specified as a label in
+assembly code, but at the machine code level, it is encoded as a signed, 8-bit
+or 32-bit immediate value, which is added to the instruction pointer. Instruction
+coding is most efficient for offsets of -128 to +127. If the operand-size attribute
+is 16, the upper two bytes of the EIP register are cleared, resulting in a maximum
+instruction pointer size of 16 bits.
+
+The conditions for each Jcc mnemonic are given in the "{description}" column of
+the table on the preceding page. The terms "less" and "greater" are used for
+comparisons of signed integers and the terms "above" and "below" are used for unsigned integers.
+
+Because a particular state of the status flags can sometimes be interpreted in
+two ways, two mnemonics are defined for some opcodes. For example, the JA (jump
+if above) instruction and the JNBE (jump if not below or equal) instruction are
+alternate mnemonics for the opcode 77H.
+
+The Jcc instruction does not support far jumps (jumps to other code segments).
+When the target for the conditional jump is in a different segment, use the
+opposite condition from the condition being tested for the Jcc instruction, and
+then access the target with an unconditional far jump (JMP instruction) to the
+other segment. For example, the following conditional far jump is illegal: JZ FARLABEL;
+To accomplish this far jump, use the following two instructions:
+JNZ BEYOND; JMP FARLABEL; BEYOND: The JECXZ and JCXZ instructions differ from
+the other Jcc instructions because they do not check the status flags.
+Instead they check the contents of the ECX and CX registers, respectively, for 0.
+Either the CX or ECX register is chosen according to the address-size attribute.
+
+These instructions are useful at the beginning of a conditional loop that
+terminates with a conditional loop instruction (such as LOOPNE). They prevent
+entering the loop when the ECX or CX register is equal to 0, which would cause
+the loop to execute 232 or 64K times, respectively, instead of zero times.
+
+All conditional jumps are converted to code fetches of one or two cache lines,
+regardless of jump address or cacheability.
