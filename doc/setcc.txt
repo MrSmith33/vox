@@ -1,0 +1,18 @@
+0:  0f 94 c0                sete   al
+3:  0f 94 c1                sete   cl
+6:  0f 94 c2                sete   dl
+9:  0f 94 c3                sete   bl
+c:  40 0f 94 c4             sete   spl
+10: 40 0f 94 c5             sete   bpl
+14: 40 0f 94 c6             sete   sil
+18: 40 0f 94 c7             sete   dil
+1c: 41 0f 94 c0             sete   r8b
+20: 41 0f 94 c1             sete   r9b
+24: 41 0f 94 c2             sete   r10b
+28: 41 0f 94 c3             sete   r11b
+2c: 41 0f 94 c4             sete   r12b
+30: 41 0f 94 c5             sete   r13b
+34: 41 0f 94 c6             sete   r14b
+38: 41 0f 94 c7             sete   r15b 
+
+

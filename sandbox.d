@@ -55,6 +55,7 @@ void testAll()
 	import test.pop;
 	import test.push;
 	import test.cmp;
+	import test.jmp_jcc_setcc;
 	testAdd();
 	testMov();
 	testNot();
@@ -63,6 +64,7 @@ void testAll()
 	testPop();
 	testPush();
 	testCmp();
+	testJmpJccSetcc();
 }
 
 void testPrintMemAddress()

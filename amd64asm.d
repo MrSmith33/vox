@@ -482,6 +482,21 @@ struct CodeGen_x86_64
 		encoder.sink.put(rip_offset);
 	}
 
+	/// jump relative to next instr.
+	void jmp(Imm8 offset ) { encoder.putInstrNullaryImm(OP1(0xEB), offset); }
+	void jmp(Imm32 offset) { encoder.putInstrNullaryImm(OP1(0xE9), offset);	}
+
+	/// jump relative to next instr.
+	void je (Imm8  offset) { encoder.putInstrNullaryImm(OP1(0x74), offset); }
+	void je (Imm32 offset) { encoder.putInstrNullaryImm(OP2(0x0F, 0x84), offset); }
+	void jne(Imm8  offset) { encoder.putInstrNullaryImm(OP1(0x75), offset); }
+	void jne(Imm32 offset) { encoder.putInstrNullaryImm(OP2(0x0F, 0x85), offset); }
+
+	void sete (Register dst)   { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP2(0x0F, 0x94), 0, dst); }
+	void sete (MemAddress dst) { encoder.putInstrUnaryMem !(ArgType.BYTE)(OP2(0x0F, 0x94), 0, dst); }
+	void setne(Register dst)   { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP2(0x0F, 0x95), 0, dst); }
+	void setne(MemAddress dst) { encoder.putInstrUnaryMem !(ArgType.BYTE)(OP2(0x0F, 0x95), 0, dst); }
+
 	void popw(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.WORD )(0x58, dst); }
 	void popq(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.DWORD)(0x58, dst); } // use DWORD to omit REX.W
 	void popw(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.WORD )(OP1(0x8F), 0, dst); }
