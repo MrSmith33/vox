@@ -4,7 +4,6 @@ License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
 module amd64asm;
-import std.stdio;
 
 enum Register : ubyte {AX, CX, DX, BX, SP, BP, SI, DI, R8, R9, R10, R11, R12, R13, R14, R15}
 enum RegisterMax  = cast(Register)(Register.max+1);
@@ -217,16 +216,28 @@ struct OP1 { enum size = 1; ubyte op0; }
 struct OP2 { enum size = 2; ubyte op0; ubyte op1; }
 enum bool isAnyOpcode(O) = is(O == OP1) || is(O == OP2);
 
+alias PC = ubyte*;
+
 struct Encoder
 {
-	import utils : ArraySink;
-	ArraySink sink;
+	private ubyte[] mem;
+	private PC pc;
+
+	void setBuffer(ubyte[] buf) { mem = buf; pc = mem.ptr; }
+	void resetPC() { pc = mem.ptr; }
+	ubyte[] code() { return mem[0..pc - mem.ptr]; }
+
+	void sink_put(T)(T value)
+	{
+		*(cast(T*)pc) = value;
+		pc += value.sizeof;
+	}
 
 	void putRexByteChecked(ArgType argType)(ubyte bits, bool forceRex = false) {
 		static if (argType == ArgType.QWORD)
-			sink.put(REX_PREFIX | REX_W | bits);
+			sink_put!ubyte(REX_PREFIX | REX_W | bits);
 		else
-			if (bits || forceRex) sink.put(REX_PREFIX | bits);
+			if (bits || forceRex) sink_put!ubyte(REX_PREFIX | bits);
 	}
 	void putRexByte_RB(ArgType argType)(Register reg, Register rm) { // reg reg
 		putRexByteChecked!argType(regTo_Rex_R(reg) | regTo_Rex_B(rm), regNeedsRexPrefix!argType(reg) || regNeedsRexPrefix!argType(rm)); }
@@ -240,59 +251,58 @@ struct Encoder
 		putRexByteChecked!argType(regTo_Rex_X(index) | regTo_Rex_B(base)); }
 
 	void putInstrBinaryRegReg(ArgType argType, O)(O opcode, Register dst_rm, Register src_reg) if (isAnyOpcode!O) {
-		static if (argType == ArgType.WORD) sink.put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
 		putRexByte_RB!argType(src_reg, dst_rm);                                 // REX
-		sink.put(opcode.op0);                                                   // Opcode 0
-		static if (opcode.size > 1) sink.put(opcode.op1);                       // Opcode 1
-		sink.put(encodeModRegRmByte(ModRmMod(0b11), src_reg, dst_rm));          // ModR/r
+		sink_put(opcode);                                                       // Opcode
+		sink_put(encodeModRegRmByte(ModRmMod(0b11), src_reg, dst_rm));          // ModR/r
 	}
 	// PUSH, POP, MOV, XCHG, BSWAP
 	void putInstrBinaryRegImm1(ArgType argType, I)(ubyte opcode, Register dst_rm, I src_imm) if (isAnyImm!I) {
-		static if (argType == ArgType.WORD) sink.put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
 		putRexByte_regB!argType(dst_rm);                                        // REX
-		sink.put(opcode | (dst_rm & 0b0111));                                   // Opcode + reg
-		sink.put(src_imm);                                                      // Imm8/16/32/64
+		sink_put!ubyte(opcode | (dst_rm & 0b0111));                             // Opcode + reg
+		sink_put(src_imm);                                                      // Imm8/16/32/64
 	}
 	void putInstrBinaryRegImm2(ArgType argType, I)(ubyte opcode, ubyte regOpcode, Register dst_rm, I src_imm) if (isAnyImm!I) {
-		static if (argType == ArgType.WORD) sink.put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
 		putRexByte_regB!argType(dst_rm);                                        // REX
-		sink.put(opcode);                                                       // Opcode
-		sink.put(encodeModRegRmByte(ModRmMod(0b11), cast(Register)regOpcode, dst_rm));  // ModO/R
-		sink.put(src_imm);                                                      // Imm8/16/32/64
+		sink_put(opcode);                                                       // Opcode
+		sink_put(encodeModRegRmByte(ModRmMod(0b11), cast(Register)regOpcode, dst_rm));  // ModO/R
+		sink_put(src_imm);                                                      // Imm8/16/32/64
 	}
 	// if isReg == true then dst_r is register, otherwise it is extra opcode
 	void putInstrBinaryRegMem(ArgType argType, bool isReg = true, O)(O opcode, Register reg_or_opcode, MemAddress src_mem) if (isAnyOpcode!O) {
-		static if (argType == ArgType.WORD) sink.put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
 		static if (isReg) putRexByte_RXB!argType(reg_or_opcode, src_mem.indexReg, src_mem.baseReg); // REX
 		else putRexByte_XB!argType(src_mem.indexReg, src_mem.baseReg);          // REX
-		sink.put(opcode.op0);                                                   // Opcode 0
-		static if (opcode.size > 1) sink.put(opcode.op1);                       // Opcode 1
-		sink.put(src_mem.modRmByte(reg_or_opcode));                             // ModR/M
-		if (src_mem.hasSibByte)	   sink.put(src_mem.sibByte);                   // SIB
-		if (src_mem.hasDisp32)     sink.put(src_mem.disp32);                    // disp32
-		else if (src_mem.hasDisp8) sink.put(src_mem.disp8);                     // disp8
+		sink_put(opcode);                                                       // Opcode
+		sink_put(src_mem.modRmByte(reg_or_opcode));                             // ModR/M
+		if (src_mem.hasSibByte)	   sink_put(src_mem.sibByte);                   // SIB
+		if (src_mem.hasDisp32)     sink_put(src_mem.disp32);                    // disp32
+		else if (src_mem.hasDisp8) sink_put(src_mem.disp8);                     // disp8
 	}
 	void putInstrBinaryMemImm(ArgType argType, I, O)(O opcode, ubyte regOpcode, MemAddress dst_mem, I src_imm) if (isAnyImm!I && isAnyOpcode!O) {
 		putInstrBinaryRegMem!(argType, false)(opcode, cast(Register)regOpcode, dst_mem);
-		sink.put(src_imm);                                                      // Imm8/16/32
+		sink_put(src_imm);                                                      // Imm8/16/32
 	}
 
+	void putInstrNullary(O)(O opcode) if(isAnyOpcode!O) {
+		sink_put(opcode);                                                       // Opcode
+	}
 	void putInstrNullaryImm(O, I)(O opcode, I imm) if(isAnyOpcode!O && isAnyImm!I) {
-		sink.put(opcode.op0);                                                   // Opcode 0
-		static if (opcode.size > 1) sink.put(opcode.op1);                       // Opcode 1
-		sink.put(imm);                                                          // Imm8/16/32/64
+		sink_put(opcode);                                                       // Opcode
+		sink_put(imm);                                                          // Imm8/16/32/64
 	}
 	void putInstrUnaryReg1(ArgType argType, O)(O opcode, ubyte regOpcode, Register dst_rm) if (isAnyOpcode!O) {
-		static if (argType == ArgType.WORD) sink.put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
 		putRexByte_regB!argType(dst_rm);                                        // REX
-		sink.put(opcode.op0);                                                   // Opcode 0
-		static if (opcode.size > 1) sink.put(opcode.op1);                       // Opcode 1
-		sink.put(encodeModRegRmByte(ModRmMod(0b11), cast(Register)regOpcode, dst_rm));// ModO/R
+		sink_put(opcode);                                                       // Opcode
+		sink_put(encodeModRegRmByte(ModRmMod(0b11), cast(Register)regOpcode, dst_rm));// ModO/R
 	}
 	void putInstrUnaryReg2(ArgType argType)(ubyte opcode, Register dst_rm) {
-		static if (argType == ArgType.WORD) sink.put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
 		putRexByte_regB!argType(dst_rm);                                        // REX
-		sink.put(opcode | (dst_rm & 0b0111));                                   // Opcode
+		sink_put!ubyte(opcode | (dst_rm & 0b0111));                             // Opcode
 	}
 	void putInstrUnaryMem(ArgType argType, O)(O opcode, ubyte regOpcode, MemAddress dst_mem) if (isAnyOpcode!O) {
 		putInstrBinaryRegMem!(argType, false)(opcode, cast(Register)regOpcode, dst_mem);
@@ -302,14 +312,18 @@ struct Encoder
 struct Fixup
 {
 	private CodeGen_x86_64* codeGen;
-	private int fixupOffset;
+	private PC fixupPC;
 
 	void opDispatch(string member, Args...)(Args args) {
-		int temp = cast(int)codeGen.encoder.sink.length;
-		codeGen.encoder.sink.length = fixupOffset;
+		auto tempPC = codeGen.encoder.pc;
+		codeGen.encoder.pc = fixupPC;
 		mixin("codeGen."~member~"(args);");
-		codeGen.encoder.sink.length = temp;
+		codeGen.encoder.pc = tempPC;
 	}
+}
+
+Imm32 jumpOffset(PC from, PC to) {
+	return Imm32(cast(int)(to - from));
 }
 
 // Sink defines put(T) for ubyte, ubyte[], Imm8, Imm16, Imm32, Imm64
@@ -318,11 +332,11 @@ struct CodeGen_x86_64
 	Encoder encoder;
 
 	Fixup saveFixup() {
-		return Fixup(&this, currentIP());
+		return Fixup(&this, encoder.pc);
 	}
 
-	int currentIP() {
-		return cast(int)encoder.sink.length;
+	PC pc() {
+		return encoder.pc;
 	}
 
 	/// Used for versions of instructions without argument size suffix.
@@ -509,14 +523,10 @@ struct CodeGen_x86_64
 	mixin unaryInstr_Mem!("not", [0xF6,0xF7], 2);
 
 
-	void nop() { encoder.sink.put(0x90); }
+	void nop() { encoder.putInstrNullary(OP1(0x90)); }
 
 	/// relative call to target virtual address.
-	void call(int target) {
-		int rip_offset = cast(int)(target - encoder.sink.length - 5); // relative to next instr
-		encoder.sink.put(0xE8);
-		encoder.sink.put(rip_offset);
-	}
+	void call(PC target) { encoder.putInstrNullaryImm(OP1(0xE8), jumpOffset(encoder.pc + 5, target)); } // relative to next instr
 
 	/// jump relative to next instr.
 	void jmp(Imm8 offset ) { encoder.putInstrNullaryImm(OP1(0xEB), offset); }
@@ -550,13 +560,10 @@ struct CodeGen_x86_64
 	void pushw(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.WORD )(OP1(0xFF), 6, dst); }
 	void pushq(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.DWORD)(OP1(0xFF), 6, dst); } // use DWORD to omit REX.W
 
-	void ret() { encoder.sink.put(0xC3); }
-	void ret(Imm16 bytesToPop) {
-		encoder.sink.put(0xC2);
-		encoder.sink.put(bytesToPop);
-	}
+	void ret() { encoder.putInstrNullary(OP1(0xC3)); }
+	void ret(Imm16 bytesToPop) { encoder.putInstrNullaryImm(OP1(0xC2), bytesToPop); }
 
-	void int3() { encoder.sink.put(0xCC); }
+	void int3() { encoder.putInstrNullary(OP1(0xCC)); }
 }
 
 mixin template unaryInstr_Reg(string name, ubyte[2] opcodes, ubyte extraOpcode) {

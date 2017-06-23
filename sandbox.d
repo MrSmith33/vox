@@ -10,6 +10,8 @@ import amd64asm;
 import utils;
 import test.utils;
 
+enum PAGE_SIZE = 4096;
+
 // for printing
 enum Reg8  : ubyte {AL, CL, DL, BL, SPL,BPL,SIL,DIL,R8B,R9B,R10B,R11B,R12B,R13B,R14B,R15B}
 enum Reg16 : ubyte {AX, CX, DX, BX, SP, BP, SI, DI, R8W,R9W,R10W,R11W,R12W,R13W,R14W,R15W}
@@ -18,10 +20,11 @@ enum Reg64 : ubyte {RAX,RCX,RDX,RBX,RSP,RBP,RSI,RDI,R8, R9, R10, R11, R12, R13, 
 
 void main()
 {
-	//run_from_rwx();
+	run_from_rwx();
 	//testPrintMemAddress();
 
 	CodeGen_x86_64 codeGen;
+	codeGen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
 	//writefln("MOV byte ptr %s, 0x%X", memAddrDisp32(0x55667788), 0xAA);
 
 	alias R = Reg64;
@@ -32,21 +35,15 @@ void main()
 		//writefln("mov %s, qword ptr %s", regB, memAddrBaseIndexDisp8(cast(Register)regB, cast(Register)regB, SibScale(3), 0xFE));
 		//codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
 	}
-	//foreach (R regA; R.min..regMax) writefln("cmp %s, %s", regA, R.min);
-	//foreach (R regB; R.min..regMax) writefln("cmp %s, %s", R.min, regB);
-	//foreach (Register regA; Register.min..RegisterMax) testCodeGen.movq(regA, Imm64(0x24364758AABBCCDD));
 
-	//codeGen.notb(memAddrBase(Register.DI));
-
-	//codeGen.movq(Register.AX, Register.CX);
-	//codeGen.addq(memAddrBase(Register.AX), Imm8(1));
-	//codeGen.ret();
 	//printHex(codeGen.encoder.sink.data, 10);
 	testAll();
 }
 
 void testAll()
 {
+	testCodeGen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
+
 	import test.add;
 	import test.mov;
 	import test.not;
@@ -98,15 +95,17 @@ void run_from_rwx()
 void emit_code_into_memory(ubyte[] mem)
 {
 	CodeGen_x86_64 codeGen;
+	codeGen.encoder.setBuffer(mem);
+
 	version(Windows)
 	{
 		// main
 		codeGen.beginFunction();
 		auto sub_call = codeGen.saveFixup();
-		codeGen.call(0);
+		codeGen.call(PC(null));
 		codeGen.endFunction();
 
-		sub_call.call(codeGen.currentIP);
+		sub_call.call(codeGen.pc);
 
 		// sub_fun
 		codeGen.beginFunction();
@@ -120,7 +119,5 @@ void emit_code_into_memory(ubyte[] mem)
 		codeGen.movq(memAddrBaseDisp32(Register.AX, 0x55), Imm32(0xAABBCCDD));
 		codeGen.ret();
 	}
-	ubyte[] code = codeGen.encoder.sink.data;
-	printHex(code, 16);
-	mem[0..code.length] = code;
+	printHex(codeGen.encoder.code, 16);
 }

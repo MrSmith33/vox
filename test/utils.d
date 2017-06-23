@@ -14,8 +14,8 @@ version(unittest)
 	CodeGen_x86_64 testCodeGen;
 
 	void assertHexAndReset(string file = __MODULE__, size_t line = __LINE__)(string expected) {
-		assertEqual!(file, line)(expected, toHexString(testCodeGen.encoder.sink.data));
-		testCodeGen.encoder.sink.reset;
+		assertEqual!(file, line)(expected, toHexString(testCodeGen.encoder.code));
+		testCodeGen.encoder.resetPC();
 	}
 
 	private string toHexString(ubyte[] arr)
