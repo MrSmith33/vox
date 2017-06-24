@@ -62,35 +62,21 @@ bool free_executable_memory(ubyte[] bytes)
 	return deallocate(bytes);
 }
 
-void printMemBytes(void* ptr, size_t bytes, size_t width = 8)
-{
-	size_t lines = bytes % width == 0 ? bytes/width : bytes/width + 1;
-	printMemLines(ptr, lines, width);
-}
-
-void printMemLines(void* ptr, size_t lines, size_t width = 8)
-{
-	foreach(i; 0..lines)
-	{
-		auto offset = i * width;
-		import std.stdio : writefln;
-		writefln("%(%02x %)", ptr[offset..offset+width]);
-	}
-}
-
 void printHex(ubyte[] buffer, size_t lineLength)
 {
 	import std.stdio;
+
 	size_t index = 0;
-	if (lineLength)
-		while (index + lineLength <= buffer.length)
-	{
-		writefln("%(%02X%)", buffer[index..index+lineLength]);
-		index += lineLength;
+
+	if (lineLength) {
+		while (index + lineLength <= buffer.length) {
+			writefln("%(%02X %)", buffer[index..index+lineLength]);
+			index += lineLength;
+		}
 	}
 
 	if (index < buffer.length)
-		writefln("%(%02X%)", buffer[index..buffer.length]);
+		writefln("%(%02X %)", buffer[index..buffer.length]);
 }
 
 T nextPOT(T)(T x)
@@ -117,61 +103,80 @@ T paddingSize(T)(T address, T alignment)
 	return cast(T)(alignValue(address, alignment) - address);
 }
 
-struct ArraySink {
-	import amd64asm;
-	ubyte[] buffer;
-	size_t length;
-	ubyte[] data() { return buffer[0..length]; }
-	void reserve(size_t bytes) {
-		if (buffer.length - length < bytes) {
-			buffer.length = nextPOT(buffer.length + bytes);
-		}
-	}
-	void reset() { length = 0; }
-	void pad(size_t numBytes) {
-		reserve(numBytes);
-		length += numBytes;
-	}
-	void put(ubyte val) {
-		reserve(1);
-		buffer[length++] = val;
-	}
-	void put(ubyte[] val) {
-		reserve(val.length);
-		buffer[length..length+val.length] = val;
-		length += val.length;
-	}
-	void put(Int)(Int value)
-		if (isIntegral!Int)
+struct ScaledNumberFmt(T)
+{
+	T value;
+	void toString()(scope void delegate(const(char)[]) sink)
 	{
-		reserve(value.sizeof);
-		static if (value.sizeof >= 1) {
-			put((value >>  0) & 0xFF);
-		}
-		static if (value.sizeof >= 2) {
-			put((value >>  8) & 0xFF);
-		}
-		static if (value.sizeof >= 4) {
-			put((value >> 16) & 0xFF);
-			put((value >> 24) & 0xFF);
-		}
-		static if (value.sizeof >= 8) {
-			put((value >> 32) & 0xFF);
-			put((value >> 40) & 0xFF);
-			put((value >> 48) & 0xFF);
-			put((value >> 56) & 0xFF);
-		}
+		int scale = calcScale(value);
+		auto scaledValue = scaled(value, -scale);
+		int digits = numDigitsInNumber(scaledValue);
+		import std.format : formattedWrite;
+		sink.formattedWrite("%*.*f%s", digits, 3-digits, scaledValue, scaleSuffixes[scaleToScaleIndex(scale)]);
 	}
-	void put(Imm8 u8) {
-		put(u8.value);
+}
+
+auto scaledNumberFmt(T)(T value)
+{
+	return ScaledNumberFmt!T(value);
+}
+
+import std.datetime : Duration;
+auto scaledNumberFmt(Duration value, double scale = 1)
+{
+	double seconds = value.total!"hnsecs" / 10_000_000.0;
+	return ScaledNumberFmt!double(seconds * scale);
+}
+
+// -24 .. 24, with step of 3. Or -8 to 8 with step of 1
+immutable string[] scaleSuffixes = ["y","z","a","f","p","n","u","m","","K","M","G","T","P","E","Z","Y"];
+
+int numDigitsInNumber(Num)(const Num val)
+{
+	import std.math: abs;
+	ulong absVal = cast(ulong)abs(val);
+	int numDigits = 1;
+
+	while (absVal >= 10)
+	{
+		absVal /= 10;
+		++numDigits;
 	}
-	void put(Imm16 u16) {
-		put(u16.value);
+
+	return numDigits;
+}
+
+int calcScale(Num)(Num val)
+{
+	import std.algorithm: clamp;
+	import std.math: abs, floor, ceil, log10;
+	static int signum(T)(const T x) nothrow
+	{
+	    return (x > 0) - (x < 0);
 	}
-	void put(Imm32 u32) {
-		put(u32.value);
-	}
-	void put(Imm64 u64) {
-		put(u64.value);
-	}
+
+	auto lg = log10(abs(val));
+	int logSign = signum(lg);
+	double absLog = abs(lg);
+
+	int scale;
+	if (lg < 0)
+		scale = cast(int)(ceil(absLog/3.0))*3;
+	else
+		scale = cast(int)(floor(absLog/3.0))*3;
+
+	int clampedScale = clamp(scale * logSign, -24, 24);
+
+	return clampedScale;
+}
+
+int scaleToScaleIndex(int scale)
+{
+	return scale / 3 + 8; // -24..24 -> -8..8 -> 0..16
+}
+
+double scaled(Num)(Num num, int scale)
+{
+	import std.math: pow;
+	return num * pow(10.0, scale);
 }

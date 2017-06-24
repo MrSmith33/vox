@@ -3,11 +3,11 @@ Copyright: Copyright (c) 2017 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
-module test.mul;
+module asmtest.mul;
 
 void testMul()
 {
-	import test.utils;
+	import asmtest.utils;
 
 	//mul reg8
 	foreach (Register reg; Register.min..RegisterMax) testCodeGen.mulb(reg);

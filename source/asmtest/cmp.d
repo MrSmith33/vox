@@ -3,12 +3,12 @@ Copyright: Copyright (c) 2017 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
-module test.cmp;
+module asmtest.cmp;
 
 void testCmp()
 {
 	import utils;
-	import test.utils;
+	import asmtest.utils;
 
 	// Cmp reg8, reg8
 	foreach (Register regA; Register.min..RegisterMax) testCodeGen.cmpb(regA, Register.min);

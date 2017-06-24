@@ -14,21 +14,47 @@ import utils;
 enum DEFAULT_SECTION_ALIGNMENT = 4096;
 enum DEFAULT_FILE_ALIGNMENT = 512;
 
+alias PC = ubyte*;
+struct ArraySink {
+	private ubyte[] mem;
+	private PC pc;
+	size_t length() { return pc - mem.ptr; }
+
+	void setBuffer(ubyte[] buf) { mem = buf; pc = mem.ptr; }
+	void resetPC() { pc = mem.ptr; }
+	ubyte[] data() { return mem[0..pc - mem.ptr]; }
+
+	void put(T)(T value) {
+		*(cast(T*)pc) = value;
+		pc += value.sizeof;
+	}
+	void put(ubyte[] value) {
+		pc[0..value.length] = value;
+		pc += value.length;
+	}
+	void pad(size_t bytes) {
+		pc[0..bytes] = 0;
+		pc += bytes;
+	}
+}
+
 void main()
 {
 	ArraySink sink;
+	sink.setBuffer(alloc_executable_memory(4096 * 8));
 
 	// Code gen
 	import amd64asm;
 	CodeGen_x86_64 codeGen;
+	codeGen.encoder.setBuffer(alloc_executable_memory(4096 * 1));
 
 	// main
 	codeGen.beginFunction();
 	auto sub_call = codeGen.saveFixup();
-	codeGen.call(Imm32(0));
+	codeGen.call(PC(null));
 	codeGen.endFunction();
 
-	sub_call.call(Imm32(codeGen.currentOffset));
+	sub_call.call(codeGen.pc);
 
 	// sub_fun
 	codeGen.beginFunction();
@@ -37,7 +63,7 @@ void main()
 
 	// Code section
 	Section textSection;
-	textSection.data = codeGen.encoder.sink.data;
+	textSection.data = codeGen.encoder.code;
 	textSection.header.Name = ".text";
 	textSection.header.Characteristics =
 		SectionFlags.SCN_CNT_CODE |
