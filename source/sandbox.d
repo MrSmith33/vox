@@ -133,6 +133,7 @@ string[] testSources = [
 `{ i=1; while (i<100) { while (j < 100) j=j+1; i=i+1;} }`,
 `{ i=1; while (i<100) { j=0; while (j < 100) {j=j+1;a=a+1;} i=i+1;} }`,
 `{ i=i+1; }`,
+`{ i;i;i; }`,
 `{ i=125; j=100; while (i-j) if (i<j) j=j-i; else i=i-j; }`,
 `{ if (i) j=1; else j=2; }`,
 "a=b=c=2<3;",
@@ -151,7 +152,7 @@ struct Source
 
 	void reset()
 	{
-		slice = testSources[1];
+		slice = testSources[3];
 	}
 
 	char testGetter() {
@@ -231,7 +232,7 @@ void testVMs()
 		scaledNumberFmt(time3 - time2, 1.0/times));
 
 	//printHex(jit_vm.code, 8);
-	//printAST(rootNode);
+	printAST(rootNode);
 
 	writefln("Total %ss", scaledNumberFmt(time3 - time0));
 }
