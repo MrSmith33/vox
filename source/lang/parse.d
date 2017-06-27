@@ -4,19 +4,20 @@ License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
 import lex;
+import ast;
 
 import std.stdio;
 
 /*  <module> ::= <declaration>*
  *  <declaration> ::= <func_declaration>
- *  <func_decl> ::= "func" <id> "(" ")" <compound_statement>
- *  <compound_statement> ::= "{" <statement>* "}"
+ *  <func_decl> ::= "func" <id> "(" ")" <block_statement>
+ *  <block_statement> ::= "{" <statement>* "}"
  *  <statement> ::= "if" <paren_expr> <statement> /
  *                  "if" <paren_expr> <statement> "else" <statement> /
  *                  "while" <paren_expr> <statement> /
  *                  "do" <statement> "while" <paren_expr> ";" /
  *                  "return" <expr>? ";" /
- *                  <compound_statement> /
+ *                  <block_statement> /
  *                  <expr> ";" /
  *                  ";"
  *  <paren_expr> ::= "(" <expr> ")"
@@ -28,19 +29,18 @@ import std.stdio;
  *  <int> ::= <an_unsigned_decimal_integer>
  */
 
-string input =
-q{
-func main(){ return 1; return 2+a; return (result < 3); }
-func sub1(){ return 42; }
-func sub2(){ if (a<b) c=10; }
-func sub3(){ if (a<b) c=10; else c=20; }
-func sub4(){ while(i<100){a=a+i;i=i+1;} }
-func sub5(){ do{a=a+i;i=i+1;}while(i<100); }
+string input = q{
+	func main(){ return 1; return 2+a; return (result < 3); }
+	func sub1(){ return 42; a=b=c; }
+	func sub2(){ if (a<b) c=10; }
+	func sub3(){ if (a<b) c=10; else c=20; }
+	func sub4(){ while(i<100){a=a+i;i=i+1;} }
+	func sub5(){ do{a=a+i;i=i+1;}while(i<100); }
 };
 
 void main()
 {
-	StringMap stringMap;
+	IdentifierMap idMap;
 	auto stream = CharStream!string(input);
 	StringLexer lexer = StringLexer(stream);
 
@@ -65,11 +65,11 @@ void main()
 	lexer.matchers ~= TokenMatcher(&lexer.stream.matchHexNumber, TokenType.HEX_NUM);
 	lexer.matchers ~= TokenMatcher(&lexer.stream.matchComment, TokenType.COMMENT);
 
-	Parser parser = Parser(&lexer, &stringMap);
+	Parser parser = Parser(&lexer, &idMap);
 	try
 	{
 		auto root = parser.parseModule();
-		printAST(root, &stringMap);
+		printAST(root, &idMap);
 	}
 	catch(ParsingException e)
 	{
@@ -78,152 +78,38 @@ void main()
 	}
 }
 
-enum NodeT { MODULE, FUNC, VAR, CONST, BINOP, IF1, IF2, WHILE, DO, EMPTY, SEQ, EXPR, RETURN }
-enum BinOp { ADD, SUB, MUL, DIV, MOD, SHL, SHR, ASHR, AND, OR, ANDAND, OROR, LT, GT, LE, GE, EQUAL, NOTEQUAL, ASSIGN }
 
-BinOp tokToBinOp(Token token) {
-	import std.string : format;
-	switch (token.type) {
-		case TokenType.PLUS: return BinOp.ADD;
-		case TokenType.MINUS: return BinOp.SUB;
-		case TokenType.MUL: return BinOp.MUL;
-		case TokenType.DIV: return BinOp.DIV;
-		case TokenType.MOD: return BinOp.MOD;
-		case TokenType.SHL: return BinOp.SHL;
-		case TokenType.SHR: return BinOp.SHR;
-		case TokenType.ASHR: return BinOp.ASHR;
-		case TokenType.AND: return BinOp.AND;
-		case TokenType.ANDAND: return BinOp.ANDAND;
-		case TokenType.OR: return BinOp.OR;
-		case TokenType.OROR: return BinOp.OROR;
-		case TokenType.ASSIGN: return BinOp.ASSIGN;
-		case TokenType.LT: return BinOp.LT;
-		case TokenType.GT: return BinOp.GT;
-		case TokenType.LE: return BinOp.LE;
-		case TokenType.GE: return BinOp.GE;
-		case TokenType.EQUAL: return BinOp.EQUAL;
-		case TokenType.NOTEQUAL: return BinOp.NOTEQUAL;
-		default: assert(false, format("%s is not a binary op token", token.type));
-	}
-}
-
-void printAST(Node* n, StringMap* stringMap)
+void printAST(Module n, IdentifierMap* idMap)
 {
 	import std.range : repeat;
+	import std.algorithm : each;
 	if (!n) return;
 
-	void printer(Node* n, uint indent)
+	int indent = -2;
+
+	void pr(AstNode node)
 	{
-		switch (n.type)
-		{
-			case NodeT.VAR   : writeln(' '.repeat(indent), "VAR ", stringMap.get(n.varData.id));    break;
-			case NodeT.BINOP   : writeln(' '.repeat(indent), "BINOP ", n.binExpr.op); printer(n.binExpr.left, indent+2); printer(n.binExpr.right, indent+2); break;
-			case NodeT.IF1   : writeln(' '.repeat(indent), "IF1");
-				printer(n.ifStmt.paren_expr, indent+2);
-				printer(n.ifStmt.then_stmt, indent+2); break;
-			case NodeT.IF2   : writeln(' '.repeat(indent), "IF2");
-				printer(n.ifStmt.paren_expr, indent+2);
-				printer(n.ifStmt.then_stmt, indent+2);
-				printer(n.ifStmt.else_stmt, indent+2); break;
-			case NodeT.WHILE : writeln(' '.repeat(indent), "WHILE");  printer(n.whileStmt.paren_expr, indent+2); printer(n.whileStmt.body_statement, indent+2); break;
-			case NodeT.DO    : writeln(' '.repeat(indent), "DO");     printer(n.doStatement.body_statement, indent+2); printer(n.doStatement.paren_expr, indent+2); break;
-			case NodeT.EMPTY : writeln(' '.repeat(indent), "EMPTY");  break;
-			case NodeT.MODULE: writeln(' '.repeat(indent), "MODULE"); foreach (funcDef; n.moduleData.functions) { printer(funcDef, indent+2); } break;
-			case NodeT.FUNC  : writeln(' '.repeat(indent), "FUNC ", stringMap.get(n.funcData.id)); printer(n.funcData.statement, indent+2); break;
-			case NodeT.SEQ   : writeln(' '.repeat(indent), "SEQ");
-				Node* seq = n;
-				while(true) {
-					printer(seq.seqStmt.thisStatement, indent+2);
-					if (seq.seqStmt.nextSeq)
-						seq = seq.seqStmt.nextSeq;
-					else break;
-				}
-				break;
-			case NodeT.RETURN: writeln(' '.repeat(indent), "RETURN"); printer(n.returnData.expression, indent+2); break;
-			case NodeT.EXPR  : writeln(' '.repeat(indent), "EXPR");   printer(n.binExpr.left, indent+2); break;
-			case NodeT.CONST : writeln(' '.repeat(indent), "CONST ", n.constData.value);  break;
-			default: break;
-		}
+		indent += 2;
+		auto i = ' '.repeat(indent);
+
+		// Declarations
+		if (auto m = cast(Module)node) { writeln(i, "MODULE"); foreach(f; m.functions) pr(f); }
+		else if (auto f = cast(FunctionDeclaration)node) { writeln(i, "FUNC ", idMap.get(f.id)); pr(f.statements); }
+		// Statements
+		else if (auto b = cast(BlockStatement)node) { writeln(i, "BLOCK"); foreach(s; b.statements) pr(s); }
+		else if (auto n = cast(IfStatement)node) { writeln(i, "IF"); pr(n.condition); pr(n.thenStatement); }
+		else if (auto n = cast(IfElseStatement)node) { writeln(i, "IF"); pr(n.condition); pr(n.thenStatement); pr(n.elseStatement); }
+		else if (auto w = cast(WhileStatement)node) { writeln(i, "WHILE"); pr(w.condition); pr(w.statement); }
+		else if (auto w = cast(DoWhileStatement)node) { writeln(i, "DO"); pr(w.statement); writeln(i, "WHILE"); pr(w.condition); }
+		else if (auto r = cast(ReturnStatement)node) { writeln(i, "RETURN"); pr(r.expression); }
+		else if (auto e = cast(ExpressionStatement)node) { pr(e.expression); }
+		// Expressions
+		else if (auto v = cast(VariableExpression)node) { writeln(i, "VAR ", idMap.get(v.id)); }
+		else if (auto c = cast(ConstExpression)node) { writeln(i, "CONST ", c.value); }
+		else if (auto b = cast(BinaryExpression)node) { writeln(i, "BINOP ", b.op); pr(b.left); pr(b.right);}
+		indent -= 2;
 	}
-	printer(n, 0);
-}
-
-struct Node
-{
-	NodeT type;
-	union
-	{
-		ModuleData moduleData;
-		FuncData funcData;
-		SeqStmtData seqStmt;
-		IfStmtData ifStmt;
-		WhileStmtData whileStmt;
-		DoStmtData doStatement;
-		RetStmtData returnData;
-		BinExprData binExpr;
-		VarData varData;
-		ConstData constData;
-	}
-}
-
-alias Identifier = uint;
-
-struct ModuleData {
-	Node*[] functions; // FuncData
-}
-struct FuncData {
-	Identifier id;
-	Node* statement; // SeqStmtData
-}
-struct SeqStmtData {
-	Node* nextSeq; // Statement*
-	Node* thisStatement; // Statement*
-}
-struct IfStmtData {
-	Node* paren_expr;
-	Node* then_stmt;
-	Node* else_stmt;
-}
-struct WhileStmtData {
-	Node* paren_expr;
-	Node* body_statement;
-}
-struct DoStmtData {
-	Node* body_statement;
-	Node* paren_expr;
-}
-struct RetStmtData {
-	Node* expression;
-}
-struct BinExprData {
-	BinOp op;
-	Node* left;
-	Node* right;
-}
-struct VarData {
-	Identifier id;
-}
-struct ConstData {
-	int value;
-}
-
-struct StringMap {
-	string[] strings;
-	uint[string] map;
-
-	string get(Identifier id) {
-		return strings[id];
-	}
-
-	Identifier get(string str) {
-		uint id = map.get(str, uint.max);
-		if (id == uint.max) {
-			id = cast(uint)strings.length;
-			map[str] = id;
-			strings ~= str;
-		}
-		return id;
-	}
+	pr(n);
 }
 
 class ParsingException : Exception
@@ -239,14 +125,11 @@ class ParsingException : Exception
 struct Parser
 {
 	StringLexer* lexer;
-	StringMap* stringMap;
+	IdentifierMap* idMap;
 
-	Token tok() {
-		return lexer.current;
-	}
+	Token tok() { return lexer.current; }
 
-	Node* new_Node(NodeT type, BinExprData data) { auto n = new Node(type); n.binExpr = data; return n; }
-	Node* new_Node(NodeT type) { return new Node(type); }
+	T make(T, Args...)(Args args) { return new T(args); }
 
 	void nextToken() {
 		do {
@@ -255,191 +138,160 @@ struct Parser
 		while (tok.type == TokenType.COMMENT);
 	}
 
-	void error(Args...)(Args args) {
+	void syntax_error(Args...)(Args args) {
 		throw new ParsingException(tok, args);
 	}
 
 	Token expectAndConsume(TokenType type) {
 		if (tok.type != type) {
-			error("Expected %s, while got %s", type, tok.type);
+			syntax_error("Expected %s, while got %s", type, tok.type);
 		}
 		scope(exit) nextToken();
 		return tok;
 	}
 
-	Node* parseModule() // <module> ::= <declaration>*
-	{
-		auto n = new_Node(NodeT.MODULE);
+
+	Module parseModule() { // <module> ::= <declaration>*
+		FunctionDeclaration[] functions;
 		expectAndConsume(TokenType.SOI);
 		while (tok.type != TokenType.EOI)
 		{
-			auto decl = declaration();
-			if (decl.type == NodeT.FUNC)
-			{
-				n.moduleData.functions ~= decl;
-			}
+			functions ~= func_declaration();
 		}
-		return n;
+		return make!Module(functions);
 	}
 
-	Node* declaration() // <declaration> ::= <func_declaration>
+	FunctionDeclaration func_declaration() // <declaration> ::= <func_declaration>
 	{
-		Node* n;
-
-		if (tok.type == TokenType.FUNC_SYM) // <func_decl> ::= "func" <id> "(" ")" <compound_statement>
-		{
-			n = new_Node(NodeT.FUNC);
-			nextToken();
-			Token funcName = expectAndConsume(TokenType.ID);
-			string name = lexer.getTokenString(funcName);
-			n.funcData.id = stringMap.get(name);
-			expectAndConsume(TokenType.LPAREN);
-			expectAndConsume(TokenType.RPAREN);
-			n.funcData.statement = seqStmt();
-		}
-		else
-		{
-			error("Expected function, while got %s", tok);
-		}
-
-		return n;
+		expectAndConsume(TokenType.FUNC_SYM); // <func_decl> ::= "func" <id> "(" ")" <compound_statement>
+		Token funcName = expectAndConsume(TokenType.ID);
+		string name = lexer.getTokenString(funcName);
+		auto id = idMap.get(name);
+		expectAndConsume(TokenType.LPAREN);
+		expectAndConsume(TokenType.RPAREN);
+		auto statements = block_stmt();
+		return make!FunctionDeclaration(id, statements);
 	}
 
-	Node* seqStmt() // <compound_statement> ::= "{" <statement>* "}"
+	BlockStatement block_stmt() // <compound_statement> ::= "{" <statement>* "}"
 	{
-		Node* first;
-		Node* last;
+		Statement[] statements;
 		expectAndConsume(TokenType.LCURLY);
 		while (tok.type != TokenType.RCURLY)
 		{
-			Node* seq = new_Node(NodeT.SEQ);
-			seq.seqStmt.thisStatement = statement();
-			if (last) last.seqStmt.nextSeq = seq;
-			last = seq;
-			if (!first) first = seq;
+			statements ~= statement();
 		}
 		expectAndConsume(TokenType.RCURLY);
-		if (first) return first;
-		else return new_Node(NodeT.EMPTY);
+		return make!BlockStatement(statements);
 	}
 
-	Node* statement()
+	Statement statement()
 	{
-		Node* n;
-
-		if (tok.type == TokenType.IF_SYM)  /* "if" <paren_expr> <statement> */
+		switch (tok.type)
 		{
-			n = new_Node(NodeT.IF1);
-			nextToken();
-			n.ifStmt.paren_expr = paren_expr();
-			n.ifStmt.then_stmt = statement();
-			if (tok.type == TokenType.ELSE_SYM)  /* ... "else" <statement> */
-			{
-				n.type = NodeT.IF2;
+			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
 				nextToken();
-				n.ifStmt.else_stmt = statement();
-			}
+				Expression condition = paren_expr();
+				Statement thenStatement = statement();
+				if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
+					nextToken();
+					Statement elseStatement = statement();
+					return make!IfElseStatement(condition, thenStatement, elseStatement);
+				}
+				else return make!IfStatement(condition, thenStatement);
+			case TokenType.WHILE_SYM:  /* "while" <paren_expr> <statement> */
+				nextToken();
+				Expression condition = paren_expr();
+				Statement statement = statement();
+				return make!WhileStatement(condition, statement);
+			case TokenType.DO_SYM:  /* "do" <statement> "while" <paren_expr> ";" */
+				nextToken();
+				Statement statement = statement();
+				expectAndConsume(TokenType.WHILE_SYM);
+				Expression condition = paren_expr();
+				expectAndConsume(TokenType.SEMICOLON);
+				return make!DoWhileStatement(condition, statement);
+			case TokenType.RET_SYM:  /* return <expr> */
+				nextToken();
+				Expression expression = tok.type != TokenType.SEMICOLON ? expr() : null;
+				expectAndConsume(TokenType.SEMICOLON);
+				return make!ReturnStatement(expression);
+			case TokenType.SEMICOLON:  /* ";" */
+				nextToken();
+				return make!BlockStatement(null); // TODO: make this error
+			case TokenType.LCURLY:  /* "{" { <statement> } "}" */
+				return block_stmt();
+			default:  /* <expr> ";" */
+				Expression expression = expr();
+				expectAndConsume(TokenType.SEMICOLON);
+				return make!ExpressionStatement(expression);
 		}
-		else if (tok.type == TokenType.WHILE_SYM)  /* "while" <paren_expr> <statement> */
-		{
-			n = new_Node(NodeT.WHILE);
-			nextToken();
-			n.whileStmt.paren_expr = paren_expr();
-			n.whileStmt.body_statement = statement();
-		}
-		else if (tok.type == TokenType.DO_SYM)  /* "do" <statement> "while" <paren_expr> ";" */
-		{
-			n = new_Node(NodeT.DO);
-			nextToken();
-			n.doStatement.body_statement = statement();
-			expectAndConsume(TokenType.WHILE_SYM);
-			n.doStatement.paren_expr = paren_expr();
-			expectAndConsume(TokenType.SEMICOLON);
-		}
-		else if (tok.type == TokenType.RET_SYM)  /* return <expr> */
-		{
-			n = new_Node(NodeT.RETURN);
-			nextToken();
-			if (tok.type != TokenType.SEMICOLON)
-				n.returnData.expression = expr();
-			expectAndConsume(TokenType.SEMICOLON);
-		}
-		else if (tok.type == TokenType.SEMICOLON)  /* ";" */
-		{
-			n = new_Node(NodeT.EMPTY);
-			nextToken();
-		}
-		else if (tok.type == TokenType.LCURLY)  /* "{" { <statement> } "}" */
-		{
-			return seqStmt();
-		}
-		else  /* <expr> ";" */
-		{
-			n = new_Node(NodeT.EXPR);
-			n.binExpr.left = expr();
-			expectAndConsume(TokenType.SEMICOLON);
-		}
-		return n;
 	}
 
-	Node* term()  /* <term> ::= <id> | <int> | <paren_expr> */
-	{
-		Node* n;
-		if (tok.type == TokenType.ID) {
-			n = new_Node(NodeT.VAR);
-			string name = lexer.getTokenString(tok);
-			n.varData.id = stringMap.get(name);
-			nextToken();
-		}
-		else if (tok.type == TokenType.DECIMAL_NUM) {
-			n=new_Node(NodeT.CONST);
-			string num = lexer.getTokenString(tok);
-			import std.conv : to;
-			n.constData.value=to!int(num);
-			nextToken();
-		}
-		else n = paren_expr();
-		return n;
+	Expression paren_expr() { /* <paren_expr> ::= "(" <expr> ")" */
+		expectAndConsume(TokenType.LPAREN);
+		auto res = expr();
+		expectAndConsume(TokenType.RPAREN);
+		return res;
 	}
 
-	Node* sum()  /* <sum> ::= <term> | <sum> "+" <term> | <sum> "-" <term> */
-	{
-		Node* t, n = term();
-		while (tok.type == TokenType.PLUS || tok.type == TokenType.MINUS)
-		{
-			t=n; n=new_Node(NodeT.BINOP, BinExprData(tokToBinOp(tok), t)); nextToken(); n.binExpr.right = term();
-		}
-		return n;
-	}
-
-	Node* test()  /* <test> ::= <sum> | <sum> "<" <sum> */
-	{
-		Node* t, n = sum();
-		if (tok.type == TokenType.LT)
-		{
-			nextToken(); t=n; n=new_Node(NodeT.BINOP, BinExprData(BinOp.LT, t, sum()));
-		}
-		return n;
-	}
-
-	Node* expr()  /* <expr> ::= <test> | <id> "=" <expr> */
-	{
-		Node* t, n;
+	Expression expr() { /* <expr> ::= <test> | <id> "=" <expr> */
+		Expression t, n;
 		if (tok.type != TokenType.ID) return test();
 		n = test();
-		if (n.type == NodeT.VAR && tok.type == TokenType.ASSIGN)
+		//if (n.type == NodeT.VAR && tok.type == TokenType.ASSIGN)
+		if (tok.type == TokenType.ASSIGN)
 		{
-			nextToken(); t=n; n=new_Node(NodeT.BINOP, BinExprData(BinOp.ASSIGN, t, expr()));
+			nextToken();
+			t = n;
+			n = make!BinaryExpression(BinOp.ASSIGN, t, expr());
 		}
 		return n;
 	}
 
-	Node* paren_expr()  /* <paren_expr> ::= "(" <expr> ")" */
-	{
-		Node* n;
-		expectAndConsume(TokenType.LPAREN);
-		n = expr();
-		expectAndConsume(TokenType.RPAREN);
+	Expression test() { /* <test> ::= <sum> | <sum> "<" <sum> */
+		Expression t, n = sum();
+		if (tok.type == TokenType.LT)
+		{
+			nextToken();
+			t = n;
+			n = make!BinaryExpression(BinOp.LT, t, sum());
+		}
 		return n;
+	}
+
+	Expression sum() { /* <sum> ::= <term> | <sum> "+" <term> | <sum> "-" <term> */
+		Expression n = term();
+		Expression t;
+		loop: while (true)
+		{
+			BinOp op;
+			switch(tok.type) {
+				case TokenType.PLUS : op = BinOp.ADD; break;
+				case TokenType.MINUS: op = BinOp.SUB; break;
+				default: break loop;
+			}
+			nextToken();
+			t = n;
+			n = make!BinaryExpression(op, t, term());
+		}
+		return n;
+	}
+
+	Expression term() { /* <term> ::= <id> | <int> | <paren_expr> */
+		if (tok.type == TokenType.ID) {
+			string name = lexer.getTokenString(tok);
+			Identifier id = idMap.get(name);
+			nextToken();
+			return make!VariableExpression(id);
+		}
+		else if (tok.type == TokenType.DECIMAL_NUM) {
+			string num = lexer.getTokenString(tok);
+			import std.conv : to;
+			int value=to!int(num);
+			nextToken();
+			return make!ConstExpression(value);
+		}
+		else return paren_expr();
 	}
 }
