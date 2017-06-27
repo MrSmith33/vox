@@ -3,8 +3,10 @@ Copyright: Copyright (c) 2017 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
-import lex;
-import ast;
+module lang.parse;
+
+import lang.lex;
+import lang.ast;
 
 import std.stdio;
 
@@ -29,6 +31,7 @@ import std.stdio;
  *  <int> ::= <an_unsigned_decimal_integer>
  */
 
+/*
 string input = q{
 	func main(){ return 1; return 2+a; return (result < 3); }
 	func sub1(){ return 42; a=b=c; }
@@ -37,10 +40,9 @@ string input = q{
 	func sub4(){ while(i<100){a=a+i;i=i+1;} }
 	func sub5(){ do{a=a+i;i=i+1;}while(i<100); }
 };
-
 void main()
 {
-	IdentifierMap idMap;
+	auto idMap = new IdentifierMap();
 	auto stream = CharStream!string(input);
 	StringLexer lexer = StringLexer(stream);
 
@@ -77,39 +79,40 @@ void main()
 		writeln(e);
 	}
 }
+*/
 
-
-void printAST(Module n, IdentifierMap* idMap)
+void printAST(AstNode n, IdentifierMap idMap, int indentSize = 1)
 {
 	import std.range : repeat;
-	import std.algorithm : each;
 	if (!n) return;
 
-	int indent = -2;
-
-	void pr(AstNode node)
-	{
-		indent += 2;
+	int indent = -indentSize;
+	void print(Args...)(Args args) {
 		auto i = ' '.repeat(indent);
-
-		// Declarations
-		if (auto m = cast(Module)node) { writeln(i, "MODULE"); foreach(f; m.functions) pr(f); }
-		else if (auto f = cast(FunctionDeclaration)node) { writeln(i, "FUNC ", idMap.get(f.id)); pr(f.statements); }
-		// Statements
-		else if (auto b = cast(BlockStatement)node) { writeln(i, "BLOCK"); foreach(s; b.statements) pr(s); }
-		else if (auto n = cast(IfStatement)node) { writeln(i, "IF"); pr(n.condition); pr(n.thenStatement); }
-		else if (auto n = cast(IfElseStatement)node) { writeln(i, "IF"); pr(n.condition); pr(n.thenStatement); pr(n.elseStatement); }
-		else if (auto w = cast(WhileStatement)node) { writeln(i, "WHILE"); pr(w.condition); pr(w.statement); }
-		else if (auto w = cast(DoWhileStatement)node) { writeln(i, "DO"); pr(w.statement); writeln(i, "WHILE"); pr(w.condition); }
-		else if (auto r = cast(ReturnStatement)node) { writeln(i, "RETURN"); pr(r.expression); }
-		else if (auto e = cast(ExpressionStatement)node) { pr(e.expression); }
-		// Expressions
-		else if (auto v = cast(VariableExpression)node) { writeln(i, "VAR ", idMap.get(v.id)); }
-		else if (auto c = cast(ConstExpression)node) { writeln(i, "CONST ", c.value); }
-		else if (auto b = cast(BinaryExpression)node) { writeln(i, "BINOP ", b.op); pr(b.left); pr(b.right);}
-		indent -= 2;
+		writeln(i, args);
 	}
-	pr(n);
+
+	void pr_node(AstNode node) // print node
+	{
+		indent += indentSize;
+		// Declarations
+		if (auto m = cast(Module)node) { print("MODULE"); foreach(f; m.functions) pr_node(f); }
+		else if (auto f = cast(FunctionDeclaration)node) { print("FUNC ", idMap.get(f.id)); pr_node(f.statements); }
+		// Statements
+		else if (auto b = cast(BlockStatement)node) { print("BLOCK"); foreach(s; b.statements) pr_node(s); }
+		else if (auto n = cast(IfStatement)node) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); }
+		else if (auto n = cast(IfElseStatement)node) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); pr_node(n.elseStatement); }
+		else if (auto w = cast(WhileStatement)node) { print("WHILE"); pr_node(w.condition); pr_node(w.statement); }
+		else if (auto w = cast(DoWhileStatement)node) { print("DO"); pr_node(w.statement); print("WHILE"); pr_node(w.condition); }
+		else if (auto r = cast(ReturnStatement)node) { print("RETURN"); pr_node(r.expression); }
+		else if (auto e = cast(ExpressionStatement)node) { print("EXPR"); pr_node(e.expression); }
+		// Expressions
+		else if (auto v = cast(VariableExpression)node) { print("VAR ", idMap.get(v.id)); }
+		else if (auto c = cast(ConstExpression)node) { print("CONST ", c.value); }
+		else if (auto b = cast(BinaryExpression)node) { print("BINOP ", b.op); pr_node(b.left); pr_node(b.right);}
+		indent -= indentSize;
+	}
+	pr_node(n);
 }
 
 class ParsingException : Exception
@@ -125,7 +128,7 @@ class ParsingException : Exception
 struct Parser
 {
 	StringLexer* lexer;
-	IdentifierMap* idMap;
+	IdentifierMap idMap;
 
 	Token tok() { return lexer.current; }
 
@@ -239,8 +242,7 @@ struct Parser
 		Expression t, n;
 		if (tok.type != TokenType.ID) return test();
 		n = test();
-		//if (n.type == NodeT.VAR && tok.type == TokenType.ASSIGN)
-		if (tok.type == TokenType.ASSIGN)
+		if (cast(VariableExpression)n && tok.type == TokenType.ASSIGN)
 		{
 			nextToken();
 			t = n;

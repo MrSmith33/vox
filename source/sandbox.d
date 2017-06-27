@@ -23,6 +23,7 @@ void main()
 	//testPrintMemAddress();
 
 	testVMs();
+	testLang();
 
 	CodeGen_x86_64 codeGen;
 	codeGen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
@@ -38,9 +39,9 @@ void main()
 	}
 
 	//printHex(codeGen.encoder.sink.data, 10);
-	testAll();
+	//testAll();
 }
-
+/*
 void testAll()
 {
 	import asmtest.utils;
@@ -65,7 +66,7 @@ void testAll()
 	testCmp();
 	testJmpJccSetcc();
 }
-
+*/
 void testPrintMemAddress()
 {
 	writeln(memAddrDisp32(0x11223344));
@@ -127,7 +128,6 @@ void emit_code_into_memory(ubyte[] mem)
 
 /*---------------------------------------------------------------------------*/
 // Tiny C
-import tinyc;
 
 string[] testSources = [
 `{ i=1; while (i<100) { while (j < 100) j=j+1; i=i+1;} }`,
@@ -163,11 +163,12 @@ struct Source
 		return ch;
 	}
 }
+import benchutils;
 
 void testVMs()
 {
+	import tinyc;
 	import utils;
-	import benchutils;
 
 	auto time0 = currTime;
 	enum times = 1_000;
@@ -235,4 +236,74 @@ void testVMs()
 	printAST(rootNode);
 
 	writefln("Total %ss", scaledNumberFmt(time3 - time0));
+}
+
+
+
+string input = q{
+	func main(){ a = 42; return a + 10; }
+};
+
+void testLang()
+{
+	import lang.codegen;
+	import lang.parse;
+	import lang.lex;
+	import lang.ast;
+	import lang.semantics;
+
+	enum times = 1;
+	auto time0 = currTime;
+
+	auto idMap = new IdentifierMap();
+	auto stream = CharStream!string(input);
+	StringLexer lexer = StringLexer(stream);
+
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'{', TokenType.LCURLY);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'}', TokenType.RCURLY);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'(', TokenType.LPAREN);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!')', TokenType.RPAREN);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'+', TokenType.PLUS);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'-', TokenType.MINUS);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'<', TokenType.LT);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!';', TokenType.SEMICOLON);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'=', TokenType.ASSIGN);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"func", TokenType.FUNC_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"return", TokenType.RET_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"while", TokenType.WHILE_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"if", TokenType.IF_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"else", TokenType.ELSE_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"do", TokenType.DO_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchIdent, TokenType.ID);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchDecimalNumber, TokenType.DECIMAL_NUM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchComment, TokenType.COMMENT);
+
+	Parser parser = Parser(&lexer, idMap);
+	Module moduleDecl;
+	try
+	{
+		moduleDecl = parser.parseModule();
+	}
+	catch(ParsingException e)
+	{
+		writefln("%s: [ERROR] %s", e.token.start.pos, e.msg);
+		writeln(e);
+	}
+
+	auto time1 = currTime;
+
+	writefln("Lang parse: %ss",
+		scaledNumberFmt(time1 - time0, 1.0/times));
+		//scaledNumberFmt(time2 - time1, 1.0/times),
+		//scaledNumberFmt(time3 - time2, 1.0/times));
+	writeln(input);
+	printAST(moduleDecl, idMap);
+
+	CodeGen codeGen;
+	codeGen.setup();
+
+	auto moduleSemantics = analyzeModule(moduleDecl);
+	auto func = codeGen.compileFunction(moduleSemantics.globalFunctions[0]);
+	printHex(codeGen.code, 8);
+	writefln("func() == %s", func());
 }

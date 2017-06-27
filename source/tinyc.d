@@ -341,7 +341,7 @@ void printAST(Node* n, string indent = "")
 {
 	switch (n.kind)
 	{
-		case VAR  : writeln(indent, "VAR");   break;
+		case VAR  : writeln(indent, "VAR ", cast(char)(n.val+'a'));   break;
 		case CST  : writeln(indent, "CST");   break;
 		case ADD  : writeln(indent, "ADD");   printAST(n.o1, indent~"  "); printAST(n.o2, indent~"  "); break;
 		case SUB  : writeln(indent, "SUB");   printAST(n.o1, indent~"  "); printAST(n.o2, indent~"  "); break;
