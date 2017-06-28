@@ -248,37 +248,15 @@ void testLang()
 {
 	import lang.codegen;
 	import lang.parse;
-	import lang.lex;
+	import lang.lex2;
 	import lang.ast;
 	import lang.semantics;
 
-	enum times = 1000;
+	enum times = 1000_000;
 	auto time0 = currTime;
 
 	auto idMap = new IdentifierMap();
-	auto stream = CharStream!string(input);
-	StringLexer lexer = StringLexer(stream);
-
-	TokenMatcher[] matchers;
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'{', TokenType.LCURLY);
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'}', TokenType.RCURLY);
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'(', TokenType.LPAREN);
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!')', TokenType.RPAREN);
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'+', TokenType.PLUS);
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'-', TokenType.MINUS);
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'<', TokenType.LT);
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!';', TokenType.SEMICOLON);
-	matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'=', TokenType.ASSIGN);
-	matchers ~= TokenMatcher(&lexer.stream.matchId!"func", TokenType.FUNC_SYM);
-	matchers ~= TokenMatcher(&lexer.stream.matchId!"return", TokenType.RET_SYM);
-	matchers ~= TokenMatcher(&lexer.stream.matchId!"while", TokenType.WHILE_SYM);
-	matchers ~= TokenMatcher(&lexer.stream.matchId!"if", TokenType.IF_SYM);
-	matchers ~= TokenMatcher(&lexer.stream.matchId!"else", TokenType.ELSE_SYM);
-	matchers ~= TokenMatcher(&lexer.stream.matchId!"do", TokenType.DO_SYM);
-	matchers ~= TokenMatcher(&lexer.stream.matchIdent, TokenType.ID);
-	matchers ~= TokenMatcher(&lexer.stream.matchDecimalNumber, TokenType.DECIMAL_NUM);
-	matchers ~= TokenMatcher(&lexer.stream.matchComment, TokenType.COMMENT);
-	lexer.matchers = matchers;
+	Lexer2 lexer = Lexer2(input);
 
 	Parser parser = Parser(&lexer, idMap);
 	Module moduleDecl;
@@ -286,17 +264,14 @@ void testLang()
 	{
 		foreach (_; 0..times)
 		{
-			lexer.stream.pushCheckpoint;
-			lexer.empty = false;
-			lexer.current = Token();
-			parser = Parser(&lexer, idMap);
+			parser.setup();
+			lexer = Lexer2(input);
 			moduleDecl = parser.parseModule();
-			lexer.stream.popCheckpoint;
 		}
 	}
 	catch(ParsingException e)
 	{
-		writefln("%s: [ERROR] %s", e.token.start.pos, e.msg);
+		writefln("line %s col %s: [ERROR] %s", e.token.line, e.token.col, e.msg);
 		writeln(e);
 	}
 
@@ -307,7 +282,9 @@ void testLang()
 	{
 		moduleSemantics = analyzeModule(moduleDecl);
 	}
+
 	auto time2 = currTime;
+
 	CodeGen codeGen;
 	JittedFunc func;
 	foreach (_; 0..times)
@@ -315,12 +292,15 @@ void testLang()
 		codeGen.setup();
 		func = codeGen.compileFunction(moduleSemantics.globalFunctions[0]);
 	}
+
 	auto time3 = currTime;
+
 	int res;
 	foreach (_; 0..times)
 	{
 		res = func();
 	}
+
 	auto time4 = currTime;
 
 	writefln("Lang: parse %ss, semantics %ss, compile %ss, run %ss",

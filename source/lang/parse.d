@@ -5,7 +5,7 @@ Authors: Andrey Penechko.
 */
 module lang.parse;
 
-import lang.lex;
+import lang.lex2;
 import lang.ast;
 
 import std.stdio;
@@ -43,31 +43,9 @@ string input = q{
 void main()
 {
 	auto idMap = new IdentifierMap();
-	auto stream = CharStream!string(input);
-	StringLexer lexer = StringLexer(stream);
+	Lexer2 lexer = Lexer2(input);
 
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'{', TokenType.LCURLY);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'}', TokenType.RCURLY);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'(', TokenType.LPAREN);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!')', TokenType.RPAREN);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'+', TokenType.PLUS);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'-', TokenType.MINUS);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'<', TokenType.LT);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!';', TokenType.SEMICOLON);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'=', TokenType.ASSIGN);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!',', TokenType.COMMA);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"func", TokenType.FUNC_SYM);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"return", TokenType.RET_SYM);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"while", TokenType.WHILE_SYM);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"if", TokenType.IF_SYM);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"else", TokenType.ELSE_SYM);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"do", TokenType.DO_SYM);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchIdent, TokenType.ID);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchDecimalNumber, TokenType.DECIMAL_NUM);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchHexNumber, TokenType.HEX_NUM);
-	lexer.matchers ~= TokenMatcher(&lexer.stream.matchComment, TokenType.COMMENT);
-
-	Parser parser = Parser(&lexer, &idMap);
+	Parser parser = Parser(&lexer, idMap);
 	try
 	{
 		auto root = parser.parseModule();
@@ -130,18 +108,37 @@ class ParsingException : Exception
 	Token token;
 }
 
+//version = Mmap_mem;
 struct Parser
 {
-	StringLexer* lexer;
+	Lexer2* lexer;
 	IdentifierMap idMap;
 
-	Token tok() { return lexer.current; }
+	Token tok;
 
-	T make(T, Args...)(Args args) { return new T(args); }
+	version(Mmap_mem) {
+		ubyte[] mem;
+		void* pc;
+		void setup() {
+			import utils;
+			if (mem.length == 0) mem = allocate(PAGE_SIZE * 64, false);
+			pc = mem.ptr;
+		}
+		T make(T, Args...)(Args args) {
+			import std.conv : emplace;
+			enum size = __traits(classInstanceSize, T);
+			T t = emplace!T(pc[0..size], args);
+			pc += size;
+			return t;
+		}
+	} else {
+		void setup() {}
+		T make(T, Args...)(Args args) { return new T(args); }
+	}
 
 	void nextToken() {
 		do {
-			lexer.next();
+			tok = lexer.nextToken();
 		}
 		while (tok.type == TokenType.COMMENT);
 	}
@@ -161,7 +158,7 @@ struct Parser
 
 	Module parseModule() { // <module> ::= <declaration>*
 		FunctionDeclaration[] functions;
-		expectAndConsume(TokenType.SOI);
+		nextToken();
 		while (tok.type != TokenType.EOI)
 		{
 			functions ~= func_declaration();
@@ -247,7 +244,7 @@ struct Parser
 		Expression t, n;
 		if (tok.type != TokenType.ID) return test();
 		n = test();
-		if (cast(VariableExpression)n && tok.type == TokenType.ASSIGN)
+		if (cast(VariableExpression)n && tok.type == TokenType.EQ)
 		{
 			nextToken();
 			t = n;

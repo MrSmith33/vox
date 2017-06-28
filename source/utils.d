@@ -7,6 +7,8 @@ module utils;
 
 import std.traits : isIntegral;
 
+enum size_t PAGE_SIZE = 4096;
+
 version(Posix)
 {
 	ubyte[] allocate(size_t bytes, bool is_executable)

@@ -30,6 +30,12 @@ void main()
 	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!';', TokenType.SEMICOLON);
 	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!'=', TokenType.ASSIGN);
 	lexer.matchers ~= TokenMatcher(&lexer.stream.matchSymbol!',', TokenType.COMMA);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"func", TokenType.FUNC_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"return", TokenType.RET_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"while", TokenType.WHILE_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"if", TokenType.IF_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"else", TokenType.ELSE_SYM);
+	lexer.matchers ~= TokenMatcher(&lexer.stream.matchId!"do", TokenType.DO_SYM);
 	lexer.matchers ~= TokenMatcher(&lexer.stream.matchIdent, TokenType.ID);
 	lexer.matchers ~= TokenMatcher(&lexer.stream.matchDecimalNumber, TokenType.DECIMAL_NUM);
 	lexer.matchers ~= TokenMatcher(&lexer.stream.matchHexNumber, TokenType.HEX_NUM);
@@ -80,18 +86,19 @@ void splitLines()
 struct Stack(T)
 {
 	import std.array;
-	T[] data;
-	@property bool empty(){ return data.empty; }
-	@property size_t length(){ return data.length; }
-	void push(T val){ data ~= val; }
-	T top() { return data[$-1]; }
+	T[100] data;
+	size_t index;
+	@property bool empty(){ return index == 0; }
+	@property size_t length(){ return index; }
+	void push(T val){
+		data[index] = val;
+		++index;
+	}
+	T top() { return data[index-1]; }
 	T pop()
 	{
-		assert(!empty);
-		auto val = data[$ - 1];
-		data = data[0 .. $ - 1];
-		if (!__ctfe)
-			cast(void)data.assumeSafeAppend();
+		auto val = data[index-1];
+		--index;
 		return val;
 	}
 }
@@ -240,7 +247,7 @@ struct CharStream(R)
 
 	bool matchId(string id)()
 	{
-		return match(id);
+		return matchCase(id);
 	}
 
 	bool match(dchar chr)
@@ -259,16 +266,8 @@ struct CharStream(R)
 	{
 		foreach (dchar item; str.byDchar)
 		{
-			if (this.empty)
-			{
-				return false;
-			}
-
-			if (item != current)
-			{
-				return false;
-			}
-
+			if (this.empty) { return false; }
+			if (item != current) { return false; }
 			next();
 		}
 
