@@ -30,17 +30,25 @@ class FunctionSemantics
 ModuleSemantics analyzeModule(Module moduleDecl)
 {
 	FunctionSemantics[] globalFunctions;
+	auto funcAnalyser = new FunctionAnalyser;
 	foreach (func; moduleDecl.functions)
 	{
-		globalFunctions ~= analyzeFunction(func);
+		globalFunctions ~= funcAnalyser.analyzeFunction(func);
 	}
 	return new ModuleSemantics(moduleDecl, globalFunctions);
 }
 
-
-FunctionSemantics analyzeFunction(FunctionDeclaration node)
-{
+class FunctionAnalyser : DepthAstVisitor {
 	Identifier[] localVars;
-	localVars ~= 0;
-	return new FunctionSemantics(node, localVars);
+	FunctionSemantics analyzeFunction(FunctionDeclaration node)
+	{
+		localVars = null;
+		node.accept(this);
+		return new FunctionSemantics(node, localVars);
+	}
+	override void visit(VariableExpression v) {
+		foreach(var; localVars)
+			if (var == v.id) return;
+		localVars ~= v.id;
+	}
 }

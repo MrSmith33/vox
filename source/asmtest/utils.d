@@ -5,34 +5,34 @@ Authors: Andrey Penechko.
 */
 module asmtest.utils;
 
-version(unittest)
+//version(unittest)
+
+public import amd64asm;
+import utils;
+import std.stdio;
+import std.string : format;
+CodeGen_x86_64 testCodeGen;
+
+void assertHexAndReset(string file = __MODULE__, size_t line = __LINE__)(string expected) {
+	assertEqual!(file, line)(expected, toHexString(testCodeGen.encoder.code));
+	testCodeGen.encoder.resetPC();
+}
+
+private string toHexString(ubyte[] arr)
 {
-	public import amd64asm;
-	import utils;
-	import std.stdio;
-	import std.string : format;
-	CodeGen_x86_64 testCodeGen;
+	return format("%(%02X%)", arr);
+}
 
-	void assertHexAndReset(string file = __MODULE__, size_t line = __LINE__)(string expected) {
-		assertEqual!(file, line)(expected, toHexString(testCodeGen.encoder.code));
-		testCodeGen.encoder.resetPC();
-	}
-
-	private string toHexString(ubyte[] arr)
+void assertEqual(string file = __MODULE__, size_t line = __LINE__, A, B)(A expected, B generated)
+{
+	if (expected != generated)
 	{
-		return format("%(%02X%)", arr);
-	}
+		writefln("%s expected", expected);
+		writefln("%s generated", generated);
+		stdout.flush();
+		writefln("at %s:%s", file, line);
 
-	void assertEqual(string file = __MODULE__, size_t line = __LINE__, A, B)(A expected, B generated)
-	{
-		if (expected != generated)
-		{
-			writefln("%s expected", expected);
-			writefln("%s generated", generated);
-			stdout.flush();
-			writefln("at %s:%s", file, line);
-
-			assert(false);
-		}
+		assert(false);
 	}
 }
+

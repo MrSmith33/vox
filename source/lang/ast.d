@@ -42,6 +42,20 @@ abstract class AstVisitor
 	void visit(BinaryExpression){}
 }
 
+class DepthAstVisitor : AstVisitor
+{
+	override void visit(Module m) { foreach(f; m.functions) f.accept(this); }
+	override void visit(FunctionDeclaration f) { f.statements.accept(this); }
+	override void visit(IfStatement n) { n.condition.accept(this); n.thenStatement.accept(this); }
+	override void visit(IfElseStatement n) { n.condition.accept(this); n.thenStatement.accept(this); n.elseStatement.accept(this); }
+	override void visit(WhileStatement w) { w.condition.accept(this); w.statement.accept(this); }
+	override void visit(DoWhileStatement w) { w.condition.accept(this); w.statement.accept(this); }
+	override void visit(ReturnStatement r) { if (r.expression) r.expression.accept(this); }
+	override void visit(BlockStatement b) { foreach(s; b.statements) s.accept(this); }
+	override void visit(ExpressionStatement e) { e.expression.accept(this); }
+	override void visit(BinaryExpression b) { b.left.accept(this); b.right.accept(this); }
+}
+
 abstract class AstNode {
 	void accept(AstVisitor);
 }
