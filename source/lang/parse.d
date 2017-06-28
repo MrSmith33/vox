@@ -92,26 +92,31 @@ void printAST(AstNode n, IdentifierMap idMap, int indentSize = 1)
 		writeln(i, args);
 	}
 
+	AstVisitor visitor;
+
 	void pr_node(AstNode node) // print node
 	{
 		indent += indentSize;
-		// Declarations
-		if (auto m = cast(Module)node) { print("MODULE"); foreach(f; m.functions) pr_node(f); }
-		else if (auto f = cast(FunctionDeclaration)node) { print("FUNC ", idMap.get(f.id)); pr_node(f.statements); }
-		// Statements
-		else if (auto b = cast(BlockStatement)node) { print("BLOCK"); foreach(s; b.statements) pr_node(s); }
-		else if (auto n = cast(IfStatement)node) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); }
-		else if (auto n = cast(IfElseStatement)node) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); pr_node(n.elseStatement); }
-		else if (auto w = cast(WhileStatement)node) { print("WHILE"); pr_node(w.condition); pr_node(w.statement); }
-		else if (auto w = cast(DoWhileStatement)node) { print("DO"); pr_node(w.statement); print("WHILE"); pr_node(w.condition); }
-		else if (auto r = cast(ReturnStatement)node) { print("RETURN"); pr_node(r.expression); }
-		else if (auto e = cast(ExpressionStatement)node) { print("EXPR"); pr_node(e.expression); }
-		// Expressions
-		else if (auto v = cast(VariableExpression)node) { print("VAR ", idMap.get(v.id)); }
-		else if (auto c = cast(ConstExpression)node) { print("CONST ", c.value); }
-		else if (auto b = cast(BinaryExpression)node) { print("BINOP ", b.op); pr_node(b.left); pr_node(b.right);}
+		node.accept(visitor);
 		indent -= indentSize;
 	}
+
+	visitor = new class AstVisitor {
+		override void visit(Module m) { print("MODULE"); foreach(f; m.functions) pr_node(f); }
+		override void visit(FunctionDeclaration f) { print("FUNC ", idMap.get(f.id)); pr_node(f.statements); }
+		override void visit(IfStatement n) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); }
+		override void visit(IfElseStatement n) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); pr_node(n.elseStatement); }
+		override void visit(WhileStatement w) { print("WHILE"); pr_node(w.condition); pr_node(w.statement); }
+		override void visit(DoWhileStatement w) { print("DO"); pr_node(w.condition); pr_node(w.statement); }
+		override void visit(ReturnStatement r) { print("RETURN"); if (r.expression) pr_node(r.expression); }
+		override void visit(BlockStatement b) { print("BLOCK"); foreach(s; b.statements) pr_node(s); }
+		override void visit(ExpressionStatement e) { print("EXPR"); pr_node(e.expression); }
+		override void visit(VariableExpression v) { print("VAR ", idMap.get(v.id)); }
+		override void visit(ConstExpression c) { print("CONST ", c.value); }
+		override void visit(BinaryExpression b) { print("BINOP ", b.op); pr_node(b.left); pr_node(b.right); }
+	};
+
+
 	pr_node(n);
 }
 

@@ -2,6 +2,8 @@
 
 /* Copyright (C) 2001 by Marc Feeley, All Rights Reserved. */
 // D port by MrSmith33 (C) 2014
+module tinyc;
+
 
 import std.stdio;
 import std.algorithm : equal;
