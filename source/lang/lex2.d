@@ -66,6 +66,8 @@ enum TokenType : ubyte
 	WHILE_SYM,
 	FUNC_SYM,
 	RET_SYM,
+	BREAK_SYM,
+	CONTINUE_SYM,
 
 	ID,
 	DECIMAL_NUM,
@@ -109,19 +111,17 @@ struct Lexer2
 {
 	string input;
 
-	char c; // current symbol
+	private char c; // current symbol
 
-	uint position;
-	uint line;
-	uint column;
+	private uint position;
+	private uint line;
+	private uint column;
 
-	uint startPos;
-	uint startLine;
-	uint startCol;
+	private uint startPos;
+	private uint startLine;
+	private uint startCol;
 
-	string getTokenString(Token tok) { return input[tok.start..tok.start+tok.size]; }
-
-	void nextChar()
+	private void nextChar()
 	{
 		++position;
 		++column;
@@ -129,7 +129,13 @@ struct Lexer2
 		else c = input[position];
 	}
 
-	ushort tokSize() { return cast(ushort)(position - startPos); }
+	private Token new_tok(TokenType type)
+	{
+		ushort tokSize = cast(ushort)(position - startPos);
+		return Token(type, tokSize, startPos, startLine, startCol);
+	}
+
+	string getTokenString(Token tok) { return input[tok.start..tok.start+tok.size]; }
 
 	Token nextToken()
 	{
@@ -144,53 +150,52 @@ struct Lexer2
 
 			switch(c)
 			{
-				case '\3': return Token(TT.EOI, 0, position, line, column);
+				case '\3':             return new_tok(TT.EOI);
 				case '\t': nextChar(); continue;
-				case '\n': lex_EOL_N(); continue;
-				case '\r': lex_EOL_RN(); continue;
-				case ' ': nextChar(); continue;
-				case '!': nextChar(); return Token(TT.BANG, 1, position-1, line, column);
-				case '"': nextChar(); return Token(TT.DOUBLEQUOTE, 1, position-1, line, column);
-				case '#': nextChar(); return Token(TT.HASH, 1, position-1, line, column);
-				case '$': nextChar(); return Token(TT.DOLLAR, 1, position-1, line, column);
-				case '%': nextChar(); return Token(TT.PERCENT, 1, position-1, line, column);
-				case '&': nextChar(); return Token(TT.AND, 1, position-1, line, column);
-				case '\'': nextChar(); return Token(TT.QUOTE, 1, position-1, line, column);
-				case '(': nextChar(); return Token(TT.LPAREN, 1, position-1, line, column);
-				case ')': nextChar(); return Token(TT.RPAREN, 1, position-1, line, column);
-				case '*': nextChar(); return Token(TT.STAR, 1, position-1, line, column);
-				case '+': nextChar(); return Token(TT.PLUS, 1, position-1, line, column);
-				case ',': nextChar(); return Token(TT.COMMA, 1, position-1, line, column);
-				case '-': nextChar(); return Token(TT.MINUS, 1, position-1, line, column);
-				case '.': nextChar(); return Token(TT.DOT, 1, position-1, line, column);
-				case '/': return lex_SLASH();
-				case '0': .. case '9': return lex_DIGIT();
-				case ':': nextChar(); return Token(TT.COLON, 1, position-1, line, column);
-				case ';': nextChar(); return Token(TT.SEMICOLON, 1, position-1, line, column);
-				case '<': nextChar(); return Token(TT.LT, 1, position-1, line, column);
-				case '=': nextChar(); return Token(TT.EQ, 1, position-1, line, column);
-				case '>': nextChar(); return Token(TT.GT, 1, position-1, line, column);
-				case '?': nextChar(); return Token(TT.QUESTION, 1, position-1, line, column);
-				case '@': nextChar(); return Token(TT.AT, 1, position-1, line, column);
-				case 'A': .. case 'Z': return lex_LETTER();
-				case '[': nextChar(); return Token(TT.LBRACKET, 1, position-1, line, column);
-				case '\\': nextChar(); return Token(TT.BACKSLASH, 1, position-1, line, column);
-				case ']': nextChar(); return Token(TT.RBRACKET, 1, position-1, line, column);
-				case '^': nextChar(); return Token(TT.CIRCUMFLEX, 1, position-1, line, column);
-				case '_': nextChar(); return lex_LETTER();
-				case '`': nextChar(); return Token(TT.BACKTICK, 1, position-1, line, column);
-				case 'a': .. case 'z': return lex_LETTER();
-				case '{': nextChar(); return Token(TT.LCURLY, 1, position-1, line, column);
-				case '|': nextChar(); return Token(TT.PIPE, 1, position-1, line, column);
-				case '}': nextChar(); return Token(TT.RCURLY, 1, position-1, line, column);
-				case '~': nextChar(); return Token(TT.TILDE, 1, position-1, line, column);
-				default:
-					nextChar(); return Token(TT.INVALID, 1, position-1, line, column);
+				case '\n': lex_EOLN(); continue;
+				case '\r': lex_EOLR(); continue;
+				case ' ' : nextChar(); continue;
+				case '!' : nextChar(); return new_tok(TT.BANG);
+				case '"' : nextChar(); return new_tok(TT.DOUBLEQUOTE);
+				case '#' : nextChar(); return new_tok(TT.HASH);
+				case '$' : nextChar(); return new_tok(TT.DOLLAR);
+				case '%' : nextChar(); return new_tok(TT.PERCENT);
+				case '&' : nextChar(); return new_tok(TT.AND);
+				case '\'': nextChar(); return new_tok(TT.QUOTE);
+				case '(' : nextChar(); return new_tok(TT.LPAREN);
+				case ')' : nextChar(); return new_tok(TT.RPAREN);
+				case '*' : nextChar(); return new_tok(TT.STAR);
+				case '+' : nextChar(); return new_tok(TT.PLUS);
+				case ',' : nextChar(); return new_tok(TT.COMMA);
+				case '-' : nextChar(); return new_tok(TT.MINUS);
+				case '.' : nextChar(); return new_tok(TT.DOT);
+				case '/' :             return lex_SLASH();
+				case '0' : ..case '9': return lex_DIGIT();
+				case ':' : nextChar(); return new_tok(TT.COLON);
+				case ';' : nextChar(); return new_tok(TT.SEMICOLON);
+				case '<' : nextChar(); return new_tok(TT.LT);
+				case '=' : nextChar(); return new_tok(TT.EQ);
+				case '>' : nextChar(); return new_tok(TT.GT);
+				case '?' : nextChar(); return new_tok(TT.QUESTION);
+				case '@' : nextChar(); return new_tok(TT.AT);
+				case 'A' : ..case 'Z': return lex_LETTER();
+				case '[' : nextChar(); return new_tok(TT.LBRACKET);
+				case '\\': nextChar(); return new_tok(TT.BACKSLASH);
+				case ']' : nextChar(); return new_tok(TT.RBRACKET);
+				case '^' : nextChar(); return new_tok(TT.CIRCUMFLEX);
+				case '_' : nextChar(); return lex_LETTER();
+				case '`' : nextChar(); return new_tok(TT.BACKTICK);
+				case 'a' : ..case 'z': return lex_LETTER();
+				case '{' : nextChar(); return new_tok(TT.LCURLY);
+				case '|' : nextChar(); return new_tok(TT.PIPE);
+				case '}' : nextChar(); return new_tok(TT.RCURLY);
+				case '~' : nextChar(); return new_tok(TT.TILDE);
+				default  : nextChar(); return new_tok(TT.INVALID);
 			}
 		}
 	}
 
-	void lex_EOL_RN() // \r[\n]
+	void lex_EOLR() // \r[\n]
 	{
 		nextChar();
 		if (c == '\n') nextChar();
@@ -198,7 +203,7 @@ struct Lexer2
 		column = 0;
 	}
 
-	void lex_EOL_N() // \n
+	void lex_EOLN() // \n
 	{
 		nextChar();
 		++line;
@@ -211,31 +216,33 @@ struct Lexer2
 		if (c == '/')
 		{
 			consumeLine();
-			return Token(TT.COMMENT, tokSize(), startPos, startLine, startCol);
+			return new_tok(TT.COMMENT);
 		}
-		return Token(TT.SLASH, 1, startPos, startLine, startCol);
+		return new_tok(TT.SLASH);
 	}
 
 	Token lex_DIGIT() // 0-9
 	{
 		consumeDecimal();
-		return Token(TT.DECIMAL_NUM, tokSize(), startPos, startLine, startCol);
+		return new_tok(TT.DECIMAL_NUM);
 	}
 
 	Token lex_LETTER() // a-zA-Z_
 	{
 		switch (c)
 		{
-			case 'd': if (match("do")) return Token(TT.DO_SYM, tokSize(), startPos, startLine, startCol); break;
-			case 'e': if (match("else")) return Token(TT.ELSE_SYM, tokSize(), startPos, startLine, startCol); break;
-			case 'i': if (match("if")) return Token(TT.IF_SYM, tokSize(), startPos, startLine, startCol); break;
-			case 'w': if (match("while")) return Token(TT.WHILE_SYM, tokSize(), startPos, startLine, startCol); break;
-			case 'f': if (match("func")) return Token(TT.FUNC_SYM, tokSize(), startPos, startLine, startCol); break;
-			case 'r': if (match("return")) return Token(TT.RET_SYM, tokSize(), startPos, startLine, startCol); break;
+			case 'b': if (match("break")) return new_tok(TT.BREAK_SYM); break;
+			case 'c': if (match("continue")) return new_tok(TT.CONTINUE_SYM); break;
+			case 'd': if (match("do")) return new_tok(TT.DO_SYM); break;
+			case 'e': if (match("else")) return new_tok(TT.ELSE_SYM); break;
+			case 'i': if (match("if")) return new_tok(TT.IF_SYM); break;
+			case 'w': if (match("while")) return new_tok(TT.WHILE_SYM); break;
+			case 'f': if (match("func")) return new_tok(TT.FUNC_SYM); break;
+			case 'r': if (match("return")) return new_tok(TT.RET_SYM); break;
 			default: break;
 		}
 		consumeId();
-		return Token(TT.ID, tokSize(), startPos, startLine, startCol);
+		return new_tok(TT.ID);
 	}
 
 	bool match(string identifier)
