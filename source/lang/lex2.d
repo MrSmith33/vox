@@ -109,6 +109,8 @@ alias TT = TokenType;
 
 struct Lexer2
 {
+	nothrow:
+
 	string input;
 
 	private char c; // current symbol
@@ -129,13 +131,13 @@ struct Lexer2
 		else c = input[position];
 	}
 
-	private Token new_tok(TokenType type)
+	private Token new_tok(TokenType type) pure
 	{
 		ushort tokSize = cast(ushort)(position - startPos);
 		return Token(type, tokSize, startPos, startLine, startCol);
 	}
 
-	string getTokenString(Token tok) { return input[tok.start..tok.start+tok.size]; }
+	string getTokenString(Token tok) pure { return input[tok.start..tok.start+tok.size]; }
 
 	Token nextToken()
 	{
@@ -195,7 +197,7 @@ struct Lexer2
 		}
 	}
 
-	void lex_EOLR() // \r[\n]
+	private void lex_EOLR() // \r[\n]
 	{
 		nextChar();
 		if (c == '\n') nextChar();
@@ -203,14 +205,14 @@ struct Lexer2
 		column = 0;
 	}
 
-	void lex_EOLN() // \n
+	private void lex_EOLN() // \n
 	{
 		nextChar();
 		++line;
 		column = 0;
 	}
 
-	Token lex_SLASH() // /
+	private Token lex_SLASH() // /
 	{
 		nextChar();
 		if (c == '/')
@@ -221,13 +223,13 @@ struct Lexer2
 		return new_tok(TT.SLASH);
 	}
 
-	Token lex_DIGIT() // 0-9
+	private Token lex_DIGIT() // 0-9
 	{
 		consumeDecimal();
 		return new_tok(TT.DECIMAL_NUM);
 	}
 
-	Token lex_LETTER() // a-zA-Z_
+	private Token lex_LETTER() // a-zA-Z_
 	{
 		switch (c)
 		{
@@ -245,7 +247,7 @@ struct Lexer2
 		return new_tok(TT.ID);
 	}
 
-	bool match(string identifier)
+	private bool match(string identifier)
 	{
 		uint index = 0;
 		while (identifier[index] == c)
@@ -262,7 +264,7 @@ struct Lexer2
 		return false;
 	}
 
-	void consumeId()
+	private void consumeId()
 	{
 		while (isIdSecond(c))
 		{
@@ -270,7 +272,7 @@ struct Lexer2
 		}
 	}
 
-	void consumeDecimal()
+	private void consumeDecimal()
 	{
 		while (isDigit(c))
 		{
@@ -278,7 +280,7 @@ struct Lexer2
 		}
 	}
 
-	void consumeLine()
+	private void consumeLine()
 	{
 		while (true)
 		{
@@ -294,12 +296,12 @@ struct Lexer2
 	}
 }
 
-bool isDigit(char chr)
+private bool isDigit(char chr) pure nothrow
 {
 	return '0' <= chr && chr <= '9';
 }
 
-bool isIdSecond(char chr)
+private bool isIdSecond(char chr) pure nothrow
 {
 	return
 		'0' <= chr && chr <= '9' ||
