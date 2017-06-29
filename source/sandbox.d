@@ -240,7 +240,13 @@ void testVMs()
 
 
 
-string input = q{func main(param1, param2){ a = 1; b = 10; return param1 - param2 + a + b; }};
+string input = q{
+func main(param1, param2) {
+	a = 1; b = sub(10);
+	return param1 - param2 + a + b;
+}
+func sub(par) { return 42; }
+};
 
 void testLang()
 {

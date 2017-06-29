@@ -285,5 +285,9 @@ struct CodeGen
 				default: assert(false, "Not implemented");
 			}
 		}
+		else if (auto c = cast(CallExpression)node)
+		{
+			gen.movd(TEMP_REG_1, Imm32(42)); // TODO
+		}
 	}
 }

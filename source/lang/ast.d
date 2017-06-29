@@ -42,6 +42,7 @@ abstract class AstVisitor
 	void visit(VariableExpression){}
 	void visit(ConstExpression){}
 	void visit(BinaryExpression){}
+	void visit(CallExpression){}
 }
 
 class DepthAstVisitor : AstVisitor
@@ -56,6 +57,7 @@ class DepthAstVisitor : AstVisitor
 	override void visit(BlockStatement b) { foreach(s; b.statements) s.accept(this); }
 	override void visit(ExpressionStatement e) { e.expression.accept(this); }
 	override void visit(BinaryExpression b) { b.left.accept(this); b.right.accept(this); }
+	override void visit(CallExpression c) { foreach(a; c.args) a.accept(this); }
 }
 
 abstract class AstNode {
@@ -160,4 +162,11 @@ class BinaryExpression : Expression {
 	BinOp op;
 	Expression left;
 	Expression right;
+}
+
+class CallExpression : Expression {
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
+	override void accept(AstVisitor v) { v.visit(this); }
+	Identifier id;
+	Expression[] args;
 }

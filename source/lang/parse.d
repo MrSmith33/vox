@@ -23,11 +23,12 @@ import std.stdio;
  *                  <expr> ";" /
  *                  ";"
  *  <id_list> ::= (<id> ",")*
+ *  <expr_list> ::= (<expr> ",")*
  *  <paren_expr> ::= "(" <expr> ")"
  *  <expr> ::= <test> | <id> "=" <expr>
  *  <test> ::= <sum> | <sum> ("=="|"!="|"<"|">"|"<="|"<=") <sum>
  *  <sum> ::= <term> | <sum> "+" <term> | <sum> "-" <term>
- *  <term> ::= <id> | <int> | <paren_expr>
+ *  <term> ::= <id> | <id> "(" <expr_list> ")" | <int> | <paren_expr>
  *  <id> ::= "a" | "b" | "c" | "d" | ... | "z"
  *  <int> ::= <an_unsigned_decimal_integer>
  */
@@ -100,6 +101,7 @@ void printAST(AstNode n, IdentifierMap idMap, int indentSize = 1)
 		override void visit(VariableExpression v) { print("VAR ", idMap.get(v.id)); }
 		override void visit(ConstExpression c) { print("CONST ", c.value); }
 		override void visit(BinaryExpression b) { print("BINOP ", b.op); pr_node(b.left); pr_node(b.right); }
+		override void visit(CallExpression c) { print("CALL ", idMap.get(c.id)); foreach(a; c.args) pr_node(a); }
 	};
 
 	pr_node(n);
@@ -300,11 +302,18 @@ struct Parser
 		return n;
 	}
 
-	Expression term() { /* <term> ::= <id> | <int> | <paren_expr> */
+	Expression term() { /* <term> ::= <id> | <id> "(" <expr_list> ")" | <int> | <paren_expr> */
 		if (tok.type == TokenType.ID) {
 			string name = lexer.getTokenString(tok);
 			Identifier id = idMap.get(name);
 			nextToken();
+			if (tok.type == TokenType.LPAREN) // <term> ::= <id> "(" <expr_list> ")"
+			{
+				expectAndConsume(TokenType.LPAREN);
+				Expression[] args = expr_list();
+				expectAndConsume(TokenType.RPAREN);
+				return make!CallExpression(id, args);
+			}
 			return make!VariableExpression(id);
 		}
 		else if (tok.type == TokenType.DECIMAL_NUM) {
@@ -315,5 +324,17 @@ struct Parser
 			return make!ConstExpression(value);
 		}
 		else return paren_expr();
+	}
+
+	Expression[] expr_list() // <expr_list> ::= (<expr> ",")*
+	{
+		Expression[] expressions;
+		while (tok.type != TokenType.RPAREN)
+		{
+			expressions ~= expr();
+			if (tok.type == TokenType.COMMA) nextToken();
+			else break;
+		}
+		return expressions;
 	}
 }
