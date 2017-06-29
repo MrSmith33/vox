@@ -307,6 +307,11 @@ struct Encoder
 	void putInstrUnaryMem(ArgType argType, O)(O opcode, ubyte regOpcode, MemAddress dst_mem) if (isAnyOpcode!O) {
 		putInstrBinaryRegMem!(argType, false)(opcode, cast(Register)regOpcode, dst_mem);
 	}
+	void putInstrUnaryImm(ArgType argType, O, I)(O opcode, I imm) if (isAnyOpcode!O && isAnyImm!I) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		sink_put(opcode);                                                       // Opcode
+		sink_put(imm);                                                          // Imm8/16/32
+	}
 }
 
 struct Fixup
@@ -378,150 +383,34 @@ struct CodeGen_x86_64
 		ret();
 	}
 
-	void addb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(0x00), src, dst); }
-	void addw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x01), src, dst); }
-	void addd(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x01), src, dst); }
-	void addq(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x01), src, dst); }
+	mixin binaryInstr_RMtoR_RtoRM!("add", [0x00, 0x01], [0x02, 0x03]);
+	mixin binaryInstr_RM_Imm!("add", 0);
 
-	void addb(Register dst,   Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(0x00), dst, src); }
-	void addw(Register dst,   Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(0x01), dst, src); }
-	void addd(Register dst,   Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(0x01), dst, src); }
-	void addq(Register dst,   Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(0x01), dst, src); }
+	mixin instrMOV!();
+	mixin binaryInstr_RMtoR_RtoRM!("mov", [0x88, 0x89], [0x8A, 0x8B]);
 
-	void addb(Register dst,   MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(0x02), dst, src); }
-	void addw(Register dst,   MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x03), dst, src); }
-	void addd(Register dst,   MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x03), dst, src); }
-	void addq(Register dst,   MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x03), dst, src); }
+	mixin binaryInstr_RMtoR_RtoRM!("sub", [0x28, 0x29], [0x2A, 0x2B]);
+	mixin binaryInstr_RM_Imm!("sub", 5);
 
-	void addb(Register dst,   Imm8  src){ encoder.putInstrBinaryRegImm2!(ArgType.BYTE) (0x80, 0, dst, src); }
-	void addw(Register dst,   Imm16 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x81, 0, dst, src); }
-	void addd(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x81, 0, dst, src); }
-	void addq(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x81, 0, dst, src); }
+	mixin binaryInstr_RMtoR_RtoRM!("and", [0x20, 0x21], [0x22, 0x23]);
+	mixin binaryInstr_RM_Imm!("and", 4);
 
-	void addw(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x83, 0, dst, src); }
-	void addd(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x83, 0, dst, src); }
-	void addq(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x83, 0, dst, src); }
+	mixin binaryInstr_RMtoR_RtoRM!("or", [0x08, 0x09], [0x0A, 0x0B]);
+	mixin binaryInstr_RM_Imm!("or", 1);
 
-	void addb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(0x80), 0, dst, src); }
-	void addw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x81), 0, dst, src); }
-	void addd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x81), 0, dst, src); }
-	void addq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x81), 0, dst, src); }
+	mixin binaryInstr_RMtoR_RtoRM!("xor", [0x30, 0x31], [0x32, 0x33]);
+	mixin binaryInstr_RM_Imm!("xor", 6);
 
-	void addw(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x83), 0, dst, src); }
-	void addd(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x83), 0, dst, src); }
-	void addq(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x83), 0, dst, src); }
+	mixin binaryInstr_RMtoR_RtoRM!("cmp", [0x38, 0x39], [0x3A, 0x3B]);
+	mixin binaryInstr_RM_Imm!("cmp", 7);
 
 
-	void movb(Register dst, Imm8  src){ encoder.putInstrBinaryRegImm1!(ArgType.BYTE) (0xB0, dst, src); }
-	void movw(Register dst, Imm16 src){ encoder.putInstrBinaryRegImm1!(ArgType.WORD) (0xB8, dst, src); }
-	void movd(Register dst, Imm32 src){ encoder.putInstrBinaryRegImm1!(ArgType.DWORD)(0xB8, dst, src); }
-	void movq(Register dst, Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0xC7, 0, dst, src); }
-	void movq(Register dst, Imm64 src){ encoder.putInstrBinaryRegImm1!(ArgType.QWORD)(0xB8, dst, src); }
-
-	void movb(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(0x88), dst, src); }
-	void movw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(0x89), dst, src); }
-	void movd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(0x89), dst, src); }
-	void movq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(0x89), dst, src); }
-
-	void movb(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(0x8A), dst, src); }
-	void movw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x8B), dst, src); }
-	void movd(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x8B), dst, src); }
-	void movq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x8B), dst, src); }
-
-	void movb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(0x88), src, dst); }
-	void movw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x89), src, dst); }
-	void movd(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x89), src, dst); }
-	void movq(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x89), src, dst); }
-
-	void movb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(0xC6), 0, dst, src); }
-	void movw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0xC7), 0, dst, src); }
-	void movd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0xC7), 0, dst, src); }
-	void movq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0xC7), 0, dst, src); }
-
-
-	void subb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(0x28), src, dst); }
-	void subw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x29), src, dst); }
-	void subd(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x29), src, dst); }
-	void subq(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x29), src, dst); }
-
-	void subb(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(0x28), dst, src); }
-	void subw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(0x29), dst, src); }
-	void subd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(0x29), dst, src); }
-	void subq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(0x29), dst, src); }
-
-	void subb(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(0x2A), dst, src); }
-	void subw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x2B), dst, src); }
-	void subd(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x2B), dst, src); }
-	void subq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x2B), dst, src); }
-
-	void subb(Register dst, Imm8  src){ encoder.putInstrBinaryRegImm2!(ArgType.BYTE) (0x80, 5, dst, src); }
-	void subw(Register dst, Imm16 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x81, 5, dst, src); }
-	void subd(Register dst, Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x81, 5, dst, src); }
-	void subq(Register dst, Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x81, 5, dst, src); }
-
-	void subw(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x83, 5, dst, src); }
-	void subd(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x83, 5, dst, src); }
-	void subq(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x83, 5, dst, src); }
-
-	void subb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(0x80), 5, dst, src); }
-	void subw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x81), 5, dst, src); }
-	void subd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x81), 5, dst, src); }
-	void subq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x81), 5, dst, src); }
-
-	void subw(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x83), 5, dst, src); }
-	void subd(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x83), 5, dst, src); }
-	void subq(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x83), 5, dst, src); }
-
-
-	void cmpb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(0x38), src, dst); }
-	void cmpw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x39), src, dst); }
-	void cmpd(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x39), src, dst); }
-	void cmpq(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x39), src, dst); }
-
-	void cmpb(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(0x38), dst, src); }
-	void cmpw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(0x39), dst, src); }
-	void cmpd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(0x39), dst, src); }
-	void cmpq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(0x39), dst, src); }
-
-	void cmpb(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(0x3A), dst, src); }
-	void cmpw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x3B), dst, src); }
-	void cmpd(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x3B), dst, src); }
-	void cmpq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x3B), dst, src); }
-
-	void cmpb(Register dst,   Imm8  src){ encoder.putInstrBinaryRegImm2!(ArgType.BYTE) (0x80, 7, dst, src); }
-	void cmpw(Register dst,   Imm16 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x81, 7, dst, src); }
-	void cmpd(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x81, 7, dst, src); }
-	void cmpq(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x81, 7, dst, src); }
-
-	void cmpw(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x83, 7, dst, src); }
-	void cmpd(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x83, 7, dst, src); }
-	void cmpq(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x83, 7, dst, src); }
-
-	void cmpb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(0x80), 7, dst, src); }
-	void cmpw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x81), 7, dst, src); }
-	void cmpd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x81), 7, dst, src); }
-	void cmpq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x81), 7, dst, src); }
-
-	void cmpw(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x83), 7, dst, src); }
-	void cmpd(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x83), 7, dst, src); }
-	void cmpq(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x83), 7, dst, src); }
-
-
-	mixin unaryInstr_Reg!("inc", [0xFE,0xFF], 0);
-	mixin unaryInstr_Mem!("inc", [0xFE,0xFF], 0);
-
-	mixin unaryInstr_Reg!("dec", [0xFE,0xFF], 1);
-	mixin unaryInstr_Mem!("dec", [0xFE,0xFF], 1);
-
-	mixin unaryInstr_Reg!("mul", [0xF6,0xF7], 4);
-	mixin unaryInstr_Mem!("mul", [0xF6,0xF7], 4);
-
-	mixin unaryInstr_Reg!("div", [0xF6,0xF7], 6);
-	mixin unaryInstr_Mem!("div", [0xF6,0xF7], 6);
-
-	mixin unaryInstr_Reg!("not", [0xF6,0xF7], 2);
-	mixin unaryInstr_Mem!("not", [0xF6,0xF7], 2);
-
+	mixin unaryInstr_RM!("inc", [0xFE,0xFF], 0);
+	mixin unaryInstr_RM!("dec", [0xFE,0xFF], 1);
+	mixin unaryInstr_RM!("neg", [0xF6,0xF7], 3);
+	mixin unaryInstr_RM!("mul", [0xF6,0xF7], 4);
+	mixin unaryInstr_RM!("div", [0xF6,0xF7], 6);
+	mixin unaryInstr_RM!("not", [0xF6,0xF7], 2);
 
 	void nop() { encoder.putInstrNullary(OP1(0x90)); }
 
@@ -560,19 +449,72 @@ struct CodeGen_x86_64
 	void pushw(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.WORD )(OP1(0xFF), 6, dst); }
 	void pushq(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.DWORD)(OP1(0xFF), 6, dst); } // use DWORD to omit REX.W
 
+	void pushb(Imm8  src) { encoder.putInstrUnaryImm!(ArgType.BYTE )(OP1(0x6A), src); }
+	void pushw(Imm16 src) { encoder.putInstrUnaryImm!(ArgType.WORD )(OP1(0x68), src); }
+	void pushd(Imm32 src) { encoder.putInstrUnaryImm!(ArgType.DWORD)(OP1(0x68), src); }
+
 	void ret() { encoder.putInstrNullary(OP1(0xC3)); }
 	void ret(Imm16 bytesToPop) { encoder.putInstrNullaryImm(OP1(0xC2), bytesToPop); }
 
 	void int3() { encoder.putInstrNullary(OP1(0xCC)); }
 }
 
-mixin template unaryInstr_Reg(string name, ubyte[2] opcodes, ubyte extraOpcode) {
+mixin template instrMOV() {
+	void movb(Register dst, Imm8  src){ encoder.putInstrBinaryRegImm1!(ArgType.BYTE) (0xB0, dst, src); }
+	void movw(Register dst, Imm16 src){ encoder.putInstrBinaryRegImm1!(ArgType.WORD) (0xB8, dst, src); }
+	void movd(Register dst, Imm32 src){ encoder.putInstrBinaryRegImm1!(ArgType.DWORD)(0xB8, dst, src); }
+	void movq(Register dst, Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0xC7, 0, dst, src); }
+	void movq(Register dst, Imm64 src){ encoder.putInstrBinaryRegImm1!(ArgType.QWORD)(0xB8, dst, src); }
+
+	void movb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(0xC6), 0, dst, src); }
+	void movw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0xC7), 0, dst, src); }
+	void movd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0xC7), 0, dst, src); }
+	void movq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0xC7), 0, dst, src); }
+}
+
+mixin template binaryInstr_RMtoR_RtoRM(string name, ubyte[2] rm_r, ubyte[2] r_rm) {
+	mixin(format("void %sb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(%s), src, dst); }", name, rm_r[0]));
+	mixin(format("void %sw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(%s), src, dst); }", name, rm_r[1]));
+	mixin(format("void %sd(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(%s), src, dst); }", name, rm_r[1]));
+	mixin(format("void %sq(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(%s), src, dst); }", name, rm_r[1]));
+
+	mixin(format("void %sb(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(%s), dst, src); }", name, rm_r[0]));
+	mixin(format("void %sw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(%s), dst, src); }", name, rm_r[1]));
+	mixin(format("void %sd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(%s), dst, src); }", name, rm_r[1]));
+	mixin(format("void %sq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(%s), dst, src); }", name, rm_r[1]));
+
+	mixin(format("void %sb(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(%s), dst, src); }", name, r_rm[0]));
+	mixin(format("void %sw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(%s), dst, src); }", name, r_rm[1]));
+	mixin(format("void %sd(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(%s), dst, src); }", name, r_rm[1]));
+	mixin(format("void %sq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(%s), dst, src); }", name, r_rm[1]));
+}
+
+mixin template binaryInstr_RM_Imm(string name, ubyte extraOpcode) {
+	mixin(format("void %sb(Register dst,   Imm8  src){ encoder.putInstrBinaryRegImm2!(ArgType.BYTE) (0x80, %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sw(Register dst,   Imm16 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x81, %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sd(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x81, %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sq(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x81, %s, dst, src); }", name, extraOpcode));
+
+	mixin(format("void %sw(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (0x83, %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sd(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(0x83, %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sq(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(0x83, %s, dst, src); }", name, extraOpcode));
+
+	mixin(format("void %sb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(0x80), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x81), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x81), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x81), %s, dst, src); }", name, extraOpcode));
+
+	mixin(format("void %sw(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x83), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sd(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x83), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sq(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x83), %s, dst, src); }", name, extraOpcode));
+}
+
+mixin template unaryInstr_RM(string name, ubyte[2] opcodes, ubyte extraOpcode) {
 	mixin(format("void %sb(Register dst) { encoder.putInstrUnaryReg1!(ArgType.BYTE) (OP1(%s), %s, dst); }", name, opcodes[0], extraOpcode));
 	mixin(format("void %sw(Register dst) { encoder.putInstrUnaryReg1!(ArgType.WORD) (OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
 	mixin(format("void %sd(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
 	mixin(format("void %sq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
-}
-mixin template unaryInstr_Mem(string name, ubyte[2] opcodes, ubyte extraOpcode) {
+
 	mixin(format("void %sb(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.BYTE) (OP1(%s), %s, dst); }", name, opcodes[0], extraOpcode));
 	mixin(format("void %sw(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.WORD) (OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
 	mixin(format("void %sd(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.DWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));

@@ -12,7 +12,7 @@ import std.stdio;
 
 /*  <module> ::= <declaration>*
  *  <declaration> ::= <func_declaration>
- *  <func_decl> ::= "func" <id> "(" ")" <block_statement>
+ *  <func_decl> ::= "func" <id> "(" <id_list> ")" <block_statement>
  *  <block_statement> ::= "{" <statement>* "}"
  *  <statement> ::= "if" <paren_expr> <statement> /
  *                  "if" <paren_expr> <statement> "else" <statement> /
@@ -22,6 +22,7 @@ import std.stdio;
  *                  <block_statement> /
  *                  <expr> ";" /
  *                  ";"
+ *  <id_list> ::= (<id> ",")*
  *  <paren_expr> ::= "(" <expr> ")"
  *  <expr> ::= <test> | <id> "=" <expr>
  *  <test> ::= <sum> | <sum> ("=="|"!="|"<"|">"|"<="|"<=") <sum>
@@ -81,7 +82,14 @@ void printAST(AstNode n, IdentifierMap idMap, int indentSize = 1)
 
 	visitor = new class AstVisitor {
 		override void visit(Module m) { print("MODULE"); foreach(f; m.functions) pr_node(f); }
-		override void visit(FunctionDeclaration f) { print("FUNC ", idMap.get(f.id)); pr_node(f.statements); }
+		override void visit(FunctionDeclaration f) {
+			print("FUNC ", idMap.get(f.id));
+			indent += indentSize;
+			foreach(p; f.parameters)
+				print("PARAM ", idMap.get(p.id));
+			indent -= indentSize;
+			pr_node(f.statements);
+		}
 		override void visit(IfStatement n) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); }
 		override void visit(IfElseStatement n) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); pr_node(n.elseStatement); }
 		override void visit(WhileStatement w) { print("WHILE"); pr_node(w.condition); pr_node(w.statement); }
@@ -93,7 +101,6 @@ void printAST(AstNode n, IdentifierMap idMap, int indentSize = 1)
 		override void visit(ConstExpression c) { print("CONST ", c.value); }
 		override void visit(BinaryExpression b) { print("BINOP ", b.op); pr_node(b.left); pr_node(b.right); }
 	};
-
 
 	pr_node(n);
 }
@@ -149,7 +156,8 @@ struct Parser
 
 	Token expectAndConsume(TokenType type) {
 		if (tok.type != type) {
-			syntax_error("Expected %s, while got %s", type, tok.type);
+			string tokenString = lexer.getTokenString(tok);
+			syntax_error("Expected %s, while got %s", type, tokenString);
 		}
 		scope(exit) nextToken();
 		return tok;
@@ -168,14 +176,24 @@ struct Parser
 
 	FunctionDeclaration func_declaration() // <declaration> ::= <func_declaration>
 	{
-		expectAndConsume(TokenType.FUNC_SYM); // <func_decl> ::= "func" <id> "(" ")" <compound_statement>
-		Token funcName = expectAndConsume(TokenType.ID);
-		string name = lexer.getTokenString(funcName);
-		auto id = idMap.get(name);
+		expectAndConsume(TokenType.FUNC_SYM); // <func_decl> ::= "func" <id> "(" (<id> ",")* ")" <compound_statement>
+		Token funcNameTok = expectAndConsume(TokenType.ID);
+		string funcName = lexer.getTokenString(funcNameTok);
+		auto funcId = idMap.get(funcName);
 		expectAndConsume(TokenType.LPAREN);
+		VariableExpression[] params;
+		while (tok.type != TokenType.RPAREN)
+		{
+			Token paramTok = expectAndConsume(TokenType.ID);
+			string paramName = lexer.getTokenString(paramTok);
+			Identifier paramId = idMap.get(paramName);
+			params ~= make!VariableExpression(paramId);
+			if (tok.type == TokenType.COMMA) nextToken();
+			else break;
+		}
 		expectAndConsume(TokenType.RPAREN);
 		auto statements = block_stmt();
-		return make!FunctionDeclaration(id, statements);
+		return make!FunctionDeclaration(funcId, params, statements);
 	}
 
 	BlockStatement block_stmt() // <compound_statement> ::= "{" <statement>* "}"

@@ -24,4 +24,10 @@ void testPush()
 	//push QWORD PTR [reg]
 	foreach (Register reg; Register.min..RegisterMax) testCodeGen.pushq(memAddrBase(reg));
 	assertHexAndReset("FF30FF31FF32FF33FF3424FF7500FF36FF3741FF3041FF3141FF3241FF3341FF342441FF750041FF3641FF37");
+
+	//push Imm8/16/32
+	testCodeGen.pushb(Imm8(0x11));
+	testCodeGen.pushw(Imm16(0x1122));
+	testCodeGen.pushd(Imm32(0x11223344));
+	assertHexAndReset("6A11666822116844332211");
 }

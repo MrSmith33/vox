@@ -240,9 +240,7 @@ void testVMs()
 
 
 
-string input = q{
-	func main(){ a = 42; return a + 10; }
-};
+string input = q{func main(param1){ a = 42; return param1 + a + 10; }};
 
 void testLang()
 {
@@ -252,7 +250,7 @@ void testLang()
 	import lang.ast;
 	import lang.semantics;
 
-	enum times = 1000_000;
+	enum times = 100_000;
 	auto time0 = currTime;
 
 	auto idMap = new IdentifierMap();
@@ -273,6 +271,7 @@ void testLang()
 	{
 		writefln("line %s col %s: [ERROR] %s", e.token.line, e.token.col, e.msg);
 		writeln(e);
+		return;
 	}
 
 	auto time1 = currTime;
@@ -280,17 +279,20 @@ void testLang()
 	ModuleSemantics moduleSemantics;
 	foreach (_; 0..times)
 	{
-		moduleSemantics = analyzeModule(moduleDecl);
+		moduleSemantics = analyzeModule(moduleDecl, idMap);
+		if (!moduleSemantics.globalFunctions[0].valid) return;
 	}
+
 
 	auto time2 = currTime;
 
 	CodeGen codeGen;
+	alias JittedFunc = int function(int);
 	JittedFunc func;
 	foreach (_; 0..times)
 	{
 		codeGen.setup();
-		func = codeGen.compileFunction(moduleSemantics.globalFunctions[0]);
+		func = cast(JittedFunc)codeGen.compileFunction(moduleSemantics.globalFunctions[0]);
 	}
 
 	auto time3 = currTime;
@@ -298,7 +300,7 @@ void testLang()
 	int res;
 	foreach (_; 0..times)
 	{
-		res = func();
+		res = func(42);
 	}
 
 	auto time4 = currTime;
@@ -309,7 +311,7 @@ void testLang()
 		scaledNumberFmt(time3 - time2, 1.0/times),
 		scaledNumberFmt(time4 - time3, 1.0/times));
 	writeln(input);
-	printAST(moduleDecl, idMap);
+	//printAST(moduleDecl, idMap);
 	printHex(codeGen.code, 8);
 	writefln("func() == %s", res);
 }

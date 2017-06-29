@@ -54,21 +54,20 @@ jcc
 setcc
 test
 movzx
+and
+or
+xor
 
 Implemented instructions
-add sub mul div dec inc mov not nop pop push ret call cmp jmp jcc setcc test movzx
+add sub mul div dec inc mov not nop pop push ret call cmp jmp jcc setcc test movzx and or xor
 
 TODO
 
 movsx
 xchg
-
-and
-or
-xor
 lea
 
-add sub and cmp use nearly identical encoding
+and or xor add sub and cmp use nearly identical encodings
 
 
 

@@ -45,7 +45,7 @@ abstract class AstVisitor
 class DepthAstVisitor : AstVisitor
 {
 	override void visit(Module m) { foreach(f; m.functions) f.accept(this); }
-	override void visit(FunctionDeclaration f) { f.statements.accept(this); }
+	override void visit(FunctionDeclaration f) { foreach(p; f.parameters) p.accept(this); f.statements.accept(this); }
 	override void visit(IfStatement n) { n.condition.accept(this); n.thenStatement.accept(this); }
 	override void visit(IfElseStatement n) { n.condition.accept(this); n.thenStatement.accept(this); n.elseStatement.accept(this); }
 	override void visit(WhileStatement w) { w.condition.accept(this); w.statement.accept(this); }
@@ -74,6 +74,7 @@ class FunctionDeclaration : Declaration {
 	this(typeof(this.tupleof) args) { this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Identifier id;
+	VariableExpression[] parameters;
 	BlockStatement statements;
 }
 

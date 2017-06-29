@@ -8,8 +8,6 @@ module lang.codegen;
 import lang.ast;
 import lang.semantics;
 
-alias JittedFunc = int function();
-
 struct CodeGen
 {
 	import amd64asm;
@@ -51,7 +49,7 @@ struct CodeGen
 
 	private FunctionSemantics funcSemantics;
 
-	JittedFunc compileFunction(FunctionSemantics func)
+	void* compileFunction(FunctionSemantics func)
 	{
 		returnFixups.length = 0;
 
@@ -67,7 +65,7 @@ struct CodeGen
 		if (func.localVars.length)
 		{
 			//gen.subq(STACK_PTR_REG, Imm32(reservedBytes)); // Reserve space for locals
-			gen.movq(RET_REG, Imm32(0));
+			gen.xorq(RET_REG, RET_REG);
 			//gen.movq(memAddrBaseDisp32(LOCALS_REG, Imm32()), RET_REG);
 			foreach(_; 0..func.localVars.length) gen.pushq(RET_REG);
 		}
@@ -81,18 +79,24 @@ struct CodeGen
 		}
 
 		// Epilogue
-		if (func.localVars.length) gen.addq(STACK_PTR_REG, Imm32(reservedBytes));
+		if (func.localVars.length)
+		{
+			if (reservedBytes > byte.max) gen.addq(STACK_PTR_REG, Imm32(reservedBytes));
+			else gen.addq(STACK_PTR_REG, Imm8(cast(byte)reservedBytes));
+		}
+
 		gen.popq(Register.BP);
 		gen.ret();
 
-		return cast(JittedFunc)funPtr;
+		return funPtr;
 	}
 
 	MemAddress varMemAddress(VariableExpression var)
 	{
 		assert(var);
 		int displacement = -(funcSemantics.varIndex(var.id)+1) * STACK_ITEM_SIZE;
-		return memAddrBaseDisp32(LOCALS_REG, displacement);
+		if (displacement < byte.min) return memAddrBaseDisp32(LOCALS_REG, displacement);
+		else return memAddrBaseDisp8(LOCALS_REG, cast(byte)displacement);
 	}
 
 	void compileNode(AstNode node)

@@ -7,6 +7,11 @@ module lang.semantics;
 
 import lang.ast;
 
+void semantics_error(Args...)(string msg, Args args) {
+	import std.stdio;
+	writefln(msg, args);
+}
+
 class ModuleSemantics
 {
 	this(typeof(this.tupleof) args) { this.tupleof = args; }
@@ -18,6 +23,7 @@ class FunctionSemantics
 {
 	this(typeof(this.tupleof) args) { this.tupleof = args; }
 	FunctionDeclaration node;
+	bool valid;
 	Identifier[] localVars;
 	int varIndex(Identifier id)
 	{
@@ -27,28 +33,53 @@ class FunctionSemantics
 	}
 }
 
-ModuleSemantics analyzeModule(Module moduleDecl)
+ModuleSemantics analyzeModule(Module moduleDecl, IdentifierMap idMap)
 {
 	FunctionSemantics[] globalFunctions;
 	auto funcAnalyser = new FunctionAnalyser;
 	foreach (func; moduleDecl.functions)
 	{
-		globalFunctions ~= funcAnalyser.analyzeFunction(func);
+		globalFunctions ~= funcAnalyser.analyzeFunction(func, idMap);
 	}
 	return new ModuleSemantics(moduleDecl, globalFunctions);
 }
 
 class FunctionAnalyser : DepthAstVisitor {
 	Identifier[] localVars;
-	FunctionSemantics analyzeFunction(FunctionDeclaration node)
+
+	// returns index in localVars or -1
+	int findRegisteredVar(Identifier id)
+	{
+		foreach(int i, var; localVars)
+			if (var == id) return i;
+		return -1;
+	}
+
+	void registerVar(Identifier id)
+	{
+		localVars ~= id;
+	}
+
+	FunctionSemantics analyzeFunction(FunctionDeclaration node, IdentifierMap idMap)
 	{
 		localVars = null;
+		foreach (param; node.parameters)
+		{
+			if(findRegisteredVar(param.id) == -1)
+			{
+				registerVar(param.id);
+			}
+			else
+			{
+				semantics_error("Duplicate parameter name '%s'", idMap.get(param.id));
+				return new FunctionSemantics(node, false, localVars);
+			}
+		}
 		node.accept(this);
-		return new FunctionSemantics(node, localVars);
+		return new FunctionSemantics(node, true, localVars);
 	}
+
 	override void visit(VariableExpression v) {
-		foreach(var; localVars)
-			if (var == v.id) return;
-		localVars ~= v.id;
+		if (findRegisteredVar(v.id) == -1) registerVar(v.id);
 	}
 }
