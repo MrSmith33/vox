@@ -95,14 +95,24 @@ enum TokenType : ubyte
 	*/
 }
 
+
 struct Token
 {
 	TokenType type;
-	ushort size;
+	SourceLocation loc;
+}
+
+struct SourceLocation
+{
 	uint start;
 	uint line;
 	uint col;
+	uint size;
 	string getTokenString(string input) { return input[start..start+size]; }
+	void toString()(scope void delegate(const(char)[]) sink) const {
+		import std.format : formattedWrite;
+		sink.formattedWrite("line %s col %s", line+1, col+1);
+	}
 }
 
 alias TT = TokenType;
@@ -133,11 +143,11 @@ struct Lexer2
 
 	private Token new_tok(TokenType type) pure
 	{
-		ushort tokSize = cast(ushort)(position - startPos);
-		return Token(type, tokSize, startPos, startLine, startCol);
+		uint tokSize = position - startPos;
+		return Token(type, SourceLocation(startPos, startLine, startCol, tokSize));
 	}
 
-	string getTokenString(Token tok) pure { return input[tok.start..tok.start+tok.size]; }
+	string getTokenString(Token tok) pure { return input[tok.loc.start..tok.loc.start+tok.loc.size]; }
 
 	Token nextToken()
 	{

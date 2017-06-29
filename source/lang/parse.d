@@ -140,7 +140,7 @@ struct Parser
 		}
 	} else {
 		void setup() {}
-		T make(T, Args...)(Args args) { return new T(args); }
+		T make(T, Args...)(Args args) { return new T(tok.loc, args); }
 	}
 
 	void nextToken() {
@@ -157,7 +157,7 @@ struct Parser
 	Token expectAndConsume(TokenType type) {
 		if (tok.type != type) {
 			string tokenString = lexer.getTokenString(tok);
-			syntax_error("Expected %s, while got %s", type, tokenString);
+			syntax_error("Expected '%s', while got '%s'", type, tokenString);
 		}
 		scope(exit) nextToken();
 		return tok;

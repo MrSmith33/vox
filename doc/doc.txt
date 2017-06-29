@@ -5,6 +5,7 @@ http://wiki.osdev.org/X86-64_Instruction_Encoding
 https://www3.nd.edu/~dthain/courses/cse40243/fall2015/intel-intro.html   Introduction to X86-64 Assembly for Compiler Writers
 http://www.intel.com/products/processor/manuals/                         Intel manuals
 http://www.x86-64.org/documentation.html                                 amd64 ABI
+http://wiki.lazarus.freepascal.org/Win64/AMD64_API
 
 
 cl /c /O1 simple.c
@@ -34,7 +35,11 @@ PUSH - decrements ESP
 POP - increments ESP
 
 Calling conventions:
-See: http://www.x86-64.org/documentation.html
+Links:
+https://docs.microsoft.com/en-us/cpp/build/overview-of-x64-calling-conventions
+http://www.x86-64.org/documentation.html
+http://wiki.lazarus.freepascal.org/Win64/AMD64_API
+http://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64/
 
     "cdecl"
     Caller pushes parameters to the stack right-to-left
@@ -80,7 +85,7 @@ void main() {
   In the Microsoft x64 calling convention, it's the caller's responsibility to
   allocate 32 bytes of "shadow space" on the stack right before calling the function
   (regardless of the actual number of parameters used), and to pop the stack after the call.
-  The shadow space is used to spill RCX, RDX, R8, and R9,[14] but must be made available
+  The shadow space is used to spill RCX, RDX, R8, and R9, but must be made available
   to all functions, even those with fewer than four parameters.
   sub();
     B792  48 83 EC 20          sub         rsp,20h
@@ -119,16 +124,88 @@ void sub() {
 }
 
 void sub18(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, )
-enter 8,0 // alloca(8) for last param in eax and local var a
-mov dword ptr [_param_5], eax
+  enter 8,0 // alloca(8) for last param in eax and local var a
+  mov dword ptr [_param_5], eax
 
-mov dword ptr [a],0 // init local
+  mov dword ptr [a],0 // init local
 
-leave
-ret 44h
+  leave
+  ret 44h
 }
-n-3  n-2  n-1  n
+
+From http://wiki.lazarus.freepascal.org/Win64/AMD64_API
+ ---------------     --
+|      R9       |      |
+ ---------------       |
+|      R8       |      |
+ ---------------       |Shadow space for this function, allocated by caller
+|      RDX      |      |
+ ---------------       |
+|      RCX      |      |
+ ---------------     --
+| Return address|
+ ---------------
+|               |
+|               |        Local variables of this function
+|               |
+|               |
+ ---------------
+| Frame Pointer |        Optional
+ ---------------
+|               |
+|               |        Memory used for dynamic allocation
+|               |
+ ---------------
+|               |
+|               |        Memory used to save registers that may be modified by callee
+|               |
+ ---------------     --
+|      R9       |      |
+ ---------------       |
+|      R8       |      |
+ ---------------       |Shadow space for callee, allocated by this function
+|      RDX      |      |
+ ---------------       |
+|      RCX      |      |
+ ---------------     --
+
+Alignment
+=================
+Most structures are aligned to their natural alignment. The primary exceptions are the stack
+pointer and malloc or alloca memory, which are aligned to 16 bytes in order to aid performance.
+Alignment above 16 bytes must be done manually, but since 16 bytes is a common alignment size
+for XMM operations, this should work for most code.
+The stack pointer must be aligned to 16 bytes in any region of code that isn’t part of an epilog
+or prolog, except within leaf functions.
+
+Parameter passing
+=================
+push n
+push n-1
+push n-2
+...
+push 5
+
+1    2    3    4
 RCX  RDX  R8   R9
+XMM0 XMM1 XMM2 XMM3
+=================
+
+Return value
+=================
+RAX
+XMM0
+=================
+
+Function prolog
+=================
+Copy parameters from registers to shadow space
+Push registers to be preserved on stack
+Allocate room on stack for local variables
+Set a frame pointer (so frame pointer is set AFTER local variables!) if needed
+Allocate space needed to store volatile registers that must be preserved in function calls
+Allocate shadow space for called functions.
+=================
 
 
 3.4.1.5 - Assembly/Compiler Coding Rule 12. (M impact, H generality)

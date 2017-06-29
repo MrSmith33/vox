@@ -5,6 +5,8 @@ Authors: Andrey Penechko.
 */
 module lang.ast;
 
+import lang.lex2 : SourceLocation;
+
 alias Identifier = uint;
 
 class IdentifierMap {
@@ -58,6 +60,7 @@ class DepthAstVisitor : AstVisitor
 
 abstract class AstNode {
 	void accept(AstVisitor);
+	SourceLocation loc;
 }
 
 abstract class Declaration : AstNode {
@@ -65,13 +68,13 @@ abstract class Declaration : AstNode {
 }
 
 class Module : Declaration {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	FunctionDeclaration[] functions;
 }
 
 class FunctionDeclaration : Declaration {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Identifier id;
 	VariableExpression[] parameters;
@@ -85,14 +88,14 @@ abstract class Statement : AstNode {
 }
 
 class IfStatement : Statement {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Expression condition;
 	Statement thenStatement;
 }
 
 class IfElseStatement : Statement {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Expression condition;
 	Statement thenStatement;
@@ -100,33 +103,33 @@ class IfElseStatement : Statement {
 }
 
 class WhileStatement : Statement {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Expression condition;
 	Statement statement;
 }
 
 class DoWhileStatement : Statement {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Expression condition;
 	Statement statement;
 }
 
 class ReturnStatement : Statement {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Expression expression; // can be null
 }
 
 class BlockStatement : Statement {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Statement[] statements;
 }
 
 class ExpressionStatement : Statement {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Expression expression;
 }
@@ -138,14 +141,13 @@ abstract class Expression : AstNode {
 }
 
 class VariableExpression : Expression {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	Identifier id;
-
 }
 
 class ConstExpression : Expression {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	int value;
 }
@@ -153,7 +155,7 @@ class ConstExpression : Expression {
 enum BinOp { ADD, SUB, MUL, DIV, MOD, SHL, SHR, ASHR, AND, OR, ANDAND, OROR, LT, GT, LE, GE, EQUAL, NOTEQUAL, ASSIGN }
 
 class BinaryExpression : Expression {
-	this(typeof(this.tupleof) args) { this.tupleof = args; }
+	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	BinOp op;
 	Expression left;

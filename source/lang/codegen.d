@@ -23,21 +23,18 @@ struct CodeGen
 	}
 
 	// Stack structure
+	// shadow space
 	// return address
 	// prev RBP <- RBP points here
 	// local vars 0 - RBP - i * 8
 	// local vars 1
 	// local vars n <- RSP points here
-	// temp <- RSP temporarily points here
-	// temp <- RSP temporarily points here
-
-	enum LOCALS_REG = Register.BP;
-	enum STACK_PTR_REG = Register.SP;
 
 	enum RET_REG = Register.AX;
 	enum TEMP_REG_1 = Register.CX;
 	enum TEMP_REG_2 = Register.DX;
 	enum STACK_ITEM_SIZE = 8; // x86_64
+	enum USE_FRAME_POINTER = true;
 	CodeGen_x86_64 gen;
 
 	static struct ReturnFixup {
@@ -47,29 +44,64 @@ struct CodeGen
 
 	private ReturnFixup[] returnFixups;
 
-	private FunctionSemantics funcSemantics;
+	private FunctionSemantics func;
 
 	void* compileFunction(FunctionSemantics func)
 	{
-		returnFixups.length = 0;
-
-		funcSemantics = func;
-
+		this.func = func;
 		void* funPtr = gen.pc;
 
-		// Prologue
-		gen.pushq(Register.BP);
-		gen.movq(Register.BP, Register.SP);
-		int reservedBytes = cast(int)(func.localVars.length * STACK_ITEM_SIZE);
+		compileFuncProlog();
+		compileFuncBody();
+		compileFuncEpilog();
 
-		if (func.localVars.length)
+		return funPtr;
+	}
+
+	private int numParams;
+	private int numLocals;
+	private int numVars; // numLocals + numParams
+	private int reservedBytes;
+
+	void compileFuncProlog()
+	{
+		numParams = cast(int)func.node.parameters.length;
+		numLocals = cast(int)(func.localVars.length - numParams);
+		numVars = numLocals + numParams;
+
+		// Copy parameters from registers to shadow space
+		// TODO: check parameter type
+		// parameter 5 RSP + 40
+		if (numParams > 3) gen.movq(memAddrBaseDisp8(Register.SP, 32), Register.R9); // save fourth parameter
+		if (numParams > 2) gen.movq(memAddrBaseDisp8(Register.SP, 24), Register.R8); // save third parameter
+		if (numParams > 1) gen.movq(memAddrBaseDisp8(Register.SP, 16), Register.DX); // save second parameter
+		if (numParams > 0) gen.movq(memAddrBaseDisp8(Register.SP,  8), Register.CX); // save first parameter
+		// RSP + 0 points to RET
+
+		// Establish frame pointer
+		if (USE_FRAME_POINTER)
 		{
-			//gen.subq(STACK_PTR_REG, Imm32(reservedBytes)); // Reserve space for locals
+			gen.pushq(Register.BP);
+			gen.movq(Register.BP, Register.SP);
+		}
+		reservedBytes = cast(int)(numLocals * STACK_ITEM_SIZE);
+		if (reservedBytes) // Reserve space for locals
+		{
+			if (reservedBytes > byte.max) gen.subq(Register.SP, Imm32(reservedBytes));
+			else gen.subq(Register.SP, Imm8(cast(byte)reservedBytes));
+		}
+	}
+
+	void compileFuncBody()
+	{
+		// init locals
+		if (numLocals)
+		{
 			gen.xorq(RET_REG, RET_REG);
-			//gen.movq(memAddrBaseDisp32(LOCALS_REG, Imm32()), RET_REG);
-			foreach(_; 0..func.localVars.length) gen.pushq(RET_REG);
+			foreach(i; 0..numLocals) gen.movq(varMemAddress(numParams+i), RET_REG);
 		}
 
+		returnFixups.length = 0;
 		// body
 		compileNode(func.node.statements);
 
@@ -77,26 +109,69 @@ struct CodeGen
 		foreach(fixup; returnFixups) {
 			fixup.jmp_to_ret_fixup.jmp(jumpOffset(fixup.jmp_pc_from, gen.pc));
 		}
-
-		// Epilogue
-		if (func.localVars.length)
-		{
-			if (reservedBytes > byte.max) gen.addq(STACK_PTR_REG, Imm32(reservedBytes));
-			else gen.addq(STACK_PTR_REG, Imm8(cast(byte)reservedBytes));
-		}
-
-		gen.popq(Register.BP);
-		gen.ret();
-
-		return funPtr;
 	}
 
-	MemAddress varMemAddress(VariableExpression var)
+	void compileFuncEpilog()
 	{
-		assert(var);
-		int displacement = -(funcSemantics.varIndex(var.id)+1) * STACK_ITEM_SIZE;
-		if (displacement < byte.min) return memAddrBaseDisp32(LOCALS_REG, displacement);
-		else return memAddrBaseDisp8(LOCALS_REG, cast(byte)displacement);
+		if (reservedBytes)
+		{
+			if (reservedBytes > byte.max) gen.addq(Register.SP, Imm32(reservedBytes));
+			else gen.addq(Register.SP, Imm8(cast(byte)reservedBytes));
+		}
+
+		if (USE_FRAME_POINTER)
+		{
+			// Restore frame pointer
+			gen.popq(Register.BP);
+		}
+
+		gen.ret();
+	}
+
+	MemAddress varMemAddress(int varIndex)
+	{
+		bool isParameter = varIndex < numParams;
+		int displacement;
+		Register baseReg;
+
+		int index;
+		if (USE_FRAME_POINTER)
+		{
+			// ++        varIndex
+			// param2    1              \
+			// param1    0  rbp + 2     / numParams = 2
+			// ret addr     rbp + 1
+			// rbp      <-- rbp + 0
+			// local1    2  rbp - 1     \
+			// local2    3  rbp - 2     / numLocals = 2
+			// --
+			if (isParameter) // parameter
+			{
+				index = 2 + varIndex;
+			}
+			else // local variable
+			{
+				index = -(varIndex - numParams + 1);
+			}
+			baseReg = Register.BP;
+		}
+		else
+		{
+			if (isParameter) // parameter
+			{
+				// Since return address is saved between locals and parameters, we need to add 1 to index for parameters
+				index = numLocals + varIndex + 1;
+			}
+			else // local variable
+			{
+				// count from RSP, so last var has index of 0
+				index = numVars - varIndex - 1;
+			}
+			baseReg = Register.SP;
+		}
+		displacement = index * STACK_ITEM_SIZE;
+		if (displacement > byte.max) return memAddrBaseDisp32(baseReg, displacement);
+		else return memAddrBaseDisp8(baseReg, cast(byte)displacement);
 	}
 
 	void compileNode(AstNode node)
@@ -173,7 +248,7 @@ struct CodeGen
 		// Expressions
 		else if (auto v = cast(VariableExpression)node)
 		{
-			gen.movd(TEMP_REG_1, varMemAddress(v));
+			gen.movd(TEMP_REG_1, varMemAddress(func.varIndex(v.id)));
 		}
 		else if (auto c = cast(ConstExpression)node)
 		{
@@ -204,7 +279,8 @@ struct CodeGen
 					break;
 				case BinOp.ASSIGN:
 					compileNode(b.right);
-					gen.movd(varMemAddress(cast(VariableExpression)b.left), TEMP_REG_1);
+					int varIndex = func.varIndex((cast(VariableExpression)b.left).id);
+					gen.movd(varMemAddress(varIndex), TEMP_REG_1);
 					break;
 				default: assert(false, "Not implemented");
 			}

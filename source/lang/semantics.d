@@ -24,12 +24,12 @@ class FunctionSemantics
 	this(typeof(this.tupleof) args) { this.tupleof = args; }
 	FunctionDeclaration node;
 	bool valid;
-	Identifier[] localVars;
+	Identifier[] localVars; // includes parameters
 	int varIndex(Identifier id)
 	{
 		foreach(int i, varId; localVars)
 			if (varId == id) return i;
-		return 0;
+		throw new Error("Invalid id");
 	}
 }
 
@@ -65,13 +65,11 @@ class FunctionAnalyser : DepthAstVisitor {
 		localVars = null;
 		foreach (param; node.parameters)
 		{
-			if(findRegisteredVar(param.id) == -1)
-			{
+			if(findRegisteredVar(param.id) == -1) {
 				registerVar(param.id);
-			}
-			else
-			{
-				semantics_error("Duplicate parameter name '%s'", idMap.get(param.id));
+			} else {
+				semantics_error("Duplicate parameter '%s' in func '%s' at %s",
+					idMap.get(param.id), idMap.get(node.id), param.loc);
 				return new FunctionSemantics(node, false, localVars);
 			}
 		}

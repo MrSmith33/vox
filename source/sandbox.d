@@ -240,7 +240,7 @@ void testVMs()
 
 
 
-string input = q{func main(param1){ a = 42; return param1 + a + 10; }};
+string input = q{func main(param1, param2){ a = 1; b = 10; return param1 - param2 + a + b; }};
 
 void testLang()
 {
@@ -250,7 +250,7 @@ void testLang()
 	import lang.ast;
 	import lang.semantics;
 
-	enum times = 100_000;
+	enum times = 10_000;
 	auto time0 = currTime;
 
 	auto idMap = new IdentifierMap();
@@ -269,7 +269,8 @@ void testLang()
 	}
 	catch(ParsingException e)
 	{
-		writefln("line %s col %s: [ERROR] %s", e.token.line, e.token.col, e.msg);
+		auto loc = e.token.loc;
+		writefln("%s: [ERROR] %s", loc, e.msg);
 		writeln(e);
 		return;
 	}
@@ -283,11 +284,10 @@ void testLang()
 		if (!moduleSemantics.globalFunctions[0].valid) return;
 	}
 
-
 	auto time2 = currTime;
 
 	CodeGen codeGen;
-	alias JittedFunc = int function(int);
+	alias JittedFunc = extern(C) int function(int, int);
 	JittedFunc func;
 	foreach (_; 0..times)
 	{
@@ -300,7 +300,7 @@ void testLang()
 	int res;
 	foreach (_; 0..times)
 	{
-		res = func(42);
+		res = func(1, 2);
 	}
 
 	auto time4 = currTime;
@@ -311,7 +311,7 @@ void testLang()
 		scaledNumberFmt(time3 - time2, 1.0/times),
 		scaledNumberFmt(time4 - time3, 1.0/times));
 	writeln(input);
-	//printAST(moduleDecl, idMap);
+	printAST(moduleDecl, idMap);
 	printHex(codeGen.code, 8);
 	writefln("func() == %s", res);
 }
