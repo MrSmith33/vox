@@ -289,8 +289,10 @@ struct Parser
 		return n;
 	}
 
-	Expression term() { /* <term> ::= <id> | <id> "(" <expr_list> ")" | <int> | <paren_expr> */
-		if (tok.type == TokenType.ID) {
+	Expression term() /* <term> ::= <id> | <id> "(" <expr_list> ")" | <int> | <paren_expr> */
+	{
+		if (tok.type == TokenType.ID)
+		{
 			string name = lexer.getTokenString(tok);
 			Identifier id = idMap.getOrReg(name);
 			nextToken();
@@ -303,10 +305,9 @@ struct Parser
 			}
 			return make!VariableExpression(id);
 		}
-		else if (tok.type == TokenType.DECIMAL_NUM) {
-			string num = lexer.getTokenString(tok);
-			import std.conv : to;
-			int value=to!int(num);
+		else if (tok.type == TokenType.DECIMAL_NUM)
+		{
+			long value = lexer.getTokenNumber();
 			nextToken();
 			return make!ConstExpression(value);
 		}

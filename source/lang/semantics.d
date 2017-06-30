@@ -108,5 +108,7 @@ class FunctionAnalyser : DepthAstVisitor {
 		else if (numArgs > numParams)
 			throw semantics_error(c.loc, "Too much parameters to '%s', got %s, expected %s",
 				idMap.get(c.calleeId), numArgs, numParams);
+
+		super.visit(c);
 	}
 }

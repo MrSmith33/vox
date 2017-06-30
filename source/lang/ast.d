@@ -161,7 +161,7 @@ class VariableExpression : Expression {
 class ConstExpression : Expression {
 	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
-	int value;
+	long value;
 }
 
 enum BinOp { ADD, SUB, MUL, DIV, MOD, SHL, SHR, ASHR, AND, OR, ANDAND, OROR, LT, GT, LE, GE, EQUAL, NOTEQUAL, ASSIGN }

@@ -133,6 +133,8 @@ struct Lexer2
 	private uint startLine;
 	private uint startCol;
 
+	private long numberRep;
+
 	private void nextChar()
 	{
 		++position;
@@ -148,6 +150,7 @@ struct Lexer2
 	}
 
 	string getTokenString(Token tok) pure { return input[tok.loc.start..tok.loc.start+tok.loc.size]; }
+	long getTokenNumber() { return numberRep; }
 
 	Token nextToken()
 	{
@@ -284,8 +287,18 @@ struct Lexer2
 
 	private void consumeDecimal()
 	{
-		while (isDigit(c))
+		numberRep = c - '0';
+		nextChar();
+		while (true)
 		{
+			if ('0' <= c && c <= '9')
+			{
+				numberRep = numberRep * 10 + c - '0';
+			}
+			else if (c != '_')
+			{
+				return;
+			}
 			nextChar();
 		}
 	}
@@ -304,11 +317,6 @@ struct Lexer2
 			nextChar();
 		}
 	}
-}
-
-private bool isDigit(char chr) pure nothrow
-{
-	return '0' <= chr && chr <= '9';
 }
 
 private bool isIdSecond(char chr) pure nothrow

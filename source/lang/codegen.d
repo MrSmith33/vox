@@ -276,7 +276,7 @@ struct CodeGen
 		}
 		else if (auto c = cast(ConstExpression)node)
 		{
-			gen.movd(TEMP_REG_1, Imm32(c.value));
+			gen.movd(TEMP_REG_1, Imm32(cast(int)c.value));
 		}
 		else if (auto b = cast(BinaryExpression)node)
 		{
