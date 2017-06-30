@@ -24,6 +24,10 @@ void main()
 
 	testVMs();
 	testLang();
+	writefln("main() == %s", runScript(q{func main(){return 42;}}, "main"));
+	writefln("main(20) == %s", runScript(q{func main(par){return par;}}, "main", 20));
+	writefln("main(20) == %s", runScript(q{func main(par){return par+par;}}, "main", 20));
+	writefln("main(20) == %s", runScript(q{func main(par){return sub(par);} func sub(a){return a+a;}}, "main", 20));
 
 	CodeGen_x86_64 codeGen;
 	codeGen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
@@ -233,30 +237,80 @@ void testVMs()
 		scaledNumberFmt(time3 - time2, 1.0/times));
 
 	//printHex(jit_vm.code, 8);
-	printAST(rootNode);
+	//printAST(rootNode);
 
 	writefln("Total %ss", scaledNumberFmt(time3 - time0));
 }
 
+auto runScript(Args...)(string input, string funcName, Args args)
+{
+	LangVM vm; vm.setup();
+	vm.compileModule(input);
+	return vm.run!int(funcName, args);
+}
 
+struct LangVM
+{
+	import lang;
+
+	private IdentifierMap idMap;
+	private Lexer2 lexer;
+	private Parser parser;
+	private CodeGen codeGen;
+	private Module moduleDecl;
+	private ModuleSemantics moduleSemantics;
+	private bool valid;
+
+	void setup()
+	{
+		idMap = new IdentifierMap();
+		parser = Parser(&lexer, idMap);
+		parser.setup();
+		codeGen.setup();
+	}
+
+	void compileModule(string source)
+	{
+		valid = true;
+		try {
+			lexer = Lexer2(source);
+			moduleDecl = parser.parseModule();
+			moduleSemantics = analyzeModule(moduleDecl, idMap);
+			codeGen.compileModule(moduleSemantics);
+		} catch(CompilationException e) {
+			writefln("[ERROR] %s: %s", e.loc, e.msg);
+			valid = false;
+		}
+	}
+
+	ResultType run(ResultType, Args...)(string funcName, Args args)
+	{
+		alias JittedFunc = extern(C) ResultType function(Args);
+		auto id = idMap.find(funcName);
+		if (id == Identifier.max) throw runtime_error("Unknown function name '%s'", funcName);
+		auto fun = moduleSemantics.tryGetFunction(id);
+		if (fun is null) throw runtime_error("'%s' is not a function name", funcName);
+		if (!valid) throw runtime_error("Cannot start '%s'. Module compiled with errors", funcName);
+		JittedFunc func = cast(JittedFunc)fun.funcPtr;
+		auto result = func(args);
+		return result;
+	}
+}
 
 string input = q{
-func main(param1, param2) {
-	a = 1; b = sub(10);
-	return param1 - param2 + a + b;
-}
-func sub(par) { return 42; }
+	func main() {
+		return sub(1, 2, 3, 4, 5, 6); // returns 21 as expected
+	}
+	func sub(a, b, c, d, e, f) {
+		return a + b + c + d + e + f;
+	}
 };
 
 void testLang()
 {
-	import lang.codegen;
-	import lang.parse;
-	import lang.lex2;
-	import lang.ast;
-	import lang.semantics;
+	import lang;
 
-	enum times = 10_000;
+	enum times = 100_000;
 	auto time0 = currTime;
 
 	auto idMap = new IdentifierMap();
@@ -275,30 +329,35 @@ void testLang()
 	}
 	catch(ParsingException e)
 	{
-		auto loc = e.token.loc;
+		auto loc = e.loc;
 		writefln("%s: [ERROR] %s", loc, e.msg);
-		writeln(e);
 		return;
 	}
 
 	auto time1 = currTime;
 
 	ModuleSemantics moduleSemantics;
-	foreach (_; 0..times)
+	try
 	{
-		moduleSemantics = analyzeModule(moduleDecl, idMap);
-		if (!moduleSemantics.globalFunctions[0].valid) return;
+		foreach (_; 0..times)
+		{
+			moduleSemantics = analyzeModule(moduleDecl, idMap);
+		}
+	}
+	catch(SemanticsException e)
+	{
+		auto loc = e.loc;
+		writefln("[ERROR] %s: %s", loc, e.msg);
+		return;
 	}
 
 	auto time2 = currTime;
 
 	CodeGen codeGen;
-	alias JittedFunc = extern(C) int function(int, int);
-	JittedFunc func;
 	foreach (_; 0..times)
 	{
 		codeGen.setup();
-		func = cast(JittedFunc)codeGen.compileFunction(moduleSemantics.globalFunctions[0]);
+		codeGen.compileModule(moduleSemantics);
 	}
 
 	auto time3 = currTime;
@@ -306,7 +365,9 @@ void testLang()
 	int res;
 	foreach (_; 0..times)
 	{
-		res = func(1, 2);
+		alias JittedFunc = extern(C) int function(int, int, int, int, int, int);
+		JittedFunc func = cast(JittedFunc)moduleSemantics.functions[0].funcPtr; // main
+		res = func(1, 2, 3, 4, 5, 6);
 	}
 
 	auto time4 = currTime;
@@ -318,6 +379,6 @@ void testLang()
 		scaledNumberFmt(time4 - time3, 1.0/times));
 	writeln(input);
 	printAST(moduleDecl, idMap);
-	printHex(codeGen.code, 8);
+	printHex(codeGen.code, 16);
 	writefln("func() == %s", res);
 }

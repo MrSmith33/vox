@@ -6,6 +6,7 @@ Authors: Andrey Penechko.
 module utils;
 
 import std.traits : isIntegral;
+public import std.algorithm : min, max;
 
 enum size_t PAGE_SIZE = 4096;
 
@@ -181,4 +182,56 @@ double scaled(Num)(Num num, int scale)
 {
 	import std.math: pow;
 	return num * pow(10.0, scale);
+}
+
+struct Buffer(T)
+{
+	import std.experimental.allocator.gc_allocator;
+	alias allocator = GCAllocator.instance;
+	T[] buf;
+	// Must be kept private since it can be used to check for avaliable space
+	// when used as output range
+	private size_t length;
+
+	void put(T[] items ...)
+	{
+		reserve(items.length);
+		buf[length..length+items.length] = items;
+		length += items.length;
+	}
+
+	void put(R)(R itemRange)
+	{
+		foreach(item; itemRange)
+			put(item);
+	}
+
+	void stealthPut(T item)
+	{
+		reserve(1);
+		buf[length] = item;
+	}
+
+	inout(T[]) data() inout {
+		return buf[0..length];
+	}
+
+	void clear() nothrow {
+		length = 0;
+	}
+
+	size_t capacity() const @property {
+		return buf.length - length;
+	}
+
+	void reserve(size_t items)
+	{
+		if (buf.length - length < items)
+		{
+			size_t newCapacity = nextPOT(buf.length + items);
+			void[] tmp = buf;
+			allocator.reallocate(tmp, newCapacity*T.sizeof);
+			buf = cast(T[])tmp;
+		}
+	}
 }

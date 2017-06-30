@@ -37,36 +37,62 @@ struct CodeGen
 	enum USE_FRAME_POINTER = true;
 	CodeGen_x86_64 gen;
 
+
 	static struct ReturnFixup {
 		Fixup jmp_to_ret_fixup;
 		PC jmp_pc_from;
 	}
-
-	private ReturnFixup[] returnFixups;
-
-	private FunctionSemantics func;
-
-	void* compileFunction(FunctionSemantics func)
-	{
-		this.func = func;
-		void* funPtr = gen.pc;
-
-		compileFuncProlog();
-		compileFuncBody();
-		compileFuncEpilog();
-
-		return funPtr;
+	static struct CallFixup {
+		Fixup call_fixup;
+		FunctionSemantics callee;
 	}
+
+	private Buffer!ReturnFixup returnFixups;
+	private Buffer!CallFixup callFixups;
+
+	private FunctionSemantics currentFunc;
+	private ModuleSemantics moduleData;
 
 	private int numParams;
 	private int numLocals;
 	private int numVars; // numLocals + numParams
 	private int reservedBytes;
 
+	void compileModule(ModuleSemantics mod)
+	{
+		moduleData = mod;
+		foreach (func; moduleData.functions)
+		{
+			compileFunction(func);
+		}
+		fixFixups();
+	}
+
+	void compileFunction(FunctionSemantics func)
+	{
+		this.currentFunc = func;
+		void* funcPtr = gen.pc;
+
+		compileFuncProlog();
+		compileFuncBody();
+		compileFuncEpilog();
+
+		currentFunc.funcPtr = funcPtr;
+	}
+
+	void fixFixups()
+	{
+		foreach(fixup; callFixups.data) {
+			if (!fixup.callee.funcPtr) throw new Error("Invalid funcPtr");
+			fixup.call_fixup.call(cast(PC)fixup.callee.funcPtr);
+		}
+		callFixups.clear();
+	}
+
 	void compileFuncProlog()
 	{
-		numParams = cast(int)func.node.parameters.length;
-		numLocals = cast(int)(func.localVars.length - numParams);
+		numParams = cast(int)currentFunc.node.parameters.length;
+		numLocals = cast(int)(currentFunc.localVars.length - numParams);
 		numVars = numLocals + numParams;
 
 		// Copy parameters from registers to shadow space
@@ -101,14 +127,14 @@ struct CodeGen
 			foreach(i; 0..numLocals) gen.movq(varMemAddress(numParams+i), RET_REG);
 		}
 
-		returnFixups.length = 0;
 		// body
-		compileNode(func.node.statements);
+		compileNode(currentFunc.node.statements);
 
 		// fix jump to exit
-		foreach(fixup; returnFixups) {
+		foreach(fixup; returnFixups.data) {
 			fixup.jmp_to_ret_fixup.jmp(jumpOffset(fixup.jmp_pc_from, gen.pc));
 		}
+		returnFixups.clear();
 	}
 
 	void compileFuncEpilog()
@@ -131,7 +157,6 @@ struct CodeGen
 	MemAddress varMemAddress(int varIndex)
 	{
 		bool isParameter = varIndex < numParams;
-		int displacement;
 		Register baseReg;
 
 		int index;
@@ -169,9 +194,8 @@ struct CodeGen
 			}
 			baseReg = Register.SP;
 		}
-		displacement = index * STACK_ITEM_SIZE;
-		if (displacement > byte.max) return memAddrBaseDisp32(baseReg, displacement);
-		else return memAddrBaseDisp8(baseReg, cast(byte)displacement);
+		int displacement = index * STACK_ITEM_SIZE;
+		return minMemAddrBaseDisp(baseReg, displacement);
 	}
 
 	void compileNode(AstNode node)
@@ -238,7 +262,7 @@ struct CodeGen
 
 			auto return_fix = gen.saveFixup();
 			gen.jmp(Imm32(0));
-			returnFixups ~= ReturnFixup(return_fix, gen.pc);
+			returnFixups.put(ReturnFixup(return_fix, gen.pc));
 		}
 		else if (auto e = cast(ExpressionStatement)node)
 		{
@@ -248,7 +272,7 @@ struct CodeGen
 		// Expressions
 		else if (auto v = cast(VariableExpression)node)
 		{
-			gen.movd(TEMP_REG_1, varMemAddress(func.varIndex(v.id)));
+			gen.movd(TEMP_REG_1, varMemAddress(currentFunc.varIndex(v.id)));
 		}
 		else if (auto c = cast(ConstExpression)node)
 		{
@@ -279,7 +303,7 @@ struct CodeGen
 					break;
 				case BinOp.ASSIGN:
 					compileNode(b.right);
-					int varIndex = func.varIndex((cast(VariableExpression)b.left).id);
+					int varIndex = currentFunc.varIndex((cast(VariableExpression)b.left).id);
 					gen.movd(varMemAddress(varIndex), TEMP_REG_1);
 					break;
 				default: assert(false, "Not implemented");
@@ -287,7 +311,48 @@ struct CodeGen
 		}
 		else if (auto c = cast(CallExpression)node)
 		{
-			gen.movd(TEMP_REG_1, Imm32(42)); // TODO
+			compileCall(c);
 		}
+	}
+
+	void compileCall(CallExpression c)
+	{
+		//int numParams = cast(int)c.callee.parameters.length;
+		int numParams = cast(int)c.args.length;
+		int stackReserve = max(numParams, 4) * STACK_ITEM_SIZE;
+		gen.subq(Register.SP, Imm32(cast(byte)stackReserve));
+		if (c.args.length)
+		{
+			// XXX Extra param   - - - - RSP + 40  28h
+			// XXX Extra param   - - - - RSP + 32  20h
+			// XXX Shadow space  - - - - RSP + 24  18h r9d
+			// XXX Shadow space  - - - - RSP + 16  10h r8d
+			// XXX Shadow space  - - - - RSP +  8   8h edx
+			// XXX Shadow space  -   <-- RSP +  0   0h ecx
+			foreach (int i, arg; c.args)
+			{
+				compileNode(arg);
+				int argDisp = i * STACK_ITEM_SIZE;
+				gen.movd(minMemAddrBaseDisp(Register.SP, argDisp), TEMP_REG_1);
+			}
+
+			if (numParams > 3) gen.movq(Register.R9, memAddrBaseDisp8(Register.SP, 24));
+			if (numParams > 2) gen.movq(Register.R8, memAddrBaseDisp8(Register.SP, 16));
+			if (numParams > 1) gen.movq(Register.DX, memAddrBaseDisp8(Register.SP,  8));
+			if (numParams > 0) gen.movq(Register.CX, memAddrBase(Register.SP));
+		}
+
+		FunctionSemantics callee = moduleData.getFunction(c.calleeId);
+		if (callee.funcPtr)
+		{
+			gen.call(cast(PC)callee.funcPtr);
+		}
+		else
+		{
+			callFixups.put(CallFixup(gen.saveFixup(), callee));
+			gen.call(PC(null));
+		}
+		gen.movd(TEMP_REG_1, RET_REG);
+		gen.addq(Register.SP, Imm32(cast(byte)stackReserve));
 	}
 }

@@ -7,6 +7,7 @@ module lang.parse;
 
 import lang.lex2;
 import lang.ast;
+import lang.error;
 
 import std.stdio;
 
@@ -101,20 +102,10 @@ void printAST(AstNode n, IdentifierMap idMap, int indentSize = 1)
 		override void visit(VariableExpression v) { print("VAR ", idMap.get(v.id)); }
 		override void visit(ConstExpression c) { print("CONST ", c.value); }
 		override void visit(BinaryExpression b) { print("BINOP ", b.op); pr_node(b.left); pr_node(b.right); }
-		override void visit(CallExpression c) { print("CALL ", idMap.get(c.id)); foreach(a; c.args) pr_node(a); }
+		override void visit(CallExpression c) { print("CALL ", idMap.get(c.calleeId)); foreach(a; c.args) pr_node(a); }
 	};
 
 	pr_node(n);
-}
-
-class ParsingException : Exception
-{
-	this(Args...)(Token token, string msg, Args args) {
-		this.token = token;
-		import std.string : format;
-		super(format(msg, args));
-	}
-	Token token;
 }
 
 //version = Mmap_mem;
@@ -152,14 +143,10 @@ struct Parser
 		while (tok.type == TokenType.COMMENT);
 	}
 
-	void syntax_error(Args...)(Args args) {
-		throw new ParsingException(tok, args);
-	}
-
 	Token expectAndConsume(TokenType type) {
 		if (tok.type != type) {
 			string tokenString = lexer.getTokenString(tok);
-			syntax_error("Expected '%s', while got '%s'", type, tokenString);
+			throw syntax_error(tok.loc, "Expected '%s', while got '%s'", type, tokenString);
 		}
 		scope(exit) nextToken();
 		return tok;
@@ -181,14 +168,14 @@ struct Parser
 		expectAndConsume(TokenType.FUNC_SYM); // <func_decl> ::= "func" <id> "(" (<id> ",")* ")" <compound_statement>
 		Token funcNameTok = expectAndConsume(TokenType.ID);
 		string funcName = lexer.getTokenString(funcNameTok);
-		auto funcId = idMap.get(funcName);
+		auto funcId = idMap.getOrReg(funcName);
 		expectAndConsume(TokenType.LPAREN);
 		VariableExpression[] params;
 		while (tok.type != TokenType.RPAREN)
 		{
 			Token paramTok = expectAndConsume(TokenType.ID);
 			string paramName = lexer.getTokenString(paramTok);
-			Identifier paramId = idMap.get(paramName);
+			Identifier paramId = idMap.getOrReg(paramName);
 			params ~= make!VariableExpression(paramId);
 			if (tok.type == TokenType.COMMA) nextToken();
 			else break;
@@ -305,7 +292,7 @@ struct Parser
 	Expression term() { /* <term> ::= <id> | <id> "(" <expr_list> ")" | <int> | <paren_expr> */
 		if (tok.type == TokenType.ID) {
 			string name = lexer.getTokenString(tok);
-			Identifier id = idMap.get(name);
+			Identifier id = idMap.getOrReg(name);
 			nextToken();
 			if (tok.type == TokenType.LPAREN) // <term> ::= <id> "(" <expr_list> ")"
 			{

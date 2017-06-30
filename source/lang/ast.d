@@ -17,7 +17,11 @@ class IdentifierMap {
 		return strings[id];
 	}
 
-	Identifier get(string str) {
+	Identifier find(string str) {
+		return map.get(str, uint.max);
+	}
+
+	Identifier getOrReg(string str) {
 		uint id = map.get(str, uint.max);
 		if (id == uint.max) {
 			id = cast(uint)strings.length;
@@ -73,6 +77,12 @@ class Module : Declaration {
 	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
 	FunctionDeclaration[] functions;
+	FunctionDeclaration getFunction(Identifier id)
+	{
+		foreach(fun; functions)
+			if (fun.id == id) return fun;
+		throw new Error("Invalid function id");
+	}
 }
 
 class FunctionDeclaration : Declaration {
@@ -167,6 +177,6 @@ class BinaryExpression : Expression {
 class CallExpression : Expression {
 	this(SourceLocation loc, typeof(this.tupleof) args) { this.loc = loc; this.tupleof = args; }
 	override void accept(AstVisitor v) { v.visit(this); }
-	Identifier id;
+	Identifier calleeId;
 	Expression[] args;
 }

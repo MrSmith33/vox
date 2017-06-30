@@ -211,6 +211,15 @@ MemAddress memAddrBaseIndexDisp8(Register baseReg, Register indexReg, SibScale s
 	return MemAddress(sibAddrType(MemAddrType.baseIndexDisp8), indexReg, baseReg, scale, disp8); // with SIB
 }
 
+// Shortcut for memAddrBaseDisp32 and memAddrBaseDisp8. memAddrBaseDisp8 is used when possible.
+MemAddress minMemAddrBaseDisp(Register baseReg, int displacement)
+{
+	if (displacement < byte.min || displacement > byte.max)
+		return memAddrBaseDisp32(baseReg, displacement);
+	else
+		return memAddrBaseDisp8(baseReg, cast(byte)displacement);
+}
+
 // Opcode structures for 1-byte and 2-byte encodings
 struct OP1 { enum size = 1; ubyte op0; }
 struct OP2 { enum size = 2; ubyte op0; ubyte op1; }
