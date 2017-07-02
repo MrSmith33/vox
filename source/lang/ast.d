@@ -5,7 +5,7 @@ Authors: Andrey Penechko.
 */
 module lang.ast;
 
-import lang.lex2 : SourceLocation;
+import lang.lex : SourceLocation;
 
 alias Identifier = uint;
 

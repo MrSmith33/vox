@@ -8,6 +8,6 @@ module lang;
 public import lang.ast;
 public import lang.codegen;
 public import lang.error;
-public import lang.lex2;
+public import lang.lex;
 public import lang.parse;
 public import lang.semantics;

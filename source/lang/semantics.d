@@ -6,7 +6,7 @@ Authors: Andrey Penechko.
 module lang.semantics;
 
 import lang.ast;
-import lang.lex2 : SourceLocation;
+import lang.lex : SourceLocation;
 import lang.error;
 
 

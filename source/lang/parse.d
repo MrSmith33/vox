@@ -5,7 +5,7 @@ Authors: Andrey Penechko.
 */
 module lang.parse;
 
-import lang.lex2;
+import lang.lex;
 import lang.ast;
 import lang.error;
 

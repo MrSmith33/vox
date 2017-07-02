@@ -6,7 +6,7 @@ Authors: Andrey Penechko.
 module lang.error;
 
 import std.string : format;
-import lang.lex2 : SourceLocation;
+import lang.lex : SourceLocation;
 
 class RuntimeException : Exception
 {
