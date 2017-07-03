@@ -5,8 +5,8 @@ Authors: Andrey Penechko.
 */
 module lang.codegen;
 
-import lang.ast;
-import lang.semantics;
+import lang.ast.ast;
+import lang.semantics.semantics;
 
 struct CodeGen
 {

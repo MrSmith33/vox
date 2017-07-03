@@ -3,9 +3,9 @@ Copyright: Copyright (c) 2017 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
-module lang.semantics;
+module lang.semantics.semantics;
 
-import lang.ast;
+import lang.ast.ast;
 import lang.lex : SourceLocation;
 import lang.error;
 
@@ -54,7 +54,7 @@ ModuleSemantics analyzeModule(Module moduleDecl, IdentifierMap idMap)
 	return new ModuleSemantics(moduleDecl, functions);
 }
 
-class FunctionAnalyser : DepthAstVisitor {
+class FunctionAnalyser : FunctionVisitor {
 	this(Module moduleDecl, IdentifierMap idMap)
 	{
 		this.moduleDecl = moduleDecl;

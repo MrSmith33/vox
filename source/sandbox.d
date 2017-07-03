@@ -310,7 +310,7 @@ void testLang()
 {
 	import lang;
 
-	enum times = 100_000;
+	enum times = 10_000;
 	auto time0 = currTime;
 
 	auto idMap = new IdentifierMap();

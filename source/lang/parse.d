@@ -6,7 +6,7 @@ Authors: Andrey Penechko.
 module lang.parse;
 
 import lang.lex;
-import lang.ast;
+import lang.ast.ast;
 import lang.error;
 
 import std.stdio;

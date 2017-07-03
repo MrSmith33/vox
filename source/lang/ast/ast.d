@@ -3,7 +3,7 @@ Copyright: Copyright (c) 2017 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
-module lang.ast;
+module lang.ast.ast;
 
 import lang.lex : SourceLocation;
 
@@ -49,9 +49,9 @@ abstract class AstVisitor
 	void visit(CallExpression){}
 }
 
-class DepthAstVisitor : AstVisitor
+
+class FunctionVisitor : AstVisitor
 {
-	override void visit(Module m) { foreach(f; m.functions) f.accept(this); }
 	override void visit(FunctionDeclaration f) { foreach(p; f.parameters) p.accept(this); f.statements.accept(this); }
 	override void visit(IfStatement n) { n.condition.accept(this); n.thenStatement.accept(this); }
 	override void visit(IfElseStatement n) { n.condition.accept(this); n.thenStatement.accept(this); n.elseStatement.accept(this); }
@@ -63,6 +63,7 @@ class DepthAstVisitor : AstVisitor
 	override void visit(BinaryExpression b) { b.left.accept(this); b.right.accept(this); }
 	override void visit(CallExpression c) { foreach(a; c.args) a.accept(this); }
 }
+
 
 abstract class AstNode {
 	void accept(AstVisitor);

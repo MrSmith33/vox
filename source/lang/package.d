@@ -5,9 +5,9 @@ Authors: Andrey Penechko.
 */
 module lang;
 
-public import lang.ast;
+public import lang.ast.ast;
 public import lang.codegen;
 public import lang.error;
 public import lang.lex;
 public import lang.parse;
-public import lang.semantics;
+public import lang.semantics.semantics;
