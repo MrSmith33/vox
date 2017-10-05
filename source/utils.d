@@ -7,6 +7,7 @@ module utils;
 
 import std.traits : isIntegral;
 public import std.algorithm : min, max;
+import std.stdio;
 
 enum size_t PAGE_SIZE = 4096;
 
@@ -34,18 +35,26 @@ version(Posix)
 }
 else version(Windows)
 {
-	import core.sys.windows.windows : VirtualAlloc, VirtualFree, MEM_COMMIT,
+	import core.sys.windows.windows : GetLastError, VirtualAlloc, VirtualFree, VirtualProtect, MEM_COMMIT,
 		PAGE_READWRITE, MEM_RELEASE, PAGE_EXECUTE_READWRITE, MEM_RESERVE;
 
-	ubyte[] allocate(size_t bytes, bool is_executable)
+	ubyte[] allocate(size_t bytes, void* location, bool is_executable)
 	{
 		if (!bytes) return null;
 
-		int protection = is_executable ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
+		writefln("allocate 0x%s bytes at 0x%s", cast(void*)bytes, location);
 
-		auto p = VirtualAlloc(null, bytes, MEM_COMMIT | MEM_RESERVE, protection);
+		int protection = is_executable ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
+		auto p = VirtualAlloc(location, bytes, MEM_COMMIT | MEM_RESERVE, protection);
 		if (p == null)
+		{
+			import std.stdio;
+			import std.windows.syserror;
+			int errCode = GetLastError();
+			writeln(sysErrorString(errCode));
+			assert(false);
 			return null;
+		}
 		return cast(ubyte[])p[0 .. bytes];
 	}
 
@@ -53,11 +62,75 @@ else version(Windows)
 	{
 		return b.ptr is null || VirtualFree(b.ptr, 0, MEM_RELEASE) != 0;
 	}
+
+	void markAsRW(void* addr, size_t numPages)
+	{
+		uint val;
+		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_READWRITE, &val);
+	}
+
+	enum MemType
+	{
+		RW,
+		RWX
+	}
+
+	struct MemAllocator
+	{
+		void* location = cast(void*)0x4000_0000UL;
+		ubyte[] allocate(size_t bytes, MemType memoryType)
+		{
+			ubyte[] res;
+			final switch(memoryType)
+			{
+				case MemType.RW: res = .allocate(bytes, location, false); break;
+				case MemType.RWX: res = .allocate(bytes, location, true); break;
+			}
+			location += bytes;
+			return res;
+		}
+
+		void free(ubyte[] b)
+		{
+			deallocate(b);
+		}
+	}
+
+	void testAdresses()
+	{
+		import std.stdio;
+		import std.windows.syserror;
+		import core.sys.windows.windows;
+		size_t successful;
+		size_t failed;
+		size_t bytes = PAGE_SIZE * 1024;
+		foreach(ulong loc; 0..16 * 16)
+		{
+			void* location = cast(void*)(loc*64*1024*1024);
+			auto p = VirtualAlloc(location, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+			if (p == null)
+			{
+				int errCode = GetLastError();
+				writefln("Fail loc %s err '%s'", location, sysErrorString(errCode));
+				++failed;
+			}
+			else
+			{
+				++successful;
+				VirtualFree(p, 0, MEM_RELEASE);
+				writefln("Success loc %s ptr %s", location, p);
+			}
+		}
+
+		writefln("s %s", successful);
+		writefln("f %s", failed);
+	}
 }
 
 ubyte[] alloc_executable_memory(size_t bytes)
 {
-	return allocate(bytes, true);
+	return allocate(bytes, cast(void*)0x4000_0000UL, true);
 }
 
 bool free_executable_memory(ubyte[] bytes)
@@ -106,6 +179,12 @@ T paddingSize(T)(T address, T alignment)
 	return cast(T)(alignValue(address, alignment) - address);
 }
 
+import std.datetime : MonoTime, Duration, usecs, dur;
+
+MonoTime currTime() {
+	return MonoTime.currTime();
+}
+
 struct ScaledNumberFmt(T)
 {
 	T value;
@@ -124,7 +203,6 @@ auto scaledNumberFmt(T)(T value)
 	return ScaledNumberFmt!T(value);
 }
 
-import std.datetime : Duration;
 auto scaledNumberFmt(Duration value, double scale = 1)
 {
 	double seconds = value.total!"hnsecs" / 10_000_000.0;

@@ -5,28 +5,36 @@ Authors: Andrey Penechko.
 */
 module asmtest.utils;
 
-//version(unittest)
-
 public import amd64asm;
 import utils;
-import std.stdio;
-import std.string : format;
-CodeGen_x86_64 testCodeGen;
 
-void assertHexAndReset(string file = __MODULE__, size_t line = __LINE__)(string expected) {
-	assertEqual!(file, line)(expected, toHexString(testCodeGen.encoder.code));
-	testCodeGen.encoder.resetPC();
-}
-
-private string toHexString(ubyte[] arr)
+struct CodegenTester
 {
-	return format("%(%02X%)", arr);
+	CodeGen_x86_64 gen;
+	alias gen this;
+
+	void assertHexAndReset(string file = __MODULE__, size_t line = __LINE__)(string expected) {
+		assertEqual!(file, line)(expected, toHexString(gen.encoder.code));
+		gen.encoder.resetPC();
+	}
+
+	void setup()
+	{
+		import asmtest.utils;
+		gen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
+	}
+
+	void free()
+	{
+		free_executable_memory(gen.encoder.freeBuffer);
+	}
 }
 
 void assertEqual(string file = __MODULE__, size_t line = __LINE__, A, B)(A expected, B generated)
 {
 	if (expected != generated)
 	{
+		import std.stdio;
 		writefln("%s expected", expected);
 		writefln("%s generated", generated);
 		stdout.flush();
@@ -36,3 +44,8 @@ void assertEqual(string file = __MODULE__, size_t line = __LINE__, A, B)(A expec
 	}
 }
 
+private string toHexString(ubyte[] arr)
+{
+	import std.string : format;
+	return format("%(%02X%)", arr);
+}

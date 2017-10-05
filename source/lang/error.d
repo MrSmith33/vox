@@ -10,11 +10,11 @@ import lang.lex : SourceLocation;
 
 class RuntimeException : Exception
 {
-	this(string msg) { super(msg); }
+	this(string msg, int line, string file) { super(msg); this.line = line; this.file = file; }
 }
 
-RuntimeException runtime_error(Args...)(string msg, Args args) {
-	return new RuntimeException(format(msg, args));
+RuntimeException runtime_error(Args...)(string msg, Args args, int line = __LINE__, string file = __FILE__) {
+	return new RuntimeException(format(msg, args), line, file);
 }
 
 class CompilationException : Exception

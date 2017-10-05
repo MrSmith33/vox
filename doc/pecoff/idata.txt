@@ -1,0 +1,135 @@
+.idata section
+PointerToRawData 600h (FA)
+VirtualAddress 3000h  (RVA)
+  RVA |   FA    0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+------+-------------------------------------------------------------------------
+3000h | 0600h: 58 30 00 00 00 00 00 00 00 00 00 00 3C 30 00 00  X0..........<0..
+3010h | 0610h: 68 30 00 00 88 30 00 00 00 00 00 00 00 00 00 00  h0..ˆ0..........
+3020h | 0620h: 4A 30 00 00 98 30 00 00 00 00 00 00 00 00 00 00  J0..˜0..........
+3030h | 0630h: 00 00 00 00 00 00 00 00 00 00 00 00 4B 45 52 4E  ............KERN
+3040h | 0640h: 45 4C 33 32 2E 44 4C 4C 00 00 57 52 49 54 45 4D  EL32.DLL..WRITEM
+3050h | 0650h: 53 47 2E 44 4C 4C 00 00 78 30 00 00 00 00 00 00  SG.DLL..x0......
+3060h | 0660h: 00 00 00 00 00 00 00 00 78 30 00 00 00 00 00 00  ........x0......
+3070h | 0670h: 00 00 00 00 00 00 00 00 00 00 45 78 69 74 50 72  ..........ExitPr
+3080h | 0680h: 6F 63 65 73 73 00 00 00 A8 30 00 00 00 00 00 00  ocess...¨0......
+3090h | 0690h: 00 00 00 00 00 00 00 00 A8 30 00 00 00 00 00 00  ........¨0......
+30A0h | 06A0h: 00 00 00 00 00 00 00 00 00 00 57 72 69 74 65 4D  ..........WriteM
+30B0h | 06B0h: 65 73 73 61 67 65 00 00 00 00 00 00 00 00 00 00  essage..........
+
+Dir 0
+      importLookupTableRVA | 3058
+                 timestamp | 0000
+            forwarderChain | 0000
+                   nameRVA | 303C
+     importAddressTableRVA | 3068
+3000h | 0600h:>58 30 00 00|00 00 00 00|00 00 00 00|3C 30 00 00  X0..........<0..
+3010h | 0610h: 68 30 00 00<                                     h0..
+
+Dir 1
+      importLookupTableRVA | 3088
+                 timestamp | 0000
+            forwarderChain | 0000
+                   nameRVA | 304A
+     importAddressTableRVA | 3098
+3010h | 0610h:            >88 30 00 00|00 00 00 00|00 00 00 00  h0..ˆ0..........
+3020h | 0620h: 4A 30 00 00|98 30 00 00<                         J0..˜0..........
+
+Dir null
+3020h | 0620h:                        >00 00 00 00|00 00 00 00          ........
+3030h | 0630h: 00 00 00 00|00 00 00 00|00 00 00 00<             ............
+------+-------------------------------------------------------------------------
+
+                                                 303C
+3030h | 0630h:                                     4B 45 52 4E              KERN
+3040h | 0640h: 45 4C 33 32 2E 44 4C 4C 00 00                    EL32.DLL..
+
+                                           304A
+3040h | 0640h:                               57 52 49 54 45 4D            WRITEM
+3050h | 0650h: 53 47 2E 44 4C 4C 00 00                          SG.DLL..
+------+-------------------------------------------------------------------------
+
+Import Lookup Entry 0 of Dir 0
+	Hint/Name Table RVA: 3078
+                                     3058
+3050h | 0650h:                         78 30 00 00 00 00 00 00          x0......
+
+Import Lookup Entry 1 of Dir 0
+	Null entry - last entry for Dir 0
+3060h | 0660h: 00 00 00 00 00 00 00 00                          ........
+
+------+-------------------------------------------------------------------------
+   VA |   FA    0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+------+-------------------------------------------------------------------------
+
+Import Address Entry 0 of Dir 0
+	has the same data as 'Import Lookup Entry 0 of Dir 0'
+                                     3068
+3060h | 0660h:                         78 30 00 00 00 00 00 00          x0......
+
+Import Address Entry 1 of Dir 0
+	Null entry - last entry for Dir 0
+3070h | 0670h: 00 00 00 00 00 00 00 00                          ........
+------+-------------------------------------------------------------------------
+
+Hint/Name Table of Dir 0
+	Hint 0
+	Name ExitProcess
+	no padding
+                                     3078
+3070h | 0670h:                         00 00 45 78 69 74 50 72          ..ExitPr
+3080h | 0680h: 6F 63 65 73 73 00                                ocess.
+------+-------------------------------------------------------------------------
+
+Import Lookup Entry 0 of Dir 1
+	Hint/Name Table RVA: 30A8
+                                    3088
+3080h | 0680h:                   00 00>A8 30 00 00 00 00 00 00<       ..¨0......
+
+Import Lookup Entry 1 of Dir 1
+	Null entry - last entry for Dir 1
+3090h | 0690h: 00 00 00 00 00 00 00 00                          ........
+------+-------------------------------------------------------------------------
+
+Import Address Entry 0 of Dir 1
+	has the same data as 'Import Lookup Entry 0 of Dir 1'
+                                     3098
+3090h | 0690h:                         A8 30 00 00 00 00 00 00          ¨0......
+
+Import Address Entry 1 of Dir 1
+	Null entry - last entry for Dir 1
+30A0h | 06A0h: 00 00 00 00 00 00 00 00                          ........
+------+-------------------------------------------------------------------------
+
+Hint/Name Table of Dir 1
+	Hint 0
+	Name WriteMessage
+	has padding
+                                     30A8
+30A0h | 06A0h:                         00 00 57 72 69 74 65 4D          ..WriteM
+30B0h | 06B0h: 65 73 73 61 67 65 00 00                          essage..
+------+-------------------------------------------------------------------------
+
+The final structure is
+Directory table
+	dir 0
+	dir 1
+	dir null
+Strings (Dir names)
+	dir 0 name
+	dir 1 name
+Import Lookup Table of Dir 0
+	IL 0
+	IL null
+Import Address Table of Dir 0
+	IA 0
+	IA null
+Hints/Names of Dir 0
+	name for entry 0
+Import Lookup Table of Dir 1
+	IL 0
+	IL null
+Import Address Table of Dir 1
+	IA 0
+	IA null
+Hints/Names of Dir 1
+	name for entry 0

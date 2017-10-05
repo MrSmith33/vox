@@ -17,39 +17,65 @@ enum Reg16 : ubyte {AX, CX, DX, BX, SP, BP, SI, DI, R8W,R9W,R10W,R11W,R12W,R13W,
 enum Reg32 : ubyte {EAX,ECX,EDX,EBX,ESP,EBP,ESI,EDI,R8D,R9D,R10D,R11D,R12D,R13D,R14D,R15D}
 enum Reg64 : ubyte {RAX,RCX,RDX,RBX,RSP,RBP,RSI,RDI,R8, R9, R10, R11, R12, R13, R14, R15 }
 
+extern(C) int printNum(int param){ write(param); return 0; }
+extern(C) int printNumLn(int param){ writeln(param); return 0; }
+
 void main()
 {
 	run_from_rwx();
 	//testPrintMemAddress();
-
 	testVMs();
 	testLang();
 	writefln("main() == %s", runScript(q{func main(){return 42;}}, "main"));
 	writefln("main(20) == %s", runScript(q{func main(par){return par;}}, "main", 20));
 	writefln("main(20) == %s", runScript(q{func main(par){return par+par;}}, "main", 20));
-	writefln("main(20) == %s", runScript(q{func main(par){return sub(par);} func sub(a){return a+a;}}, "main", 20));
+	writefln("main(20) == %s", runScript(q{func main(par){return sub(par)+10;} func sub(a){return a+a;}}, "main", 20));
 
-	CodeGen_x86_64 codeGen;
-	codeGen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
-	//writefln("MOV byte ptr %s, 0x%X", memAddrDisp32(0x55667788), 0xAA);
-
-	alias R = Reg64;
-	enum regMax = cast(R)(R.max+1);
-	foreach (R regB; R.min..regMax)
 	{
-		//codeGen.addq(memAddrBase(cast(Register)regB), Imm8(1));
-		//writefln("mov %s, qword ptr %s", regB, memAddrBaseIndexDisp8(cast(Register)regB, cast(Register)regB, SibScale(3), 0xFE));
-		//codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
+		LangVM vm;
+		vm.setup();
+		scope(exit) vm.free;
+
+		writefln("%s", cast(void*)&printNum);
+		vm.registerFunction("print", &printNum);
+		vm.registerFunction("println", &printNumLn);
+		vm.compileModule(q{ func test(i) { print(i); println(i+i); } });
+		printHex(vm.codeGen.code, 16);
+		writefln("fun table %s", vm.codeGen.functionTable);
+		writefln("%s", vm.run!int("test", 20));
 	}
 
-	//printHex(codeGen.encoder.sink.data, 10);
+	{
+		CodeGen_x86_64 codeGen;
+		codeGen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
+		scope(exit) free_executable_memory(codeGen.encoder.freeBuffer);
+
+		//writefln("MOV byte ptr %s, 0x%X", memAddrDisp32(0x55667788), 0xAA);
+
+		alias R = Reg64;
+		enum regMax = cast(R)(R.max+1);
+		foreach (R regB; R.min..regMax)
+		{
+			//codeGen.addq(memAddrBase(cast(Register)regB), Imm8(1));
+			//writefln("mov %s, qword ptr %s", regB, memAddrBaseIndexDisp8(cast(Register)regB, cast(Register)regB, SibScale(3), 0xFE));
+			//codeGen.movq(cast(Register)regB, Imm64(0x24364758AABBCCDD));
+		}
+
+		codeGen.call(memAddrRipDisp32(100));
+		codeGen.call(codeGen.stubPC+100);
+	}
+
+	//printHex(codeGen.encoder.code, 10);
 	testAll();
 }
 
 void testAll()
 {
 	import asmtest.utils;
-	testCodeGen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
+	CodegenTester tester;
+
+	tester.setup();
+	scope(exit) tester.free();
 
 	import asmtest.add;
 	import asmtest.mov;
@@ -60,15 +86,16 @@ void testAll()
 	import asmtest.push;
 	import asmtest.cmp;
 	import asmtest.jmp_jcc_setcc;
-	testAdd();
-	testMov();
-	testNot();
-	testMul();
-	testInc();
-	testPop();
-	testPush();
-	testCmp();
-	testJmpJccSetcc();
+
+	testAdd(tester);
+	testMov(tester);
+	testNot(tester);
+	testMul(tester);
+	testInc(tester);
+	testPop(tester);
+	testPush(tester);
+	testCmp(tester);
+	testJmpJccSetcc(tester);
 }
 
 void testPrintMemAddress()
@@ -87,6 +114,7 @@ void run_from_rwx()
 {
 	const size_t SIZE = 4096;
 	ubyte[] mem = alloc_executable_memory(SIZE);
+	scope(exit) free_executable_memory(mem);
 	//writefln("alloc %s bytes at %s", mem.length, mem.ptr);
 
 	emit_code_into_memory(mem);
@@ -110,7 +138,7 @@ void emit_code_into_memory(ubyte[] mem)
 		// main
 		codeGen.beginFunction();
 		auto sub_call = codeGen.saveFixup();
-		codeGen.call(PC(null));
+		codeGen.call(codeGen.stubPC);
 		codeGen.endFunction();
 
 		sub_call.call(codeGen.pc);
@@ -167,7 +195,6 @@ struct Source
 		return ch;
 	}
 }
-import benchutils;
 
 void testVMs()
 {
@@ -219,6 +246,7 @@ void testVMs()
 		scaledNumberFmt(time3 - time2, 1.0/times));
 
 	JitVM jit_vm;
+	scope(exit) jit_vm.free;
 	time1 = currTime;
 	foreach (_; 0..times) {
 		jit_vm.compile(rootNode);
@@ -242,11 +270,12 @@ void testVMs()
 	writefln("Total %ss", scaledNumberFmt(time3 - time0));
 }
 
-auto runScript(Args...)(string input, string funcName, Args args)
+auto runScript(int line = __LINE__, string file = __FILE__, Args...)(string input, string funcName, Args args)
 {
-	LangVM vm; vm.setup();
+	LangVM vm; vm.setup;
+	scope(exit) vm.free;
 	vm.compileModule(input);
-	return vm.run!int(funcName, args);
+	return vm.run!(int, line, file)(funcName, args);
 }
 
 struct LangVM
@@ -256,9 +285,10 @@ struct LangVM
 	private IdentifierMap idMap;
 	private Lexer2 lexer;
 	private Parser parser;
-	private CodeGen codeGen;
+	private LangCodeGen codeGen;
 	private Module moduleDecl;
 	private ModuleSemantics moduleSemantics;
+	private NativeFunction[] nativeFunctions;
 	private bool valid;
 
 	void setup()
@@ -269,13 +299,23 @@ struct LangVM
 		codeGen.setup();
 	}
 
+	void free()
+	{
+		codeGen.free;
+	}
+
+	void registerFunction(string name, NativeFunPtr fun)
+	{
+		nativeFunctions ~= NativeFunction(idMap.getOrReg(name), 1, fun);
+	}
+
 	void compileModule(string source)
 	{
 		valid = true;
 		try {
 			lexer = Lexer2(source);
 			moduleDecl = parser.parseModule();
-			moduleSemantics = analyzeModule(moduleDecl, idMap);
+			moduleSemantics = analyzeModule(moduleDecl, idMap, nativeFunctions);
 			codeGen.compileModule(moduleSemantics);
 		} catch(CompilationException e) {
 			writefln("[ERROR] %s: %s", e.loc, e.msg);
@@ -283,15 +323,31 @@ struct LangVM
 		}
 	}
 
-	ResultType run(ResultType, Args...)(string funcName, Args args)
+	ResultType run(ResultType, int line = __LINE__, string file = __FILE__, Args...)(string funcName, Args args)
 	{
+		foreach(arg; Args)
+		{
+			static assert(is(arg == int), "parameter must be int");
+		}
+		static assert(is(ResultType == int), "return type must be int");
 		alias JittedFunc = extern(C) ResultType function(Args);
 		auto id = idMap.find(funcName);
-		if (id == Identifier.max) throw runtime_error("Unknown function name '%s'", funcName);
+		if (id == Identifier.max) throw runtime_error("Unknown function name '%s'", funcName, line, file);
 		auto fun = moduleSemantics.tryGetFunction(id);
-		if (fun is null) throw runtime_error("'%s' is not a function name", funcName);
-		if (!valid) throw runtime_error("Cannot start '%s'. Module compiled with errors", funcName);
+		if (fun is null) throw runtime_error("'%s' is not a function name", funcName, line, file);
+
+		auto numArgs = Args.length;
+		auto numParams = fun.node.parameters.length;
+		if (numArgs < numParams)
+			throw runtime_error("Insufficient parameters to '%s', got %s, expected %s",
+				funcName, numArgs, numParams, line, file);
+		else if (numArgs > numParams)
+			throw runtime_error("Too much parameters to '%s', got %s, expected %s",
+				funcName, numArgs, numParams, line, file);
+
+		if (!valid) throw runtime_error("Cannot start '%s'. Module compiled with errors", funcName, line, file);
 		JittedFunc func = cast(JittedFunc)fun.funcPtr;
+		//assert(false);
 		auto result = func(args);
 		return result;
 	}
@@ -353,7 +409,8 @@ void testLang()
 
 	auto time2 = currTime;
 
-	CodeGen codeGen;
+	LangCodeGen codeGen;
+	scope(exit) codeGen.free;
 	foreach (_; 0..times)
 	{
 		codeGen.setup();

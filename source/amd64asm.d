@@ -89,10 +89,10 @@ enum Condition : ubyte {
 }
 
 // place 1 MSB of register into appropriate bit field of REX prefix
-ubyte regTo_Rex_W(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 0; } // 0100 WRXB
+ubyte regTo_Rex_W(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 0; } // 1000 WRXB
 ubyte regTo_Rex_R(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 1; } // 0100 WRXB
-ubyte regTo_Rex_X(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 2; } // 0100 WRXB
-ubyte regTo_Rex_B(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 3; } // 0100 WRXB
+ubyte regTo_Rex_X(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 2; } // 0010 WRXB
+ubyte regTo_Rex_B(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 3; } // 0001 WRXB
 
 // place 3 LSB of register into appropriate bit field of ModR/M byte
 ubyte regTo_ModRm_Reg(Register reg) pure nothrow @nogc { return (reg & 0b0111) << 3; }
@@ -117,12 +117,13 @@ enum MemAddrType : ubyte {
 	baseIndex,        // [base + (index * s)         ]
 	baseIndexDisp32,  // [base + (index * s) + disp32]
 	baseDisp8,        // [base +             + disp8 ]
-	baseIndexDisp8    // [base + (index * s) + disp8 ]
+	baseIndexDisp8,   // [base + (index * s) + disp8 ]
+	ripDisp32         // [RIP  +             + disp32]
 }
 ubyte sibAddrType(MemAddrType type) { return 0b1_0000 | type; }
 
-ubyte[8] memAddrType_to_mod = [0,0,0,2,0,2,1,1];
-ubyte[8] memAddrType_to_dispType = [1,1,0,1,0,1,2,2]; // 0 - none, 1 - disp32, 2 - disp8
+ubyte[9] memAddrType_to_mod = [0,0,0,2,0,2,1,1,0];
+ubyte[9] memAddrType_to_dispType = [1,1,0,1,0,1,2,2,1]; // 0 - none, 1 - disp32, 2 - disp8
 
 // memory location that can be passed to assembly instructions
 struct MemAddress {
@@ -156,6 +157,7 @@ struct MemAddress {
 			case MemAddrType.baseIndexDisp32: return format("[%s + (%s*%s) + 0x%x]", baseReg, indexReg, scale.value, disp32.value);
 			case MemAddrType.baseDisp8: return format("[%s + 0x%x]", baseReg, disp8.value);
 			case MemAddrType.baseIndexDisp8: return format("[%s + (%s*%s) + 0x%x]", baseReg, indexReg, scale.value, disp8.value);
+			case MemAddrType.ripDisp32: return format("[RIP + 0x%x]", disp32.value);
 		}
 	}
 }
@@ -211,6 +213,11 @@ MemAddress memAddrBaseIndexDisp8(Register baseReg, Register indexReg, SibScale s
 	return MemAddress(sibAddrType(MemAddrType.baseIndexDisp8), indexReg, baseReg, scale, disp8); // with SIB
 }
 
+// variant 9  [RIP + disp32]
+MemAddress memAddrRipDisp32(uint disp32) {
+	return MemAddress(MemAddrType.ripDisp32, Register.SP, Register.BP, SibScale(), disp32); // with SIB
+}
+
 // Shortcut for memAddrBaseDisp32 and memAddrBaseDisp8. memAddrBaseDisp8 is used when possible.
 MemAddress minMemAddrBaseDisp(Register baseReg, int displacement)
 {
@@ -233,6 +240,7 @@ struct Encoder
 	private PC pc;
 
 	void setBuffer(ubyte[] buf) { mem = buf; pc = mem.ptr; }
+	ubyte[] freeBuffer() { scope(exit) { mem = null; resetPC; } return mem; }
 	void resetPC() { pc = mem.ptr; }
 	ubyte[] code() { return mem[0..pc - mem.ptr]; }
 
@@ -328,15 +336,16 @@ struct Fixup
 	private CodeGen_x86_64* codeGen;
 	private PC fixupPC;
 
-	void opDispatch(string member, Args...)(Args args) {
+	auto opDispatch(string member, Args...)(Args args) {
 		auto tempPC = codeGen.encoder.pc;
 		codeGen.encoder.pc = fixupPC;
-		mixin("codeGen."~member~"(args);");
-		codeGen.encoder.pc = tempPC;
+		scope(exit)codeGen.encoder.pc = tempPC;
+		mixin("return codeGen."~member~"(args);");
 	}
 }
 
 Imm32 jumpOffset(PC from, PC to) {
+	assert(to - from == cast(int)(to - from), "offset is not representible as int");
 	return Imm32(cast(int)(to - from));
 }
 
@@ -352,6 +361,8 @@ struct CodeGen_x86_64
 	PC pc() {
 		return encoder.pc;
 	}
+
+	alias stubPC = pc;
 
 	/// Used for versions of instructions without argument size suffix.
 	/// mov, add, sub, instead of movq, addb, subd.
@@ -425,6 +436,8 @@ struct CodeGen_x86_64
 
 	/// relative call to target virtual address.
 	void call(PC target) { encoder.putInstrNullaryImm(OP1(0xE8), jumpOffset(encoder.pc + 5, target)); } // relative to next instr
+	void call(Register target) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xFF), 2, target); } // absolute address
+	void call(MemAddress target) { encoder.putInstrUnaryMem!(ArgType.DWORD)(OP1(0xFF), 2, target); } // absolute address, use DWORD to omit REX.W
 
 	/// jump relative to next instr.
 	void jmp(Imm8 offset ) { encoder.putInstrNullaryImm(OP1(0xEB), offset); }

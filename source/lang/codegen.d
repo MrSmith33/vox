@@ -7,19 +7,32 @@ module lang.codegen;
 
 import lang.ast.ast;
 import lang.semantics.semantics;
+import std.stdio;
 
-struct CodeGen
+struct LangCodeGen
 {
 	import amd64asm;
 	import utils;
 
 	ubyte[] mem;
+	void*[] nativeFunctionTable;
 	ubyte[] code() { return gen.encoder.code; }
+	void*[] functionTable() { return nativeFunctionTable[0..moduleData.nativeFunctions.length]; }
 
 	void setup()
 	{
-		if (mem.length == 0) mem = alloc_executable_memory(4096 * 64);
-		gen.encoder.setBuffer(mem);
+		if (mem.length == 0)
+		{
+			mem = alloc_executable_memory(4096 * 64);
+			markAsRW(mem.ptr, 4096 * 2);
+		}
+		nativeFunctionTable = cast(void*[])mem[0..4096 * 2];
+		gen.encoder.setBuffer(mem[4096 * 2..$]);
+	}
+
+	void free()
+	{
+		free_executable_memory(mem);
 	}
 
 	// Stack structure
@@ -44,7 +57,7 @@ struct CodeGen
 	}
 	static struct CallFixup {
 		Fixup call_fixup;
-		FunctionSemantics callee;
+		Callee callee;
 	}
 
 	private Buffer!ReturnFixup returnFixups;
@@ -61,6 +74,10 @@ struct CodeGen
 	void compileModule(ModuleSemantics mod)
 	{
 		moduleData = mod;
+		foreach (i, nativeFun; moduleData.nativeFunctions)
+		{
+			nativeFunctionTable[i] = nativeFun.funcPtr;
+		}
 		foreach (func; moduleData.functions)
 		{
 			compileFunction(func);
@@ -83,8 +100,8 @@ struct CodeGen
 	void fixFixups()
 	{
 		foreach(fixup; callFixups.data) {
-			if (!fixup.callee.funcPtr) throw new Error("Invalid funcPtr");
-			fixup.call_fixup.call(cast(PC)fixup.callee.funcPtr);
+			genCall(fixup.call_fixup, fixup.callee);
+			writefln("fix call to %s", cast(void*)fixup.callee.funcPtr);
 		}
 		callFixups.clear();
 	}
@@ -342,17 +359,44 @@ struct CodeGen
 			if (numParams > 0) gen.movq(Register.CX, memAddrBase(Register.SP));
 		}
 
-		FunctionSemantics callee = moduleData.getFunction(c.calleeId);
-		if (callee.funcPtr)
+		Callee callee = moduleData.tryGetCallee(c.calleeId);
+		if (callee.found && callee.funcPtr)
 		{
-			gen.call(cast(PC)callee.funcPtr);
+			genCall(gen, callee);
 		}
 		else
 		{
-			callFixups.put(CallFixup(gen.saveFixup(), callee));
-			gen.call(PC(null));
+			genFixup(callee);
 		}
 		gen.movd(TEMP_REG_1, RET_REG);
 		gen.addq(Register.SP, Imm32(cast(byte)stackReserve));
+	}
+
+	void genCall(Gen)(ref Gen gen, Callee callee)
+	{
+		if (callee.native)
+		{
+			// hardcoded size of instruction (6)
+			int disp32 = cast(int)(&nativeFunctionTable[callee.index] - cast(void*)gen.pc - 6);
+			gen.call(memAddrRipDisp32(cast(uint)disp32));
+		}
+		else
+		{
+			if (!callee.funcPtr) throw new Error("Invalid funcPtr");
+			gen.call(cast(PC)callee.funcPtr);
+		}
+	}
+
+	void genFixup(Callee callee)
+	{
+		callFixups.put(CallFixup(gen.saveFixup(), callee));
+		if (callee.native)
+		{
+			gen.call(memAddrRipDisp32(0));
+		}
+		else
+		{
+			gen.call(gen.stubPC);
+		}
 	}
 }

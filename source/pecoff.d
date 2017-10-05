@@ -40,13 +40,26 @@ struct ArraySink {
 
 void main()
 {
+	MemAllocator allocator;
+	auto time0 = currTime;
+
+	ubyte[] buf = allocator.allocate(0x1000 * 20, MemType.RW);
+	scope(exit) allocator.free(buf);
+	ubyte[] binaryMem = buf[0..2*0x1000];// = allocator.allocate(4096 * 8, MemType.RW);
+	ubyte[] importMem = buf[2*0x1000..4*0x1000];
+
+	ubyte[] codeMem = buf[4*0x1000..$];
+
 	ArraySink sink;
-	sink.setBuffer(alloc_executable_memory(4096 * 8));
+	sink.setBuffer(binaryMem);
+
+	ArraySink importSink;
+	importSink.setBuffer(importMem);
 
 	// Code gen
 	import amd64asm;
 	CodeGen_x86_64 codeGen;
-	codeGen.encoder.setBuffer(alloc_executable_memory(4096 * 1));
+	codeGen.encoder.setBuffer(codeMem);
 
 	// main
 	codeGen.beginFunction();
@@ -61,6 +74,21 @@ void main()
 	codeGen.movq(Register.AX, Imm32(42));
 	codeGen.endFunction();
 
+	// sub rsp, 40
+	// ;get the output handle
+	// mov rcx, STD_OUTPUT_HANDLE          ;specifies that the output handle is required
+	// call GetStdHandle                   ;returns value for handle to rax
+
+	// mov rcx, rax
+	// mov r9, char_written
+
+	// mov rax, qword 0                    ;fifth argument
+	// mov qword [rsp+0x20], rax
+
+	// call WriteConsoleA
+	// add rsp, 40
+	// ret
+
 	// Code section
 	Section textSection;
 	textSection.data = codeGen.encoder.code;
@@ -70,32 +98,202 @@ void main()
 		SectionFlags.SCN_MEM_EXECUTE |
 		SectionFlags.SCN_MEM_READ;
 
+	// Static data section
+	Section staticSection;
+	staticSection.data = null; // TODO
+	staticSection.header.Name = ".data";
+	staticSection.header.Characteristics =
+		SectionFlags.SCN_CNT_INITIALIZED_DATA |
+		SectionFlags.SCN_MEM_READ;
+
+	// Import table section
+	auto importedLibs = ImportedDlls([
+		DllImports("kernel32.dll", ["GetStdHandle", "WriteConsoleA"]),
+		DllImports("ntdll.dll", ["NtOpenFile"])
+		]);
+	importSink.pad(importedLibs.totalSectionBytes);
+	auto importMapping = ImportSectionMapping(importSink.data, importedLibs);
+
+	Section importTableSection;
+	importTableSection.data = importSink.data;
+	importTableSection.header.Name = ".idata";
+	importTableSection.header.Characteristics =
+		SectionFlags.SCN_CNT_INITIALIZED_DATA |
+		SectionFlags.SCN_MEM_WRITE |
+		SectionFlags.SCN_MEM_READ;
+
 	// Exe gen
-	Section[1] sections;
+	Section[2] sections;
 	sections[0] = textSection;
+	sections[1] = importTableSection;
 
-	createExecutable(sink, FileParameters(), sections[]);
+	Executable executable;
+	executable.params = FileParameters();
+	executable.sections = sections[];
+	executable.fixup();
+	importMapping.createImports(sections[1].header.VirtualAddress);
+	//importMapping.fixRVAs();
+	executable.write(sink);
 
+	auto time1 = currTime;
 	// write exe
 	string outputFilename = "out.exe";
+
 	auto f = File(outputFilename, "wb");
 	f.rawWrite(sink.data);
 	f.close();
 
 	// test exe
 	import std.process;
+	import std.path;
+	auto time2 = currTime;
 	auto result = execute("out.exe");
-	writefln("out.exe exited with %s", result.status);
+	auto time3 = currTime;
+
+	writefln("out.exe exited with %s, in %ss", result.status, scaledNumberFmt(time3 - time2));
+	writefln("Compile in %ss, write %ss", scaledNumberFmt(time1 - time0), scaledNumberFmt(time2 - time1));
+	writeln(absolutePath(outputFilename));
 	assert(result.status == 42);
 }
 
-void createExecutable(ref ArraySink sink, FileParameters params, Section[] sections)
+enum IAT_ILT_ENTRY_BYTES = 8;
+
+struct ImportedDlls
 {
-	Executable executable;
-	executable.params = params;
-	executable.sections = sections;
-	executable.fixup();
-	executable.write(sink);
+	this(DllImports[] dlls)
+	{
+		this.libs = dlls;
+		foreach(dll; libs)
+		{
+			//writefln("'%s' length %s", dll.libName, alignValue(dll.libName.length + 1, 2));
+			totalDllNamesBytes = alignValue(totalDllNamesBytes + dll.libName.length + 1, 2);
+			writefln("totalDllNamesBytes %s %s", dll.libName, totalDllNamesBytes);
+
+			foreach(funcName; dll.importedFunctions)
+			{
+				// Hint/Name length
+				//writefln("'%s' length %s", funcName, alignValue(funcName.length + 1, 2));
+				totalDllHintsBytes = alignValue(totalDllHintsBytes + HintNameEntry.Hint.sizeof + funcName.length + 1, 2);
+				writefln("totalDllHintsBytes %s", totalDllHintsBytes);
+			}
+			totalImportEntries += dll.numTableEntries; // include null entry
+		}
+		writefln("Total import entries %s", totalImportEntries);
+		writefln("Total dir bytes %s", importDirectoryTableBytes);
+		writefln("totalTableBytes %s", totalTableBytes);
+		writefln("totalDllNamesBytes %s", totalDllNamesBytes);
+		writefln("totalTableBytes %s", totalTableBytes);
+		writefln("totalDllHintsBytes %s", totalDllHintsBytes);
+		writefln("totalSectionBytes %s", totalSectionBytes);
+	}
+
+	DllImports[] libs;
+	size_t importDirectoryTableBytes() { return (libs.length + 1) * ImportDirectoryTableEntry.sizeof; }
+	size_t totalImportEntries; // num of entries for both IAT and ILT, with null entries
+	size_t totalTableBytes() { return totalImportEntries * IAT_ILT_ENTRY_BYTES; }
+	size_t totalDllNamesBytes; // with leading zero and 2 byte alignment padding
+	size_t totalDllHintsBytes; // with leading zero and 2 byte alignment padding
+	size_t totalSectionBytes() { return importDirectoryTableBytes + totalTableBytes * 2 + totalDllHintsBytes + totalDllNamesBytes; }
+}
+
+struct DllImports
+{
+	this(string lib, string[] funcs) {
+		libName = lib;
+		importedFunctions = funcs;
+	}
+	string libName;
+	string[] importedFunctions;
+	size_t numTableEntries() { return importedFunctions.length + 1; }
+	size_t totalTableBytes() { return numTableEntries * IAT_ILT_ENTRY_BYTES; }
+}
+
+struct ImportSectionMapping
+{
+	this(ubyte[] sectionData, ImportedDlls _importedLibs)
+	{
+		this.importedLibs = _importedLibs;
+		assert(sectionData.length == importedLibs.totalSectionBytes);
+		writefln("Buf len %x", sectionData.length);
+
+		size_t dirsEnd = importedLibs.importDirectoryTableBytes;
+		directories = cast(ImportDirectoryTableEntry[])(sectionData[0..dirsEnd]);
+		writefln("Dirs %x..%x", 0, dirsEnd);
+
+		ilt_rva = cast(uint)(dirsEnd);
+		size_t ILT_end = cast(uint)(ilt_rva + importedLibs.totalTableBytes);
+		ILTs = cast(ImportLookupEntry[])(sectionData[ilt_rva..ILT_end]);
+		writefln("ILTs %x..%x", ilt_rva, ILT_end);
+
+		iat_rva = cast(uint)(ILT_end);
+		size_t IAT_end = cast(uint)(iat_rva + importedLibs.totalTableBytes);
+		IATs = cast(ImportLookupEntry[])(sectionData[iat_rva..IAT_end]);
+		writefln("IATs %x..%x", iat_rva, IAT_end);
+
+		str_rva = cast(uint)IAT_end;
+		stringData = sectionData[str_rva..$];
+		writefln("Str %x..%x", str_rva, sectionData.length);
+	}
+
+	// initial info
+	ImportedDlls importedLibs;
+
+	// dir entries
+	ImportDirectoryTableEntry[] directories; // includes null entry
+	// import lookup tables (ILTs)
+	ImportLookupEntry[] ILTs; // includes null entry
+	uint ilt_rva;
+	// import address tables (IATs)
+	ImportLookupEntry[] IATs; // includes null entry
+	uint iat_rva;
+	// list of (lib name + hint/names)
+	ubyte[] stringData;
+	uint str_rva;
+}
+
+void createImports(ref ImportSectionMapping mapping, uint sectionRVA)
+{
+	// here, sink already has reserved space for Directory entries and IA, IL tables
+	// we will write strings and set address at the same time. Relative to section start
+	size_t tableIndex;
+	immutable uint str_rva = sectionRVA + mapping.str_rva;
+	immutable uint ilt_rva = sectionRVA + mapping.ilt_rva;
+	immutable uint iat_rva = sectionRVA + mapping.iat_rva;
+
+	ArraySink strSink;
+	strSink.setBuffer(mapping.stringData);
+
+	foreach(i, ref DllImports dll; mapping.importedLibs.libs)
+	{
+		mapping.directories[i].importLookupTableRVA = cast(uint)(ilt_rva + tableIndex * IAT_ILT_ENTRY_BYTES);
+		mapping.directories[i].importAddressTableRVA = cast(uint)(iat_rva + tableIndex * IAT_ILT_ENTRY_BYTES);
+		mapping.directories[i].nameRVA = cast(uint)(str_rva + strSink.length);
+
+		auto pre1 = strSink.length;
+		strSink.writeStringAligned2(dll.libName);
+		writefln("write '%s' len %s sink %s", dll.libName, strSink.length - pre1, strSink.length);
+
+		foreach(functionName; dll.importedFunctions)
+		{
+			uint hintRVA = cast(uint)(str_rva + strSink.length);
+			auto hint = ImportLookupEntry.fromHintNameTableRVA(hintRVA);
+
+			mapping.ILTs[tableIndex] = hint;
+			mapping.IATs[tableIndex] = hint;
+
+			auto pre2 = strSink.length;
+			HintNameEntry(0, functionName).write(strSink);
+			writefln("write '%s' len %s", functionName, strSink.length - pre2);
+
+			++tableIndex;
+		}
+
+		// account for null entry
+		++tableIndex;
+	}
+
+	writefln("%s %s", strSink.length, mapping.stringData.length);
+	assert(strSink.length == mapping.stringData.length);
 }
 
 struct FileParameters
@@ -123,36 +321,6 @@ struct Executable
 		fixupInMemorySizes();
 		collectCodeInfo();
 		fixupInvariants();
-	}
-
-	void write(ref ArraySink sink)
-	{
-		// DOS Header
-		dosHeader.write(sink);
-		// DOS Stub
-		dosStub.write(sink);
-		// PE signature
-		peSignature.write(sink);
-		// COFF Header
-		coffFileHeader.write(sink);
-		// Optional Header (Image Only)
-		optionalHeader.write(sink);
-		// Section Headers
-		foreach (ref section; sections)
-		{
-			section.header.write(sink);
-		}
-		uint headersPadding = paddingSize(unalignedHeadersSize, params.fileAlignment);
-		sink.pad(headersPadding);
-
-		// Section Datas
-		foreach (ref section; sections)
-		{
-			writefln("Write section data '%s' %s bytes at %s", section.header.Name, section.data.length, sink.length);
-			sink.put(section.data);
-			size_t sectionPadding = section.header.SizeOfRawData - section.data.length;
-			sink.pad(sectionPadding);
-		}
 	}
 
 	void calculateFileSizes()
@@ -198,11 +366,10 @@ struct Executable
 	void collectCodeInfo()
 	{
 		bool codeSectionDetected = false;
+		bool importSectionDetected = false;
 
 		foreach (ref section; sections)
 		{
-			uint sectionFileSize = alignValue(section.dataSize, params.fileAlignment);
-
 			if (section.isCodeSection)
 			{
 				if (!codeSectionDetected)
@@ -212,11 +379,19 @@ struct Executable
 					optionalHeader.AddressOfEntryPoint = section.header.VirtualAddress;
 					writefln("First code section. BaseOfCode is %s", optionalHeader.BaseOfCode);
 				}
-				optionalHeader.SizeOfCode += sectionFileSize;
+				optionalHeader.SizeOfCode += section.header.SizeOfRawData;
 				writefln("Code section %s", section.header);
 			}
+			else if (section.isImportSection)
+			{
+				if (!importSectionDetected)
+				{
+					importSectionDetected = true;
+					optionalHeader.ImportTable = section.header.VirtualAddress;
+				}
+			}
 
-			optionalHeader.SizeOfInitializedData += sectionFileSize;
+			optionalHeader.SizeOfInitializedData += section.header.SizeOfRawData;
 		}
 		writefln("Total code size is %sB", optionalHeader.SizeOfCode);
 	}
@@ -257,6 +432,36 @@ struct Executable
 		{
 			section.header.PointerToRelocations = 0;
 			section.header.NumberOfRelocations = 0;
+		}
+	}
+
+	void write(ref ArraySink sink)
+	{
+		// DOS Header
+		dosHeader.write(sink);
+		// DOS Stub
+		dosStub.write(sink);
+		// PE signature
+		peSignature.write(sink);
+		// COFF Header
+		coffFileHeader.write(sink);
+		// Optional Header (Image Only)
+		optionalHeader.write(sink);
+		// Section Headers
+		foreach (ref section; sections)
+		{
+			section.header.write(sink);
+		}
+		uint headersPadding = paddingSize(unalignedHeadersSize, params.fileAlignment);
+		sink.pad(headersPadding);
+
+		// Section Datas
+		foreach (ref section; sections)
+		{
+			writefln("Write section data '%s' %s bytes at %s", section.header.Name, section.data.length, sink.length);
+			sink.put(section.data);
+			size_t sectionPadding = section.header.SizeOfRawData - section.data.length;
+			sink.pad(sectionPadding);
 		}
 	}
 }
@@ -912,6 +1117,127 @@ struct SectionHeader
 }
 static assert(SectionHeader.sizeof == 40);
 
+
+struct ImportSection
+{
+	ImportDirectoryTableEntry[] directories;
+	ImportLookupTable[] dllTables;
+	HintNameTable hintNameTable;
+
+	size_t write(ref ArraySink sink) {
+		auto offset = sink.length;
+		foreach(ref directory; directories) directory.write(sink);
+		sink.pad(ImportDirectoryTableEntry.sizeof); // Null Directory Entry
+		foreach(ref table; dllTables) table.write(sink);
+		hintNameTable.write(sink);
+		return offset;
+	}
+}
+
+struct ImportDirectoryTableEntry
+{
+	/// The RVA of the import lookup table. This table contains
+	/// a name or ordinal for each import. (The name
+	/// “Characteristics” is used in Winnt.h, but no longer
+	/// describes this field.)
+	uint importLookupTableRVA;
+
+	/// The stamp that is set to zero until the image is bound.
+	/// After the image is bound, this field is set to the
+	/// time/data stamp of the DLL.
+	uint timestamp;
+
+	/// The index of the first forwarder reference.
+	uint forwarderChain;
+
+	/// The address of an ASCII string that contains the name
+	/// of the DLL. This address is relative to the image base.
+	uint nameRVA;
+
+	/// The RVA of the import address table. The contents of
+	/// this table are identical to the contents of the import
+	/// lookup table until the image is bound.
+	uint importAddressTableRVA;
+
+	size_t write(ref ArraySink sink) {
+		auto offset = sink.length;
+		sink.put(this);
+		return offset;
+	}
+}
+
+struct ImportLookupTable
+{
+	ImportLookupEntry[] entries;
+	size_t write(ref ArraySink sink) {
+		auto offset = sink.length;
+		foreach(ref entry; entries) entry.write(sink);
+		sink.pad(ImportLookupEntry.sizeof); // Null Import Lookup Entry
+		return offset;
+	}
+}
+
+struct ImportLookupEntry
+{
+	enum ulong ORDINAL_FLAG = 0x8000_0000_0000_0000;
+	static ImportLookupEntry fromOrdinal(ushort ordinal) {
+		return ImportLookupEntry(ORDINAL_FLAG | ordinal);
+	}
+	static ImportLookupEntry fromHintNameTableRVA(uint hintRVA) {
+		return ImportLookupEntry(hintRVA & 0x7FFF_FFFF);
+	}
+	ulong value;
+	size_t write(ref ArraySink sink) {
+		auto offset = sink.length;
+		sink.put(this);
+		return offset;
+	}
+}
+
+struct HintNameTable
+{
+	HintNameEntry[] entries;
+
+	size_t write(ref ArraySink sink) {
+		auto offset = sink.length;
+		foreach(ref entry; entries) entry.write(sink);
+		return offset;
+	}
+}
+
+struct HintNameEntry
+{
+	/// An index into the export name pointer table. A match is
+	/// attempted first with this value. If it fails, a binary search is
+	/// performed on the DLL’s export name pointer table.
+	ushort Hint;
+
+	/// An ASCII string that contains the name to import. This is the
+	/// string that must be matched to the public name in the DLL.
+	/// This string is case sensitive and terminated by a null byte.
+	string Name;
+
+	size_t write(ref ArraySink sink) {
+		auto offset = sink.length;
+
+		sink.put(Hint);
+		sink.writeStringAligned2(Name);
+
+		return offset;
+	}
+}
+
+void writeStringAligned2(ref ArraySink sink, string str)
+{
+	sink.put(cast(ubyte[])str);
+
+	// put trailing null byte and align on 2 bytes boundary
+	if (sink.length % 2 == 0)
+		sink.put!ushort(0); // 2 null bytes
+	else
+		sink.put!ubyte(0); // 1 null byte
+}
+
 struct Section
 {
 	SectionHeader header;
@@ -922,5 +1248,10 @@ struct Section
 	bool isCodeSection()
 	{
 		return header.Name[0..5] == ".text";
+	}
+
+	bool isImportSection()
+	{
+		return header.Name[0..6] == ".idata";
 	}
 }

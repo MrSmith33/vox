@@ -380,6 +380,12 @@ struct JitVM
 		globals[] = 0;
 	}
 
+	void free()
+	{
+		free_executable_memory(mem);
+		mem = null;
+	}
+
 	void run()
 	{
 		alias JittedFunc = void function(void*);

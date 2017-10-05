@@ -6,7 +6,7 @@ https://www3.nd.edu/~dthain/courses/cse40243/fall2015/intel-intro.html   Introdu
 http://www.intel.com/products/processor/manuals/                         Intel manuals
 http://www.x86-64.org/documentation.html                                 amd64 ABI
 http://wiki.lazarus.freepascal.org/Win64/AMD64_API
-
+https://github.com/dibyendumajumdar/nanojit/blob/master/nanojit/NativeX64.h#L91
 
 cl /c /O1 simple.c
 link /nologo /ENTRY:main /NODEFAULTLIB /SUBSYSTEM:WINDOWS /ALIGN:1 simple.obj

@@ -9,12 +9,36 @@ import lang.ast.ast;
 import lang.lex : SourceLocation;
 import lang.error;
 
+struct NativeFunction
+{
+	Identifier id;
+	int numParams;
+	NativeFunPtr funcPtr;
+}
+
+alias NativeFunPtr = extern(C) int function(int);
+
+struct Callee
+{
+	private ModuleSemantics sem;
+	size_t index;
+	bool native;
+	bool found;
+	void* funcPtr()
+	{
+		if (native)
+			return sem.nativeFunctions[index].funcPtr;
+		else
+			return sem.functions[index].funcPtr;
+	}
+}
 
 class ModuleSemantics
 {
 	this(typeof(this.tupleof) args) { this.tupleof = args; }
 	Module moduleNode;
 	FunctionSemantics[] functions;
+	NativeFunction[] nativeFunctions;
 	FunctionSemantics tryGetFunction(Identifier id)
 	{
 		foreach(fun; functions)
@@ -25,6 +49,14 @@ class ModuleSemantics
 	{
 		if (auto fun = tryGetFunction(id)) return fun;
 		throw internal_error("Invalid id requested");
+	}
+	Callee tryGetCallee(Identifier id)
+	{
+		foreach(i, fun; functions)
+			if (fun.node.id == id) return Callee(this, i, false, true);
+		foreach(i, fun; nativeFunctions)
+			if (fun.id == id) return Callee(this, i, true, true);
+		return Callee(this);
 	}
 }
 
@@ -43,26 +75,28 @@ class FunctionSemantics
 	}
 }
 
-ModuleSemantics analyzeModule(Module moduleDecl, IdentifierMap idMap)
+ModuleSemantics analyzeModule(Module moduleDecl, IdentifierMap idMap, NativeFunction[] nativeFuncs = null)
 {
 	FunctionSemantics[] functions;
-	auto funcAnalyser = new FunctionAnalyser(moduleDecl, idMap);
+	auto funcAnalyser = new FunctionAnalyser(moduleDecl, idMap, nativeFuncs);
 	foreach (func; moduleDecl.functions)
 	{
 		functions ~= funcAnalyser.analyzeFunction(func);
 	}
-	return new ModuleSemantics(moduleDecl, functions);
+	return new ModuleSemantics(moduleDecl, functions, nativeFuncs);
 }
 
 class FunctionAnalyser : FunctionVisitor {
-	this(Module moduleDecl, IdentifierMap idMap)
+	this(Module moduleDecl, IdentifierMap idMap, NativeFunction[] nativeFuncs)
 	{
 		this.moduleDecl = moduleDecl;
 		this.idMap = idMap;
+		this.nativeFuncs = nativeFuncs;
 	}
 	private Module moduleDecl;
 	private IdentifierMap idMap;
 	private Identifier[] localVars;
+	private NativeFunction[] nativeFuncs;
 
 	// returns index in localVars or -1
 	int findRegisteredVar(Identifier id)
@@ -93,13 +127,21 @@ class FunctionAnalyser : FunctionVisitor {
 		return new FunctionSemantics(node, localVars, null);
 	}
 
+	size_t getFunctionParams(Identifier id)
+	{
+		foreach(fun; moduleDecl.functions)
+			if (fun.id == id) return fun.parameters.length;
+		foreach(fun; nativeFuncs)
+			if (fun.id == id) return fun.numParams;
+		throw new Error("Invalid function id");
+	}
+
 	override void visit(VariableExpression v) {
 		if (findRegisteredVar(v.id) == -1) registerVar(v.id);
 	}
 
 	override void visit(CallExpression c) {
-		FunctionDeclaration funcDecl = moduleDecl.getFunction(c.calleeId);
-		auto numParams = funcDecl.parameters.length;
+		auto numParams = getFunctionParams(c.calleeId);
 		auto numArgs   = c.args.length;
 
 		if (numArgs < numParams)
