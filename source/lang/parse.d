@@ -30,7 +30,7 @@ import std.stdio;
  *  <test> ::= <sum> | <sum> ("=="|"!="|"<"|">"|"<="|"<=") <sum>
  *  <sum> ::= <term> | <sum> "+" <term> | <sum> "-" <term>
  *  <term> ::= <id> | <id> "(" <expr_list> ")" | <int> | <paren_expr>
- *  <id> ::= "a" | "b" | "c" | "d" | ... | "z"
+ *  <id> ::= [a-zA-Z_] (a-zA-Z_0-9)*
  *  <int> ::= <an_unsigned_decimal_integer>
  */
 

@@ -239,6 +239,7 @@ struct Encoder
 	private ubyte[] mem;
 	private PC pc;
 
+	uint pcOffset() { return cast(uint)(pc - mem.ptr); }
 	void setBuffer(ubyte[] buf) { mem = buf; pc = mem.ptr; }
 	ubyte[] freeBuffer() { scope(exit) { mem = null; resetPC; } return mem; }
 	void resetPC() { pc = mem.ptr; }
@@ -344,6 +345,12 @@ struct Fixup
 	}
 }
 
+struct Fixup32
+{
+	uint fixupOffset;
+	uint extraOffset;
+}
+
 Imm32 jumpOffset(PC from, PC to) {
 	assert(to - from == cast(int)(to - from), "offset is not representible as int");
 	return Imm32(cast(int)(to - from));
@@ -424,6 +431,9 @@ struct CodeGen_x86_64
 	mixin binaryInstr_RMtoR_RtoRM!("cmp", [0x38, 0x39], [0x3A, 0x3B]);
 	mixin binaryInstr_RM_Imm!("cmp", 7);
 
+	void leaw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x8D), dst, src); }
+	void lead(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x8D), dst, src); }
+	void leaq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x8D), dst, src); }
 
 	mixin unaryInstr_RM!("inc", [0xFE,0xFF], 0);
 	mixin unaryInstr_RM!("dec", [0xFE,0xFF], 1);
@@ -438,6 +448,10 @@ struct CodeGen_x86_64
 	void call(PC target) { encoder.putInstrNullaryImm(OP1(0xE8), jumpOffset(encoder.pc + 5, target)); } // relative to next instr
 	void call(Register target) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xFF), 2, target); } // absolute address
 	void call(MemAddress target) { encoder.putInstrUnaryMem!(ArgType.DWORD)(OP1(0xFF), 2, target); } // absolute address, use DWORD to omit REX.W
+
+	/// Generate fixup for last 32 bits of last instruction.
+	Fixup32 getAddressFixup() { return Fixup32(encoder.pcOffset - 4, 4); }
+	Fixup32 getDataFixup() { return Fixup32(encoder.pcOffset - 4, 0); }
 
 	/// jump relative to next instr.
 	void jmp(Imm8 offset ) { encoder.putInstrNullaryImm(OP1(0xEB), offset); }

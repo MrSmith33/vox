@@ -9,7 +9,10 @@ import std.stdio;
 import std.file;
 import std.datetime;
 
+import amd64asm;
 import utils;
+
+//version = print_info;
 
 enum DEFAULT_SECTION_ALIGNMENT = 4096;
 enum DEFAULT_FILE_ALIGNMENT = 512;
@@ -38,6 +41,19 @@ struct ArraySink {
 	}
 }
 
+enum : uint {
+    STD_INPUT_HANDLE  = 0xFFFFFFF6,
+    STD_OUTPUT_HANDLE = 0xFFFFFFF5,
+    STD_ERROR_HANDLE  = 0xFFFFFFF4
+}
+
+enum SectionType : ubyte
+{
+	text,
+	idata,
+	data,
+}
+
 void main()
 {
 	MemAllocator allocator;
@@ -47,96 +63,115 @@ void main()
 	scope(exit) allocator.free(buf);
 	ubyte[] binaryMem = buf[0..2*0x1000];// = allocator.allocate(4096 * 8, MemType.RW);
 	ubyte[] importMem = buf[2*0x1000..4*0x1000];
+	ubyte[] dataMem = buf[4*0x1000..6*0x1000];
 
-	ubyte[] codeMem = buf[4*0x1000..$];
+	ubyte[] codeMem = buf[6*0x1000..$];
 
-	ArraySink sink;
-	sink.setBuffer(binaryMem);
-
-	ArraySink importSink;
-	importSink.setBuffer(importMem);
-
-	// Code gen
-	import amd64asm;
-	CodeGen_x86_64 codeGen;
-	codeGen.encoder.setBuffer(codeMem);
-
-	// main
-	codeGen.beginFunction();
-	auto sub_call = codeGen.saveFixup();
-	codeGen.call(PC(null));
-	codeGen.endFunction();
-
-	sub_call.call(codeGen.pc);
-
-	// sub_fun
-	codeGen.beginFunction();
-	codeGen.movq(Register.AX, Imm32(42));
-	codeGen.endFunction();
-
-	// sub rsp, 40
-	// ;get the output handle
-	// mov rcx, STD_OUTPUT_HANDLE          ;specifies that the output handle is required
-	// call GetStdHandle                   ;returns value for handle to rax
-
-	// mov rcx, rax
-	// mov r9, char_written
-
-	// mov rax, qword 0                    ;fifth argument
-	// mov qword [rsp+0x20], rax
-
-	// call WriteConsoleA
-	// add rsp, 40
-	// ret
+	// ---------------------------------------------------------
 
 	// Code section
-	Section textSection;
-	textSection.data = codeGen.encoder.code;
+	Section textSection = Section(SectionType.text);
 	textSection.header.Name = ".text";
 	textSection.header.Characteristics =
 		SectionFlags.SCN_CNT_CODE |
 		SectionFlags.SCN_MEM_EXECUTE |
 		SectionFlags.SCN_MEM_READ;
 
-	// Static data section
-	Section staticSection;
-	staticSection.data = null; // TODO
-	staticSection.header.Name = ".data";
-	staticSection.header.Characteristics =
-		SectionFlags.SCN_CNT_INITIALIZED_DATA |
-		SectionFlags.SCN_MEM_READ;
-
 	// Import table section
-	auto importedLibs = ImportedDlls([
-		DllImports("kernel32.dll", ["GetStdHandle", "WriteConsoleA"]),
-		DllImports("ntdll.dll", ["NtOpenFile"])
-		]);
-	importSink.pad(importedLibs.totalSectionBytes);
-	auto importMapping = ImportSectionMapping(importSink.data, importedLibs);
-
-	Section importTableSection;
-	importTableSection.data = importSink.data;
-	importTableSection.header.Name = ".idata";
-	importTableSection.header.Characteristics =
+	Section idataSection = Section(SectionType.idata);
+	idataSection.header.Name = ".idata";
+	idataSection.header.Characteristics =
 		SectionFlags.SCN_CNT_INITIALIZED_DATA |
 		SectionFlags.SCN_MEM_WRITE |
 		SectionFlags.SCN_MEM_READ;
 
+	// Static data section
+	Section dataSection = Section(SectionType.data);
+	dataSection.header.Name = ".data";
+	dataSection.header.Characteristics =
+		SectionFlags.SCN_CNT_INITIALIZED_DATA |
+		SectionFlags.SCN_MEM_READ;
+
+	// ---------------------------------------------------------
+
 	// Exe gen
-	Section[2] sections;
-	sections[0] = textSection;
-	sections[1] = importTableSection;
+	Section*[3] sections;
+	sections[SectionType.text] = &textSection;
+	sections[SectionType.idata] = &idataSection;
+	sections[SectionType.data] = &dataSection;
+
+	// ---------------------------------------------------------
+
+	ArraySink sink;
+	sink.setBuffer(binaryMem);
+
+	DataSection dataSectionSymbols;
+	dataSectionSymbols.sink.setBuffer(dataMem);
+	dataSectionSymbols.section = &dataSection;
+
+	ImportSection importSection;
+	importSection.section = &idataSection;
+
+
+	// ---------------------------------------------------------
+
+	ReferenceTable refTable;
+
+	// Code gen
+	CodeGen_x86_64 codeGen;
+	codeGen.encoder.setBuffer(codeMem);
+
+	void putFixup(SymbolRef symRef)
+	{
+		auto fixup = codeGen.getAddressFixup;
+		refTable.put(RelativeReference(SectionType.text, fixup.fixupOffset, fixup.extraOffset, symRef));
+	}
+
+	// main
+	SymbolRef msg_str = dataSectionSymbols.putString("Hello world!");
+	SymbolRef ref_GetStdHandle = importSection.importLibFunction("kernel32", "GetStdHandle");
+	SymbolRef ref_WriteConsoleA = importSection.importLibFunction("kernel32", "WriteConsoleA");
+
+	codeGen.subq(Register.SP, Imm32(0x30));
+	codeGen.movq(Register.CX, Imm32(STD_OUTPUT_HANDLE));
+	codeGen.call(memAddrRipDisp32(0)); // call GetStdHandle
+	putFixup(ref_GetStdHandle);
+
+	codeGen.movq(Register.CX, Register.AX); // 1 in hConsoleOutput
+	codeGen.leaq(Register.DX, memAddrRipDisp32(0)); // 2 in lpBuffer
+	putFixup(msg_str);
+
+	codeGen.movq(Register.R8, Imm32(dataSection.symBytes(msg_str.symbolIndex))); // 3 in nNumberOfCharsToWrite
+	codeGen.leaq(Register.R9, memAddrBaseDisp8(Register.SP, 0x28)); // 4 out lpNumberOfCharsWritten
+	codeGen.movq(memAddrBaseDisp8(Register.SP, 0x20), Imm32(0)); // 5 in lpReserved
+
+	codeGen.call(memAddrRipDisp32(0)); // call WriteConsoleA
+	putFixup(ref_WriteConsoleA);
+
+	codeGen.addq(Register.SP, Imm32(0x30));
+	codeGen.xorq(Register.AX, Register.AX);
+	codeGen.ret();
+
+	// ---------------------------------------------------------
+
+	auto importMapping = ImportSectionMapping(importMem, importSection.getLibs);
+
+	textSection.data = codeGen.encoder.code;
+	idataSection.data = importMapping.sectionData;
+	dataSection.data = dataSectionSymbols.sink.data;
+
+	// ---------------------------------------------------------
 
 	Executable executable;
 	executable.params = FileParameters();
 	executable.sections = sections[];
 	executable.fixup();
-	importMapping.createImports(sections[1].header.VirtualAddress);
-	//importMapping.fixRVAs();
+	importMapping.createImports(sections[SectionType.idata]);
+	refTable.fixupReferences(sections[]);
 	executable.write(sink);
 
-	auto time1 = currTime;
 	// write exe
+	auto time1 = currTime;
 	string outputFilename = "out.exe";
 
 	auto f = File(outputFilename, "wb");
@@ -153,8 +188,96 @@ void main()
 	writefln("out.exe exited with %s, in %ss", result.status, scaledNumberFmt(time3 - time2));
 	writefln("Compile in %ss, write %ss", scaledNumberFmt(time1 - time0), scaledNumberFmt(time2 - time1));
 	writeln(absolutePath(outputFilename));
-	assert(result.status == 42);
+	//assert(result.status == 0);
 }
+
+struct RelativeReference
+{
+	SectionType fromSection;
+	uint fromOffset;
+	uint extraOffset;
+	SymbolRef referencedSymbol;
+}
+
+struct ReferenceTable
+{
+	RelativeReference[] relativeRefs;
+
+	void put(RelativeReference reference)
+	{
+		relativeRefs ~= reference;
+	}
+
+	void fixupReferences(Section*[] sections)
+	{
+		foreach(reference; relativeRefs)
+		{
+			auto from = sections[reference.fromSection];
+			auto to = sections[reference.referencedSymbol.sectionId];
+
+			uint* fixup = cast(uint*)(from.data.ptr + reference.fromOffset);
+			// 1000 + 0010 + 0004 = 1014
+			uint fromOffset = from.header.VirtualAddress + reference.fromOffset + reference.extraOffset;
+			// 2000 + 0040 = 2040
+			uint symOffset = to.symOffset(reference.referencedSymbol.symbolIndex);
+			uint toOffset = to.header.VirtualAddress + symOffset;
+			uint value = toOffset - fromOffset;
+
+			version(print_info) writefln("VA %x sym off %x", to.header.VirtualAddress, symOffset);
+			version(print_info) writefln("Fix %s:%x -> %s:%x with %x", from.name, reference.fromOffset, to.name, symOffset, value);
+			version(print_info) writefln("    %x -> %x", fromOffset, toOffset);
+
+			*fixup = value;
+		}
+	}
+}
+
+struct DataSection
+{
+	ArraySink sink;
+	Section* section;
+
+	SymbolRef putString(string str)
+	{
+		SymbolIndex index = section.addSymbol(cast(uint)sink.length, cast(uint)str.length);
+		sink.put(cast(ubyte[])str);
+		sink.put!ubyte(0);
+		return SymbolRef(index, SectionType.data);
+	}
+}
+
+struct SymbolImport
+{
+	string name;
+	SymbolIndex symbolIndex;
+}
+
+struct ImportSection
+{
+	SymbolImport[][string] importedLibs;
+	Section* section;
+
+	SymbolRef importLibFunction(string library, string functionName)
+	{
+		SymbolIndex funcIndex = section.addSymbol(0, 0);
+		SymbolImport[] functions = importedLibs.get(library, null);
+		functions ~= SymbolImport(functionName, funcIndex);
+		importedLibs[library] = functions;
+		return SymbolRef(funcIndex, SectionType.idata);
+	}
+
+	ImportedDlls getLibs() {
+		DllImports[] libs;
+		libs.length = importedLibs.length;
+		size_t i;
+		foreach(libName, functions; importedLibs)
+			libs[i++] = DllImports(libName, functions);
+		return ImportedDlls(libs);
+	}
+}
+
+// register function in library
+// insert external in code
 
 enum IAT_ILT_ENTRY_BYTES = 8;
 
@@ -165,26 +288,14 @@ struct ImportedDlls
 		this.libs = dlls;
 		foreach(dll; libs)
 		{
-			//writefln("'%s' length %s", dll.libName, alignValue(dll.libName.length + 1, 2));
 			totalDllNamesBytes = alignValue(totalDllNamesBytes + dll.libName.length + 1, 2);
-			writefln("totalDllNamesBytes %s %s", dll.libName, totalDllNamesBytes);
-
-			foreach(funcName; dll.importedFunctions)
+			foreach(func; dll.importedFunctions)
 			{
 				// Hint/Name length
-				//writefln("'%s' length %s", funcName, alignValue(funcName.length + 1, 2));
-				totalDllHintsBytes = alignValue(totalDllHintsBytes + HintNameEntry.Hint.sizeof + funcName.length + 1, 2);
-				writefln("totalDllHintsBytes %s", totalDllHintsBytes);
+				totalDllHintsBytes = alignValue(totalDllHintsBytes + HintNameEntry.Hint.sizeof + func.name.length + 1, 2);
 			}
 			totalImportEntries += dll.numTableEntries; // include null entry
 		}
-		writefln("Total import entries %s", totalImportEntries);
-		writefln("Total dir bytes %s", importDirectoryTableBytes);
-		writefln("totalTableBytes %s", totalTableBytes);
-		writefln("totalDllNamesBytes %s", totalDllNamesBytes);
-		writefln("totalTableBytes %s", totalTableBytes);
-		writefln("totalDllHintsBytes %s", totalDllHintsBytes);
-		writefln("totalSectionBytes %s", totalSectionBytes);
 	}
 
 	DllImports[] libs;
@@ -198,42 +309,40 @@ struct ImportedDlls
 
 struct DllImports
 {
-	this(string lib, string[] funcs) {
+	this(string lib, SymbolImport[] funcs) {
 		libName = lib;
 		importedFunctions = funcs;
 	}
 	string libName;
-	string[] importedFunctions;
+	SymbolImport[] importedFunctions;
 	size_t numTableEntries() { return importedFunctions.length + 1; }
 	size_t totalTableBytes() { return numTableEntries * IAT_ILT_ENTRY_BYTES; }
 }
 
 struct ImportSectionMapping
 {
-	this(ubyte[] sectionData, ImportedDlls _importedLibs)
+	this(ubyte[] _sectionBuffer, ImportedDlls _importedLibs)
 	{
 		this.importedLibs = _importedLibs;
+		this.sectionData = _sectionBuffer[0..importedLibs.totalSectionBytes];
 		assert(sectionData.length == importedLibs.totalSectionBytes);
-		writefln("Buf len %x", sectionData.length);
 
 		size_t dirsEnd = importedLibs.importDirectoryTableBytes;
 		directories = cast(ImportDirectoryTableEntry[])(sectionData[0..dirsEnd]);
-		writefln("Dirs %x..%x", 0, dirsEnd);
 
 		ilt_rva = cast(uint)(dirsEnd);
 		size_t ILT_end = cast(uint)(ilt_rva + importedLibs.totalTableBytes);
 		ILTs = cast(ImportLookupEntry[])(sectionData[ilt_rva..ILT_end]);
-		writefln("ILTs %x..%x", ilt_rva, ILT_end);
 
 		iat_rva = cast(uint)(ILT_end);
 		size_t IAT_end = cast(uint)(iat_rva + importedLibs.totalTableBytes);
 		IATs = cast(ImportLookupEntry[])(sectionData[iat_rva..IAT_end]);
-		writefln("IATs %x..%x", iat_rva, IAT_end);
 
 		str_rva = cast(uint)IAT_end;
 		stringData = sectionData[str_rva..$];
-		writefln("Str %x..%x", str_rva, sectionData.length);
 	}
+
+	ubyte[] sectionData;
 
 	// initial info
 	ImportedDlls importedLibs;
@@ -251,8 +360,9 @@ struct ImportSectionMapping
 	uint str_rva;
 }
 
-void createImports(ref ImportSectionMapping mapping, uint sectionRVA)
+void createImports(ref ImportSectionMapping mapping, Section* importSection)
 {
+	uint sectionRVA = importSection.header.VirtualAddress;
 	// here, sink already has reserved space for Directory entries and IA, IL tables
 	// we will write strings and set address at the same time. Relative to section start
 	size_t tableIndex;
@@ -271,9 +381,9 @@ void createImports(ref ImportSectionMapping mapping, uint sectionRVA)
 
 		auto pre1 = strSink.length;
 		strSink.writeStringAligned2(dll.libName);
-		writefln("write '%s' len %s sink %s", dll.libName, strSink.length - pre1, strSink.length);
+		version(print_info) writefln("write '%s' len %s sink %s", dll.libName, strSink.length - pre1, strSink.length);
 
-		foreach(functionName; dll.importedFunctions)
+		foreach(func; dll.importedFunctions)
 		{
 			uint hintRVA = cast(uint)(str_rva + strSink.length);
 			auto hint = ImportLookupEntry.fromHintNameTableRVA(hintRVA);
@@ -281,9 +391,12 @@ void createImports(ref ImportSectionMapping mapping, uint sectionRVA)
 			mapping.ILTs[tableIndex] = hint;
 			mapping.IATs[tableIndex] = hint;
 
+			uint sym_rva = cast(uint)(mapping.iat_rva + tableIndex * IAT_ILT_ENTRY_BYTES);
+			importSection.symbols[func.symbolIndex] = SymbolSectionInfo(sym_rva, IAT_ILT_ENTRY_BYTES);
+
 			auto pre2 = strSink.length;
-			HintNameEntry(0, functionName).write(strSink);
-			writefln("write '%s' len %s", functionName, strSink.length - pre2);
+			HintNameEntry(0, func.name).write(strSink);
+			version(print_info) writefln("write '%s' len %s RVA %x", func.name, strSink.length - pre2, sym_rva);
 
 			++tableIndex;
 		}
@@ -292,7 +405,6 @@ void createImports(ref ImportSectionMapping mapping, uint sectionRVA)
 		++tableIndex;
 	}
 
-	writefln("%s %s", strSink.length, mapping.stringData.length);
 	assert(strSink.length == mapping.stringData.length);
 }
 
@@ -311,7 +423,7 @@ struct Executable
 	PeSignature peSignature;
 	CoffFileHeader coffFileHeader;
 	OptionalHeader optionalHeader;
-	Section[] sections;
+	Section*[] sections;
 
 	uint unalignedHeadersSize;
 
@@ -337,14 +449,14 @@ struct Executable
 		optionalHeader.SizeOfHeaders = alignValue(unalignedHeadersSize, params.fileAlignment);
 		uint imageFileSize = optionalHeader.SizeOfHeaders;
 
-		foreach (ref section; sections)
+		foreach (section; sections)
 		{
 			section.header.PointerToRawData = imageFileSize;
 			uint sectionFileSize = alignValue(section.dataSize, params.fileAlignment);
 			section.header.SizeOfRawData = sectionFileSize;
 			imageFileSize += sectionFileSize;
 		}
-		writefln("Image file size is %s bytes", imageFileSize);
+		version(print_info) writefln("Image file size is %s bytes", imageFileSize);
 	}
 
 	void fixupInMemorySizes()
@@ -352,7 +464,7 @@ struct Executable
 		uint headersInMemorySize = alignValue(unalignedHeadersSize, params.sectionAlignment);
 		uint imageVirtualSize = headersInMemorySize;
 
-		foreach (ref section; sections)
+		foreach (section; sections)
 		{
 			section.header.VirtualAddress = imageVirtualSize;
 			uint sectionVirtualSize = alignValue(section.dataSize, params.sectionAlignment);
@@ -368,7 +480,7 @@ struct Executable
 		bool codeSectionDetected = false;
 		bool importSectionDetected = false;
 
-		foreach (ref section; sections)
+		foreach (section; sections)
 		{
 			if (section.isCodeSection)
 			{
@@ -377,10 +489,10 @@ struct Executable
 					codeSectionDetected = true;
 					optionalHeader.BaseOfCode = section.header.VirtualAddress;
 					optionalHeader.AddressOfEntryPoint = section.header.VirtualAddress;
-					writefln("First code section. BaseOfCode is %s", optionalHeader.BaseOfCode);
+					version(print_info) writefln("First code section. BaseOfCode is %s", optionalHeader.BaseOfCode);
 				}
 				optionalHeader.SizeOfCode += section.header.SizeOfRawData;
-				writefln("Code section %s", section.header);
+				version(print_info) writefln("Code section %s", section.header);
 			}
 			else if (section.isImportSection)
 			{
@@ -393,7 +505,7 @@ struct Executable
 
 			optionalHeader.SizeOfInitializedData += section.header.SizeOfRawData;
 		}
-		writefln("Total code size is %sB", optionalHeader.SizeOfCode);
+		version(print_info) writefln("Total code size is %sB", optionalHeader.SizeOfCode);
 	}
 
 	void fixupInvariants()
@@ -428,7 +540,7 @@ struct Executable
 		optionalHeader.SizeOfHeapCommit = 0x1000;
 
 		// Section headers
-		foreach (ref section; sections)
+		foreach (section; sections)
 		{
 			section.header.PointerToRelocations = 0;
 			section.header.NumberOfRelocations = 0;
@@ -448,7 +560,7 @@ struct Executable
 		// Optional Header (Image Only)
 		optionalHeader.write(sink);
 		// Section Headers
-		foreach (ref section; sections)
+		foreach (section; sections)
 		{
 			section.header.write(sink);
 		}
@@ -456,9 +568,9 @@ struct Executable
 		sink.pad(headersPadding);
 
 		// Section Datas
-		foreach (ref section; sections)
+		foreach (section; sections)
 		{
-			writefln("Write section data '%s' %s bytes at %s", section.header.Name, section.data.length, sink.length);
+			version(print_info) writefln("%s RVA %x\t%s len\t%s bytes", section.name, sink.length, section.header.VirtualAddress, section.data.length);
 			sink.put(section.data);
 			size_t sectionPadding = section.header.SizeOfRawData - section.data.length;
 			sink.pad(sectionPadding);
@@ -1117,23 +1229,6 @@ struct SectionHeader
 }
 static assert(SectionHeader.sizeof == 40);
 
-
-struct ImportSection
-{
-	ImportDirectoryTableEntry[] directories;
-	ImportLookupTable[] dllTables;
-	HintNameTable hintNameTable;
-
-	size_t write(ref ArraySink sink) {
-		auto offset = sink.length;
-		foreach(ref directory; directories) directory.write(sink);
-		sink.pad(ImportDirectoryTableEntry.sizeof); // Null Directory Entry
-		foreach(ref table; dllTables) table.write(sink);
-		hintNameTable.write(sink);
-		return offset;
-	}
-}
-
 struct ImportDirectoryTableEntry
 {
 	/// The RVA of the import lookup table. This table contains
@@ -1238,10 +1333,49 @@ void writeStringAligned2(ref ArraySink sink, string str)
 		sink.put!ubyte(0); // 1 null byte
 }
 
+struct SymbolRef
+{
+	SymbolIndex symbolIndex;
+	uint sectionId;
+}
+
+alias SymbolIndex = uint;
+
+struct SymbolSectionInfo
+{
+	uint sectionOffset;
+	uint length;
+}
+
 struct Section
 {
+	uint sectionId;
 	SectionHeader header;
 	ubyte[] data;
+	SymbolSectionInfo[] symbols;
+
+	string name() {
+		foreach_reverse(i, chr; header.Name)
+			if (chr != '\0') return cast(string)header.Name[0..i+1];
+		return null;
+	}
+
+	SymbolIndex addSymbol(uint offset, uint length)
+	{
+		SymbolIndex index = cast(uint)symbols.length;
+		symbols ~= SymbolSectionInfo(offset, length);
+		return index;
+	}
+
+	uint symOffset(SymbolIndex symbol)
+	{
+		return symbols[symbol].sectionOffset;
+	}
+
+	uint symBytes(SymbolIndex symbol)
+	{
+		return symbols[symbol].length;
+	}
 
 	uint dataSize() { return cast(uint)data.length; }
 
