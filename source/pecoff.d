@@ -8,6 +8,7 @@ module pecoff;
 import std.stdio;
 import std.file;
 import std.datetime;
+import std.format : formattedWrite;
 
 import amd64asm;
 import utils;
@@ -56,6 +57,15 @@ enum SectionType : ubyte
 
 void main()
 {
+	testExeCompilation();
+
+	PecoffObj.readFile("../asm/helloc.obj").print(stdout.lockingTextWriter);
+	//PecoffObj.readFile("../asm/test.obj").print(stdout.lockingTextWriter);
+	//PecoffObj.readFile("../asm/betterc.obj").print(stdout.lockingTextWriter);
+}
+
+void testExeCompilation()
+{
 	MemAllocator allocator;
 	auto time0 = currTime;
 
@@ -70,24 +80,21 @@ void main()
 	// ---------------------------------------------------------
 
 	// Code section
-	Section textSection = Section(SectionType.text);
-	textSection.header.Name = ".text";
+	Section textSection = Section(SectionType.text, ".text");
 	textSection.header.Characteristics =
 		SectionFlags.SCN_CNT_CODE |
 		SectionFlags.SCN_MEM_EXECUTE |
 		SectionFlags.SCN_MEM_READ;
 
 	// Import table section
-	Section idataSection = Section(SectionType.idata);
-	idataSection.header.Name = ".idata";
+	Section idataSection = Section(SectionType.idata, ".idata");
 	idataSection.header.Characteristics =
 		SectionFlags.SCN_CNT_INITIALIZED_DATA |
 		SectionFlags.SCN_MEM_WRITE |
 		SectionFlags.SCN_MEM_READ;
 
 	// Static data section
-	Section dataSection = Section(SectionType.data);
-	dataSection.header.Name = ".data";
+	Section dataSection = Section(SectionType.data, ".data");
 	dataSection.header.Characteristics =
 		SectionFlags.SCN_CNT_INITIALIZED_DATA |
 		SectionFlags.SCN_MEM_READ;
@@ -133,8 +140,8 @@ void main()
 	SymbolRef ref_WriteConsoleA = importSection.importLibFunction("kernel32", "WriteConsoleA");
 
 	codeGen.subq(Register.SP, Imm32(0x30));
-	codeGen.movq(Register.CX, Imm32(STD_OUTPUT_HANDLE));
-	codeGen.call(memAddrRipDisp32(0)); // call GetStdHandle
+	codeGen.movd(Register.CX, Imm32(STD_OUTPUT_HANDLE));
+	codeGen.call(memAddrRipDisp32(0)); // RAX = GetStdHandle(STD_OUTPUT_HANDLE)
 	putFixup(ref_GetStdHandle);
 
 	codeGen.movq(Register.CX, Register.AX); // 1 in hConsoleOutput
@@ -145,7 +152,7 @@ void main()
 	codeGen.leaq(Register.R9, memAddrBaseDisp8(Register.SP, 0x28)); // 4 out lpNumberOfCharsWritten
 	codeGen.movq(memAddrBaseDisp8(Register.SP, 0x20), Imm32(0)); // 5 in lpReserved
 
-	codeGen.call(memAddrRipDisp32(0)); // call WriteConsoleA
+	codeGen.call(memAddrRipDisp32(0)); // call WriteConsoleA(RAX, "Hello world!", "Hello world!".length, SP+0x28, 0)
 	putFixup(ref_WriteConsoleA);
 
 	codeGen.addq(Register.SP, Imm32(0x30));
@@ -174,9 +181,7 @@ void main()
 	auto time1 = currTime;
 	string outputFilename = "out.exe";
 
-	auto f = File(outputFilename, "wb");
-	f.rawWrite(sink.data);
-	f.close();
+	std.file.write(outputFilename, sink.data);
 
 	// test exe
 	import std.process;
@@ -185,10 +190,85 @@ void main()
 	auto result = execute("out.exe");
 	auto time3 = currTime;
 
-	writefln("out.exe exited with %s, in %ss", result.status, scaledNumberFmt(time3 - time2));
+	writefln("%s exited with %s, in %ss", outputFilename, result.status, scaledNumberFmt(time3 - time2));
 	writefln("Compile in %ss, write %ss", scaledNumberFmt(time1 - time0), scaledNumberFmt(time2 - time1));
 	writeln(absolutePath(outputFilename));
 	//assert(result.status == 0);
+}
+
+struct PecoffObj
+{
+	string filename;
+	CoffFileHeader* header;
+	SectionHeader[] sectionHeaders;
+	Section[] sections;
+	SymbolTableEntry[] symbols;
+	string stringTable;
+
+	static PecoffObj readFile(string filename)
+	{
+		assert(exists(filename));
+		ubyte[] fileData = cast(ubyte[])std.file.read(filename);
+
+		size_t fileCursor = 0;
+		T[] getArrayOf(T)(size_t length)
+		{
+			//writefln("getArrayOf "~T.stringof~" At %s length %s*%s=%s of %s",
+			//	fileCursor, length, T.sizeof, T.sizeof * length, fileData.length);
+			assert(fileData.length >= fileCursor + T.sizeof * length);
+			auto res = (cast(T*)(fileData.ptr + fileCursor))[0..length];
+			fileCursor += T.sizeof * length;
+			return res;
+		}
+		T* getPtrTo(T)() { return cast(T*)getArrayOf!T(1).ptr; }
+
+		PecoffObj obj;
+		obj.filename = filename;
+		obj.header = getPtrTo!CoffFileHeader;
+		obj.sectionHeaders = getArrayOf!SectionHeader(obj.header.NumberOfSections);
+		obj.sections = new Section[obj.sectionHeaders.length];
+
+		fileCursor = obj.header.PointerToSymbolTable;
+		obj.symbols = getArrayOf!SymbolTableEntry(obj.header.NumberOfSymbols);
+
+		uint stringTableSize = *getPtrTo!uint();
+		assert(stringTableSize >= 4);
+		obj.stringTable = cast(string)getArrayOf!char(stringTableSize - 4);
+
+		// Fill sections
+		foreach(uint i, ref section; obj.sections)
+		{
+			section.sectionId = i;
+			section.header = obj.sectionHeaders[i];
+			section.name = section.header.getName(obj.stringTable);
+			size_t from = section.header.PointerToRawData;
+			size_t to = from + section.header.SizeOfRawData;
+			section.data = fileData[from..to];
+		}
+
+		return obj;
+	}
+
+	void print(Sink)(auto ref Sink sink)
+	{
+		formattedWrite(sink, "%s:\n", filename);
+		header.print(sink);
+		formattedWrite(sink, "Section table:\n");
+		foreach(i, ref section; sections)
+		{
+			section.header.print(sink, i+1, stringTable);
+			if (section.isLinkDirective) formattedWrite(sink, "    Link directive:%s\n", cast(string)section.data);
+		}
+		formattedWrite(sink, "Symbol table:\n");
+		for(int i = 0; i < symbols.length; ++i) {
+			symbols[i].print(sink, stringTable);
+			i += symbols[i].NumberOfAuxSymbols;
+		}
+		formattedWrite(sink, "String table: %s bytes\n", stringTable.length);
+		import std.algorithm : splitter, joiner;
+		if (stringTable.length != 0) writeln(stringTable.splitter('\0').joiner("\n"));
+		formattedWrite(sink, "End of string table\n");
+	}
 }
 
 struct RelativeReference
@@ -653,22 +733,22 @@ enum CoffFlags : ushort
 	EXECUTABLE_IMAGE = 0x0002,
 
 	//  COFF line numbers have been removed. This flag is deprecated and should be zero.
-	//  LINE_NUMS_STRIPPED = 0x0004,
+	LINE_NUMS_STRIPPED = 0x0004,
 
 	//  COFF symbol table entries for local symbols have been removed. This
 	//  flag is deprecated and should be zero.
-	//  LOCAL_SYMS_STRIPPED = 0x0008,
+	LOCAL_SYMS_STRIPPED = 0x0008,
 
 	//  Obsolete. Aggressively trim working set. This flag is deprecated for
 	//  Windows 2000 and later and must be zero.
-	//  AGGRESSIVE_WS_TRIM = 0x0010,
+	AGGRESSIVE_WS_TRIM = 0x0010,
 
 	/// Application can handle > 2-GB addresses.
 	LARGE_ADDRESS_AWARE = 0x0020,
 
 	//  Little endian: the least significant bit (LSB) precedes the most significant
 	//  bit (MSB) in memory. This flag is deprecated and should be zero.
-	//  BYTES_REVERSED_LO = 0x0080,
+	BYTES_REVERSED_LO = 0x0080,
 
 	/// Machine is based on a 32-bit-word architecture.
 	_32BIT_MACHINE = 0x0100,
@@ -693,7 +773,7 @@ enum CoffFlags : ushort
 	UP_SYSTEM_ONLY = 0x4000,
 
 	//  Big endian: the MSB precedes the LSB in memory. This flag is deprecated and should be zero
-	//  BYTES_REVERSED_HI = 0x8000,
+	BYTES_REVERSED_HI = 0x8000,
 }
 
 /// COFF File Header (Object and Image)
@@ -749,6 +829,38 @@ struct CoffFileHeader
 		sink.put(SizeOfOptionalHeader);
 		sink.put(Characteristics);
 		return offset;
+	}
+
+	void print(Sink)(auto ref Sink sink)
+	{
+		import std.datetime.systime : SysTime;
+		formattedWrite(sink, "  COFF header: \n");
+		formattedWrite(sink, "    Machine type: %s\n", Machine);
+		formattedWrite(sink, "    Number of sections: %s\n", NumberOfSections);
+		formattedWrite(sink, "    TimeDateStamp: %s\n", SysTime.fromUnixTime(TimeDateStamp));
+		formattedWrite(sink, "    Pointer to symbol table: 0x%08X\n", PointerToSymbolTable);
+		formattedWrite(sink, "    Number of symbols: %s\n", NumberOfSymbols);
+		formattedWrite(sink, "    Size of optional header: %s\n", SizeOfOptionalHeader);
+		formattedWrite(sink, "    Characteristics: 0x%04X\n", Characteristics);
+		if(Characteristics) with(CoffFlags)
+		{
+			auto c = Characteristics;
+			if(c & RELOCS_STRIPPED) formattedWrite(sink, "      Relocations stripped\n");
+			if(c & EXECUTABLE_IMAGE) formattedWrite(sink, "      Executable image\n");
+			if(c & LINE_NUMS_STRIPPED) formattedWrite(sink, "      Line numbers stripped\n");
+			if(c & LOCAL_SYMS_STRIPPED) formattedWrite(sink, "      Local symbols stripped\n");
+			if(c & AGGRESSIVE_WS_TRIM) formattedWrite(sink, "      Aggressively trim working set\n");
+			if(c & LARGE_ADDRESS_AWARE) formattedWrite(sink, "      Large address aware\n");
+			if(c & BYTES_REVERSED_LO) formattedWrite(sink, "      Bytes reversed low\n");
+			if(c & _32BIT_MACHINE) formattedWrite(sink, "      32bit machine\n");
+			if(c & DEBUG_STRIPPED) formattedWrite(sink, "      Debug stripped\n");
+			if(c & REMOVABLE_RUN_FROM_SWAP) formattedWrite(sink, "      Removable run from swap\n");
+			if(c & NET_RUN_FROM_SWAP) formattedWrite(sink, "      Network run from swap\n");
+			if(c & SYSTEM) formattedWrite(sink, "      System\n");
+			if(c & DLL) formattedWrite(sink, "      DLL\n");
+			if(c & UP_SYSTEM_ONLY) formattedWrite(sink, "      Up system only\n");
+			if(c & BYTES_REVERSED_HI) formattedWrite(sink, "      Bytes reversed high\n");
+		}
 	}
 }
 static assert(CoffFileHeader.sizeof == 20);
@@ -1212,6 +1324,20 @@ struct SectionHeader
 	/// section. See SectionFlags.
 	uint Characteristics;
 
+	string getName(string stringTable)
+	{
+		import std.string : fromStringz;
+		import std.conv : parse;
+		if (Name[0] == '/')
+		{
+			string offsetDecimalString = fromFixedString(Name[1..$]);
+			size_t offset = parse!size_t(offsetDecimalString);
+			return fromStringz(stringTable[offset..$].ptr);
+		}
+		else
+			return fromFixedString(Name);
+	}
+
 	size_t write(ref ArraySink sink) {
 		auto offset = sink.length;
 		sink.put(cast(ubyte[])Name);
@@ -1226,8 +1352,130 @@ struct SectionHeader
 		sink.put(Characteristics);
 		return offset;
 	}
+
+	void print(Sink)(auto ref Sink sink, size_t index, string stringTable)
+	{
+		formattedWrite(sink, "  Section header #%s: %s\n", index, getName(stringTable));
+		formattedWrite(sink, "    Virtual size: %s\n", VirtualSize);
+		formattedWrite(sink, "    Virtual address: %s\n", VirtualAddress);
+		formattedWrite(sink, "    Size of raw data: %s\n", SizeOfRawData);
+		formattedWrite(sink, "    Pointer to raw data: 0x%08X\n", PointerToRawData);
+		formattedWrite(sink, "    Pointer to relocations: 0x%08X\n", PointerToRelocations);
+		formattedWrite(sink, "    Pointer to line numbers: 0x%08X\n", PointerToLinenumbers);
+		formattedWrite(sink, "    Number of relocations: %s\n", NumberOfRelocations);
+		formattedWrite(sink, "    Number of line numbers: %s\n", NumberOfLinenumbers);
+		formattedWrite(sink, "    Characteristics: 0x%08X\n", Characteristics);
+		if(Characteristics) with(SectionFlags)
+		{
+			auto c = Characteristics;
+			if(c & SCN_CNT_CODE) formattedWrite(sink, "      Code\n");
+			if(c & SCN_CNT_INITIALIZED_DATA) formattedWrite(sink, "      INITIALIZED_DATA\n");
+			if(c & SCN_CNT_UNINITIALIZED_DATA) formattedWrite(sink, "      UNINITIALIZED_DATA\n");
+			if(c & SCN_LNK_INFO) formattedWrite(sink, "      LNK_INFO\n");
+			if(c & SCN_LNK_REMOVE) formattedWrite(sink, "      LNK_REMOVE\n");
+			if(c & SCN_LNK_COMDAT) formattedWrite(sink, "      COMDAT\n");
+			if(c & SCN_GPREL) formattedWrite(sink, "      GPREL\n");
+			if(c & 0x00F00000) {
+				size_t alignment = 1 << ((c & 0x00F00000) >> 20 - 1);
+				formattedWrite(sink, "      ALIGN %s bytes\n", alignment);
+			} else formattedWrite(sink, "      (no align specified)\n");
+			if(c & SCN_LNK_NRELOC_OVFL) formattedWrite(sink, "      LNK_NRELOC_OVFL Contains extended relocations\n");
+			if(c & SCN_MEM_DISCARDABLE) formattedWrite(sink, "      MEM_DISCARDABLE\n");
+			if(c & SCN_MEM_NOT_CACHED) formattedWrite(sink, "      MEM_NOT_CACHED\n");
+			if(c & SCN_MEM_NOT_PAGED) formattedWrite(sink, "      MEM_NOT_PAGED\n");
+			if(c & SCN_MEM_SHARED) formattedWrite(sink, "      Shared\n");
+			if(c & SCN_MEM_EXECUTE) formattedWrite(sink, "      Execute\n");
+			if(c & SCN_MEM_READ) formattedWrite(sink, "      Read\n");
+			if(c & SCN_MEM_WRITE) formattedWrite(sink, "      Write\n");
+		}
+	}
 }
 static assert(SectionHeader.sizeof == 40);
+
+enum SymbolSectionNumber : short
+{
+	/// The symbol record is not yet assigned a section. A
+	/// value of zero indicates that a reference to an external
+	/// symbol is defined elsewhere. A value of non-zero is a
+	/// common symbol with a size that is specified by the
+	/// value.
+	UNDEFINED = 0,
+
+	/// The symbol has an absolute (non-relocatable) value
+	/// and is not an address.
+	ABSOLUTE = -1,
+
+	/// The symbol provides general type or debugging
+	/// information but does not correspond to a section.
+	/// Microsoft tools use this setting along with .file
+	/// records (storage class FILE).
+	DEBUG = -2,
+}
+
+/// The symbol table in this section is inherited from the traditional COFF format. It is
+/// distinct from Microsoft Visual C++® debug information. A file can contain both a
+/// COFF symbol table and Visual C++ debug information, and the two are kept
+/// separate. Some Microsoft tools use the symbol table for limited but important
+/// purposes, such as communicating COMDAT information to the linker. Section
+/// names and file names, as well as code and data symbols, are listed in the symbol table.
+/// The location of the symbol table is indicated in the COFF header.
+/// The symbol table is an array of records, each 18 bytes long. Each record is either a
+/// standard or auxiliary symbol-table record. A standard record defines a symbol or
+/// name and has the following format.
+struct SymbolTableEntry
+{
+	align(1):
+	/// The name of the symbol, represented by a union
+	/// of three structures. An array of 8 bytes is used if
+	/// the name is not more than 8 bytes long. For more
+	/// information, see section 5.4.1, “Symbol Name Representation.”
+	SymbolName Name;
+
+	/// The value that is associated with the symbol. The
+	/// interpretation of this field depends on
+	/// SectionNumber and StorageClass. A typical
+	/// meaning is the relocatable address.
+	uint Value;
+
+	/// The signed integer that identifies the section,
+	/// using a one-based index into the section table.
+	/// Some values have special meaning, as defined in
+	/// section 5.4.2, “Section Number Values.”
+	short SectionNumber; /// See enum SymbolSectionNumber
+
+	/// A number that represents type. Microsoft tools set
+	/// this field to 0x20 (function) or 0x0 (not a function).
+	/// For more information, see section 5.4.3, “Type
+	/// Representation.”
+	ushort Type;
+
+	/// An enumerated value that represents storage
+	/// class. For more information, see section 5.4.4,
+	/// “Storage Class.”
+	ubyte StorageClass;
+
+	/// The number of auxiliary symbol table entries that
+	/// follow this record.
+	ubyte NumberOfAuxSymbols;
+
+	void print(Sink)(auto ref Sink sink, string stringTable)
+	{
+		formattedWrite(sink, "  Name: %s\n", Name.get(stringTable));
+		//formattedWrite(sink, "  Name: %s %s\n", Name.Zeroes, Name.Offset);
+		formattedWrite(sink, "    Value: %08X\n", Value);
+		switch(SectionNumber)
+		{
+			case -2: formattedWrite(sink, "    Section: Debug\n"); break;
+			case -1: formattedWrite(sink, "    Section: Absolute\n"); break;
+			case  0: formattedWrite(sink, "    Section: Undefined\n"); break;
+			default: formattedWrite(sink, "    Section: %s\n", SectionNumber);
+		}
+		formattedWrite(sink, "    Type: %s\n", Type);
+		formattedWrite(sink, "    Storage class: %s\n", StorageClass);
+		formattedWrite(sink, "    Number of aux symbols: %s\n", NumberOfAuxSymbols);
+	}
+}
+static assert(SymbolTableEntry.sizeof == 18);
 
 struct ImportDirectoryTableEntry
 {
@@ -1347,18 +1595,44 @@ struct SymbolSectionInfo
 	uint length;
 }
 
+struct SymbolName
+{
+	union
+	{
+		char[8] ShortName;
+		struct {
+			uint Zeroes;
+			uint Offset;
+		}
+	}
+
+	string get(string stringTable)
+	{
+		import std.string : fromStringz;
+		if (Zeroes == 0)
+			return fromStringz(stringTable[Offset..$].ptr);
+		else
+			return fromFixedString(ShortName);
+	}
+}
+
+string fromFixedString(char[] fixedStr) {
+	foreach_reverse(i, chr; fixedStr)
+		if (chr != '\0') return cast(string)fixedStr[0..i+1];
+	return null;
+}
+
 struct Section
 {
-	uint sectionId;
+	uint sectionId; // 0 based index
+	// Can be slice of SectionHeader.Name, slice of String table or separate string
+	// In the latter case, header.Name needs to be set before writing to the file.
+	string name;
 	SectionHeader header;
 	ubyte[] data;
 	SymbolSectionInfo[] symbols;
 
-	string name() {
-		foreach_reverse(i, chr; header.Name)
-			if (chr != '\0') return cast(string)header.Name[0..i+1];
-		return null;
-	}
+	// string name() { return fromFixedString(header.Name); }
 
 	SymbolIndex addSymbol(uint offset, uint length)
 	{
@@ -1381,11 +1655,16 @@ struct Section
 
 	bool isCodeSection()
 	{
-		return header.Name[0..5] == ".text";
+		return name == ".text";
 	}
 
 	bool isImportSection()
 	{
-		return header.Name[0..6] == ".idata";
+		return name == ".idata";
+	}
+
+	bool isLinkDirective()
+	{
+		return header.Characteristics & SectionFlags.SCN_LNK_INFO && name == ".drectve";
 	}
 }
