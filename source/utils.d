@@ -155,6 +155,11 @@ void printHex(ubyte[] buffer, size_t lineLength)
 		writefln("%(%02X %)", buffer[index..buffer.length]);
 }
 
+T divCeil(T)(T a, T b)
+{
+	return a / b + (a % b > 0);
+}
+
 T nextPOT(T)(T x)
 {
 	--x;

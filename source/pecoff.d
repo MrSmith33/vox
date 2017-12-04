@@ -5,9 +5,14 @@ Authors: Andrey Penechko.
 */
 module pecoff;
 
+import std.bitmanip;
 import std.stdio;
+import std.conv;
 import std.file;
+import std.path;
 import std.datetime;
+import std.exception;
+import std.string;
 import std.format : formattedWrite;
 
 import amd64asm;
@@ -59,9 +64,12 @@ void main()
 {
 	testExeCompilation();
 
-	PecoffObj.readFile("../asm/helloc.obj").print(stdout.lockingTextWriter);
-	//PecoffObj.readFile("../asm/test.obj").print(stdout.lockingTextWriter);
-	//PecoffObj.readFile("../asm/betterc.obj").print(stdout.lockingTextWriter);
+	PecoffLib.fromFile("../asm/helloc.lib").print(stdout.lockingTextWriter);
+	//PecoffObj.fromFile("../asm/helloc.obj").print(stdout.lockingTextWriter);
+	//PecoffObj.fromFile("../asm/extd.obj").print(stdout.lockingTextWriter);
+	//PecoffObj.fromFile("../asm/extc.obj").print(stdout.lockingTextWriter);
+	//PecoffObj.fromFile("../asm/test.obj").print(stdout.lockingTextWriter);
+	//PecoffObj.fromFile("../asm/betterc.obj").print(stdout.lockingTextWriter);
 }
 
 void testExeCompilation()
@@ -196,44 +204,65 @@ void testExeCompilation()
 	//assert(result.status == 0);
 }
 
+struct FileDataSlicer
+{
+	ubyte[] fileData;
+	size_t fileCursor = 0;
+
+	// Returns array of Ts of length 'length' stating from fileCursor offset in fileData
+	T[] getArrayOf(T)(size_t length)
+	{
+		enforce(fileData.length >= fileCursor + T.sizeof * length);
+		auto res = (cast(T*)(fileData.ptr + fileCursor))[0..length];
+		fileCursor += T.sizeof * length;
+		return res;
+	}
+
+	T* getPtrTo(T)() { return getArrayOf!T(1).ptr; }
+	T parseBigEndian(T)() {
+		ubyte[T.sizeof] buf = getArrayOf!ubyte(T.sizeof);
+		return bigEndianToNative!T(buf);
+	}
+
+	void advanceToAlignment(size_t alignment) { fileCursor += paddingSize(fileCursor, alignment); }
+}
+
 struct PecoffObj
 {
 	string filename;
+	ubyte[] fileData;
 	CoffFileHeader* header;
 	SectionHeader[] sectionHeaders;
 	Section[] sections;
 	SymbolTableEntry[] symbols;
 	string stringTable;
 
-	static PecoffObj readFile(string filename)
+	static PecoffObj fromFile(string filename)
 	{
-		assert(exists(filename));
-		ubyte[] fileData = cast(ubyte[])std.file.read(filename);
+		enforce(exists(filename), format("%s does not exist", filename));
+		enforce(extension(filename) == ".obj", format("%s must have .obj extension", filename));
 
-		size_t fileCursor = 0;
-		T[] getArrayOf(T)(size_t length)
-		{
-			//writefln("getArrayOf "~T.stringof~" At %s length %s*%s=%s of %s",
-			//	fileCursor, length, T.sizeof, T.sizeof * length, fileData.length);
-			assert(fileData.length >= fileCursor + T.sizeof * length);
-			auto res = (cast(T*)(fileData.ptr + fileCursor))[0..length];
-			fileCursor += T.sizeof * length;
-			return res;
-		}
-		T* getPtrTo(T)() { return cast(T*)getArrayOf!T(1).ptr; }
+		ubyte[] fileData = cast(ubyte[])std.file.read(filename);
+		return fromBytes(fileData, filename);
+	}
+
+	static PecoffObj fromBytes(ubyte[] fileData, string filename = null)
+	{
+		auto slicer = FileDataSlicer(fileData);
 
 		PecoffObj obj;
 		obj.filename = filename;
-		obj.header = getPtrTo!CoffFileHeader;
-		obj.sectionHeaders = getArrayOf!SectionHeader(obj.header.NumberOfSections);
+		obj.fileData = fileData;
+		obj.header = slicer.getPtrTo!CoffFileHeader;
+		obj.sectionHeaders = slicer.getArrayOf!SectionHeader(obj.header.NumberOfSections);
 		obj.sections = new Section[obj.sectionHeaders.length];
 
-		fileCursor = obj.header.PointerToSymbolTable;
-		obj.symbols = getArrayOf!SymbolTableEntry(obj.header.NumberOfSymbols);
+		slicer.fileCursor = obj.header.PointerToSymbolTable;
+		obj.symbols = slicer.getArrayOf!SymbolTableEntry(obj.header.NumberOfSymbols);
 
-		uint stringTableSize = *getPtrTo!uint();
+		uint stringTableSize = *slicer.getPtrTo!uint();
 		assert(stringTableSize >= 4);
-		obj.stringTable = cast(string)getArrayOf!char(stringTableSize - 4);
+		obj.stringTable = cast(string)slicer.getArrayOf!char(stringTableSize - 4);
 
 		// Fill sections
 		foreach(uint i, ref section; obj.sections)
@@ -241,9 +270,13 @@ struct PecoffObj
 			section.sectionId = i;
 			section.header = obj.sectionHeaders[i];
 			section.name = section.header.getName(obj.stringTable);
+
 			size_t from = section.header.PointerToRawData;
 			size_t to = from + section.header.SizeOfRawData;
 			section.data = fileData[from..to];
+
+			slicer.fileCursor = section.header.PointerToRelocations;
+			section.relocations = slicer.getArrayOf!CoffRelocation(section.header.NumberOfRelocations);
 		}
 
 		return obj;
@@ -252,23 +285,257 @@ struct PecoffObj
 	void print(Sink)(auto ref Sink sink)
 	{
 		formattedWrite(sink, "%s:\n", filename);
+		sink.put("\n");
+
 		header.print(sink);
-		formattedWrite(sink, "Section table:\n");
-		foreach(i, ref section; sections)
+		sink.put("\n");
+
+		sink.put("Section table:\n");
+		size_t totalRelocations = 0;
+		SectionHeader.printTableHeader(sink);
+		foreach(sectionIndex, ref section; sections)
 		{
-			section.header.print(sink, i+1, stringTable);
-			if (section.isLinkDirective) formattedWrite(sink, "    Link directive:%s\n", cast(string)section.data);
+			totalRelocations += section.relocations.length;
+			section.header.print(sink, sectionIndex+1, stringTable);
+			if (section.isLinkDirective) formattedWrite(sink, "      Link directive:%s\n", cast(string)section.data);
 		}
-		formattedWrite(sink, "Symbol table:\n");
-		for(int i = 0; i < symbols.length; ++i) {
-			symbols[i].print(sink, stringTable);
+		sink.put("\n");
+
+		formattedWrite(sink, "Relocations: %X records\n", totalRelocations);
+		if (totalRelocations)
+		{
+			formattedWrite(sink, "                                                       Symbol  Symbol\n");
+			formattedWrite(sink, "Sect  Offset    Type                     Applied To     Index  Name  \n");
+			formattedWrite(sink, "----  --------  ----------------  -----------------  --------  ------\n");
+			foreach(sectionIndex, ref section; sections)
+			{
+				if (section.relocations.length)
+				{
+					foreach(ref reloc; section.relocations)
+					{
+						// Read bytes that changed by relocation and display in hex
+						import std.range : repeat;
+						size_t bytesToRead = divCeil(reloc.targetSize, 8);
+						size_t from = reloc.VirtualAddress;
+						size_t to = from + bytesToRead;
+						ubyte[8] buf;
+						buf[0..bytesToRead] = section.data[from..to];
+						size_t appliedTo = *cast(size_t*)buf.ptr;
+
+						formattedWrite(sink, "% 4X  %08X  % 16s  %s%0*X  % 8X  %s\n",
+							sectionIndex+1,
+							reloc.VirtualAddress,
+							reloc.typeString,
+							' '.repeat(17 - bytesToRead*2), bytesToRead*2, appliedTo,
+							reloc.SymbolTableIndex,
+							symbols[reloc.SymbolTableIndex].Name.get(stringTable));
+					}
+				}
+			}
+		}
+		sink.put("\n");
+
+		sink.put("Symbol table:\n");
+		sink.put("       #     Value   Section  Type      Name    \n");
+		sink.put("--------  --------  --------  --------  --------\n");
+		for(int i = 0; i < symbols.length; ++i)
+		{
+			//symbols[i].print(sink, stringTable);
+			formattedWrite(sink, "% 8X  % 8X  ",//"% 8X  % 8X  %s\n",
+				i,
+				symbols[i].Value);
+
+			switch(symbols[i].SectionNumber) {
+				case -2: formattedWrite(sink, "Debug     "); break;
+				case -1: formattedWrite(sink, "Absolute  "); break;
+				case  0: formattedWrite(sink, "Undef     "); break;
+				default: formattedWrite(sink, "% 8X  ", symbols[i].SectionNumber);
+			}
+
+			if (symbols[i].Type == 0x20) formattedWrite(sink, "function  ");
+			else if (symbols[i].Type == 0x00) formattedWrite(sink, "          ");
+			else formattedWrite(sink, "          ");
+
+			formattedWrite(sink, "%s\n", symbols[i].Name.get(stringTable));
+
 			i += symbols[i].NumberOfAuxSymbols;
 		}
-		formattedWrite(sink, "String table: %s bytes\n", stringTable.length);
-		import std.algorithm : splitter, joiner;
-		if (stringTable.length != 0) writeln(stringTable.splitter('\0').joiner("\n"));
-		formattedWrite(sink, "End of string table\n");
+
+		formattedWrite(sink, "\nString table: %s bytes at %08X\n", stringTable.length+4, header.PointerToSymbolTable);
+		stringTable.printStringTable(sink, 4);
 	}
+}
+
+void printStringTable(Sink)(string stringTable, auto ref Sink sink, size_t tableAddrOffset = 0)
+{
+	if (stringTable.length != 0)
+	{
+		import std.algorithm : splitter, joiner;
+		size_t i = 0;
+		sink.put("       #    Offset  String  \n");
+		sink.put("--------  --------  --------\n");
+		foreach(string sym; stringTable[0..$-1].splitter('\0'))
+		{
+			formattedWrite(sink, "% 8X  % 8X  ", i++, sym.ptr - stringTable.ptr + tableAddrOffset);
+			sink.put(sym);
+			sink.put('\n');
+		}
+	}
+}
+
+immutable ARCHIVE_FILE_SIGNATURE = "!<arch>\n";
+
+struct PecoffLib
+{
+	string filename;
+	ubyte[] fileData;
+	uint[] memberOffsets;
+	ushort[] indicies;
+	string stringTable;
+	PecoffObj[] objs;
+
+	static PecoffLib fromFile(string filename)
+	{
+		enforce(exists(filename), format("%s does not exist", filename));
+		enforce(extension(filename) == ".lib", format("%s must have .lib extension", filename));
+
+		ubyte[] fileData = cast(ubyte[])std.file.read(filename);
+		return fromBytes(fileData, filename);
+	}
+
+	static PecoffLib fromBytes(ubyte[] fileData, string filename = null)
+	{
+		auto slicer = FileDataSlicer(fileData);
+
+		string signature = cast(string)slicer.getArrayOf!char(ARCHIVE_FILE_SIGNATURE.length);
+		enforce(signature == ARCHIVE_FILE_SIGNATURE, format("%s has no !<arch> file signature", filename));
+
+		PecoffLib lib;
+		lib.filename = filename;
+		lib.fileData = fileData;
+
+		ParsedLibMemberHeader readMemberHeader()
+		{
+			LibMemberHeader* firstMemberText = slicer.getPtrTo!LibMemberHeader;
+			auto firstMember = cast(ParsedLibMemberHeader)*firstMemberText;
+			firstMemberText.validate();
+			return firstMember;
+		}
+
+		ParsedLibMemberHeader currentMember;
+
+		// 1st member
+		{
+			currentMember = readMemberHeader();
+			enforce(currentMember.Name == "/", format("1st Linker Member (\"/\") expected, got \"%s\"", currentMember.Name));
+			ubyte[] firstMemberData = slicer.getArrayOf!ubyte(currentMember.Size);
+			slicer.advanceToAlignment(2);
+			currentMember = readMemberHeader();
+		}
+
+		// 2nd member
+		if (currentMember.Name == "/")
+		{
+			// enforce(currentMember.Name == "/", format("2nd Linker Member (\"/\") expected, got \"%s\"", currentMember.Name));
+			ubyte[] secondMemberData = slicer.getArrayOf!ubyte(currentMember.Size);
+			auto secondSlicer = FileDataSlicer(secondMemberData);
+			uint numOfMembers = *secondSlicer.getPtrTo!uint;
+			lib.objs.reserve(numOfMembers);
+			lib.memberOffsets = secondSlicer.getArrayOf!uint(numOfMembers);
+			uint numOfSymbols = *secondSlicer.getPtrTo!uint;
+			lib.indicies = secondSlicer.getArrayOf!ushort(numOfSymbols);
+			ubyte[] stringTableData = secondSlicer.fileData[secondSlicer.fileCursor..$];
+			lib.stringTable = cast(string)stringTableData;
+			slicer.advanceToAlignment(2);
+			currentMember = readMemberHeader();
+		}
+
+		// Long names
+		if (currentMember.Name == "//")
+		{
+			ubyte[] longNamesData = slicer.getArrayOf!ubyte(currentMember.Size);
+			writefln("long names found");
+
+			slicer.advanceToAlignment(2);
+			currentMember = readMemberHeader();
+		}
+
+		while (true)
+		{
+			ubyte[] objData = slicer.getArrayOf!ubyte(currentMember.Size);
+			//writefln("%(%02X %)", cast(ubyte[])currentMember.Name);
+			lib.objs ~= PecoffObj.fromBytes(objData, cast(string)currentMember.Name);
+			slicer.advanceToAlignment(2);
+
+			if (slicer.fileCursor >= slicer.fileData.length) break;
+			currentMember = readMemberHeader();
+		}
+
+		return lib;
+	}
+
+	void print(Sink)(auto ref Sink sink)
+	{
+		formattedWrite(sink, "%s:\n", filename);
+		formattedWrite(sink, "  memberOffsets [%(%X, %)]\n", memberOffsets);
+		formattedWrite(sink, "  indicies [%(%X, %)]\n", indicies);
+		sink.put("\nFile table:\n");
+		foreach(obj; objs) formattedWrite(sink, "%s\n", obj.filename);
+		sink.put("\nSymbol table:\n");
+		stringTable.printStringTable(stdout.lockingTextWriter);
+		sink.put("\n");
+		foreach(obj; objs)
+		{
+			sink.put("\n--------------------------------------\n");
+			obj.print(sink);
+		}
+	}
+}
+
+struct LibMemberHeader
+{
+	static immutable END_OF_HEADER_VALUE = "`\n";
+
+	align(1):
+	char[16] Name;
+	char[12] Date;
+	char[6] UserId;
+	char[6] GroupId;
+	char[8] Mode;
+	char[10] Size;
+	char[2] EndOfHeader;
+
+	void validate() {
+		enforce(EndOfHeader == END_OF_HEADER_VALUE, format("%(%02X%) != %(%02X%)",
+			cast(ubyte[])EndOfHeader[], cast(ubyte[])END_OF_HEADER_VALUE));
+	}
+
+	ParsedLibMemberHeader opCast(T)() const @safe
+		if (is(Unqual!T == ParsedLibMemberHeader))
+	{
+		ParsedLibMemberHeader res;
+		res.Name = strip(Name[]);
+		res.Date = SysTime.fromUnixTime(to!uint(strip(Date[])));
+		auto usedIdStripped = UserId[].strip;
+		if (usedIdStripped.length) res.UserId = to!uint(usedIdStripped);
+		auto groupIdStripped = UserId[].strip;
+		if (groupIdStripped.length) res.GroupId = to!uint(groupIdStripped);
+		res.Mode = to!uint(strip(Mode[]), 8);
+		res.Size = to!uint(strip(Size[]));
+		return res;
+	}
+}
+static assert(LibMemberHeader.sizeof == 60);
+
+struct ParsedLibMemberHeader
+{
+	align(1):
+	const(char)[] Name;
+	SysTime Date;
+	uint UserId;
+	uint GroupId;
+	uint Mode;
+	uint Size;
 }
 
 struct RelativeReference
@@ -834,32 +1101,32 @@ struct CoffFileHeader
 	void print(Sink)(auto ref Sink sink)
 	{
 		import std.datetime.systime : SysTime;
-		formattedWrite(sink, "  COFF header: \n");
-		formattedWrite(sink, "    Machine type: %s\n", Machine);
-		formattedWrite(sink, "    Number of sections: %s\n", NumberOfSections);
-		formattedWrite(sink, "    TimeDateStamp: %s\n", SysTime.fromUnixTime(TimeDateStamp));
-		formattedWrite(sink, "    Pointer to symbol table: 0x%08X\n", PointerToSymbolTable);
-		formattedWrite(sink, "    Number of symbols: %s\n", NumberOfSymbols);
-		formattedWrite(sink, "    Size of optional header: %s\n", SizeOfOptionalHeader);
-		formattedWrite(sink, "    Characteristics: 0x%04X\n", Characteristics);
+		formattedWrite(sink, "COFF header:\n");
+		formattedWrite(sink, "  Machine type: %s\n", Machine);
+		formattedWrite(sink, "  Number of sections: %s\n", NumberOfSections);
+		formattedWrite(sink, "  TimeDateStamp: %s\n", SysTime.fromUnixTime(TimeDateStamp));
+		formattedWrite(sink, "  Pointer to symbol table: 0x%08X\n", PointerToSymbolTable);
+		formattedWrite(sink, "  Number of symbols: %s\n", NumberOfSymbols);
+		formattedWrite(sink, "  Size of optional header: %s\n", SizeOfOptionalHeader);
+		formattedWrite(sink, "  Characteristics: 0x%04X\n", Characteristics);
 		if(Characteristics) with(CoffFlags)
 		{
 			auto c = Characteristics;
-			if(c & RELOCS_STRIPPED) formattedWrite(sink, "      Relocations stripped\n");
-			if(c & EXECUTABLE_IMAGE) formattedWrite(sink, "      Executable image\n");
-			if(c & LINE_NUMS_STRIPPED) formattedWrite(sink, "      Line numbers stripped\n");
-			if(c & LOCAL_SYMS_STRIPPED) formattedWrite(sink, "      Local symbols stripped\n");
-			if(c & AGGRESSIVE_WS_TRIM) formattedWrite(sink, "      Aggressively trim working set\n");
-			if(c & LARGE_ADDRESS_AWARE) formattedWrite(sink, "      Large address aware\n");
-			if(c & BYTES_REVERSED_LO) formattedWrite(sink, "      Bytes reversed low\n");
-			if(c & _32BIT_MACHINE) formattedWrite(sink, "      32bit machine\n");
-			if(c & DEBUG_STRIPPED) formattedWrite(sink, "      Debug stripped\n");
-			if(c & REMOVABLE_RUN_FROM_SWAP) formattedWrite(sink, "      Removable run from swap\n");
-			if(c & NET_RUN_FROM_SWAP) formattedWrite(sink, "      Network run from swap\n");
-			if(c & SYSTEM) formattedWrite(sink, "      System\n");
-			if(c & DLL) formattedWrite(sink, "      DLL\n");
-			if(c & UP_SYSTEM_ONLY) formattedWrite(sink, "      Up system only\n");
-			if(c & BYTES_REVERSED_HI) formattedWrite(sink, "      Bytes reversed high\n");
+			if(c & RELOCS_STRIPPED) formattedWrite(sink, "    Relocations stripped\n");
+			if(c & EXECUTABLE_IMAGE) formattedWrite(sink, "    Executable image\n");
+			if(c & LINE_NUMS_STRIPPED) formattedWrite(sink, "    Line numbers stripped\n");
+			if(c & LOCAL_SYMS_STRIPPED) formattedWrite(sink, "    Local symbols stripped\n");
+			if(c & AGGRESSIVE_WS_TRIM) formattedWrite(sink, "    Aggressively trim working set\n");
+			if(c & LARGE_ADDRESS_AWARE) formattedWrite(sink, "    Large address aware\n");
+			if(c & BYTES_REVERSED_LO) formattedWrite(sink, "    Bytes reversed low\n");
+			if(c & _32BIT_MACHINE) formattedWrite(sink, "    32bit machine\n");
+			if(c & DEBUG_STRIPPED) formattedWrite(sink, "    Debug stripped\n");
+			if(c & REMOVABLE_RUN_FROM_SWAP) formattedWrite(sink, "    Removable run from swap\n");
+			if(c & NET_RUN_FROM_SWAP) formattedWrite(sink, "    Network run from swap\n");
+			if(c & SYSTEM) formattedWrite(sink, "    System\n");
+			if(c & DLL) formattedWrite(sink, "    DLL\n");
+			if(c & UP_SYSTEM_ONLY) formattedWrite(sink, "    Up system only\n");
+			if(c & BYTES_REVERSED_HI) formattedWrite(sink, "    Bytes reversed high\n");
 		}
 	}
 }
@@ -1353,41 +1620,54 @@ struct SectionHeader
 		return offset;
 	}
 
+	static void printTableHeader(Sink)(auto ref Sink sink)
+	{
+		formattedWrite(sink, "Code|Initialized|Uninitialized|Link info|Remove|coMdat|Gprel|Ovfl|Discardable|cacHed|Paged|Shared\n");
+		formattedWrite(sink, "----  --------  --------  --------  --------  --------  --------  -----  ------------  ---  --------\n");
+		formattedWrite(sink, "      Virtual    Virtual      File      File    Relocs    Num of             Flags                  \n");
+		formattedWrite(sink, "   #  Address       Size    Offset      Size    Offset    Relocs  Align  CIULVMGODHPS  RWX  Name    \n");
+		formattedWrite(sink, "----  --------  --------  --------  --------  --------  --------  -----  ------------  ---  --------\n");
+	}
+
 	void print(Sink)(auto ref Sink sink, size_t index, string stringTable)
 	{
-		formattedWrite(sink, "  Section header #%s: %s\n", index, getName(stringTable));
-		formattedWrite(sink, "    Virtual size: %s\n", VirtualSize);
-		formattedWrite(sink, "    Virtual address: %s\n", VirtualAddress);
-		formattedWrite(sink, "    Size of raw data: %s\n", SizeOfRawData);
-		formattedWrite(sink, "    Pointer to raw data: 0x%08X\n", PointerToRawData);
-		formattedWrite(sink, "    Pointer to relocations: 0x%08X\n", PointerToRelocations);
-		formattedWrite(sink, "    Pointer to line numbers: 0x%08X\n", PointerToLinenumbers);
-		formattedWrite(sink, "    Number of relocations: %s\n", NumberOfRelocations);
-		formattedWrite(sink, "    Number of line numbers: %s\n", NumberOfLinenumbers);
-		formattedWrite(sink, "    Characteristics: 0x%08X\n", Characteristics);
+		formattedWrite(sink, "% 4X  % 8X  % 8X  % 8X  % 8X  % 8X  % 8X  ",
+			index, VirtualAddress, VirtualSize, PointerToRawData, SizeOfRawData,
+			PointerToRelocations, NumberOfRelocations);
+
+		// Align
+		if(Characteristics & 0x00F00000) {
+			size_t alignment = 1 << ((Characteristics & 0x00F00000) >> 20 - 1);
+			formattedWrite(sink, "% 5s  ", alignment);
+		} else formattedWrite(sink, "       ");
+
+		// Flags
 		if(Characteristics) with(SectionFlags)
 		{
-			auto c = Characteristics;
-			if(c & SCN_CNT_CODE) formattedWrite(sink, "      Code\n");
-			if(c & SCN_CNT_INITIALIZED_DATA) formattedWrite(sink, "      INITIALIZED_DATA\n");
-			if(c & SCN_CNT_UNINITIALIZED_DATA) formattedWrite(sink, "      UNINITIALIZED_DATA\n");
-			if(c & SCN_LNK_INFO) formattedWrite(sink, "      LNK_INFO\n");
-			if(c & SCN_LNK_REMOVE) formattedWrite(sink, "      LNK_REMOVE\n");
-			if(c & SCN_LNK_COMDAT) formattedWrite(sink, "      COMDAT\n");
-			if(c & SCN_GPREL) formattedWrite(sink, "      GPREL\n");
-			if(c & 0x00F00000) {
-				size_t alignment = 1 << ((c & 0x00F00000) >> 20 - 1);
-				formattedWrite(sink, "      ALIGN %s bytes\n", alignment);
-			} else formattedWrite(sink, "      (no align specified)\n");
-			if(c & SCN_LNK_NRELOC_OVFL) formattedWrite(sink, "      LNK_NRELOC_OVFL Contains extended relocations\n");
-			if(c & SCN_MEM_DISCARDABLE) formattedWrite(sink, "      MEM_DISCARDABLE\n");
-			if(c & SCN_MEM_NOT_CACHED) formattedWrite(sink, "      MEM_NOT_CACHED\n");
-			if(c & SCN_MEM_NOT_PAGED) formattedWrite(sink, "      MEM_NOT_PAGED\n");
-			if(c & SCN_MEM_SHARED) formattedWrite(sink, "      Shared\n");
-			if(c & SCN_MEM_EXECUTE) formattedWrite(sink, "      Execute\n");
-			if(c & SCN_MEM_READ) formattedWrite(sink, "      Read\n");
-			if(c & SCN_MEM_WRITE) formattedWrite(sink, "      Write\n");
+			void printFlag(char chr, SectionFlags flag) {
+				if(Characteristics & flag) sink.put(chr);
+				else sink.put(' ');
+			}
+			printFlag('C', SCN_CNT_CODE);
+			printFlag('I', SCN_CNT_INITIALIZED_DATA);
+			printFlag('U', SCN_CNT_UNINITIALIZED_DATA);
+			printFlag('L', SCN_LNK_INFO);
+			printFlag('R', SCN_LNK_REMOVE);
+			printFlag('M', SCN_LNK_COMDAT);
+			printFlag('G', SCN_GPREL);
+			printFlag('O', SCN_LNK_NRELOC_OVFL);
+			printFlag('D', SCN_MEM_DISCARDABLE);
+			printFlag('H', SCN_MEM_NOT_CACHED);
+			printFlag('P', SCN_MEM_NOT_PAGED);
+			printFlag('S', SCN_MEM_SHARED);
+			sink.put("  ");
+			printFlag('R', SCN_MEM_READ);
+			printFlag('W', SCN_MEM_WRITE);
+			printFlag('X', SCN_MEM_EXECUTE);
 		}
+
+		// Name
+		formattedWrite(sink, "  %s\n", getName(stringTable));
 	}
 }
 static assert(SectionHeader.sizeof == 40);
@@ -1602,7 +1882,7 @@ struct SymbolName
 		char[8] ShortName;
 		struct {
 			uint Zeroes;
-			uint Offset;
+			uint Offset; // includes 4 size bytes at the beginning of table
 		}
 	}
 
@@ -1610,7 +1890,7 @@ struct SymbolName
 	{
 		import std.string : fromStringz;
 		if (Zeroes == 0)
-			return fromStringz(stringTable[Offset..$].ptr);
+			return fromStringz(stringTable[Offset-4..$].ptr);
 		else
 			return fromFixedString(ShortName);
 	}
@@ -1622,6 +1902,69 @@ string fromFixedString(char[] fixedStr) {
 	return null;
 }
 
+string[] IMAGE_REL_AMD64_names = ["ABSOLUTE","ADDR64","ADDR32","ADDR32NB","REL32","REL32_1",
+	"REL32_2", "REL32_3", "REL32_4", "REL32_5", "SECTION", "SECREL", "SECREL7",
+	"TOKEN", "SREL32", "PAIR", "SSPAN32"];
+
+enum IMAGE_REL_AMD64 : ushort {
+	ABSOLUTE = 0x00, /// The relocation is ignored.
+	ADDR64 = 0x01, /// The 64-bit VA of the relocation target.
+	ADDR32 = 0x02, /// The 32-bit VA of the relocation target.
+	ADDR32NB = 0x03, /// The 32-bit address without an image base (RVA).
+	REL32 = 0x04, /// The 32-bit relative address from the byte following the relocation.
+	REL32_1 = 0x05, /// The 32-bit address relative to byte distance 1 from the relocation.
+	REL32_2 = 0x06, /// The 32-bit address relative to byte distance 2 from the relocation.
+	REL32_3 = 0x07, /// The 32-bit address relative to byte distance 3 from the relocation.
+	REL32_4 = 0x08, /// The 32-bit address relative to byte distance 4 from the relocation.
+	REL32_5 = 0x09, /// The 32-bit address relative to byte distance 5 from the relocation.
+	SECTION = 0x0A, /// The 16-bit section index of the section that contains the target. This is used to support debugging information.
+	SECREL = 0x0B, /// The 32-bit offset of the target from the beginning of its section. This is used to support debugging information and static thread local storage.
+	SECREL7 = 0x0C, /// A 7-bit unsigned offset from the base of the section that contains the target.
+	TOKEN = 0x0D, /// CLR tokens.
+	SREL32 = 0x0E, /// A 32-bit signed span-dependent value emitted into the object.
+	PAIR = 0x0F, /// A pair that must immediately follow every span-dependent value.
+	SSPAN32 = 0x10 /// A 32-bit signed span-dependent value that is applied at link time.
+}
+
+ubyte[] relTargetSizeTable = [0,64,32,32,32,32,32,32,32,32,16,32,7,0,32,0,32];
+
+struct CoffRelocation
+{
+	align(1):
+	/// The address of the item to which relocation is
+	/// applied. This is the offset from the beginning of the
+	/// section, plus the value of the section’s RVA/Offset
+	/// field. See section 4, “Section Table (Section
+	/// Headers).” For example, if the first byte of the
+	/// section has an address of 0x10, the third byte has
+	/// an address of 0x12.
+	uint VirtualAddress;
+
+	/// A zero-based index into the symbol table. This
+	/// symbol gives the address that is to be used for the
+	/// relocation. If the specified symbol has section
+	/// storage class, then the symbol’s address is the
+	/// address with the first section of the same name.
+	uint SymbolTableIndex;
+
+	/// A value that indicates the kind of relocation that
+	/// should be performed. Valid relocation types
+	/// depend on machine type. See section 5.2.1, “Type
+	/// Indicators.
+	ushort Type;
+
+	size_t targetSize()
+	{
+		return relTargetSizeTable[Type];
+	}
+
+	string typeString()
+	{
+		return IMAGE_REL_AMD64_names[Type];
+	}
+}
+static assert(CoffRelocation.sizeof == 10);
+
 struct Section
 {
 	uint sectionId; // 0 based index
@@ -1629,6 +1972,7 @@ struct Section
 	// In the latter case, header.Name needs to be set before writing to the file.
 	string name;
 	SectionHeader header;
+	CoffRelocation[] relocations;
 	ubyte[] data;
 	SymbolSectionInfo[] symbols;
 
