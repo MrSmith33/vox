@@ -19,6 +19,48 @@ import amd64asm;
 import utils;
 
 //version = print_info;
+//version = use_mmap;
+
+void main()
+{
+	testExeCompilation();
+	testObjLinking();
+
+	auto file = File("../asm/dump.txt", "w");
+	//auto output = stdout.lockingTextWriter;
+	auto output = file.lockingTextWriter;
+
+	//PecoffObj.fromFile("../asm/obj/simple.obj").print(output);
+
+	//PecoffObj.fromFile("../asm/obj/gcstub64.obj").print(output);
+	//PecoffLib.fromFile("../asm/lib/phobos64.lib").objs[0].toFile("../asm/obj/zutil.obj");
+	//PecoffObj.fromFile("../asm/obj/zutil.obj").print(output);
+
+	//PecoffLib.fromFile("../asm/lib/oldnames.lib").print(output);
+
+	auto time0 = currTime;
+	auto lib = PecoffLib.fromFile("../asm/lib/phobos64.lib");
+	auto time1 = currTime;
+	printSectionStats(output, lib);
+	auto time2 = currTime;
+	//lib.print(output);
+	//auto time3 = currTime;
+	writefln("Load %ss, dump %ss", scaledNumberFmt(time1 - time0), scaledNumberFmt(time2 - time1));
+	//PecoffObj.fromFile("../asm/obj/loadcfg.obj").print(output); // reallocation past the end of section
+
+	// 1 overflow in loadcfg.obj
+	//auto lib = PecoffLib.fromFile("../asm/lib/libcmt.lib");
+	//printSectionStats(output, lib);
+	//lib.print(output);
+	//PecoffLib.fromFile("../asm/lib/libcmt.lib").objs[0x17B].toFile("../asm/obj/loadcfg.obj");
+
+	//PecoffLib.fromFile("../asm/lib/helloc.lib").print(output);
+	//PecoffObj.fromFile("../asm/obj/helloc.obj").print(output);
+	//PecoffObj.fromFile("../asm/obj/extd.obj").print(output);
+	//PecoffObj.fromFile("../asm/obj/extc.obj").print(output);
+	//PecoffObj.fromFile("../asm/obj/test.obj").print(output);
+	//PecoffObj.fromFile("../asm/obj/betterc.obj").print(output);
+}
 
 enum DEFAULT_SECTION_ALIGNMENT = 4096;
 enum DEFAULT_FILE_ALIGNMENT = 512;
@@ -60,36 +102,101 @@ enum SectionType : ubyte
 	data,
 }
 
-void main()
+void testObjLinking()
 {
-	testExeCompilation();
-
-	auto file = File("../asm/dump.txt", "w");
-	//auto output = stdout.lockingTextWriter;
+	auto file = File("../asm/linking.txt", "w");
 	auto output = file.lockingTextWriter;
 
-	//PecoffObj.fromFile("../asm/obj/gcstub64.obj").print(output);
-	//PecoffLib.fromFile("../asm/lib/phobos64.lib").objs[0].toFile("../asm/obj/zutil.obj");
-	//PecoffObj.fromFile("../asm/obj/zutil.obj").print(output);
+	auto obj1 = PecoffObj.fromFile("../asm/obj/hellod.obj");
+	auto obj2 = PecoffObj.fromFile("../asm/obj/extd.obj");
+	string outname = "../asm/out.exe";
+	string entryPointName = "main";
 
-	//auto time0 = currTime;
-	//auto lib = PecoffLib.fromFile("../asm/lib/phobos64.lib");
-	//auto time1 = currTime;
-	//lib.print(output);
-	//auto time2 = currTime;
-	//writefln("Load %ss, dump %ss", scaledNumberFmt(time1 - time0), scaledNumberFmt(time2 - time1));
-	//PecoffObj.fromFile("../asm/obj/loadcfg.obj").print(output); // reallocation past the end of section
+	SymbolNameTable symbolNameTable;
+	SymbolName name = symbolNameTable.put(entryPointName);
 
-	// 1 overflow in loadcfg.obj
-	//PecoffLib.fromFile("../asm/lib/libcmt.lib").print(output);
-	//PecoffLib.fromFile("../asm/lib/libcmt.lib").objs[0x17B].toFile("../asm/obj/loadcfg.obj");
+	obj1.print(output);
+	obj2.print(output);
 
-	//PecoffLib.fromFile("../asm/lib/helloc.lib").print(output);
-	//PecoffObj.fromFile("../asm/obj/helloc.obj").print(output);
-	//PecoffObj.fromFile("../asm/obj/extd.obj").print(output);
-	//PecoffObj.fromFile("../asm/obj/extc.obj").print(output);
-	//PecoffObj.fromFile("../asm/obj/test.obj").print(output);
-	//PecoffObj.fromFile("../asm/obj/betterc.obj").print(output);
+	// undef syms
+	// def syms
+
+	// push entry point as undef symbol
+	// push inputs
+
+	// iteratively resolve by loading undefined symbols
+
+	// after all symbols were resolved
+	// sort sections
+}
+
+enum SymbolRefType : ubyte
+{
+	absolute,
+	rel32,
+	rel64
+}
+
+struct SymbolReference
+{
+	SymbolIndex target;
+	uint offset; // start of fixup for current symbol
+	SymbolRefType type;
+	long addend; // value added to relocation
+}
+
+enum SymbolType : ubyte
+{
+	undefined,
+	absolute,
+	sharedLib
+}
+
+struct Symbol
+{
+	SymbolType type;
+	ulong address;
+	SymbolReference[] references;
+}
+
+struct SymbolName
+{
+	uint stringIndex;
+}
+
+struct SymbolNameTable
+{
+	Buffer!string stringTable;
+	SymbolName[string] nameToIndex;
+
+	SymbolName put(string strName)
+	{
+		if (auto name = strName in nameToIndex)
+		{
+			return *name;
+		}
+		else
+		{
+			auto name = SymbolName(cast(typeof(SymbolName.stringIndex))stringTable.data.length);
+			stringTable.put(strName);
+			nameToIndex[strName] = name;
+			return name;
+		}
+	}
+}
+
+struct SymbolTable
+{
+	Buffer!Symbol symbols;
+	//Buffer!SymbolIndex definedSymbols;
+	//Buffer!SymbolIndex undefinedSymbols;
+	//Buffer!SymbolIndex sharedSymbols;
+	//Buffer!SymbolIndex reachableSymbols;
+
+	SymbolIndex put(Symbol sym)
+	{
+
+	}
 }
 
 void testExeCompilation()
@@ -251,6 +358,8 @@ struct PecoffObj
 {
 	string filename;
 	ubyte[] fileData;
+
+	bool isLoaded; /// Indicates if members below are usable. Call load if not.
 	CoffFileHeader* header;
 	SectionHeader[] sectionHeaders;
 	Section[] sections;
@@ -267,30 +376,47 @@ struct PecoffObj
 		return fromBytes(fileData, filename);
 	}
 
-	static PecoffObj fromBytes(ubyte[] fileData, string filename = null)
+	/// Returns obj without actual parsing. Call load before accessing
+	static PecoffObj fromBytesLazy(ubyte[] fileData, string filename = null)
 	{
-		auto slicer = FileDataSlicer(fileData);
-
 		PecoffObj obj;
 		obj.filename = filename;
 		obj.fileData = fileData;
-		obj.header = slicer.getPtrTo!CoffFileHeader;
-		obj.sectionHeaders = slicer.getArrayOf!SectionHeader(obj.header.NumberOfSections);
-		obj.sections = new Section[obj.sectionHeaders.length];
 
-		slicer.fileCursor = obj.header.PointerToSymbolTable;
-		obj.symbols = slicer.getArrayOf!SymbolTableEntry(obj.header.NumberOfSymbols);
+		return obj;
+	}
+
+	static PecoffObj fromBytes(ubyte[] fileData, string filename = null)
+	{
+		PecoffObj obj = fromBytesLazy(fileData, filename);
+		obj.load();
+		return obj;
+	}
+
+	/// Performs actual processing of .obj data stored in fileData if not already loaded
+	void load()
+	{
+		if (isLoaded) return;
+
+		auto slicer = FileDataSlicer(fileData);
+
+		header = slicer.getPtrTo!CoffFileHeader;
+		sectionHeaders = slicer.getArrayOf!SectionHeader(header.NumberOfSections);
+		sections = new Section[sectionHeaders.length];
+
+		slicer.fileCursor = header.PointerToSymbolTable;
+		symbols = slicer.getArrayOf!SymbolTableEntry(header.NumberOfSymbols);
 
 		uint stringTableSize = *slicer.getPtrTo!uint();
 		assert(stringTableSize >= 4);
-		obj.stringTable = cast(string)slicer.getArrayOf!char(stringTableSize - 4);
+		stringTable = cast(string)slicer.getArrayOf!char(stringTableSize - 4);
 
 		// Fill sections
-		foreach(uint i, ref section; obj.sections)
+		foreach(uint i, ref section; sections)
 		{
 			section.sectionId = i;
-			section.header = obj.sectionHeaders[i];
-			section.name = section.header.getName(obj.stringTable);
+			section.header = sectionHeaders[i];
+			section.name = section.header.getName(stringTable);
 
 			size_t from = section.header.PointerToRawData;
 			size_t to = from + section.header.SizeOfRawData;
@@ -307,10 +433,10 @@ struct PecoffObj
 
 			slicer.fileCursor = section.header.PointerToRelocations;
 			section.relocations = slicer.getArrayOf!CoffRelocation(section.header.NumberOfRelocations);
-			obj.totalRelocations += section.relocations.length;
+			totalRelocations += section.relocations.length;
 		}
 
-		return obj;
+		isLoaded = true;
 	}
 
 	void toFile(string filename)
@@ -325,6 +451,8 @@ struct PecoffObj
 
 	void print(Sink)(auto ref Sink sink)
 	{
+		if (!isLoaded) load(); // lazy load
+
 		formattedWrite(sink, "%s:\n", filename);
 		sink.put("\n");
 
@@ -344,6 +472,8 @@ struct PecoffObj
 
 	void printSectionTable(Sink)(auto ref Sink sink)
 	{
+		if (!isLoaded) load(); // lazy load
+
 		sink.put("Section table:\n");
 		size_t totalRelocations = 0;
 		SectionHeader.printTableHeader(sink);
@@ -357,6 +487,8 @@ struct PecoffObj
 
 	void printRelocations(Sink)(auto ref Sink sink)
 	{
+		if (!isLoaded) load(); // lazy load
+
 		formattedWrite(sink, "Relocations: %X records\n", totalRelocations);
 
 		if (totalRelocations)
@@ -406,16 +538,19 @@ struct PecoffObj
 
 	void printSymbolTable(Sink)(auto ref Sink sink)
 	{
+		if (!isLoaded) load(); // lazy load
+
 		sink.put("Symbol table:\n");
-		sink.put("       #     Value   Section  Type      Name    \n");
-		sink.put("--------  --------  --------  --------  --------\n");
+		sink.put("       #     Value   Section  Type      Class     Name    \n");
+		sink.put("--------  --------  --------  --------  --------  --------\n");
 		for(int i = 0; i < symbols.length; ++i)
 		{
-			//symbols[i].print(sink, stringTable);
+			// # Value
 			formattedWrite(sink, "% 8X  % 8X  ",//"% 8X  % 8X  %s\n",
 				i,
 				symbols[i].Value);
 
+			// Section
 			switch(symbols[i].SectionNumber) {
 				case -2: formattedWrite(sink, "Debug     "); break;
 				case -1: formattedWrite(sink, "Absolute  "); break;
@@ -423,18 +558,52 @@ struct PecoffObj
 				default: formattedWrite(sink, "% 8X  ", symbols[i].SectionNumber);
 			}
 
+			// Type
 			if (symbols[i].Type == 0x20) formattedWrite(sink, "function  ");
 			else if (symbols[i].Type == 0x00) formattedWrite(sink, "          ");
-			else formattedWrite(sink, "          ");
+			else formattedWrite(sink, "% 8X  ", symbols[i].Type);
 
+			// Class
+			formattedWrite(sink, "% 8s  ", symbols[i].StorageClass);
+
+			// Name
 			formattedWrite(sink, "%s\n", symbols[i].Name.get(stringTable));
 
-			i += symbols[i].NumberOfAuxSymbols;
+			foreach(_; 0..symbols[i].NumberOfAuxSymbols)
+			{
+				++i;
+				// # Value
+				formattedWrite(sink, "     AUX  % 8X  ",//"% 8X  % 8X  %s\n",
+					i,
+					symbols[i].Value);
+
+				// Section
+				switch(symbols[i].SectionNumber) {
+					case -2: formattedWrite(sink, "Debug     "); break;
+					case -1: formattedWrite(sink, "Absolute  "); break;
+					case  0: formattedWrite(sink, "Undef     "); break;
+					default: formattedWrite(sink, "% 8X  ", symbols[i].SectionNumber);
+				}
+
+				// Type
+				if (symbols[i].Type == 0x20) formattedWrite(sink, "function  ");
+				else if (symbols[i].Type == 0x00) formattedWrite(sink, "          ");
+				else formattedWrite(sink, "% 8X  ", symbols[i].Type);
+
+				// Class
+				formattedWrite(sink, "% 8s  \n", symbols[i].StorageClass);
+
+				// Name
+				//formattedWrite(sink, "%s\n", symbols[i].Name.get(stringTable));
+			}
+			//i += symbols[i].NumberOfAuxSymbols;
 		}
 	}
 
 	void printStringTable(Sink)(auto ref Sink sink)
 	{
+		if (!isLoaded) load(); // lazy load
+
 		formattedWrite(sink, "\nString table: %s bytes at %08X\n", stringTable.length+4, header.PointerToSymbolTable);
 		.printStringTable(stringTable, sink, 4);
 	}
@@ -461,6 +630,12 @@ immutable ARCHIVE_FILE_SIGNATURE = "!<arch>\n";
 
 struct PecoffLib
 {
+	version(use_mmap)
+	{
+		import std.mmfile;
+		MmFile file;
+	}
+
 	string filename;
 	ubyte[] fileData;
 	uint[] memberOffsets;
@@ -474,8 +649,21 @@ struct PecoffLib
 		enforce(exists(filename), format("%s does not exist", filename));
 		enforce(extension(filename) == ".lib", format("%s must have .lib extension", filename));
 
-		ubyte[] fileData = cast(ubyte[])std.file.read(filename);
-		return fromBytes(fileData, filename);
+		version(use_mmap)
+		{
+			MmFile file = new MmFile(filename);
+			ubyte[] fileData = cast(ubyte[])file[];
+		}
+		else
+		{
+			ubyte[] fileData = cast(ubyte[])std.file.read(filename);
+		}
+
+		auto lib = fromBytes(fileData, filename);
+
+		version(use_mmap) lib.file = file;
+
+		return lib;
 	}
 
 	static PecoffLib fromBytes(ubyte[] fileData, string filename = null)
@@ -525,7 +713,7 @@ struct PecoffLib
 			currentMember = readMemberHeader();
 		}
 
-		// Long names
+		// Long names (optional)
 		if (currentMember.Name == "//")
 		{
 			ubyte[] longNamesData = slicer.getArrayOf!ubyte(currentMember.Size);
@@ -540,7 +728,7 @@ struct PecoffLib
 			ubyte[] objData = slicer.getArrayOf!ubyte(currentMember.Size);
 			string objName = nameFromSlashName(currentMember.Name, lib.longNames);
 			//writefln("read obj %s, offset %X, length %X", objName, dataOffset, objData.length);
-			lib.objs ~= PecoffObj.fromBytes(objData, objName);
+			lib.objs ~= PecoffObj.fromBytesLazy(objData, objName);
 			slicer.advanceToAlignment(2);
 
 			if (slicer.fileCursor >= slicer.fileData.length) break;
@@ -548,6 +736,18 @@ struct PecoffLib
 		}
 
 		return lib;
+	}
+
+	/// Loads all objs
+	PecoffObj[] getObjs() {
+		foreach (ref obj; objs) obj.load;
+		return objs;
+	}
+
+	/// Ensures that obj is loaded
+	ref PecoffObj getObj(size_t index) {
+		objs[index].load();
+		return objs[index];
 	}
 
 	void print(Sink)(auto ref Sink sink)
@@ -558,13 +758,13 @@ struct PecoffLib
 		formattedWrite(sink, "  indicies: %s records  [%(%X, %)]\n",
 			indicies.length, indicies);
 		formattedWrite(sink, "\nFile table: %s files\n", objs.length);
-		foreach(obj; objs) formattedWrite(sink, "%s\n", obj.filename);
+		foreach(i, ref obj; objs) formattedWrite(sink, "% 8X  %s\n", i, obj.filename);
 		sink.put("\nSymbol table:\n");
 		stringTable.printStringTable(sink);
 		sink.put("\n");
-		foreach(i, obj; objs)
+		foreach(i, ref obj; objs)
 		{
-			formattedWrite(sink, "\n-------- %X -------------------------\n", i);
+			formattedWrite(sink, "\nOBJ# %X --------------------------------------------------\n", i);
 			obj.print(sink);
 		}
 	}
@@ -618,6 +818,75 @@ struct ParsedLibMemberHeader
 	uint Mode;
 	uint Size;
 }
+
+struct SectionStats
+{
+	static struct Key
+	{
+		string sectionName;
+		uint characteristics;
+	}
+	static struct SectionStats
+	{
+		size_t sectionsTotalSize;
+		size_t numOfSections;
+		void visit(ref Section section)
+		{
+			sectionsTotalSize += section.data.length;
+			++numOfSections;
+		}
+	}
+	SectionStats[Key] stats;
+	size_t totalSymbols;
+
+	void visit(ref PecoffLib lib)
+	{
+		foreach(ref obj; lib.getObjs()) visit(obj);
+	}
+
+	void visit(ref PecoffObj obj)
+	{
+		foreach(ref section; obj.sections) visit(section);
+		totalSymbols += obj.symbols.length;
+	}
+
+	void visit(ref Section section)
+	{
+		Key key = Key(section.name, section.header.Characteristics);
+		if (auto stat = key in stats)
+		{
+			stat.visit(section);
+		}
+		else
+		{
+			SectionStats stat;
+			stat.visit(section);
+			stats[key] = stat;
+		}
+	}
+
+	void print(Sink)(auto ref Sink sink)
+	{
+		formattedWrite(sink, "total symbols: %s\n", totalSymbols);
+		sink.put("Code|Initialized|Uninitialized|Link info|Remove\n");
+		sink.put("coMdat|Gprel|Ovfl|Discardable|cacHed|Paged|Shared\n");
+		sink.put("------------  ---  -----  --------  --------  --------\n");
+		sink.put("    Flags                              Total          \n");
+		sink.put("CIULVMGODHPS  RWX  Align     Count      Size  Name    \n");
+		sink.put("------------  ---  -----  --------  --------  --------\n");
+		foreach(key, stat; stats)
+		{
+			printSectionCharacteristicsFlags(sink, key.characteristics);
+			sink.put("  ");
+			printSectionCharacteristicsAlign(sink, key.characteristics);
+			formattedWrite(sink, "  % 8s  % 8X  %s\n",
+				stat.numOfSections, stat.sectionsTotalSize, key.sectionName);
+		}
+	}
+}
+
+void printSectionStats(Sink)(auto ref Sink sink, ref PecoffLib lib) { SectionStats stats; stats.visit(lib); stats.print(sink); }
+void printSectionStats(Sink)(auto ref Sink sink, ref PecoffObj obj) { SectionStats stats; stats.visit(obj); stats.print(sink); }
 
 struct RelativeReference
 {
@@ -1703,46 +1972,59 @@ struct SectionHeader
 
 	void print(Sink)(auto ref Sink sink, size_t index, string stringTable)
 	{
-		formattedWrite(sink, "% 4X  % 8X  % 8X  % 8X  % 8X  % 8X  % 8X  ",
+		formattedWrite(sink, "% 4X  % 8X  % 8X  % 8X  % 8X  % 8X  % 8X",
 			index, VirtualAddress, VirtualSize, PointerToRawData, SizeOfRawData,
 			PointerToRelocations, NumberOfRelocations);
+		sink.put("  ");
 
 		// Align
-		if(Characteristics & 0x00F00000) {
-			size_t alignment = 1 << (((Characteristics & 0x00F00000) >> 20) - 1);
-			formattedWrite(sink, "% 5s  ", alignment);
-		} else formattedWrite(sink, "       ");
+		printSectionCharacteristicsAlign(sink, Characteristics);
+		sink.put("  ");
 
 		// Flags
-		if(Characteristics) with(SectionFlags)
-		{
-			void printFlag(char chr, SectionFlags flag) {
-				if(Characteristics & flag) sink.put(chr);
-				else sink.put(' ');
-			}
-			printFlag('C', SCN_CNT_CODE);
-			printFlag('I', SCN_CNT_INITIALIZED_DATA);
-			printFlag('U', SCN_CNT_UNINITIALIZED_DATA);
-			printFlag('L', SCN_LNK_INFO);
-			printFlag('R', SCN_LNK_REMOVE);
-			printFlag('M', SCN_LNK_COMDAT);
-			printFlag('G', SCN_GPREL);
-			printFlag('O', SCN_LNK_NRELOC_OVFL);
-			printFlag('D', SCN_MEM_DISCARDABLE);
-			printFlag('H', SCN_MEM_NOT_CACHED);
-			printFlag('P', SCN_MEM_NOT_PAGED);
-			printFlag('S', SCN_MEM_SHARED);
-			sink.put("  ");
-			printFlag('R', SCN_MEM_READ);
-			printFlag('W', SCN_MEM_WRITE);
-			printFlag('X', SCN_MEM_EXECUTE);
-		}
+		printSectionCharacteristicsFlags(sink, Characteristics);
+		sink.put("  ");
 
 		// Name
-		formattedWrite(sink, "  %s\n", getName(stringTable));
+		formattedWrite(sink, "%s\n", getName(stringTable));
 	}
 }
 static assert(SectionHeader.sizeof == 40);
+
+void printSectionCharacteristicsAlign(Sink)(auto ref Sink sink, uint Characteristics)
+{
+	if(Characteristics & 0x00F00000) {
+		size_t alignment = 1 << (((Characteristics & 0x00F00000) >> 20) - 1);
+		formattedWrite(sink, "% 5s", alignment);
+	} else formattedWrite(sink, "     ");
+}
+
+void printSectionCharacteristicsFlags(Sink)(auto ref Sink sink, uint Characteristics)
+{
+	if(Characteristics) with(SectionFlags)
+	{
+		void printFlag(char chr, SectionFlags flag) {
+			if(Characteristics & flag) sink.put(chr);
+			else sink.put(' ');
+		}
+		printFlag('C', SCN_CNT_CODE);
+		printFlag('I', SCN_CNT_INITIALIZED_DATA);
+		printFlag('U', SCN_CNT_UNINITIALIZED_DATA);
+		printFlag('L', SCN_LNK_INFO);
+		printFlag('R', SCN_LNK_REMOVE);
+		printFlag('M', SCN_LNK_COMDAT);
+		printFlag('G', SCN_GPREL);
+		printFlag('O', SCN_LNK_NRELOC_OVFL);
+		printFlag('D', SCN_MEM_DISCARDABLE);
+		printFlag('H', SCN_MEM_NOT_CACHED);
+		printFlag('P', SCN_MEM_NOT_PAGED);
+		printFlag('S', SCN_MEM_SHARED);
+		sink.put("  ");
+		printFlag('R', SCN_MEM_READ);
+		printFlag('W', SCN_MEM_WRITE);
+		printFlag('X', SCN_MEM_EXECUTE);
+	}
+}
 
 // Converts name that optionally refers to string table with "/n" format
 string nameFromSlashName(const char[] name, string stringTable)
@@ -1779,6 +2061,39 @@ enum SymbolSectionNumber : short
 	DEBUG = -2,
 }
 
+enum CoffSymClass : ubyte
+{
+	END_OF_FUNCTION = 0xFF,
+	NULL = 0,
+	AUTOMATIC = 1,
+	EXTERNAL = 2,
+	STATIC = 3,
+	REGISTER = 4,
+	EXTERNAL_DEF = 5,
+	LABEL = 6,
+	UNDEFINED_LABEL = 7,
+	MEMBER_OF_STRUCT = 8,
+	ARGUMENT = 9,
+	STRUCT_TAG = 10,
+	MEMBER_OF_UNION = 11,
+	UNION_TAG = 12,
+	TYPE_DEFINITION = 13,
+	UNDEFINED_STATIC = 14,
+	ENUM_TAG = 15,
+	MEMBER_OF_ENUM = 16,
+	REGISTER_PARAM = 17,
+	BIT_FIELD = 18,
+	BLOCK = 100,
+	FUNCTION = 101,
+	END_OF_STRUCT = 102,
+	FILE = 103,
+	SECTION = 104,
+	WEAK_EXTERNAL = 105,
+	CLR_TOKEN = 107,
+}
+
+
+
 /// The symbol table in this section is inherited from the traditional COFF format. It is
 /// distinct from Microsoft Visual C++® debug information. A file can contain both a
 /// COFF symbol table and Visual C++ debug information, and the two are kept
@@ -1796,7 +2111,7 @@ struct SymbolTableEntry
 	/// of three structures. An array of 8 bytes is used if
 	/// the name is not more than 8 bytes long. For more
 	/// information, see section 5.4.1, “Symbol Name Representation.”
-	SymbolName Name;
+	PeSymbolName Name;
 
 	/// The value that is associated with the symbol. The
 	/// interpretation of this field depends on
@@ -1819,7 +2134,7 @@ struct SymbolTableEntry
 	/// An enumerated value that represents storage
 	/// class. For more information, see section 5.4.4,
 	/// “Storage Class.”
-	ubyte StorageClass;
+	CoffSymClass StorageClass;
 
 	/// The number of auxiliary symbol table entries that
 	/// follow this record.
@@ -1962,7 +2277,7 @@ struct SymbolSectionInfo
 	uint length;
 }
 
-struct SymbolName
+struct PeSymbolName
 {
 	union
 	{
