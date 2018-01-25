@@ -8,12 +8,13 @@ module lang.parse;
 import lang.lex;
 import lang.ast.ast;
 import lang.error;
+import lang.identifier;
 
 import std.stdio;
 
 /*  <module> ::= <declaration>*
  *  <declaration> ::= <func_declaration>
- *  <func_decl> ::= "func" <id> "(" <id_list> ")" <block_statement>
+ *  <func_declaration> ::= "func" <id> "(" <id_list> ")" <block_statement>
  *  <block_statement> ::= "{" <statement>* "}"
  *  <statement> ::= "if" <paren_expr> <statement> /
  *                  "if" <paren_expr> <statement> "else" <statement> /
@@ -83,23 +84,35 @@ void printAST(AstNode n, IdentifierMap idMap, int indentSize = 1)
 	}
 
 	visitor = new class AstVisitor {
-		override void visit(Module m) { print("MODULE"); foreach(f; m.functions) pr_node(f); }
+		override void visit(Module m) {
+			print("MODULE");
+			foreach(f; m.functions) pr_node(f);
+			foreach(v; m.variables) pr_node(v);
+			foreach(s; m.structs)   pr_node(s);
+		}
 		override void visit(FunctionDeclaration f) {
 			print("FUNC ", idMap.get(f.id));
 			indent += indentSize;
 			foreach(p; f.parameters)
-				print("PARAM ", idMap.get(p.id));
+				print("PARAM ", basicTypeNames[p.type.basicType], " ", idMap.get(p.id));
 			indent -= indentSize;
 			pr_node(f.statements);
 		}
+		override void visit(VarDeclaration v) {
+			print("VAR ", basicTypeNames[v.type.basicType], " ", idMap.get(v.id));
+		}
+		override void visit(StructDeclaration s) {
+			print("STRUCT ", idMap.get(s.id));
+		}
+		override void visit(BlockStatement b) { print("BLOCK"); foreach(s; b.statements) pr_node(s); }
 		override void visit(IfStatement n) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); }
 		override void visit(IfElseStatement n) { print("IF"); pr_node(n.condition); pr_node(n.thenStatement); pr_node(n.elseStatement); }
 		override void visit(WhileStatement w) { print("WHILE"); pr_node(w.condition); pr_node(w.statement); }
 		override void visit(DoWhileStatement w) { print("DO"); pr_node(w.condition); pr_node(w.statement); }
 		override void visit(ReturnStatement r) { print("RETURN"); if (r.expression) pr_node(r.expression); }
-		override void visit(BlockStatement b) { print("BLOCK"); foreach(s; b.statements) pr_node(s); }
 		override void visit(ExpressionStatement e) { print("EXPR"); pr_node(e.expression); }
-		override void visit(VariableExpression v) { print("VAR ", idMap.get(v.id)); }
+		override void visit(DeclarationStatement d) { pr_node(d.declaration); }
+		override void visit(VariableExpression v) { print("VAR_USE ", idMap.get(v.id)); }
 		override void visit(ConstExpression c) { print("CONST ", c.value); }
 		override void visit(BinaryExpression b) { print("BINOP ", b.op); pr_node(b.left); pr_node(b.right); }
 		override void visit(CallExpression c) { print("CALL ", idMap.get(c.calleeId)); foreach(a; c.args) pr_node(a); }
@@ -127,7 +140,7 @@ struct Parser
 		T make(T, Args...)(Args args) {
 			import std.conv : emplace;
 			enum size = __traits(classInstanceSize, T);
-			T t = emplace!T(pc[0..size], args);
+			T t = emplace!T(pc[0..size], tok.loc, args);
 			pc += size;
 			return t;
 		}
@@ -143,49 +156,124 @@ struct Parser
 		while (tok.type == TokenType.COMMENT);
 	}
 
+	T enforceNode(T)(T t)
+	{
+		if (t is null)
+		{
+			string tokenString = lexer.getTokenString(tok);
+			throw syntax_error(tok.loc, "Expected %s while got %s token '%s'", T.stringof, tok.type, tokenString);
+		}
+		return t;
+	}
+
 	Token expectAndConsume(TokenType type) {
 		if (tok.type != type) {
 			string tokenString = lexer.getTokenString(tok);
-			throw syntax_error(tok.loc, "Expected '%s', while got '%s'", type, tokenString);
+			throw syntax_error(tok.loc, "Expected %s token, while got %s token '%s'", type, tok.type, tokenString);
 		}
 		scope(exit) nextToken();
 		return tok;
 	}
 
+	Identifier expectIdentifier()
+	{
+		Token nameTok = expectAndConsume(TokenType.ID);
+		string name = lexer.getTokenString(nameTok);
+		return idMap.getOrReg(name);
+	}
 
 	Module parseModule() { // <module> ::= <declaration>*
 		FunctionDeclaration[] functions;
+		VarDeclaration[] vars;
+		StructDeclaration[] structs;
 		nextToken();
 		while (tok.type != TokenType.EOI)
 		{
-			functions ~= func_declaration();
+			auto decl = enforceNode(parse_declaration);
+			if (auto funcDecl = cast(FunctionDeclaration)decl)
+				functions ~= funcDecl;
+			else if (auto varDecl = cast(VarDeclaration)decl)
+				vars ~= varDecl;
+			else if (auto structDecl = cast(StructDeclaration)decl)
+				structs ~= structDecl;
 		}
-		return make!Module(functions);
+		return make!Module(functions, vars, structs);
 	}
 
-	FunctionDeclaration func_declaration() // <declaration> ::= <func_declaration>
+	/// Can return null
+	Declaration parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
-		expectAndConsume(TokenType.FUNC_SYM); // <func_decl> ::= "func" <id> "(" (<id> ",")* ")" <compound_statement>
-		Token funcNameTok = expectAndConsume(TokenType.ID);
-		string funcName = lexer.getTokenString(funcNameTok);
-		auto funcId = idMap.getOrReg(funcName);
-		expectAndConsume(TokenType.LPAREN);
-		VariableExpression[] params;
-		while (tok.type != TokenType.RPAREN)
+		if (tok.type == TokenType.STRUCT_SYM) // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
 		{
-			Token paramTok = expectAndConsume(TokenType.ID);
-			string paramName = lexer.getTokenString(paramTok);
-			Identifier paramId = idMap.getOrReg(paramName);
-			params ~= make!VariableExpression(paramId);
-			if (tok.type == TokenType.COMMA) nextToken();
-			else break;
+			FunctionDeclaration[] functions;
+			VarDeclaration[] vars;
+			StructDeclaration[] structs;
+			nextToken();
+			Identifier structId = expectIdentifier();
+			expectAndConsume(TokenType.LCURLY);
+			expectAndConsume(TokenType.RCURLY);
+			return make!StructDeclaration(functions, vars, structs, structId);
 		}
-		expectAndConsume(TokenType.RPAREN);
-		auto statements = block_stmt();
-		return make!FunctionDeclaration(funcId, params, statements);
+		else // <func_declaration> / <var_declaration>
+		{
+			TypeAstNode type = parse_type();
+			if (type is null) return null;
+			Identifier declarationId = expectIdentifier();
+
+			if (tok.type == TokenType.SEMICOLON) // <var_declaration> ::= <type> <id> ";"
+			{
+				nextToken();
+				return make!VarDeclaration(declarationId, type);
+			}
+			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" <block_statement>
+			{
+				expectAndConsume(TokenType.LPAREN);
+				ParameterAstNode[] params;
+				while (tok.type != TokenType.RPAREN)
+				{
+					TypeAstNode paramType = parse_type_excpected();
+					Identifier paramId = expectIdentifier();
+					params ~= make!ParameterAstNode(paramId, paramType);
+					if (tok.type == TokenType.COMMA) nextToken();
+					else break;
+				}
+				expectAndConsume(TokenType.RPAREN);
+				BlockStatement statements = block_stmt();
+				return make!FunctionDeclaration(declarationId, type, params, statements);
+			}
+			else
+			{
+				throw syntax_error(tok.loc, "Expected '(' or ';', while got '%s'", lexer.getTokenString(tok));
+			}
+		}
 	}
 
-	BlockStatement block_stmt() // <compound_statement> ::= "{" <statement>* "}"
+	/// Can return null
+	TypeAstNode parse_type_excpected()
+	{
+		auto type = parse_type();
+		if (type is null) throw syntax_error(tok.loc, "Expected basic type, while got '%s'", lexer.getTokenString(tok));
+		return type;
+	}
+
+	TypeAstNode parse_type()
+	{
+		if (!isBasicTypeToken(tok.type)) return null;
+		return make!TypeAstNode(parse_basic_type());
+	}
+
+	BasicType parse_basic_type()
+	{
+		if (isBasicTypeToken(tok.type))
+		{
+			auto res = tokenTypeToBasicType(tok.type);
+			nextToken();
+			return res;
+		}
+		throw syntax_error(tok.loc, "Expected basic type, while got '%s'", lexer.getTokenString(tok));
+	}
+
+	BlockStatement block_stmt() // <block_statement> ::= "{" <statement>* "}"
 	{
 		Statement[] statements;
 		expectAndConsume(TokenType.LCURLY);
@@ -234,9 +322,14 @@ struct Parser
 			case TokenType.LCURLY:  /* "{" { <statement> } "}" */
 				return block_stmt();
 			default:  /* <expr> ";" */
+			{
+				Declaration decl = parse_declaration;
+				if (decl) return make!DeclarationStatement(decl);
+
 				Expression expression = expr();
 				expectAndConsume(TokenType.SEMICOLON);
 				return make!ExpressionStatement(expression);
+			}
 		}
 	}
 

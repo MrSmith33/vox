@@ -9,7 +9,7 @@ module lang.lex;
 import std.stdio;
 void main()
 {
-	string input = "  ( ) { } 	[]:; hi while iff if return do else func FUNC __super123 \0 1231320  //dads
+	string input = " i32 branch fun ( ) { } 	[]:; hi while iff if return do else func FUNC __super123 \0 1231320  //dads
 	second line
 	// uni тест
 	//eoi comment";
@@ -17,12 +17,18 @@ void main()
 	while (true)
 	{
 		auto tok = lexer.nextToken();
-		writefln("tok %s \"%s\"", tok, input[tok.start..tok.start+tok.size]);
+		writefln("tok %s \"%s\"", tok, input[tok.loc.start..tok.loc.start+tok.loc.size]);
 		if (tok.type == TT.EOI) break;
 	}
 }
 */
 
+bool isBasicTypeToken(TokenType tt)
+{
+	return tt >= TokenType.TYPE_LIST_START && tt < TokenType.TYPE_LIST_END;
+}
+
+alias TT = TokenType;
 enum TokenType : ubyte
 {
 	EOI,
@@ -68,6 +74,32 @@ enum TokenType : ubyte
 	RET_SYM,
 	BREAK_SYM,
 	CONTINUE_SYM,
+	STRUCT_SYM,
+
+	// ----------------------------------------
+	// list of basic types. The order is the same as in `enum BasicType`
+	TYPE_LIST_START, // helper enum item
+
+	TYPE_VOID = TYPE_LIST_START,
+	TYPE_BOOL,
+
+	TYPE_I8,
+	TYPE_I16,
+	TYPE_I32,
+	TYPE_I64,
+	TYPE_ISIZE,
+
+	TYPE_U8,
+	TYPE_U16,
+	TYPE_U32,
+	TYPE_U64,
+	TYPE_USIZE,
+
+	TYPE_F32,
+	TYPE_F64,
+
+	TYPE_LIST_END, // helper enum item, one past last item
+	// ----------------------------------------
 
 	ID,
 	DECIMAL_NUM,
@@ -115,7 +147,7 @@ struct SourceLocation
 	}
 }
 
-alias TT = TokenType;
+enum char EOI_CHAR = '\3';
 
 struct Lexer2
 {
@@ -135,11 +167,20 @@ struct Lexer2
 
 	private long numberRep;
 
+	private void restartToken()
+	{
+		position = startPos;
+		line = startLine;
+		column = startCol;
+		if (position >= input.length) c = EOI_CHAR;
+		else c = input[position];
+	}
+
 	private void nextChar()
 	{
 		++position;
 		++column;
-		if (position >= input.length) c = '\3';
+		if (position >= input.length) c = EOI_CHAR;
 		else c = input[position];
 	}
 
@@ -154,7 +195,7 @@ struct Lexer2
 
 	Token nextToken()
 	{
-		if (position >= input.length) c = '\3';
+		if (position >= input.length) c = EOI_CHAR;
 		else c = input[position];
 
 		while (true)
@@ -165,7 +206,7 @@ struct Lexer2
 
 			switch(c)
 			{
-				case '\3':             return new_tok(TT.EOI);
+				case EOI_CHAR:         return new_tok(TT.EOI);
 				case '\t': nextChar(); continue;
 				case '\n': lex_EOLN(); continue;
 				case '\r': lex_EOLR(); continue;
@@ -250,10 +291,16 @@ struct Lexer2
 			case 'c': if (match("continue")) return new_tok(TT.CONTINUE_SYM); break;
 			case 'd': if (match("do")) return new_tok(TT.DO_SYM); break;
 			case 'e': if (match("else")) return new_tok(TT.ELSE_SYM); break;
-			case 'i': if (match("if")) return new_tok(TT.IF_SYM); break;
+			case 'i':
+				if (match("i32")) return new_tok(TT.TYPE_I32);
+				restartToken;
+				if (match("if")) return new_tok(TT.IF_SYM);
+				break;
 			case 'w': if (match("while")) return new_tok(TT.WHILE_SYM); break;
 			case 'f': if (match("func")) return new_tok(TT.FUNC_SYM); break;
 			case 'r': if (match("return")) return new_tok(TT.RET_SYM); break;
+			case 's': if (match("struct")) return new_tok(TT.STRUCT_SYM); break;
+			case 'v': if (match("void")) return new_tok(TT.TYPE_VOID); break;
 			default: break;
 		}
 		consumeId();
@@ -309,7 +356,7 @@ struct Lexer2
 		{
 			switch(c)
 			{
-				case '\3': return;
+				case EOI_CHAR: return;
 				case '\n': return;
 				case '\r': return;
 				default: break;

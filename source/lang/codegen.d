@@ -141,7 +141,7 @@ struct LangCodeGen
 		if (numLocals)
 		{
 			gen.xorq(RET_REG, RET_REG);
-			foreach(i; 0..numLocals) gen.movq(varMemAddress(numParams+i), RET_REG);
+			foreach(i; 0..numLocals) gen.movq(localVarMemAddress(numParams+i), RET_REG);
 		}
 
 		// body
@@ -171,7 +171,7 @@ struct LangCodeGen
 		gen.ret();
 	}
 
-	MemAddress varMemAddress(int varIndex)
+	MemAddress localVarMemAddress(int varIndex)
 	{
 		bool isParameter = varIndex < numParams;
 		Register baseReg;
@@ -289,7 +289,7 @@ struct LangCodeGen
 		// Expressions
 		else if (auto v = cast(VariableExpression)node)
 		{
-			gen.movd(TEMP_REG_1, varMemAddress(currentFunc.varIndex(v.id)));
+			gen.movd(TEMP_REG_1, localVarMemAddress(currentFunc.varIndex(v.id)));
 		}
 		else if (auto c = cast(ConstExpression)node)
 		{
@@ -321,7 +321,7 @@ struct LangCodeGen
 				case BinOp.ASSIGN:
 					compileNode(b.right);
 					int varIndex = currentFunc.varIndex((cast(VariableExpression)b.left).id);
-					gen.movd(varMemAddress(varIndex), TEMP_REG_1);
+					gen.movd(localVarMemAddress(varIndex), TEMP_REG_1);
 					break;
 				default: assert(false, "Not implemented");
 			}

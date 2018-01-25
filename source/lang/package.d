@@ -11,3 +11,4 @@ public import lang.error;
 public import lang.lex;
 public import lang.parse;
 public import lang.semantics.semantics;
+public import lang.identifier;

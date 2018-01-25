@@ -19,13 +19,17 @@ import amd64asm;
 import utils;
 
 //version = print_info;
-//version = use_mmap;
+version = use_mmap;
 
 void main()
 {
 	testExeCompilation();
 	testObjLinking();
+	testObjLibDump();
+}
 
+void testObjLibDump()
+{
 	auto file = File("../asm/dump.txt", "w");
 	//auto output = stdout.lockingTextWriter;
 	auto output = file.lockingTextWriter;
@@ -40,12 +44,14 @@ void main()
 
 	auto time0 = currTime;
 	auto lib = PecoffLib.fromFile("../asm/lib/phobos64.lib");
+	//auto lib = PecoffLib.fromFile("../asm/lib/libcmt.lib");
 	auto time1 = currTime;
-	printSectionStats(output, lib);
+	//printSectionStats(output, lib);
+	//printSymbolStats(output, lib);
 	auto time2 = currTime;
-	//lib.print(output);
-	//auto time3 = currTime;
-	writefln("Load %ss, dump %ss", scaledNumberFmt(time1 - time0), scaledNumberFmt(time2 - time1));
+	lib.print(output);
+	auto time3 = currTime;
+	writefln("Load %ss, dump %ss", scaledNumberFmt(time1 - time0), scaledNumberFmt(time3 - time2));
 	//PecoffObj.fromFile("../asm/obj/loadcfg.obj").print(output); // reallocation past the end of section
 
 	// 1 overflow in loadcfg.obj
@@ -90,9 +96,9 @@ struct ArraySink {
 }
 
 enum : uint {
-    STD_INPUT_HANDLE  = 0xFFFFFFF6,
-    STD_OUTPUT_HANDLE = 0xFFFFFFF5,
-    STD_ERROR_HANDLE  = 0xFFFFFFF4
+	STD_INPUT_HANDLE  = 0xFFFFFFF6,
+	STD_OUTPUT_HANDLE = 0xFFFFFFF5,
+	STD_ERROR_HANDLE  = 0xFFFFFFF4
 }
 
 enum SectionType : ubyte
@@ -107,16 +113,19 @@ void testObjLinking()
 	auto file = File("../asm/linking.txt", "w");
 	auto output = file.lockingTextWriter;
 
-	auto obj1 = PecoffObj.fromFile("../asm/obj/hellod.obj");
-	auto obj2 = PecoffObj.fromFile("../asm/obj/extd.obj");
+	auto obj1 = PecoffObj.fromFile("../asm/obj/helloc.obj");
+	auto obj2 = PecoffObj.fromFile("../asm/obj/extc.obj");
 	string outname = "../asm/out.exe";
 	string entryPointName = "main";
 
-	SymbolNameTable symbolNameTable;
-	SymbolName name = symbolNameTable.put(entryPointName);
+	//obj1.print(output);
+	//obj2.print(output);
 
-	obj1.print(output);
-	obj2.print(output);
+	LinkingContext ctx;
+
+	ctx.setEntryPoint(entryPointName);
+	ctx.put(obj1);
+	ctx.put(obj2);
 
 	// undef syms
 	// def syms
@@ -128,6 +137,53 @@ void testObjLinking()
 
 	// after all symbols were resolved
 	// sort sections
+}
+
+struct LinkingContext
+{
+	SymbolName entryPointName;
+	SymbolNameTable symNameTable;
+	SymbolTable symTable;
+
+	void setEntryPoint(string symName)
+	{
+		SymbolName name = symNameTable.put(symName);
+		entryPointName = name;
+	}
+
+	void put(PecoffObj obj)
+	{
+		foreach (item; CoffSymbolRange(obj.symbols))
+		{
+			if (item.sym.isAbsolute) continue;
+
+			string nameStr = item.sym.Name.get(obj.stringTable);
+			SymbolName name = symNameTable.put(nameStr);
+
+			string indentation = "    ";
+			writeln(nameStr);
+
+			if (item.sym.isFunction) writeln(indentation, "fun");
+			else if (item.sym.isNonFunction) writeln(indentation, "non-fun");
+
+			switch(item.sym.StorageClass)
+			{
+				case CoffSymClass.STATIC: writeln(indentation, "STATIC"); break;
+				case CoffSymClass.LABEL: writeln(indentation, "LABEL"); break;
+				case CoffSymClass.EXTERNAL: writeln(indentation, "EXTERNAL"); break;
+				case CoffSymClass.WEAK_EXTERNAL: writeln(indentation, "WEAK_EXTERNAL"); break;
+				default: break;
+			}
+
+			if (item.sym.isUndefined) writeln(indentation, "Undef");
+			writefln("%sDAT [%(%02X %)]", indentation, cast(ubyte[])item.sym[0..1]);
+			if (item.aux.length)
+			{
+				ubyte[] auxBytes = cast(ubyte[])item.aux;
+				writefln("%sAUX [%(%02X %)]", indentation, auxBytes);
+			}
+		}
+	}
 }
 
 enum SymbolRefType : ubyte
@@ -195,7 +251,9 @@ struct SymbolTable
 
 	SymbolIndex put(Symbol sym)
 	{
-
+		size_t index = symbols.data.length;
+		symbols.put(sym);
+		return cast(SymbolIndex)index;
 	}
 }
 
@@ -354,6 +412,32 @@ struct FileDataSlicer
 	void advanceToAlignment(size_t alignment) { fileCursor += paddingSize(fileCursor, alignment); }
 }
 
+struct CoffSymbolRangeItem
+{
+	size_t tableIndex;
+	SymbolTableEntry* sym;
+	SymbolTableEntry[] aux;
+}
+
+struct CoffSymbolRange
+{
+	SymbolTableEntry[] symbols;
+
+	int opApply(scope int delegate(CoffSymbolRangeItem) dg)
+	{
+		size_t tableIndex = 0;
+		while (tableIndex < symbols.length)
+		{
+			auto item = CoffSymbolRangeItem(tableIndex, &symbols[tableIndex]);
+			size_t numAux = symbols[tableIndex].NumberOfAuxSymbols;
+			if (numAux) item.aux = symbols[tableIndex+1..tableIndex+1+numAux];
+			if (auto res = dg(item)) return res;
+			tableIndex += 1 + numAux;
+		}
+		return 0;
+	}
+}
+
 struct PecoffObj
 {
 	string filename;
@@ -367,13 +451,20 @@ struct PecoffObj
 	string stringTable;
 	size_t totalRelocations = 0;
 
-	static PecoffObj fromFile(string filename)
+	static PecoffObj fromFileLazy(string filename)
 	{
 		enforce(exists(filename), format("%s does not exist", filename));
 		enforce(extension(filename) == ".obj", format("%s must have .obj extension", filename));
 
 		ubyte[] fileData = cast(ubyte[])std.file.read(filename);
-		return fromBytes(fileData, filename);
+		return fromBytesLazy(fileData, filename);
+	}
+
+	static PecoffObj fromFile(string filename)
+	{
+		PecoffObj obj = fromFileLazy(filename);
+		obj.load();
+		return obj;
 	}
 
 	/// Returns obj without actual parsing. Call load before accessing
@@ -543,60 +634,55 @@ struct PecoffObj
 		sink.put("Symbol table:\n");
 		sink.put("       #     Value   Section  Type      Class     Name    \n");
 		sink.put("--------  --------  --------  --------  --------  --------\n");
-		for(int i = 0; i < symbols.length; ++i)
+		foreach(item; CoffSymbolRange(symbols))
 		{
 			// # Value
 			formattedWrite(sink, "% 8X  % 8X  ",//"% 8X  % 8X  %s\n",
-				i,
-				symbols[i].Value);
+				item.tableIndex,
+				item.sym.Value);
 
 			// Section
-			switch(symbols[i].SectionNumber) {
+			switch(item.sym.SectionNumber) {
 				case -2: formattedWrite(sink, "Debug     "); break;
 				case -1: formattedWrite(sink, "Absolute  "); break;
 				case  0: formattedWrite(sink, "Undef     "); break;
-				default: formattedWrite(sink, "% 8X  ", symbols[i].SectionNumber);
+				default: formattedWrite(sink, "% 8X  ", item.sym.SectionNumber);
 			}
 
 			// Type
-			if (symbols[i].Type == 0x20) formattedWrite(sink, "function  ");
-			else if (symbols[i].Type == 0x00) formattedWrite(sink, "          ");
-			else formattedWrite(sink, "% 8X  ", symbols[i].Type);
+			if (item.sym.isFunction) formattedWrite(sink, "function  ");
+			else if (item.sym.isNonFunction) formattedWrite(sink, "not func  ");
+			else formattedWrite(sink, "% 8X  ", item.sym.Type);
 
 			// Class
-			formattedWrite(sink, "% 8s  ", symbols[i].StorageClass);
+			formattedWrite(sink, "% 8s  ", item.sym.StorageClass);
 
 			// Name
-			formattedWrite(sink, "%s\n", symbols[i].Name.get(stringTable));
+			formattedWrite(sink, "%s\n", item.sym.Name.get(stringTable));
 
-			foreach(_; 0..symbols[i].NumberOfAuxSymbols)
+			foreach(i, ref SymbolTableEntry auxSym; item.aux)
 			{
-				++i;
 				// # Value
 				formattedWrite(sink, "     AUX  % 8X  ",//"% 8X  % 8X  %s\n",
-					i,
-					symbols[i].Value);
+					item.tableIndex + 1 + i,
+					item.sym.Value);
 
 				// Section
-				switch(symbols[i].SectionNumber) {
+				switch(item.sym.SectionNumber) {
 					case -2: formattedWrite(sink, "Debug     "); break;
 					case -1: formattedWrite(sink, "Absolute  "); break;
 					case  0: formattedWrite(sink, "Undef     "); break;
-					default: formattedWrite(sink, "% 8X  ", symbols[i].SectionNumber);
+					default: formattedWrite(sink, "% 8X  ", item.sym.SectionNumber);
 				}
 
 				// Type
-				if (symbols[i].Type == 0x20) formattedWrite(sink, "function  ");
-				else if (symbols[i].Type == 0x00) formattedWrite(sink, "          ");
-				else formattedWrite(sink, "% 8X  ", symbols[i].Type);
+				if (item.sym.isFunction) formattedWrite(sink, "function  ");
+				else if (item.sym.isNonFunction) formattedWrite(sink, "          ");
+				else formattedWrite(sink, "% 8X  ", item.sym.Type);
 
 				// Class
-				formattedWrite(sink, "% 8s  \n", symbols[i].StorageClass);
-
-				// Name
-				//formattedWrite(sink, "%s\n", symbols[i].Name.get(stringTable));
+				formattedWrite(sink, "% 8s  \n", item.sym.StorageClass);
 			}
-			//i += symbols[i].NumberOfAuxSymbols;
 		}
 	}
 
@@ -819,6 +905,57 @@ struct ParsedLibMemberHeader
 	uint Size;
 }
 
+struct SymbolStats
+{
+	static struct Key
+	{
+		CoffSymClass symClass;
+	}
+
+	static struct SymbolStats
+	{
+		size_t numSymbols;
+		void visit(ref SymbolTableEntry sym)
+		{
+			++numSymbols;
+		}
+	}
+	SymbolStats[Key] stats;
+	size_t totalSymbols;
+
+	void visit(ref PecoffLib lib)
+	{
+		foreach(ref obj; lib.getObjs()) visit(obj);
+	}
+
+	void visit(ref PecoffObj obj)
+	{
+		foreach (item; CoffSymbolRange(obj.symbols))
+		{
+			Key key = Key(item.sym.StorageClass);
+			if (auto stat = key in stats) {
+				stat.visit(*item.sym);
+			} else {
+				SymbolStats stat;
+				stat.visit(*item.sym);
+				stats[key] = stat;
+			}
+			++totalSymbols;
+		}
+	}
+
+	void print(Sink)(auto ref Sink sink)
+	{
+		formattedWrite(sink, "Total symbols: %X\n", totalSymbols);
+		sink.put("Class                   Count   \n");
+		sink.put("----------------------  --------\n");
+		foreach(key, stat; stats)
+			formattedWrite(sink, "  % 16s(%02X)  % 8X\n", key.symClass, cast(ubyte)key.symClass, stat.numSymbols);
+	}
+}
+void printSymbolStats(Sink)(auto ref Sink sink, ref PecoffLib lib) { SymbolStats stats; stats.visit(lib); stats.print(sink); }
+void printSymbolStats(Sink)(auto ref Sink sink, ref PecoffObj obj) { SymbolStats stats; stats.visit(obj); stats.print(sink); }
+
 struct SectionStats
 {
 	static struct Key
@@ -867,12 +1004,12 @@ struct SectionStats
 
 	void print(Sink)(auto ref Sink sink)
 	{
-		formattedWrite(sink, "total symbols: %s\n", totalSymbols);
+		formattedWrite(sink, "total symbols: %X\n", totalSymbols);
 		sink.put("Code|Initialized|Uninitialized|Link info|Remove\n");
 		sink.put("coMdat|Gprel|Ovfl|Discardable|cacHed|Paged|Shared\n");
 		sink.put("------------  ---  -----  --------  --------  --------\n");
 		sink.put("    Flags                              Total          \n");
-		sink.put("CIULVMGODHPS  RWX  Align     Count      Size  Name    \n");
+		sink.put("CIULRMGODHPS  RWX  Align     Count      Size  Name    \n");
 		sink.put("------------  ---  -----  --------  --------  --------\n");
 		foreach(key, stat; stats)
 		{
@@ -1966,7 +2103,7 @@ struct SectionHeader
 		formattedWrite(sink, "Code|Initialized|Uninitialized|Link info|Remove|coMdat|Gprel|Ovfl|Discardable|cacHed|Paged|Shared\n");
 		formattedWrite(sink, "----  --------  --------  --------  --------  --------  --------  -----  ------------  ---  --------\n");
 		formattedWrite(sink, "      Virtual    Virtual      File      File    Relocs    Num of             Flags                  \n");
-		formattedWrite(sink, "   #  Address       Size    Offset      Size    Offset    Relocs  Align  CIULVMGODHPS  RWX  Name    \n");
+		formattedWrite(sink, "   #  Address       Size    Offset      Size    Offset    Relocs  Align  CIULRMGODHPS  RWX  Name    \n");
 		formattedWrite(sink, "----  --------  --------  --------  --------  --------  --------  -----  ------------  ---  --------\n");
 	}
 
@@ -2130,6 +2267,12 @@ struct SymbolTableEntry
 	/// For more information, see section 5.4.3, “Type
 	/// Representation.”
 	ushort Type;
+
+	bool isUndefined() { return SectionNumber == SymbolSectionNumber.UNDEFINED; }
+	bool isAbsolute() { return SectionNumber == SymbolSectionNumber.ABSOLUTE; }
+	bool isDebug() { return SectionNumber == SymbolSectionNumber.DEBUG; }
+	bool isFunction() { return Type == 0x20; }
+	bool isNonFunction() { return Type == 0x0; }
 
 	/// An enumerated value that represents storage
 	/// class. For more information, see section 5.4.4,

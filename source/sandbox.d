@@ -22,14 +22,17 @@ extern(C) int printNumLn(int param){ writeln(param); return 0; }
 
 void main()
 {
-	run_from_rwx();
+	//run_from_rwx();
 	//testPrintMemAddress();
-	testVMs();
-	testLang();
-	writefln("main() == %s", runScript(q{func main(){return 42;}}, "main"));
-	writefln("main(20) == %s", runScript(q{func main(par){return par;}}, "main", 20));
-	writefln("main(20) == %s", runScript(q{func main(par){return par+par;}}, "main", 20));
-	writefln("main(20) == %s", runScript(q{func main(par){return sub(par)+10;} func sub(a){return a+a;}}, "main", 20));
+	//testVMs();
+	//testLang();
+	testLang2();
+	/*
+	writefln("main() == %s", runScript(input, "main"));
+	writefln("main() == %s", runScript(q{i32 main(){return 42;}}, "main"));
+	writefln("main(20) == %s", runScript(q{i32 main(i32 par){return par;}}, "main", 20));
+	writefln("main(20) == %s", runScript(q{i32 main(i32 par){return par+par;}}, "main", 20));
+	writefln("main(20) == %s", runScript(q{i32 main(i32 par){return sub(par)+10;} i32 sub(i32 a){return a+a;}}, "main", 20));
 
 	{
 		LangVM vm;
@@ -39,10 +42,13 @@ void main()
 		writefln("%s", cast(void*)&printNum);
 		vm.registerFunction("print", &printNum);
 		vm.registerFunction("println", &printNumLn);
-		vm.compileModule(q{ func test(i) { print(i); println(i+i); } });
-		printHex(vm.codeGen.code, 16);
-		writefln("fun table %s", vm.codeGen.functionTable);
-		writefln("%s", vm.run!int("test", 20));
+		vm.compileModule(q{ void test(i32 i) { print(i); println(i+i); } });
+		if (vm.valid)
+		{
+			printHex(vm.codeGen.code, 16);
+			writefln("fun table %s", vm.codeGen.functionTable);
+			writefln("%s", vm.run!int("test", __LINE__, __FILE__, 20));
+		}
 	}
 
 	{
@@ -66,7 +72,7 @@ void main()
 	}
 
 	//printHex(codeGen.encoder.code, 10);
-	testAll();
+	testAll();*/
 }
 
 void testAll()
@@ -275,7 +281,7 @@ auto runScript(int line = __LINE__, string file = __FILE__, Args...)(string inpu
 	LangVM vm; vm.setup;
 	scope(exit) vm.free;
 	vm.compileModule(input);
-	return vm.run!(int, line, file)(funcName, args);
+	return vm.run!(int)(funcName, line, file, args);
 }
 
 struct LangVM
@@ -319,12 +325,15 @@ struct LangVM
 			codeGen.compileModule(moduleSemantics);
 		} catch(CompilationException e) {
 			writefln("[ERROR] %s: %s", e.loc, e.msg);
+			writeln(e);
 			valid = false;
 		}
 	}
 
-	ResultType run(ResultType, int line = __LINE__, string file = __FILE__, Args...)(string funcName, Args args)
+	ResultType run(ResultType, Args...)(string funcName, int line, string file, Args args)
 	{
+		if (!valid) throw runtime_error("Cannot start '%s'. Module compiled with errors", funcName, line, file);
+
 		foreach(arg; Args)
 		{
 			static assert(is(arg == int), "parameter must be int");
@@ -345,7 +354,6 @@ struct LangVM
 			throw runtime_error("Too much parameters to '%s', got %s, expected %s",
 				funcName, numArgs, numParams, line, file);
 
-		if (!valid) throw runtime_error("Cannot start '%s'. Module compiled with errors", funcName, line, file);
 		JittedFunc func = cast(JittedFunc)fun.funcPtr;
 		//assert(false);
 		auto result = func(args);
@@ -354,12 +362,18 @@ struct LangVM
 }
 
 string input = q{
-	func main() {
-		return sub(1, 2, 3, 4, 5, 6); // returns 21 as expected
+	i32 main() {
+		i32 localVar;
+		struct nestedStruct {}
+		//fn i32 nestedFunc(i32 a) { return a + 1; }
+		return localVar;
+		//return sub(1, 2, 3, 4, 5, 6); // returns 21 as expected
 	}
-	func sub(a, b, c, d, e, f) {
-		return a + b + c + d + e + f;
-	}
+	//fn i32 sub(i32 a, i32 b, i32 c, i32 d, i32 e, i32 f) {
+	//	return a + b + c + d + e + f;
+	//}
+	i32 globalVar;
+	struct structWIP {}
 };
 
 void testLang()
@@ -438,4 +452,20 @@ void testLang()
 	printAST(moduleDecl, idMap);
 	printHex(codeGen.code, 16);
 	writefln("func() == %s", res);
+}
+
+void testLang2()
+{
+	LangVM vm;
+	vm.setup();
+	scope(exit) vm.free;
+
+	writefln("%s", cast(void*)&printNum);
+	vm.compileModule(input);
+	if (vm.valid)
+	{
+		printHex(vm.codeGen.code, 16);
+		writefln("fun table %s", vm.codeGen.functionTable);
+		writefln("%s", vm.run!int("main", __LINE__, __FILE__));
+	}
 }

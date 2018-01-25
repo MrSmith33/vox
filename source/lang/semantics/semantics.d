@@ -8,6 +8,7 @@ module lang.semantics.semantics;
 import lang.ast.ast;
 import lang.lex : SourceLocation;
 import lang.error;
+import lang.identifier;
 
 struct NativeFunction
 {
@@ -32,6 +33,7 @@ struct Callee
 			return sem.functions[index].funcPtr;
 	}
 }
+
 
 class ModuleSemantics
 {
@@ -108,6 +110,7 @@ class FunctionAnalyser : FunctionVisitor {
 
 	void registerVar(Identifier id)
 	{
+		//writefln("reg %s", idMap.get(id));
 		localVars ~= id;
 	}
 

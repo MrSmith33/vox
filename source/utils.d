@@ -42,7 +42,7 @@ else version(Windows)
 	{
 		if (!bytes) return null;
 
-		writefln("allocate 0x%s bytes at 0x%s", cast(void*)bytes, location);
+		//writefln("allocate 0x%s bytes at 0x%s", cast(void*)bytes, location);
 
 		int protection = is_executable ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
 		auto p = VirtualAlloc(location, bytes, MEM_COMMIT | MEM_RESERVE, protection);
