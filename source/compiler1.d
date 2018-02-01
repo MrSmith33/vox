@@ -275,7 +275,8 @@ void main()
 q{i32 isNegative(i32 number)
 {
 	i32 result;
-	if (number < 0) result = 1;
+	if (number < 0) result = 0-1;
+	else if (number > 0) result = 1;
 	else result = 0;
 	return result;
 }};
@@ -284,8 +285,7 @@ q{i32 isNegative(i32 number)
 	IdentifierMap idMap;
 	auto context = CompilationContext(input8, &idMap);
 	//context.crashOnICE = true;
-	enum PAGE_SIZE = 4096;
-	auto codeBuffer = new ubyte[PAGE_SIZE * 8];
+	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
 	try {
 		Lexer lexer = Lexer(context.input);
@@ -336,6 +336,18 @@ q{i32 isNegative(i32 number)
 			codegen_pass.visit(bin_irgen.irModule);
 
 		auto time9 = currTime;
+			auto funDecl = mod.findFunction("isNegative", &context);
+			if (funDecl)
+			{
+				alias FunType = extern(C) int function(int);
+				FunType fun = cast(FunType)funDecl.irData.funcPtr;
+				writefln("codeBuffer %s", codeBuffer.ptr);
+				writefln("fun %s", fun);
+				writefln("isNegative(10) -> %s", fun(10));
+				writefln("isNegative(-10) -> %s", fun(-10));
+			}
+
+		auto time10 = currTime;
 			// Text dump
 			writeln("// source code");
 			writeln(context.input);
@@ -1395,6 +1407,17 @@ struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
 	Scope* _scope;
 	IrModule irModule;
+
+	FunctionDeclNode* findFunction(string idStr, CompilationContext* ctx) {
+		Identifier id = ctx.idMap.find(idStr);
+		if (id == uint.max) return null;
+		return findFunction(id);
+	}
+	FunctionDeclNode* findFunction(Identifier id) {
+		Symbol* sym = _scope.symbols.get(id, null);
+		if (sym.symClass != SymbolClass.c_function) return null;
+		return sym.funcDecl;
+	}
 }
 
 struct StructDeclNode {
@@ -2055,25 +2078,20 @@ struct Parser {
 		SourceLocation start = tok.loc;
 		ExpressionNode* t, n = sum();
 
-
-/*
+		BinOp op;
 		switch(tok.type)
 		{
-			case TokenType.LESS: goto case;
-			case TokenType.LESS_EQUAL: goto case;
-			case TokenType.GREATER: goto case;
-			case TokenType.GREATER_EQUAL:
-				nextToken();
-				t = n;
-				n = cast(ExpressionNode*)makeExpr!BinaryExprNode(start, BinOp.LESS, t, sum());
-				break;
-		}*/
-		if (tok.type == TokenType.LESS)
-		{
-			nextToken();
-			t = n;
-			n = cast(ExpressionNode*)makeExpr!BinaryExprNode(start, BinOp.LESS, t, sum());
+			case TokenType.LESS: op = BinOp.LESS; break;
+			case TokenType.LESS_EQUAL: op = BinOp.LESS_EQUAL; break;
+			case TokenType.GREATER: op = BinOp.GREATER; break;
+			case TokenType.GREATER_EQUAL: op = BinOp.GREATER_EQUAL; break;
+			default: return n;
 		}
+
+		nextToken();
+		t = n;
+		n = cast(ExpressionNode*)makeExpr!BinaryExprNode(start, op, t, sum());
+
 		return n;
 	}
 
@@ -2612,12 +2630,7 @@ struct SemanticStaticTypes {
 				break;
 		*/
 			// logic ops. Requires both operands to be of the same type
-			case EQUAL_EQUAL: goto case;
-			case NOT_EQUAL: goto case;
-			case GREATER: goto case;
-			case GREATER_EQUAL: goto case;
-			case LESS: goto case;
-			case LESS_EQUAL:
+			case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 				if (b.left.type is b.right.type)
 					resRype = context.basicTypeNodes(BasicType.t_bool);
 				else
@@ -2627,10 +2640,7 @@ struct SemanticStaticTypes {
 				break;
 
 			// arithmetic op int float
-			case MINUS: goto case;
-			case PLUS: goto case;
-			case SLASH: goto case;
-			case STAR:
+			case MINUS, PLUS, SLASH, STAR:
 				if (autoconvToCommonType(b.left, b.right))
 					resRype = b.left.type;
 				else
@@ -3019,7 +3029,14 @@ struct BinIrGenerationVisitor {
 
 		_visit(cast(AstNode*)i.thenStatement);
 
-		if (i.elseStatement) currentBB = curFunc.addBasicBlock(IrName("else", ++elseCounter));
+		IrBasicBlock* elseBB;
+		if (i.elseStatement)
+		{
+			currentBB = curFunc.addBasicBlock(IrName("else", ++elseCounter));
+			_visit(i.elseStatement);
+			elseBB = currentBB;
+			prevBB.outs ~= elseBB;
+		}
 
 		auto afterBB = curFunc.addBasicBlock(IrName("blk", ++bbCounter));
 		if (!thenBB.isFinished)
@@ -3030,9 +3047,6 @@ struct BinIrGenerationVisitor {
 
 		if (i.elseStatement)
 		{
-			auto elseBB = currentBB;
-			_visit(i.elseStatement);
-			prevBB.outs ~= elseBB;
 			if (!elseBB.isFinished)
 			{
 				elseBB.exit = IrJump(IrJump.Type.jmp);
@@ -3236,13 +3250,7 @@ struct IrFunction
 							deref(instr.arg1));
 						break;
 					// Arithmetic
-					case o_add:  goto case;
-					case o_sub:  goto case;
-					case o_div:  goto case;
-					case o_rem:  goto case;
-					case o_udiv: goto case;
-					case o_urem: goto case;
-					case o_mul:
+					case o_add, o_sub, o_div, o_rem, o_udiv, o_urem, o_mul:
 						sink.putfln("    %s = %s %s, %s",
 							deref(instr.to),
 							irOpcodeNames[instr.op],
@@ -3516,7 +3524,7 @@ struct RegisterClass
 {
 	int[MAX_REGS] Name;
 	int[MAX_REGS] Next;
-	int[MAX_REGS] Free;
+	bool[MAX_REGS] Free;
 	int[MAX_REGS] Stack;
 	int StackTop;
 }
@@ -3554,8 +3562,8 @@ struct IrToAmd64
 	TextSink sink;
 
 	enum RET_REG = Register.AX;
-	enum TEMP_REG_0 = Register.AX;
-	enum TEMP_REG_1 = Register.BX;
+	enum TEMP_REG_0 = Register.CX;
+	enum TEMP_REG_1 = Register.DX;
 	enum STACK_ITEM_SIZE = 8; // x86_64
 	enum USE_FRAME_POINTER = true;
 	CodeGen_x86_64 gen;
@@ -3590,6 +3598,7 @@ struct IrToAmd64
 	void visit(IrFunction* func)
 	{
 		curFunc = func;
+		curFunc.funcPtr = gen.pc;
 		compileFuncProlog();
 		compileFuncBody();
 		fixJumpsAndReturns(gen.pc);
@@ -3641,8 +3650,10 @@ struct IrToAmd64
 		}
 	}
 
-	//Register ensureLoaded(IrVarOrConstant value)
-	//{}
+	Register ensureLoaded(IrVarOrConstant value)
+	{
+		return RET_REG;
+	}
 
 	Register loadValue(IrVarOrConstant value, Register reg)
 	{
@@ -3823,8 +3834,7 @@ struct IrToAmd64
 			}
 			final switch(block.exit.type) with(IrJump.Type) {
 				case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); return;
-				case ret0: goto case;
-				case ret1:
+				case ret0, ret1:
 					// ignore jump in the last Basic Block
 					if (block.next is null) break;
 					//checkFixup(block.exit.fixup0);
@@ -4587,7 +4597,9 @@ int calcScale(Num)(Num val)
 	else
 		scale = cast(int)(floor(absLog/3.0))*3;
 
-	int clampedScale = clamp(scale * logSign, -24, 24);
+	auto absScale = scale * logSign;
+	if (absScale < -24) absScale = 0;
+	int clampedScale = clamp(absScale, -24, 24);
 
 	return clampedScale;
 }
@@ -4736,4 +4748,94 @@ void printHex(ubyte[] buffer, size_t lineLength)
 	}
 	if (index < buffer.length)
 		writefln("%(%02X %)", buffer[index..buffer.length]);
+}
+
+enum size_t PAGE_SIZE = 4096;
+
+version(Posix)
+{
+	ubyte[] allocate(size_t bytes, bool is_executable, MemType memoryType)
+	{
+		import core.sys.posix.sys.mman : mmap, MAP_ANON, PROT_READ,
+			PROT_WRITE, PROT_EXEC, MAP_PRIVATE, MAP_FAILED;
+		if (!bytes) return null;
+
+		int protection = PROT_READ | PROT_WRITE;
+
+		final switch(memoryType)
+		{
+			case MemType.RW:  protection |= 0; break;
+			case MemType.RWX: protection |= PROT_EXEC; break;
+		}
+
+		auto p = mmap(null, bytes, protection, MAP_PRIVATE | MAP_ANON, -1, 0);
+		if (p is MAP_FAILED) return null;
+		return cast(ubyte[])p[0 .. bytes];
+	}
+
+	bool deallocate(ubyte[] b)
+	{
+		import core.sys.posix.sys.mman : munmap;
+		if (b.ptr) munmap(b.ptr, b.length) == 0 || assert(0);
+		return true;
+	}
+}
+else version(Windows)
+{
+	import core.sys.windows.windows : GetLastError, VirtualAlloc, VirtualFree, VirtualProtect, MEM_COMMIT,
+		PAGE_READWRITE, MEM_RELEASE, PAGE_EXECUTE_READWRITE, MEM_RESERVE;
+
+	ubyte[] allocate(size_t bytes, void* location, MemType memoryType)
+	{
+		if (!bytes) return null;
+
+		int protection;
+
+		final switch(memoryType)
+		{
+			case MemType.RW:  protection = PAGE_READWRITE; break;
+			case MemType.RWX: protection = PAGE_EXECUTE_READWRITE; break;
+		}
+
+		auto p = VirtualAlloc(location, bytes, MEM_COMMIT | MEM_RESERVE, protection);
+
+		if (p == null)
+		{
+			import std.stdio;
+			import std.windows.syserror;
+			int errCode = GetLastError();
+			writeln(sysErrorString(errCode));
+			assert(false, "VirtualAlloc alloc failed");
+			return null;
+		}
+
+		return cast(ubyte[])p[0 .. bytes];
+	}
+
+	bool deallocate(ubyte[] b)
+	{
+		return b.ptr is null || VirtualFree(b.ptr, 0, MEM_RELEASE) != 0;
+	}
+
+	void markAsRW(void* addr, size_t numPages)
+	{
+		uint val;
+		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_READWRITE, &val);
+	}
+}
+
+enum MemType
+{
+	RW,
+	RWX
+}
+
+ubyte[] alloc_executable_memory(size_t bytes)
+{
+	return allocate(bytes, cast(void*)0x4000_0000UL, MemType.RWX);
+}
+
+bool free_executable_memory(ubyte[] bytes)
+{
+	return deallocate(bytes);
 }

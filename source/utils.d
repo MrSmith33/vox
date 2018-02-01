@@ -13,7 +13,7 @@ enum size_t PAGE_SIZE = 4096;
 
 version(Posix)
 {
-	ubyte[] allocate(size_t bytes, bool is_executable)
+	ubyte[] allocate(size_t bytes, void* location, bool is_executable)
 	{
 		import core.sys.posix.sys.mman : mmap, MAP_ANON, PROT_READ,
 			PROT_WRITE, PROT_EXEC, MAP_PRIVATE, MAP_FAILED;
@@ -21,7 +21,7 @@ version(Posix)
 
 		int protection = PROT_READ | PROT_WRITE | (is_executable ? PROT_EXEC : 0);
 
-		auto p = mmap(null, bytes, protection, MAP_PRIVATE | MAP_ANON, -1, 0);
+		auto p = mmap(location, bytes, protection, MAP_PRIVATE | MAP_ANON, -1, 0);
 		if (p is MAP_FAILED) return null;
 		return cast(ubyte[])p[0 .. bytes];
 	}

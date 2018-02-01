@@ -1,6 +1,6 @@
 Boost Software License - Version 1.0 - August 17th, 2003
 
-Copyright (c) 2017 Andrey Penechko
+Copyright (c) 2017-2018 Andrey Penechko
 
 Permission is hereby granted, free of charge, to any person or organization
 obtaining a copy of the software and accompanying documentation covered by
