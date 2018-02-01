@@ -283,6 +283,9 @@ q{i32 isNegative(i32 number)
 	auto time0 = currTime;
 	IdentifierMap idMap;
 	auto context = CompilationContext(input8, &idMap);
+	//context.crashOnICE = true;
+	enum PAGE_SIZE = 4096;
+	auto codeBuffer = new ubyte[PAGE_SIZE * 8];
 
 	try {
 		Lexer lexer = Lexer(context.input);
@@ -324,9 +327,16 @@ q{i32 isNegative(i32 number)
 		auto time7 = currTime;
 			auto bin_irgen = BinIrGenerationVisitor(&context);
 			bin_irgen.visit(mod);
+			context.assertf(bin_irgen.irModule !is null, "Module IR is null");
 			context.throwOnErrors;
 
 		auto time8 = currTime;
+			bin_irgen.irModule.codeBuffer = codeBuffer;
+			auto codegen_pass = IrToAmd64(&context);
+			codegen_pass.visit(bin_irgen.irModule);
+
+		auto time9 = currTime;
+			// Text dump
 			writeln("// source code");
 			writeln(context.input);
 			//writeln;
@@ -337,8 +347,9 @@ q{i32 isNegative(i32 number)
 			writeln;
 			writeln("// Generated from binary IR");
 			writeln(sink.text);
-
-		auto time9 = currTime;
+			writeln;
+			writeln("// Code");
+			printHex(bin_irgen.irModule.code, 16);
 
 		writeln;
 		writeln("// timing");
@@ -350,11 +361,16 @@ q{i32 isNegative(i32 number)
 		writefln("print2 %ss", scaledNumberFmt(time6-time5));
 		//writefln("IR text gen %ss", scaledNumberFmt(time7-time6));
 		writefln("IR bin gen %ss", scaledNumberFmt(time8-time7));
+		writefln("Codegen %ss", scaledNumberFmt(time9-time8));
 	}
 	catch(CompilationException e) {
 		writeln(context.sink.text);
+		if (e.isICE)
+			writeln(e);
 	}
 }
+
+// Parsing expressions - http://effbot.org/zone/simple-top-down-parsing.htm
 
 struct CompilationContext
 {
@@ -362,6 +378,7 @@ struct CompilationContext
 	IdentifierMap* idMap;
 	bool hasErrors;
 	TextSink sink;
+	bool crashOnICE;
 
 	//alias idString = idMap.get;
 	string idString(const Identifier id) { return idMap.get(id); }
@@ -404,12 +421,41 @@ struct CompilationContext
 		throw new CompilationException();
 	}
 
+	void assertf(string file = __FILE__, int line = __LINE__, Args...)(bool cond, string fmt, lazy Args args)
+	{
+		if (cond) return;
+		sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
+		sink.putfln(fmt, args);
+		hasErrors = true;
+		tryCrashOnICE;
+		throw new CompilationException(true);
+	}
+
 	void internal_error(Args...)(SourceLocation loc, string format, Args args)
 	{
 		sink.putf("file(%s, %s): ICE: ", loc.line+1, loc.col+1);
 		sink.putfln(format, args);
 		hasErrors = true;
-		throw new CompilationException();
+		tryCrashOnICE;
+		throw new CompilationException(true);
+	}
+
+	void internal_error(Args...)(string format, Args args)
+	{
+		sink.put("ICE: ");
+		sink.putfln(format, args);
+		hasErrors = true;
+		tryCrashOnICE;
+		throw new CompilationException(true);
+	}
+
+	private void tryCrashOnICE() {
+		if (crashOnICE)
+		{
+			//ubyte* nullPtr = null;
+			//nullPtr[0] = nullPtr[0];
+			assert(false, sink.text);
+		}
 	}
 
 	void throwOnErrors() {
@@ -417,7 +463,7 @@ struct CompilationContext
 	}
 }
 
-class CompilationException : Exception { this(){ super(null); }}
+class CompilationException : Exception { this(bool isICE=false){ super(null); this.isICE = isICE; } bool isICE; }
 
 
 //                 #######    ###    #    #   #######  #     #
@@ -1071,6 +1117,24 @@ enum BasicType : ubyte {
 	t_f64,
 }
 
+bool isTypeImplemented(BasicType t) {
+	final switch(t) {
+		case BasicType.t_error: return false;
+		case BasicType.t_void: return false;
+		case BasicType.t_bool: return false;
+		case BasicType.t_i8: return false;
+		case BasicType.t_i16: return false;
+		case BasicType.t_i32: return false;
+		case BasicType.t_i64: return false;
+		case BasicType.t_u8: return false;
+		case BasicType.t_u16: return false;
+		case BasicType.t_u32: return false;
+		case BasicType.t_u64: return false;
+		case BasicType.t_f32: return false;
+		case BasicType.t_f64: return false;
+	}
+}
+
 // usage isAutoConvertibleFromToBasic[from][to]
 immutable bool[13][13] isAutoConvertibleFromToBasic = [
 	//err  void bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64  // to
@@ -1248,6 +1312,45 @@ struct TypeNode {
 		return astType == AstType.type_basic &&
 			(cast(BasicTypeNode*)&this).basicType == BasicType.t_error;
 	}
+
+	void assertImplemented(SourceLocation loc, CompilationContext* context) {
+		if (!isImplemented)
+			context.error(loc, "Type is not implemented `%s`",
+				typeName(context));
+	}
+
+	bool isImplemented() {
+		if (astType == AstType.type_basic)
+		{
+			switch((cast(BasicTypeNode*)&this).basicType)
+			{
+				case BasicType.t_bool: return true;
+				case BasicType.t_i32: return true;
+				case BasicType.t_i64: return true;
+				case BasicType.t_f32: return false;
+				case BasicType.t_f64: return false;
+				default: return false;
+			}
+		}
+		return false;
+	}
+
+	IrValueType irType(CompilationContext* context) {
+		if (astType == AstType.type_basic)
+		{
+			switch((cast(BasicTypeNode*)&this).basicType)
+			{
+				case BasicType.t_bool: return IrValueType.i32;
+				case BasicType.t_i32: return IrValueType.i32;
+				case BasicType.t_i64: return IrValueType.i64;
+				//case BasicType.t_f32: return IrValueType.f32;
+				//case BasicType.t_f64: return IrValueType.f64;
+				default: break;
+			}
+		}
+		context.internal_error(loc, "Cannot convert `%s` to IrValueType", astType);
+		assert(false);
+	}
 }
 
 enum BasicTypeFlag : ubyte {
@@ -1291,6 +1394,7 @@ mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
 	Scope* _scope;
+	IrModule irModule;
 }
 
 struct StructDeclNode {
@@ -2387,6 +2491,7 @@ struct SemanticStaticTypes {
 	mixin AstVisitorMixin;
 
 	CompilationContext* context;
+	FunctionDeclNode* curFunc;
 
 	bool isBool(TypeNode* type)
 	{
@@ -2537,8 +2642,13 @@ struct SemanticStaticTypes {
 				break;
 
 			case EQUAL: // int float
-				autoconvTo(b.right, b.left.type);
-				resRype = b.right.type;
+				if (b.left.astType == AstType.expr_var)
+				{
+					autoconvTo(b.right, b.left.type);
+					resRype = b.right.type;
+				}
+				else
+					context.error(b.left.loc, "Cannot perform assignment into %s", b.left.astType);
 				break;
 		/*
 			// arithmetic op int
@@ -2578,12 +2688,31 @@ struct SemanticStaticTypes {
 		setResultType(b);
 	}
 
+	void checkReturnType(FunctionDeclNode* f) {
+		if (f.returnType.isVoid) return; // void functions don't need return at the end
+
+		if (f.block_stmt.statements.length > 0)
+		{
+			AstNode* lastStmt = f.block_stmt.statements[$-1];
+			if (lastStmt.astType == AstType.stmt_return)
+				return; // return type is already checked
+		}
+
+		context.error(f.loc,
+			"function `%s` has no return statement, but is expected to return a value of type %s",
+			context.idString(f.id), f.returnType.typeName(context));
+	}
+
 	void visit(ModuleDeclNode* m) {
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(FunctionDeclNode* f) {
+		auto prevFunc = curFunc;
+		curFunc = f;
 		foreach (param; f.parameters) visit(param);
 		visit(f.block_stmt);
+		checkReturnType(f);
+		curFunc = prevFunc;
 	}
 	void visit(VariableDeclNode* v) { _visit(v.type); }
 	void visit(ParameterDeclNode* p) {}
@@ -2612,335 +2741,76 @@ struct SemanticStaticTypes {
 		autoconvToBool(d.condition);
 	}
 	// Check return type and function return type
-	void visit(ReturnStmtNode* r) { if (r.expression) _visit(r.expression); }
+	void visit(ReturnStmtNode* r) {
+		if (!curFunc)
+		{
+			context.error(r.loc,
+				"Return statement is not inside function");
+			return;
+		}
+
+		if (r.expression)
+		{
+			_visit(r.expression);
+			if (curFunc.returnType.isVoid)
+			{
+				context.error(r.expression.loc,
+					"Cannot return expression of type `%s` from void function",
+					r.expression.type.typeName(context));
+			}
+			else
+			{
+				autoconvTo(r.expression, curFunc.returnType);
+			}
+		}
+		else
+		{
+			if (!curFunc.returnType.isVoid)
+				context.error(r.loc,
+					"Cannot return void from non-void function",
+					r.expression.type.typeName(context));
+		}
+	}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
 	// Get type from variable declaration
 	void visit(VariableExprNode* v) {
 		v.type = v.getSym.getType;
+		v.type.assertImplemented(v.loc, context);
 	}
 	void visit(LiteralExprNode* c) {
 		//v.type =
 	}
-	void visit(BinaryExprNode* b) { _visit(b.left); _visit(b.right); calcType(b); }
+	void visit(BinaryExprNode* b) {
+		_visit(b.left);
+		_visit(b.right);
+		calcType(b);
+		b.type.assertImplemented(b.loc, context);
+	}
 	// Get type from function declaration
 	void visit(CallExprNode* c) {
 		foreach (arg; c.args) _visit(arg);
 		c.type = c.getSym.getType;
 	}
-	void visit(TypeConvExprNode* t) { _visit(t.type); _visit(t.expr); }
+	void visit(TypeConvExprNode* t) {
+		_visit(t.type);
+		_visit(t.expr);
+		t.type.assertImplemented(t.loc, context);
+	}
 	void visit(BasicTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 }
 
-
-//                               #####   ######
-//                                 #     #     #
-//                                 #     #     #
-//                                 #     ######
-//                                 #     #   #
-//                                 #     #    #
-//                               #####   #     #
+//                  #####   ######     ####   #######  #     #
+//                    #     #     #   #    #  #        ##    #
+//                    #     #     #  #        #        # #   #
+//                    #     ######   #   ###  #####    #  #  #
+//                    #     #   #    #     #  #        #   # #
+//                    #     #    #    #    #  #        #    ##
+//                  #####   #     #    #####  #######  #     #
 // -----------------------------------------------------------------------------
-struct IrModule
-{
-	IrFunction*[] functions;
 
-	void addFunction(IrFunction* fun)
-	{
-		functions ~= fun;
-	}
-
-	void dump(ref TextSink sink, CompilationContext* context)
-	{
-		foreach (func; functions) func.dump(sink, context);
-	}
-}
-
-struct IrFunction
-{
-	IrName name;
-
-	TypeNode* returnType;
-
-	/// The first Basic Block of the function
-	/// Also the first node in the linked list of Basic Blocks
-	IrBasicBlock* start;
-
-	/// This is the last Basic Block in the linked list of blocks of this function
-	IrBasicBlock* last;
-
-	/// This array is indexed with -int.max..-1 IrRef values. -1 is index 0, -2 is 1 etc.
-	IrConstant[] constants;
-
-	/// This array begins with all parameters
-	/// This array is indexed with 0..int.max IrRef values
-	IrVar[] variables;
-
-	/// Parameters are saved as first `numParameters` items of `variables` array
-	size_t numParameters;
-
-	IrVar[] parameters() { return variables[0..numParameters]; }
-
-	IrVarOrConstant deref(IrRef reference) {
-		if (reference.index > 0) return IrVarOrConstant(variables[ reference.index-1]);
-		if (reference.index < 0) return IrVarOrConstant(constants[-reference.index-1]);
-		assert(false, "Attempting to deref zero reference");
-	}
-
-	/// Automatically sets `start`, sets last and links blocks together
-	IrBasicBlock* addBasicBlock(IrName name)
-	{
-		auto newBlock = new IrBasicBlock(name);
-		if (start is null) start = newBlock;
-		else last.next = newBlock;
-		last = newBlock;
-		return newBlock;
-	}
-
-	IrRef addConstant(IrConstant constant)
-	{
-		constants ~= constant;
-		int index = -cast(int)constants.length;
-		return IrRef(index);
-	}
-
-	IrRef addVariable(IrVar variable)
-	{
-		variables ~= variable;
-		int index = cast(int)variables.length;
-		return IrRef(index);
-	}
-
-	void dump(ref TextSink sink, CompilationContext* context)
-	{
-		sink.putf("function %s $%s (", returnType.typeName(context), name);
-		foreach (i, param; parameters)
-		{
-			sink.putf("%s %%%s", param.type.typeName(context), param.name);
-			if (i+1 < parameters.length) sink.put(", ");
-		}
-		sink.putln(") {");
-
-		for (IrBasicBlock* block = start; block; block = block.next)
-		{
-			sink.putfln("  @%s", block.name);
-
-			// print all instructions
-			foreach(instr_i, ref instr; block.instructions)
-			{
-				final switch(instr.op) with(IrOpcode) {
-					case o_eq: goto case;
-					case o_ne: goto case;
-					case o_gt: goto case;
-					case o_ge: goto case;
-					case o_lt: goto case;
-					case o_le: goto case;
-					// Arithmetic
-					case o_add:  goto case;
-					case o_sub:  goto case;
-					case o_div:  goto case;
-					case o_rem:  goto case;
-					case o_udiv: goto case;
-					case o_urem: goto case;
-					case o_mul:  goto case;
-					case o_assign:
-						sink.putfln("    %s = %s %s, %s",
-							deref(instr.to),
-							irOpcodeNames[instr.op],
-							deref(instr.arg0),
-							deref(instr.arg1));
-						break;
-					case o_call:
-						if (instr.to.isZero)
-							sink.putf("    call $%s(", context.idString(instr.callee.id));
-						else
-							sink.putf("    %s = call $%s(", deref(instr.to), context.idString(instr.callee.id));
-						foreach (arg_i, ref arg; block.instructions[instr_i+1..instr_i+instr.numArgs+1])
-						{
-							sink.putf("%s", deref(arg.arg0));
-							if (arg_i+1 < instr.numArgs) sink.put(", ");
-						}
-						sink.putln(")");
-						break;
-					case o_arg: break;
-				}
-			}
-
-			// print jump/return at the end of block
-			final switch(block.exit.type) with(IrJump.Type) {
-				case none: sink.putln("  // block not sealed"); break;
-				case ret0: sink.putln("    return"); break;
-				case ret1: sink.putfln("    return %s", deref(block.exit.value)); break;
-				case jmp:  sink.putfln("    jmp @%s", block.outs[0].name); break;
-				case jnz:  sink.putfln("    jnz %s @%s, @%s",
-					deref(block.exit.value), block.outs[0].name, block.outs[1].name); break;
-			}
-		}
-		sink.putln("}");
-	}
-}
-
-struct IrVarOrConstant
-{
-	this(ref IrVar var) { isVar = true; varPtr = &var; }
-	this(ref IrConstant con) { isVar = false; conPtr = &con; }
-	bool isVar;
-	union {
-		IrVar* varPtr;
-		IrConstant* conPtr;
-	}
-	void toString()(scope void delegate(const(char)[]) sink) {
-		if (isVar) { sink("%"); varPtr.name.toString(sink); }
-		else conPtr.toString(sink);
-	}
-}
-
-struct IrConstant
-{
-	long value;
-	void toString()(scope void delegate(const(char)[]) sink) {
-		sink.formattedWrite("%s", value);
-	}
-}
-
-struct IrBasicBlock
-{
-	IrName name;
-
-	/// BBs that jump to this block
-	IrBasicBlock*[] ins;
-
-	/// BBs this block jumps to
-	IrBasicBlock*[] outs;
-
-	/// The jump or return that must be the last instruction is stored in `exit`
-	IrInstruction[] instructions;
-
-	/// Specifies the last instruction of this Basic Block
-	/// Jumps use `outs` for targets
-	IrJump exit;
-
-	/// Next node in linked listed of Basic Blocks of the function
-	IrBasicBlock* next;
-
-	void emit(IrInstruction instr)
-	{
-		instructions ~= instr;
-	}
-
-	bool isFinished() { return exit.type != IrJump.Type.none; }
-}
-
-/// Jumps use information stored in basic block
-struct IrJump
-{
-	enum Type
-	{
-		none, /// Basic Block is not yet complete
-		ret0, /// without return value
-		ret1, /// with return value
-		jmp,  /// unconditional jump
-		jnz   /// conditional jump
-	}
-
-	Type type;
-	IrRef value; /// return value reference, or condition for jnz
-}
-
-enum IrOpcode : ubyte
-{
-	o_eq,
-	o_ne,
-	o_gt,
-	o_ge,
-	o_lt,
-	o_le,
-
-	// Arithmetic
-	o_add,
-	o_sub,
-	o_div,
-	o_rem,
-	o_udiv,
-	o_urem,
-	o_mul,
-
-	o_call,
-	o_arg,
-	o_assign,
-
-	//o_and,
-	//o_or,
-	//o_xor,
-	//o_sar,
-	//o_shr,
-	//o_shl,
-}
-
-enum IrOpcode_num_opcodes = IrOpcode.max+1;
-
-string[IrOpcode_num_opcodes] irOpcodeNames = ["eq", "ne", "gt", "ge", "lt", "le", "add", "sub",
-"div", "rem", "udiv", "urem", "mul", "call", "arg", "assign", ];
-
-immutable IrOpcode[] binOpToIrOpcode = [
-	IrOpcode.o_eq,
-	IrOpcode.o_ne,
-	IrOpcode.o_gt,
-	IrOpcode.o_ge,
-	IrOpcode.o_lt,
-	IrOpcode.o_le,
-
-	IrOpcode.o_assign,
-	IrOpcode.o_sub,
-	IrOpcode.o_add,
-	IrOpcode.o_div,
-	IrOpcode.o_mul];
-
-struct IrInstruction
-{
-	this(IrOpcode op, IrRef to) { this.op = op; this.to = to; }
-	this(IrOpcode op, IrRef to, IrRef arg0) { this.op = op; this.to = to; this.arg0 = arg0; }
-	this(IrOpcode op, IrRef to, IrRef arg0, IrRef arg1) { this.op = op; this.to = to; this.arg0 = arg0; this.arg1 = arg1; }
-	//this(IrOpcode op, IrRef to, size_t value) { this.op = op; this.to = to; this.value = value; }
-	this(IrOpcode op, IrRef to, size_t numArgs, Symbol* callee) { this.op = op; this.to = to; this.numArgs = numArgs; this.callee = callee; }
-
-	IrOpcode op;
-	IrRef to;
-	union {
-		struct { IrRef arg0, arg1; }
-		//struct { size_t value;     }
-		struct { size_t numArgs; Symbol* callee; }
-	}
-}
-
-struct IrRef
-{
-	/// Negative indicies represent constants
-	/// Positive represent a result of an instruction
-	/// Zero is used when no ref is given
-	int index;
-
-	/// Returns true if reference has no destination
-	bool isZero() { return index == 0; }
-}
-
-struct IrName
-{
-	string name;
-	int suffix;
-	void toString()(scope void delegate(const(char)[]) sink) {
-		if (suffix == 0) sink.formattedWrite("%s", name);
-		else sink.formattedWrite("%s_%s", name, suffix);
-	}
-}
-
-struct IrVar
-{
-	IrName name;
-	TypeNode* type;
-}
-
+/// Converts AST to textual linear IR
 struct TextIrGenerationVisitor {
 	mixin AstVisitorMixin;
 	CompilationContext* context;
@@ -3055,12 +2925,13 @@ struct TextIrGenerationVisitor {
 	void visit(UserTypeNode* t) {}
 }
 
+/// Converts AST to in-memory linear IR
 struct BinIrGenerationVisitor {
 	mixin AstVisitorMixin;
 	CompilationContext* context;
 
-	IrModule irModule;
-	IrFunction* currentFunction;
+	IrModule* irModule;
+	IrFunction* curFunc; // current function
 	IrBasicBlock* currentBB;
 
 	Identifier tempId;
@@ -3071,25 +2942,26 @@ struct BinIrGenerationVisitor {
 	int elseCounter;
 	int uniqueSuffix() { return ++varSuffixCounter; }
 
-	IrVar makeVar(string name, TypeNode* type) { return IrVar(IrName(name, uniqueSuffix), type); }
-	IrVar makeVar(Identifier id, TypeNode* type) { return IrVar(IrName(context.idString(id)), type); }
-	IrVar makeVarSuf(Identifier id, TypeNode* type) { return IrVar(IrName(context.idString(id), uniqueSuffix), type); }
+	IrVar makeVar(string name, TypeNode* type) { return IrVar(IrName(name, uniqueSuffix), type.irType(context)); }
+	IrVar makeVar(Identifier id, TypeNode* type) { return IrVar(IrName(context.idString(id)), type.irType(context)); }
+	IrVar makeVarSuf(Identifier id, TypeNode* type) { return IrVar(IrName(context.idString(id), uniqueSuffix), type.irType(context)); }
 
 	void visit(ModuleDeclNode* m)
 	{
+		irModule = &m.irModule;
 		tempId = context.idMap.getOrReg("__tmp");
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(FunctionDeclNode* f)
 	{
 		// create new function
-		f.irData = IrFunction(IrName(context.idString(f.id)), f.returnType);
+		f.irData = IrFunction(IrName(context.idString(f.id)), f.returnType.irType(context));
 
 		// save previous function
-		auto prevFunc = currentFunction;
+		auto prevFunc = curFunc;
 
 		// set new function as current
-		currentFunction = &f.irData;
+		curFunc = &f.irData;
 		irModule.addFunction(&f.irData);
 
 		foreach (i, param; f.parameters)
@@ -3099,22 +2971,27 @@ struct BinIrGenerationVisitor {
 
 		// create Basic Block for function body
 		// other code will use `last` Basic Block
-		currentBB = currentFunction.addBasicBlock(IrName("start"));
+		currentBB = curFunc.addBasicBlock(IrName("start"));
 
 		visit(f.block_stmt);
 
+		if (!curFunc.last.isFinished)
+		{
+			// Return must present in case of non-void function
+			curFunc.last.exit = IrJump(IrJump.Type.ret0);
+		}
+
 		// restore previous function
-		currentFunction = prevFunc;
+		curFunc = prevFunc;
 	}
 	void visit(VariableDeclNode* v)
 	{
-		v.getSym.irRef = currentFunction.addVariable(makeVar(v.id, v.type));
+		v.getSym.irRef = curFunc.addVariable(makeVar(v.id, v.type));
 	}
 	void visit(ParameterDeclNode* p)
 	{
-		p.getSym.irRef = currentFunction.addVariable(makeVar(p.id, p.type));
-		++currentFunction.numParameters;
-
+		p.getSym.irRef = curFunc.addVariable(makeVar(p.id, p.type));
+		++curFunc.numParameters;
 	}
 	void visit(StructDeclNode* s)
 	{
@@ -3136,15 +3013,15 @@ struct BinIrGenerationVisitor {
 		prevBB.exit = IrJump(IrJump.Type.jnz, i.condition.irRef);
 
 		// create Basic Block for then statement. It links to afterBB
-		currentBB = currentFunction.addBasicBlock(IrName("then", ++thenCounter));
+		currentBB = curFunc.addBasicBlock(IrName("then", ++thenCounter));
 		auto thenBB = currentBB;
 		prevBB.outs ~= thenBB;
 
 		_visit(cast(AstNode*)i.thenStatement);
 
-		if (i.elseStatement) currentBB = currentFunction.addBasicBlock(IrName("else", ++elseCounter));
+		if (i.elseStatement) currentBB = curFunc.addBasicBlock(IrName("else", ++elseCounter));
 
-		auto afterBB = currentFunction.addBasicBlock(IrName("blk", ++bbCounter));
+		auto afterBB = curFunc.addBasicBlock(IrName("blk", ++bbCounter));
 		if (!thenBB.isFinished)
 		{
 			thenBB.exit = IrJump(IrJump.Type.jmp);
@@ -3185,28 +3062,48 @@ struct BinIrGenerationVisitor {
 			currentBB.exit = IrJump(IrJump.Type.ret1, r.expression.irRef);
 		}
 		else currentBB.exit = IrJump(IrJump.Type.ret0);
-		//currentBB = currentFunction.addBasicBlock(IrName("unreachable"));
 	}
 	void visit(BreakStmtNode* b) {}
 	void visit(ContinueStmtNode* c) {}
 	void visit(VariableExprNode* v) {
-		//writefln("VariableExprNode %s", currentFunction.deref(v.getSym.irRef));
+		//writefln("VariableExprNode %s", curFunc.deref(v.getSym.irRef));
 		v.irRef = v.getSym.irRef;
 	}
 	void visit(LiteralExprNode* c) {
-		c.irRef = currentFunction.addConstant(IrConstant(c.value));
-		//writefln("LiteralExprNode %s", currentFunction.deref(c.irRef));
+		c.irRef = curFunc.addConstant(IrConstant(c.value));
+		//writefln("LiteralExprNode %s", curFunc.deref(c.irRef));
 	}
 	void visit(BinaryExprNode* b) {
 		_visit(cast(AstNode*)b.left);
 		_visit(cast(AstNode*)b.right);
-		b.irRef = currentFunction.addVariable(makeVarSuf(tempId, b.type));
-		auto instr = IrInstruction(binOpToIrOpcode[b.op], b.irRef, b.left.irRef, b.right.irRef);
-		currentBB.emit(instr);
+		Condition condition;
+		switch(b.op)
+		{
+			case BinOp.EQUAL:
+				auto instr = IrInstruction(IrOpcode.o_assign, b.left.irRef, b.right.irRef);
+				currentBB.emit(instr);
+				break;
+			case BinOp.EQUAL_EQUAL: condition = Condition.E; goto case BinOp.MINUS;
+			case BinOp.NOT_EQUAL: condition = Condition.NE; goto case BinOp.MINUS;
+			case BinOp.GREATER: condition = Condition.G; goto case BinOp.MINUS;
+			case BinOp.GREATER_EQUAL: condition = Condition.GE; goto case BinOp.MINUS;
+			case BinOp.LESS: condition = Condition.L; goto case BinOp.MINUS;
+			case BinOp.LESS_EQUAL: condition = Condition.LE; goto case BinOp.MINUS;
+			case BinOp.PLUS: goto case BinOp.MINUS;
+			case BinOp.MINUS:
+				b.irRef = curFunc.addVariable(makeVarSuf(tempId, b.type));
+				auto instr = IrInstruction(binOpToIrOpcode[b.op], b.irRef, b.left.irRef, b.right.irRef);
+				instr.condition = condition;
+				currentBB.emit(instr);
+				break;
+			default:
+				context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op);
+				break;
+		}
 	}
 	void visit(CallExprNode* c) {
 		foreach (arg; c.args) _visit(arg);
-		c.irRef = currentFunction.addVariable(makeVarSuf(tempId, c.getSym.getType));
+		c.irRef = curFunc.addVariable(makeVarSuf(tempId, c.getSym.getType));
 		IrRef destination;
 		if (!c.type.isVoid) destination = c.irRef;
 		currentBB.emit(IrInstruction(IrOpcode.o_call, destination, c.args.length, c.getSym));
@@ -3216,6 +3113,7 @@ struct BinIrGenerationVisitor {
 		}
 	}
 	void visit(TypeConvExprNode* t) {
+		context.internal_error(t.loc, "Type conversion is not implemented");
 		//_visit(t.type); _visit(t.expr);
 		//t.irVarData = makeVarSuf("conv");
 		//sink.putfln("%s = cast(%s) %s", t.irVarData,
@@ -3225,6 +3123,361 @@ struct BinIrGenerationVisitor {
 	void visit(UserTypeNode* t) {}
 }
 
+//                               #####   ######
+//                                 #     #     #
+//                                 #     #     #
+//                                 #     ######
+//                                 #     #   #
+//                                 #     #    #
+//                               #####   #     #
+// -----------------------------------------------------------------------------
+struct IrModule
+{
+	IrFunction*[] functions;
+
+	ubyte[] codeBuffer;
+	ubyte[] code;
+
+	void addFunction(IrFunction* fun)
+	{
+		functions ~= fun;
+	}
+
+	void dump(ref TextSink sink, CompilationContext* context)
+	{
+		foreach (func; functions) func.dump(sink, context);
+	}
+}
+
+struct IrFunction
+{
+	IrName name;
+
+	IrValueType returnType;
+
+	/// Position in buffer or in memory
+	void* funcPtr;
+
+	/// The first Basic Block of the function
+	/// Also the first node in the linked list of Basic Blocks
+	IrBasicBlock* start;
+
+	/// This is the last Basic Block in the linked list of blocks of this function
+	IrBasicBlock* last;
+
+	size_t numBasicBlocks;
+
+	/// This array is indexed with -int.max..-1 IrRef values. -1 is index 0, -2 is 1 etc.
+	IrConstant[] constants;
+
+	/// This array begins with all parameters
+	/// This array is indexed with 0..int.max IrRef values
+	IrVar[] variables;
+
+	/// Parameters are saved as first `numParameters` items of `variables` array
+	size_t numParameters;
+
+	IrVar[] parameters() { return variables[0..numParameters]; }
+
+	IrVarOrConstant deref(IrRef reference) {
+		if (reference.index > 0) return IrVarOrConstant(reference, variables[ reference.index-1]);
+		if (reference.index < 0) return IrVarOrConstant(reference, constants[-reference.index-1]);
+		assert(false, "Attempting to deref zero reference");
+	}
+
+	/// Automatically sets `start`, sets last and links blocks together
+	IrBasicBlock* addBasicBlock(IrName name)
+	{
+		++numBasicBlocks;
+		auto newBlock = new IrBasicBlock(name);
+		if (start is null) start = newBlock;
+		else last.next = newBlock;
+		last = newBlock;
+		return newBlock;
+	}
+
+	IrRef addConstant(IrConstant constant)
+	{
+		constants ~= constant;
+		int index = -cast(int)constants.length;
+		return IrRef(index);
+	}
+
+	IrRef addVariable(IrVar variable)
+	{
+		variables ~= variable;
+		int index = cast(int)variables.length;
+		return IrRef(index);
+	}
+
+	void dump(ref TextSink sink, CompilationContext* context)
+	{
+		sink.putf("function %s $%s (", returnType, name);
+		foreach (i, param; parameters)
+		{
+			sink.putf("%s %%%s", param.type, param.name);
+			if (i+1 < parameters.length) sink.put(", ");
+		}
+		sink.putln(") {");
+
+		for (IrBasicBlock* block = start; block; block = block.next)
+		{
+			sink.putfln("  @%s", block.name);
+
+			// print all instructions
+			foreach(instr_i, ref instr; block.instructions)
+			{
+				final switch(instr.op) with(IrOpcode) {
+					case o_icmp:
+						sink.putfln("    %s = icmp %s %s, %s",
+							deref(instr.to),
+							instr.condition,
+							deref(instr.arg0),
+							deref(instr.arg1));
+						break;
+					// Arithmetic
+					case o_add:  goto case;
+					case o_sub:  goto case;
+					case o_div:  goto case;
+					case o_rem:  goto case;
+					case o_udiv: goto case;
+					case o_urem: goto case;
+					case o_mul:
+						sink.putfln("    %s = %s %s, %s",
+							deref(instr.to),
+							irOpcodeNames[instr.op],
+							deref(instr.arg0),
+							deref(instr.arg1));
+						break;
+					case o_assign:
+						sink.putfln("    %s = %s",
+							deref(instr.to),
+							deref(instr.arg0));
+						break;
+					case o_call:
+						if (!instr.to.isDefined)
+							sink.putf("    call $%s(", context.idString(instr.callee.id));
+						else
+							sink.putf("    %s = call $%s(", deref(instr.to), context.idString(instr.callee.id));
+						foreach (arg_i, ref arg; block.instructions[instr_i+1..instr_i+instr.numArgs+1])
+						{
+							sink.putf("%s", deref(arg.arg0));
+							if (arg_i+1 < instr.numArgs) sink.put(", ");
+						}
+						sink.putln(")");
+						break;
+					case o_arg: break;
+				}
+			}
+
+			// print jump/return at the end of block
+			final switch(block.exit.type) with(IrJump.Type) {
+				case none: sink.putln("  // block not sealed"); break;
+				case ret0: sink.putln("    return"); break;
+				case ret1: sink.putfln("    return %s", deref(block.exit.value)); break;
+				case jmp:  sink.putfln("    jmp @%s", block.outs[0].name); break;
+				case jnz:  sink.putfln("    jnz %s @%s, @%s",
+					deref(block.exit.value), block.outs[0].name, block.outs[1].name); break;
+			}
+		}
+		sink.putln("}");
+	}
+}
+
+/// According to WebAssembly spec
+enum IrValueType : ubyte
+{
+	i32,
+	i64,
+	//f32,
+	//f64,
+}
+
+struct IrVarOrConstant
+{
+	this(IrRef irRef, ref IrVar var) { this.irRef = irRef; isVar = true; varPtr = &var; }
+	this(IrRef irRef, ref IrConstant con) { this.irRef = irRef; isVar = false; conPtr = &con; }
+	bool isVar;
+	IrRef irRef;
+	union {
+		IrVar* varPtr;
+		IrConstant* conPtr;
+	}
+	void toString()(scope void delegate(const(char)[]) sink) {
+		if (isVar) { sink("%"); varPtr.name.toString(sink); }
+		else conPtr.toString(sink);
+	}
+	IrValueType type() {
+		if (isVar) return varPtr.type;
+		else return conPtr.type;
+	}
+}
+
+struct IrVar
+{
+	IrName name;
+	IrValueType type;
+	bool isDirty; // true if value in register is newer than value in memory
+	RegisterRef reg;
+}
+
+struct IrConstant
+{
+	long value;
+	IrValueType type;
+	void toString()(scope void delegate(const(char)[]) sink) {
+		sink.formattedWrite("%s", value);
+	}
+}
+
+struct IrBasicBlock
+{
+	IrName name;
+
+	/// BBs that jump to this block
+	IrBasicBlock*[] ins;
+
+	/// BBs this block jumps to
+	IrBasicBlock*[] outs;
+
+	/// The jump or return that must be the last instruction is stored in `exit`
+	IrInstruction[] instructions;
+
+	/// This variables are live at the end of this Basic Block
+	IrRef[] liveVars;
+
+	/// Specifies the last instruction of this Basic Block
+	/// Jumps use `outs` for targets
+	IrJump exit;
+
+	/// Next node in linked listed of Basic Blocks of the function
+	IrBasicBlock* next;
+
+	/// Address of this Basic Block in generated code
+	PC startPC;
+
+	void emit(IrInstruction instr)
+	{
+		instructions ~= instr;
+	}
+
+	bool isFinished() { return exit.type != IrJump.Type.none; }
+}
+
+/// Jumps use information stored in basic block
+struct IrJump
+{
+	enum Type
+	{
+		none, /// Basic Block is not yet complete
+		ret0, /// without return value
+		ret1, /// with return value
+		jmp,  /// unconditional jump
+		jnz   /// conditional jump
+	}
+
+	Type type;
+	IrRef value; /// return value reference, or condition for jnz
+	/// Used by backend, for:
+	///   - first `jnz` instruction
+	///   - `jmp` instruction
+	///   - `ret0`, `ret1` jump instruction when jumping to the end of function
+	PC fixup0;
+	// Used by backend, for second target of `jnz` instruction
+	PC fixup1;
+
+	/// Used for jnz instruction fixup
+	Condition condition = Condition.NZ;
+
+	/// Is set to true by cmp instruction if it precedes jnz
+	bool useFlagForCmp;
+}
+
+enum IrOpcode : ubyte
+{
+	o_icmp,
+
+	// Arithmetic
+	o_add,
+	o_sub,
+	o_div,
+	o_rem,
+	o_udiv,
+	o_urem,
+	o_mul,
+
+	o_call,
+	o_arg,
+	o_assign,
+
+	//o_and,
+	//o_or,
+	//o_xor,
+	//o_sar,
+	//o_shr,
+	//o_shl,
+}
+
+enum IrOpcode_num_opcodes = IrOpcode.max+1;
+
+string[IrOpcode_num_opcodes] irOpcodeNames = ["icmp", "add", "sub",
+"div", "rem", "udiv", "urem", "mul", "call", "arg", "assign", ];
+
+immutable IrOpcode[] binOpToIrOpcode = [
+	IrOpcode.o_icmp,
+	IrOpcode.o_icmp,
+	IrOpcode.o_icmp,
+	IrOpcode.o_icmp,
+	IrOpcode.o_icmp,
+	IrOpcode.o_icmp,
+
+	IrOpcode.o_assign,
+	IrOpcode.o_sub,
+	IrOpcode.o_add,
+	IrOpcode.o_div,
+	IrOpcode.o_mul];
+
+struct IrInstruction
+{
+	this(IrOpcode op, IrRef to) { this.op = op; this.to = to; }
+	this(IrOpcode op, IrRef to, IrRef arg0) { this.op = op; this.to = to; this.arg0 = arg0; }
+	this(IrOpcode op, IrRef to, IrRef arg0, IrRef arg1) { this.op = op; this.to = to; this.arg0 = arg0; this.arg1 = arg1; }
+	//this(IrOpcode op, IrRef to, size_t value) { this.op = op; this.to = to; this.value = value; }
+	this(IrOpcode op, IrRef to, size_t numArgs, Symbol* callee) { this.op = op; this.to = to; this.numArgs = numArgs; this.callee = callee; }
+
+	IrOpcode op;
+	Condition condition;
+	IrRef to;
+	union {
+		struct { IrRef arg0, arg1; }
+		//struct { size_t value;     }
+		struct { size_t numArgs; Symbol* callee; }
+	}
+}
+
+struct IrRef
+{
+	/// Negative indicies represent constants
+	/// Positive represent a result of an instruction
+	/// Zero is used when no ref is given
+	int index;
+
+	/// Returns true if reference has no destination
+	bool isDefined() { return index != 0; }
+	bool isVar() { return index > 0; }
+}
+
+struct IrName
+{
+	string name;
+	int suffix;
+	void toString()(scope void delegate(const(char)[]) sink) {
+		if (suffix == 0) sink.formattedWrite("%s", name);
+		else sink.formattedWrite("%s_%s", name, suffix);
+	}
+}
+
+/*
 struct IrToSSAVisitor
 {
 	CompilationContext* context;
@@ -3243,6 +3496,1020 @@ struct IrToSSAVisitor
 	{
 
 	}
+}*/
+
+
+//          ####     ###    #####    #######    ####   #######  #     #
+//         #    #   #   #   #    #   #         #    #  #        ##    #
+//        #        #     #  #     #  #        #        #        # #   #
+//        #        #     #  #     #  #####    #   ###  #####    #  #  #
+//        #        #     #  #     #  #        #     #  #        #   # #
+//         #    #   #   #   #    #   #         #    #  #        #    ##
+//          ####     ###    #####    #######    #####  #######  #     #
+// -----------------------------------------------------------------------------
+
+enum MAX_REGS = 64;
+
+/// Stores info about all avaliable registers of the same class
+/// Classes are (general purpose aka GPR, floating point FP, flags)
+struct RegisterClass
+{
+	int[MAX_REGS] Name;
+	int[MAX_REGS] Next;
+	int[MAX_REGS] Free;
+	int[MAX_REGS] Stack;
+	int StackTop;
+}
+
+struct Bits
+{
+	ulong data;
+	bool get(size_t i) { return cast(bool)(data & (1 << i)); }
+	void set(size_t i) { data |= (1 << i); }
+	void unset(size_t i) { data &= ~(1 << i); }
+}
+
+
+struct RegisterRef
+{
+	byte index = -1; /// -1 means undefined
+	bool isDefined() { return index >= 0; }
+}
+
+/// State of single machine register
+struct RegisterState
+{
+	IrRef storedValue;
+	bool isUsed() { return storedValue.isDefined; }
+}
+
+struct MachineState
+{
+	RegisterState[MAX_REGS] regs;
+}
+
+struct IrToAmd64
+{
+	CompilationContext* context;
+	TextSink sink;
+
+	enum RET_REG = Register.AX;
+	enum TEMP_REG_0 = Register.AX;
+	enum TEMP_REG_1 = Register.BX;
+	enum STACK_ITEM_SIZE = 8; // x86_64
+	enum USE_FRAME_POINTER = true;
+	CodeGen_x86_64 gen;
+
+	/// Those two store a state of variables and registers
+	private IrFunction* curFunc;
+	private MachineState machineState;
+
+	static struct CallFixup {
+		Fixup call_fixup;
+		IrFunction* callee;
+	}
+
+	private Buffer!CallFixup callFixups;
+
+	private int numParams;
+	private int numLocals;
+	private int numVars; // numLocals + numParams
+	private int reservedBytes;
+
+	void visit(IrModule* m) {
+		context.assertf(m !is null, "Module IR is null");
+
+		gen.encoder.setBuffer(m.codeBuffer);
+
+		foreach (func; m.functions) visit(func);
+
+		fixCalls();
+		m.code = gen.encoder.code;
+	}
+
+	void visit(IrFunction* func)
+	{
+		curFunc = func;
+		compileFuncProlog();
+		compileFuncBody();
+		fixJumpsAndReturns(gen.pc);
+		compileFuncEpilog();
+	}
+
+	void fixCalls()
+	{
+		foreach (fixup; callFixups.data) {
+			genCall(fixup.call_fixup, fixup.callee);
+			writefln("fix call to %s", cast(void*)fixup.callee.funcPtr);
+		}
+		callFixups.clear();
+	}
+
+	void compileFuncProlog()
+	{
+		numParams = cast(int)curFunc.numParameters;
+		numLocals = cast(int)(curFunc.variables.length - numParams);
+		numVars = numLocals + numParams;
+
+		// C calling convention on Windows
+		// Copy parameters from registers to shadow space
+		// parameter 5 RSP + 40
+		if (numParams > 3) gen.movq(memAddrBaseDisp8(Register.SP, 32), Register.R9); // save fourth parameter
+		if (numParams > 2) gen.movq(memAddrBaseDisp8(Register.SP, 24), Register.R8); // save third parameter
+		if (numParams > 1) gen.movq(memAddrBaseDisp8(Register.SP, 16), Register.DX); // save second parameter
+		if (numParams > 0) gen.movq(memAddrBaseDisp8(Register.SP,  8), Register.CX); // save first parameter
+		// RSP + 0 points to RET
+
+		// Establish frame pointer
+		if (USE_FRAME_POINTER)
+		{
+			gen.pushq(Register.BP);
+			gen.movq(Register.BP, Register.SP);
+		}
+		reservedBytes = cast(int)(numLocals * STACK_ITEM_SIZE);
+		if (reservedBytes) // Reserve space for locals
+		{
+			if (reservedBytes > byte.max) gen.subq(Register.SP, Imm32(reservedBytes));
+			else gen.subq(Register.SP, Imm8(cast(byte)reservedBytes));
+		}
+
+		// init locals
+		if (numLocals)
+		{
+			gen.xorq(RET_REG, RET_REG);
+			foreach(i; 0..numLocals) gen.movq(localVarMemAddress(numParams+i), RET_REG);
+		}
+	}
+
+	//Register ensureLoaded(IrVarOrConstant value)
+	//{}
+
+	Register loadValue(IrVarOrConstant value, Register reg)
+	{
+		final switch(value.type)
+		{
+			case IrValueType.i32:
+				if (value.isVar) gen.movd(reg, localVarMemAddress(value.irRef.index));
+				else gen.movd(reg, Imm32(cast(uint)value.conPtr.value));
+				break;
+			case IrValueType.i64:
+				if (value.isVar) gen.movq(reg, localVarMemAddress(value.irRef.index));
+				else gen.movq(reg, Imm64(value.conPtr.value));
+				break;
+		}
+		return reg;
+	}
+
+	void storeValue(IrVarOrConstant dest, IrVarOrConstant src)
+	{
+		auto toVarOrConst = curFunc.deref(dest.irRef);
+		if (!toVarOrConst.isVar)
+			context.internal_error("Assignment into a constant");
+		final switch(src.type)
+		{
+			case IrValueType.i32:
+				if (src.isVar) {
+					gen.movd(TEMP_REG_0, localVarMemAddress(src.irRef.index));
+					gen.movd(localVarMemAddress(dest.irRef.index), TEMP_REG_0);
+				}
+				else {
+					gen.movq(localVarMemAddress(dest.irRef.index), Imm32(cast(uint)src.conPtr.value));
+				}
+				break;
+			case IrValueType.i64:
+				if (src.isVar) gen.movq(TEMP_REG_0, localVarMemAddress(src.irRef.index));
+				else gen.movq(TEMP_REG_0, Imm64(src.conPtr.value));
+				gen.movq(localVarMemAddress(dest.irRef.index), TEMP_REG_0);
+				break;
+		}
+	}
+
+	/// At the start all values are in memory
+	void compileFuncBody()
+	{
+		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
+		{
+			block.startPC = gen.pc;
+			foreach (instr_i, ref instr; block.instructions)
+			{
+				bool isLastInstr() { return instr_i == block.instructions.length-1; }
+				switch (instr.op) with(IrOpcode) {
+					case o_icmp:
+						auto arg0 = curFunc.deref(instr.arg0);
+						auto arg1 = curFunc.deref(instr.arg1);
+						if (arg0.type != arg1.type)
+							context.internal_error("Type mismatch: %s != %s. In BB `%s`",
+								arg0.type, arg1.type, block.name);
+						auto reg0 = loadValue(arg0, TEMP_REG_0);
+						auto reg1 = loadValue(arg1, TEMP_REG_1);
+						final switch(arg0.type)
+						{
+							case IrValueType.i32: gen.cmpd(reg1, reg0); break;
+							case IrValueType.i64: gen.cmpq(reg1, reg0); break;
+						}
+
+						// Check if comparison result is used for jump
+						if (isLastInstr && block.exit.value == instr.to)
+						{
+							if (block.exit.type == IrJump.Type.jnz)
+							{
+								// set condition for jump (otherwise it is NZ)
+								block.exit.condition = instr.condition;
+								block.exit.useFlagForCmp = true;
+								break;
+							}
+						}
+
+						// otherwise store in variable
+						gen.setcc(instr.condition, TEMP_REG_0);
+						gen.movzx_btod(TEMP_REG_0, TEMP_REG_0);
+						break;
+
+					// Arithmetic
+					case o_add:
+						auto arg0 = curFunc.deref(instr.arg0);
+						auto arg1 = curFunc.deref(instr.arg1);
+						auto reg0 = loadValue(arg0, TEMP_REG_0);
+						auto reg1 = loadValue(arg1, TEMP_REG_1);
+
+						final switch(arg0.type)
+						{
+							case IrValueType.i32: gen.addd(reg0, reg1); break;
+							case IrValueType.i64: gen.addq(reg0, reg1); break;
+						}
+
+						final switch(arg0.type)
+						{
+							case IrValueType.i32:
+								gen.movd(localVarMemAddress(instr.to.index), TEMP_REG_0);
+								break;
+							case IrValueType.i64:
+								gen.movq(localVarMemAddress(instr.to.index), TEMP_REG_0);
+								break;
+						}
+						break;
+					case o_sub:
+						break;
+					//case o_div:  goto case;
+					//case o_rem:  goto case;
+					//case o_udiv: goto case;
+					//case o_urem: goto case;
+					//case o_mul:
+
+						break;
+					case o_assign:
+						storeValue(curFunc.deref(instr.to), curFunc.deref(instr.arg0));
+						break;
+					case o_call:
+						break;
+					case o_arg: break;
+					default:
+						context.internal_error("Compilation of `%s` is not implemented. In BB `%s`",
+							instr.op, block.name);
+						break;
+				}
+			}
+			void checkFixup(PC pc) {
+				if (pc is null)
+					context.internal_error(
+						"Fixup is zero for block `%s`", block.name);
+			}
+			final switch(block.exit.type) with(IrJump.Type) {
+				case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); break;
+				case ret1:
+					auto reg0 = loadValue(curFunc.deref(block.exit.value), RET_REG);
+					goto case;
+				case ret0:
+					// ignore jump in the last Basic Block
+					if (block.next is null) break;
+					block.exit.fixup0 = gen.pc;
+					//checkFixup(block.exit.fixup0);
+					gen.jmp(Imm32(0));
+					break;
+				case jmp:
+					if (block.next != block.outs[0]) {
+						block.exit.fixup0 = gen.pc;
+						//checkFixup(block.exit.fixup0);
+						gen.jmp(Imm32(0));
+					}
+					break;
+				case jnz:
+					block.exit.fixup0 = gen.pc;
+					//checkFixup(block.exit.fixup0);
+					if (!block.exit.useFlagForCmp)
+					{
+						auto reg0 = loadValue(curFunc.deref(block.exit.value), TEMP_REG_0);
+						gen.testd(TEMP_REG_0, TEMP_REG_0);
+					}
+					gen.jcc(Condition.NZ, Imm32(0));
+					if (block.next != block.outs[1]) {
+						block.exit.fixup1 = gen.pc;
+						//checkFixup(block.exit.fixup1);
+						gen.jmp(Imm32(0));
+					}
+					break;
+			}
+		}
+	}
+
+	void fixJumpsAndReturns(PC returnTarget)
+	{
+		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
+		{
+			void checkFixup(PC pc) {
+				if (pc is null)
+					context.internal_error(
+						"Fixup is zero for block `%s`", block.name);
+			}
+			final switch(block.exit.type) with(IrJump.Type) {
+				case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); return;
+				case ret0: goto case;
+				case ret1:
+					// ignore jump in the last Basic Block
+					if (block.next is null) break;
+					//checkFixup(block.exit.fixup0);
+					auto fixup = gen.fixupAt(block.exit.fixup0);
+					fixup.jmpAbs(returnTarget);
+					break;
+				case jmp:
+					if (block.next != block.outs[0]) {
+						//checkFixup(block.exit.fixup0);
+						auto fixup = gen.fixupAt(block.exit.fixup0);
+						fixup.jmpAbs(block.outs[0].startPC);
+					}
+					break;
+				case jnz:
+					// Jump to not zero
+					//checkFixup(block.exit.fixup0);
+					auto fixup0 = gen.fixupAt(block.exit.fixup0);
+					fixup0.jccAbs(block.exit.condition, block.outs[0].startPC);
+					// fallthrough or jump to zero
+					if (block.next != block.outs[1]) {
+						//checkFixup(block.exit.fixup1);
+						auto fixup1 = gen.fixupAt(block.exit.fixup1);
+						fixup1.jmpAbs(block.outs[1].startPC);
+					}
+					break;
+			}
+		}
+	}
+
+	void compileFuncEpilog()
+	{
+		if (reservedBytes)
+		{
+			if (reservedBytes > byte.max) gen.addq(Register.SP, Imm32(reservedBytes));
+			else gen.addq(Register.SP, Imm8(cast(byte)reservedBytes));
+		}
+
+		if (USE_FRAME_POINTER)
+		{
+			// Restore frame pointer
+			gen.popq(Register.BP);
+		}
+
+		gen.ret();
+	}
+
+	MemAddress localVarMemAddress(int varIndex)
+	{
+		bool isParameter = varIndex < numParams;
+		Register baseReg;
+
+		int index;
+		if (USE_FRAME_POINTER)
+		{
+			// ++        varIndex
+			// param2    1              \
+			// param1    0  rbp + 2     / numParams = 2
+			// ret addr     rbp + 1
+			// rbp      <-- rbp + 0
+			// local1    2  rbp - 1     \
+			// local2    3  rbp - 2     / numLocals = 2
+			// --
+			if (isParameter) // parameter
+			{
+				index = 2 + varIndex;
+			}
+			else // local variable
+			{
+				index = -(varIndex - numParams + 1);
+			}
+			baseReg = Register.BP;
+		}
+		else
+		{
+			if (isParameter) // parameter
+			{
+				// Since return address is saved between locals and parameters, we need to add 1 to index for parameters
+				index = numLocals + varIndex + 1;
+			}
+			else // local variable
+			{
+				// count from RSP, so last var has index of 0
+				index = numVars - varIndex - 1;
+			}
+			baseReg = Register.SP;
+		}
+		int displacement = index * STACK_ITEM_SIZE;
+		return minMemAddrBaseDisp(baseReg, displacement);
+	}
+
+	void genCall(Gen)(ref Gen gen, IrFunction* callee)
+	{
+		/*
+		if (callee.native)
+		{
+			// hardcoded size of instruction (6)
+			int disp32 = cast(int)(&nativeFunctionTable[callee.index] - cast(void*)gen.pc - 6);
+			gen.call(memAddrRipDisp32(cast(uint)disp32));
+		}
+		else
+		{
+			if (!callee.funcPtr) throw new Error("Invalid funcPtr");
+			gen.call(cast(PC)callee.funcPtr);
+		}*/
+	}
+
+	void genFixup(IrFunction* callee)
+	{/*
+		callFixups.put(CallFixup(gen.saveFixup(), callee));
+		if (callee.native)
+		{
+			gen.call(memAddrRipDisp32(0));
+		}
+		else
+		{
+			gen.call(gen.stubPC);
+		}*/
+	}
+}
+
+//                                                                  ###       ##
+//    #      #####   #     #              #     #     #  #####     #          ##
+//    #     #     #  ##   ##              #     ##   ##  #    #   #          # #
+//   ###    #        # # # #             ###    # # # #  #     #  #####      # #
+//   # #     #####   #  #  #             # #    #  #  #  #     #  #    #    #  #
+//  #####         #  #     #            #####   #     #  #     #  #    #   ######
+//  #   #   #     #  #     #            #   #   #     #  #    #   #    #       #
+// ##   ##   #####   #     #           ##   ##  #     #  #####     ####       ###
+//                            #######
+// -----------------------------------------------------------------------------
+
+enum Register : ubyte {AX, CX, DX, BX, SP, BP, SI, DI, R8, R9, R10, R11, R12, R13, R14, R15}
+enum RegisterMax  = cast(Register)(Register.max+1);
+
+bool is_SP_or_R12(Register reg) { return (reg & 0b111) == 0b100; }
+bool is_BP_or_R13(Register reg) { return (reg & 0b111) == 0b101; }
+
+enum ArgType : ubyte { BYTE, WORD, DWORD, QWORD }
+
+// ensures REX prefix for ah ch dh bh
+bool regNeedsRexPrefix(ArgType argType)(Register reg) {
+	static if (argType == ArgType.BYTE) return reg >= 4;
+	else return false;
+}
+
+import std.string : format;
+struct Imm8  { ubyte  value; enum argT = ArgType.BYTE;  string toString(){ return format("0X%02X", value); } }
+struct Imm16 { ushort value; enum argT = ArgType.WORD;  string toString(){ return format("0X%02X", value); } }
+struct Imm32 { uint   value; enum argT = ArgType.DWORD; string toString(){ return format("0X%02X", value); } }
+struct Imm64 { ulong  value; enum argT = ArgType.QWORD; string toString(){ return format("0X%02X", value); } }
+enum bool isAnyImm(I) = is(I == Imm64) || is(I == Imm32) || is(I == Imm16) || is(I == Imm8);
+
+
+enum ubyte REX_PREFIX = 0b0100_0000;
+enum ubyte REX_W      = 0b0000_1000;
+enum ubyte REX_R      = 0b0000_0100;
+enum ubyte REX_X      = 0b0000_0010;
+enum ubyte REX_B      = 0b0000_0001;
+
+enum LegacyPrefix : ubyte {
+	// Prefix group 1
+	LOCK = 0xF0, // LOCK prefix
+	REPN = 0xF2, // REPNE/REPNZ prefix
+	REP  = 0xF3, // REP or REPE/REPZ prefix
+	// Prefix group 2
+	CS = 0x2E, // CS segment override
+	SS = 0x36, // SS segment override
+	DS = 0x3E, // DS segment override
+	ES = 0x26, // ES segment override
+	FS = 0x64, // FS segment override
+	GS = 0x65, // GS segment override
+	BNT = 0x2E, // Branch not taken
+	BT = 0x3E, // Branch taken
+	// Prefix group 3
+	OPERAND_SIZE = 0x66, // Operand-size override prefix
+	// Prefix group 4
+	ADDRESS_SIZE = 0x67, // Address-size override prefix
+}
+
+/// The terms "less" and "greater" are used for comparisons of signed integers.
+/// The terms "above" and "below" are used for unsigned integers.
+enum Condition : ubyte {
+	O   = 0x0, /// overflow (OF=1).
+	NO  = 0x1, /// not overflow (OF=0).
+	B   = 0x2, /// below (CF=1).
+	C   = 0x2, /// carry (CF=1).
+	NAE = 0x2, /// not above or equal (CF=1).
+	AE  = 0x3, /// above or equal (CF=0).
+	NB  = 0x3, /// not below (CF=0).
+	NC  = 0x3, /// not carry (CF=0).
+	E   = 0x4, /// equal (ZF=1).
+	Z   = 0x4, /// zero (ZF = 1).
+	NE  = 0x5, /// not equal (ZF=0).
+	NZ  = 0x5, /// not zero (ZF=0).
+	BE  = 0x6, /// below or equal (CF=1 or ZF=1).
+	NA  = 0x6, /// not above (CF=1 or ZF=1).
+	A   = 0x7, /// above (CF=0 and ZF=0).
+	NBE = 0x7, /// not below or equal (CF=0 andZF=0).
+	S   = 0x8, /// sign (SF=1).
+	NS  = 0x9, /// not sign (SF=0).
+	P   = 0xA, /// parity (PF=1).
+	PE  = 0xA, /// parity even (PF=1).
+	NP  = 0xB, /// not parity (PF=0).
+	PO  = 0xB, /// parity odd (PF=0).
+	L   = 0xC, /// less (SF≠ OF).
+	NGE = 0xC, /// not greater or equal (SF≠ OF).
+	GE  = 0xD, /// greater or equal (SF=OF).
+	NL  = 0xD, /// not less (SF=OF).
+	LE  = 0xE, /// less or equal (ZF=1 or SF≠ OF).
+	NG  = 0xE, /// not greater (ZF=1 or SF≠ OF).
+	G   = 0xF, /// greater (ZF=0 and SF=OF).
+	NLE = 0xF, /// not less or equal (ZF=0 andSF=OF).
+}
+
+// place 1 MSB of register into appropriate bit field of REX prefix
+ubyte regTo_Rex_W(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 0; } // 1000 WRXB
+ubyte regTo_Rex_R(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 1; } // 0100 WRXB
+ubyte regTo_Rex_X(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 2; } // 0010 WRXB
+ubyte regTo_Rex_B(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 3; } // 0001 WRXB
+
+// place 3 LSB of register into appropriate bit field of ModR/M byte
+ubyte regTo_ModRm_Reg(Register reg) pure nothrow @nogc { return (reg & 0b0111) << 3; }
+ubyte regTo_ModRm_Rm(Register reg) pure nothrow @nogc { return (reg & 0b0111) << 0; }
+
+struct SibScale { ubyte bits; ubyte value() { return cast(ubyte)(1 << bits); } }
+struct ModRmMod { ubyte bits; }
+
+ubyte encodeSibByte(SibScale ss, Register index, Register base) pure nothrow @nogc {
+	return cast(ubyte)(ss.bits << 6) | (index & 0b0111) << 3 | (base & 0b0111);
+}
+
+ubyte encodeModRegRmByte(ModRmMod mod, Register reg, Register rm) pure nothrow @nogc {
+	return cast(ubyte)(mod.bits << 6) | (reg & 0b0111) << 3 | (rm & 0b0111);
+}
+
+enum MemAddrType : ubyte {
+	disp32,           // [                     disp32]
+	indexDisp32,      // [       (index * s) + disp32]
+	base,             // [base                       ]
+	baseDisp32,       // [base +             + disp32]
+	baseIndex,        // [base + (index * s)         ]
+	baseIndexDisp32,  // [base + (index * s) + disp32]
+	baseDisp8,        // [base +             + disp8 ]
+	baseIndexDisp8,   // [base + (index * s) + disp8 ]
+	ripDisp32         // [RIP  +             + disp32]
+}
+ubyte sibAddrType(MemAddrType type) { return 0b1_0000 | type; }
+
+ubyte[9] memAddrType_to_mod = [0,0,0,2,0,2,1,1,0];
+ubyte[9] memAddrType_to_dispType = [1,1,0,1,0,1,2,2,1]; // 0 - none, 1 - disp32, 2 - disp8
+
+// memory location that can be passed to assembly instructions
+struct MemAddress {
+	ubyte typeStorage; // MemAddrType | 0b1_0000;
+	Register indexReg = Register.SP;
+	Register baseReg  = Register.BP;
+	SibScale scale;
+	uint disp; // disp8 is stored here too
+
+	MemAddrType type() { return cast(MemAddrType)(typeStorage & 0b1111); }
+	Imm32 disp32() @property { return Imm32(disp); }
+	Imm8 disp8() @property { return Imm8(cast(ubyte)(disp & 0xFF)); }
+
+	ubyte rexBits() { return regTo_Rex_X(indexReg) | regTo_Rex_B(baseReg); }
+	ubyte modRmByte(ubyte reg = 0) {
+		return encodeModRegRmByte(ModRmMod(memAddrType_to_mod[type]), cast(Register)reg, hasSibByte ? Register.SP : baseReg);
+	}
+	ModRmMod mod() { return ModRmMod(memAddrType_to_mod[type]); }
+	ubyte sibByte() { return encodeSibByte(scale, indexReg, baseReg); }
+	bool hasDisp32() { return memAddrType_to_dispType[type] == 1; }
+	bool hasDisp8 () { return memAddrType_to_dispType[type] == 2; }
+	bool hasSibByte() { return cast(bool)(typeStorage & 0b1_0000); }
+
+	string toString() {
+		final switch(type) {
+			case MemAddrType.disp32: return format("[0x%x]", disp32.value);
+			case MemAddrType.indexDisp32: return format("[(%s*%s) + 0x%x]", indexReg, scale.value, disp32.value);
+			case MemAddrType.base: return format("[%s]", baseReg);
+			case MemAddrType.baseDisp32: return format("[%s + 0x%x]", baseReg, disp32.value);
+			case MemAddrType.baseIndex: return format("[%s + (%s*%s)]", baseReg, indexReg, scale.value);
+			case MemAddrType.baseIndexDisp32: return format("[%s + (%s*%s) + 0x%x]", baseReg, indexReg, scale.value, disp32.value);
+			case MemAddrType.baseDisp8: return format("[%s + 0x%x]", baseReg, disp8.value);
+			case MemAddrType.baseIndexDisp8: return format("[%s + (%s*%s) + 0x%x]", baseReg, indexReg, scale.value, disp8.value);
+			case MemAddrType.ripDisp32: return format("[RIP + 0x%x]", disp32.value);
+		}
+	}
+}
+
+// variant 1  [disp32]
+MemAddress memAddrDisp32(uint disp32) {
+	return MemAddress(sibAddrType(MemAddrType.disp32), Register.SP, Register.BP, SibScale(), disp32); // with SIB
+}
+// variant 2  [(index * s) + disp32]
+MemAddress memAddrIndexDisp32(Register indexReg, SibScale scale, uint disp32) {
+	assert(indexReg != Register.SP, "Cannot encode [RSP * scale + disp32]");
+	return MemAddress(sibAddrType(MemAddrType.indexDisp32), indexReg, Register.BP, scale, disp32); // with SIB
+}
+// variant 3  [base]
+MemAddress memAddrBase(Register baseReg) {
+	if (is_BP_or_R13(baseReg)) // fallback to variant 7 [base + 0x0]
+		return memAddrBaseDisp8(baseReg, 0); // with or without SIB
+	else if (is_SP_or_R12(baseReg)) // cannot encode SP,R12 without SIB
+		return MemAddress(sibAddrType(MemAddrType.base), Register.SP, baseReg); // with SIB
+	else
+		return MemAddress(MemAddrType.base, Register.SP, baseReg); // no SIB
+}
+// variant 4  [base + disp32]
+MemAddress memAddrBaseDisp32(Register baseReg, uint disp32) {
+	if (is_SP_or_R12(baseReg))
+		return MemAddress(sibAddrType(MemAddrType.baseDisp32), Register.SP, baseReg, SibScale(), disp32); // with SIB
+	else
+		return MemAddress(MemAddrType.baseDisp32, Register.SP, baseReg, SibScale(), disp32); // no SIB
+}
+// variant 5  [base + index * s]
+MemAddress memAddrBaseIndex(Register baseReg, Register indexReg, SibScale scale) {
+	assert(indexReg != Register.SP, "Cannot encode [base + RSP * scale]");
+	if (is_BP_or_R13(baseReg)) // fallback to variant 8 [base + (index * s) + disp8]
+		return memAddrBaseIndexDisp8(baseReg, indexReg, scale, 0); // with SIB
+	else
+		return MemAddress(sibAddrType(MemAddrType.baseIndex), indexReg, baseReg, scale); // with SIB
+}
+// variant 6  [base + index * s + disp32]
+MemAddress memAddrBaseIndexDisp32(Register baseReg, Register indexReg, SibScale scale, uint disp32) {
+	assert(indexReg != Register.SP, "Cannot encode [base + RSP * scale + disp32]");
+	return MemAddress(sibAddrType(MemAddrType.baseIndexDisp32), indexReg, baseReg, scale, disp32); // with SIB
+}
+// variant 7  [base + disp8]
+MemAddress memAddrBaseDisp8(Register baseReg, ubyte disp8) {
+	if (is_SP_or_R12(baseReg)) // cannot encode SP,R12 without SIB
+		return MemAddress(sibAddrType(MemAddrType.baseDisp8), Register.SP, baseReg, SibScale(), disp8); // with SIB
+	else
+		return MemAddress(MemAddrType.baseDisp8, Register.SP, baseReg, SibScale(), disp8); // no SIB
+}
+// variant 8  [base + (index * s) + disp8]
+MemAddress memAddrBaseIndexDisp8(Register baseReg, Register indexReg, SibScale scale, ubyte disp8) {
+	assert(indexReg != Register.SP, "Cannot encode [base + RSP * scale + disp8]");
+	return MemAddress(sibAddrType(MemAddrType.baseIndexDisp8), indexReg, baseReg, scale, disp8); // with SIB
+}
+
+// variant 9  [RIP + disp32]
+MemAddress memAddrRipDisp32(uint disp32) {
+	return MemAddress(MemAddrType.ripDisp32, Register.SP, Register.BP, SibScale(), disp32); // with SIB
+}
+
+// Shortcut for memAddrBaseDisp32 and memAddrBaseDisp8. memAddrBaseDisp8 is used when possible.
+MemAddress minMemAddrBaseDisp(Register baseReg, int displacement)
+{
+	if (displacement < byte.min || displacement > byte.max)
+		return memAddrBaseDisp32(baseReg, displacement);
+	else
+		return memAddrBaseDisp8(baseReg, cast(byte)displacement);
+}
+
+// Opcode structures for 1-byte and 2-byte encodings
+struct OP1 { enum size = 1; ubyte op0; }
+struct OP2 { enum size = 2; ubyte op0; ubyte op1; }
+enum bool isAnyOpcode(O) = is(O == OP1) || is(O == OP2);
+
+alias PC = ubyte*;
+
+struct Encoder
+{
+	private ubyte[] mem;
+	private PC pc;
+
+	uint pcOffset() { return cast(uint)(pc - mem.ptr); }
+	void setBuffer(ubyte[] buf) { mem = buf; pc = mem.ptr; }
+	ubyte[] freeBuffer() { scope(exit) { mem = null; resetPC; } return mem; }
+	void resetPC() { pc = mem.ptr; }
+	ubyte[] code() { return mem[0..pc - mem.ptr]; }
+
+	void sink_put(T)(T value)
+	{
+		*(cast(T*)pc) = value;
+		pc += value.sizeof;
+	}
+
+	void putRexByteChecked(ArgType argType)(ubyte bits, bool forceRex = false) {
+		static if (argType == ArgType.QWORD)
+			sink_put!ubyte(REX_PREFIX | REX_W | bits);
+		else
+			if (bits || forceRex) sink_put!ubyte(REX_PREFIX | bits);
+	}
+	void putRexByte_RB(ArgType argType)(Register reg, Register rm) { // reg reg
+		putRexByteChecked!argType(regTo_Rex_R(reg) | regTo_Rex_B(rm), regNeedsRexPrefix!argType(reg) || regNeedsRexPrefix!argType(rm)); }
+	void putRexByte_regB(ArgType argType)(Register rm) { // R.R/M reg
+		putRexByteChecked!argType(regTo_Rex_B(rm), regNeedsRexPrefix!argType(rm)); }
+	void putRexByte_B(ArgType argType)(Register base) { // base
+		putRexByteChecked!argType(regTo_Rex_B(base)); }
+	void putRexByte_RXB(ArgType argType)(Register r, Register index, Register base) { // reg index base
+		putRexByteChecked!argType(regTo_Rex_R(r) | regTo_Rex_X(index) | regTo_Rex_B(base), regNeedsRexPrefix!argType(r)); }
+	void putRexByte_XB(ArgType argType)(Register index, Register base) { // index base
+		putRexByteChecked!argType(regTo_Rex_X(index) | regTo_Rex_B(base)); }
+
+	void putInstrBinaryRegReg(ArgType argType, O)(O opcode, Register dst_rm, Register src_reg) if (isAnyOpcode!O) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		putRexByte_RB!argType(src_reg, dst_rm);                                 // REX
+		sink_put(opcode);                                                       // Opcode
+		sink_put(encodeModRegRmByte(ModRmMod(0b11), src_reg, dst_rm));          // ModR/r
+	}
+	// PUSH, POP, MOV, XCHG, BSWAP
+	void putInstrBinaryRegImm1(ArgType argType, I)(OP1 opcode, Register dst_rm, I src_imm) if (isAnyImm!I) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		putRexByte_regB!argType(dst_rm);                                        // REX
+		sink_put!ubyte(opcode.op0 | (dst_rm & 0b0111));                             // Opcode + reg
+		sink_put(src_imm);                                                      // Imm8/16/32/64
+	}
+	void putInstrBinaryRegImm2(ArgType argType, I)(OP1 opcode, ubyte regOpcode, Register dst_rm, I src_imm) if (isAnyImm!I) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		putRexByte_regB!argType(dst_rm);                                        // REX
+		sink_put(opcode);                                                       // Opcode
+		sink_put(encodeModRegRmByte(ModRmMod(0b11), cast(Register)regOpcode, dst_rm));  // ModO/R
+		sink_put(src_imm);                                                      // Imm8/16/32/64
+	}
+	// if isReg == true then dst_r is register, otherwise it is extra opcode
+	void putInstrBinaryRegMem(ArgType argType, bool isReg = true, O)(O opcode, Register reg_or_opcode, MemAddress src_mem) if (isAnyOpcode!O) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		static if (isReg) putRexByte_RXB!argType(reg_or_opcode, src_mem.indexReg, src_mem.baseReg); // REX
+		else putRexByte_XB!argType(src_mem.indexReg, src_mem.baseReg);          // REX
+		sink_put(opcode);                                                       // Opcode
+		sink_put(src_mem.modRmByte(reg_or_opcode));                             // ModR/M
+		if (src_mem.hasSibByte)	   sink_put(src_mem.sibByte);                   // SIB
+		if (src_mem.hasDisp32)     sink_put(src_mem.disp32);                    // disp32
+		else if (src_mem.hasDisp8) sink_put(src_mem.disp8);                     // disp8
+	}
+	void putInstrBinaryMemImm(ArgType argType, I, O)(O opcode, ubyte regOpcode, MemAddress dst_mem, I src_imm) if (isAnyImm!I && isAnyOpcode!O) {
+		putInstrBinaryRegMem!(argType, false)(opcode, cast(Register)regOpcode, dst_mem);
+		sink_put(src_imm);                                                      // Imm8/16/32
+	}
+
+	void putInstrNullary(O)(O opcode) if(isAnyOpcode!O) {
+		sink_put(opcode);                                                       // Opcode
+	}
+	void putInstrNullaryImm(O, I)(O opcode, I imm) if(isAnyOpcode!O && isAnyImm!I) {
+		sink_put(opcode);                                                       // Opcode
+		sink_put(imm);                                                          // Imm8/16/32/64
+	}
+	void putInstrUnaryReg1(ArgType argType, O)(O opcode, ubyte regOpcode, Register dst_rm) if (isAnyOpcode!O) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		putRexByte_regB!argType(dst_rm);                                        // REX
+		sink_put(opcode);                                                       // Opcode
+		sink_put(encodeModRegRmByte(ModRmMod(0b11), cast(Register)regOpcode, dst_rm));// ModO/R
+	}
+	void putInstrUnaryReg2(ArgType argType)(ubyte opcode, Register dst_rm) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		putRexByte_regB!argType(dst_rm);                                        // REX
+		sink_put!ubyte(opcode | (dst_rm & 0b0111));                             // Opcode
+	}
+	void putInstrUnaryMem(ArgType argType, O)(O opcode, ubyte regOpcode, MemAddress dst_mem) if (isAnyOpcode!O) {
+		putInstrBinaryRegMem!(argType, false)(opcode, cast(Register)regOpcode, dst_mem);
+	}
+	void putInstrUnaryImm(ArgType argType, O, I)(O opcode, I imm) if (isAnyOpcode!O && isAnyImm!I) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		sink_put(opcode);                                                       // Opcode
+		sink_put(imm);                                                          // Imm8/16/32
+	}
+}
+
+struct Fixup
+{
+	private CodeGen_x86_64* codeGen;
+	private PC fixupPC;
+
+	template opDispatch(string member)
+	{
+		import std.traits : Parameters;
+		static foreach(Over; __traits(getOverloads, CodeGen_x86_64, member))
+		{
+			auto opDispatch(Parameters!(Over) args) {
+				auto tempPC = codeGen.encoder.pc;
+				codeGen.encoder.pc = fixupPC;
+				scope(exit)codeGen.encoder.pc = tempPC;
+				mixin("return codeGen."~member~"(args);");
+			}
+		}
+	}
+}
+
+struct Fixup32
+{
+	uint fixupOffset;
+	uint extraOffset;
+}
+
+Imm32 jumpOffset(PC from, PC to) {
+	assert(to - from == cast(int)(to - from), "offset is not representible as int");
+	return Imm32(cast(int)(to - from));
+}
+
+// Sink defines put(T) for ubyte, ubyte[], Imm8, Imm16, Imm32, Imm64
+struct CodeGen_x86_64
+{
+	Encoder encoder;
+
+	Fixup fixupAt(PC at) { return Fixup(&this, at); }
+	Fixup saveFixup() { return Fixup(&this, encoder.pc); }
+	PC pc() { return encoder.pc; }
+	alias stubPC = pc;
+
+	/// Used for versions of instructions without argument size suffix.
+	/// mov, add, sub, instead of movq, addb, subd.
+	/// mov(Register.AX, Register.DI, ArgType.QWORD); instead of movq(Register.AX, Register.DI);
+	void opDispatch(string s, Arg1, Arg2)(Arg1 dst, Arg2 src, ArgType argType) {
+		switch(argType) {
+			static if (__traits(hasMember, typeof(this), s~'b')) { case ArgType.BYTE:  mixin(s~"b(dst, src);"); break; }
+			static if (__traits(hasMember, typeof(this), s~'w')) { case ArgType.WORD:  mixin(s~"w(dst, src);"); break; }
+			static if (__traits(hasMember, typeof(this), s~'d')) { case ArgType.DWORD: mixin(s~"d(dst, src);"); break; }
+			static if (__traits(hasMember, typeof(this), s~'q')) { case ArgType.QWORD: mixin(s~"q(dst, src);"); break; }
+			default: assert(false, format("Cannot encode %s(%s, %s, ArgType.%s)", s, dst, src, argType));
+		}
+	}
+
+	/// ditto
+	void opDispatch(string s, Arg1)(Arg1 dst, ArgType argType) {
+		switch(argType) {
+			static if (__traits(hasMember, typeof(this), s~'b')) { case ArgType.BYTE:  mixin(s~"b(dst);"); break; }
+			static if (__traits(hasMember, typeof(this), s~'w')) { case ArgType.WORD:  mixin(s~"w(dst);"); break; }
+			static if (__traits(hasMember, typeof(this), s~'d')) { case ArgType.DWORD: mixin(s~"d(dst);"); break; }
+			static if (__traits(hasMember, typeof(this), s~'q')) { case ArgType.QWORD: mixin(s~"q(dst);"); break; }
+			default: assert(false, format("Cannot encode %s(%s, ArgType.%s)", s, dst, argType));
+		}
+	}
+
+	void beginFunction() {
+		// Copies parameters from registers to shadow space
+		// Pushes registers to be preserved on stack
+		// Allocates room on stack for local variables
+		// Sets a frame pointer (so frame pointer is set AFTER local variables!) if needed
+		pushq(Register.BP);
+		movq(Register.BP, Register.SP);
+		// Allocates space needed to store volatile registers that must be preserved in function calls
+		// Allocates shadow space for called functions.
+	}
+	void endFunction() {
+		popq(Register.BP);
+		ret();
+	}
+
+	mixin binaryInstr_RMtoR_RtoRM!("add", [0x00, 0x01], [0x02, 0x03]);
+	mixin binaryInstr_RM_Imm!("add", 0);
+
+	mixin instrMOV!();
+	mixin binaryInstr_RMtoR_RtoRM!("mov", [0x88, 0x89], [0x8A, 0x8B]);
+
+	mixin binaryInstr_RMtoR_RtoRM!("sub", [0x28, 0x29], [0x2A, 0x2B]);
+	mixin binaryInstr_RM_Imm!("sub", 5);
+
+	mixin binaryInstr_RMtoR_RtoRM!("and", [0x20, 0x21], [0x22, 0x23]);
+	mixin binaryInstr_RM_Imm!("and", 4);
+
+	mixin binaryInstr_RMtoR_RtoRM!("or", [0x08, 0x09], [0x0A, 0x0B]);
+	mixin binaryInstr_RM_Imm!("or", 1);
+
+	mixin binaryInstr_RMtoR_RtoRM!("xor", [0x30, 0x31], [0x32, 0x33]);
+	mixin binaryInstr_RM_Imm!("xor", 6);
+
+	mixin binaryInstr_RMtoR_RtoRM!("cmp", [0x38, 0x39], [0x3A, 0x3B]);
+	mixin binaryInstr_RM_Imm!("cmp", 7);
+
+	void leaw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x8D), dst, src); }
+	void lead(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x8D), dst, src); }
+	void leaq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x8D), dst, src); }
+
+	mixin unaryInstr_RM!("inc", [0xFE,0xFF], 0);
+	mixin unaryInstr_RM!("dec", [0xFE,0xFF], 1);
+	mixin unaryInstr_RM!("neg", [0xF6,0xF7], 3);
+	mixin unaryInstr_RM!("mul", [0xF6,0xF7], 4);
+	mixin unaryInstr_RM!("div", [0xF6,0xF7], 6);
+	mixin unaryInstr_RM!("not", [0xF6,0xF7], 2);
+
+	void nop() { encoder.putInstrNullary(OP1(0x90)); }
+
+	/// relative call to target virtual address.
+	void call(PC target) { encoder.putInstrNullaryImm(OP1(0xE8), jumpOffset(encoder.pc + 5, target)); } // relative to next instr
+	void call(Register target) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xFF), 2, target); } // absolute address
+	void call(MemAddress target) { encoder.putInstrUnaryMem!(ArgType.DWORD)(OP1(0xFF), 2, target); } // absolute address, use DWORD to omit REX.W
+
+	/// Generate fixup for last 32 bits of last instruction.
+	Fixup32 getAddressFixup() { return Fixup32(encoder.pcOffset - 4, 4); }
+	Fixup32 getDataFixup() { return Fixup32(encoder.pcOffset - 4, 0); }
+
+	/// jump relative to next instr.
+	void jmp(Imm8 offset ) { encoder.putInstrNullaryImm(OP1(0xEB), offset); }
+	void jmp(Imm32 offset) { encoder.putInstrNullaryImm(OP1(0xE9), offset); }
+	void jmpAbs(PC target) { encoder.putInstrNullaryImm(OP1(0xE9), jumpOffset(encoder.pc + 5, target) ); }
+
+	/// jump relative to next instr.
+	void jcc(Condition condition, Imm8  offset) { encoder.putInstrNullaryImm(OP1(0x70 | condition), offset); }
+	void jcc(Condition condition, Imm32 offset) { encoder.putInstrNullaryImm(OP2(0x0F, 0x80 | condition), offset); }
+	void jccAbs(Condition condition, PC target) { encoder.putInstrNullaryImm(OP2(0x0F, 0x80 | condition), jumpOffset(encoder.pc + 6, target) ); }
+
+	void setcc(Condition condition, Register dst)   { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP2(0x0F, 0x90 | condition), 0, dst); }
+	void setcc(Condition condition, MemAddress dst) { encoder.putInstrUnaryMem !(ArgType.BYTE)(OP2(0x0F, 0x90 | condition), 0, dst); }
+
+	void testb(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(0x84), dst, src); }
+	void testw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(0x85), dst, src); }
+	void testd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(0x85), dst, src); }
+	void testq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(0x85), dst, src); }
+
+	void movzx_btow(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP2(0x0F, 0xB6), dst, src); }
+	void movzx_btod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xB6), dst, src); }
+	void movzx_btoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xB6), dst, src); }
+	void movzx_wtod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xB7), dst, src); }
+	void movzx_wtoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xB7), dst, src); }
+
+	void popw(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.WORD )(0x58, dst); }
+	void popq(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.DWORD)(0x58, dst); } // use DWORD to omit REX.W
+	void popw(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.WORD )(OP1(0x8F), 0, dst); }
+	void popq(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.DWORD)(OP1(0x8F), 0, dst); } // use DWORD to omit REX.W
+
+	void pushw(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.WORD )(0x50, dst); }
+	void pushq(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.DWORD)(0x50, dst); } // use DWORD to omit REX.W
+	void pushw(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.WORD )(OP1(0xFF), 6, dst); }
+	void pushq(MemAddress dst) { encoder.putInstrUnaryMem!( ArgType.DWORD)(OP1(0xFF), 6, dst); } // use DWORD to omit REX.W
+
+	void pushb(Imm8  src) { encoder.putInstrUnaryImm!(ArgType.BYTE )(OP1(0x6A), src); }
+	void pushw(Imm16 src) { encoder.putInstrUnaryImm!(ArgType.WORD )(OP1(0x68), src); }
+	void pushd(Imm32 src) { encoder.putInstrUnaryImm!(ArgType.DWORD)(OP1(0x68), src); }
+
+	void ret() { encoder.putInstrNullary(OP1(0xC3)); }
+	void ret(Imm16 bytesToPop) { encoder.putInstrNullaryImm(OP1(0xC2), bytesToPop); }
+
+	void int3() { encoder.putInstrNullary(OP1(0xCC)); }
+}
+
+mixin template instrMOV() {
+	void movb(Register dst, Imm8  src){ encoder.putInstrBinaryRegImm1!(ArgType.BYTE) (OP1(0xB0), dst, src); }
+	void movw(Register dst, Imm16 src){ encoder.putInstrBinaryRegImm1!(ArgType.WORD) (OP1(0xB8), dst, src); }
+	void movd(Register dst, Imm32 src){ encoder.putInstrBinaryRegImm1!(ArgType.DWORD)(OP1(0xB8), dst, src); }
+	void movq(Register dst, Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(OP1(0xC7), 0, dst, src); }
+	void movq(Register dst, Imm64 src){ encoder.putInstrBinaryRegImm1!(ArgType.QWORD)(OP1(0xB8), dst, src); }
+
+	void movb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(0xC6), 0, dst, src); }
+	void movw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0xC7), 0, dst, src); }
+	void movd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0xC7), 0, dst, src); }
+	void movq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0xC7), 0, dst, src); }
+}
+
+mixin template binaryInstr_RMtoR_RtoRM(string name, ubyte[2] rm_r, ubyte[2] r_rm) {
+	mixin(format("void %sb(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(%s), src, dst); }", name, rm_r[0]));
+	mixin(format("void %sw(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(%s), src, dst); }", name, rm_r[1]));
+	mixin(format("void %sd(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(%s), src, dst); }", name, rm_r[1]));
+	mixin(format("void %sq(MemAddress dst, Register src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(%s), src, dst); }", name, rm_r[1]));
+
+	mixin(format("void %sb(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(%s), dst, src); }", name, rm_r[0]));
+	mixin(format("void %sw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(%s), dst, src); }", name, rm_r[1]));
+	mixin(format("void %sd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(%s), dst, src); }", name, rm_r[1]));
+	mixin(format("void %sq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(%s), dst, src); }", name, rm_r[1]));
+
+	mixin(format("void %sb(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(%s), dst, src); }", name, r_rm[0]));
+	mixin(format("void %sw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(%s), dst, src); }", name, r_rm[1]));
+	mixin(format("void %sd(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(%s), dst, src); }", name, r_rm[1]));
+	mixin(format("void %sq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(%s), dst, src); }", name, r_rm[1]));
+}
+
+mixin template binaryInstr_RM_Imm(string name, ubyte extraOpcode) {
+	mixin(format("void %sb(Register dst,   Imm8  src){ encoder.putInstrBinaryRegImm2!(ArgType.BYTE) (OP1(0x80), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sw(Register dst,   Imm16 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (OP1(0x81), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sd(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(OP1(0x81), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sq(Register dst,   Imm32 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(OP1(0x81), %s, dst, src); }", name, extraOpcode));
+
+	mixin(format("void %sw(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.WORD) (OP1(0x83), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sd(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(OP1(0x83), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sq(Register dst,   Imm8 src){ encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(OP1(0x83), %s, dst, src); }", name, extraOpcode));
+
+	mixin(format("void %sb(MemAddress dst, Imm8  src){ encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(0x80), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sw(MemAddress dst, Imm16 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x81), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sd(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x81), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sq(MemAddress dst, Imm32 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x81), %s, dst, src); }", name, extraOpcode));
+
+	mixin(format("void %sw(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(0x83), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sd(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(0x83), %s, dst, src); }", name, extraOpcode));
+	mixin(format("void %sq(MemAddress dst, Imm8 src){ encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(0x83), %s, dst, src); }", name, extraOpcode));
+}
+
+mixin template unaryInstr_RM(string name, ubyte[2] opcodes, ubyte extraOpcode) {
+	mixin(format("void %sb(Register dst) { encoder.putInstrUnaryReg1!(ArgType.BYTE) (OP1(%s), %s, dst); }", name, opcodes[0], extraOpcode));
+	mixin(format("void %sw(Register dst) { encoder.putInstrUnaryReg1!(ArgType.WORD) (OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
+	mixin(format("void %sd(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
+	mixin(format("void %sq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
+
+	mixin(format("void %sb(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.BYTE) (OP1(%s), %s, dst); }", name, opcodes[0], extraOpcode));
+	mixin(format("void %sw(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.WORD) (OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
+	mixin(format("void %sd(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.DWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
+	mixin(format("void %sq(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.QWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
 }
 
 
@@ -3254,7 +4521,7 @@ struct IrToSSAVisitor
 //              #     #     #        #     #        #     #
 //               #####      #      #####   ######    #####
 // -----------------------------------------------------------------------------
-import std.datetime : MonoTime, Duration, usecs, dur;
+import core.time : MonoTime, Duration, usecs, dur;
 MonoTime currTime() { return MonoTime.currTime(); }
 
 struct ScaledNumberFmt(T)
@@ -3456,4 +4723,17 @@ struct Buffer(T)
 	{
 		length -= numItems;
 	}
+}
+
+void printHex(ubyte[] buffer, size_t lineLength)
+{
+	size_t index = 0;
+	if (lineLength) {
+		while (index + lineLength <= buffer.length) {
+			writefln("%(%02X %)", buffer[index..index+lineLength]);
+			index += lineLength;
+		}
+	}
+	if (index < buffer.length)
+		writefln("%(%02X %)", buffer[index..buffer.length]);
 }

@@ -184,7 +184,7 @@ T paddingSize(T)(T address, T alignment)
 	return cast(T)(alignValue(address, alignment) - address);
 }
 
-import std.datetime : MonoTime, Duration, usecs, dur;
+import core.time : MonoTime, Duration, usecs, dur;
 
 MonoTime currTime() {
 	return MonoTime.currTime();

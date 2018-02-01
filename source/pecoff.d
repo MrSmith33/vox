@@ -10,7 +10,7 @@ import std.stdio;
 import std.conv;
 import std.file;
 import std.path;
-import std.datetime;
+import core.time;
 import std.exception;
 import std.string;
 import std.format : formattedWrite;
