@@ -272,7 +272,7 @@ void main()
 	}};
 
 	string input8 =
-q{i32 isNegative(i32 number)
+q{i32 sign(i32 number)
 {
 	i32 result;
 	if (number < 0) result = 0-1;
@@ -336,18 +336,31 @@ q{i32 isNegative(i32 number)
 			codegen_pass.visit(bin_irgen.irModule);
 
 		auto time9 = currTime;
-			auto funDecl = mod.findFunction("isNegative", &context);
+			auto funDecl = mod.findFunction("sign", &context);
+			alias FunType = extern(C) int function(int);
+			FunType fun;
+			int res1;
+			int res2;
+			int res3;
 			if (funDecl)
 			{
-				alias FunType = extern(C) int function(int);
-				FunType fun = cast(FunType)funDecl.irData.funcPtr;
-				writefln("codeBuffer %s", codeBuffer.ptr);
-				writefln("fun %s", fun);
-				writefln("isNegative(10) -> %s", fun(10));
-				writefln("isNegative(-10) -> %s", fun(-10));
+				fun = cast(FunType)funDecl.irData.funcPtr;
+				foreach(_; 0..10_000)
+				{
+					res1 = fun(10);
+					res2 = fun(0);
+					res3 = fun(-10);
+				}
 			}
 
 		auto time10 = currTime;
+			writefln("codeBuffer %s", codeBuffer.ptr);
+			writefln("fun %s", fun);
+			writefln("sign(10) -> %s", res1);
+			writefln("sign(0) -> %s", res2);
+			writefln("sign(-10) -> %s", res3);
+
+		auto time11 = currTime;
 			// Text dump
 			writeln("// source code");
 			writeln(context.input);
@@ -374,12 +387,45 @@ q{i32 isNegative(i32 number)
 		//writefln("IR text gen %ss", scaledNumberFmt(time7-time6));
 		writefln("IR bin gen %ss", scaledNumberFmt(time8-time7));
 		writefln("Codegen %ss", scaledNumberFmt(time9-time8));
+		writefln("fun run x3 %ss", scaledNumberFmt(time10-time9));
 	}
 	catch(CompilationException e) {
 		writeln(context.sink.text);
 		if (e.isICE)
 			writeln(e);
 	}
+	testNativeFun;
+}
+
+void testNativeFun()
+{
+	auto time0 = currTime;
+	int res1;
+	int res2;
+	int res3;
+	fun = &sign;
+	foreach(_; 0..10_000)
+	{
+		res1 = fun(10);
+		res2 = fun(0);
+		res3 = fun(-10);
+	}
+	auto time1 = currTime;
+	writefln("sign(10) -> %s", res1);
+	writefln("sign(0) -> %s", res2);
+	writefln("sign(-10) -> %s", res3);
+	writefln("native fun run x10k %ss", scaledNumberFmt(time1-time0));
+}
+
+__gshared int function(int) fun;
+
+int sign(int number)
+{
+	int result;
+	if (number < 0) result = -1;
+	else if (number > 0) result = 1;
+	else result = 0;
+	return result;
 }
 
 // Parsing expressions - http://effbot.org/zone/simple-top-down-parsing.htm
@@ -3018,47 +3064,51 @@ struct BinIrGenerationVisitor {
 	void visit(IfStmtNode* i)
 	{
 		_visit(cast(AstNode*)i.condition);
+
 		// prevBB links to thenBB and (afterBB or elseBB)
-		auto prevBB = currentBB;
+		IrBasicBlock* prevBB = currentBB;
 		prevBB.exit = IrJump(IrJump.Type.jnz, i.condition.irRef);
 
 		// create Basic Block for then statement. It links to afterBB
-		currentBB = curFunc.addBasicBlock(IrName("then", ++thenCounter));
-		auto thenBB = currentBB;
-		prevBB.outs ~= thenBB;
+		IrBasicBlock* then_StartBB = curFunc.addBasicBlock(IrName("then", ++thenCounter));
+		currentBB = then_StartBB;
+		prevBB.outs ~= then_StartBB;
 
 		_visit(cast(AstNode*)i.thenStatement);
+		IrBasicBlock* then_EndBB = currentBB;
 
-		IrBasicBlock* elseBB;
+		IrBasicBlock* else_StartBB;
+		IrBasicBlock* else_EndBB;
 		if (i.elseStatement)
 		{
 			currentBB = curFunc.addBasicBlock(IrName("else", ++elseCounter));
+			else_StartBB = currentBB;
+			prevBB.outs ~= else_StartBB;
 			_visit(i.elseStatement);
-			elseBB = currentBB;
-			prevBB.outs ~= elseBB;
+			else_EndBB = currentBB;
 		}
 
-		auto afterBB = curFunc.addBasicBlock(IrName("blk", ++bbCounter));
-		if (!thenBB.isFinished)
+		IrBasicBlock* afterBB = curFunc.addBasicBlock(IrName("blk", ++bbCounter));
+		currentBB = afterBB;
+
+		if (!then_EndBB.isFinished)
 		{
-			thenBB.exit = IrJump(IrJump.Type.jmp);
-			thenBB.outs ~= afterBB;
+			then_EndBB.exit = IrJump(IrJump.Type.jmp);
+			then_EndBB.outs ~= afterBB;
 		}
 
 		if (i.elseStatement)
 		{
-			if (!elseBB.isFinished)
+			if (!else_EndBB.isFinished)
 			{
-				elseBB.exit = IrJump(IrJump.Type.jmp);
-				elseBB.outs ~= afterBB;
+				else_EndBB.exit = IrJump(IrJump.Type.jmp);
+				else_EndBB.outs ~= afterBB;
 			}
 		}
 		else
 		{
 			prevBB.outs ~= afterBB;
 		}
-
-		currentBB = afterBB;
 	}
 	void visit(WhileStmtNode* w) {
 		//_visit(cast(AstNode*)w.condition);
@@ -3620,6 +3670,7 @@ struct IrToAmd64
 		numLocals = cast(int)(curFunc.variables.length - numParams);
 		numVars = numLocals + numParams;
 
+		/* save parameters to stack before setting frame ptr
 		// C calling convention on Windows
 		// Copy parameters from registers to shadow space
 		// parameter 5 RSP + 40
@@ -3628,6 +3679,7 @@ struct IrToAmd64
 		if (numParams > 1) gen.movq(memAddrBaseDisp8(Register.SP, 16), Register.DX); // save second parameter
 		if (numParams > 0) gen.movq(memAddrBaseDisp8(Register.SP,  8), Register.CX); // save first parameter
 		// RSP + 0 points to RET
+		*/
 
 		// Establish frame pointer
 		if (USE_FRAME_POINTER)
@@ -3648,6 +3700,12 @@ struct IrToAmd64
 			gen.xorq(RET_REG, RET_REG);
 			foreach(i; 0..numLocals) gen.movq(localVarMemAddress(numParams+i), RET_REG);
 		}
+
+		/* save parameters to stack after setting frame ptr */
+		if (numParams > 3) gen.movq(localVarMemAddress(3), Register.R9); // save first parameter
+		if (numParams > 2) gen.movq(localVarMemAddress(2), Register.R8); // save first parameter
+		if (numParams > 1) gen.movq(localVarMemAddress(1), Register.DX); // save first parameter
+		if (numParams > 0) gen.movq(localVarMemAddress(0), Register.CX); // save first parameter
 	}
 
 	Register ensureLoaded(IrVarOrConstant value)
@@ -3660,11 +3718,11 @@ struct IrToAmd64
 		final switch(value.type)
 		{
 			case IrValueType.i32:
-				if (value.isVar) gen.movd(reg, localVarMemAddress(value.irRef.index));
+				if (value.isVar) gen.movd(reg, localVarMemAddress(value.irRef));
 				else gen.movd(reg, Imm32(cast(uint)value.conPtr.value));
 				break;
 			case IrValueType.i64:
-				if (value.isVar) gen.movq(reg, localVarMemAddress(value.irRef.index));
+				if (value.isVar) gen.movq(reg, localVarMemAddress(value.irRef));
 				else gen.movq(reg, Imm64(value.conPtr.value));
 				break;
 		}
@@ -3680,17 +3738,17 @@ struct IrToAmd64
 		{
 			case IrValueType.i32:
 				if (src.isVar) {
-					gen.movd(TEMP_REG_0, localVarMemAddress(src.irRef.index));
-					gen.movd(localVarMemAddress(dest.irRef.index), TEMP_REG_0);
+					gen.movd(TEMP_REG_0, localVarMemAddress(src.irRef));
+					gen.movd(localVarMemAddress(dest.irRef), TEMP_REG_0);
 				}
 				else {
-					gen.movq(localVarMemAddress(dest.irRef.index), Imm32(cast(uint)src.conPtr.value));
+					gen.movq(localVarMemAddress(dest.irRef), Imm32(cast(uint)src.conPtr.value));
 				}
 				break;
 			case IrValueType.i64:
-				if (src.isVar) gen.movq(TEMP_REG_0, localVarMemAddress(src.irRef.index));
+				if (src.isVar) gen.movq(TEMP_REG_0, localVarMemAddress(src.irRef));
 				else gen.movq(TEMP_REG_0, Imm64(src.conPtr.value));
-				gen.movq(localVarMemAddress(dest.irRef.index), TEMP_REG_0);
+				gen.movq(localVarMemAddress(dest.irRef), TEMP_REG_0);
 				break;
 		}
 	}
@@ -3715,8 +3773,8 @@ struct IrToAmd64
 						auto reg1 = loadValue(arg1, TEMP_REG_1);
 						final switch(arg0.type)
 						{
-							case IrValueType.i32: gen.cmpd(reg1, reg0); break;
-							case IrValueType.i64: gen.cmpq(reg1, reg0); break;
+							case IrValueType.i32: gen.cmpd(reg0, reg1); break;
+							case IrValueType.i64: gen.cmpq(reg0, reg1); break;
 						}
 
 						// Check if comparison result is used for jump
@@ -3737,29 +3795,38 @@ struct IrToAmd64
 						break;
 
 					// Arithmetic
-					case o_add:
+					case o_add, o_sub:
 						auto arg0 = curFunc.deref(instr.arg0);
 						auto arg1 = curFunc.deref(instr.arg1);
 						auto reg0 = loadValue(arg0, TEMP_REG_0);
 						auto reg1 = loadValue(arg1, TEMP_REG_1);
 
-						final switch(arg0.type)
+						switch(instr.op)
 						{
-							case IrValueType.i32: gen.addd(reg0, reg1); break;
-							case IrValueType.i64: gen.addq(reg0, reg1); break;
+							case IrOpcode.o_add:
+								final switch(arg0.type) {
+									case IrValueType.i32: gen.addd(reg0, reg1); break;
+									case IrValueType.i64: gen.addq(reg0, reg1); break;
+								}
+								break;
+							case IrOpcode.o_sub:
+								final switch(arg0.type) {
+									case IrValueType.i32: gen.subd(reg0, reg1); break;
+									case IrValueType.i64: gen.subq(reg0, reg1); break;
+								}
+								break;
+							default: break;
 						}
 
 						final switch(arg0.type)
 						{
 							case IrValueType.i32:
-								gen.movd(localVarMemAddress(instr.to.index), TEMP_REG_0);
+								gen.movd(localVarMemAddress(instr.to), TEMP_REG_0);
 								break;
 							case IrValueType.i64:
-								gen.movq(localVarMemAddress(instr.to.index), TEMP_REG_0);
+								gen.movq(localVarMemAddress(instr.to), TEMP_REG_0);
 								break;
 						}
-						break;
-					case o_sub:
 						break;
 					//case o_div:  goto case;
 					//case o_rem:  goto case;
@@ -3879,6 +3946,12 @@ struct IrToAmd64
 		}
 
 		gen.ret();
+	}
+
+	MemAddress localVarMemAddress(IrRef varRef)
+	{
+		assert(varRef.isVar);
+		return localVarMemAddress(varRef.index-1);
 	}
 
 	MemAddress localVarMemAddress(int varIndex)
