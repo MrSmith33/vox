@@ -11,6 +11,7 @@ import std.typecons : Flag, Yes, No;
 import std.stdio : writeln, write, writef, writefln;
 import std.format : formattedWrite;
 import std.range : repeat;
+import std.bitmanip : bitfields;
 
 // Grammar
 
@@ -394,7 +395,7 @@ q{i32 sign(i32 number)
 		if (e.isICE)
 			writeln(e);
 	}
-	testNativeFun;
+	//testNativeFun;
 }
 
 void testNativeFun()
@@ -1545,8 +1546,7 @@ struct BlockStmtNode {
 mixin template ExpressionNodeData(AstType _astType) {
 	mixin AstNodeData!(_astType, AstFlags.isExpression);
 	TypeNode* type;
-	IrVar irVarData;
-	IrRef irRef;
+	IrValueRef irRef;
 }
 
 // Abstract node, must not be instantiated
@@ -1865,7 +1865,7 @@ struct Parser {
 
 	void setup() {}
 	T* make(T, Args...)(SourceLocation start, Args args) { return new T(start, args); }
-	T* makeExpr(T, Args...)(SourceLocation start, Args args) { return new T(start, null, IrVar(), IrRef(), args); }
+	T* makeExpr(T, Args...)(SourceLocation start, Args args) { return new T(start, null, IrValueRef(), args); }
 
 	T* enforceNode(T)(T* t)
 	{
@@ -2182,7 +2182,7 @@ struct Parser {
 			long value = lexer.getTokenNumber();
 			nextToken();
 			TypeNode* type = context.basicTypeNodes(BasicType.t_i32);
-			return cast(ExpressionNode*)make!LiteralExprNode(start, type, IrVar(), IrRef(), value);
+			return cast(ExpressionNode*)make!LiteralExprNode(start, type, IrValueRef(), value);
 		}
 		else return paren_expr();
 	}
@@ -2248,7 +2248,7 @@ struct Symbol {
 	AstNode* node;
 	/// Symbol in outer scope with the same id. Can be null
 	Symbol* outerSymbol;
-	IrRef irRef;
+	IrValueRef irRef;
 
 	bool isInOrderedScope() { return cast(bool)(flags & SymbolFlags.isInOrderedScope); }
 
@@ -2609,7 +2609,7 @@ struct SemanticStaticTypes {
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert || force)
 			{
-				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrVar(), IrRef(), expr);
+				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrValueRef(), expr);
 				return true;
 			}
 		}
@@ -2633,7 +2633,7 @@ struct SemanticStaticTypes {
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert)
 			{
-				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrVar(), IrRef(), expr);
+				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrValueRef(), expr);
 				return true;
 			}
 		}
@@ -2866,121 +2866,6 @@ struct SemanticStaticTypes {
 //                  #####   #     #    #####  #######  #     #
 // -----------------------------------------------------------------------------
 
-/// Converts AST to textual linear IR
-struct TextIrGenerationVisitor {
-	mixin AstVisitorMixin;
-	CompilationContext* context;
-
-	IndentTextSink sink;
-	int varSuffixCounter;
-	int uniqueSuffix() { return ++varSuffixCounter; }
-
-	IrVar makeVar(string name) { return IrVar(IrName(name, uniqueSuffix)); }
-	IrVar makeVar(Identifier id) { return IrVar(IrName(context.idString(id), uniqueSuffix)); }
-
-	void visit(ModuleDeclNode* m) {
-		foreach (decl; m.declarations) _visit(decl); }
-	void visit(FunctionDeclNode* f) {
-		sink.putf("function %s $%s (",
-			f.returnType.typeName(context),
-			context.idString(f.id));
-		foreach (i, param; f.parameters)
-		{
-			visit(param);
-			if (i+1 < f.parameters.length) sink.sink.put(", ");
-		}
-		sink.sink.putln(")");
-		visit(f.block_stmt);
-	}
-	void visit(VariableDeclNode* v) {}
-	void visit(ParameterDeclNode* p) {
-		sink.sink.putf("%s %s", p.type.typeName(context), context.idString(p.id));
-	}
-	void visit(StructDeclNode* s) {
-		sink.putln("{"); sink.push;
-		foreach (decl; s.declarations) _visit(decl);
-		sink.pop; sink.putln("}");
-	}
-	void visit(BlockStmtNode* b) {
-		sink.putln("{"); sink.push;
-		sink.putln("@start");
-		foreach (stmt; b.statements) _visit(stmt);
-		sink.pop; sink.putln("}");
-	}
-	void visit(IfStmtNode* i) {
-		int suffix = uniqueSuffix;
-		sink.putfln("@ifstmt_%s", suffix);
-		sink.push;
-		_visit(cast(AstNode*)i.condition);
-		if (i.elseStatement)
-			sink.putfln("jnz %s, @ift_%s, @iff_%s", i.condition.irVarData.name, suffix, suffix);
-		else
-			sink.putfln("jnz %s, @ift_%s, @ifend_%s", i.condition.irVarData.name, suffix, suffix);
-		sink.pop;
-		sink.putfln("@ift_%s", suffix);
-		sink.push;
-		_visit(cast(AstNode*)i.thenStatement);
-		sink.pop;
-		sink.push;
-		if (i.elseStatement)
-		{
-			sink.putfln("@iff_%s", suffix);
-			_visit(i.elseStatement);
-		}
-		sink.pop;
-		sink.putfln("@ifend_%s", suffix);
-	}
-	void visit(WhileStmtNode* w) {
-		_visit(cast(AstNode*)w.condition);
-		_visit(cast(AstNode*)w.statement); }
-	void visit(DoWhileStmtNode* d) {
-		_visit(cast(AstNode*)d.condition);
-		_visit(cast(AstNode*)d.statement); }
-	void visit(ReturnStmtNode* r) {
-		if (r.expression)
-		{
-			_visit(r.expression);
-			sink.putfln("ret %s", r.expression.irVarData.name);
-		}
-		else sink.putln("ret");
-	}
-	void visit(BreakStmtNode* r) {}
-	void visit(ContinueStmtNode* r) {}
-	void visit(VariableExprNode* v) {
-		v.irVarData = makeVar(v.id);
-	}
-	void visit(LiteralExprNode* c) {
-		c.irVarData = makeVar("lit");
-		sink.putfln("%s = %s", c.irVarData.name, c.value);
-	}
-	void visit(BinaryExprNode* b) {
-		_visit(cast(AstNode*)b.left);
-		_visit(cast(AstNode*)b.right);
-		b.irVarData = makeVar("temp");
-		sink.putfln("%s = %s %s, %s", b.irVarData.name, b.op, b.left.irVarData.name, b.right.irVarData.name);
-	}
-	void visit(CallExprNode* c) {
-		foreach (arg; c.args) _visit(arg);
-		c.irVarData = makeVar("res");
-		if (c.type.isVoid) sink.putf("call %s (", c.strId(context));
-		else sink.putf("%s = call %s (", c.irVarData.name, c.strId(context));
-		foreach (i, arg; c.args)
-		{
-			sink.sink.putf("%s", arg.irVarData.name);
-			if (i+1 < c.args.length) sink.sink.put(", ");
-		}
-		sink.sink.putln(")");
-	}
-	void visit(TypeConvExprNode* t) {
-		_visit(t.type); _visit(t.expr);
-		t.irVarData = makeVar("conv");
-		sink.putfln("%s = cast(%s) %s", t.irVarData.name,
-			t.type.typeName(context), t.expr.irVarData.name);
-	}
-	void visit(BasicTypeNode* t) {}
-	void visit(UserTypeNode* t) {}
-}
-
 /// Converts AST to in-memory linear IR
 struct BinIrGenerationVisitor {
 	mixin AstVisitorMixin;
@@ -2991,6 +2876,10 @@ struct BinIrGenerationVisitor {
 	IrBasicBlock* currentBB;
 
 	Identifier tempId;
+	Identifier startId;
+	Identifier thenId;
+	Identifier elseId;
+	Identifier blkId;
 
 	int varSuffixCounter;
 	int bbCounter;
@@ -2998,20 +2887,20 @@ struct BinIrGenerationVisitor {
 	int elseCounter;
 	int uniqueSuffix() { return ++varSuffixCounter; }
 
-	IrVar makeVar(string name, TypeNode* type) { return IrVar(IrName(name, uniqueSuffix), type.irType(context)); }
-	IrVar makeVar(Identifier id, TypeNode* type) { return IrVar(IrName(context.idString(id)), type.irType(context)); }
-	IrVar makeVarSuf(Identifier id, TypeNode* type) { return IrVar(IrName(context.idString(id), uniqueSuffix), type.irType(context)); }
-
 	void visit(ModuleDeclNode* m)
 	{
 		irModule = &m.irModule;
 		tempId = context.idMap.getOrReg("__tmp");
+		startId = context.idMap.getOrReg("start");
+		thenId = context.idMap.getOrReg("then");
+		elseId = context.idMap.getOrReg("else");
+		blkId = context.idMap.getOrReg("blk");
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(FunctionDeclNode* f)
 	{
 		// create new function
-		f.irData = IrFunction(IrName(context.idString(f.id)), f.returnType.irType(context));
+		f.irData = IrFunction(IrName(f.id), f.returnType.irType(context));
 
 		// save previous function
 		auto prevFunc = curFunc;
@@ -3027,7 +2916,7 @@ struct BinIrGenerationVisitor {
 
 		// create Basic Block for function body
 		// other code will use `last` Basic Block
-		currentBB = curFunc.addBasicBlock(IrName("start"));
+		currentBB = curFunc.addBasicBlock(IrName(startId));
 
 		visit(f.block_stmt);
 
@@ -3042,11 +2931,11 @@ struct BinIrGenerationVisitor {
 	}
 	void visit(VariableDeclNode* v)
 	{
-		v.getSym.irRef = curFunc.addVariable(makeVar(v.id, v.type));
+		v.getSym.irRef = curFunc.addVariable(v.type.irType(context), IrName(v.id));
 	}
 	void visit(ParameterDeclNode* p)
 	{
-		p.getSym.irRef = curFunc.addVariable(makeVar(p.id, p.type));
+		p.getSym.irRef = curFunc.addVariable(p.type.irType(context), IrName(p.id));
 		++curFunc.numParameters;
 	}
 	void visit(StructDeclNode* s)
@@ -3068,9 +2957,10 @@ struct BinIrGenerationVisitor {
 		// prevBB links to thenBB and (afterBB or elseBB)
 		IrBasicBlock* prevBB = currentBB;
 		prevBB.exit = IrJump(IrJump.Type.jnz, i.condition.irRef);
+		curFunc.incValueUsage(i.condition.irRef);
 
 		// create Basic Block for then statement. It links to afterBB
-		IrBasicBlock* then_StartBB = curFunc.addBasicBlock(IrName("then", ++thenCounter));
+		IrBasicBlock* then_StartBB = curFunc.addBasicBlock(IrName(thenId, ++thenCounter));
 		currentBB = then_StartBB;
 		prevBB.outs ~= then_StartBB;
 
@@ -3081,14 +2971,14 @@ struct BinIrGenerationVisitor {
 		IrBasicBlock* else_EndBB;
 		if (i.elseStatement)
 		{
-			currentBB = curFunc.addBasicBlock(IrName("else", ++elseCounter));
+			currentBB = curFunc.addBasicBlock(IrName(elseId, ++elseCounter));
 			else_StartBB = currentBB;
 			prevBB.outs ~= else_StartBB;
 			_visit(i.elseStatement);
 			else_EndBB = currentBB;
 		}
 
-		IrBasicBlock* afterBB = curFunc.addBasicBlock(IrName("blk", ++bbCounter));
+		IrBasicBlock* afterBB = curFunc.addBasicBlock(IrName(blkId, ++bbCounter));
 		currentBB = afterBB;
 
 		if (!then_EndBB.isFinished)
@@ -3124,22 +3014,24 @@ struct BinIrGenerationVisitor {
 		{
 			_visit(r.expression);
 			currentBB.exit = IrJump(IrJump.Type.ret1, r.expression.irRef);
+			curFunc.incValueUsage(r.expression.irRef);
 		}
 		else currentBB.exit = IrJump(IrJump.Type.ret0);
 	}
 	void visit(BreakStmtNode* b) {}
 	void visit(ContinueStmtNode* c) {}
 	void visit(VariableExprNode* v) {
-		//writefln("VariableExprNode %s", curFunc.deref(v.getSym.irRef));
 		v.irRef = v.getSym.irRef;
+		curFunc.incValueUsage(v.irRef);
 	}
 	void visit(LiteralExprNode* c) {
-		c.irRef = curFunc.addConstant(IrConstant(c.value));
-		//writefln("LiteralExprNode %s", curFunc.deref(c.irRef));
+		c.irRef = curFunc.addConstant(IrValueType.i32, c.value);
 	}
 	void visit(BinaryExprNode* b) {
 		_visit(cast(AstNode*)b.left);
 		_visit(cast(AstNode*)b.right);
+		curFunc.incValueUsage(b.left.irRef);
+		curFunc.incValueUsage(b.right.irRef);
 		Condition condition;
 		switch(b.op)
 		{
@@ -3155,7 +3047,7 @@ struct BinIrGenerationVisitor {
 			case BinOp.LESS_EQUAL: condition = Condition.LE; goto case BinOp.MINUS;
 			case BinOp.PLUS: goto case BinOp.MINUS;
 			case BinOp.MINUS:
-				b.irRef = curFunc.addVariable(makeVarSuf(tempId, b.type));
+				b.irRef = curFunc.addVariable(b.type.irType(context), IrName(tempId, uniqueSuffix));
 				auto instr = IrInstruction(binOpToIrOpcode[b.op], b.irRef, b.left.irRef, b.right.irRef);
 				instr.condition = condition;
 				currentBB.emit(instr);
@@ -3167,13 +3059,14 @@ struct BinIrGenerationVisitor {
 	}
 	void visit(CallExprNode* c) {
 		foreach (arg; c.args) _visit(arg);
-		c.irRef = curFunc.addVariable(makeVarSuf(tempId, c.getSym.getType));
-		IrRef destination;
-		if (!c.type.isVoid) destination = c.irRef;
-		currentBB.emit(IrInstruction(IrOpcode.o_call, destination, c.args.length, c.getSym));
+		if (!c.type.isVoid) {
+			c.irRef = curFunc.addVariable(c.getSym.getType.irType(context), IrName(tempId, uniqueSuffix));
+		}
+		currentBB.emit(IrInstruction(IrOpcode.o_call, c.irRef, c.args.length, c.getSym));
 		foreach (arg; c.args)
 		{
-			currentBB.emit(IrInstruction(IrOpcode.o_arg, IrRef(), arg.irRef));
+			currentBB.emit(IrInstruction(IrOpcode.o_arg, IrValueRef(), arg.irRef));
+			curFunc.incValueUsage(arg.irRef);
 		}
 	}
 	void visit(TypeConvExprNode* t) {
@@ -3209,7 +3102,7 @@ struct IrModule
 
 	void dump(ref TextSink sink, CompilationContext* context)
 	{
-		foreach (func; functions) func.dump(sink, context);
+		foreach (func; functions) dumpFunction(*func, sink, context);
 	}
 }
 
@@ -3231,22 +3124,37 @@ struct IrFunction
 
 	size_t numBasicBlocks;
 
-	/// This array is indexed with -int.max..-1 IrRef values. -1 is index 0, -2 is 1 etc.
-	IrConstant[] constants;
+	/// This values are of kind IrValueKind.con
+	IrValue[] constants;
+	IrConstantData[] constantData;
 
 	/// This array begins with all parameters
-	/// This array is indexed with 0..int.max IrRef values
-	IrVar[] variables;
+	/// This values are of kind IrValueKind.var
+	IrValue[] values;
+
+	/// Contains names for `variables`. Is either empty or the same length as `variables`
+	IrName[] variableNames;
 
 	/// Parameters are saved as first `numParameters` items of `variables` array
 	size_t numParameters;
 
-	IrVar[] parameters() { return variables[0..numParameters]; }
+	IrValue[] parameters() { return values[0..numParameters]; }
 
-	IrVarOrConstant deref(IrRef reference) {
-		if (reference.index > 0) return IrVarOrConstant(reference, variables[ reference.index-1]);
-		if (reference.index < 0) return IrVarOrConstant(reference, constants[-reference.index-1]);
-		assert(false, "Attempting to deref zero reference");
+	ValuePrintProxy valueText(CompilationContext* ctx, IrValueRef reference) {
+		auto result = ValuePrintProxy(ctx, reference);
+		final switch(reference.kind) {
+			case IrValueKind.con: result.constData = constantData[reference.index].value; break;
+			case IrValueKind.var: result.name = variableNames[reference.index]; break;
+		}
+		return result;
+	}
+
+	IrValue deref(IrValueRef reference) {
+		assert(reference.isDefined, "Attempting to deref zero reference");
+		final switch(reference.kind) {
+			case IrValueKind.con: return constants[reference.index];
+			case IrValueKind.var: return values[reference.index];
+		}
 	}
 
 	/// Automatically sets `start`, sets last and links blocks together
@@ -3260,86 +3168,124 @@ struct IrFunction
 		return newBlock;
 	}
 
-	IrRef addConstant(IrConstant constant)
+	/// Increments numUses of value
+	void incValueUsage(IrValueRef reference)
 	{
-		constants ~= constant;
-		int index = -cast(int)constants.length;
-		return IrRef(index);
-	}
-
-	IrRef addVariable(IrVar variable)
-	{
-		variables ~= variable;
-		int index = cast(int)variables.length;
-		return IrRef(index);
-	}
-
-	void dump(ref TextSink sink, CompilationContext* context)
-	{
-		sink.putf("function %s $%s (", returnType, name);
-		foreach (i, param; parameters)
-		{
-			sink.putf("%s %%%s", param.type, param.name);
-			if (i+1 < parameters.length) sink.put(", ");
+		assert(reference.isDefined, "Attempting to incValueUsage zero reference");
+		final switch(reference.kind) {
+			case IrValueKind.con: ++constants[reference.index].numUses; break;
+			case IrValueKind.var: ++values[reference.index].numUses; break;
 		}
-		sink.putln(") {");
+	}
 
-		for (IrBasicBlock* block = start; block; block = block.next)
+	IrValueRef addConstant(IrValueType type, ulong data)
+	{
+		IrValue val = IrValue(IrValueKind.con, type, 0);
+		uint index = cast(uint)constants.length;
+		constants ~= val;
+		constantData ~= IrConstantData(data);
+		return IrValueRef(index, IrValueKind.con, type);
+	}
+
+	IrValueRef addVariable(IrValueType type, IrName name)
+	{
+		IrValue val = IrValue(IrValueKind.var, type, 0);
+		uint index = cast(uint)values.length;
+		values ~= val;
+		variableNames ~= name;
+		return IrValueRef(index, IrValueKind.var, type);
+	}
+}
+
+void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ctx)
+{
+	sink.putf("function %s $%s (", func.returnType, IrNameProxy(ctx, func.name));
+	foreach (i, param; func.parameters)
+	{
+		sink.putf("%s %%%s", param.type, IrNameProxy(ctx, func.variableNames[i]));
+		if (i+1 < func.parameters.length) sink.put(", ");
+	}
+	sink.putln(") {");
+
+	sink.putln("constants:");
+	sink.putln("  #   T uses value");
+	foreach (i, value; func.constants)
+	{
+		sink.putfln("% 3s %s% 5s % 5s",
+			i, value.type, value.numUses, func.constantData[i].value);
+	}
+	sink.putln;
+
+	sink.putln("variables:");
+	sink.putln("  #   T uses id");
+	foreach (i, value; func.values)
+	{
+		sink.putfln("% 3s %s% 5s %s",
+			i, value.type, value.numUses, IrNameProxy(ctx, func.variableNames[i]));
+	}
+	sink.putln;
+
+	for (IrBasicBlock* block = func.start; block; block = block.next)
+	{
+		sink.putfln("  @%s", IrNameProxy(ctx, block.name));
+
+		// print all instructions
+		foreach(instr_i, ref instr; block.instructions)
 		{
-			sink.putfln("  @%s", block.name);
-
-			// print all instructions
-			foreach(instr_i, ref instr; block.instructions)
-			{
-				final switch(instr.op) with(IrOpcode) {
-					case o_icmp:
-						sink.putfln("    %s = icmp %s %s, %s",
-							deref(instr.to),
-							instr.condition,
-							deref(instr.arg0),
-							deref(instr.arg1));
-						break;
-					// Arithmetic
-					case o_add, o_sub, o_div, o_rem, o_udiv, o_urem, o_mul:
-						sink.putfln("    %s = %s %s, %s",
-							deref(instr.to),
-							irOpcodeNames[instr.op],
-							deref(instr.arg0),
-							deref(instr.arg1));
-						break;
-					case o_assign:
-						sink.putfln("    %s = %s",
-							deref(instr.to),
-							deref(instr.arg0));
-						break;
-					case o_call:
-						if (!instr.to.isDefined)
-							sink.putf("    call $%s(", context.idString(instr.callee.id));
-						else
-							sink.putf("    %s = call $%s(", deref(instr.to), context.idString(instr.callee.id));
-						foreach (arg_i, ref arg; block.instructions[instr_i+1..instr_i+instr.numArgs+1])
-						{
-							sink.putf("%s", deref(arg.arg0));
-							if (arg_i+1 < instr.numArgs) sink.put(", ");
-						}
-						sink.putln(")");
-						break;
-					case o_arg: break;
-				}
-			}
-
-			// print jump/return at the end of block
-			final switch(block.exit.type) with(IrJump.Type) {
-				case none: sink.putln("  // block not sealed"); break;
-				case ret0: sink.putln("    return"); break;
-				case ret1: sink.putfln("    return %s", deref(block.exit.value)); break;
-				case jmp:  sink.putfln("    jmp @%s", block.outs[0].name); break;
-				case jnz:  sink.putfln("    jnz %s @%s, @%s",
-					deref(block.exit.value), block.outs[0].name, block.outs[1].name); break;
+			final switch(instr.op) with(IrOpcode) {
+				case o_icmp:
+					sink.putfln("    %s = icmp %s %s, %s",
+						func.valueText(ctx, instr.to),
+						instr.condition,
+						func.valueText(ctx, instr.arg0),
+						func.valueText(ctx, instr.arg1));
+					break;
+				// Arithmetic
+				case o_add, o_sub, o_div, o_rem, o_udiv, o_urem, o_mul:
+					sink.putfln("    %s = %s %s, %s",
+						func.valueText(ctx, instr.to),
+						irOpcodeNames[instr.op],
+						func.valueText(ctx, instr.arg0),
+						func.valueText(ctx, instr.arg1));
+					break;
+				case o_assign:
+					sink.putfln("    %s = %s",
+						func.valueText(ctx, instr.to),
+						func.valueText(ctx, instr.arg0));
+					break;
+				case o_call:
+					if (!instr.to.isDefined)
+						sink.putf("    call $%s(", ctx.idString(instr.callee.id));
+					else
+						sink.putf("    %s = call $%s(", func.valueText(ctx, instr.to), ctx.idString(instr.callee.id));
+					foreach (arg_i, ref arg; block.instructions[instr_i+1..instr_i+instr.numArgs+1])
+					{
+						sink.putf("%s", func.valueText(ctx, arg.arg0));
+						if (arg_i+1 < instr.numArgs) sink.put(", ");
+					}
+					sink.putln(")");
+					break;
+				case o_arg: break;
 			}
 		}
-		sink.putln("}");
+
+		// print jump/return at the end of block
+		final switch(block.exit.type) with(IrJump.Type) {
+			case none: sink.putln("  // block not sealed"); break;
+			case ret0: sink.putln("    return"); break;
+			case ret1: sink.putfln("    return %s", func.valueText(ctx, block.exit.value)); break;
+			case jmp:  sink.putfln("    jmp @%s", IrNameProxy(ctx, block.outs[0].name)); break;
+			case jnz:  sink.putfln("    jnz %s @%s, @%s",
+				func.valueText(ctx, block.exit.value), IrNameProxy(ctx, block.outs[0].name), IrNameProxy(ctx, block.outs[1].name)); break;
+		}
 	}
+	sink.putln("}");
+}
+
+enum IrValueKind : ubyte
+{
+	con, // constant
+	var, // variable
 }
 
 /// According to WebAssembly spec
@@ -3351,46 +3297,114 @@ enum IrValueType : ubyte
 	//f64,
 }
 
-struct IrVarOrConstant
+/// Represents a variable, temporary or constant in a function
+struct IrValue
 {
-	this(IrRef irRef, ref IrVar var) { this.irRef = irRef; isVar = true; varPtr = &var; }
-	this(IrRef irRef, ref IrConstant con) { this.irRef = irRef; isVar = false; conPtr = &con; }
-	bool isVar;
-	IrRef irRef;
-	union {
-		IrVar* varPtr;
-		IrConstant* conPtr;
+	this(IrValueKind kind, IrValueType type, ushort numUses) {
+		this.kind = kind;
+		this.type = type;
+		this.numUses = numUses;
 	}
-	void toString()(scope void delegate(const(char)[]) sink) {
-		if (isVar) { sink("%"); varPtr.name.toString(sink); }
-		else conPtr.toString(sink);
-	}
-	IrValueType type() {
-		if (isVar) return varPtr.type;
-		else return conPtr.type;
-	}
-}
 
-struct IrVar
-{
-	IrName name;
-	IrValueType type;
-	bool isDirty; // true if value in register is newer than value in memory
+	mixin(bitfields!(
+		IrValueKind, "kind",     2, // const, var
+		IrValueType, "type",     2, // int, float, bool
+		bool,        "isDirty",  1, // true if value in register is newer than value in memory
+		uint,        "",         3)
+	);
+	/// Used by register allocation code to indicate register that contains this value
 	RegisterRef reg;
+	/// Indicates number of uses. There can be multiple uses per instruction.
+	/// 0 means unused, 1 means temporary, or more
+	ushort numUses;
+
+	/// index in values, constants, constantData, variableNames
+	ushort index;
+
+	bool isVar() { return kind == IrValueKind.var; }
+	bool isCon() { return kind == IrValueKind.con; }
 }
 
-struct IrConstant
+struct IrValueRef
 {
-	long value;
-	IrValueType type;
+	this(uint index, IrValueKind kind, IrValueType type) {
+		this.index = index;
+		this.kind = kind;
+		this.type = type;
+		this.isDefined = true;
+	}
+	mixin(bitfields!(
+		/// Negative indicies represent constants
+		/// Positive represent a result of an instruction
+		/// Zero is used when no ref is given
+		uint,        "index",     27,
+		/// con, var
+		IrValueKind, "kind",       2,
+		IrValueType, "type",       2, // int, float, bool
+		bool,        "isDefined",  1,
+	));
+
+	/// Returns true if reference has no destination
+	bool isVar() { return kind == IrValueKind.var; }
+	bool isCon() { return kind == IrValueKind.con; }
+}
+
+/// Stores data for the IrValue of `con` kind with the same index
+struct IrConstantData
+{
+	long value; // raw bits of constant data
 	void toString()(scope void delegate(const(char)[]) sink) {
 		sink.formattedWrite("%s", value);
+	}
+}
+
+struct IrName
+{
+	Identifier id;
+	uint suffix;
+}
+
+struct IrNameProxy
+{
+	CompilationContext* ctx;
+	IrName name;
+	void toString(scope void delegate(const(char)[]) sink) {
+		if (name.suffix == 0) sink.formattedWrite("%s", ctx.idString(name.id));
+		else sink.formattedWrite("%s_%s", ctx.idString(name.id), name.suffix);
+	}
+}
+
+struct ValuePrintProxy
+{
+	CompilationContext* ctx;
+	IrValueRef reference;
+	union {
+		IrName name;
+		long constData;
+	}
+	void toString(scope void delegate(const(char)[]) sink) {
+		if (reference.isDefined)
+		{
+			final switch(reference.kind) {
+				case IrValueKind.con:
+					sink.formattedWrite("%s", constData);
+					break;
+				case IrValueKind.var:
+					if (name.suffix == 0) sink.formattedWrite("%%%s", ctx.idString(name.id));
+					else sink.formattedWrite("%%%s_%s", ctx.idString(name.id), name.suffix);
+					break;
+			}
+		}
+		else sink("<undefined>");
 	}
 }
 
 struct IrBasicBlock
 {
 	IrName name;
+
+	/// Address of this Basic Block in generated code
+	PC startPC;
 
 	/// BBs that jump to this block
 	IrBasicBlock*[] ins;
@@ -3402,7 +3416,7 @@ struct IrBasicBlock
 	IrInstruction[] instructions;
 
 	/// This variables are live at the end of this Basic Block
-	IrRef[] liveVars;
+	IrValueRef[] liveVars;
 
 	/// Specifies the last instruction of this Basic Block
 	/// Jumps use `outs` for targets
@@ -3410,9 +3424,6 @@ struct IrBasicBlock
 
 	/// Next node in linked listed of Basic Blocks of the function
 	IrBasicBlock* next;
-
-	/// Address of this Basic Block in generated code
-	PC startPC;
 
 	void emit(IrInstruction instr)
 	{
@@ -3435,7 +3446,7 @@ struct IrJump
 	}
 
 	Type type;
-	IrRef value; /// return value reference, or condition for jnz
+	IrValueRef value; /// return value reference, or condition for jnz
 	/// Used by backend, for:
 	///   - first `jnz` instruction
 	///   - `jmp` instruction
@@ -3497,41 +3508,19 @@ immutable IrOpcode[] binOpToIrOpcode = [
 
 struct IrInstruction
 {
-	this(IrOpcode op, IrRef to) { this.op = op; this.to = to; }
-	this(IrOpcode op, IrRef to, IrRef arg0) { this.op = op; this.to = to; this.arg0 = arg0; }
-	this(IrOpcode op, IrRef to, IrRef arg0, IrRef arg1) { this.op = op; this.to = to; this.arg0 = arg0; this.arg1 = arg1; }
-	//this(IrOpcode op, IrRef to, size_t value) { this.op = op; this.to = to; this.value = value; }
-	this(IrOpcode op, IrRef to, size_t numArgs, Symbol* callee) { this.op = op; this.to = to; this.numArgs = numArgs; this.callee = callee; }
+	this(IrOpcode op, IrValueRef to) { this.op = op; this.to = to; }
+	this(IrOpcode op, IrValueRef to, IrValueRef arg0) { this.op = op; this.to = to; this.arg0 = arg0; }
+	this(IrOpcode op, IrValueRef to, IrValueRef arg0, IrValueRef arg1) { this.op = op; this.to = to; this.arg0 = arg0; this.arg1 = arg1; }
+	//this(IrOpcode op, IrValueRef to, size_t value) { this.op = op; this.to = to; this.value = value; }
+	this(IrOpcode op, IrValueRef to, size_t numArgs, Symbol* callee) { this.op = op; this.to = to; this.numArgs = numArgs; this.callee = callee; }
 
 	IrOpcode op;
 	Condition condition;
-	IrRef to;
+	IrValueRef to;
 	union {
-		struct { IrRef arg0, arg1; }
+		struct { IrValueRef arg0, arg1; }
 		//struct { size_t value;     }
 		struct { size_t numArgs; Symbol* callee; }
-	}
-}
-
-struct IrRef
-{
-	/// Negative indicies represent constants
-	/// Positive represent a result of an instruction
-	/// Zero is used when no ref is given
-	int index;
-
-	/// Returns true if reference has no destination
-	bool isDefined() { return index != 0; }
-	bool isVar() { return index > 0; }
-}
-
-struct IrName
-{
-	string name;
-	int suffix;
-	void toString()(scope void delegate(const(char)[]) sink) {
-		if (suffix == 0) sink.formattedWrite("%s", name);
-		else sink.formattedWrite("%s_%s", name, suffix);
 	}
 }
 
@@ -3566,7 +3555,7 @@ struct IrToSSAVisitor
 //          ####     ###    #####    #######    #####  #######  #     #
 // -----------------------------------------------------------------------------
 
-enum MAX_REGS = 64;
+enum MAX_REGS = 14;
 
 /// Stores info about all avaliable registers of the same class
 /// Classes are (general purpose aka GPR, floating point FP, flags)
@@ -3574,7 +3563,7 @@ struct RegisterClass
 {
 	int[MAX_REGS] Name;
 	int[MAX_REGS] Next;
-	bool[MAX_REGS] Free;
+	Bits free;
 	int[MAX_REGS] Stack;
 	int StackTop;
 }
@@ -3597,7 +3586,7 @@ struct RegisterRef
 /// State of single machine register
 struct RegisterState
 {
-	IrRef storedValue;
+	IrValueRef storedValue;
 	bool isUsed() { return storedValue.isDefined; }
 }
 
@@ -3667,19 +3656,8 @@ struct IrToAmd64
 	void compileFuncProlog()
 	{
 		numParams = cast(int)curFunc.numParameters;
-		numLocals = cast(int)(curFunc.variables.length - numParams);
+		numLocals = cast(int)(curFunc.values.length - numParams);
 		numVars = numLocals + numParams;
-
-		/* save parameters to stack before setting frame ptr
-		// C calling convention on Windows
-		// Copy parameters from registers to shadow space
-		// parameter 5 RSP + 40
-		if (numParams > 3) gen.movq(memAddrBaseDisp8(Register.SP, 32), Register.R9); // save fourth parameter
-		if (numParams > 2) gen.movq(memAddrBaseDisp8(Register.SP, 24), Register.R8); // save third parameter
-		if (numParams > 1) gen.movq(memAddrBaseDisp8(Register.SP, 16), Register.DX); // save second parameter
-		if (numParams > 0) gen.movq(memAddrBaseDisp8(Register.SP,  8), Register.CX); // save first parameter
-		// RSP + 0 points to RET
-		*/
 
 		// Establish frame pointer
 		if (USE_FRAME_POINTER)
@@ -3702,53 +3680,60 @@ struct IrToAmd64
 		}
 
 		/* save parameters to stack after setting frame ptr */
-		if (numParams > 3) gen.movq(localVarMemAddress(3), Register.R9); // save first parameter
-		if (numParams > 2) gen.movq(localVarMemAddress(2), Register.R8); // save first parameter
-		if (numParams > 1) gen.movq(localVarMemAddress(1), Register.DX); // save first parameter
+		if (numParams > 3) gen.movq(localVarMemAddress(3), Register.R9); // save fourth parameter
+		if (numParams > 2) gen.movq(localVarMemAddress(2), Register.R8); // save third parameter
+		if (numParams > 1) gen.movq(localVarMemAddress(1), Register.DX); // save second parameter
 		if (numParams > 0) gen.movq(localVarMemAddress(0), Register.CX); // save first parameter
 	}
 
-	Register ensureLoaded(IrVarOrConstant value)
+	void saveDirtyRegisters()
 	{
+
+	}
+
+	Register ensureLoaded(IrValueRef value)
+	{
+		//value.
 		return RET_REG;
 	}
 
-	Register loadValue(IrVarOrConstant value, Register reg)
+	Register loadValue(IrValueRef value, Register reg)
 	{
+		assert(value.isDefined);
 		final switch(value.type)
 		{
 			case IrValueType.i32:
-				if (value.isVar) gen.movd(reg, localVarMemAddress(value.irRef));
-				else gen.movd(reg, Imm32(cast(uint)value.conPtr.value));
+				if (value.isVar) gen.movd(reg, localVarMemAddress(value));
+				else gen.movd(reg, Imm32(cast(uint)curFunc.constantData[value.index].value));
 				break;
 			case IrValueType.i64:
-				if (value.isVar) gen.movq(reg, localVarMemAddress(value.irRef));
-				else gen.movq(reg, Imm64(value.conPtr.value));
+				if (value.isVar) gen.movq(reg, localVarMemAddress(value));
+				else gen.movq(reg, Imm64(curFunc.constantData[value.index].value));
 				break;
 		}
 		return reg;
 	}
 
-	void storeValue(IrVarOrConstant dest, IrVarOrConstant src)
+	void storeValue(IrValueRef dest, IrValueRef src)
 	{
-		auto toVarOrConst = curFunc.deref(dest.irRef);
+		auto toVarOrConst = curFunc.deref(dest);
 		if (!toVarOrConst.isVar)
 			context.internal_error("Assignment into a constant");
 		final switch(src.type)
 		{
 			case IrValueType.i32:
 				if (src.isVar) {
-					gen.movd(TEMP_REG_0, localVarMemAddress(src.irRef));
-					gen.movd(localVarMemAddress(dest.irRef), TEMP_REG_0);
+					gen.movd(TEMP_REG_0, localVarMemAddress(src));
+					gen.movd(localVarMemAddress(dest), TEMP_REG_0);
 				}
 				else {
-					gen.movq(localVarMemAddress(dest.irRef), Imm32(cast(uint)src.conPtr.value));
+					gen.movq(localVarMemAddress(dest), Imm32(cast(uint)curFunc.constantData[src.index].value));
 				}
 				break;
 			case IrValueType.i64:
-				if (src.isVar) gen.movq(TEMP_REG_0, localVarMemAddress(src.irRef));
-				else gen.movq(TEMP_REG_0, Imm64(src.conPtr.value));
-				gen.movq(localVarMemAddress(dest.irRef), TEMP_REG_0);
+				if (src.isVar) gen.movq(TEMP_REG_0, localVarMemAddress(src));
+				else gen.movq(TEMP_REG_0, Imm64(curFunc.constantData[src.index].value));
+				gen.movq(localVarMemAddress(dest), TEMP_REG_0);
 				break;
 		}
 	}
@@ -3769,8 +3754,8 @@ struct IrToAmd64
 						if (arg0.type != arg1.type)
 							context.internal_error("Type mismatch: %s != %s. In BB `%s`",
 								arg0.type, arg1.type, block.name);
-						auto reg0 = loadValue(arg0, TEMP_REG_0);
-						auto reg1 = loadValue(arg1, TEMP_REG_1);
+						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
+						auto reg1 = loadValue(instr.arg1, TEMP_REG_1);
 						final switch(arg0.type)
 						{
 							case IrValueType.i32: gen.cmpd(reg0, reg1); break;
@@ -3798,8 +3783,8 @@ struct IrToAmd64
 					case o_add, o_sub:
 						auto arg0 = curFunc.deref(instr.arg0);
 						auto arg1 = curFunc.deref(instr.arg1);
-						auto reg0 = loadValue(arg0, TEMP_REG_0);
-						auto reg1 = loadValue(arg1, TEMP_REG_1);
+						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
+						auto reg1 = loadValue(instr.arg1, TEMP_REG_1);
 
 						switch(instr.op)
 						{
@@ -3836,38 +3821,32 @@ struct IrToAmd64
 
 						break;
 					case o_assign:
-						storeValue(curFunc.deref(instr.to), curFunc.deref(instr.arg0));
+						storeValue(instr.to, instr.arg0);
 						break;
-					case o_call:
-						break;
-					case o_arg: break;
+					//case o_call:
+					//	break;
+					//case o_arg: break;
 					default:
 						context.internal_error("Compilation of `%s` is not implemented. In BB `%s`",
 							instr.op, block.name);
 						break;
 				}
 			}
-			void checkFixup(PC pc) {
-				if (pc is null)
-					context.internal_error(
-						"Fixup is zero for block `%s`", block.name);
-			}
+
 			final switch(block.exit.type) with(IrJump.Type) {
 				case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); break;
 				case ret1:
-					auto reg0 = loadValue(curFunc.deref(block.exit.value), RET_REG);
+					auto reg0 = loadValue(block.exit.value, RET_REG);
 					goto case;
 				case ret0:
 					// ignore jump in the last Basic Block
 					if (block.next is null) break;
 					block.exit.fixup0 = gen.pc;
-					//checkFixup(block.exit.fixup0);
 					gen.jmp(Imm32(0));
 					break;
 				case jmp:
 					if (block.next != block.outs[0]) {
 						block.exit.fixup0 = gen.pc;
-						//checkFixup(block.exit.fixup0);
 						gen.jmp(Imm32(0));
 					}
 					break;
@@ -3876,13 +3855,12 @@ struct IrToAmd64
 					//checkFixup(block.exit.fixup0);
 					if (!block.exit.useFlagForCmp)
 					{
-						auto reg0 = loadValue(curFunc.deref(block.exit.value), TEMP_REG_0);
+						auto reg0 = loadValue(block.exit.value, TEMP_REG_0);
 						gen.testd(TEMP_REG_0, TEMP_REG_0);
 					}
 					gen.jcc(Condition.NZ, Imm32(0));
 					if (block.next != block.outs[1]) {
 						block.exit.fixup1 = gen.pc;
-						//checkFixup(block.exit.fixup1);
 						gen.jmp(Imm32(0));
 					}
 					break;
@@ -3948,10 +3926,10 @@ struct IrToAmd64
 		gen.ret();
 	}
 
-	MemAddress localVarMemAddress(IrRef varRef)
+	MemAddress localVarMemAddress(IrValueRef varRef)
 	{
 		assert(varRef.isVar);
-		return localVarMemAddress(varRef.index-1);
+		return localVarMemAddress(varRef.index);
 	}
 
 	MemAddress localVarMemAddress(int varIndex)
