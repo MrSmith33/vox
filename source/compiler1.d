@@ -318,12 +318,10 @@ q{i32 sign(i32 number)
 
 		auto time5 = currTime;
 			//astPrinter.printAst(cast(AstNode*)mod);
+			//writeln;
 			context.throwOnErrors;
 
 		auto time6 = currTime;
-			//auto text_irgen = TextIrGenerationVisitor(&context);
-			//text_irgen.visit(mod);
-			//context.throwOnErrors;
 
 		auto time7 = currTime;
 			auto bin_irgen = BinIrGenerationVisitor(&context);
@@ -332,18 +330,23 @@ q{i32 sign(i32 number)
 			context.throwOnErrors;
 
 		auto time8 = currTime;
+			auto opt_pass = OptimizeIrPass(&context);
+			opt_pass.visit(bin_irgen.irModule);
+			context.throwOnErrors;
+
+		auto time9 = currTime;
 			bin_irgen.irModule.codeBuffer = codeBuffer;
 			auto codegen_pass = IrToAmd64(&context);
 			codegen_pass.visit(bin_irgen.irModule);
 
-		auto time9 = currTime;
+		auto time10 = currTime;
 			auto funDecl = mod.findFunction("sign", &context);
 			alias FunType = extern(C) int function(int);
 			FunType fun;
 			int res1;
 			int res2;
 			int res3;
-			if (funDecl)
+			if (funDecl.irData.funcPtr)
 			{
 				fun = cast(FunType)funDecl.irData.funcPtr;
 				foreach(_; 0..10_000)
@@ -354,22 +357,15 @@ q{i32 sign(i32 number)
 				}
 			}
 
-		auto time10 = currTime;
-			writefln("codeBuffer %s", codeBuffer.ptr);
-			writefln("fun %s", fun);
-			writefln("sign(10) -> %s", res1);
-			writefln("sign(0) -> %s", res2);
-			writefln("sign(-10) -> %s", res3);
-
 		auto time11 = currTime;
+
+		auto time12 = currTime;
 			// Text dump
 			writeln("// source code");
 			writeln(context.input);
-			//writeln;
-			//writeln("// Generated from AST directly");
-			//writeln(text_irgen.sink.sink.text);
+
 			TextSink sink;
-			bin_irgen.irModule.dump(sink, &context);
+			bin_irgen.irModule.dump(sink, &context, false);
 			writeln;
 			writeln("// Generated from binary IR");
 			writeln(sink.text);
@@ -385,10 +381,17 @@ q{i32 sign(i32 number)
 		writefln("semantic lookup %ss", scaledNumberFmt(time4-time3));
 		writefln("semantic types %ss", scaledNumberFmt(time5-time4));
 		writefln("print2 %ss", scaledNumberFmt(time6-time5));
-		//writefln("IR text gen %ss", scaledNumberFmt(time7-time6));
 		writefln("IR bin gen %ss", scaledNumberFmt(time8-time7));
-		writefln("Codegen %ss", scaledNumberFmt(time9-time8));
-		writefln("fun run x3 %ss", scaledNumberFmt(time10-time9));
+		writefln("IR opt %ss", scaledNumberFmt(time9-time8));
+		writefln("Codegen %ss", scaledNumberFmt(time10-time9));
+		/*
+		writefln("fun run x3 %ss", scaledNumberFmt(time11-time10));
+		writefln("codeBuffer %s", codeBuffer.ptr);
+		writefln("fun %s", fun);
+		writefln("sign(10) -> %s", res1);
+		writefln("sign(0) -> %s", res2);
+		writefln("sign(-10) -> %s", res3);
+		*/
 	}
 	catch(CompilationException e) {
 		writeln(context.sink.text);
@@ -2953,16 +2956,33 @@ struct BinIrGenerationVisitor {
 	void visit(IfStmtNode* i)
 	{
 		_visit(cast(AstNode*)i.condition);
+		IrValueRef condRef = i.condition.irRef;
 
-		// prevBB links to thenBB and (afterBB or elseBB)
+		// invert condition, so that we jump to else on success
+		auto lastInstr = &currentBB.instructions[$-1];
+		if (lastInstr.op == IrOpcode.o_icmp)
+		{
+			lastInstr.condition = complementaryCondition(lastInstr.condition);
+		}
+		else
+		{
+			auto notCond = curFunc.addVariable(i.condition.type.irType(context), IrName(tempId, uniqueSuffix));
+			auto instr = IrInstruction(IrOpcode.o_not, notCond, condRef);
+			currentBB.emit(instr);
+			//writefln("incValueUsage cond1 %s %s", condRef.kind, condRef.index);
+			curFunc.incValueUsage(condRef);
+			condRef = notCond;
+		}
+
+		// prevBB links to elseBB and (afterBB or thenBB)
 		IrBasicBlock* prevBB = currentBB;
-		prevBB.exit = IrJump(IrJump.Type.jnz, i.condition.irRef);
-		curFunc.incValueUsage(i.condition.irRef);
+		prevBB.exit = IrJump(IrJump.Type.branch, condRef);
+		//writefln("incValueUsage cond2 %s %s", condRef.kind, condRef.index);
+		curFunc.incValueUsage(condRef);
 
 		// create Basic Block for then statement. It links to afterBB
 		IrBasicBlock* then_StartBB = curFunc.addBasicBlock(IrName(thenId, ++thenCounter));
 		currentBB = then_StartBB;
-		prevBB.outs ~= then_StartBB;
 
 		_visit(cast(AstNode*)i.thenStatement);
 		IrBasicBlock* then_EndBB = currentBB;
@@ -2999,6 +3019,7 @@ struct BinIrGenerationVisitor {
 		{
 			prevBB.outs ~= afterBB;
 		}
+		prevBB.outs ~= then_StartBB;
 	}
 	void visit(WhileStmtNode* w) {
 		//_visit(cast(AstNode*)w.condition);
@@ -3014,6 +3035,7 @@ struct BinIrGenerationVisitor {
 		{
 			_visit(r.expression);
 			currentBB.exit = IrJump(IrJump.Type.ret1, r.expression.irRef);
+			//writefln("incValueUsage ret %s %s", r.expression.irRef.kind, r.expression.irRef.index);
 			curFunc.incValueUsage(r.expression.irRef);
 		}
 		else currentBB.exit = IrJump(IrJump.Type.ret0);
@@ -3022,7 +3044,6 @@ struct BinIrGenerationVisitor {
 	void visit(ContinueStmtNode* c) {}
 	void visit(VariableExprNode* v) {
 		v.irRef = v.getSym.irRef;
-		curFunc.incValueUsage(v.irRef);
 	}
 	void visit(LiteralExprNode* c) {
 		c.irRef = curFunc.addConstant(IrValueType.i32, c.value);
@@ -3032,6 +3053,8 @@ struct BinIrGenerationVisitor {
 		_visit(cast(AstNode*)b.right);
 		curFunc.incValueUsage(b.left.irRef);
 		curFunc.incValueUsage(b.right.irRef);
+		//writefln("incValueUsage expr1 %s %s", b.left.irRef.kind, b.left.irRef.index);
+		//writefln("incValueUsage expr2 %s %s", b.right.irRef.kind, b.right.irRef.index);
 		Condition condition;
 		switch(b.op)
 		{
@@ -3066,6 +3089,7 @@ struct BinIrGenerationVisitor {
 		foreach (arg; c.args)
 		{
 			currentBB.emit(IrInstruction(IrOpcode.o_arg, IrValueRef(), arg.irRef));
+			//writefln("incValueUsage arg %s %s", arg.irRef.kind, arg.irRef.index);
 			curFunc.incValueUsage(arg.irRef);
 		}
 	}
@@ -3078,6 +3102,46 @@ struct BinIrGenerationVisitor {
 	}
 	void visit(BasicTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
+}
+
+struct OptimizeIrPass {
+	CompilationContext* ctx;
+
+	void visit(IrModule* m) {
+		ctx.assertf(m !is null, "Module IR is null");
+		foreach (func; m.functions) visit(func);
+	}
+
+	void visit(IrFunction* func)
+	{
+		for (IrBasicBlock* block = func.start; block; block = block.next)
+		{
+			/// If jump target is a basic block that only jumps to another block,
+			/// jump straight to it recursively
+			void skipEmptyBlockJump(ref IrBasicBlock* target)
+			{
+				while(target && target.isRedundant)
+				{
+					func.removeBasicBlock(target);
+					// copy jmp or ret0 type
+					block.exit.type = target.exit.type;
+					// copy jmp target or null
+					target = target.outs[0];
+				}
+			}
+
+			switch(block.exit.type) with(IrJump.Type) {
+				case branch:
+					skipEmptyBlockJump(block.outs[0]);
+					skipEmptyBlockJump(block.outs[1]);
+					break;
+				case jmp:
+					skipEmptyBlockJump(block.outs[0]);
+					break;
+				default: break;
+			}
+		}
+	}
 }
 
 //                               #####   ######
@@ -3100,9 +3164,9 @@ struct IrModule
 		functions ~= fun;
 	}
 
-	void dump(ref TextSink sink, CompilationContext* context)
+	void dump(ref TextSink sink, CompilationContext* context, bool printVars = false)
 	{
-		foreach (func; functions) dumpFunction(*func, sink, context);
+		foreach (func; functions) dumpFunction(*func, sink, context, printVars);
 	}
 }
 
@@ -3158,28 +3222,65 @@ struct IrFunction
 	}
 
 	/// Automatically sets `start`, sets last and links blocks together
-	IrBasicBlock* addBasicBlock(IrName name)
-	{
+	IrBasicBlock* addBasicBlock(IrName name) {
 		++numBasicBlocks;
 		auto newBlock = new IrBasicBlock(name);
 		if (start is null) start = newBlock;
-		else last.next = newBlock;
+		else
+		{
+			newBlock.prev = last;
+			last.next = newBlock;
+		}
 		last = newBlock;
 		return newBlock;
 	}
 
+	void removeBasicBlock(IrBasicBlock* bb) {
+		if (bb.prev)
+		{
+			if (bb.next)
+			{
+				bb.prev.next = bb.next;
+				bb.next.prev = bb.prev;
+			}
+			else
+			{
+				assert(last == bb);
+				last = bb.prev;
+				last.next = null;
+			}
+		}
+		else if (bb.next)
+		{
+			assert(start == bb);
+			start = bb.next;
+			start.prev = null;
+		}
+		else
+		{
+			// This may be an already deleted block
+			if (bb == start)
+			{
+				start = null;
+				assert(last == bb);
+				last = null;
+			}
+		}
+		bb.next = null;
+		bb.prev = null;
+	}
+
 	/// Increments numUses of value
-	void incValueUsage(IrValueRef reference)
-	{
+	void incValueUsage(IrValueRef reference) {
 		assert(reference.isDefined, "Attempting to incValueUsage zero reference");
+
 		final switch(reference.kind) {
 			case IrValueKind.con: ++constants[reference.index].numUses; break;
 			case IrValueKind.var: ++values[reference.index].numUses; break;
 		}
 	}
 
-	IrValueRef addConstant(IrValueType type, ulong data)
-	{
+	IrValueRef addConstant(IrValueType type, ulong data) {
 		IrValue val = IrValue(IrValueKind.con, type, 0);
 		uint index = cast(uint)constants.length;
 		constants ~= val;
@@ -3187,8 +3288,7 @@ struct IrFunction
 		return IrValueRef(index, IrValueKind.con, type);
 	}
 
-	IrValueRef addVariable(IrValueType type, IrName name)
-	{
+	IrValueRef addVariable(IrValueType type, IrName name) {
 		IrValue val = IrValue(IrValueKind.var, type, 0);
 		uint index = cast(uint)values.length;
 		values ~= val;
@@ -3197,7 +3297,7 @@ struct IrFunction
 	}
 }
 
-void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ctx)
+void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ctx, bool printVars = false)
 {
 	sink.putf("function %s $%s (", func.returnType, IrNameProxy(ctx, func.name));
 	foreach (i, param; func.parameters)
@@ -3207,23 +3307,26 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 	}
 	sink.putln(") {");
 
-	sink.putln("constants:");
-	sink.putln("  #   T uses value");
-	foreach (i, value; func.constants)
+	if (printVars)
 	{
-		sink.putfln("% 3s %s% 5s % 5s",
-			i, value.type, value.numUses, func.constantData[i].value);
-	}
-	sink.putln;
+		sink.putln("constants:");
+		sink.putln("  #   T uses value");
+		foreach (i, value; func.constants)
+		{
+			sink.putfln("% 3s %s% 5s % 5s",
+				i, value.type, value.numUses, func.constantData[i].value);
+		}
+		sink.putln;
 
-	sink.putln("variables:");
-	sink.putln("  #   T uses id");
-	foreach (i, value; func.values)
-	{
-		sink.putfln("% 3s %s% 5s %s",
-			i, value.type, value.numUses, IrNameProxy(ctx, func.variableNames[i]));
+		sink.putln("variables:");
+		sink.putln("  #   T uses id");
+		foreach (i, value; func.values)
+		{
+			sink.putfln("% 3s %s% 5s %s",
+				i, value.type, value.numUses, IrNameProxy(ctx, func.variableNames[i]));
+		}
+		sink.putln;
 	}
-	sink.putln;
 
 	for (IrBasicBlock* block = func.start; block; block = block.next)
 	{
@@ -3233,12 +3336,20 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 		foreach(instr_i, ref instr; block.instructions)
 		{
 			final switch(instr.op) with(IrOpcode) {
+				case o_nop:
+					sink.putfln("    nop");
+					break;
 				case o_icmp:
 					sink.putfln("    %s = icmp %s %s, %s",
 						func.valueText(ctx, instr.to),
 						instr.condition,
 						func.valueText(ctx, instr.arg0),
 						func.valueText(ctx, instr.arg1));
+					break;
+				case o_not:
+					sink.putfln("    %s = not %s",
+						func.valueText(ctx, instr.to),
+						func.valueText(ctx, instr.arg0));
 					break;
 				// Arithmetic
 				case o_add, o_sub, o_div, o_rem, o_udiv, o_urem, o_mul:
@@ -3275,7 +3386,7 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 			case ret0: sink.putln("    return"); break;
 			case ret1: sink.putfln("    return %s", func.valueText(ctx, block.exit.value)); break;
 			case jmp:  sink.putfln("    jmp @%s", IrNameProxy(ctx, block.outs[0].name)); break;
-			case jnz:  sink.putfln("    jnz %s @%s, @%s",
+			case branch:  sink.putfln("    branch %s @%s, @%s",
 				func.valueText(ctx, block.exit.value), IrNameProxy(ctx, block.outs[0].name), IrNameProxy(ctx, block.outs[1].name)); break;
 		}
 	}
@@ -3407,9 +3518,9 @@ struct IrBasicBlock
 	PC startPC;
 
 	/// BBs that jump to this block
-	IrBasicBlock*[] ins;
+	//IrBasicBlock*[] ins; // unused
 
-	/// BBs this block jumps to
+	/// BBs this block jumps or branches to. Null if ends with no jump/branch
 	IrBasicBlock*[] outs;
 
 	/// The jump or return that must be the last instruction is stored in `exit`
@@ -3424,6 +3535,8 @@ struct IrBasicBlock
 
 	/// Next node in linked listed of Basic Blocks of the function
 	IrBasicBlock* next;
+	/// Prev node in linked listed of Basic Blocks of the function
+	IrBasicBlock* prev;
 
 	void emit(IrInstruction instr)
 	{
@@ -3431,6 +3544,10 @@ struct IrBasicBlock
 	}
 
 	bool isFinished() { return exit.type != IrJump.Type.none; }
+	bool isRedundant() {
+		return instructions.length == 0 &&
+			(exit.type == IrJump.Type.jmp || exit.type == IrJump.Type.ret0);
+	}
 }
 
 /// Jumps use information stored in basic block
@@ -3442,29 +3559,32 @@ struct IrJump
 		ret0, /// without return value
 		ret1, /// with return value
 		jmp,  /// unconditional jump
-		jnz   /// conditional jump
+		branch   /// conditional jump
 	}
 
 	Type type;
-	IrValueRef value; /// return value reference, or condition for jnz
+	IrValueRef value; /// return value reference, or condition for branch
 	/// Used by backend, for:
-	///   - first `jnz` instruction
+	///   - first `branch` instruction
 	///   - `jmp` instruction
 	///   - `ret0`, `ret1` jump instruction when jumping to the end of function
 	PC fixup0;
-	// Used by backend, for second target of `jnz` instruction
+	// Used by backend, for second target of `branch` instruction
 	PC fixup1;
 
-	/// Used for jnz instruction fixup
+	/// Used for branch instruction fixup
 	Condition condition = Condition.NZ;
 
-	/// Is set to true by cmp instruction if it precedes jnz
+	/// Is set to true by cmp instruction if it precedes branch
 	bool useFlagForCmp;
 }
 
 enum IrOpcode : ubyte
 {
+	o_nop,
+
 	o_icmp,
+	o_not,
 
 	// Arithmetic
 	o_add,
@@ -3489,7 +3609,7 @@ enum IrOpcode : ubyte
 
 enum IrOpcode_num_opcodes = IrOpcode.max+1;
 
-string[IrOpcode_num_opcodes] irOpcodeNames = ["icmp", "add", "sub",
+string[IrOpcode_num_opcodes] irOpcodeNames = ["nop", "icmp", "not", "add", "sub",
 "div", "rem", "udiv", "urem", "mul", "call", "arg", "assign", ];
 
 immutable IrOpcode[] binOpToIrOpcode = [
@@ -3598,7 +3718,6 @@ struct MachineState
 struct IrToAmd64
 {
 	CompilationContext* context;
-	TextSink sink;
 
 	enum RET_REG = Register.AX;
 	enum TEMP_REG_0 = Register.CX;
@@ -3714,27 +3833,13 @@ struct IrToAmd64
 		return reg;
 	}
 
-	void storeValue(IrValueRef dest, IrValueRef src)
+	void storeValue(IrValueRef dest, Register reg)
 	{
-		auto toVarOrConst = curFunc.deref(dest);
-		if (!toVarOrConst.isVar)
-			context.internal_error("Assignment into a constant");
-		final switch(src.type)
+		if (!dest.isVar) context.internal_error("Assignment into a constant");
+		final switch(dest.type)
 		{
-			case IrValueType.i32:
-				if (src.isVar) {
-					gen.movd(TEMP_REG_0, localVarMemAddress(src));
-					gen.movd(localVarMemAddress(dest), TEMP_REG_0);
-				}
-				else {
-					gen.movq(localVarMemAddress(dest), Imm32(cast(uint)curFunc.constantData[src.index].value));
-				}
-				break;
-			case IrValueType.i64:
-				if (src.isVar) gen.movq(TEMP_REG_0, localVarMemAddress(src));
-				else gen.movq(TEMP_REG_0, Imm64(curFunc.constantData[src.index].value));
-				gen.movq(localVarMemAddress(dest), TEMP_REG_0);
-				break;
+			case IrValueType.i32: gen.movd(localVarMemAddress(dest), reg); break;
+			case IrValueType.i64: gen.movq(localVarMemAddress(dest), reg); break;
 		}
 	}
 
@@ -3746,8 +3851,13 @@ struct IrToAmd64
 			block.startPC = gen.pc;
 			foreach (instr_i, ref instr; block.instructions)
 			{
-				bool isLastInstr() { return instr_i == block.instructions.length-1; }
+				bool nextIsBranch() {
+					return instr_i == block.instructions.length-1 &&
+						block.exit.value == instr.to &&
+						block.exit.type == IrJump.Type.branch;
+				}
 				switch (instr.op) with(IrOpcode) {
+					case o_nop: break;
 					case o_icmp:
 						auto arg0 = curFunc.deref(instr.arg0);
 						auto arg1 = curFunc.deref(instr.arg1);
@@ -3763,39 +3873,44 @@ struct IrToAmd64
 						}
 
 						// Check if comparison result is used for jump
-						if (isLastInstr && block.exit.value == instr.to)
+						if (nextIsBranch)
 						{
-							if (block.exit.type == IrJump.Type.jnz)
-							{
-								// set condition for jump (otherwise it is NZ)
-								block.exit.condition = instr.condition;
-								block.exit.useFlagForCmp = true;
-								break;
-							}
+							// set condition for jump (otherwise it is NZ)
+							block.exit.condition = instr.condition;
+							block.exit.useFlagForCmp = true;
+							break;
 						}
 
 						// otherwise store in variable
-						gen.setcc(instr.condition, TEMP_REG_0);
-						gen.movzx_btod(TEMP_REG_0, TEMP_REG_0);
+						gen.setcc(instr.condition, reg0);
+						gen.movzx_btod(reg0, reg0);
+						storeValue(instr.to, reg0);
+						break;
+
+					case o_not:
+						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
+						final switch(instr.arg0.type) {
+							case IrValueType.i32: gen.notd(reg0); break;
+							case IrValueType.i64: gen.notq(reg0); break;
+						}
+						storeValue(instr.to, reg0);
 						break;
 
 					// Arithmetic
 					case o_add, o_sub:
-						auto arg0 = curFunc.deref(instr.arg0);
-						auto arg1 = curFunc.deref(instr.arg1);
 						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
 						auto reg1 = loadValue(instr.arg1, TEMP_REG_1);
 
 						switch(instr.op)
 						{
 							case IrOpcode.o_add:
-								final switch(arg0.type) {
+								final switch(instr.arg0.type) {
 									case IrValueType.i32: gen.addd(reg0, reg1); break;
 									case IrValueType.i64: gen.addq(reg0, reg1); break;
 								}
 								break;
 							case IrOpcode.o_sub:
-								final switch(arg0.type) {
+								final switch(instr.arg0.type) {
 									case IrValueType.i32: gen.subd(reg0, reg1); break;
 									case IrValueType.i64: gen.subq(reg0, reg1); break;
 								}
@@ -3803,7 +3918,7 @@ struct IrToAmd64
 							default: break;
 						}
 
-						final switch(arg0.type)
+						final switch(instr.arg0.type)
 						{
 							case IrValueType.i32:
 								gen.movd(localVarMemAddress(instr.to), TEMP_REG_0);
@@ -3813,19 +3928,10 @@ struct IrToAmd64
 								break;
 						}
 						break;
-					//case o_div:  goto case;
-					//case o_rem:  goto case;
-					//case o_udiv: goto case;
-					//case o_urem: goto case;
-					//case o_mul:
-
-						break;
 					case o_assign:
-						storeValue(instr.to, instr.arg0);
+						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
+						storeValue(instr.to, reg0);
 						break;
-					//case o_call:
-					//	break;
-					//case o_arg: break;
 					default:
 						context.internal_error("Compilation of `%s` is not implemented. In BB `%s`",
 							instr.op, block.name);
@@ -3850,9 +3956,8 @@ struct IrToAmd64
 						gen.jmp(Imm32(0));
 					}
 					break;
-				case jnz:
+				case branch:
 					block.exit.fixup0 = gen.pc;
-					//checkFixup(block.exit.fixup0);
 					if (!block.exit.useFlagForCmp)
 					{
 						auto reg0 = loadValue(block.exit.value, TEMP_REG_0);
@@ -3872,35 +3977,26 @@ struct IrToAmd64
 	{
 		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
 		{
-			void checkFixup(PC pc) {
-				if (pc is null)
-					context.internal_error(
-						"Fixup is zero for block `%s`", block.name);
-			}
 			final switch(block.exit.type) with(IrJump.Type) {
 				case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); return;
 				case ret0, ret1:
 					// ignore jump in the last Basic Block
 					if (block.next is null) break;
-					//checkFixup(block.exit.fixup0);
 					auto fixup = gen.fixupAt(block.exit.fixup0);
 					fixup.jmpAbs(returnTarget);
 					break;
 				case jmp:
 					if (block.next != block.outs[0]) {
-						//checkFixup(block.exit.fixup0);
 						auto fixup = gen.fixupAt(block.exit.fixup0);
 						fixup.jmpAbs(block.outs[0].startPC);
 					}
 					break;
-				case jnz:
+				case branch:
 					// Jump to not zero
-					//checkFixup(block.exit.fixup0);
 					auto fixup0 = gen.fixupAt(block.exit.fixup0);
 					fixup0.jccAbs(block.exit.condition, block.outs[0].startPC);
 					// fallthrough or jump to zero
 					if (block.next != block.outs[1]) {
-						//checkFixup(block.exit.fixup1);
 						auto fixup1 = gen.fixupAt(block.exit.fixup1);
 						fixup1.jmpAbs(block.outs[1].startPC);
 					}
@@ -4099,6 +4195,8 @@ enum Condition : ubyte {
 	G   = 0xF, /// greater (ZF=0 and SF=OF).
 	NLE = 0xF, /// not less or equal (ZF=0 andSF=OF).
 }
+
+Condition complementaryCondition(Condition cond) { return cast(Condition)(cond ^ 1);}
 
 // place 1 MSB of register into appropriate bit field of REX prefix
 ubyte regTo_Rex_W(Register reg) pure nothrow @nogc { return (reg & 0b1000) >> 0; } // 1000 WRXB
