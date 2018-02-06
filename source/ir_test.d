@@ -1,10 +1,23 @@
-module regalloc;
+module ir_test;
 
 import std.bitmanip : bitfields;
 import std.format : formattedWrite;
 import std.stdio;
 
+// 'Simple and Efficient Construction of Static Single Assignment Form'
+// When local value numbering for one block is finished, we call this block FILLED
+// Basic block is SEALED if no further predecessors will be added to the block
+// As only filled blocks may have successors, predecessors are always filled
+// Sealed block is not necessarily filled
+
+
 void main()
+{
+	//example1;
+	example2;
+}
+
+void example1()
 {
 	IrFunction fun = createFunction();
 	// 'Simple and Efficient Construction of Static Single Assignment Form' example 1
@@ -15,13 +28,13 @@ void main()
 	// 4: c <- a + d;
 
 	// This come from AST
-	VarId var_a = VarId(0); // a
-	VarId var_b = VarId(1); // b
-	VarId var_c = VarId(2); // c
-	VarId var_d = VarId(3); // d
+	Var var_a = Var("a", VarId(0), IrValueType.i32); // a
+	Var var_b = Var("b", VarId(1), IrValueType.i32); // b
+	Var var_c = Var("c", VarId(2), IrValueType.i32); // c
+	Var var_d = Var("d", VarId(3), IrValueType.i32); // d
 
 	// This is a pass converting AST to IR
-	BlockId startBlock = BlockId(0);
+	BlockId startBlock = fun.addBlock();
 
 	// 0
 	IrRef op0_42 = fun.put(42);
@@ -54,6 +67,81 @@ void main()
 	// %2 = i32 o_add    i32 %1, i32 %255 //same as ??
 }
 
+void example2()
+{
+	IrFunction fun = createFunction();
+	// 'Simple and Efficient Construction of Static Single Assignment Form' example 2
+	// x = 42
+	// while(3 < 4)
+	// {
+	//   if (4 > 3) {
+	//     x = 84
+	//   }
+	//   else
+	//   {}
+	// }
+	// y = x + 1;
+
+	Var var_x = Var("x", VarId(0), IrValueType.i32); // x
+	Var var_y = Var("y", VarId(1), IrValueType.i32); // y
+
+	// x = 42
+	BlockId startBlock = fun.addBlock();
+	IrRef op0_42 = fun.put(42);
+	fun.writeVariable(var_x, startBlock, op0_42);
+	fun.sealBlock(startBlock);
+
+	BlockId whileHeader = fun.addBlock(startBlock);
+	// i < 4
+	IrRef op2_3 = fun.put(3);
+	IrRef op2_4 = fun.put(4);
+	IrRef op2 = fun.put(makeInstrCmp(Cond.l, op2_3, op2_4));
+	// while()
+	IrRef op_while_branch = fun.put(makeBranch(op2));
+
+	BlockId whileBodyStart = fun.addBlock(whileHeader);
+	fun.branchArg1(op_while_branch, whileBodyStart);
+	// if (i > 3)
+	IrRef op3_4 = fun.put(4);
+	IrRef op3_3 = fun.put(3);
+	IrRef op3 = fun.put(makeInstrCmp(Cond.g, op3_4, op3_3));
+	IrRef if_branch = fun.put(makeBranch(op3));
+	fun.sealBlock(whileBodyStart);
+
+	BlockId thenBlock = fun.addBlock(whileBodyStart);
+	IrRef op4_84 = fun.put(84);
+	fun.writeVariable(var_x, thenBlock, op4_84);
+	fun.branchArg1(if_branch, thenBlock);
+	IrRef while_end_jump_1 = fun.put(makeJump());
+	fun.sealBlock(thenBlock);
+
+	BlockId elseBlock = fun.addBlock(whileBodyStart);
+	fun.branchArg2(if_branch, elseBlock);
+	IrRef while_end_jump_2 = fun.put(makeJump());
+	fun.sealBlock(elseBlock);
+
+	BlockId whileBodyEnd = fun.addBlock();
+	fun.addBlockPred(whileBodyEnd, thenBlock);
+	fun.addBlockPred(whileBodyEnd, elseBlock);
+	fun.branchArg1(while_end_jump_1, whileBodyEnd);
+	fun.branchArg1(while_end_jump_2, whileBodyEnd);
+	IrRef header_jump = fun.put(makeJump());
+	fun.branchArg1(header_jump, whileHeader);
+	fun.addBlockPred(whileHeader, whileBodyEnd);
+	fun.sealBlock(whileBodyEnd);
+	fun.sealBlock(whileHeader);
+
+	BlockId afterWhileBlock = fun.addBlock(whileHeader);
+	fun.sealBlock(afterWhileBlock);
+	fun.branchArg2(op_while_branch, afterWhileBlock);
+	IrRef op5_x = fun.readVariable(var_x, afterWhileBlock);
+	IrRef op5_1 = fun.put(1);
+	IrRef op5 = fun.put(makeInstr2(IrOpcode.o_add, IrValueType.i32, op5_x, op5_1));
+	fun.writeVariable(var_y, afterWhileBlock, op5);
+
+	fun.print();
+}
+
 void testSign()
 {
 	IrFunction fun = createFunction();
@@ -75,7 +163,7 @@ void testSign()
 	IrRef numRef = fun.put(makeInstr0(IrOpcode.o_param, IrValueType.i32));
 	fun.writeVariable(numberVar, startBlock, numRef);
 	IrRef resRef = fun.put(makeInstr1(IrOpcode.o_assign, IrValueType.i32, ZERO_I32_REF));
-	IrRef cmpRef = fun.put(makeInstrCmp(IrOpcode.o_icmp, Cond.ge, numRef, ZERO_I32_REF));
+	IrRef cmpRef = fun.put(makeInstrCmp(Cond.ge, numRef, ZERO_I32_REF));
 	IrRef brnRef = fun.put(makeInstr0(IrOpcode.o_branch, IrValueType.i1));
 	IrRef tmp1Ref = fun.put(makeInstr2(IrOpcode.o_sub, IrValueType.i32, ZERO_I32_REF, ONE_I32_REF));
 	fun.instructions[brnRef.index].arg0 = tmp1Ref;
@@ -86,7 +174,7 @@ void testSign()
 
 IrFunction createFunction() {
 	IrFunction fun;
-	fun.constants ~= [IrConstant(0), IrConstant(1)];
+	//fun.constants ~= [IrConstant(0), IrConstant(1)];
 	return fun;
 }
 
@@ -102,7 +190,30 @@ struct IrFunction
 	// first constant is always 0/false, second is alway 1/true
 	IrConstant[] constants;
 	IrInstruction[] instructions;
+	IrPhi[] phis;
+	IrBlock[] blocks;
 	IrRef[BlockVarPair] blockVarDef;
+	IrRef[VarId][BlockId] incompletePhis;
+
+	BlockId addBlock(BlockId predecessor) {
+		BlockId blockId = addBlock();
+		blocks[blockId].preds ~= predecessor;
+		return blockId;
+	}
+
+	void addBlockPred(BlockId blockId, BlockId predecessor) {
+		blocks[blockId].preds ~= predecessor;
+	}
+
+	BlockId addBlock() {
+		uint index = cast(uint)blocks.length;
+		IrInstruction blockInstr;
+		blockInstr.op = IrOpcode.o_block;
+		blockInstr.arg0.index = index;
+		auto irRef = put(blockInstr);
+		blocks ~= IrBlock(irRef);
+		return BlockId(index);
+	}
 
 	IrRef put(long value) {
 		foreach(uint i, con; constants)
@@ -125,35 +236,251 @@ struct IrFunction
 	IrRef put(IrInstruction instr) {
 		uint index = cast(uint)instructions.length;
 		instructions ~= instr;
-		return IrRef(index, IrValueKind.instr, instr.type);
+		auto irRef = IrRef(index, IrValueKind.instr, instr.type);
+		foreach(IrRef argRef; instr.args[0..numInstrArgs[instr.op]])
+			if (argRef.kind == IrValueKind.phi)
+				phis[argRef.index].addUser(irRef);
+		return irRef;
+	}
+
+	void branchArg1(IrRef branchInstrRef, BlockId target1) { instructions[branchInstrRef.index].arg1.index = target1; }
+	void branchArg2(IrRef branchInstrRef, BlockId target2) { instructions[branchInstrRef.index].arg2.index = target2; }
+
+	IrRef addPhi(BlockId blockId, IrValueType type) {
+		uint index = cast(uint)phis.length;
+		auto irRef = IrRef(index, IrValueKind.phi, type);
+		phis ~= IrPhi(blockId, type);
+		blocks[blockId].phis ~= irRef;
+		return irRef;
 	}
 
 	void print() {
 		foreach(int i, con; constants)
-			writefln("%%const_%s = %s", i, con.i64);
+			writefln("  %%const_%s = %s", i, con.i64);
 		foreach(int i, instr; instructions) {
-			if (hasInstrReturn[instr.op]) writef("%%%s = %- 3s %- 8s", i, instr.type, instr.op);
-			else  writef("%%%s %s", i, instr.op);
-			switch (numInstrArgs[instr.op]) {
-				case 1: writef(" %s", RefPr(&this, instr.arg0)); break;
-				case 2: writef(" %s, %s", RefPr(&this, instr.arg0), RefPr(&this, instr.arg1)); break;
+
+			switch(instr.op)
+			{
+				case IrOpcode.o_branch:
+					writefln("  branch %s @%s, @%s", RefPr(&this, instr.arg0), instr.arg1.index, instr.arg2.index);
+					break;
+
+				case IrOpcode.o_jump:
+					writefln("  jump @%s", instr.arg1.index);
+					break;
+
+				case IrOpcode.o_block:
+					auto block = &blocks[instr.arg0.index];
+					writef("@%s", instr.arg0.index);
+					foreach(pred; block.preds)
+						writef(" <- @%s", pred);
+					writeln;
+					foreach(phiRef; block.phis)
+					{
+						writef("  %s phi.%s(", phiRef.type, phiRef.index);
+						foreach(phi_i, arg; phis[phiRef.index].args)
+						{
+							if (phi_i > 0) write(", ");
+							writef("%s", RefPr(&this, arg));
+						}
+						writeln(")");
+					}
+					break;
+
+				case IrOpcode.o_icmp:
+					writef("  %%%s = %- 3s %- 8s", i, instr.type, instr.op);
+					writef(" %s %s, %s", instr.cond, RefPr(&this, instr.arg0), RefPr(&this, instr.arg1));
+					writeln;
+					break;
+
 				default:
-					if (instr.op == IrOpcode.o_branch)
-						writef(" @%s, @%s", instr.arg0.index, instr.arg1.index);
+					if (hasInstrReturn[instr.op])
+						writef("  %%%s = %- 3s %- 8s", i, instr.type, instr.op);
+					else  writef("  %%%s %s", i, instr.op);
+
+					switch (numInstrArgs[instr.op]) {
+						case 1: writef(" %s", RefPr(&this, instr.arg0)); break;
+						case 2: writef(" %s, %s", RefPr(&this, instr.arg0),
+							RefPr(&this, instr.arg1)); break;
+						default: break;
+					}
+					writeln;
 					break;
 			}
-			writeln;
 		}
 	}
 
-	void writeVariable(VarId variable, BlockId block, IrRef value)
+	void writeVariable(Var variable, BlockId blockId, IrRef value)
 	{
-		blockVarDef[BlockVarPair(block, variable)] = value;
+		blockVarDef[BlockVarPair(blockId, variable.id)] = value;
 	}
 
-	IrRef readVariable(VarId variable, BlockId block)
+	IrRef readVariable(Var variable, BlockId blockId)
 	{
-		return blockVarDef.get(BlockVarPair(block, variable), IrRef(255, IrValueKind.instr, IrValueType.i32));
+		if (auto irRef = BlockVarPair(blockId, variable.id) in blockVarDef)
+		{
+			//writefln("readVariable %s block(%s) -> %s", variable.name, blockId, RefPr(&this, *irRef));
+			return *irRef;
+		}
+		//writefln("readVariable %s block(%s) -> ?", variable.name, blockId);
+		return readVariableRecursive(variable, blockId);
+	}
+
+	//Algorithm 2: Implementation of global value numbering
+	IrRef readVariableRecursive(Var variable, BlockId blockId)
+	{
+		//writefln("readVariableRecursive %s block(%s)", variable.name, blockId);
+		IrRef value;
+		auto block = &blocks[blockId];
+		if (!block.isSealed) {
+			//writefln("  block(%s) is not sealed", blockId);
+			// Incomplete CFG
+			value = addPhi(blockId, variable.type);
+			//writefln("  create phi.%s for %s", value.index, variable.name);
+			//writefln("  incompletePhis <- phi.%s", value.index);
+			block.incompletePhis ~= IncompletePhi(variable, value);
+		}
+		else if (block.preds.length == 1) {
+			//writefln("  preds=1 block(%s)", block.preds[0]);
+			// Optimize the common case of one predecessor: No phi needed
+			value = readVariable(variable, block.preds[0]);
+			//writefln("  readVariable of block(%s) gives %s", block.preds[0], RefPr(&this, value));
+		}
+		else
+		{
+			//writefln("  multiple predecessors");
+			// Break potential cycles with operandless phi
+			value = addPhi(blockId, variable.type);
+			//writefln("  create phi.%s for %s", value.index, variable.name);
+			writeVariable(variable, blockId, value);
+			value = addPhiOperands(variable, value);
+		}
+		writeVariable(variable, blockId, value);
+		//writefln("readVariableRecursive end %s block(%s) -> %s", variable.name, blockId, RefPr(&this, value));
+		return value;
+	}
+
+	IrRef addPhiOperands(Var variable, IrRef phiRef)
+	{
+		// Determine operands from predecessors
+		BlockId phiBlockId = phis[phiRef.index].blockId;
+		//writefln("  addPhiOperands %s phi.%s preds %s", variable.name, phiRef.index, blocks[phiBlockId].preds);
+		foreach (BlockId pred; blocks[phiBlockId].preds)
+		{
+			auto val = readVariable(variable, pred);
+			//writefln("    from block(%s) get %s", pred, RefPr(&this, val));
+			phis[phiRef.index].addArg(val);
+		}
+		return tryRemoveTrivialPhi(phiRef);
+	}
+
+	IrRef tryRemoveTrivialPhi(IrRef phiRef)
+	{
+		//writef("  tryRemoveTrivialPhi %s args", RefPr(&this, phiRef));
+		IrRef same = IrRef();
+		//foreach (arg; phis[phiRef.index].args) writef(" %s", RefPr(&this, arg));
+		//writeln;
+		foreach (arg; phis[phiRef.index].args) {
+			//writefln("  arg %s", RefPr(&this, arg));
+			if (arg == same || arg == phiRef) {
+				continue; // Unique value or self−reference
+			}
+			if (same != IrRef())
+			{
+				//writefln("not trivial %s", RefPr(&this, phiRef));
+				return phiRef; // The phi merges at least two values: not trivial
+			}
+			same = arg;
+		}
+		if (same == IrRef()) {
+			//same = new Undef(); // The phi is unreachable or in the start block
+		}
+		IrRef[] users = phis[phiRef.index].users.dup; // Remember all users except the phi itself
+		users = users.removeInPlace(phiRef);
+		replaceBy(phis[phiRef.index], phiRef, same); // Reroute all uses of phi to same and remove phi
+
+		// Try to recursively remove all phi users, which might have become trivial
+		foreach (use; users)
+			if (use.kind == IrValueKind.phi)
+				tryRemoveTrivialPhi(use);
+		//writefln("replace %s by %s", RefPr(&this, phiRef), RefPr(&this, same));
+		return same;
+	}
+
+	void replaceBy(ref IrPhi phi, IrRef phiRef, IrRef byWhat)
+	{
+		foreach (IrRef userRef; phi.users)
+		{
+			final switch (userRef.kind) {
+				case IrValueKind.con: break;
+				case IrValueKind.label: break;
+				case IrValueKind.instr:
+					auto instr = instructions[userRef.index];
+					foreach (ref IrRef arg; instr.args[0..numInstrArgs[instr.op]])
+						if (arg == phiRef) arg = byWhat;
+					break;
+				case IrValueKind.phi:
+					auto otherPhi = &phis[userRef.index];
+					foreach (ref IrRef arg; otherPhi.args)
+						if (arg == phiRef) arg = byWhat;
+					break;
+			}
+		}
+		blocks[phi.blockId].phis.removeInPlace(phiRef);
+		phi.args = null;
+		phi.users = null;
+	}
+
+	void sealBlock(BlockId blockId)
+	{
+		foreach (pair; blocks[blockId].incompletePhis)
+		{
+			addPhiOperands(pair.var, pair.phi);
+		}
+		blocks[blockId].isSealed = true;
+	}
+}
+
+T[] removeInPlace(T)(T[] array, T what)
+{
+	size_t i = 0;
+	size_t length = array.length;
+	while(i < length)
+	{
+		if (array[i] == what)
+		{
+			array[i] = array[length-1];
+			--length;
+		}
+		++i;
+	}
+	return assumeSafeAppend(array[0..length]);
+}
+
+unittest
+{
+	assert(removeInPlace([], 1) == []);
+	assert(removeInPlace([1], 1) == []);
+	assert(removeInPlace([1], 2) == [1]);
+	assert(removeInPlace([1, 2], 2) == [1]);
+	assert(removeInPlace([2, 1], 2) == [1]);
+}
+
+struct IrPhi
+{
+	BlockId blockId;
+	IrValueType type;
+	IrRef[] args;
+	IrRef[] users;
+
+	void addArg(IrRef arg)
+	{
+		args ~= arg;
+	}
+
+	void addUser(IrRef user)
+	{
+		users ~= user;
 	}
 }
 
@@ -161,6 +488,24 @@ struct BlockVarPair
 {
 	BlockId blockId;
 	VarId varId;
+}
+
+struct IncompletePhi
+{
+	Var var;
+	IrRef phi;
+}
+
+struct IrBlock
+{
+	IrRef instrRef;
+	IncompletePhi[] incompletePhis;
+	BlockId[] preds;
+	IrRef[] phis;
+	mixin(bitfields!(
+		bool, "isSealed",  1,
+		uint, "",          7
+	));
 }
 
 // print helper for refs
@@ -172,28 +517,33 @@ struct RefPr
 		final switch(r.kind) {
 			case IrValueKind.con:
 				final switch(r.type) {
-					case IrValueType.i1:  sink.formattedWrite("i1 %s",  fun.constants[r.index].i1);  break;
+					case IrValueType.i1:  sink.formattedWrite("i1  %s",  fun.constants[r.index].i1);  break;
 					case IrValueType.i32: sink.formattedWrite("i32 %s", fun.constants[r.index].i32); break;
 					case IrValueType.i64: sink.formattedWrite("i64 %s", fun.constants[r.index].i64); break;
 				} break;
+			case IrValueKind.label: sink.formattedWrite("@%s", r.index); break;
 			case IrValueKind.instr: sink.formattedWrite("%s %%%s", r.type, r.index); break;
+			case IrValueKind.phi:  sink.formattedWrite("%- 3s phi.%s", r.type, r.index); break;
 		}
 	}
 }
 
 struct IrRef
 {
-	this(uint index, IrValueKind kind, IrValueType type) {
-		this.index = index; this.kind = kind; this.type = type;
+	//enum Null = IrRef.init;
+	this(uint idx, IrValueKind k, IrValueType t) {
+		index = idx; isDefined = true; kind = k; type = t;
 	}
 	mixin(bitfields!(
 		// instruction/constant index
-		uint,        "index",  29,
-		IrValueKind, "kind",    1,
-		IrValueType, "type",    2
+		uint,        "index",     27,
+		bool,        "isDefined",  1,
+		IrValueKind, "kind",       2,
+		IrValueType, "type",       2
 	));
 }
 
+struct Var { string name; VarId id; IrValueType type; }
 struct VarId { uint id; alias id this; }
 struct BlockId { uint id; alias id this; }
 
@@ -206,18 +556,38 @@ union IrConstant
 	long i64;
 }
 
-IrInstruction makeInstr0(IrOpcode op, IrValueType type) { return IrInstruction(op, type); }
-IrInstruction makeInstr1(IrOpcode op, IrValueType type, IrRef arg0) { return IrInstruction(op, type, Cond.min, 0, arg0); }
-IrInstruction makeInstr2(IrOpcode op, IrValueType type, IrRef arg0, IrRef arg1) { return IrInstruction(op, type, Cond.min, 0, arg0, arg1); }
-IrInstruction makeInstrCmp(IrOpcode op, Cond cond, IrRef arg0, IrRef arg1) { return IrInstruction(op, IrValueType.i1, cond, 0, arg0, arg1); }
+IrInstruction makeInstr0(IrOpcode op, IrValueType type) {
+	return IrInstruction(op, type); }
+IrInstruction makeInstr1(IrOpcode op, IrValueType type, IrRef arg0) {
+	auto i = IrInstruction(op, type); i.arg0 = arg0; return i; }
+IrInstruction makeInstr2(IrOpcode op, IrValueType type, IrRef arg0, IrRef arg1) {
+	auto i = IrInstruction(op, type); i.arg0 = arg0; i.arg1 = arg1; return i; }
+IrInstruction makeInstrCmp(Cond cond, IrRef arg0, IrRef arg1) {
+	auto i = IrInstruction(IrOpcode.o_icmp, IrValueType.i1); i.cond = cond; i.arg0 = arg0; i.arg1 = arg1; return i; }
+IrInstruction makeBranch(IrRef arg0) {
+	auto i = IrInstruction(IrOpcode.o_branch); i.arg0 = arg0; return i; }
+IrInstruction makeJump() {
+	auto i = IrInstruction(IrOpcode.o_jump); return i; }
 
 struct IrInstruction
 {
 	IrOpcode op;
 	IrValueType type;
-	Cond cond; // condition of icmp instruction
-	ushort numUses;
-	IrRef arg0, arg1;
+	union
+	{
+		struct
+		{
+			Cond cond; // condition of icmp instruction
+			ushort numUses;
+		}
+		IrRef arg2;
+	}
+	union {
+		struct {
+			IrRef arg0, arg1;
+		}
+		IrRef[2] args;
+	}
 }
 
 enum IrOpcode : ubyte
@@ -226,6 +596,8 @@ enum IrOpcode : ubyte
 	o_nop,
 	o_param,
 	o_branch,
+	o_jump,
+	o_block,
 
 	//one args
 	o_not,
@@ -237,6 +609,8 @@ enum IrOpcode : ubyte
 	o_sub,
 	o_mul,
 	o_div,
+
+	// multi args
 }
 
 enum Cond : ubyte {
@@ -248,8 +622,8 @@ enum Cond : ubyte {
 	ge
 }
 
-ubyte[IrOpcode.max+1] numInstrArgs = [0,0,0,1,1,2,2,2,2,2];
-bool[IrOpcode.max+1] hasInstrReturn = [0,0,1,1,1,1,1,1,1,1];
+ubyte[IrOpcode.max+1] numInstrArgs = [0,0,0,0,0,1,1,2,2,2,2,2];
+bool[IrOpcode.max+1] hasInstrReturn = [0,0,0,0,0,1,1,1,1,1,1,1];
 
 // Type of constant or return type of instruction
 enum IrValueType : ubyte
@@ -263,5 +637,7 @@ enum IrValueType : ubyte
 enum IrValueKind : ubyte
 {
 	con,
-	instr
+	label,
+	instr,
+	phi
 }
