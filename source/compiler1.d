@@ -10,13 +10,13 @@ import std.array : empty;
 import std.string : format;
 import std.typecons : Flag, Yes, No;
 import std.stdio : writeln, write, writef, writefln;
-import std.format : formattedWrite;
+import std.format : formattedWrite, FormatSpec;
 import std.range : repeat;
 import std.bitmanip : bitfields;
-import std.algorithm : min, sort;
+import std.algorithm : min, max, sort;
 
 // Grammar
-
+//version = print;
 /**
 	<module> = <declaration>* EOF
 	<declaration> = <func_decl> / <var_decl> / <struct_decl>
@@ -71,7 +71,7 @@ import std.algorithm : min, sort;
 //                  #     #   #   #      #     #    ##
 //                  #     #  ##   ##   #####   #     #
 // -----------------------------------------------------------------------------
-void main()
+void test()
 {
 	string input =
 		q{
@@ -300,17 +300,16 @@ void main()
 	}};
 
 	auto time0 = currTime;
-	IdentifierMap idMap;
-	auto context = CompilationContext(input8, &idMap);
+	auto context = CompilationContext(input8);
 	//context.crashOnICE = true;
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
 	try {
-		Lexer lexer = Lexer(context.input);
-		//foreach (tok; Lexer(input)) writefln("%s", tok.type);
-		Parser parser = Parser(&lexer, &context);
-		ModuleDeclNode* mod = parser.parseModule();
-		context.throwOnErrors;
+			Lexer lexer = Lexer(context.input);
+			//foreach (tok; Lexer(input)) writefln("%s", tok.type);
+			Parser parser = Parser(&lexer, &context);
+			ModuleDeclNode* mod = parser.parseModule();
+			context.throwOnErrors;
 
 		auto time1 = currTime;
 			auto astPrinter = AstPrinter(&context, 2);
@@ -348,18 +347,19 @@ void main()
 
 		auto time8 = currTime;
 			//auto opt_pass = OptimizeIrPass(&context);
-			//opt_pass.visit(bin_irgen.irModule);
+			//opt_pass.visit(mod.irModule);
 			//context.throwOnErrors;
 
 		auto time9 = currTime;
-			buildIntervals(bin_irgen.irModule, &context);
+			buildIntervals(&mod.irModule, &context);
 
 		auto time10 = currTime;
 			//bin_irgen.irModule.codeBuffer = codeBuffer;
 			//auto codegen_pass = IrToAmd64(&context);
-			//codegen_pass.visit(bin_irgen.irModule);
+			//codegen_pass.visit(&mod.irModule);
 
 		auto time11 = currTime;
+		/*
 			auto funDecl = mod.findFunction("sign", &context);
 			alias FunType = extern(C) int function(int);
 			FunType fun;
@@ -376,10 +376,13 @@ void main()
 					res3 = fun(-10);
 				}
 			}
+		*/
 
 		auto time12 = currTime;
 
 		auto time13 = currTime;
+		version(print)
+		{
 			// Text dump
 			writeln("// source code");
 			writeln(context.input);
@@ -393,18 +396,20 @@ void main()
 			writeln("// Code");
 			printHex(bin_irgen.irModule.code, 16);
 
-		writeln;
-		writeln("// timing");
-		writefln("parse %ss", scaledNumberFmt(time1-time0));
-		writefln("print %ss", scaledNumberFmt(time2-time1));
-		writefln("semantic insert %ss", scaledNumberFmt(time3-time2));
-		writefln("semantic lookup %ss", scaledNumberFmt(time4-time3));
-		writefln("semantic types %ss", scaledNumberFmt(time5-time4));
-		writefln("print2 %ss", scaledNumberFmt(time6-time5));
-		writefln("IR bin gen %ss", scaledNumberFmt(time8-time7));
-		writefln("IR opt %ss", scaledNumberFmt(time9-time8));
-		writefln("Build intervals %ss", scaledNumberFmt(time10-time9));
-		writefln("Codegen %ss", scaledNumberFmt(time11-time10));
+			writeln;
+			writeln("// timing");
+			writefln("parse %ss", scaledNumberFmt(time1-time0));
+			writefln("print %ss", scaledNumberFmt(time2-time1));
+			writefln("semantic insert %ss", scaledNumberFmt(time3-time2));
+			writefln("semantic lookup %ss", scaledNumberFmt(time4-time3));
+			writefln("semantic types %ss", scaledNumberFmt(time5-time4));
+			writefln("print2 %ss", scaledNumberFmt(time6-time5));
+			writefln("IR bin gen %ss", scaledNumberFmt(time8-time7));
+			writefln("IR opt %ss", scaledNumberFmt(time9-time8));
+			writefln("Build intervals %ss", scaledNumberFmt(time10-time9));
+			writefln("Codegen %ss", scaledNumberFmt(time11-time10));
+		}
+
 		/*
 		writefln("fun run x3 %ss", scaledNumberFmt(time11-time10));
 		writefln("codeBuffer %s", codeBuffer.ptr);
@@ -420,6 +425,165 @@ void main()
 			writeln(e);
 	}
 	//testNativeFun;
+}
+
+void main()
+{
+	ModuleDeclNode* mod;
+	string input =
+	q{i32 sign(i32 number)
+	{
+		i32 result;
+		if (number < 0) result = 0-1;
+		else if (number > 0) result = 1;
+		else result = 0;
+		return result;
+	}};
+
+	Driver driver;
+	driver.initPasses();
+
+	enum iters = 1_000;
+	auto times = PerPassTimeMeasurements(iters, driver.passes);
+
+	foreach (iteration; 0..times.totalTimes.numIters)
+	{
+		auto time1 = currTime;
+		mod = driver.compileModule(input);
+		auto time2 = currTime;
+
+		times.onIteration(iteration, time2-time1);
+	}
+
+	times.print;
+}
+
+struct PerPassTimeMeasurements
+{
+	TimeMeasurements totalTimes;
+	TimeMeasurements[] passTimes;
+	CompilePass[] passes;
+
+	this(size_t numIters, CompilePass[] passes)
+	{
+		this.passes = passes;
+		totalTimes = TimeMeasurements(numIters);
+		passTimes = new TimeMeasurements[passes.length];
+		foreach (ref times; passTimes) times = TimeMeasurements(numIters);
+	}
+
+	void onIteration(size_t iterIndex, Duration iterTime)
+	{
+		totalTimes.onIteration(iterIndex, iterTime);
+		foreach (passIndex, ref pass; passes)
+			passTimes[passIndex].onIteration(iterIndex, pass.duration);
+	}
+
+	void print()
+	{
+		void printRow(string name, ref TimeMeasurements times)
+		{
+			writef("%- 20s", name);
+			times.print;
+			writeln;
+		}
+
+		writef("Iterations % 9s", scaledNumberFmt(totalTimes.numIters));
+		TimeMeasurements.printHeader; writeln;
+		printRow("Total", totalTimes);
+		foreach (passIndex, ref times; passTimes)
+			printRow(passes[passIndex].name, times);
+	}
+}
+
+struct TimeMeasurements
+{
+	size_t numIters;
+	Duration[] iterTimes;
+	Duration totalTime;
+	Duration avgTime() { return totalTime/numIters; }
+	Duration minTime = Duration.max;
+	Duration maxTime = Duration.min;
+
+	this(size_t numIters)
+	{
+		this.numIters = numIters;
+		iterTimes = new Duration[numIters];
+	}
+
+	void onIteration(size_t iterIndex, Duration iterTime)
+	{
+		iterTimes[iterIndex] = iterTime;
+		totalTime += iterTime;
+		minTime = min(iterTime, minTime);
+		maxTime = max(iterTime, maxTime);
+	}
+
+	enum showNumFirstIters = 3;
+
+	static void printHeader()
+	{
+		foreach (i; 0..showNumFirstIters)
+			writef("  iter %s", i);
+		write("   total     avg     min     max");
+	}
+
+	void print()
+	{
+		foreach (i; 0..showNumFirstIters)
+			writef(" % 6ss", scaledNumberFmt(iterTimes[i]));
+		writef(" % 6ss", scaledNumberFmt(totalTime));
+		writef(" % 6ss", scaledNumberFmt(avgTime));
+		writef(" % 6ss", scaledNumberFmt(minTime));
+		writef(" % 6ss", scaledNumberFmt(maxTime));
+	}
+}
+
+struct Driver
+{
+	CompilationContext context;
+	CompilePass[] passes;
+
+	void initPasses()
+	{
+		passes ~= CompilePass("Parse", &pass_parser);
+		passes ~= CompilePass("Semantic insert", &pass_semantic_decl);
+		passes ~= CompilePass("Semantic lookup", &pass_semantic_lookup);
+		passes ~= CompilePass("Semantic types", &pass_semantic_type);
+		passes ~= CompilePass("IR gen", &pass_ir_gen);
+		passes ~= CompilePass("Live intervals", &pass_live_intervals);
+	}
+
+	ModuleDeclNode* compileModule(string fileData)
+	{
+		context = CompilationContext(fileData);
+
+		try foreach (ref pass; passes)
+		{
+			auto time1 = currTime;
+
+			pass.run(context);
+
+			auto time2 = currTime;
+			pass.duration = time2-time1;
+
+			context.throwOnErrors;
+		}
+		catch(CompilationException e)
+		{
+			writeln(context.sink.text);
+			if (e.isICE) writeln(e);
+		}
+		return context.mod;
+	}
+}
+
+struct CompilePass
+{
+	string name;
+	void function(ref CompilationContext context) run;
+
+	Duration duration;
 }
 
 void testNativeFun()
@@ -458,7 +622,10 @@ int sign(int number)
 struct CompilationContext
 {
 	string input;
-	IdentifierMap* idMap;
+	ModuleDeclNode* mod;
+	ScopeStack scopeStack;
+
+	IdentifierMap idMap;
 	bool hasErrors;
 	TextSink sink;
 	bool crashOnICE;
@@ -1313,7 +1480,6 @@ enum AstFlags {
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
-	//pragma(msg, format("%s %s", typeof(this).stringof, _astType));
 	this(Args...)(SourceLocation loc, Args args) {
 		this(loc);
 		enum len = this.tupleof.length - 3;
@@ -1831,6 +1997,12 @@ struct AstPrinter {
 //               #        ##   ##  #     #   #####   #######
 // -----------------------------------------------------------------------------
 //version = print_parse;
+void pass_parser(ref CompilationContext ctx) {
+	Lexer lexer = Lexer(ctx.input);
+	Parser parser = Parser(&lexer, &ctx);
+	ctx.mod = parser.parseModule();
+}
+
 struct Parser {
 	Lexer* lexer;
 	CompilationContext* context;
@@ -2436,6 +2608,12 @@ struct ScopeStack
 	}
 }
 
+void pass_semantic_decl(ref CompilationContext ctx) {
+	ctx.scopeStack = ScopeStack(&ctx);
+	auto sem1 = SemanticDeclarations(&ctx, &ctx.scopeStack);
+	sem1.visit(ctx.mod);
+}
+
 /// Register
 struct SemanticDeclarations {
 	mixin AstVisitorMixin;
@@ -2507,6 +2685,11 @@ struct SemanticDeclarations {
 	void visit(UserTypeNode* t) {}
 }
 
+void pass_semantic_lookup(ref CompilationContext ctx) {
+	auto sem2 = SemanticLookup(&ctx, &ctx.scopeStack);
+	sem2.visit(ctx.mod);
+}
+
 /// Resolves all symbol references (variable/type uses)
 struct SemanticLookup {
 	mixin AstVisitorMixin;
@@ -2575,6 +2758,11 @@ struct SemanticLookup {
 	void visit(TypeConvExprNode* t) { _visit(t.type); _visit(t.expr); }
 	void visit(BasicTypeNode* t) {}
 	void visit(UserTypeNode* t) { t.resolveSymbol = scopeStack.lookup(t.id, t.loc); }
+}
+
+void pass_semantic_type(ref CompilationContext ctx) {
+	auto sem3 = SemanticStaticTypes(&ctx);
+	sem3.visit(ctx.mod);
 }
 
 /// Annotates all expression nodes with their type
@@ -2899,6 +3087,12 @@ enum CurrentAssignSide
 {
 	rightSide,
 	leftSide
+}
+
+void pass_ir_gen(ref CompilationContext ctx) {
+	auto bin_irgen = BinIrGenerationVisitor(&ctx);
+	bin_irgen.visit(ctx.mod);
+	ctx.assertf(bin_irgen.irModule !is null, "Module IR is null");
 }
 
 /// Converts AST to in-memory linear IR
@@ -3833,7 +4027,6 @@ struct IrInstruction
 
 	void addUser(IrRef user) { ++numUses; }
 }
-pragma(msg, IrInstruction.sizeof);
 
 enum IrOpcode : ubyte
 {
@@ -3880,6 +4073,10 @@ immutable IrOpcode[] binOpToIrOpcode = [
 //         #    #   #   #   #    #   #         #    #  #        #    ##
 //          ####     ###    #####    #######    #####  #######  #     #
 // -----------------------------------------------------------------------------
+
+void pass_live_intervals(ref CompilationContext ctx) {
+	buildIntervals(&ctx.mod.irModule, &ctx);
+}
 
 /// Linear Scan Register Allocation on SSA Form
 /// Optimized Interval Splitting in a Linear Scan Register Allocator
@@ -3977,11 +4174,6 @@ void buildIntervals(IrModule* mod, CompilationContext* ctx)
 		// for each block b in reverse order do
 		for (IrBasicBlock* block = fun.last; block; block = block.prev)
 		{
-			writef("in @%s live:", block.index);
-			foreach (size_t index; live.bitsSet)
-				writef("%s", index);
-			writeln;
-
 			// live = union of successor.liveIn for each successor of block
 			liveData[] = 0;
 			foreach (IrBasicBlock* succ; block.outs)
@@ -3989,6 +4181,11 @@ void buildIntervals(IrModule* mod, CompilationContext* ctx)
 				foreach (size_t i, size_t bucket; blockLiveIn(succ.index))
 					liveBuckets[i] |= bucket;
 			}
+
+			//writef("in @%s live:", block.index);
+			//foreach (size_t index; live.bitsSet)
+			//	writef(" %s", index);
+			//writeln;
 
 			// for each phi function phi of successors of block do
 			//     live.add(phi.inputOf(block))
@@ -4064,15 +4261,15 @@ void buildIntervals(IrModule* mod, CompilationContext* ctx)
 			blockLiveIn(block.index)[] = liveBuckets;
 		}
 
-		writeln("intervals:");
-		foreach (i, interval; intervals) {
-			if (!interval.isInterval) continue;
-			if (i >= numInstrs) writef(" phi % 3s:", i-numInstrs);
-			else writef("intr % 3s:", i);
-			foreach (range; interval.ranges)
-				writef(" (%s %s)", range.from, range.to);
-			writeln;
-		}
+		//writeln("intervals:");
+		//foreach (i, interval; intervals) {
+		//	if (!interval.isInterval) continue;
+		//	if (i >= numInstrs) writef(" phi % 3s:", i-numInstrs);
+		//	else writef("intr % 3s:", i);
+		//	foreach (range; interval.ranges)
+		//		writef(" (%s %s)", range.from, range.to);
+		//	writeln;
+		//}
 	}
 }
 
@@ -4086,16 +4283,47 @@ struct LiveInterval
 	// bounds are from block start to block end of the same block
 	// from is always == to block start
 	void addRange(size_t from, size_t to, size_t intervalId) {
-		writefln("addRange $%s %s %s", intervalId, from, to);
-		ranges ~= LiveRange(cast(uint)from, cast(uint)to);
-		ranges.sort!("a.from < b.from");
-	}
+		//writefln("addRange $%s %s %s", intervalId, from, to);
 
-	// from is always == to block start of loop
-	// to is always == to block end of loop
-	void setLoopRange(size_t from, size_t to)
-	{
+		LiveRange newRange = LiveRange(cast(uint)from, cast(uint)to);
 
+		size_t mergeMin = size_t.max;
+		size_t mergeMax = 0;
+		bool merged;
+
+		foreach (i, r; ranges)
+		{
+			if (r.canBeMergedWith(newRange)) {
+				merged = true;
+				newRange = merge(newRange, r);
+				mergeMin = min(i, mergeMin);
+				mergeMax = max(i, mergeMax);
+			}
+		}
+
+		if (merged)
+		{
+			// merge ranges
+			ranges[mergeMin] = newRange;
+			if (mergeMax > mergeMin)
+			{
+				size_t i = mergeMin;
+				size_t j = mergeMax;
+				while(j < ranges.length)
+				{
+					++i;
+					++j;
+					ranges[i] = ranges[j];
+				}
+				ranges = assumeSafeAppend(ranges[0..i]);
+			}
+		}
+		else
+		{
+			// add new range
+			ranges ~= LiveRange(cast(uint)from, cast(uint)to);
+			ranges.sort!("a.from < b.from");
+		}
 	}
 
 	// sets the definition position
@@ -4105,7 +4333,7 @@ struct LiveInterval
 			return;
 		}
 		ranges[0].from = cast(uint)from;
-		writefln("setFrom %s", from);
+		//writefln("setFrom %s", from);
 	}
 }
 
@@ -4113,6 +4341,15 @@ struct LiveRange
 {
 	uint from;
 	uint to;
+	bool canBeMergedWith(const LiveRange other) {
+		if (to < other.from) return false;
+		if (from > other.to) return false;
+		return true;
+	}
+}
+
+LiveRange merge(LiveRange a, LiveRange b) {
+	return LiveRange(min(a.from, b.from), max(a.to, b.to));
 }
 
 /*
@@ -5325,14 +5562,18 @@ MonoTime currTime() { return MonoTime.currTime(); }
 struct ScaledNumberFmt(T)
 {
 	T value;
-	void toString()(scope void delegate(const(char)[]) sink)
+	void toString(scope void delegate(const(char)[]) sink, FormatSpec!char fmt)
 	{
 		int scale = calcScale(value);
 		auto scaledValue = scaled(value, -scale);
 		int digits = numDigitsInNumber(scaledValue);
-		import std.format : formattedWrite;
-		sink.formattedWrite("%*.*f%s", digits, 3-digits, scaledValue,
-			scaleSuffixes[scaleToScaleIndex(scale)]);
+		import std.format : formattedWrite, formatValue;
+		fmt.spec = 'f';
+		string suf = scaleSuffixes[scaleToScaleIndex(scale)];
+		fmt.width -= suf.length;
+		fmt.precision = 3-digits;
+		formatValue(sink, scaledValue, fmt);
+		sink(suf);
 	}
 }
 
