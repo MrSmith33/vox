@@ -16,7 +16,7 @@ import std.bitmanip : bitfields;
 import std.algorithm : min, max, sort;
 
 // Grammar
-//version = print;
+version = print;
 /**
 	<module> = <declaration>* EOF
 	<declaration> = <func_decl> / <var_decl> / <struct_decl>
@@ -42,8 +42,8 @@ import std.algorithm : min, max, sort;
 	<block_statement> = "{" <statement>* "}"
 
 	<expression> = <test> | <identifier> "=" <expression>
-	<test> = <sum> | <sum> ("=="|"!="|"<"|">"|"<="|"<=") <sum>
-	<sum> = <term> / <sum> "+" <term> / <sum> "-" <term>
+	<test> = <sum> | <sum> ("=="|"!="|"<"|">"|"<="|">=") <sum>
+	<sum> = <term> / <sum> ("+"|"-") <term>
 	<term> = <identifier> "(" <expression_list> ")" / <identifier> / <int_literal> / <paren_expression>
 	<paren_expression> = "(" <expression> ")"
 
@@ -71,6 +71,12 @@ import std.algorithm : min, max, sort;
 //                  #     #   #   #      #     #    ##
 //                  #     #  ##   ##   #####   #     #
 // -----------------------------------------------------------------------------
+void main()
+{
+	bench();
+	//test();
+}
+
 void test()
 {
 	string input =
@@ -299,66 +305,15 @@ void test()
 		return result;
 	}};
 
-	auto time0 = currTime;
-	auto context = CompilationContext(input8);
-	//context.crashOnICE = true;
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
+	Driver driver;
 	try {
-			Lexer lexer = Lexer(context.input);
-			//foreach (tok; Lexer(input)) writefln("%s", tok.type);
-			Parser parser = Parser(&lexer, &context);
-			ModuleDeclNode* mod = parser.parseModule();
-			context.throwOnErrors;
+		driver.initPasses();
+		ModuleDeclNode* mod = driver.compileModule(input8);
+		//auto astPrinter = AstPrinter(&context, 2);
+		//astPrinter.printAst(cast(AstNode*)mod);
 
-		auto time1 = currTime;
-			auto astPrinter = AstPrinter(&context, 2);
-			//astPrinter.printAst(cast(AstNode*)mod);
-			context.throwOnErrors;
-
-		auto time2 = currTime;
-			auto scopeStack = ScopeStack(&context);
-			auto sem1 = SemanticDeclarations(&context, &scopeStack);
-			sem1.visit(mod);
-			context.throwOnErrors;
-
-		auto time3 = currTime;
-			auto sem2 = SemanticLookup(&context, &scopeStack);
-			sem2.visit(mod);
-			context.throwOnErrors;
-
-		auto time4 = currTime;
-			auto sem3 = SemanticStaticTypes(&context);
-			sem3.visit(mod);
-			context.throwOnErrors;
-
-		auto time5 = currTime;
-			//astPrinter.printAst(cast(AstNode*)mod);
-			//writeln;
-			context.throwOnErrors;
-
-		auto time6 = currTime;
-
-		auto time7 = currTime;
-			auto bin_irgen = BinIrGenerationVisitor(&context);
-			bin_irgen.visit(mod);
-			context.assertf(bin_irgen.irModule !is null, "Module IR is null");
-			context.throwOnErrors;
-
-		auto time8 = currTime;
-			//auto opt_pass = OptimizeIrPass(&context);
-			//opt_pass.visit(mod.irModule);
-			//context.throwOnErrors;
-
-		auto time9 = currTime;
-			buildIntervals(&mod.irModule, &context);
-
-		auto time10 = currTime;
-			//bin_irgen.irModule.codeBuffer = codeBuffer;
-			//auto codegen_pass = IrToAmd64(&context);
-			//codegen_pass.visit(&mod.irModule);
-
-		auto time11 = currTime;
 		/*
 			auto funDecl = mod.findFunction("sign", &context);
 			alias FunType = extern(C) int function(int);
@@ -378,36 +333,20 @@ void test()
 			}
 		*/
 
-		auto time12 = currTime;
-
-		auto time13 = currTime;
 		version(print)
 		{
 			// Text dump
 			writeln("// source code");
-			writeln(context.input);
+			writeln(driver.context.input);
 
 			TextSink sink;
-			bin_irgen.irModule.dump(sink, &context, false);
+			mod.irModule.dump(sink, &driver.context, false);
 			writeln;
 			writeln("// Generated from binary IR");
 			writeln(sink.text);
 			writeln;
 			writeln("// Code");
-			printHex(bin_irgen.irModule.code, 16);
-
-			writeln;
-			writeln("// timing");
-			writefln("parse %ss", scaledNumberFmt(time1-time0));
-			writefln("print %ss", scaledNumberFmt(time2-time1));
-			writefln("semantic insert %ss", scaledNumberFmt(time3-time2));
-			writefln("semantic lookup %ss", scaledNumberFmt(time4-time3));
-			writefln("semantic types %ss", scaledNumberFmt(time5-time4));
-			writefln("print2 %ss", scaledNumberFmt(time6-time5));
-			writefln("IR bin gen %ss", scaledNumberFmt(time8-time7));
-			writefln("IR opt %ss", scaledNumberFmt(time9-time8));
-			writefln("Build intervals %ss", scaledNumberFmt(time10-time9));
-			writefln("Codegen %ss", scaledNumberFmt(time11-time10));
+			printHex(mod.irModule.code, 16);
 		}
 
 		/*
@@ -420,14 +359,14 @@ void test()
 		*/
 	}
 	catch(CompilationException e) {
-		writeln(context.sink.text);
+		writeln(driver.context.sink.text);
 		if (e.isICE)
 			writeln(e);
 	}
 	//testNativeFun;
 }
 
-void main()
+void bench()
 {
 	ModuleDeclNode* mod;
 	string input =
@@ -443,7 +382,7 @@ void main()
 	Driver driver;
 	driver.initPasses();
 
-	enum iters = 1_000;
+	enum iters = 10_000;
 	auto times = PerPassTimeMeasurements(iters, driver.passes);
 
 	foreach (iteration; 0..times.totalTimes.numIters)
@@ -489,7 +428,7 @@ struct PerPassTimeMeasurements
 		}
 
 		writef("Iterations % 9s", scaledNumberFmt(totalTimes.numIters));
-		TimeMeasurements.printHeader; writeln;
+		totalTimes.printHeader; writeln;
 		printRow("Total", totalTimes);
 		foreach (passIndex, ref times; passTimes)
 			printRow(passes[passIndex].name, times);
@@ -521,16 +460,16 @@ struct TimeMeasurements
 
 	enum showNumFirstIters = 3;
 
-	static void printHeader()
+	void printHeader()
 	{
-		foreach (i; 0..showNumFirstIters)
+		foreach (i; 0..min(numIters, showNumFirstIters))
 			writef("  iter %s", i);
 		write("   total     avg     min     max");
 	}
 
 	void print()
 	{
-		foreach (i; 0..showNumFirstIters)
+		foreach (i; 0..min(numIters, showNumFirstIters))
 			writef(" % 6ss", scaledNumberFmt(iterTimes[i]));
 		writef(" % 6ss", scaledNumberFmt(totalTime));
 		writef(" % 6ss", scaledNumberFmt(avgTime));
@@ -552,6 +491,7 @@ struct Driver
 		passes ~= CompilePass("Semantic types", &pass_semantic_type);
 		passes ~= CompilePass("IR gen", &pass_ir_gen);
 		passes ~= CompilePass("Live intervals", &pass_live_intervals);
+		//passes ~= CompilePass("Linear scan", &pass_linear_scan);
 	}
 
 	ModuleDeclNode* compileModule(string fileData)
@@ -3438,11 +3378,17 @@ struct IrFunction
 
 	IrPhi[] phis;
 
+	// dense array of values produced by instructions or phi nodes
+	IrOperand[] operands;
+
 	/// Stores current definition of variable per block during SSA-form IR construction.
 	IrRef[BlockVarPair] blockVarDef;
 
 	/// Parameters are saved as first `numParameters` items of `values` array
 	uint numParameters;
+
+	/// Info from buildIntervals pass
+	FunctionLiveIntervals liveIntervals;
 
 	IrVarId nextIrVarId;
 
@@ -3541,26 +3487,76 @@ struct IrFunction
 	IrRef put(IrInstruction instr) {
 		++currentBB.numInstrs;
 		uint index = cast(uint)instructions.length;
-		instructions ~= instr;
 		auto irRef = IrRef(index, IrValueKind.instr, instr.type);
-
-		foreach(IrRef argRef; instr.args[0..numInstrArgs[instr.op]])
+		if (hasInstrReturn[instr.op])
 		{
-			final switch (argRef.kind)
-			{
-				case IrValueKind.instr: instructions[argRef.index].addUser(irRef); break;
-				case IrValueKind.con: constants[argRef.index].addUser(irRef); break;
-				case IrValueKind.phi: phis[argRef.index].addUser(irRef); break;
-			}
+			instr.result = addOperand(irRef);
 		}
 
+		foreach(IrRef argRef; instr.args[0..numInstrArgs[instr.op]])
+			addUser(argRef);
+		instructions ~= instr;
+
 		return irRef;
+	}
+
+	void addUser(IrRef irRef)
+	{
+		final switch (irRef.kind)
+		{
+			case IrValueKind.instr:
+				auto opdId = instructions[irRef.index].result;
+				assert(!opdId.isNull, format("result of %s is null", RefPr(&this, irRef)));
+				operands[opdId].addUser(irRef);
+				break;
+			case IrValueKind.con: constants[irRef.index].addUser(irRef); break;
+			case IrValueKind.phi: phis[irRef.index].addUser(irRef); break;
+		}
+	}
+
+	IrOperandId addOperand(IrRef irRef)
+	{
+		uint index = cast(uint)operands.length;
+		operands ~= IrOperand(irRef);
+		return IrOperandId(index);
+	}
+
+	// can return null (for constants)
+	IrOperandId getOperand(IrRef irRef)
+	{
+		final switch (irRef.kind)
+		{
+			case IrValueKind.instr: return instructions[irRef.index].result;
+			case IrValueKind.con: return IrOperandId();
+			case IrValueKind.phi: return phis[irRef.index].result;
+		}
+	}
+
+	// checks for opdId == null
+	void removeOperand(IrOperandId opdId)
+	{
+		if (opdId.isNull) return;
+		size_t length = operands.length;
+
+		if (opdId.index != length-1)
+		{
+			operands[opdId] = operands[length-1];
+			IrRef irRef = operands[opdId].irRef;
+			final switch (irRef.kind)
+			{
+				case IrValueKind.instr: instructions[irRef.index].result = opdId; break;
+				case IrValueKind.con: assert(false, "constants have no operand");
+				case IrValueKind.phi: phis[irRef.index].result = opdId; break;
+			}
+		}
+		operands = assumeSafeAppend(operands[0..length-1]);
 	}
 
 	IrRef addPhi(IrBasicBlock* block, IrValueType type) {
 		uint index = cast(uint)phis.length;
 		auto irRef = IrRef(index, IrValueKind.phi, type);
-		phis ~= IrPhi(block, type);
+		IrOperandId operand = addOperand(irRef);
+		phis ~= IrPhi(block, type, operand);
 		block.phis ~= irRef;
 		return irRef;
 	}
@@ -3666,6 +3662,7 @@ struct IrFunction
 					break;
 			}
 		}
+		removeOperand(phi.result);
 		phi.block.phis.removeInPlace(phiRef);
 		phi = IrPhi();
 	}
@@ -3722,7 +3719,7 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 		foreach(phiRef; block.phis)
 		{
 			if (printInstrIndex) sink.putf("% 3s|", block.firstInstr);
-			sink.putf("    %s phi.%s(", phiRef.type, phiRef.index);
+			sink.putf("    %%%s = %s phi.%s(", func.phis[phiRef.index].result, phiRef.type, phiRef.index);
 			foreach(phi_i, arg; func.phis[phiRef.index].args)
 			{
 				if (phi_i > 0) sink.put(", ");
@@ -3743,14 +3740,14 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 				case IrOpcode.o_block: break;
 				case IrOpcode.o_block_end: break;
 				case IrOpcode.o_icmp:
-					sink.putf("    %%%s = %- 3s %- 8s", i, instr.type, instr.op);
+					sink.putf("    %%%s = %- 3s %- 8s", instr.result, instr.type, instr.op);
 					sink.putf(" %s %s, %s", instr.condition, RefPr(&func, instr.arg0), RefPr(&func, instr.arg1));
 					sink.putln;
 					break;
 
 				default:
 					if (hasInstrReturn[instr.op])
-						sink.putf("    %%%s = %- 3s %- 8s", i, instr.type, instr.op);
+						sink.putf("    %%%s = %- 3s %- 8s", instr.result, instr.type, instr.op);
 					else  sink.putf("    %%%s %s", i, instr.op);
 
 					switch (numInstrArgs[instr.op]) {
@@ -3776,6 +3773,8 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 		}
 	}
 	sink.putln("}");
+
+	func.liveIntervals.print;
 }
 
 enum IrValueKind : ubyte
@@ -3831,8 +3830,8 @@ struct RefPr
 					case IrValueType.i32: sink.formattedWrite("i32 %s", fun.constants[r.index].i32); break;
 					case IrValueType.i64: sink.formattedWrite("i64 %s", fun.constants[r.index].i64); break;
 				} break;
-			case IrValueKind.instr: sink.formattedWrite("%s %%%s", r.type, r.index); break;
-			case IrValueKind.phi:  sink.formattedWrite("%- 3s phi.%s", r.type, r.index); break;
+			case IrValueKind.instr: sink.formattedWrite("%s %%%s", r.type, fun.instructions[r.index].result); break;
+			case IrValueKind.phi:  sink.formattedWrite("%s %%%s", r.type, fun.phis[r.index].result); break;
 		}
 	}
 }
@@ -3851,6 +3850,24 @@ struct IrRef
 	));
 	bool isInstr() { return kind == IrValueKind.instr; }
 	bool isCon() { return kind == IrValueKind.con; }
+}
+
+/// result/argument of instruction
+struct IrOperand
+{
+	// instruction or phi index
+	IrRef irRef;
+	/// Indicates number of uses. There can be multiple uses per instruction.
+	/// 0 means unused, 1 means temporary, or more
+	ushort numUses;
+	void addUser(IrRef user) { ++numUses; }
+}
+
+struct IrOperandId
+{
+	uint index = uint.max;
+	bool isNull() { return index == uint.max; }
+	alias index this;
 }
 
 struct IrConstant
@@ -3989,6 +4006,7 @@ struct IrPhi
 {
 	IrBasicBlock* block;
 	IrValueType type;
+	IrOperandId result;
 	IrPhiArg[] args;
 	IrRef[] users;
 	ushort numUses() { return cast(ushort)users.length; }
@@ -4015,17 +4033,13 @@ struct IrInstruction
 	IrOpcode op;
 	IrValueType type;
 	IrCond condition;
-	/// Indicates number of uses. There can be multiple uses per instruction.
-	/// 0 means unused, 1 means temporary, or more
-	ushort numUses;
+	IrOperandId result;
 	union {
 		struct {
 			IrRef arg0, arg1;
 		}
 		IrRef[2] args;
 	}
-
-	void addUser(IrRef user) { ++numUses; }
 }
 
 enum IrOpcode : ubyte
@@ -4074,10 +4088,6 @@ immutable IrOpcode[] binOpToIrOpcode = [
 //          ####     ###    #####    #######    #####  #######  #     #
 // -----------------------------------------------------------------------------
 
-void pass_live_intervals(ref CompilationContext ctx) {
-	buildIntervals(&ctx.mod.irModule, &ctx);
-}
-
 /// Linear Scan Register Allocation on SSA Form
 /// Optimized Interval Splitting in a Linear Scan Register Allocator
 /*
@@ -4108,23 +4118,23 @@ for each block b in reverse order do
 			intervals[opd].addRange(b.from, loopEnd.to)
 	b.liveIn = live
 */
-void buildIntervals(IrModule* mod, CompilationContext* ctx)
+void pass_live_intervals(ref CompilationContext ctx)
 {
 	import std.bitmanip : BitArray;
-	// padding aligns number of bits to multiple of size_t bits
-	// with padding we can copy size_t's directly between live and liveIn, without bit twiddling
+	// We store a bit array per basic block. Each bit shows liveness of operand per block
+	// Padding aligns number of bits to multiple of size_t bits.
+	// This way there is a whole number of size_ts per basic block
+	// With padding we can copy size_t's directly between live and liveIn, without bit twiddling
 
-	// [block0:[instructions, phis, padding], block1:[instructions, phis, padding]]
+	// [block0:[IrArgumentId..., padding], block1:[IrArgumentId..., padding]]
 	BitArray liveIn;
 	size_t[] liveInData;
 	size_t[] liveInBuckets;
 
-	// [instructions, phis, padding]
+	// [IrArgumentId..., padding]
 	BitArray live;
 	size_t[] liveData;
 	size_t[] liveBuckets;
-
-	LiveInterval[] intervals;
 
 	void allocSets(size_t numBucketsPerBlock, size_t numBlocks) {
 		//writefln("alloc buckets %s blocks %s", numBucketsPerBlock, numBlocks);
@@ -4142,26 +4152,23 @@ void buildIntervals(IrModule* mod, CompilationContext* ctx)
 		liveIn = BitArray(liveInData, numBucketsTotal * size_t.sizeof * 8);
 	}
 
-	foreach (fun; mod.functions)
+	foreach (ref fun; ctx.mod.irModule.functions)
 	{
-		size_t numPhis = fun.phis.length;
-		size_t numInstrs = fun.instructions.length;
-		size_t numValues = numInstrs + numPhis;
+		size_t numValues = fun.operands.length;
 		size_t numBucketsPerBlock = divCeil(numValues, size_t.sizeof * 8);
 		allocSets(numBucketsPerBlock, fun.numBasicBlocks);
-		intervals = new LiveInterval[numValues];
+		fun.liveIntervals.initIntervals(numValues, numValues);
 
-		void liveAdd(IrRef value)
+		void liveAdd(IrOperandId opdId)
 		{
-			final switch (value.kind) {
-				case IrValueKind.instr: live[value.index] = true; break;
-				case IrValueKind.con: break;
-				case IrValueKind.phi: live[value.index + numInstrs] = true; break;
-			}
+			if (opdId.isNull) return;
+			live[opdId] = true;
 		}
 
-		void liveRemoveInstr(size_t instrIndex) { live[instrIndex] = false; }
-		void liveRemovePhi(size_t phiIndex) { live[phiIndex + numInstrs] = false; }
+		void liveRemove(IrOperandId opdId) {
+			if (opdId.isNull) return;
+			live[opdId] = false;
+		}
 
 		size_t[] blockLiveIn(BlockId blockIndex)
 		{
@@ -4182,38 +4189,36 @@ void buildIntervals(IrModule* mod, CompilationContext* ctx)
 					liveBuckets[i] |= bucket;
 			}
 
-			//writef("in @%s live:", block.index);
-			//foreach (size_t index; live.bitsSet)
-			//	writef(" %s", index);
-			//writeln;
-
 			// for each phi function phi of successors of block do
 			//     live.add(phi.inputOf(block))
 			foreach (IrBasicBlock* succ; block.outs)
 				foreach (ref IrRef phiRef; succ.phis)
 					foreach (ref IrPhiArg arg; fun.phis[phiRef.index].args)
 						if (arg.blockId == block.index)
-							liveAdd(arg.value);
+							liveAdd(fun.getOperand(arg.value));
+
+			//writef("in @%s live:", block.index);
+			//foreach (size_t index; live.bitsSet)
+			//	writef(" %s", index);
+			//writeln;
 
 			// for each opd in live do
 			foreach (size_t index; live.bitsSet)
 			{
 				// intervals[opd].addRange(block.from, block.to)
-				intervals[index].addRange(block.firstInstr, block.lastInstr, index);
+				fun.liveIntervals.addRange(IrOperandId(cast(uint)index), cast(int)block.firstInstr, cast(int)block.lastInstr);
 			}
 
 			void eachArg(IrRef opd, size_t opId) {
+				IrOperandId opdId = fun.getOperand(opd);
+				if (opdId.isNull) return;
+
 				// intervals[opd].addRange(block.from, op.id)
-				final switch (opd.kind) with(IrValueKind) {
-					case instr: intervals[opd.index].addRange(block.firstInstr, opId, opd.index); break;
-					case con: break;
-					case phi: intervals[opd.index + numInstrs].addRange(block.firstInstr, opId, opd.index + numInstrs); break;
-				}
+				fun.liveIntervals.addRange(opdId, cast(int)block.firstInstr, cast(int)opId);
 
 				// live.add(opd)
-				liveAdd(opd);
+				liveAdd(opdId);
 			}
-
 
 			// for each operation op of b in reverse order do
 				// last instr, no return operand
@@ -4228,12 +4233,10 @@ void buildIntervals(IrModule* mod, CompilationContext* ctx)
 				if (hasInstrReturn[instr.op])
 				{
 					// intervals[opd].setFrom(op.id)
-					intervals[index].setFrom(index);
+					fun.liveIntervals.addDefinition(instr.result, cast(int)index);
 					// live.remove(opd)
-					liveRemoveInstr(index);
+					liveRemove(instr.result);
 				}
-				else
-					intervals[index].isInterval = false;
 
 				// for each input operand opd of op do
 				foreach(IrRef opd; instr.args[0..numInstrArgs[instr.op]])
@@ -4248,7 +4251,7 @@ void buildIntervals(IrModule* mod, CompilationContext* ctx)
 			foreach (ref IrRef phiRef; block.phis)
 			{
 				// live.remove(phi.output)
-				liveRemovePhi(phiRef.index);
+				liveRemove(fun.phis[phiRef.index].result);
 			}
 
 			// TODO
@@ -4260,87 +4263,191 @@ void buildIntervals(IrModule* mod, CompilationContext* ctx)
 			// b.liveIn = live
 			blockLiveIn(block.index)[] = liveBuckets;
 		}
-
-		//writeln("intervals:");
-		//foreach (i, interval; intervals) {
-		//	if (!interval.isInterval) continue;
-		//	if (i >= numInstrs) writef(" phi % 3s:", i-numInstrs);
-		//	else writef("intr % 3s:", i);
-		//	foreach (range; interval.ranges)
-		//		writef(" (%s %s)", range.from, range.to);
-		//	writeln;
-		//}
 	}
 }
 
-struct LiveInterval
+struct LiveRangeId {
+	this(size_t id) { this.id = cast(int)id; }
+	enum LiveRangeId NULL = LiveRangeId(-1);
+	int id = -1;
+	bool isNull() { return id == NULL; }
+	alias id this;
+}
+
+struct FunctionLiveIntervals
 {
-	// false for instructions without return value
-	bool isInterval = true;
-	// invariant: all ranges are sorted by `from` and do not intersect
-	LiveRange[] ranges;
+	// invariant: all ranges of one interval are sorted by `from` and do not intersect
+	Buffer!LiveRange ranges;
+	LiveRangeId[] firstIntervalRangeArray;
+
+	void initIntervals(size_t numIntervals, size_t reserveRanges) {
+		firstIntervalRangeArray.length = numIntervals;
+		ranges.reserve(reserveRanges);
+	}
 
 	// bounds are from block start to block end of the same block
 	// from is always == to block start
-	void addRange(size_t from, size_t to, size_t intervalId) {
-		//writefln("addRange $%s %s %s", intervalId, from, to);
+	// checks for interval being null
+	void addRange(IrOperandId interval, int from, int to)
+	{
+		if (interval.isNull) return;
+		LiveRange newRange = LiveRange(from, to, interval);
+		LiveRangeId firstMergeId;
 
-		LiveRange newRange = LiveRange(cast(uint)from, cast(uint)to);
-
-		size_t mergeMin = size_t.max;
-		size_t mergeMax = 0;
-		bool merged;
-
-		foreach (i, r; ranges)
+		// merge all intersecting ranges into one
+		LiveRangeId last;
+		LiveRangeId cur = firstIntervalRangeArray[interval];
+		while (!cur.isNull)
 		{
-			if (r.canBeMergedWith(newRange)) {
-				merged = true;
-				newRange = merge(newRange, r);
-				mergeMin = min(i, mergeMin);
-				mergeMax = max(i, mergeMax);
-			}
-		}
+			auto r = &ranges[cur];
 
-		if (merged)
-		{
-			// merge ranges
-			ranges[mergeMin] = newRange;
-			if (mergeMax > mergeMin)
+			if (r.canBeMergedWith(newRange))
 			{
-				size_t i = mergeMin;
-				size_t j = mergeMax;
-				while(j < ranges.length)
+				if (firstMergeId.isNull)
 				{
-					++i;
-					++j;
-					ranges[i] = ranges[j];
+					// first merge
+					firstMergeId = cur;
+					r.merge(newRange);
 				}
-				ranges = assumeSafeAppend(ranges[0..i]);
+				else
+				{
+					// second+ merge
+					ranges[firstMergeId].merge(*r);
+					cur = deleteRange(cur); // sets cur to next range
+					continue;
+				}
 			}
+			else if (to < r.from)
+			{
+				if (!firstMergeId.isNull) return; // don't insert after merge
+
+				// we found insertion point before cur, no merge was made
+				insertRangeBefore(cur, newRange);
+				return;
+			}
+
+			last = cur;
+			cur = r.nextIndex;
 		}
-		else
+
+		if (firstMergeId.isNull)
 		{
-			// add new range
-			ranges ~= LiveRange(cast(uint)from, cast(uint)to);
-			ranges.sort!("a.from < b.from");
+			// insert after last (cur is NULL), no merge/insertion was made
+			insertRangeAfterLast(last, newRange);
 		}
 	}
 
 	// sets the definition position
-	void setFrom(size_t from) {
-		if (ranges.empty) {
-			ranges ~= LiveRange(cast(uint)from, cast(uint)from);
+	void addDefinition(IrOperandId interval, int from) {
+		LiveRangeId cur = firstIntervalRangeArray[interval];
+		if (!cur.isNull) {
+			ranges[cur].from = from;
+		}
+	}
+
+	void insertRangeBefore(LiveRangeId beforeRange, LiveRange range)
+	{
+		LiveRangeId index = LiveRangeId(ranges.length);
+
+		LiveRange* next = &ranges[beforeRange];
+		range.prevIndex = next.prevIndex;
+		range.nextIndex = beforeRange;
+		next.prevIndex = index;
+
+		if (!range.prevIndex.isNull)
+			ranges[range.prevIndex].nextIndex = index;
+		else
+			firstIntervalRangeArray[range.intervalId] = index;
+		ranges.put(range);
+	}
+
+	void insertRangeAfterLast(LiveRangeId last, LiveRange range)
+	{
+		LiveRangeId index = LiveRangeId(ranges.length);
+
+		if (last.isNull)
+		{
+			firstIntervalRangeArray[range.intervalId] = index;
+			ranges.put(range);
 			return;
 		}
-		ranges[0].from = cast(uint)from;
-		//writefln("setFrom %s", from);
+
+		LiveRange* prev = &ranges[last];
+		range.prevIndex = last;
+		range.nextIndex = prev.nextIndex;
+		prev.nextIndex = index;
+
+		if (!range.nextIndex.isNull)
+			ranges[range.nextIndex].prevIndex = index;
+		ranges.put(range);
+	}
+
+	void moveRange(LiveRangeId fromIndex, LiveRangeId toIndex)
+	{
+		if (fromIndex == toIndex) return;
+		ranges[toIndex] = ranges[fromIndex];
+		auto range = &ranges[toIndex];
+		if (!range.prevIndex.isNull) ranges[range.prevIndex].nextIndex = toIndex;
+		if (!range.nextIndex.isNull) ranges[range.nextIndex].prevIndex = toIndex;
+		if (fromIndex == firstIntervalRangeArray[range.intervalId])
+			firstIntervalRangeArray[range.intervalId] = toIndex;
+	}
+
+	// returns rangeId of the next range
+	LiveRangeId deleteRange(LiveRangeId rangeIndex)
+	{
+		auto range = &ranges[rangeIndex];
+
+		if (rangeIndex == firstIntervalRangeArray[range.intervalId])
+			firstIntervalRangeArray[range.intervalId] = range.nextIndex;
+
+		LiveRangeId lastIndex = LiveRangeId(ranges.length-1);
+		LiveRangeId nextIndex = range.nextIndex;
+
+		if (range.prevIndex != LiveRangeId.NULL)
+			ranges[range.prevIndex].nextIndex = range.nextIndex;
+		if (range.nextIndex != LiveRangeId.NULL)
+			ranges[range.nextIndex].prevIndex = range.prevIndex;
+
+		if (nextIndex == lastIndex) nextIndex = rangeIndex;
+
+		moveRange(lastIndex, rangeIndex);
+		ranges.unput(1);
+
+		return nextIndex;
+	}
+
+	void print() {
+		writeln("intervals:");
+		writeln(ranges.data);
+		foreach (i, cur; firstIntervalRangeArray) {
+			if (cur.isNull) {
+				writefln("% 3s: null", i);
+				continue;
+			}
+			writef("% 3s:", i);
+			while (!cur.isNull)
+			{
+				auto r = &ranges[cur];
+				writef(" (%s %s)", r.from, r.to);
+				cur = r.nextIndex;
+			}
+			writeln;
+		}
 	}
 }
 
 struct LiveRange
 {
-	uint from;
-	uint to;
+	int from;
+	int to;
+	IrOperandId intervalId;
+	LiveRangeId prevIndex = LiveRangeId.NULL;
+	LiveRangeId nextIndex = LiveRangeId.NULL;
+	void merge(LiveRange other) {
+		from = min(from, other.from);
+		to = max(to, other.to);
+	}
 	bool canBeMergedWith(const LiveRange other) {
 		if (to < other.from) return false;
 		if (from > other.to) return false;
@@ -4348,8 +4455,98 @@ struct LiveRange
 	}
 }
 
-LiveRange merge(LiveRange a, LiveRange b) {
-	return LiveRange(min(a.from, b.from), max(a.to, b.to));
+/*
+LinearScan
+unhandled = list of intervals sorted by increasing start positions
+active = { }; inactive = { }; handled = { }
+
+while unhandled != { } do
+	current = pick and remove first interval from unhandled
+	position = start position of current
+
+	// check for intervals in active that are handled or inactive
+	for each interval it in active do
+		if it ends before position then
+			move it from active to handled
+		else if it does not cover position then
+			move it from active to inactive
+
+	// check for intervals in inactive that are handled or active
+	for each interval it in inactive do
+		if it ends before position then
+			move it from inactive to handled
+		else if it covers position then
+			move it from inactive to active
+
+	// find a register for current
+	TryAllocateFreeReg
+	if allocation failed then AllocateBlockedReg
+
+	if current has a register assigned then add current to active
+*/
+void pass_linear_scan(ref CompilationContext ctx) {
+	import std.container.binaryheap;
+	int cmp(LiveRangeId a, LiveRangeId b) {
+		 return 0;
+	}
+	BinaryHeap!(LiveRangeId[], cmp) unhandled;
+}
+
+/*
+TRYALLOCATEFREEREG
+set freeUntilPos of all physical registers to maxInt
+
+for each interval it in active do
+	freeUntilPos[it.reg] = 0
+for each interval it in inactive intersecting with current do
+	freeUntilPos[it.reg] = next intersection of it with current
+
+reg = register with highest freeUntilPos
+if freeUntilPos[reg] = 0 then
+	// no register available without spilling
+	allocation failed
+else if current ends before freeUntilPos[reg] then
+	// register available for the whole interval
+	current.reg = reg
+else
+	// register available for the first part of the interval
+	current.reg = reg
+	split current before freeUntilPos[reg]
+*/
+void tryAllocateFreeReg()
+{
+
+}
+
+/*
+ALLOCATEBLOCKEDREG
+set nextUsePos of all physical registers to maxInt
+
+for each interval it in active do
+	nextUsePos[it.reg] = next use of it after start of current
+for each interval it in inactive intersecting with current do
+	nextUsePos[it.reg] = next use of it after start of current
+
+reg = register with highest nextUsePos
+if first usage of current is after nextUsePos[reg] then
+	// all other intervals are used before current,
+	// so it is best to spill current itself
+	assign spill slot to current
+	split current before its first use position that requires a register
+else
+	// spill intervals that currently block reg
+	current.reg = reg
+	split active interval for reg at position
+	split any inactive interval for reg at the end of its lifetime hole
+
+// make sure that current does not intersect with
+// the fixed interval for reg
+if current intersects with the fixed interval for reg then
+	split current before this intersection
+*/
+void allocateBlockedReg()
+{
+
 }
 
 /*
