@@ -491,7 +491,7 @@ struct Driver
 		passes ~= CompilePass("Semantic types", &pass_semantic_type);
 		passes ~= CompilePass("IR gen", &pass_ir_gen);
 		passes ~= CompilePass("Live intervals", &pass_live_intervals);
-		//passes ~= CompilePass("Linear scan", &pass_linear_scan);
+		passes ~= CompilePass("Linear scan", &pass_linear_scan);
 	}
 
 	ModuleDeclNode* compileModule(string fileData)
@@ -3482,7 +3482,12 @@ struct IrFunction
 	IrRef emitInstr2(IrOpcode op, IrValueType type, IrRef arg0, IrRef arg1) {
 		auto i = IrInstruction(op, type); i.arg0 = arg0; i.arg1 = arg1; return put(i); }
 	IrRef emitInstrCmp(IrCond cond, IrRef arg0, IrRef arg1) {
-		auto i = IrInstruction(IrOpcode.o_icmp, IrValueType.i1); i.condition = cond; i.arg0 = arg0; i.arg1 = arg1; return put(i); }
+		auto i = IrInstruction(IrOpcode.o_icmp, IrValueType.i1);
+		i.condition = cond; i.arg0 = arg0; i.arg1 = arg1;
+		auto irRef = put(i);
+		//instructions[irRef.index].result.hint.hintReg = RegisterRef(0, RegClass.flags); // flag
+		return irRef;
+	}
 
 	IrRef put(IrInstruction instr) {
 		++currentBB.numInstrs;
@@ -3857,6 +3862,7 @@ struct IrOperand
 {
 	// instruction or phi index
 	IrRef irRef;
+	RegisterHint regHint;
 	/// Indicates number of uses. There can be multiple uses per instruction.
 	/// 0 means unused, 1 means temporary, or more
 	ushort numUses;
@@ -4233,7 +4239,7 @@ void pass_live_intervals(ref CompilationContext ctx)
 				if (hasInstrReturn[instr.op])
 				{
 					// intervals[opd].setFrom(op.id)
-					fun.liveIntervals.addDefinition(instr.result, cast(int)index);
+					fun.liveIntervals.addDefinition(instr.result, instr.type, cast(int)index);
 					// live.remove(opd)
 					liveRemove(instr.result);
 				}
@@ -4278,10 +4284,48 @@ struct FunctionLiveIntervals
 {
 	// invariant: all ranges of one interval are sorted by `from` and do not intersect
 	Buffer!LiveRange ranges;
-	LiveRangeId[] firstIntervalRangeArray;
+	LiveInterval[] intervals;
+
+	bool intervalCoversPosition(LiveRangeId cur, int position)
+	{
+		while (!cur.isNull)
+		{
+			auto r = &ranges[cur];
+			if (position < r.from)
+				return false;
+			else if (position > r.to)
+				cur = r.nextIndex;
+			else // from >= position <= to
+				return true;
+		}
+		return false;
+	}
+
+	ref LiveInterval getInterval(LiveRangeId rangeId)
+	{
+		auto itId = ranges[rangeId].intervalId;
+		return intervals[itId];
+	}
+
+	// returns rangeId pointing to range covering position or one to the right of pos.
+	// returns -1 if no ranges left after pos.
+	LiveRangeId advanceRangeId(LiveRangeId cur, int position)
+	{
+		while (!cur.isNull)
+		{
+			auto r = &ranges[cur];
+			if (position < r.from)
+				return cur;
+			else if (position > r.to)
+				cur = r.nextIndex;
+			else // from >= position <= to
+				return cur;
+		}
+		return cur;
+	}
 
 	void initIntervals(size_t numIntervals, size_t reserveRanges) {
-		firstIntervalRangeArray.length = numIntervals;
+		intervals.length = numIntervals;
 		ranges.reserve(reserveRanges);
 	}
 
@@ -4295,8 +4339,7 @@ struct FunctionLiveIntervals
 		LiveRangeId firstMergeId;
 
 		// merge all intersecting ranges into one
-		LiveRangeId last;
-		LiveRangeId cur = firstIntervalRangeArray[interval];
+		LiveRangeId cur = intervals[interval].first;
 		while (!cur.isNull)
 		{
 			auto r = &ranges[cur];
@@ -4326,20 +4369,20 @@ struct FunctionLiveIntervals
 				return;
 			}
 
-			last = cur;
 			cur = r.nextIndex;
 		}
 
 		if (firstMergeId.isNull)
 		{
 			// insert after last (cur is NULL), no merge/insertion was made
-			insertRangeAfterLast(last, newRange);
+			appendRange(interval, newRange);
 		}
 	}
 
 	// sets the definition position
-	void addDefinition(IrOperandId interval, int from) {
-		LiveRangeId cur = firstIntervalRangeArray[interval];
+	void addDefinition(IrOperandId interval, IrValueType type, int from) {
+		LiveRangeId cur = intervals[interval].first;
+		intervals[interval].regClass = typeToRegClass(type);
 		if (!cur.isNull) {
 			ranges[cur].from = from;
 		}
@@ -4357,17 +4400,19 @@ struct FunctionLiveIntervals
 		if (!range.prevIndex.isNull)
 			ranges[range.prevIndex].nextIndex = index;
 		else
-			firstIntervalRangeArray[range.intervalId] = index;
+			intervals[range.intervalId].first = index;
 		ranges.put(range);
 	}
 
-	void insertRangeAfterLast(LiveRangeId last, LiveRange range)
+	void appendRange(IrOperandId interval, LiveRange range)
 	{
+		LiveRangeId last = intervals[interval].last;
 		LiveRangeId index = LiveRangeId(ranges.length);
 
 		if (last.isNull)
 		{
-			firstIntervalRangeArray[range.intervalId] = index;
+			intervals[range.intervalId].first = index;
+			intervals[range.intervalId].last = index;
 			ranges.put(range);
 			return;
 		}
@@ -4389,8 +4434,9 @@ struct FunctionLiveIntervals
 		auto range = &ranges[toIndex];
 		if (!range.prevIndex.isNull) ranges[range.prevIndex].nextIndex = toIndex;
 		if (!range.nextIndex.isNull) ranges[range.nextIndex].prevIndex = toIndex;
-		if (fromIndex == firstIntervalRangeArray[range.intervalId])
-			firstIntervalRangeArray[range.intervalId] = toIndex;
+		auto it = &intervals[range.intervalId];
+		if (fromIndex == it.first) it.first = toIndex;
+		if (fromIndex == it.last) it.last = toIndex;
 	}
 
 	// returns rangeId of the next range
@@ -4398,8 +4444,9 @@ struct FunctionLiveIntervals
 	{
 		auto range = &ranges[rangeIndex];
 
-		if (rangeIndex == firstIntervalRangeArray[range.intervalId])
-			firstIntervalRangeArray[range.intervalId] = range.nextIndex;
+		auto it = &intervals[range.intervalId];
+		if (rangeIndex == it.first) it.first = range.nextIndex;
+		if (rangeIndex == it.last) it.last = range.prevIndex;
 
 		LiveRangeId lastIndex = LiveRangeId(ranges.length-1);
 		LiveRangeId nextIndex = range.nextIndex;
@@ -4420,12 +4467,17 @@ struct FunctionLiveIntervals
 	void print() {
 		writeln("intervals:");
 		writeln(ranges.data);
-		foreach (i, cur; firstIntervalRangeArray) {
+		foreach (i, it; intervals) {
+			LiveRangeId cur = it.first;
 			if (cur.isNull) {
 				writefln("% 3s: null", i);
 				continue;
 			}
-			writef("% 3s:", i);
+			if (it.reg.isNull)
+				writef("% 3s [no reg]:", i);
+			else
+				writef("% 3s [%s %2s]:", i, it.reg.regClass, it.reg);
+
 			while (!cur.isNull)
 			{
 				auto r = &ranges[cur];
@@ -4437,6 +4489,14 @@ struct FunctionLiveIntervals
 	}
 }
 
+struct LiveInterval
+{
+	LiveRangeId first;
+	LiveRangeId last;
+	RegisterRef reg;
+	RegClass regClass;
+}
+
 struct LiveRange
 {
 	int from;
@@ -4444,6 +4504,12 @@ struct LiveRange
 	IrOperandId intervalId;
 	LiveRangeId prevIndex = LiveRangeId.NULL;
 	LiveRangeId nextIndex = LiveRangeId.NULL;
+	bool isLast() { return nextIndex == LiveRangeId.NULL; }
+	bool contains(int pos) {
+		if (pos < from) return false;
+		if (pos > to) return false;
+		return true;
+	}
 	void merge(LiveRange other) {
 		from = min(from, other.from);
 		to = max(to, other.to);
@@ -4455,123 +4521,352 @@ struct LiveRange
 	}
 }
 
-/*
-LinearScan
-unhandled = list of intervals sorted by increasing start positions
-active = { }; inactive = { }; handled = { }
-
-while unhandled != { } do
-	current = pick and remove first interval from unhandled
-	position = start position of current
-
-	// check for intervals in active that are handled or inactive
-	for each interval it in active do
-		if it ends before position then
-			move it from active to handled
-		else if it does not cover position then
-			move it from active to inactive
-
-	// check for intervals in inactive that are handled or active
-	for each interval it in inactive do
-		if it ends before position then
-			move it from inactive to handled
-		else if it covers position then
-			move it from inactive to active
-
-	// find a register for current
-	TryAllocateFreeReg
-	if allocation failed then AllocateBlockedReg
-
-	if current has a register assigned then add current to active
-*/
 void pass_linear_scan(ref CompilationContext ctx) {
-	import std.container.binaryheap;
-	int cmp(LiveRangeId a, LiveRangeId b) {
-		 return 0;
+	LinearScan linearScan;
+	linearScan.setup;
+	foreach (ref fun; ctx.mod.irModule.functions) {
+		linearScan.scanFun(*fun, ctx);
+		linearScan.resolve(*fun);
 	}
-	BinaryHeap!(LiveRangeId[], cmp) unhandled;
 }
 
-/*
-TRYALLOCATEFREEREG
-set freeUntilPos of all physical registers to maxInt
-
-for each interval it in active do
-	freeUntilPos[it.reg] = 0
-for each interval it in inactive intersecting with current do
-	freeUntilPos[it.reg] = next intersection of it with current
-
-reg = register with highest freeUntilPos
-if freeUntilPos[reg] = 0 then
-	// no register available without spilling
-	allocation failed
-else if current ends before freeUntilPos[reg] then
-	// register available for the whole interval
-	current.reg = reg
-else
-	// register available for the first part of the interval
-	current.reg = reg
-	split current before freeUntilPos[reg]
-*/
-void tryAllocateFreeReg()
+struct LinearScan
 {
+	LiveRangeId[] unhandledStorage;
+	Buffer!LiveRangeId active;
+	Buffer!LiveRangeId inactive;
+	Buffer!LiveRangeId handled;
+	PhysRegisters physRegs;
 
-}
+	void setup()
+	{
+		physRegs.setup;
+	}
 
-/*
-ALLOCATEBLOCKEDREG
-set nextUsePos of all physical registers to maxInt
+	/*
+		LinearScan
+		unhandled = list of intervals sorted by increasing start positions
+		active = { }; inactive = { }; handled = { }
 
-for each interval it in active do
-	nextUsePos[it.reg] = next use of it after start of current
-for each interval it in inactive intersecting with current do
-	nextUsePos[it.reg] = next use of it after start of current
+		while unhandled != { } do
+			current = pick and remove first interval from unhandled
+			position = start position of current
 
-reg = register with highest nextUsePos
-if first usage of current is after nextUsePos[reg] then
-	// all other intervals are used before current,
-	// so it is best to spill current itself
-	assign spill slot to current
-	split current before its first use position that requires a register
-else
-	// spill intervals that currently block reg
-	current.reg = reg
-	split active interval for reg at position
-	split any inactive interval for reg at the end of its lifetime hole
+			// check for intervals in active that are handled or inactive
+			for each interval it in active do
+				if it ends before position then
+					move it from active to handled
+				else if it does not cover position then
+					move it from active to inactive
 
-// make sure that current does not intersect with
-// the fixed interval for reg
-if current intersects with the fixed interval for reg then
-	split current before this intersection
-*/
-void allocateBlockedReg()
-{
+			// check for intervals in inactive that are handled or active
+			for each interval it in inactive do
+				if it ends before position then
+					move it from inactive to handled
+				else if it covers position then
+					move it from inactive to active
 
-}
+			// find a register for current
+			TryAllocateFreeReg
+			if allocation failed then AllocateBlockedReg
 
-/*
-// Resolve
-for each control flow edge from predecessor to successor do
-	for each interval it live at begin of successor do
-		if it starts at begin of successor then
-			phi = phi function defining it
-			opd = phi.inputOf(predecessor)
-			if opd is a constant then
-				moveFrom = opd
-			else
-				moveFrom = location of intervals[opd] at end of predecessor
+			if current has a register assigned then add current to active
+	*/
+	void scanFun(ref IrFunction fun, ref CompilationContext ctx)
+	{
+		import std.container.binaryheap;
+
+		FunctionLiveIntervals* live = &fun.liveIntervals;
+
+		int cmp(LiveRangeId a, LiveRangeId b) {
+			return live.ranges[a].from > live.ranges[b].from;
+		}
+
+		// unhandled = list of intervals sorted by increasing start positions
+		// active = { }; inactive = { }; handled = { }
+		BinaryHeap!(LiveRangeId[], cmp) unhandled;
+		unhandled.assume(assumeSafeAppend(unhandledStorage), 0);
+		active.clear;
+		inactive.clear;
+		handled.clear;
+
+		unhandled.acquire(null);
+		foreach (it; live.intervals)
+			if (!it.first.isNull)
+				unhandled.insert(it.first);
+		//writefln("unhandled %s", unhandled);
+
+		// while unhandled != { } do
+		while (!unhandled.empty)
+		{
+			// current = pick and remove first interval from unhandled
+			LiveRangeId currentId = unhandled.front;
+			unhandled.removeFront;
+
+			// position = start position of current
+			int position = live.ranges[currentId].from;
+			//writefln("current %s pos %s", live.ranges[currentId].intervalId, position);
+
+			size_t index;
+			// // check for intervals in active that are handled or inactive
+			// for each interval it in active do
+			while (index < active.length)
+			{
+				LiveRangeId rangeId0 = active[index];
+				LiveRangeId rangeId = active[index] = live.advanceRangeId(rangeId0, position);
+				LiveRange range = live.ranges[rangeId0];
+
+				// if it ends before position then
+				if (rangeId.isNull)
+				{
+					// move it from active to handled
+					//writefln("move %s active -> handled", range.intervalId);
+					//handled.put(rangeId);
+					active.removeInPlace(index);
+				}
+				// else if it does not cover position then
+				else if(!fun.liveIntervals.intervalCoversPosition(rangeId, position))
+				{
+					// move it from active to inactive
+					//writefln("%s isLast %s less %s", rangeId, range.isLast, range.to < position);
+					//writefln("move %s active -> inactive", range.intervalId);
+					inactive.put(rangeId);
+					active.removeInPlace(index);
+				}
+				else
+					++index;
+			}
+
+			index = 0;
+			// check for intervals in inactive that are handled or active
+			// for each interval it in inactive do
+			while (index < inactive.length)
+			{
+				LiveRangeId rangeId = inactive[index];
+
+				// if it ends before position then
+				if (live.ranges[rangeId].isLast && live.ranges[rangeId].to < position)
+				{
+					// move it from inactive to handled
+					//writefln("move %s inactive -> handled", live.ranges[rangeId].intervalId);
+					//handled.put(rangeId);
+					inactive.removeInPlace(index);
+				}
+				// 	else if it covers position then
+				else if(fun.liveIntervals.intervalCoversPosition(rangeId, position))
+				{
+					// move it from inactive to active
+					//writefln("move %s inactive -> active", live.ranges[rangeId].intervalId);
+					active.put(rangeId);
+					inactive.removeInPlace(index);
+				}
+				else
+					++index;
+			}
+
+			// find a register for current
+			bool success = tryAllocateFreeReg(fun, currentId);
+
+			// if allocation failed then AllocateBlockedReg
+			if (!success)
+				allocateBlockedReg(fun, currentId);
+
+			// if current has a register assigned then add current to active
+			if (!live.getInterval(currentId).reg.isNull)
+			{
+				//writefln("move current %s -> active", live.ranges[currentId].intervalId);
+				active.put(currentId);
+			}
+		}
+
+		unhandledStorage = unhandled.release;
+	}
+
+	/*
+	TRYALLOCATEFREEREG
+		set freeUntilPos of all physical registers to maxInt
+
+		for each interval it in active do
+			freeUntilPos[it.reg] = 0
+		for each interval it in inactive intersecting with current do
+			freeUntilPos[it.reg] = next intersection of it with current
+
+		reg = register with highest freeUntilPos
+		if freeUntilPos[reg] = 0 then
+			// no register available without spilling
+			allocation failed
+		else if current ends before freeUntilPos[reg] then
+			// register available for the whole interval
+			current.reg = reg
 		else
-			moveFrom = location of it at end of predecessor
-		moveTo = location of it at begin of successor
-		if moveFrom ≠ moveTo then
-			mapping.add(moveFrom, moveTo)
-	mapping.orderAndInsertMoves()
-*/
-void resolve(IrModule* mod)
-{
+			// register available for the first part of the interval
+			current.reg = reg
+			split current before freeUntilPos[reg]
+	*/
+	bool tryAllocateFreeReg(ref IrFunction fun, LiveRangeId currentId)
+	{
+		// set freeUntilPos of all physical registers to maxInt
+		physRegs.resetFreeUntilPos;
 
+		auto currentIt = &fun.liveIntervals.getInterval(currentId);
+
+		// for each interval it in active do
+		//     freeUntilPos[it.reg] = 0
+		foreach (rangeId; active.data)
+		{
+			auto it = fun.liveIntervals.getInterval(rangeId);
+			assert(!it.reg.isNull);
+			physRegs[it.reg].freeUntilPos = 0;
+		}
+
+		// check inactive : TODO
+
+		// reg = register with highest freeUntilPos
+		int maxPos = 0;
+		RegisterRef reg;
+
+		foreach (i, ref r; physRegs.getClassRegs(currentIt.regClass))
+		{
+			if (r.freeUntilPos > maxPos) {
+				maxPos = r.freeUntilPos;
+				reg = RegisterRef(i, currentIt.regClass);
+			}
+		}
+
+		if (maxPos == 0)
+		{
+			return false;
+		}
+		else
+		{
+			int currentEnd = fun.liveIntervals.ranges[currentIt.last].to;
+			if (currentEnd < maxPos)
+			{
+				currentIt.reg = reg;
+				return true;
+			}
+			else
+			{
+				// split
+				return false;
+			}
+		}
+	}
+
+	/*
+	ALLOCATEBLOCKEDREG
+		set nextUsePos of all physical registers to maxInt
+
+		for each interval it in active do
+			nextUsePos[it.reg] = next use of it after start of current
+		for each interval it in inactive intersecting with current do
+			nextUsePos[it.reg] = next use of it after start of current
+
+		reg = register with highest nextUsePos
+		if first usage of current is after nextUsePos[reg] then
+			// all other intervals are used before current,
+			// so it is best to spill current itself
+			assign spill slot to current
+			split current before its first use position that requires a register
+		else
+			// spill intervals that currently block reg
+			current.reg = reg
+			split active interval for reg at position
+			split any inactive interval for reg at the end of its lifetime hole
+
+		// make sure that current does not intersect with
+		// the fixed interval for reg
+		if current intersects with the fixed interval for reg then
+			split current before this intersection
+	*/
+	void allocateBlockedReg(ref IrFunction fun, LiveRangeId currentId)
+	{
+		assert(false);
+	}
+
+	/*
+	// Resolve
+	for each control flow edge from predecessor to successor do
+		for each interval it live at begin of successor do
+			if it starts at begin of successor then
+				phi = phi function defining it
+				opd = phi.inputOf(predecessor)
+				if opd is a constant then
+					moveFrom = opd
+				else
+					moveFrom = location of intervals[opd] at end of predecessor
+			else
+				moveFrom = location of it at end of predecessor
+			moveTo = location of it at begin of successor
+			if moveFrom ≠ moveTo then
+				mapping.add(moveFrom, moveTo)
+		mapping.orderAndInsertMoves()
+	*/
+	void resolve(ref IrFunction fun)
+	{
+
+	}
 }
 
+RegClass typeToRegClass(IrValueType type)
+{
+	if (type == IrValueType.i1) return RegClass.flags;
+	return RegClass.gpr;
+}
+
+enum RegClass : ubyte
+{
+	gpr,
+	flags
+}
+
+struct PhysRegister
+{
+	ubyte id;
+	int freeUntilPos;
+}
+
+struct PhysRegisters
+{
+	PhysRegister[] gpr;
+	PhysRegister[] flags;
+
+	ref PhysRegister opIndex(RegisterRef reg) {
+		final switch(reg.regClass) {
+			case RegClass.gpr: return gpr[reg];
+			case RegClass.flags: return flags[reg];
+		}
+	}
+
+	void setup()
+	{
+		gpr.length = 0;
+		flags ~= PhysRegister(0);
+		gpr ~= PhysRegister(Register.AX);
+		gpr ~= PhysRegister(Register.CX);
+		gpr ~= PhysRegister(Register.DX);
+		gpr ~= PhysRegister(Register.R8);
+		gpr ~= PhysRegister(Register.R9);
+		gpr ~= PhysRegister(Register.R10);
+		gpr ~= PhysRegister(Register.R11);
+	}
+
+	void resetFreeUntilPos()
+	{
+		foreach (ref reg; gpr) reg.freeUntilPos = int.max;
+		foreach (ref reg; flags) reg.freeUntilPos = int.max;
+	}
+
+	PhysRegister[] getClassRegs(RegClass cls)
+	{
+		final switch(cls) {
+			case RegClass.gpr: return gpr;
+			case RegClass.flags: return flags;
+		}
+	}
+}
+
+/*
 struct Bits
 {
 	ulong data;
@@ -4580,14 +4875,24 @@ struct Bits
 	void set(size_t i) { data |= (1 << i); }
 	void unset(size_t i) { data &= ~(1 << i); }
 }
+*/
+
+struct RegisterHint
+{
+	RegisterRef hintReg;
+}
 
 /// Is used in IrValue to indicate the register that stores given IrValue
 struct RegisterRef
 {
-	byte index = -1; /// -1 means undefined
-	bool isDefined() { return index >= 0; }
+	this(size_t index, RegClass regClass) { this.index = cast(ubyte)index; this.regClass = regClass; }
+	ubyte index = ubyte.max;
+	RegClass regClass;
+	alias index this;
+	bool isNull() { return index == ubyte.max; }
 }
 
+/*
 /// State of single machine register
 struct RegisterState
 {
@@ -4712,6 +5017,7 @@ struct MachineState
 	RegisterClass gprRegs;
 	RegisterClass flagsReg;
 }
+*/
 /+
 struct IrToAmd64
 {
@@ -5955,6 +6261,15 @@ struct Buffer(T)
 			buf = cast(T[])tmp;
 			GC.addRange(buf.ptr, buf.length * T.sizeof, typeid(T));
 		}
+	}
+
+	void removeInPlace(size_t index)
+	{
+		if (index+1 != length)
+		{
+			buf[index] = buf[length-1];
+		}
+		--length;
 	}
 
 	void unput(size_t numItems)
