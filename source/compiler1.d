@@ -305,17 +305,16 @@ void test()
 		return result;
 	}};
 
+	Driver driver;
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
-	Driver driver;
 	try {
 		driver.initPasses();
-		ModuleDeclNode* mod = driver.compileModule(input8);
-		//auto astPrinter = AstPrinter(&context, 2);
+		ModuleDeclNode* mod = driver.compileModule(input8, codeBuffer);
+		//auto astPrinter = AstPrinter(&driver.context, 2);
 		//astPrinter.printAst(cast(AstNode*)mod);
 
-		/*
-			auto funDecl = mod.findFunction("sign", &context);
+			auto funDecl = mod.findFunction("sign", &driver.context);
 			alias FunType = extern(C) int function(int);
 			FunType fun;
 			int res1;
@@ -324,14 +323,13 @@ void test()
 			if (funDecl.irData.funcPtr)
 			{
 				fun = cast(FunType)funDecl.irData.funcPtr;
-				foreach(_; 0..10_000)
+				foreach(_; 0..1)
 				{
 					res1 = fun(10);
 					res2 = fun(0);
 					res3 = fun(-10);
 				}
 			}
-		*/
 
 		version(print)
 		{
@@ -351,12 +349,11 @@ void test()
 
 		/*
 		writefln("fun run x3 %ss", scaledNumberFmt(time11-time10));
-		writefln("codeBuffer %s", codeBuffer.ptr);
 		writefln("fun %s", fun);
+		*/
 		writefln("sign(10) -> %s", res1);
 		writefln("sign(0) -> %s", res2);
 		writefln("sign(-10) -> %s", res3);
-		*/
 	}
 	catch(CompilationException e) {
 		writeln(driver.context.sink.text);
@@ -379,6 +376,8 @@ void bench()
 		return result;
 	}};
 
+	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
+
 	Driver driver;
 	driver.initPasses();
 
@@ -388,7 +387,7 @@ void bench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(input);
+		mod = driver.compileModule(input, codeBuffer);
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);
@@ -492,11 +491,12 @@ struct Driver
 		passes ~= CompilePass("IR gen", &pass_ir_gen);
 		passes ~= CompilePass("Live intervals", &pass_live_intervals);
 		passes ~= CompilePass("Linear scan", &pass_linear_scan);
+		passes ~= CompilePass("Code gen", &pass_code_gen);
 	}
 
-	ModuleDeclNode* compileModule(string fileData)
+	ModuleDeclNode* compileModule(string fileData, ubyte[] codeBuffer)
 	{
-		context = CompilationContext(fileData);
+		context = CompilationContext(fileData, codeBuffer);
 
 		try foreach (ref pass; passes)
 		{
@@ -562,6 +562,7 @@ int sign(int number)
 struct CompilationContext
 {
 	string input;
+	ubyte[] codeBuffer;
 	ModuleDeclNode* mod;
 	ScopeStack scopeStack;
 
@@ -615,6 +616,16 @@ struct CompilationContext
 	{
 		if (cond) return;
 		sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
+		sink.putfln(fmt, args);
+		hasErrors = true;
+		tryCrashOnICE;
+		throw new CompilationException(true);
+	}
+
+	void assertf(string file = __FILE__, int line = __LINE__, Args...)(bool cond, SourceLocation loc, string fmt, lazy Args args)
+	{
+		if (cond) return;
+		sink.putf("%s(%s): file(%s, %s): ICE: ", file, line, loc.line+1, loc.col+1);
 		sink.putfln(fmt, args);
 		hasErrors = true;
 		tryCrashOnICE;
@@ -3146,37 +3157,42 @@ struct BinIrGenerationVisitor {
 			if (curFunc.currentBB.isFinished) break;
 		}
 	}
-	/*
-	void tryInvertCondition(ref IrRef valueRef)
-	{
-		// invert condition, so that we jump to else on success
-		if (curFunc.currentBB.instructions.length)
-		{
-			auto lastInstr = &curFunc.currentBB.instructions[$-1];
-			if (lastInstr.op == IrOpcode.o_icmp)
-			{
-				lastInstr.condition = inverseIrCond[lastInstr.condition];
-				return;
-			}
-		}
 
-		auto notCond = curFunc.addVariable(IrValueType.i1, IrName(tempId, uniqueSuffix));
-		auto instr = IrInstruction(IrOpcode.o_not, notCond, valueRef);
-		curFunc.currentBB.emit(instr);
-		//writefln("incValueUsage cond1 %s %s", valueRef.kind, valueRef.index);
-		curFunc.incValueUsage(valueRef);
-		valueRef = notCond;
-	}*/
+	void tryInvertCondition(ExpressionNode* condition)
+	{
+		IrRef valueRef = condition.irRef;
+		// invert condition, so that we jump to else on success
+		if (valueRef.kind == IrValueKind.instr)
+		{
+			auto instr = &curFunc.instructions[valueRef.index];
+			instr.condition = inverseIrCond[instr.condition];
+		}
+		else
+			context.internal_error(condition.loc, "Cannot invert condition");
+
+		//auto notCond = curFunc.addVariable(IrValueType.i1, IrName(tempId, uniqueSuffix));
+		//auto instr = IrInstruction(IrOpcode.o_not, notCond, valueRef);
+		//curFunc.currentBB.emit(instr);
+		////writefln("incValueUsage cond1 %s %s", valueRef.kind, valueRef.index);
+		//valueRef = notCond;
+	}
+	IrCond getCondition(ExpressionNode* condition)
+	{
+		IrRef valueRef = condition.irRef;
+		context.assertf(valueRef.kind == IrValueKind.instr, condition.loc, "Cannot invert condition");
+		return curFunc.instructions[valueRef.index].condition;
+	}
 	void visit(IfStmtNode* i)
 	{
 		_visit(cast(AstNode*)i.condition);
 		IrRef condRef = i.condition.irRef;
 
-		//tryInvertCondition(condRef);
+		//tryInvertCondition(i.condition);
+		IrCond cond = getCondition(i.condition);
 
 		// prevBB links to elseBB and (afterBB or thenBB)
 		IrBasicBlock* prevBB = curFunc.currentBB;
-		prevBB.exit = IrJump(IrJump.Type.branch, condRef);
+		prevBB.exit = IrJump(IrJump.Type.branch, condRef, cond);
 
 		// create Basic Block for then statement. It links to afterBB
 		IrBasicBlock* then_StartBB = curFunc.addBasicBlock(IrName(thenId, ++thenCounter));
@@ -3954,9 +3970,11 @@ struct IrOperand
 
 struct IrOperandId
 {
+	this(size_t idx) { index = cast(uint)idx; }
 	uint index = uint.max;
-	bool isNull() { return index == uint.max; }
 	alias index this;
+	enum NULL = IrOperandId();
+	bool isNull() { return index == uint.max; }
 }
 
 struct IrConstant
@@ -3987,6 +4005,8 @@ struct IrConstant
 	ushort numUses;
 	union {
 		bool i1;
+		byte i8;
+		short i16;
 		int i32;
 		long i64;
 	}
@@ -4073,6 +4093,10 @@ struct IrJump
 
 	Type type;
 	IrRef value; /// return value reference, or condition for branch
+
+	/// Used for branch instruction fixup
+	IrCond condition = IrCond.ne;
+
 	/// Used by backend, for:
 	///   - first `branch` instruction
 	///   - `jmp` instruction
@@ -4080,9 +4104,6 @@ struct IrJump
 	PC fixup0;
 	// Used by backend, for second target of `branch` instruction
 	PC fixup1;
-
-	/// Used for branch instruction fixup
-	IrCond condition = IrCond.ne;
 
 	/// Is set to true by cmp instruction if it precedes branch
 	bool useFlagForCmp;
@@ -4353,21 +4374,13 @@ void pass_live_intervals(ref CompilationContext ctx)
 	}
 }
 
-struct LiveRangeId {
-	this(size_t id) { this.id = cast(int)id; }
-	enum LiveRangeId NULL = LiveRangeId(-1);
-	int id = -1;
-	bool isNull() { return id == NULL; }
-	alias id this;
-}
-
 struct FunctionLiveIntervals
 {
 	// invariant: all ranges of one interval are sorted by `from` and do not intersect
 	Buffer!LiveRange ranges;
 	LiveInterval[] intervals;
 
-	bool intervalCoversPosition(LiveRangeId cur, int position)
+	bool intervalCoversPosition(NodeIndex cur, int position)
 	{
 		while (!cur.isNull)
 		{
@@ -4382,7 +4395,7 @@ struct FunctionLiveIntervals
 		return false;
 	}
 
-	ref LiveInterval getInterval(LiveRangeId rangeId)
+	ref LiveInterval getInterval(NodeIndex rangeId)
 	{
 		auto itId = ranges[rangeId].intervalId;
 		return intervals[itId];
@@ -4390,7 +4403,7 @@ struct FunctionLiveIntervals
 
 	// returns rangeId pointing to range covering position or one to the right of pos.
 	// returns -1 if no ranges left after pos.
-	LiveRangeId advanceRangeId(LiveRangeId cur, int position)
+	NodeIndex advanceRangeId(NodeIndex cur, int position)
 	{
 		while (!cur.isNull)
 		{
@@ -4417,10 +4430,10 @@ struct FunctionLiveIntervals
 	{
 		if (interval.isNull) return;
 		LiveRange newRange = LiveRange(from, to, interval);
-		LiveRangeId firstMergeId;
+		NodeIndex firstMergeId;
 
 		// merge all intersecting ranges into one
-		LiveRangeId cur = intervals[interval].first;
+		NodeIndex cur = intervals[interval].first;
 		while (!cur.isNull)
 		{
 			auto r = &ranges[cur];
@@ -4462,16 +4475,16 @@ struct FunctionLiveIntervals
 
 	// sets the definition position
 	void addDefinition(IrOperandId interval, IrValueType type, int from) {
-		LiveRangeId cur = intervals[interval].first;
+		NodeIndex cur = intervals[interval].first;
 		intervals[interval].regClass = typeToRegClass(type);
 		if (!cur.isNull) {
 			ranges[cur].from = from;
 		}
 	}
 
-	void insertRangeBefore(LiveRangeId beforeRange, LiveRange range)
+	void insertRangeBefore(NodeIndex beforeRange, LiveRange range)
 	{
-		LiveRangeId index = LiveRangeId(ranges.length);
+		NodeIndex index = NodeIndex(ranges.length);
 
 		LiveRange* next = &ranges[beforeRange];
 		range.prevIndex = next.prevIndex;
@@ -4488,8 +4501,8 @@ struct FunctionLiveIntervals
 
 	void appendRange(IrOperandId interval, LiveRange range)
 	{
-		LiveRangeId last = intervals[interval].last;
-		LiveRangeId index = LiveRangeId(ranges.length);
+		NodeIndex last = intervals[interval].last;
+		NodeIndex index = NodeIndex(ranges.length);
 
 		if (last.isNull)
 		{
@@ -4510,7 +4523,7 @@ struct FunctionLiveIntervals
 		ranges.put(range);
 	}
 
-	void moveRange(LiveRangeId fromIndex, LiveRangeId toIndex)
+	void moveRange(NodeIndex fromIndex, NodeIndex toIndex)
 	{
 		if (fromIndex == toIndex) return;
 		ranges[toIndex] = ranges[fromIndex];
@@ -4523,7 +4536,7 @@ struct FunctionLiveIntervals
 	}
 
 	// returns rangeId of the next range
-	LiveRangeId deleteRange(LiveRangeId rangeIndex)
+	NodeIndex deleteRange(NodeIndex rangeIndex)
 	{
 		auto range = &ranges[rangeIndex];
 
@@ -4531,12 +4544,12 @@ struct FunctionLiveIntervals
 		if (rangeIndex == it.first) it.first = range.nextIndex;
 		if (rangeIndex == it.last) it.last = range.prevIndex;
 
-		LiveRangeId lastIndex = LiveRangeId(ranges.length-1);
-		LiveRangeId nextIndex = range.nextIndex;
+		NodeIndex lastIndex = NodeIndex(ranges.length-1);
+		NodeIndex nextIndex = range.nextIndex;
 
-		if (range.prevIndex != LiveRangeId.NULL)
+		if (range.prevIndex != NodeIndex.NULL)
 			ranges[range.prevIndex].nextIndex = range.nextIndex;
-		if (range.nextIndex != LiveRangeId.NULL)
+		if (range.nextIndex != NodeIndex.NULL)
 			ranges[range.nextIndex].prevIndex = range.prevIndex;
 
 		if (nextIndex == lastIndex) nextIndex = rangeIndex;
@@ -4551,7 +4564,7 @@ struct FunctionLiveIntervals
 		writeln("intervals:");
 		//writeln(ranges.data);
 		foreach (i, it; intervals) {
-			LiveRangeId cur = it.first;
+			NodeIndex cur = it.first;
 			if (cur.isNull) {
 				writefln("% 3s: null", i);
 				continue;
@@ -4574,8 +4587,8 @@ struct FunctionLiveIntervals
 
 struct LiveInterval
 {
-	LiveRangeId first;
-	LiveRangeId last;
+	NodeIndex first;
+	NodeIndex last;
 	RegisterRef reg;
 	RegClass regClass;
 }
@@ -4585,9 +4598,9 @@ struct LiveRange
 	int from;
 	int to;
 	IrOperandId intervalId;
-	LiveRangeId prevIndex = LiveRangeId.NULL;
-	LiveRangeId nextIndex = LiveRangeId.NULL;
-	bool isLast() { return nextIndex == LiveRangeId.NULL; }
+	NodeIndex prevIndex = NodeIndex.NULL;
+	NodeIndex nextIndex = NodeIndex.NULL;
+	bool isLast() { return nextIndex == NodeIndex.NULL; }
 	bool contains(int pos) {
 		if (pos < from) return false;
 		if (pos > to) return false;
@@ -4626,10 +4639,10 @@ void pass_linear_scan(ref CompilationContext ctx) {
 
 struct LinearScan
 {
-	LiveRangeId[] unhandledStorage;
-	Buffer!LiveRangeId active;
-	Buffer!LiveRangeId inactive;
-	Buffer!LiveRangeId handled;
+	NodeIndex[] unhandledStorage;
+	Buffer!NodeIndex active;
+	Buffer!NodeIndex inactive;
+	Buffer!NodeIndex handled;
 	PhysRegisters physRegs;
 
 	void setup()
@@ -4691,13 +4704,13 @@ struct LinearScan
 
 		FunctionLiveIntervals* live = &fun.liveIntervals;
 
-		int cmp(LiveRangeId a, LiveRangeId b) {
+		int cmp(NodeIndex a, NodeIndex b) {
 			return live.ranges[a].from > live.ranges[b].from;
 		}
 
 		// unhandled = list of intervals sorted by increasing start positions
 		// active = { }; inactive = { }; handled = { }
-		BinaryHeap!(LiveRangeId[], cmp) unhandled;
+		BinaryHeap!(NodeIndex[], cmp) unhandled;
 		unhandled.assume(assumeSafeAppend(unhandledStorage), 0);
 		active.clear;
 		inactive.clear;
@@ -4713,7 +4726,7 @@ struct LinearScan
 		while (!unhandled.empty)
 		{
 			// current = pick and remove first interval from unhandled
-			LiveRangeId currentId = unhandled.front;
+			NodeIndex currentId = unhandled.front;
 			unhandled.removeFront;
 
 			// position = start position of current
@@ -4725,8 +4738,8 @@ struct LinearScan
 			// for each interval it in active do
 			while (index < active.length)
 			{
-				LiveRangeId rangeId0 = active[index];
-				LiveRangeId rangeId = active[index] = live.advanceRangeId(rangeId0, position);
+				NodeIndex rangeId0 = active[index];
+				NodeIndex rangeId = active[index] = live.advanceRangeId(rangeId0, position);
 				LiveRange range = live.ranges[rangeId0];
 
 				// if it ends before position then
@@ -4755,7 +4768,7 @@ struct LinearScan
 			// for each interval it in inactive do
 			while (index < inactive.length)
 			{
-				LiveRangeId rangeId = inactive[index];
+				NodeIndex rangeId = inactive[index];
 
 				// if it ends before position then
 				if (live.ranges[rangeId].isLast && live.ranges[rangeId].to < position)
@@ -4816,7 +4829,7 @@ struct LinearScan
 			current.reg = reg
 			split current before freeUntilPos[reg]
 	*/
-	bool tryAllocateFreeReg(ref IrFunction fun, LiveRangeId currentId)
+	bool tryAllocateFreeReg(ref IrFunction fun, NodeIndex currentId)
 	{
 		// set freeUntilPos of all physical registers to maxInt
 		physRegs.resetFreeUntilPos;
@@ -4903,7 +4916,7 @@ struct LinearScan
 		if current intersects with the fixed interval for reg then
 			split current before this intersection
 	*/
-	void allocateBlockedReg(ref IrFunction fun, LiveRangeId currentId)
+	void allocateBlockedReg(ref IrFunction fun, NodeIndex currentRangeId)
 	{
 		assert(false);
 	}
@@ -4992,6 +5005,16 @@ struct PhysRegisters
 
 struct OperandLocation
 {
+	this(RegisterRef reg) {
+		type = Type.physicalRegister;
+		this.reg = reg;
+	}
+	static OperandLocation makeConstant(IrRef irRef) {
+		OperandLocation res;
+		res.type = Type.constant;
+		res.irRef = irRef;
+		return res;
+	}
 	enum Type : ubyte
 	{
 		constant,
@@ -5224,13 +5247,19 @@ struct MachineState
 //         #    #   #   #   #    #   #         #    #  #        #    ##
 //          ####     ###    #####    #######    #####  #######  #     #
 // -----------------------------------------------------------------------------
-/+
+void pass_code_gen(ref CompilationContext ctx) {
+	IrToAmd64 gen;
+	assert(ctx.codeBuffer.length);
+	ctx.mod.irModule.codeBuffer = ctx.codeBuffer;
+	gen.visit(&ctx.mod.irModule);
+}
+
 struct IrToAmd64
 {
 	CompilationContext* context;
 
 	enum STACK_ITEM_SIZE = 8; // x86_64
-	enum USE_FRAME_POINTER = true;
+	enum USE_FRAME_POINTER = false;
 	CodeGen_x86_64 gen;
 
 	/// Those two store a state of variables and registers
@@ -5250,6 +5279,7 @@ struct IrToAmd64
 
 	void visit(IrModule* m) {
 		context.assertf(m !is null, "Module IR is null");
+		context.assertf(m.codeBuffer.length > 0, "No code buffer assigned");
 
 		gen.encoder.setBuffer(m.codeBuffer);
 
@@ -5261,7 +5291,6 @@ struct IrToAmd64
 
 	void visit(IrFunction* func)
 	{
-		machineState.setup();
 		curFunc = func;
 		curFunc.funcPtr = gen.pc;
 		compileFuncProlog();
@@ -5291,39 +5320,13 @@ struct IrToAmd64
 			gen.pushq(Register.BP);
 			gen.movq(Register.BP, Register.SP);
 		}
+
 		reservedBytes = cast(int)(numLocals * STACK_ITEM_SIZE);
 		if (reservedBytes) // Reserve space for locals
 		{
 			if (reservedBytes > byte.max) gen.subq(Register.SP, Imm32(reservedBytes));
 			else gen.subq(Register.SP, Imm8(cast(byte)reservedBytes));
 		}
-
-		// init locals
-		if (numLocals)
-		{
-			gen.xorq(RET_REG, RET_REG);
-			foreach(i; 0..numLocals) gen.movq(localVarMemAddress(numParams+i), RET_REG);
-		}
-
-		/* save parameters to stack after setting frame ptr */
-		//if (numParams > 3) gen.movq(localVarMemAddress(3), Register.R9); // save fourth parameter
-		//if (numParams > 2) gen.movq(localVarMemAddress(2), Register.R8); // save third parameter
-		//if (numParams > 1) gen.movq(localVarMemAddress(1), Register.DX); // save second parameter
-		//if (numParams > 0) gen.movq(localVarMemAddress(0), Register.CX); // save first parameter
-		/*
-		// Setup register states for parameters
-		int numRegsToSetup = min(numParams, machineState.gprRegs.numParamRegs);
-		foreach(i; 0..numRegsToSetup)
-		{
-			// Value in register is newer than in memory
-			auto value = &curFunc.values[i];
-			IrRef valueRef = IrRef(i, value.kind, value.type);
-			RegisterRef regRef = machineState.gprRegs.paramRegs[i];
-			machineState.gprRegs.markAsUsed(regRef, valueRef);
-			machineState.gprRegs.markAsDirty(regRef);
-			machineState.gprRegs.removeFromFree(regRef);
-		}
-		*/
 	}
 
 	/*
@@ -5380,148 +5383,192 @@ struct IrToAmd64
 	}
 	*/
 
-	/// At the start all values are in memory
+	/// Generate move from src operand to dst operand. argType describes the size of operands.
+	void genMove(OperandLocation dst, OperandLocation src, ArgType argType)
+	{
+		assert(dst.type == OperandLocation.Type.physicalRegister);
+		Register reg0 = cast(Register)(dst.reg.index);
+
+		if (dst == src) return;
+
+		final switch (src.type) with(OperandLocation.Type)
+		{
+			case constant:
+				long con = curFunc.constants[src.irRef.index].i64;
+				//writefln("move.%s reg:%s, con:%s", argType, reg0, con);
+				gen.mov(reg0, Imm32(cast(uint)con), argType);
+				break;
+
+			case virtualRegister:
+				assert(false);
+
+			case physicalRegister:
+				Register reg1 = cast(Register)(src.reg.index);
+				//writefln("move.%s reg:%s, reg:%s", argType, reg0, reg1);
+				gen.mov(reg0, reg1, argType);
+				break;
+
+			case stackSlot:
+				assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
+		}
+	}
+
+	void genRegular(OperandLocation dst, OperandLocation src, AMD64OpRegular op, ArgType argType)
+	{
+		AsmArg argDst;
+		AsmArg argSrc;
+		AsmOpParam param;
+		param.op = op;
+		param.argType = argType;
+
+		assert(dst.type == OperandLocation.Type.physicalRegister);
+		Register reg0 = cast(Register)(dst.reg.index);
+		argDst.reg = reg0;
+		param.dstKind = AsmArgKind.REG;
+
+		//writefln("%s.%s %s %s", op, argType, dst.type, src.type);
+
+		final switch (src.type) with(OperandLocation.Type)
+		{
+			case constant:
+				IrConstant con = curFunc.constants[src.irRef.index];
+				if (con.numSignedBytes == 1) {
+					param.immType = ArgType.BYTE;
+					argSrc.imm8 = Imm8(con.i8);
+				}
+				else {
+					param.immType = ArgType.DWORD;
+					argSrc.imm32 = Imm32(con.i32);
+				}
+				param.srcKind = AsmArgKind.IMM;
+				break;
+
+			case virtualRegister: assert(false);
+			case physicalRegister:
+				argSrc.reg = cast(Register)(src.reg.index);
+				param.srcKind = AsmArgKind.REG;
+				break;
+
+			case stackSlot: assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
+		}
+		gen.encodeRegular(argDst, argSrc, param);
+	}
+
+	OperandLocation getLocation(IrOperandId opdId)
+	{
+		return OperandLocation(curFunc.liveIntervals.intervals[opdId].reg);
+	}
+
+	OperandLocation getLocation(IrRef irRef)
+	{
+		final switch (irRef.kind) with(IrValueKind)
+		{
+			case instr, phi: return getLocation(curFunc.getOperand(irRef));
+			case con: return OperandLocation.makeConstant(irRef);
+		}
+	}
+
+	/// At the start all values are in memory/regs according to call conv
 	void compileFuncBody()
 	{
 		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
 		{
 			block.startPC = gen.pc;
-			foreach (instr_i, ref instr; block.instructions)
+			foreach(ref instr; curFunc.instructions[block.firstInstr..block.lastInstr+1])
 			{
-				bool nextIsBranch() {
-					return instr_i == block.instructions.length-1 &&
-						block.exit.value == instr.to &&
-						block.exit.type == IrJump.Type.branch;
-				}
-				switch (instr.op) with(IrOpcode) {
-					case o_nop: break;
-					case o_icmp:
-						auto arg0 = curFunc.deref(instr.arg0);
-						auto arg1 = curFunc.deref(instr.arg1);
-
-						if (arg0.type != arg1.type)
-							context.internal_error("Type mismatch: %s != %s. In BB `%s`",
-								arg0.type, arg1.type, block.name);
-
-						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
-						auto reg1 = loadValue(instr.arg1, TEMP_REG_1);
-
-						if (arg0.numUses == 1) machineState.gprRegs.markAsFree(RegisterRef(reg0));
-						if (arg1.numUses == 1) machineState.gprRegs.markAsFree(RegisterRef(reg1));
-
-						final switch(arg0.type)
-						{
-							case IrValueType.i1: break;
-							case IrValueType.i32: gen.cmpd(reg0, reg1); break;
-							case IrValueType.i64: gen.cmpq(reg0, reg1); break;
-						}
-
-						// Check if comparison result is used for jump
-						if (nextIsBranch)
-						{
-							// set condition for jump (otherwise it is NZ)
-							block.exit.condition = instr.condition;
-							block.exit.useFlagForCmp = true;
-							break;
-						}
-
-						// otherwise store in variable
-						gen.setcc(instr.condition, reg0);
-						gen.movzx_btod(reg0, reg0);
-						storeValue(instr.to, reg0);
-						break;
-
-					case o_not:
-						auto arg0 = curFunc.deref(instr.arg0);
-						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
-						if (arg0.numUses == 1) machineState.gprRegs.markAsFree(RegisterRef(reg0));
-						final switch(instr.arg0.type) {
-							case IrValueType.i1: break;
-							case IrValueType.i32: gen.notd(reg0); break;
-							case IrValueType.i64: gen.notq(reg0); break;
-						}
-						storeValue(instr.to, reg0);
-						break;
-
-					// Arithmetic
-					case o_add, o_sub:
-						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
-						auto reg1 = loadValue(instr.arg1, TEMP_REG_1);
-
-						switch(instr.op)
-						{
-							case IrOpcode.o_add:
-								final switch(instr.arg0.type) {
-									case IrValueType.i1: break;
-									case IrValueType.i32: gen.addd(reg0, reg1); break;
-									case IrValueType.i64: gen.addq(reg0, reg1); break;
-								}
-								break;
-							case IrOpcode.o_sub:
-								final switch(instr.arg0.type) {
-									case IrValueType.i1: break;
-									case IrValueType.i32: gen.subd(reg0, reg1); break;
-									case IrValueType.i64: gen.subq(reg0, reg1); break;
-								}
-								break;
-							default: break;
-						}
-
-						final switch(instr.arg0.type)
-						{
-							case IrValueType.i1: break;
-							case IrValueType.i32:
-								gen.movd(localVarMemAddress(instr.to), TEMP_REG_0);
-								break;
-							case IrValueType.i64:
-								gen.movq(localVarMemAddress(instr.to), TEMP_REG_0);
-								break;
-						}
-						break;
-					case o_assign:
-						auto reg0 = loadValue(instr.arg0, TEMP_REG_0);
-						storeValue(instr.to, reg0);
-						break;
-					default:
-						context.internal_error("Compilation of `%s` is not implemented. In BB `%s`",
-							instr.op, block.name);
-						break;
-				}
+				compileInstr(instr, *block);
 			}
+		}
+	}
 
-			saveDirtyRegisters();
+	void resolvePhis(ref IrBasicBlock block)
+	{
+		// TODO move are not parallel here
+		foreach (IrBasicBlock* succ; block.outs)
+			foreach (ref IrRef phiRef; succ.phis)
+				foreach (ref IrPhiArg arg; curFunc.phis[phiRef.index].args)
+					if (arg.blockId == block.index)
+						genMove(getLocation(phiRef), getLocation(arg.value), irTypeToArgType(phiRef.type));
+	}
 
-			final switch(block.exit.type) with(IrJump.Type) {
-				case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); break;
-				case ret1:
-					auto reg0 = loadValue(block.exit.value, RET_REG);
-					goto case;
-				case ret0:
-					// ignore jump in the last Basic Block
-					if (block.next is null) break;
-					block.exit.fixup0 = gen.pc;
-					gen.jmp(Imm32(0));
-					break;
-				case jmp:
-					if (block.next != block.outs[0]) {
+	void compileInstr(IrInstruction instr, ref IrBasicBlock block)
+	{
+		ArgType argType = irTypeToArgType(instr.type);
+
+		switch (instr.op) with(IrOpcode)
+		{
+			case o_nop: break;
+			case o_param: break;
+			case o_block: break;
+
+			case o_block_end:
+				final switch(block.exit.type) with(IrJump.Type)
+				{
+					case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); break;
+					case ret1:
+						OperandLocation arg0 = getLocation(block.exit.value);
+						ArgType retType = irTypeToArgType(curFunc.returnType);
+						genMove(OperandLocation(win64_call_conv.returnReg), arg0, retType);
+						goto case;
+
+					case ret0:
+						// ignore jump in the last Basic Block
+						if (block.next is null) break;
 						block.exit.fixup0 = gen.pc;
 						gen.jmp(Imm32(0));
-					}
-					break;
-				case branch:
-					block.exit.fixup0 = gen.pc;
-					if (!block.exit.useFlagForCmp)
-					{
-						auto reg0 = loadValue(block.exit.value, TEMP_REG_0);
-						gen.testd(reg0, reg0);
-					}
-					gen.jcc(Condition.NZ, Imm32(0));
-					if (block.next != block.outs[1]) {
-						block.exit.fixup1 = gen.pc;
-						gen.jmp(Imm32(0));
-					}
-					break;
-			}
+						//writefln("jmp");
+						break;
+
+					case jmp:
+						resolvePhis(block);
+						if (block.next != block.outs[0]) {
+							block.exit.fixup0 = gen.pc;
+							gen.jmp(Imm32(0));
+							//writefln("jmp");
+						}
+						break;
+
+					case branch:
+						block.exit.fixup0 = gen.pc;
+						// TODO missing phi resolution
+						gen.jcc(Condition.NZ, Imm32(0));
+						//writefln("jcc");
+						if (block.next != block.outs[1]) {
+							block.exit.fixup1 = gen.pc;
+							gen.jmp(Imm32(0));
+							//writefln("jmp");
+						}
+						break;
+				}
+				break;
+
+			case o_icmp:
+				OperandLocation arg0 = getLocation(instr.arg0);
+				OperandLocation arg1 = getLocation(instr.arg1);
+				ArgType cmpArgType = irTypeToArgType(instr.arg0.type);
+				genRegular(arg0, arg1, AMD64OpRegular.cmp, cmpArgType);
+				break;
+
+			case o_add, o_sub:
+				OperandLocation arg0 = getLocation(instr.arg0);
+				OperandLocation arg1 = getLocation(instr.arg1);
+				switch(instr.op) with(IrOpcode) {
+					case o_add: genRegular(arg0, arg1, AMD64OpRegular.add, argType); break;
+					case o_sub: genRegular(arg0, arg1, AMD64OpRegular.sub, argType); break;
+					default: assert(false);
+				}
+				break;
+
+			//case o_not:
+			//	Register reg0;
+			//	gen.not(reg0, argType);
+			//	//writefln("not");
+			//	break;
+
+			default:
+				context.internal_error("Compilation of `%s` is not implemented. In BB `%s`",
+					instr.op, block.name);
+				break;
 		}
 	}
 
@@ -5548,6 +5595,7 @@ struct IrToAmd64
 					auto fixup0 = gen.fixupAt(block.exit.fixup0);
 					Condition cond = IrCond_to_Condition[block.exit.condition];
 					fixup0.jccAbs(cond, block.outs[0].startPC);
+					//writefln("fix jcc %s", cond);
 					// fallthrough or jump to zero
 					if (block.next != block.outs[1]) {
 						auto fixup1 = gen.fixupAt(block.exit.fixup1);
@@ -5654,7 +5702,7 @@ struct IrToAmd64
 		}*/
 	}
 }
-+/
+
 //                                                                  ###       ##
 //    #      #####   #     #              #     #     #  #####     #          ##
 //    #     #     #  ##   ##              #     ##   ##  #    #   #          # #
@@ -5672,12 +5720,58 @@ enum RegisterMax  = cast(Register)(Register.max+1);
 bool is_SP_or_R12(Register reg) { return (reg & 0b111) == 0b100; }
 bool is_BP_or_R13(Register reg) { return (reg & 0b111) == 0b101; }
 
+enum AsmArgKind : ubyte { REG, IMM, MEM }
+enum AsmArgKindProduct : ubyte {
+//	REG      IMM      MEM         left
+	REG_REG, IMM_REG, MEM_REG, // REG  right
+	REG_IMM, IMM_IMM, MEM_IMM, // IMM
+	REG_MEM, IMM_MEM, MEM_MEM, // MEM
+}
+AsmArgKindProduct asmArgKindProduct(AsmArgKind left, AsmArgKind right) {
+	return cast(AsmArgKindProduct)(left + 3 * right);
+}
+
+union AsmArg
+{
+	Imm8 imm8;
+	Imm16 imm16;
+	Imm32 imm32;
+	Imm64 imm64;
+	Register reg;
+	MemAddress memAddress;
+}
+
 enum ArgType : ubyte { BYTE, WORD, DWORD, QWORD }
+ArgType irTypeToArgType(IrValueType t) {
+	final switch(t) {
+		case IrValueType.i1:  return ArgType.BYTE;
+		case IrValueType.i32: return ArgType.DWORD;
+		case IrValueType.i64: return ArgType.QWORD;
+	}
+}
 
 // ensures REX prefix for ah ch dh bh
 bool regNeedsRexPrefix(ArgType argType)(Register reg) {
 	static if (argType == ArgType.BYTE) return reg >= 4;
 	else return false;
+}
+
+enum AMD64OpRegular : ubyte {
+	add,
+	or,
+	and,
+	sub,
+	xor,
+	cmp
+}
+
+struct AsmOpParam
+{
+	AsmArgKind dstKind;
+	AsmArgKind srcKind;
+	AMD64OpRegular op;
+	ArgType argType;
+	ArgType immType;
 }
 
 import std.string : format;
@@ -6048,10 +6142,10 @@ struct CodeGen_x86_64
 	/// mov(Register.AX, Register.DI, ArgType.QWORD); instead of movq(Register.AX, Register.DI);
 	void opDispatch(string s, Arg1, Arg2)(Arg1 dst, Arg2 src, ArgType argType) {
 		switch(argType) {
-			static if (__traits(hasMember, typeof(this), s~'b')) { case ArgType.BYTE:  mixin(s~"b(dst, src);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'w')) { case ArgType.WORD:  mixin(s~"w(dst, src);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'d')) { case ArgType.DWORD: mixin(s~"d(dst, src);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'q')) { case ArgType.QWORD: mixin(s~"q(dst, src);"); break; }
+			static if (__traits(compiles, mixin(s~"b(dst, src)"))) { case ArgType.BYTE:  mixin(s~"b(dst, src);"); break; }
+			static if (__traits(compiles, mixin(s~"w(dst, src)"))) { case ArgType.WORD:  mixin(s~"w(dst, src);"); break; }
+			static if (__traits(compiles, mixin(s~"d(dst, src)"))) { case ArgType.DWORD: mixin(s~"d(dst, src);"); break; }
+			static if (__traits(compiles, mixin(s~"q(dst, src)"))) { case ArgType.QWORD: mixin(s~"q(dst, src);"); break; }
 			default: assert(false, format("Cannot encode %s(%s, %s, ArgType.%s)", s, dst, src, argType));
 		}
 	}
@@ -6059,10 +6153,10 @@ struct CodeGen_x86_64
 	/// ditto
 	void opDispatch(string s, Arg1)(Arg1 dst, ArgType argType) {
 		switch(argType) {
-			static if (__traits(hasMember, typeof(this), s~'b')) { case ArgType.BYTE:  mixin(s~"b(dst);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'w')) { case ArgType.WORD:  mixin(s~"w(dst);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'d')) { case ArgType.DWORD: mixin(s~"d(dst);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'q')) { case ArgType.QWORD: mixin(s~"q(dst);"); break; }
+			static if (__traits(compiles, mixin(s~"b(dst)"))) { case ArgType.BYTE:  mixin(s~"b(dst);"); break; }
+			static if (__traits(compiles, mixin(s~"w(dst)"))) { case ArgType.WORD:  mixin(s~"w(dst);"); break; }
+			static if (__traits(compiles, mixin(s~"d(dst)"))) { case ArgType.DWORD: mixin(s~"d(dst);"); break; }
+			static if (__traits(compiles, mixin(s~"q(dst)"))) { case ArgType.QWORD: mixin(s~"q(dst);"); break; }
 			default: assert(false, format("Cannot encode %s(%s, ArgType.%s)", s, dst, argType));
 		}
 	}
@@ -6080,6 +6174,92 @@ struct CodeGen_x86_64
 	void endFunction() {
 		popq(Register.BP);
 		ret();
+	}
+
+	void encodeRegular(AsmArg dst, AsmArg src, AsmOpParam param)
+	{
+		static immutable ubyte[] op_tbl_bin = [
+			0x00, // add,
+			0x08, // or,
+			0x20, // and,
+			0x28, // sub,
+			0x30, // xor,
+			0x38, // cmp
+		];
+
+		static immutable ubyte[] op_tbl_un = [
+			0, // add,
+			1, // or,
+			4, // and,
+			5, // sub,
+			6, // xor,
+			7, // cmp
+		];
+
+		AsmArgKindProduct prod = asmArgKindProduct(param.dstKind, param.srcKind);
+		final switch(prod) with(AsmArgKindProduct)
+		{
+			case REG_REG:
+				final switch(param.argType) {
+					case ArgType.BYTE:  encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(op_tbl_bin[param.op+0]), dst.reg, src.reg); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(op_tbl_bin[param.op+1]), dst.reg, src.reg); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(op_tbl_bin[param.op+1]), dst.reg, src.reg); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(op_tbl_bin[param.op+1]), dst.reg, src.reg); break;
+				} break;
+
+			case MEM_REG:
+				final switch(param.argType) {
+					case ArgType.BYTE:  encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(op_tbl_bin[param.op+0]), src.reg, dst.memAddress); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(op_tbl_bin[param.op+1]), src.reg, dst.memAddress); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(op_tbl_bin[param.op+1]), src.reg, dst.memAddress); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(op_tbl_bin[param.op+1]), src.reg, dst.memAddress); break;
+				} break;
+
+			case REG_MEM:
+				final switch(param.argType) {
+					case ArgType.BYTE:  encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(op_tbl_bin[param.op+2]), dst.reg, src.memAddress); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(op_tbl_bin[param.op+3]), dst.reg, src.memAddress); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(op_tbl_bin[param.op+3]), dst.reg, src.memAddress); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(op_tbl_bin[param.op+3]), dst.reg, src.memAddress); break;
+				} break;
+
+			case REG_IMM:
+				assert(param.argType == param.immType || param.immType == ArgType.BYTE);
+				final switch(param.immType)
+				{
+					case ArgType.BYTE:
+						final switch(param.argType) {
+							case ArgType.BYTE:  encoder.putInstrBinaryRegImm2!(ArgType.BYTE)  (OP1(0x80), op_tbl_un[param.op], dst.reg, src.imm8); break;
+							case ArgType.WORD:  encoder.putInstrBinaryRegImm2!(ArgType.WORD)  (OP1(0x83), op_tbl_un[param.op], dst.reg, src.imm8); break;
+							case ArgType.DWORD: encoder.putInstrBinaryRegImm2!(ArgType.DWORD) (OP1(0x83), op_tbl_un[param.op], dst.reg, src.imm8); break;
+							case ArgType.QWORD: encoder.putInstrBinaryRegImm2!(ArgType.QWORD) (OP1(0x83), op_tbl_un[param.op], dst.reg, src.imm8); break;
+						} break;
+
+					case ArgType.WORD:  encoder.putInstrBinaryRegImm2!(ArgType.WORD)  (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm16); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegImm2!(ArgType.DWORD) (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm32); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegImm2!(ArgType.QWORD) (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm32); break;
+				} break;
+
+			case MEM_IMM:
+				assert(param.argType == param.immType || param.immType == ArgType.BYTE);
+				final switch(param.immType)
+				{
+					case ArgType.BYTE:
+						final switch(param.argType) {
+							case ArgType.BYTE:  encoder.putInstrBinaryMemImm!(ArgType.BYTE)  (OP1(0x80), op_tbl_un[param.op], dst.memAddress, src.imm8); break;
+							case ArgType.WORD:  encoder.putInstrBinaryMemImm!(ArgType.WORD)  (OP1(0x83), op_tbl_un[param.op], dst.memAddress, src.imm8); break;
+							case ArgType.DWORD: encoder.putInstrBinaryMemImm!(ArgType.DWORD) (OP1(0x83), op_tbl_un[param.op], dst.memAddress, src.imm8); break;
+							case ArgType.QWORD: encoder.putInstrBinaryMemImm!(ArgType.QWORD) (OP1(0x83), op_tbl_un[param.op], dst.memAddress, src.imm8); break;
+						} break;
+
+					case ArgType.WORD:  encoder.putInstrBinaryMemImm!(ArgType.WORD)  (OP1(0x81), op_tbl_un[param.op], dst.memAddress, src.imm16); break;
+					case ArgType.DWORD: encoder.putInstrBinaryMemImm!(ArgType.DWORD) (OP1(0x81), op_tbl_un[param.op], dst.memAddress, src.imm32); break;
+					case ArgType.QWORD: encoder.putInstrBinaryMemImm!(ArgType.QWORD) (OP1(0x81), op_tbl_un[param.op], dst.memAddress, src.imm32); break;
+				} break;
+
+			case IMM_REG, IMM_IMM, IMM_MEM, MEM_MEM:
+				assert(false);
+		}
 	}
 
 	mixin binaryInstr_RMtoR_RtoRM!("add", [0x00, 0x01], [0x02, 0x03]);

@@ -47,7 +47,7 @@ struct LangCodeGen
 	enum TEMP_REG_1 = Register.CX;
 	enum TEMP_REG_2 = Register.DX;
 	enum STACK_ITEM_SIZE = 8; // x86_64
-	enum USE_FRAME_POINTER = true;
+	enum USE_FRAME_POINTER = false;
 	CodeGen_x86_64 gen;
 
 

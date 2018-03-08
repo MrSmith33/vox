@@ -463,6 +463,16 @@ string input2 = q{
 	}
 };
 
+string input3 = q{
+i32 sign(i32 number) {
+	i32 result;
+	if (number < 0) result = 0-1;
+	else if (number < 0) result = 1;
+	else result = 0
+	return result;
+}
+};
+
 void testLang2()
 {
 	LangVM vm;
@@ -470,11 +480,11 @@ void testLang2()
 	scope(exit) vm.free;
 
 	writefln("%s", cast(void*)&printNum);
-	vm.compileModule(input2);
+	vm.compileModule(input3);
 	if (vm.valid)
 	{
 		printHex(vm.codeGen.code, 16);
 		writefln("fun table %s", vm.codeGen.functionTable);
-		writefln("%s", vm.run!int("isNegative", __LINE__, __FILE__, 10));
+		writefln("%s", vm.run!int("sign", __LINE__, __FILE__, 10));
 	}
 }

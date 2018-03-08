@@ -376,10 +376,10 @@ struct CodeGen_x86_64
 	/// mov(Register.AX, Register.DI, ArgType.QWORD); instead of movq(Register.AX, Register.DI);
 	void opDispatch(string s, Arg1, Arg2)(Arg1 dst, Arg2 src, ArgType argType) {
 		switch(argType) {
-			static if (__traits(hasMember, typeof(this), s~'b')) { case ArgType.BYTE:  mixin(s~"b(dst, src);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'w')) { case ArgType.WORD:  mixin(s~"w(dst, src);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'d')) { case ArgType.DWORD: mixin(s~"d(dst, src);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'q')) { case ArgType.QWORD: mixin(s~"q(dst, src);"); break; }
+			static if (__traits(compiles, mixin(s~"b(dst, src)"))) { case ArgType.BYTE:  mixin(s~"b(dst, src);"); break; }
+			static if (__traits(compiles, mixin(s~"w(dst, src)"))) { case ArgType.WORD:  mixin(s~"w(dst, src);"); break; }
+			static if (__traits(compiles, mixin(s~"d(dst, src)"))) { case ArgType.DWORD: mixin(s~"d(dst, src);"); break; }
+			static if (__traits(compiles, mixin(s~"q(dst, src)"))) { case ArgType.QWORD: mixin(s~"q(dst, src);"); break; }
 			default: assert(false, format("Cannot encode %s(%s, %s, ArgType.%s)", s, dst, src, argType));
 		}
 	}
@@ -387,10 +387,10 @@ struct CodeGen_x86_64
 	/// ditto
 	void opDispatch(string s, Arg1)(Arg1 dst, ArgType argType) {
 		switch(argType) {
-			static if (__traits(hasMember, typeof(this), s~'b')) { case ArgType.BYTE:  mixin(s~"b(dst);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'w')) { case ArgType.WORD:  mixin(s~"w(dst);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'d')) { case ArgType.DWORD: mixin(s~"d(dst);"); break; }
-			static if (__traits(hasMember, typeof(this), s~'q')) { case ArgType.QWORD: mixin(s~"q(dst);"); break; }
+			static if (__traits(compiles, mixin(s~"b(dst)"))) { case ArgType.BYTE:  mixin(s~"b(dst);"); break; }
+			static if (__traits(compiles, mixin(s~"w(dst)"))) { case ArgType.WORD:  mixin(s~"w(dst);"); break; }
+			static if (__traits(compiles, mixin(s~"d(dst)"))) { case ArgType.DWORD: mixin(s~"d(dst);"); break; }
+			static if (__traits(compiles, mixin(s~"q(dst)"))) { case ArgType.QWORD: mixin(s~"q(dst);"); break; }
 			default: assert(false, format("Cannot encode %s(%s, ArgType.%s)", s, dst, argType));
 		}
 	}
