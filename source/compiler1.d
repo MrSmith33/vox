@@ -569,7 +569,7 @@ struct CompilationContext
 	IdentifierMap idMap;
 	bool hasErrors;
 	TextSink sink;
-	bool crashOnICE;
+	bool crashOnICE = true;
 
 	//alias idString = idMap.get;
 	string idString(const Identifier id) { return idMap.get(id); }
@@ -791,7 +791,7 @@ struct SourceLocation {
 	uint col;
 	uint size;
 	string getTokenString(string input) const { return input[start..start+size]; }
-	void toString()(scope void delegate(const(char)[]) sink) const {
+	void toString(scope void delegate(const(char)[]) sink) const {
 		sink.formattedWrite("line %s col %s", line+1, col+1);
 	}
 }
@@ -1399,7 +1399,6 @@ enum AstType : ubyte {
 	decl_module,
 	decl_function,
 	decl_var,
-	decl_parameter,
 	decl_struct,
 
 	stmt_block,
@@ -1427,7 +1426,6 @@ enum AstFlags {
 	isStatement   = 1 << 3,
 	isType        = 1 << 4,
 	isSymResolved = 1 << 5,
-	isParameter   = 1 << 6,
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
@@ -1618,22 +1616,26 @@ struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
 	mixin SymRefNodeData;
 	TypeNode* returnType;
-	ParameterDeclNode*[] parameters;
+	VariableDeclNode*[] parameters;
 	BlockStmtNode* block_stmt;
 	Scope* _scope;
 	IrFunction irData;
+}
+
+enum VariableFlags : ubyte {
+	isParameter       = 1 << 1,
+	requiresMemoryOps = 1 << 0,
 }
 
 struct VariableDeclNode {
 	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration);
 	mixin SymRefNodeData;
 	TypeNode* type;
-}
-
-struct ParameterDeclNode {
-	mixin AstNodeData!(AstType.decl_parameter, AstFlags.isDeclaration);
-	mixin SymRefNodeData;
-	TypeNode* type;
+	ubyte varFlags;
+	IrRef irRef;
+	IrVar irVar; // unique id of variable within a function
+	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
+	bool requiresMemoryOps() { return cast(bool)(varFlags & VariableFlags.requiresMemoryOps); }
 }
 
 
@@ -1792,7 +1794,6 @@ mixin template AstVisitorMixin() {
 			case decl_module: auto m = cast(ModuleDeclNode*)n; visit(m); break;
 			case decl_function: auto f = cast(FunctionDeclNode*)n; visit(f); break;
 			case decl_var: auto v = cast(VariableDeclNode*)n; visit(v); break;
-			case decl_parameter: auto p = cast(ParameterDeclNode*)n; visit(p); break;
 			case decl_struct: auto s = cast(StructDeclNode*)n; visit(s); break;
 			case stmt_block: auto b = cast(BlockStmtNode*)n; visit(b); break;
 			case stmt_if: auto i = cast(IfStmtNode*)n; visit(i); break;
@@ -1819,7 +1820,6 @@ mixin template AstVisitorMixin() {
 		foreach (param; f.parameters) visit(param);
 		visit(f.block_stmt); }
 	void visit(VariableDeclNode* v) {}
-	void visit(ParameterDeclNode* p) {}
 	void visit(StructDeclNode* s) {
 		foreach (decl; s.declarations) _visit(decl); }
 	void visit(BlockStmtNode* b) {
@@ -1878,10 +1878,8 @@ struct AstPrinter {
 		pr_node(cast(AstNode*)f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
-		print("VAR ", v.type.typeName(context), " ", v.strId(context));
+		print(v.isParameter ? "PARAM " : "VAR ", v.type.typeName(context), " ", v.strId(context));
 	}
-	void visit(ParameterDeclNode* p) {
-		print("PARAM ", p.type.typeName(context), " ", p.strId(context)); }
 	void visit(StructDeclNode* s) {
 		print("STRUCT ", s.strId(context));
 		foreach (decl; s.declarations) pr_node(decl); }
@@ -2093,12 +2091,14 @@ struct Parser {
 			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" <block_statement>
 			{
 				expectAndConsume(TokenType.LPAREN);
-				ParameterDeclNode*[] params;
+				VariableDeclNode*[] params;
 				while (tok.type != TokenType.RPAREN)
 				{
 					TypeNode* paramType = parse_type_expected();
 					Identifier paramId = expectIdentifier();
-					params ~= make!ParameterDeclNode(start, paramId, paramType);
+					VariableDeclNode* param = make!VariableDeclNode(start, paramId, paramType);
+					param.varFlags |= VariableFlags.isParameter;
+					params ~= param;
 					if (tok.type == TokenType.COMMA) nextToken();
 					else break;
 				}
@@ -2397,8 +2397,6 @@ struct Symbol {
 	AstNode* node;
 	/// Symbol in outer scope with the same id. Can be null
 	Symbol* outerSymbol;
-	IrRef irRef;
-	IrVar irVar; // unique id of variable within a function + type
 
 	bool isInOrderedScope() { return cast(bool)(flags & SymbolFlags.isInOrderedScope); }
 
@@ -2417,7 +2415,6 @@ struct Symbol {
 		{
 			case decl_function: return (cast(FunctionDeclNode*)node).returnType;
 			case decl_var: return (cast(VariableDeclNode*)node).type;
-			case decl_parameter: return (cast(ParameterDeclNode*)node).type;
 			case expr_var: .. case expr_call:
 				return (cast(ExpressionNode*)node).type;
 			case type_basic: return cast(TypeNode*)node;
@@ -2546,7 +2543,7 @@ struct ScopeStack
 		if (auto s = currentScope.symbols.get(sym.id, null))
 		{
 			context.error(sym.loc,
-					"declaration `%s` is already defined at %s", context.idString(sym.id), s.loc);
+				"declaration `%s` is already defined at %s", context.idString(sym.id), s.loc);
 		}
 		currentScope.symbols[sym.id] = sym;
 	}
@@ -2586,9 +2583,6 @@ struct SemanticDeclarations {
 	}
 	void visit(VariableDeclNode* v) {
 		v.resolveSymbol = scopeStack.insert(v.id, v.loc, SymbolClass.c_variable, cast(AstNode*)v);
-	}
-	void visit(ParameterDeclNode* p) {
-		p.resolveSymbol = scopeStack.insert(p.id, p.loc, SymbolClass.c_variable, cast(AstNode*)p);
 	}
 	void visit(StructDeclNode* s) {
 		s.resolveSymbol = scopeStack.insert(s.id, s.loc, SymbolClass.c_struct, cast(AstNode*)s);
@@ -2661,7 +2655,6 @@ struct SemanticLookup {
 		scopeStack.popScope2;
 	}
 	void visit(VariableDeclNode* v) { _visit(v.type); }
-	void visit(ParameterDeclNode* p) { _visit(p.type); }
 	void visit(StructDeclNode* s) {
 		scopeStack.pushCompleteScope(s._scope);
 		foreach (decl; s.declarations) _visit(decl);
@@ -2937,7 +2930,6 @@ struct SemanticStaticTypes {
 		curFunc = prevFunc;
 	}
 	void visit(VariableDeclNode* v) { _visit(v.type); }
-	void visit(ParameterDeclNode* p) {}
 	void visit(StructDeclNode* s) {
 		foreach (decl; s.declarations) _visit(decl);
 	}
@@ -3134,16 +3126,18 @@ struct BinIrGenerationVisitor {
 	}
 	void visit(VariableDeclNode* v)
 	{
-		v.getSym.irVar = IrVar(v.strId(context), curFunc.newIrVarId(), v.type.irType(context));
-		auto irRef = curFunc.put(0);
-		curFunc.writeVariable(v.getSym.irVar, irRef);
-	}
-	void visit(ParameterDeclNode* p)
-	{
-		++curFunc.numParameters;
-		p.getSym.irVar = IrVar(p.strId(context), curFunc.newIrVarId(), p.type.irType(context));
-		IrRef irRef = curFunc.emitInstr0(IrOpcode.o_param, p.type.irType(context));
-		curFunc.writeVariable(p.getSym.irVar, irRef);
+		IrRef irRef;
+		if (v.isParameter)
+		{
+			++curFunc.numParameters;
+			irRef = curFunc.emitInstr0(IrOpcode.o_param, v.type.irType(context));
+		}
+		else
+		{
+			irRef = curFunc.put(0);
+		}
+		v.irVar = IrVar(v.strId(context), curFunc.newIrVarId(), v.type.irType(context));
+		curFunc.writeVariable(v.irVar, irRef);
 	}
 	void visit(StructDeclNode* s)
 	{
@@ -3167,25 +3161,40 @@ struct BinIrGenerationVisitor {
 			auto instr = &curFunc.instructions[valueRef.index];
 			instr.condition = inverseIrCond[instr.condition];
 		}
-		else
-			context.internal_error(condition.loc, "Cannot invert condition");
-
-		//auto notCond = curFunc.addVariable(IrValueType.i1, IrName(tempId, uniqueSuffix));
-		//auto instr = IrInstruction(IrOpcode.o_not, notCond, valueRef);
-		//curFunc.currentBB.emit(instr);
-		////writefln("incValueUsage cond1 %s %s", valueRef.kind, valueRef.index);
-		//valueRef = notCond;
+		else if (valueRef.kind == IrValueKind.con)
+		{
+			bool arg0 = curFunc.constants[valueRef.index].i1;
+			condition.irRef = curFunc.put(!arg0);
+		}
+		else context.internal_error(condition.loc, "Cannot invert condition");
 	}
+
 	IrCond getCondition(ExpressionNode* condition)
 	{
 		IrRef valueRef = condition.irRef;
-		context.assertf(valueRef.kind == IrValueKind.instr, condition.loc, "Cannot invert condition");
+		context.assertf(valueRef.kind == IrValueKind.instr, condition.loc, "Condition must be instruction");
 		return curFunc.instructions[valueRef.index].condition;
 	}
+
 	void visit(IfStmtNode* i)
 	{
 		_visit(cast(AstNode*)i.condition);
 		IrRef condRef = i.condition.irRef;
+
+		// Compile single branch if condition is constant
+		if (condRef.kind == IrValueKind.con)
+		{
+			bool condValue = curFunc.constants[condRef.index].i1;
+			if (condValue)
+			{
+				_visit(i.thenStatement);
+			}
+			else if (i.elseStatement)
+			{
+				_visit(i.elseStatement);
+			}
+			return;
+		}
 
 		//tryInvertCondition(i.condition);
 		IrCond cond = getCondition(i.condition);
@@ -3199,7 +3208,7 @@ struct BinIrGenerationVisitor {
 		curFunc.addBlockTarget(prevBB, then_StartBB);
 		curFunc.sealBlock(then_StartBB);
 
-		_visit(cast(AstNode*)i.thenStatement);
+		_visit(i.thenStatement);
 		IrBasicBlock* then_EndBB = curFunc.currentBB;
 		curFunc.sealBlock(then_EndBB);
 
@@ -3258,7 +3267,7 @@ struct BinIrGenerationVisitor {
 	void visit(ContinueStmtNode* c) {}
 	void visit(VariableExprNode* v) {
 		if (currentAssignSide == CurrentAssignSide.rightSide) {
-			v.irRef = curFunc.readVariable(v.getSym.irVar);
+			v.irRef = curFunc.readVariable(v.getSym.varDecl.irVar);
 		}
 	}
 	void visit(LiteralExprNode* c) {
@@ -3277,7 +3286,7 @@ struct BinIrGenerationVisitor {
 			_visit(cast(AstNode*)b.right);
 			assert(b.left.astType == AstType.expr_var);
 			auto varExpr = cast(VariableExprNode*)b.left;
-			curFunc.writeVariable(varExpr.getSym.irVar, b.right.irRef);
+			curFunc.writeVariable(varExpr.getSym.varDecl.irVar, b.right.irRef);
 			b.irRef = b.right.irRef;
 			return;
 		}
@@ -5483,7 +5492,7 @@ struct IrToAmd64
 
 	void resolvePhis(ref IrBasicBlock block)
 	{
-		// TODO move are not parallel here
+		// TODO moves are not parallel here
 		foreach (IrBasicBlock* succ; block.outs)
 			foreach (ref IrRef phiRef; succ.phis)
 				foreach (ref IrPhiArg arg; curFunc.phis[phiRef.index].args)
