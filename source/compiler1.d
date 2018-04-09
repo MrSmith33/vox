@@ -360,6 +360,10 @@ void test()
 		if (e.isICE)
 			writeln(e);
 	}
+	catch(Throwable t) {
+		writeln(driver.context.sink.text);
+		writeln(t);
+	}
 	//testNativeFun;
 }
 
@@ -491,7 +495,7 @@ struct Driver
 		passes ~= CompilePass("IR gen", &pass_ir_gen);
 		passes ~= CompilePass("Live intervals", &pass_live_intervals);
 		passes ~= CompilePass("Linear scan", &pass_linear_scan);
-		passes ~= CompilePass("Code gen", &pass_code_gen);
+		//passes ~= CompilePass("Code gen", &pass_code_gen);
 	}
 
 	ModuleDeclNode* compileModule(string fileData, ubyte[] codeBuffer)
@@ -1416,6 +1420,7 @@ enum AstType : ubyte {
 	expr_type_conv,
 
 	type_basic,
+	type_ptr,
 	type_user,
 }
 
@@ -1476,17 +1481,36 @@ mixin template TypeNodeData(AstType _astType) {
 	mixin AstNodeData!(_astType, AstFlags.isType);
 }
 
+struct TypePrinter
+{
+	TypeNode* node;
+	CompilationContext* ctx;
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		node.toString(sink, ctx);
+	}
+}
+
 struct TypeNode {
 	mixin AstNodeData!(AstType.abstract_node, AstFlags.isType);
 
 	string typeName(CompilationContext* context) {
 		if (&this == null) return null;
 		assert(isType);
-		if (astType == AstType.type_basic)
-			return (cast(BasicTypeNode*)&this).strId;
-		else if (astType == AstType.type_user)
-			return (cast(UserTypeNode*)&this).strId(context);
-		else assert(false, format("got %s", astType));
+		switch(astType)
+		{
+			case AstType.type_basic:
+				return (cast(BasicTypeNode*)&this).strId;
+			case AstType.type_ptr:
+				return "ptr";
+			case AstType.type_user:
+				return (cast(UserTypeNode*)&this).strId(context);
+			default: assert(false, format("got %s", astType));
+		}
+	}
+
+	TypePrinter printer(CompilationContext* context) {
+		return TypePrinter(&this, context);
 	}
 
 	bool sameType(TypeNode* t2) {
@@ -1494,12 +1518,17 @@ struct TypeNode {
 		assert(t2.isType, format("t2 is %s, not type", t2.astType));
 		if (astType != t2.astType) return false;
 
-		if (astType == AstType.type_basic)
-			return (cast(BasicTypeNode*)&this).basicType == (cast(BasicTypeNode*)t2).basicType;
-		else if (astType == AstType.type_user)
-			return cast(void*)(&this) == cast(void*)(t2);
-
-		assert(false, format("got %s %s", astType, t2.astType));
+		switch(astType)
+		{
+			case AstType.type_basic:
+				return (cast(BasicTypeNode*)&this).basicType == (cast(BasicTypeNode*)t2).basicType;
+			case AstType.type_ptr:
+				return (cast(PtrTypeNode*)&this).base == (cast(PtrTypeNode*)t2).base;
+			case AstType.type_user:
+				return cast(void*)(&this) == cast(void*)(t2);
+			default:
+				assert(false, format("got %s %s", astType, t2.astType));
+		}
 	}
 
 	bool isVoid() {
@@ -1549,6 +1578,23 @@ struct TypeNode {
 		context.internal_error(loc, "Cannot convert `%s` to IrValueType", astType);
 		assert(false);
 	}
+
+	void toString(scope void delegate(const(char)[]) sink, CompilationContext* ctx) {
+		switch(astType)
+		{
+			case AstType.type_basic:
+				sink(basicTypeNames[(cast(BasicTypeNode*)&this).basicType]);
+				break;
+			case AstType.type_ptr:
+				(cast(PtrTypeNode*)&this).base.toString(sink, ctx);
+				sink("*");
+				break;
+			case AstType.type_user:
+				sink((cast(UserTypeNode*)&this).strId(ctx));
+				break;
+			default: assert(false, format("%s is not type", astType));
+		}
+	}
 }
 
 enum BasicTypeFlag : ubyte {
@@ -1568,6 +1614,7 @@ struct BasicTypeNode {
 	int size; // -1 arch dependent
 	BasicType basicType;
 	ubyte typeFlags;
+	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	string strId() { return basicTypeNames[basicType]; }
 
 	bool isFloat() { return cast(bool)(typeFlags & BasicTypeFlag.isFloat); }
@@ -1576,9 +1623,16 @@ struct BasicTypeNode {
 	bool isBoolean() { return cast(bool)(typeFlags & BasicTypeFlag.isBoolean); }
 }
 
+struct PtrTypeNode {
+	mixin TypeNodeData!(AstType.type_ptr);
+	TypeNode* base;
+	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+}
+
 struct UserTypeNode {
 	mixin TypeNodeData!(AstType.type_user);
 	mixin SymRefNodeData;
+	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 }
 
 // ------------------------------- Declarations --------------------------------
@@ -1808,6 +1862,7 @@ mixin template AstVisitorMixin() {
 			case expr_call: auto c = cast(CallExprNode*)n; visit(c); break;
 			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visit(t); break;
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
+			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
 			case type_user: auto t = cast(UserTypeNode*)n; visit(t); break;
 		}
 	}
@@ -1848,6 +1903,7 @@ mixin template AstVisitorMixin() {
 	void visit(TypeConvExprNode* t) {
 		_visit(t.type); _visit(t.expr); }
 	void visit(BasicTypeNode* t) {}
+	void visit(PtrTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 */
 
@@ -1925,8 +1981,9 @@ struct AstPrinter {
 	void visit(TypeConvExprNode* t) {
 		print("CAST to ", t.type.typeName(context));
 		pr_node(cast(AstNode*)t.expr); }
-	void visit(BasicTypeNode* t) { print("TYPE ", t.strId); }
-	void visit(UserTypeNode* t) { print("TYPE ", t.strId(context)); }
+	void visit(BasicTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
+	void visit(PtrTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
+	void visit(UserTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)
 	{
@@ -2627,6 +2684,7 @@ struct SemanticDeclarations {
 	void visit(CallExprNode* c) {}
 	void visit(TypeConvExprNode* c) {}
 	void visit(BasicTypeNode* t) {}
+	void visit(PtrTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 }
 
@@ -2701,6 +2759,7 @@ struct SemanticLookup {
 		foreach (arg; c.args) _visit(arg); }
 	void visit(TypeConvExprNode* t) { _visit(t.type); _visit(t.expr); }
 	void visit(BasicTypeNode* t) {}
+	void visit(PtrTypeNode* t) { _visit(t.base); }
 	void visit(UserTypeNode* t) { t.resolveSymbol = scopeStack.lookup(t.id, t.loc); }
 }
 
@@ -3012,6 +3071,7 @@ struct SemanticStaticTypes {
 		t.type.assertImplemented(t.loc, context);
 	}
 	void visit(BasicTypeNode* t) {}
+	void visit(PtrTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 }
 
@@ -3046,6 +3106,8 @@ struct BinIrGenerationVisitor {
 	IrModule* irModule;
 	IrFunction* curFunc; // current function
 	CurrentAssignSide currentAssignSide;
+
+	bool alwaysUseMemOps = true;
 
 	// here are blocks that need their exit to be set to jump to outer block
 	// for example body of then and else statements need to jump after the else body.
@@ -3124,20 +3186,48 @@ struct BinIrGenerationVisitor {
 			}
 		}
 	}
+
+	void store(VariableDeclNode* v, IrRef irRef)
+	{
+		if (v.requiresMemoryOps || alwaysUseMemOps)
+		{
+			// TODO
+			curFunc.emitInstr1(IrOpcode.o_store, v.type.irType(context), irRef);
+		}
+		else
+		{
+			curFunc.writeVariable(v.irVar, irRef);
+		}
+	}
+
+	IrRef load(VariableDeclNode* v)
+	{
+		if (v.requiresMemoryOps || alwaysUseMemOps)
+		{
+			// TODO
+			return curFunc.emitInstr0(IrOpcode.o_load, v.type.irType(context));
+		}
+		else
+		{
+			return curFunc.readVariable(v.getSym.varDecl.irVar);
+		}
+	}
+
 	void visit(VariableDeclNode* v)
 	{
 		IrRef irRef;
+		v.irVar = IrVar(v.strId(context), curFunc.newIrVarId(), v.type.irType(context));
 		if (v.isParameter)
 		{
 			++curFunc.numParameters;
 			irRef = curFunc.emitInstr0(IrOpcode.o_param, v.type.irType(context));
+			curFunc.writeVariable(v.irVar, irRef);
 		}
 		else
 		{
 			irRef = curFunc.put(0);
+			store(v, irRef);
 		}
-		v.irVar = IrVar(v.strId(context), curFunc.newIrVarId(), v.type.irType(context));
-		curFunc.writeVariable(v.irVar, irRef);
 	}
 	void visit(StructDeclNode* s)
 	{
@@ -3267,7 +3357,7 @@ struct BinIrGenerationVisitor {
 	void visit(ContinueStmtNode* c) {}
 	void visit(VariableExprNode* v) {
 		if (currentAssignSide == CurrentAssignSide.rightSide) {
-			v.irRef = curFunc.readVariable(v.getSym.varDecl.irVar);
+			v.irRef = load(v.getSym.varDecl);
 		}
 	}
 	void visit(LiteralExprNode* c) {
@@ -3286,7 +3376,7 @@ struct BinIrGenerationVisitor {
 			_visit(cast(AstNode*)b.right);
 			assert(b.left.astType == AstType.expr_var);
 			auto varExpr = cast(VariableExprNode*)b.left;
-			curFunc.writeVariable(varExpr.getSym.varDecl.irVar, b.right.irRef);
+			store(varExpr.getSym.varDecl, b.right.irRef);
 			b.irRef = b.right.irRef;
 			return;
 		}
@@ -3343,6 +3433,7 @@ struct BinIrGenerationVisitor {
 		context.internal_error(t.loc, "Type conversion is not implemented");
 	}
 	void visit(BasicTypeNode* t) {}
+	void visit(PtrTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 }
 
@@ -3385,10 +3476,13 @@ struct IrModule
 	}
 }
 
+/// Linear SSA IR for function
 struct IrFunction
 {
+	/// Function identifier
 	IrName name;
 
+	/// Function return type. Only valid if function has return value. Check AST node.
 	IrValueType returnType;
 
 	/// Position in buffer or in memory
@@ -3404,17 +3498,19 @@ struct IrFunction
 	/// Instructions are emitted to this block
 	IrBasicBlock* currentBB;
 
+	///
 	uint numBasicBlocks;
 
-	// first constant is always 0/false, second is alway 1/true (not nesessary)
+	// All constants. All have unique value.
 	IrConstant[] constants;
 
 	/// This array begins with all parameters
 	IrInstruction[] instructions;
 
+	/// All phi-functions
 	IrPhi[] phis;
 
-	// dense array of values produced by instructions or phi nodes
+	// Dense array of values produced by instructions or phi nodes
 	IrOperand[] operands;
 
 	/// Stores list of uses per IrOperand
@@ -3427,6 +3523,7 @@ struct IrFunction
 	/// They immediately follow o_block instruction, and have indicies 1, 2, 3 ...
 	uint numParameters;
 
+	/// Returns a slice of all param instructions
 	IrInstruction[] parameters(){
 		return instructions[1..1+numParameters];
 	}
@@ -3436,6 +3533,8 @@ struct IrFunction
 
 	IrVarId nextIrVarId;
 
+	/// Allocates new variable id for this function. It should be bound to a variable
+	/// and used with writeVariable, readVariable functions
 	IrVarId newIrVarId()
 	{
 		return IrVarId(nextIrVarId++);
@@ -3459,16 +3558,20 @@ struct IrFunction
 		return newBlock;
 	}
 
+	/// Places ending instruction of current Basic Block
 	void finishBlock() {
 		if (currentBB) put(IrInstruction(IrOpcode.o_block_end));
 	}
 
+	/// Adds control-flow edge pointing from `block` to `target`.
 	void addBlockTarget(IrBasicBlock* block, IrBasicBlock* target) {
 		block.outs ~= target;
 		++target.refCount;
 		target.ins ~= block;
 	}
 
+	/// Disconnects Basic Block from it from predecessors/successors
+	/// Does not remove its instructions/phis
 	void removeBasicBlock(IrBasicBlock* bb) {
 		if (bb.prev)
 		{
@@ -3506,6 +3609,8 @@ struct IrFunction
 		bb.outs = null;
 	}
 
+	/// Adds a constant to a list of constants of this function.
+	/// It tries to find existing constant with the same value and returns it if it does.
 	IrRef put(long value) {
 		foreach(uint i, con; constants)
 			if (con.i64 == value)
@@ -3519,12 +3624,16 @@ struct IrFunction
 			return IrRef(index, IrValueKind.con, IrValueType.i64);
 	}
 
+	///
 	IrRef emitInstr0(IrOpcode op, IrValueType type) {
 		return put(IrInstruction(op, type)); }
+	///
 	IrRef emitInstr1(IrOpcode op, IrValueType type, IrRef arg0) {
 		auto i = IrInstruction(op, type); i.arg0 = arg0; return put(i); }
+	///
 	IrRef emitInstr2(IrOpcode op, IrValueType type, IrRef arg0, IrRef arg1) {
 		auto i = IrInstruction(op, type); i.arg0 = arg0; i.arg1 = arg1; return put(i); }
+	///
 	IrRef emitInstrCmp(IrCond cond, IrRef arg0, IrRef arg1) {
 		auto i = IrInstruction(IrOpcode.o_icmp, IrValueType.i1);
 		i.condition = cond; i.arg0 = arg0; i.arg1 = arg1;
@@ -3533,22 +3642,25 @@ struct IrFunction
 		return irRef;
 	}
 
+	/// Append instruction to current block (`currentBB`)
+	/// Adds user to instr arguments and creates operand for result.
 	IrRef put(IrInstruction instr) {
 		++currentBB.numInstrs;
 		uint index = cast(uint)instructions.length;
 		auto irRef = IrRef(index, IrValueKind.instr, instr.type);
-		if (hasInstrReturn[instr.op])
+		if (instr.returnsValue)
 		{
-			instr.result = addOperand(irRef);
+			instr.result = makeOperand(irRef);
 		}
 		instructions ~= instr;
 
-		foreach(IrRef argRef; instr.args[0..numInstrArgs[instr.op]])
+		foreach(IrRef argRef; instr.args)
 			addUser(irRef, argRef);
 
 		return irRef;
 	}
 
+	/// Puts `user` into a list of users of `used` value
 	void addUser(IrRef user, IrRef used)
 	{
 		void addOpdUser(IrOperandId opdId)
@@ -3566,17 +3678,12 @@ struct IrFunction
 		}
 	}
 
-	IrOperandId addOperand(IrRef irRef)
-	{
-		uint index = cast(uint)operands.length;
-		operands ~= IrOperand(irRef);
-		return IrOperandId(index);
-	}
-
+	/// Set hint for register allocator
 	void setStorageHint(IrOperandId opdId, StorageHint storageHint) {
 		operands[opdId].storageHint = storageHint;
 	}
 
+	/// ditto
 	void setStorageHint(IrRef irRef, StorageHint storageHint) {
 		final switch (irRef.kind) {
 			case IrValueKind.con: break;
@@ -3594,7 +3701,7 @@ struct IrFunction
 	}
 
 	// can return null (for constants)
-	IrOperandId getOperand(IrRef irRef)
+	private IrOperandId getOperand(IrRef irRef)
 	{
 		final switch (irRef.kind)
 		{
@@ -3604,8 +3711,16 @@ struct IrFunction
 		}
 	}
 
-	// checks for opdId == null
-	void removeOperand(IrOperandId opdId)
+	// Creates operand for result of phi/instruction
+	private IrOperandId makeOperand(IrRef irRef)
+	{
+		uint index = cast(uint)operands.length;
+		operands ~= IrOperand(irRef);
+		return IrOperandId(index);
+	}
+
+	// ignores null opdId
+	private void removeOperand(IrOperandId opdId)
 	{
 		if (opdId.isNull) return;
 		size_t length = operands.length;
@@ -3614,6 +3729,8 @@ struct IrFunction
 		{
 			operands[opdId] = operands[length-1];
 			IrRef irRef = operands[opdId].irRef;
+			// Update reference from IrValue instr/phi to IrOperand
+			// old .result points to length-1, new .result points to opdId
 			final switch (irRef.kind)
 			{
 				case IrValueKind.instr: instructions[irRef.index].result = opdId; break;
@@ -3624,23 +3741,25 @@ struct IrFunction
 		operands = assumeSafeAppend(operands[0..length-1]);
 	}
 
-	IrRef addPhi(IrBasicBlock* block, IrValueType type) {
+	// Adds phi function to specified block
+	private IrRef addPhi(IrBasicBlock* block, IrValueType type) {
 		uint index = cast(uint)phis.length;
 		IrRef irRef = IrRef(index, IrValueKind.phi, type);
-		IrOperandId operand = addOperand(irRef);
+		IrOperandId operand = makeOperand(irRef);
 		phis ~= IrPhi(block, type, operand);
 		block.phis ~= irRef;
 		return irRef;
 	}
 
 	// Algorithm 1: Implementation of local value numbering
+	/// Redefines `variable` with `value`. Is used for assignment to variable
 	void writeVariable(IrVar variable, IrRef value) { writeVariable(variable, currentBB, value); }
 	void writeVariable(IrVar variable, IrBasicBlock* block, IrRef value) {
 		//writefln("writeVariable %s:%s <- %s", variable.id, variable.name, RefPr(&this, value));
 		blockVarDef[BlockVarPair(block.index, variable.id)] = value;
 	}
 
-	// ditto
+	/// Returns the value that currently defines `variable`
 	IrRef readVariable(IrVar variable) { return readVariable(variable, currentBB); }
 	IrRef readVariable(IrVar variable, IrBasicBlock* block)
 	{
@@ -3651,7 +3770,7 @@ struct IrFunction
 	}
 
 	// Algorithm 2: Implementation of global value numbering
-	IrRef readVariableRecursive(IrVar variable, IrBasicBlock* block)
+	private IrRef readVariableRecursive(IrVar variable, IrBasicBlock* block)
 	{
 		IrRef value;
 		if (!block.isSealed) {
@@ -3675,7 +3794,7 @@ struct IrFunction
 	}
 
 	// ditto
-	IrRef addPhiOperands(IrVar variable, IrRef phiRef, IrBasicBlock* block)
+	private IrRef addPhiOperands(IrVar variable, IrRef phiRef, IrBasicBlock* block)
 	{
 		// Determine operands from predecessors
 		foreach (IrBasicBlock* pred; block.ins)
@@ -3689,7 +3808,7 @@ struct IrFunction
 	}
 
 	// Algorithm 3: Detect and recursively remove a trivial φ function
-	IrRef tryRemoveTrivialPhi(IrRef phiRef)
+	private IrRef tryRemoveTrivialPhi(IrRef phiRef)
 	{
 		IrPhiArg same = IrPhiArg();
 		foreach (IrPhiArg arg; phis[phiRef.index].args) {
@@ -3729,9 +3848,10 @@ struct IrFunction
 	}
 
 	// ditto
-	void replaceBy(NodeIndex first, IrRef phiRef, IrPhiArg byWhat)
+	/// Rewrites all users of phi `phiRef` to point to `byWhat` instead.
+	private void replaceBy(NodeIndex firstUser, IrRef phiRef, IrPhiArg byWhat)
 	{
-		for (NodeIndex cur = first; !cur.isNull; cur = opdUses.nodes[cur].nextIndex)
+		for (NodeIndex cur = firstUser; !cur.isNull; cur = opdUses.nodes[cur].nextIndex)
 		{
 			auto node = opdUses.nodes[cur];
 			IrRef userRef = opdUses.nodes[cur].data;
@@ -3739,7 +3859,7 @@ struct IrFunction
 				case IrValueKind.con: assert(false);
 				case IrValueKind.instr:
 					auto instr = instructions[userRef.index];
-					foreach (ref IrRef arg; instr.args[0..numInstrArgs[instr.op]])
+					foreach (ref IrRef arg; instr.args)
 						if (arg == phiRef) arg = byWhat.value;
 					break;
 				case IrValueKind.phi:
@@ -3752,6 +3872,8 @@ struct IrFunction
 	}
 
 	// Algorithm 4: Handling incomplete CFGs
+	/// Called after
+	/// Ignores already sealed blocks.
 	void sealBlock(IrBasicBlock* block)
 	{
 		if (block.isSealed) return;
@@ -3850,13 +3972,13 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 					break;
 
 				default:
-					if (hasInstrReturn[instr.op]) {
+					if (instr.returnsValue) {
 						sink.putf("    %%%s = %- 3s %- 8s", instr.result, instr.type, instr.op);
 						if (printUses) printOpdUses(instr.result);
 					}
-					else  sink.putf("    %%%s %s", i, instr.op);
+					else  sink.putf("    %s", instr.op);
 
-					switch (numInstrArgs[instr.op]) {
+					switch (instr.numArgs) {
 						case 1: sink.putf(" %s", RefPr(&func, instr.arg0)); break;
 						case 2: sink.putf(" %s, %s", RefPr(&func, instr.arg0),
 							RefPr(&func, instr.arg1)); break;
@@ -3908,16 +4030,6 @@ struct BlockVarPair
 struct IrVarId { uint id; alias id this; }
 struct IrVar { string name; IrVarId id; IrValueType type; }
 struct BlockId { uint id; alias id this; }
-
-enum IrCond : ubyte {
-	eq,
-	ne,
-	l,
-	le,
-	g,
-	ge
-}
-IrCond[IrCond.max+1] inverseIrCond = [IrCond.ne,IrCond.eq,IrCond.ge,IrCond.g,IrCond.le,IrCond.l];
 
 // print helper for refs
 struct RefPr
@@ -3977,6 +4089,7 @@ struct IrOperand
 	ListInfo usesList;
 }
 
+/// Id for IrOperand
 struct IrOperandId
 {
 	this(size_t idx) { index = cast(uint)idx; }
@@ -3986,6 +4099,7 @@ struct IrOperandId
 	bool isNull() { return index == uint.max; }
 }
 
+/// Stores numeric constant data
 struct IrConstant
 {
 	this(long value) {
@@ -4023,12 +4137,14 @@ struct IrConstant
 	void addUser(IrRef user) { ++numUses; }
 }
 
+/// Convenience struct for Id + num suffix
 struct IrName
 {
 	Identifier id;
 	uint suffix;
 }
 
+/// Helper for printing
 struct IrNameProxy
 {
 	CompilationContext* ctx;
@@ -4058,12 +4174,15 @@ struct IrBasicBlock
 
 	/// The jump or return that must be the last instruction is stored in `exit`
 	size_t firstInstr;
+	///
 	size_t numInstrs;
+	///
 	size_t lastInstr() {
 		if (numInstrs)
 			return firstInstr + numInstrs - 1;
 		else return firstInstr;
 	}
+	///
 	IrRef lastInstrRef() {
 		return IrRef(cast(uint)lastInstr, IrValueKind.instr, IrValueType.init);
 	}
@@ -4118,11 +4237,14 @@ struct IrJump
 	bool useFlagForCmp;
 }
 
+/// Per Basic Block info for unresolved Phi functions, when CFG is incomplete.
+/// Finished IR contains no such values
 struct IncompletePhi
 {
 	IrVar var;
 	IrRef phi;
 }
+
 
 struct IrPhi
 {
@@ -4143,18 +4265,43 @@ struct IrPhiArg
 	BlockId blockId;
 }
 
+enum IrCond : ubyte {
+	eq,
+	ne,
+	l,
+	le,
+	g,
+	ge
+}
+IrCond[IrCond.max+1] inverseIrCond = [IrCond.ne,IrCond.eq,IrCond.ge,IrCond.g,IrCond.le,IrCond.l];
+
 struct IrInstruction
 {
+	this(IrOpcode op, IrValueType type = IrValueType.init)
+	{
+		this.op = op;
+		this.type = type;
+		numArgs = numInstrArgs[op];
+		returnsValue = hasInstrReturn[op];
+	}
 	IrOpcode op;
 	IrValueType type;
 	IrCond condition;
+	mixin(bitfields!(
+		// number of `args` fields used: 0, 1, or 2
+		uint,        "numArgs",       2,
+		// true if `result` field is used
+		bool,        "returnsValue",  1,
+		uint,        "",              5
+	));
 	IrOperandId result;
 	union {
 		struct {
 			IrRef arg0, arg1;
 		}
-		IrRef[2] args;
+		IrRef[2] _args;
 	}
+	IrRef[] args() { return _args[0..numArgs]; }
 }
 
 enum IrOpcode : ubyte
@@ -4170,14 +4317,17 @@ enum IrOpcode : ubyte
 	o_sub,
 	o_mul,
 	o_div,
+
+	o_load,
+	o_store,
 }
 
-ubyte[IrOpcode.max+1] numInstrArgs =  [0,0,0,0,1,2,2,2,2,2];
-bool[IrOpcode.max+1] hasInstrReturn = [0,1,0,0,1,1,1,1,1,1];
+immutable ubyte[IrOpcode.max+1] numInstrArgs =  [0,0,0,0,1,2,2,2,2,2,0,1];
+immutable bool[IrOpcode.max+1] hasInstrReturn = [0,1,0,0,1,1,1,1,1,1,1,0];
 
 
-string[IrOpcode.max+1] irOpcodeNames =
-["nop", "param", "block", "block_end", "not", "icmp", "add", "sub", "mul", "div"];
+immutable string[IrOpcode.max+1] irOpcodeNames =
+["nop", "param", "block", "block_end", "not", "icmp", "add", "sub", "mul", "div", "load", "store"];
 
 immutable IrOpcode[] binOpToIrOpcode = [
 	IrOpcode.o_icmp,
@@ -4204,8 +4354,8 @@ immutable IrOpcode[] binOpToIrOpcode = [
 // -----------------------------------------------------------------------------
 
 
-/// Linear Scan Register Allocation on SSA Form
-/// Optimized Interval Splitting in a Linear Scan Register Allocator
+/// Implementation of:
+/// "Linear Scan Register Allocation on SSA Form"
 /*
 // buildIntervals
 for each block b in reverse order do
@@ -4346,7 +4496,7 @@ void pass_live_intervals(ref CompilationContext ctx)
 			{
 				size_t index = block.firstInstr + blk_i;
 				// for each output operand opd of op do
-				if (hasInstrReturn[instr.op])
+				if (instr.returnsValue)
 				{
 					// intervals[opd].setFrom(op.id)
 					fun.liveIntervals.addDefinition(instr.result, instr.type, cast(int)index);
@@ -4355,7 +4505,7 @@ void pass_live_intervals(ref CompilationContext ctx)
 				}
 
 				// for each input operand opd of op do
-				foreach(IrRef opd; instr.args[0..numInstrArgs[instr.op]])
+				foreach(IrRef opd; instr.args)
 				{
 					// intervals[opd].addRange(b.from, op.id)
 					// live.add(opd)
@@ -4383,6 +4533,7 @@ void pass_live_intervals(ref CompilationContext ctx)
 	}
 }
 
+///
 struct FunctionLiveIntervals
 {
 	// invariant: all ranges of one interval are sorted by `from` and do not intersect
@@ -4594,6 +4745,7 @@ struct FunctionLiveIntervals
 	}
 }
 
+///
 struct LiveInterval
 {
 	NodeIndex first;
@@ -4602,6 +4754,7 @@ struct LiveInterval
 	RegClass regClass;
 }
 
+///
 struct LiveRange
 {
 	int from;
@@ -4636,16 +4789,22 @@ struct LiveRange
 // -----------------------------------------------------------------------------
 
 
+/// Does linear scan register allocation.
+/// Uses live intervals produced by pass_live_intervals
+///
 void pass_linear_scan(ref CompilationContext ctx) {
 	LinearScan linearScan;
 	linearScan.setup;
 	foreach (ref fun; ctx.mod.irModule.functions) {
-		linearScan.assignHints(*fun, ctx);
+		linearScan.assignHints(*fun, ctx, win64_call_conv);
 		linearScan.scanFun(*fun, ctx);
 		linearScan.resolve(*fun);
 	}
 }
 
+/// Implementation of:
+/// "Optimized Interval Splitting in a Linear Scan Register Allocator"
+/// "Linear Scan Register Allocation on SSA Form"
 struct LinearScan
 {
 	NodeIndex[] unhandledStorage;
@@ -4659,9 +4818,8 @@ struct LinearScan
 		physRegs.setup;
 	}
 
-	void assignHints(ref IrFunction fun, ref CompilationContext ctx)
+	void assignHints(ref IrFunction fun, ref CompilationContext ctx, ref CallConv callConv)
 	{
-		CallConv callConv = win64_call_conv;
 		// assign paramter registers and memory locations
 		foreach(i, ref instr; fun.parameters)
 		{
@@ -5084,6 +5242,7 @@ struct RegisterRef
 	bool isNull() { return index == ubyte.max; }
 }
 
+/// Info needed for calling convention implementation
 struct CallConv
 {
 	RegisterRef[] paramsInRegs;
@@ -5256,8 +5415,11 @@ struct MachineState
 //         #    #   #   #   #    #   #         #    #  #        #    ##
 //          ####     ###    #####    #######    #####  #######  #     #
 // -----------------------------------------------------------------------------
+
+/// Generates amd64 machine code from IR
 void pass_code_gen(ref CompilationContext ctx) {
 	IrToAmd64 gen;
+	gen.context = &ctx;
 	assert(ctx.codeBuffer.length);
 	ctx.mod.irModule.codeBuffer = ctx.codeBuffer;
 	gen.visit(&ctx.mod.irModule);
@@ -6144,7 +6306,6 @@ struct CodeGen_x86_64
 	Fixup fixupAt(PC at) { return Fixup(&this, at); }
 	Fixup saveFixup() { return Fixup(&this, encoder.pc); }
 	PC pc() { return encoder.pc; }
-	alias stubPC = pc;
 
 	/// Used for versions of instructions without argument size suffix.
 	/// mov, add, sub, instead of movq, addb, subd.
