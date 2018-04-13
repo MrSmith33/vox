@@ -320,6 +320,7 @@ void test()
 			int res1;
 			int res2;
 			int res3;
+
 			if (funDecl.irData.funcPtr)
 			{
 				fun = cast(FunType)funDecl.irData.funcPtr;
@@ -495,7 +496,8 @@ struct Driver
 		passes ~= CompilePass("IR gen", &pass_ir_gen);
 		passes ~= CompilePass("Live intervals", &pass_live_intervals);
 		passes ~= CompilePass("Linear scan", &pass_linear_scan);
-		//passes ~= CompilePass("Code gen", &pass_code_gen);
+		passes ~= CompilePass("Stack layout", &pass_stack_layout);
+		passes ~= CompilePass("Code gen", &pass_code_gen);
 	}
 
 	ModuleDeclNode* compileModule(string fileData, ubyte[] codeBuffer)
@@ -574,6 +576,7 @@ struct CompilationContext
 	bool hasErrors;
 	TextSink sink;
 	bool crashOnICE = true;
+	bool buildDebug = false;
 
 	//alias idString = idMap.get;
 	string idString(const Identifier id) { return idMap.get(id); }
@@ -1494,17 +1497,43 @@ struct TypePrinter
 struct TypeNode {
 	mixin AstNodeData!(AstType.abstract_node, AstFlags.isType);
 
+	BasicTypeNode* basicTypeNode() { return cast(BasicTypeNode*)&this; }
+	PtrTypeNode* ptrTypeNode() { return cast(PtrTypeNode*)&this; }
+	UserTypeNode* userTypeNode() { return cast(UserTypeNode*)&this; }
+
+	int alignment()
+	{
+		switch(astType)
+		{
+			case AstType.type_basic: return basicTypeNode.alignment;
+			case AstType.type_ptr: return ptrTypeNode.alignment;
+			case AstType.type_user: return userTypeNode.alignment;
+			default: assert(false, format("got %s", astType));
+		}
+	}
+
+	int size()
+	{
+		switch(astType)
+		{
+			case AstType.type_basic: return basicTypeNode.size;
+			case AstType.type_ptr: return ptrTypeNode.size;
+			case AstType.type_user: return userTypeNode.size;
+			default: assert(false, format("got %s", astType));
+		}
+	}
+
 	string typeName(CompilationContext* context) {
 		if (&this == null) return null;
 		assert(isType);
 		switch(astType)
 		{
 			case AstType.type_basic:
-				return (cast(BasicTypeNode*)&this).strId;
+				return basicTypeNode.strId;
 			case AstType.type_ptr:
 				return "ptr";
 			case AstType.type_user:
-				return (cast(UserTypeNode*)&this).strId(context);
+				return userTypeNode.strId(context);
 			default: assert(false, format("got %s", astType));
 		}
 	}
@@ -1521,9 +1550,9 @@ struct TypeNode {
 		switch(astType)
 		{
 			case AstType.type_basic:
-				return (cast(BasicTypeNode*)&this).basicType == (cast(BasicTypeNode*)t2).basicType;
+				return basicTypeNode.basicType == t2.basicTypeNode.basicType;
 			case AstType.type_ptr:
-				return (cast(PtrTypeNode*)&this).base == (cast(PtrTypeNode*)t2).base;
+				return ptrTypeNode.base == t2.ptrTypeNode.base;
 			case AstType.type_user:
 				return cast(void*)(&this) == cast(void*)(t2);
 			default:
@@ -1533,11 +1562,11 @@ struct TypeNode {
 
 	bool isVoid() {
 		return astType == AstType.type_basic &&
-			(cast(BasicTypeNode*)&this).basicType == BasicType.t_void;
+			basicTypeNode.basicType == BasicType.t_void;
 	}
 	bool isError() {
 		return astType == AstType.type_basic &&
-			(cast(BasicTypeNode*)&this).basicType == BasicType.t_error;
+			basicTypeNode.basicType == BasicType.t_error;
 	}
 
 	void assertImplemented(SourceLocation loc, CompilationContext* context) {
@@ -1549,7 +1578,7 @@ struct TypeNode {
 	bool isImplemented() {
 		if (astType == AstType.type_basic)
 		{
-			switch((cast(BasicTypeNode*)&this).basicType)
+			switch(basicTypeNode.basicType)
 			{
 				case BasicType.t_bool: return true;
 				case BasicType.t_i32: return true;
@@ -1565,7 +1594,7 @@ struct TypeNode {
 	IrValueType irType(CompilationContext* context) {
 		if (astType == AstType.type_basic)
 		{
-			switch((cast(BasicTypeNode*)&this).basicType)
+			switch(basicTypeNode.basicType)
 			{
 				case BasicType.t_bool: return IrValueType.i32;
 				case BasicType.t_i32: return IrValueType.i32;
@@ -1583,14 +1612,14 @@ struct TypeNode {
 		switch(astType)
 		{
 			case AstType.type_basic:
-				sink(basicTypeNames[(cast(BasicTypeNode*)&this).basicType]);
+				sink(basicTypeNames[basicTypeNode.basicType]);
 				break;
 			case AstType.type_ptr:
-				(cast(PtrTypeNode*)&this).base.toString(sink, ctx);
+				ptrTypeNode.base.toString(sink, ctx);
 				sink("*");
 				break;
 			case AstType.type_user:
-				sink((cast(UserTypeNode*)&this).strId(ctx));
+				sink(userTypeNode.strId(ctx));
 				break;
 			default: assert(false, format("%s is not type", astType));
 		}
@@ -1604,6 +1633,7 @@ enum BasicTypeFlag : ubyte {
 	isBoolean  = 1 << 3,
 }
 
+enum POINTER_SIZE = 8;
 BasicTypeNode basicTypeNode(int size, BasicType basicType, int typeFlags = 0)
 {
 	return BasicTypeNode(SourceLocation(), cast(int)size, basicType, cast(ubyte)typeFlags);
@@ -1612,6 +1642,7 @@ BasicTypeNode basicTypeNode(int size, BasicType basicType, int typeFlags = 0)
 struct BasicTypeNode {
 	mixin TypeNodeData!(AstType.type_basic);
 	int size; // -1 arch dependent
+	int alignment() { return size; }
 	BasicType basicType;
 	ubyte typeFlags;
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
@@ -1625,14 +1656,18 @@ struct BasicTypeNode {
 
 struct PtrTypeNode {
 	mixin TypeNodeData!(AstType.type_ptr);
-	TypeNode* base;
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	TypeNode* base;
+	int size() { return POINTER_SIZE; }
+	int alignment() { return POINTER_SIZE; }
 }
 
 struct UserTypeNode {
 	mixin TypeNodeData!(AstType.type_user);
 	mixin SymRefNodeData;
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	int size = 1; // TODO, set in semantic
+	int alignment = 1; // TODO, set as max alignment of members
 }
 
 // ------------------------------- Declarations --------------------------------
@@ -1677,8 +1712,8 @@ struct FunctionDeclNode {
 }
 
 enum VariableFlags : ubyte {
-	isParameter       = 1 << 1,
-	requiresMemoryOps = 1 << 0,
+	isParameter        = 1 << 1,
+	forceMemoryStorage = 1 << 0,
 }
 
 struct VariableDeclNode {
@@ -1686,10 +1721,12 @@ struct VariableDeclNode {
 	mixin SymRefNodeData;
 	TypeNode* type;
 	ubyte varFlags;
+	ushort paramIndex; // 0 for non-params
 	IrRef irRef;
 	IrVar irVar; // unique id of variable within a function
+	StackSlotId stackSlotId;
 	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
-	bool requiresMemoryOps() { return cast(bool)(varFlags & VariableFlags.requiresMemoryOps); }
+	bool forceMemoryStorage() { return cast(bool)(varFlags & VariableFlags.forceMemoryStorage); }
 }
 
 
@@ -2155,6 +2192,7 @@ struct Parser {
 					Identifier paramId = expectIdentifier();
 					VariableDeclNode* param = make!VariableDeclNode(start, paramId, paramType);
 					param.varFlags |= VariableFlags.isParameter;
+					param.paramIndex = cast(typeof(param.paramIndex))params.length;
 					params ~= param;
 					if (tok.type == TokenType.COMMA) nextToken();
 					else break;
@@ -2779,7 +2817,7 @@ struct SemanticStaticTypes {
 	{
 		return
 			type.astType == AstType.type_basic &&
-			(cast(BasicTypeNode*)&this).basicType == BasicType.t_bool;
+			type.basicTypeNode.basicType == BasicType.t_bool;
 	}
 
 	/// Returns true if types are equal or were converted to common type. False otherwise
@@ -2787,8 +2825,8 @@ struct SemanticStaticTypes {
 	{
 		if (left.type.astType == AstType.type_basic && right.type.astType == AstType.type_basic)
 		{
-			BasicTypeNode* leftType = cast(BasicTypeNode*)left.type;
-			BasicTypeNode* rightType = cast(BasicTypeNode*)right.type;
+			BasicTypeNode* leftType = left.type.basicTypeNode;
+			BasicTypeNode* rightType = right.type.basicTypeNode;
 
 			BasicType commonType = commonBasicType[leftType.basicType][rightType.basicType];
 			bool successLeft = autoconvTo(left, commonType, Yes.force);
@@ -2823,7 +2861,7 @@ struct SemanticStaticTypes {
 
 		if (expr.type.astType == AstType.type_basic)
 		{
-			BasicType fromType = (cast(BasicTypeNode*)expr.type).basicType;
+			BasicType fromType = expr.type.basicTypeNode.basicType;
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert || force)
 			{
@@ -2846,8 +2884,8 @@ struct SemanticStaticTypes {
 
 		if (expr.type.astType == AstType.type_basic && type.astType == AstType.type_basic)
 		{
-			BasicType fromType = (cast(BasicTypeNode*)expr.type).basicType;
-			BasicType toType = (cast(BasicTypeNode*)type).basicType;
+			BasicType fromType = expr.type.basicTypeNode.basicType;
+			BasicType toType = type.basicTypeNode.basicType;
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert)
 			{
@@ -3107,8 +3145,6 @@ struct BinIrGenerationVisitor {
 	IrFunction* curFunc; // current function
 	CurrentAssignSide currentAssignSide;
 
-	bool alwaysUseMemOps = true;
-
 	// here are blocks that need their exit to be set to jump to outer block
 	// for example body of then and else statements need to jump after the else body.
 	// When generating IR inside if-else stmt we don't know where to jump.
@@ -3142,7 +3178,7 @@ struct BinIrGenerationVisitor {
 	void visit(FunctionDeclNode* f)
 	{
 		// create new function
-		f.irData = IrFunction(IrName(f.id), f.returnType.irType(context));
+		f.irData = IrFunction(f, &win64_call_conv, f.returnType.irType(context));
 
 		// save previous function
 		auto prevFunc = curFunc;
@@ -3176,6 +3212,7 @@ struct BinIrGenerationVisitor {
 		// restore previous function
 		curFunc = prevFunc;
 	}
+
 	void addUsers()
 	{
 		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
@@ -3189,10 +3226,12 @@ struct BinIrGenerationVisitor {
 
 	void store(VariableDeclNode* v, IrRef irRef)
 	{
-		if (v.requiresMemoryOps || alwaysUseMemOps)
+		if (v.forceMemoryStorage)
 		{
-			// TODO
-			curFunc.emitInstr1(IrOpcode.o_store, v.type.irType(context), irRef);
+			auto i = IrInstruction(IrOpcode.o_store, v.type.irType(context));
+			i.arg0 = irRef;
+			i.stackSlotId = v.stackSlotId;
+			curFunc.put(i);
 		}
 		else
 		{
@@ -3202,10 +3241,11 @@ struct BinIrGenerationVisitor {
 
 	IrRef load(VariableDeclNode* v)
 	{
-		if (v.requiresMemoryOps || alwaysUseMemOps)
+		if (v.forceMemoryStorage)
 		{
-			// TODO
-			return curFunc.emitInstr0(IrOpcode.o_load, v.type.irType(context));
+			auto i = IrInstruction(IrOpcode.o_load, v.type.irType(context));
+			i.stackSlotId = v.stackSlotId;
+			return curFunc.put(i);
 		}
 		else
 		{
@@ -3217,6 +3257,15 @@ struct BinIrGenerationVisitor {
 	{
 		IrRef irRef;
 		v.irVar = IrVar(v.strId(context), curFunc.newIrVarId(), v.type.irType(context));
+
+		if (context.buildDebug)
+			v.varFlags |= VariableFlags.forceMemoryStorage;
+
+		if (v.forceMemoryStorage)
+		{
+			v.stackSlotId = curFunc.stackLayout.addStackItem(v.type.size, v.type.alignment, v.isParameter, v.paramIndex);
+		}
+
 		if (v.isParameter)
 		{
 			++curFunc.numParameters;
@@ -3479,8 +3528,11 @@ struct IrModule
 /// Linear SSA IR for function
 struct IrFunction
 {
-	/// Function identifier
-	IrName name;
+	/// Ast node
+	FunctionDeclNode* node;
+
+	/// Calling convention info. Contains helpers for CC specific parts.
+	CallConv* callingConvention;
 
 	/// Function return type. Only valid if function has return value. Check AST node.
 	IrValueType returnType;
@@ -3532,6 +3584,8 @@ struct IrFunction
 	FunctionLiveIntervals liveIntervals;
 
 	IrVarId nextIrVarId;
+
+	StackLayout stackLayout;
 
 	/// Allocates new variable id for this function. It should be bound to a variable
 	/// and used with writeVariable, readVariable functions
@@ -3883,9 +3937,11 @@ struct IrFunction
 	}
 }
 
+//pragma(msg, IrFunction.sizeof);
+
 void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ctx)
 {
-	sink.putf("function %s $%s (", func.returnType, IrNameProxy(ctx, func.name));
+	sink.putf("function %s $%s (", func.returnType, IrNameProxy(ctx, IrName(func.node.id)));
 	//foreach (i, param; func.parameters)
 	//{
 	//	sink.putf("%s %%%s", param.type, IrNameProxy(ctx, func.variableNames[i]));
@@ -3901,6 +3957,7 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 	bool printUses = true;
 
 	void printOpdUses(IrOperandId opdId) {
+		if (opdId.isNull) return;
 		NodeIndex cur = func.operands[opdId].usesList.first;
 		if (cur.isNull) return;
 		sink.put(" uses [");
@@ -3974,7 +4031,6 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 				default:
 					if (instr.returnsValue) {
 						sink.putf("    %%%s = %- 3s %- 8s", instr.result, instr.type, instr.op);
-						if (printUses) printOpdUses(instr.result);
 					}
 					else  sink.putf("    %s", instr.op);
 
@@ -3984,6 +4040,15 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 							RefPr(&func, instr.arg1)); break;
 						default: break;
 					}
+
+					switch (instr.op) {
+						case IrOpcode.o_load: sink.putf("stack(%s)", instr.stackSlotId); break;
+						case IrOpcode.o_store: sink.putf(", stack(%s)", instr.stackSlotId); break;
+						default: break;
+					}
+
+					if (printUses) printOpdUses(instr.result);
+
 					sink.putln;
 					break;
 			}
@@ -4275,6 +4340,7 @@ enum IrCond : ubyte {
 }
 IrCond[IrCond.max+1] inverseIrCond = [IrCond.ne,IrCond.eq,IrCond.ge,IrCond.g,IrCond.le,IrCond.l];
 
+///
 struct IrInstruction
 {
 	this(IrOpcode op, IrValueType type = IrValueType.init)
@@ -4298,6 +4364,10 @@ struct IrInstruction
 	union {
 		struct {
 			IrRef arg0, arg1;
+		}
+		struct {
+			uint _1;
+			StackSlotId stackSlotId;
 		}
 		IrRef[2] _args;
 	}
@@ -4795,8 +4865,8 @@ struct LiveRange
 void pass_linear_scan(ref CompilationContext ctx) {
 	LinearScan linearScan;
 	linearScan.setup;
-	foreach (ref fun; ctx.mod.irModule.functions) {
-		linearScan.assignHints(*fun, ctx, win64_call_conv);
+	foreach (fun; ctx.mod.irModule.functions) {
+		linearScan.assignHints(*fun, ctx, *fun.callingConvention);
 		linearScan.scanFun(*fun, ctx);
 		linearScan.resolve(*fun);
 	}
@@ -5176,6 +5246,10 @@ struct OperandLocation
 		type = Type.physicalRegister;
 		this.reg = reg;
 	}
+	this(StackSlotId stackSlotId) {
+		type = Type.stackSlot;
+		this.stackSlotId = stackSlotId;
+	}
 	static OperandLocation makeConstant(IrRef irRef) {
 		OperandLocation res;
 		res.type = Type.constant;
@@ -5197,6 +5271,38 @@ struct OperandLocation
 		StackSlotId stackSlotId;
 		RegisterRef reg;
 	}
+}
+
+MoveType calcMoveType(OperandLocation.Type dst, OperandLocation.Type src)
+{
+	final switch(dst) with(OperandLocation.Type) {
+		case constant: return MoveType.invalid;
+		case virtualRegister: return MoveType.invalid;
+		case physicalRegister:
+			final switch(src) with(OperandLocation.Type) {
+				case constant: return MoveType.const_to_reg;
+				case virtualRegister: return MoveType.invalid;
+				case physicalRegister: return MoveType.reg_to_reg;
+				case stackSlot: return MoveType.stack_to_reg;
+			}
+		case stackSlot:
+			final switch(src) with(OperandLocation.Type) {
+				case constant: return MoveType.const_to_stack;
+				case virtualRegister: return MoveType.invalid;
+				case physicalRegister: return MoveType.reg_to_stack;
+				case stackSlot: return MoveType.invalid;
+			}
+	}
+}
+
+enum MoveType
+{
+	invalid,
+	const_to_reg,
+	const_to_stack,
+	reg_to_reg,
+	reg_to_stack,
+	stack_to_reg,
 }
 
 struct StorageHint
@@ -5226,12 +5332,6 @@ enum StorageHintType : ubyte
 	stack
 }
 
-struct StackSlotId
-{
-	uint id;
-	alias id this;
-}
-
 /// Is used in IrValue to indicate the register that stores given IrValue
 struct RegisterRef
 {
@@ -5240,6 +5340,119 @@ struct RegisterRef
 	RegClass regClass;
 	alias index this;
 	bool isNull() { return index == ubyte.max; }
+}
+
+
+//                    #####   #######     #       ####   #    #
+//                   #     #     #        #      #    #  #   #
+//                   #           #       ###    #        #  #
+//                    #####      #       # #    #        ###
+//                         #     #      #####   #        #  #
+//                   #     #     #      #   #    #    #  #   #
+//                    #####      #     ##   ##    ####   #    #
+// -----------------------------------------------------------------------------
+
+
+/// Arranges items on the stack according to calling convention
+void pass_stack_layout(ref CompilationContext ctx) {
+	IrModule* mod = &ctx.mod.irModule;
+	foreach (IrFunction* func; mod.functions)
+	{
+		enum STACK_ITEM_SIZE = 8; // x86_64
+		int numParams = cast(int)func.numParameters;
+
+		auto layout = &func.stackLayout;
+		layout.reservedBytes = layout.numLocals * STACK_ITEM_SIZE;
+		//writefln("%s", layout.numLocals);
+		//writefln("%s", layout.numParams);
+
+		// ++        slot index
+		// param2    1  rsp + 20     \
+		// param1    0  rsp + 18     / numParams = 2
+		// ret addr     rsp + 10
+		// local1    2  rsp +  8     \
+		// local2    3  rsp +  0     / numLocals = 2   <-- RSP
+		// --
+
+		//writefln("numSlots %s numLocals %s numParams %s", numSlots, numLocals, numParams);
+		//writefln("layout %s", layout.reservedBytes);
+
+		/*
+		if (USE_FRAME_POINTER)
+		{
+			// ++        varIndex
+			// param2    1              \
+			// param1    0  rbp + 2     / numParams = 2
+			// ret addr     rbp + 1
+			// rbp      <-- rbp + 0
+			// local1    2  rbp - 1     \
+			// local2    3  rbp - 2     / numLocals = 2
+			// --
+			if (isParameter) // parameter
+			{
+				index = 2 + varIndex;
+			}
+			else // local variable
+			{
+				index = -(varIndex - numParams + 1);
+			}
+			baseReg = Register.BP;
+		}*/
+
+		int localIndex = 0;
+		foreach (ref slot; layout.slots)
+		{
+			if (slot.isParameter)
+			{
+				slot.offset = (layout.numLocals + slot.paramIndex + 1) * STACK_ITEM_SIZE;
+			}
+			else
+			{
+				slot.offset = (layout.numLocals - localIndex - 1) * STACK_ITEM_SIZE;
+				++localIndex;
+			}
+		}
+	}
+}
+
+struct StackLayout
+{
+	int reservedBytes;
+	int numParams;
+	int numLocals;
+	StackSlot[] slots;
+
+	/// paramIndex == -1 for non-params
+	StackSlotId addStackItem(int size, int alignment, bool isParameter, ushort paramIndex)
+	{
+		assert(size > 0);
+		assert(alignment > 0);
+
+		auto id = StackSlotId(cast(uint)(slots.length));
+		auto slot = StackSlot(size, alignment, isParameter, paramIndex);
+
+		if (isParameter) ++numParams;
+		else ++numLocals;
+
+		slots ~= slot;
+		return id;
+	}
+}
+
+struct StackSlot
+{
+	uint size;
+	uint alignment;
+	bool isParameter;
+	ushort paramIndex;
+	int offset;
+}
+
+struct StackSlotId
+{
+	uint id = uint.max;
+	alias id this;
+	bool isNull() { return id == uint.max; }
 }
 
 /// Info needed for calling convention implementation
@@ -5485,6 +5698,18 @@ struct IrToAmd64
 		numLocals = 0;//cast(int)(curFunc.values.length - numParams);
 		numVars = numLocals + numParams;
 
+		// Copy parameters from registers to shadow space
+		// parameter 5 RSP + 40
+		if (context.buildDebug)
+		{
+			if (numParams > 3) gen.movq(memAddrBaseDisp8(Register.SP, 32), Register.R9); // save fourth parameter
+			if (numParams > 2) gen.movq(memAddrBaseDisp8(Register.SP, 24), Register.R8); // save third parameter
+			if (numParams > 1) gen.movq(memAddrBaseDisp8(Register.SP, 16), Register.DX); // save second parameter
+			if (numParams > 0) gen.movq(memAddrBaseDisp8(Register.SP,  8), Register.CX); // save first parameter
+		}
+		// RSP + 0 points to RET
+
+
 		// Establish frame pointer
 		if (USE_FRAME_POINTER)
 		{
@@ -5492,7 +5717,7 @@ struct IrToAmd64
 			gen.movq(Register.BP, Register.SP);
 		}
 
-		reservedBytes = cast(int)(numLocals * STACK_ITEM_SIZE);
+		reservedBytes = curFunc.stackLayout.reservedBytes;
 		if (reservedBytes) // Reserve space for locals
 		{
 			if (reservedBytes > byte.max) gen.subq(Register.SP, Imm32(reservedBytes));
@@ -5557,30 +5782,53 @@ struct IrToAmd64
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
 	void genMove(OperandLocation dst, OperandLocation src, ArgType argType)
 	{
-		assert(dst.type == OperandLocation.Type.physicalRegister);
-		Register reg0 = cast(Register)(dst.reg.index);
+		MoveType moveType = calcMoveType(dst.type, src.type);
+		if (moveType != MoveType.invalid && dst == src) return;
 
-		if (dst == src) return;
-
-		final switch (src.type) with(OperandLocation.Type)
+		final switch(moveType)
 		{
-			case constant:
-				long con = curFunc.constants[src.irRef.index].i64;
-				//writefln("move.%s reg:%s, con:%s", argType, reg0, con);
-				gen.mov(reg0, Imm32(cast(uint)con), argType);
-				break;
-
-			case virtualRegister:
+			case MoveType.invalid:
+				context.internal_error("Invalid move to %s from %s",
+					dst.type, src.type);
 				assert(false);
 
-			case physicalRegister:
-				Register reg1 = cast(Register)(src.reg.index);
-				//writefln("move.%s reg:%s, reg:%s", argType, reg0, reg1);
-				gen.mov(reg0, reg1, argType);
+			case MoveType.const_to_reg:
+				Register dstReg = cast(Register)(dst.reg.index);
+				long con = curFunc.constants[src.irRef.index].i64;
+				//writefln("move.%s reg:%s, con:%s", argType, dstReg, con);
+				gen.mov(dstReg, Imm32(cast(uint)con), argType);
 				break;
 
-			case stackSlot:
-				assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
+			case MoveType.const_to_stack:
+				long con = curFunc.constants[src.irRef.index].i64;
+				final switch(argType) {
+					case ArgType.BYTE:
+						gen.movb(localVarMemAddress(dst.stackSlotId), Imm8(cast(ubyte)con)); break;
+					case ArgType.WORD:
+						gen.movw(localVarMemAddress(dst.stackSlotId), Imm16(cast(ushort)con)); break;
+					case ArgType.DWORD:
+						gen.movd(localVarMemAddress(dst.stackSlotId), Imm32(cast(uint)con)); break;
+					case ArgType.QWORD:
+						gen.movq(localVarMemAddress(dst.stackSlotId), Imm32(cast(uint)con)); break;
+				}
+				break;
+
+			case MoveType.reg_to_reg:
+				Register dstReg = cast(Register)(dst.reg.index);
+				Register srcReg = cast(Register)(src.reg.index);
+				//writefln("move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
+				gen.mov(dstReg, srcReg, argType);
+				break;
+
+			case MoveType.reg_to_stack:
+				Register srcReg = cast(Register)(src.reg.index);
+				gen.mov(localVarMemAddress(dst.stackSlotId), srcReg, argType);
+				break;
+
+			case MoveType.stack_to_reg:
+				Register dstReg = cast(Register)(dst.reg.index);
+				gen.mov(dstReg, localVarMemAddress(src.stackSlotId), argType);
+				break;
 		}
 	}
 
@@ -5679,7 +5927,7 @@ struct IrToAmd64
 					case ret1:
 						OperandLocation arg0 = getLocation(block.exit.value);
 						ArgType retType = irTypeToArgType(curFunc.returnType);
-						genMove(OperandLocation(win64_call_conv.returnReg), arg0, retType);
+						genMove(OperandLocation(curFunc.callingConvention.returnReg), arg0, retType);
 						goto case;
 
 					case ret0:
@@ -5728,6 +5976,18 @@ struct IrToAmd64
 					case o_sub: genRegular(arg0, arg1, AMD64OpRegular.sub, argType); break;
 					default: assert(false);
 				}
+				break;
+
+			case o_store:
+				OperandLocation arg0 = OperandLocation(instr.stackSlotId);
+				OperandLocation arg1 = getLocation(instr.arg0);
+				genMove(arg0, arg1, argType);
+				break;
+
+			case o_load:
+				OperandLocation arg0 = getLocation(instr.result);
+				OperandLocation arg1 = OperandLocation(instr.stackSlotId);
+				genMove(arg0, arg1, argType);
 				break;
 
 			//case o_not:
@@ -5794,53 +6054,10 @@ struct IrToAmd64
 		gen.ret();
 	}
 
-	MemAddress localVarMemAddress(IrRef varRef)
+	MemAddress localVarMemAddress(StackSlotId stackSlotId)
 	{
-		assert(!varRef.isCon);
-		return localVarMemAddress(varRef.index);
-	}
-
-	MemAddress localVarMemAddress(int varIndex)
-	{
-		bool isParameter = varIndex < numParams;
-		Register baseReg;
-
-		int index;
-		if (USE_FRAME_POINTER)
-		{
-			// ++        varIndex
-			// param2    1              \
-			// param1    0  rbp + 2     / numParams = 2
-			// ret addr     rbp + 1
-			// rbp      <-- rbp + 0
-			// local1    2  rbp - 1     \
-			// local2    3  rbp - 2     / numLocals = 2
-			// --
-			if (isParameter) // parameter
-			{
-				index = 2 + varIndex;
-			}
-			else // local variable
-			{
-				index = -(varIndex - numParams + 1);
-			}
-			baseReg = Register.BP;
-		}
-		else
-		{
-			if (isParameter) // parameter
-			{
-				// Since return address is saved between locals and parameters, we need to add 1 to index for parameters
-				index = numLocals + varIndex + 1;
-			}
-			else // local variable
-			{
-				// count from RSP, so last var has index of 0
-				index = numVars - varIndex - 1;
-			}
-			baseReg = Register.SP;
-		}
-		int displacement = index * STACK_ITEM_SIZE;
+		int displacement = curFunc.stackLayout.slots[stackSlotId].offset;
+		Register baseReg = Register.SP;
 		return minMemAddrBaseDisp(baseReg, displacement);
 	}
 
