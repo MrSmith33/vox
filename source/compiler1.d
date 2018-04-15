@@ -9,7 +9,7 @@ module compiler1;
 import std.array : empty;
 import std.string : format;
 import std.typecons : Flag, Yes, No;
-import std.stdio : writeln, write, writef, writefln;
+import std.stdio : writeln, write, writef, writefln, stdout;
 import std.format : formattedWrite, FormatSpec;
 import std.range : repeat;
 import std.bitmanip : bitfields;
@@ -44,13 +44,14 @@ version = print;
 	<expression> = <test> | <identifier> "=" <expression>
 	<test> = <sum> | <sum> ("=="|"!="|"<"|">"|"<="|">=") <sum>
 	<sum> = <term> / <sum> ("+"|"-") <term>
-	<term> = <identifier> "(" <expression_list> ")" / <identifier> / <int_literal> / <paren_expression>
+	<term> = <identifier> "(" <expression_list> ")" / <identifier> "[" <expression> "]" / <identifier> / <int_literal> / <paren_expression>
 	<paren_expression> = "(" <expression> ")"
 
 	<expression_list> = (<expression> ",")*
 	<identifier> = [_a-zA-Z] [_a-zA-Z0-9]*
 
-	<type> = <type_basic> / <type_user>
+	<type> = (<type_basic> / <type_user>) <type_specializer>*
+	<type_specializer> = '*' / '[' <expression> ']'
 	<type_basic> = ("i8" | "i16" | "i32" | "i64" | "isize" |
 		"u8" | "u16" | "u32" | "u64" | "usize" | "void" | "f32" | "f64")
 
@@ -305,14 +306,21 @@ void test()
 		return result;
 	}};
 
+	string input10 =
+	q{i32 sign(i32* array)
+	{
+		return array[0];
+	}};
+
 	Driver driver;
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
 	try {
 		driver.initPasses();
-		ModuleDeclNode* mod = driver.compileModule(input8, codeBuffer);
-		//auto astPrinter = AstPrinter(&driver.context, 2);
-		//astPrinter.printAst(cast(AstNode*)mod);
+		ModuleDeclNode* mod = driver.compileModule(input10, codeBuffer);
+		auto astPrinter = AstPrinter(&driver.context, 2);
+		astPrinter.printAst(cast(AstNode*)mod);
+		stdout.flush;
 
 			auto funDecl = mod.findFunction("sign", &driver.context);
 			alias FunType = extern(C) int function(int);
@@ -576,7 +584,7 @@ struct CompilationContext
 	bool hasErrors;
 	TextSink sink;
 	bool crashOnICE = true;
-	bool buildDebug = false;
+	bool buildDebug = true;
 
 	//alias idString = idMap.get;
 	string idString(const Identifier id) { return idMap.get(id); }
@@ -854,6 +862,7 @@ struct Lexer {
 	}
 
 	string getTokenString(Token tok) pure { return input[tok.loc.start..tok.loc.start+tok.loc.size]; }
+	string getTokenString(SourceLocation loc) pure { return input[loc.start..loc.start+loc.size]; }
 	long getTokenNumber() { return numberRep; }
 
 	int opApply(scope int delegate(Token) dg)
@@ -1420,10 +1429,12 @@ enum AstType : ubyte {
 	expr_literal,
 	expr_bin_op,
 	expr_call,
+	expr_index,
 	expr_type_conv,
 
 	type_basic,
 	type_ptr,
+	type_static_array,
 	type_user,
 }
 
@@ -1480,6 +1491,9 @@ struct AstNode {
 	mixin AstNodeData;
 }
 
+// ----------------------------------- Types -----------------------------------
+// -----------------------------------------------------------------------------
+
 mixin template TypeNodeData(AstType _astType) {
 	mixin AstNodeData!(_astType, AstFlags.isType);
 }
@@ -1499,25 +1513,28 @@ struct TypeNode {
 
 	BasicTypeNode* basicTypeNode() { return cast(BasicTypeNode*)&this; }
 	PtrTypeNode* ptrTypeNode() { return cast(PtrTypeNode*)&this; }
+	StaticArrayTypeNode* staticArrayTypeNode() { return cast(StaticArrayTypeNode*)&this; }
 	UserTypeNode* userTypeNode() { return cast(UserTypeNode*)&this; }
 
-	int alignment()
+	ulong alignment()
 	{
 		switch(astType)
 		{
 			case AstType.type_basic: return basicTypeNode.alignment;
 			case AstType.type_ptr: return ptrTypeNode.alignment;
+			case AstType.type_static_array: return staticArrayTypeNode.alignment;
 			case AstType.type_user: return userTypeNode.alignment;
 			default: assert(false, format("got %s", astType));
 		}
 	}
 
-	int size()
+	ulong size()
 	{
 		switch(astType)
 		{
 			case AstType.type_basic: return basicTypeNode.size;
 			case AstType.type_ptr: return ptrTypeNode.size;
+			case AstType.type_static_array: return staticArrayTypeNode.size;
 			case AstType.type_user: return userTypeNode.size;
 			default: assert(false, format("got %s", astType));
 		}
@@ -1532,6 +1549,7 @@ struct TypeNode {
 				return basicTypeNode.strId;
 			case AstType.type_ptr:
 				return "ptr";
+			case AstType.type_static_array: return "[num]";
 			case AstType.type_user:
 				return userTypeNode.strId(context);
 			default: assert(false, format("got %s", astType));
@@ -1553,6 +1571,9 @@ struct TypeNode {
 				return basicTypeNode.basicType == t2.basicTypeNode.basicType;
 			case AstType.type_ptr:
 				return ptrTypeNode.base == t2.ptrTypeNode.base;
+			case AstType.type_static_array:
+				return staticArrayTypeNode.base == t2.staticArrayTypeNode.base &&
+					staticArrayTypeNode.length == t2.staticArrayTypeNode.length;
 			case AstType.type_user:
 				return cast(void*)(&this) == cast(void*)(t2);
 			default:
@@ -1591,6 +1612,15 @@ struct TypeNode {
 		return false;
 	}
 
+	TypeNode* getIndexType(CompilationContext* context) {
+		switch(astType)
+		{
+			case AstType.type_ptr: return ptrTypeNode.base;
+			case AstType.type_static_array: return staticArrayTypeNode.base;
+			default: context.internal_error(loc, "%s is not indexable", astType); assert(false);
+		}
+	}
+
 	IrValueType irType(CompilationContext* context) {
 		if (astType == AstType.type_basic)
 		{
@@ -1618,8 +1648,13 @@ struct TypeNode {
 				ptrTypeNode.base.toString(sink, ctx);
 				sink("*");
 				break;
+			case AstType.type_static_array:
+				staticArrayTypeNode.base.toString(sink, ctx);
+				formattedWrite(sink, "[%s]", staticArrayTypeNode.length);
+				break;
 			case AstType.type_user:
 				sink(userTypeNode.strId(ctx));
+				sink("*");
 				break;
 			default: assert(false, format("%s is not type", astType));
 		}
@@ -1634,15 +1669,15 @@ enum BasicTypeFlag : ubyte {
 }
 
 enum POINTER_SIZE = 8;
-BasicTypeNode basicTypeNode(int size, BasicType basicType, int typeFlags = 0)
+BasicTypeNode basicTypeNode(ulong size, BasicType basicType, int typeFlags = 0)
 {
-	return BasicTypeNode(SourceLocation(), cast(int)size, basicType, cast(ubyte)typeFlags);
+	return BasicTypeNode(SourceLocation(), size, basicType, cast(ubyte)typeFlags);
 }
 
 struct BasicTypeNode {
 	mixin TypeNodeData!(AstType.type_basic);
-	int size; // -1 arch dependent
-	int alignment() { return size; }
+	ulong size; // -1 arch dependent
+	ulong alignment() { return size; }
 	BasicType basicType;
 	ubyte typeFlags;
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
@@ -1658,16 +1693,25 @@ struct PtrTypeNode {
 	mixin TypeNodeData!(AstType.type_ptr);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	TypeNode* base;
-	int size() { return POINTER_SIZE; }
-	int alignment() { return POINTER_SIZE; }
+	ulong size() { return POINTER_SIZE; }
+	ulong alignment() { return POINTER_SIZE; }
+}
+
+struct StaticArrayTypeNode {
+	mixin TypeNodeData!(AstType.type_static_array);
+	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	TypeNode* base;
+	ulong length;
+	ulong size() { return base.size * length; }
+	ulong alignment() { return base.alignment; }
 }
 
 struct UserTypeNode {
 	mixin TypeNodeData!(AstType.type_user);
 	mixin SymRefNodeData;
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
-	int size = 1; // TODO, set in semantic
-	int alignment = 1; // TODO, set as max alignment of members
+	ulong size = 1; // TODO, set in semantic
+	ulong alignment = 1; // TODO, set as max alignment of members
 }
 
 // ------------------------------- Declarations --------------------------------
@@ -1863,6 +1907,12 @@ struct CallExprNode {
 	ExpressionNode*[] args;
 }
 
+struct IndexExprNode {
+	mixin ExpressionNodeData!(AstType.expr_index);
+	ExpressionNode* array;
+	ExpressionNode* index;
+}
+
 
 //         ##   ##   #####    #####    #####   #######    ###    ######
 //          #   #      #     #     #     #        #      #   #   #     #
@@ -1897,9 +1947,11 @@ mixin template AstVisitorMixin() {
 			case expr_literal: auto l = cast(LiteralExprNode*)n; visit(l); break;
 			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visit(b); break;
 			case expr_call: auto c = cast(CallExprNode*)n; visit(c); break;
+			case expr_index: auto i = cast(IndexExprNode*)n; visit(i); break;
 			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visit(t); break;
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
+			case type_static_array: auto t = cast(StaticArrayTypeNode*)n; visit(t); break;
 			case type_user: auto t = cast(UserTypeNode*)n; visit(t); break;
 		}
 	}
@@ -1937,10 +1989,13 @@ mixin template AstVisitorMixin() {
 		_visit(cast(AstNode*)b.right); }
 	void visit(CallExprNode* c) {
 		foreach (arg; c.args) _visit(arg); }
+	void visit(IndexExprNode* i) {
+		_visit(i.array); _visit(i.index); }
 	void visit(TypeConvExprNode* t) {
 		_visit(t.type); _visit(t.expr); }
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
+	void visit(StaticArrayTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 */
 
@@ -1966,12 +2021,12 @@ struct AstPrinter {
 		foreach (decl; m.declarations) pr_node(decl);
 	}
 	void visit(FunctionDeclNode* f) {
-		print("FUNC ", f.returnType.typeName(context), " ", f.strId(context));
+		print("FUNC ", f.returnType.printer(context), " ", f.strId(context));
 		foreach (param; f.parameters) pr_node(cast(AstNode*)param);
 		pr_node(cast(AstNode*)f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
-		print(v.isParameter ? "PARAM " : "VAR ", v.type.typeName(context), " ", v.strId(context));
+		print(v.isParameter ? "PARAM " : "VAR ", v.type.printer(context), " ", v.strId(context));
 	}
 	void visit(StructDeclNode* s) {
 		print("STRUCT ", s.strId(context));
@@ -2000,26 +2055,29 @@ struct AstPrinter {
 	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
 	void visit(VariableExprNode* v) {
 		if (v.isSymResolved)
-			print("VAR_USE ", v.getSym.getType.typeName(context), " ", v.strId(context));
+			print("VAR_USE ", v.getSym.getType.printer(context), " ", v.strId(context));
 		else
 			print("VAR_USE ", v.strId(context));
 	}
-	void visit(LiteralExprNode* c) { print("LITERAL ", c.type.typeName(context), " ", c.value); }
+	void visit(LiteralExprNode* c) { print("LITERAL ", c.type.printer(context), " ", c.value); }
 	void visit(BinaryExprNode* b) {
-		if (b.type) print("BINOP ", b.type.typeName(context), " ", b.op);
+		if (b.type) print("BINOP ", b.type.printer(context), " ", b.op);
 		else print("BINOP ", b.op);
 		pr_node(cast(AstNode*)b.left);
 		pr_node(cast(AstNode*)b.right); }
 	void visit(CallExprNode* c) {
 		if (c.isSymResolved)
-			print("CALL ", c.strId(context), " ", c.getSym.getType.typeName(context));
+			print("CALL ", c.strId(context), " ", c.getSym.getType.printer(context));
 		else print("CALL ", c.strId(context));
 		foreach (arg; c.args) pr_node(cast(AstNode*)arg); }
+	void visit(IndexExprNode* i) {
+		print("INDEX"); pr_node(cast(AstNode*)i.array); pr_node(cast(AstNode*)i.index); }
 	void visit(TypeConvExprNode* t) {
-		print("CAST to ", t.type.typeName(context));
+		print("CAST to ", t.type.printer(context));
 		pr_node(cast(AstNode*)t.expr); }
 	void visit(BasicTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(PtrTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
+	void visit(StaticArrayTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(UserTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)
@@ -2104,7 +2162,7 @@ struct Parser {
 
 	void setup() {}
 	T* make(T, Args...)(SourceLocation start, Args args) { return new T(start, args); }
-	T* makeExpr(T, Args...)(SourceLocation start, Args args) { return new T(start, null, IrRef(), args); }
+	ExpressionNode* makeExpr(T, Args...)(SourceLocation start, Args args) { return cast(ExpressionNode*)new T(start, null, IrRef(), args); }
 
 	T* enforceNode(T)(T* t)
 	{
@@ -2218,17 +2276,40 @@ struct Parser {
 		return type;
 	}
 
-	TypeNode* parse_type()
+	TypeNode* parse_type() // <type> = (<type_basic> / <type_user>) <type_specializer>*
 	{
 		version(print_parse) writeln("parse_type");
 		SourceLocation start = tok.loc;
+		TypeNode* base;
 		if (tok.type == TokenType.IDENTIFIER) {
 			Identifier id = expectIdentifier();
-			return cast(TypeNode*)make!UserTypeNode(start, id);
+			base = cast(TypeNode*)make!UserTypeNode(start, id);
 		} else if (isBasicTypeToken(tok.type)) {
-			return context.basicTypeNodes(parse_type_basic());
+			base = context.basicTypeNodes(parse_type_basic());
 		}
-		return null;
+
+		if (base) // <type_specializer> = '*' / '[' <expression> ']'
+		{
+			while (true)
+			{
+				if (tok.type == TokenType.STAR) {
+					nextToken();
+					base = cast(TypeNode*)make!PtrTypeNode(start, base);
+				} else if (tok.type == TokenType.LBRACKET) {
+					nextToken();
+					ExpressionNode* e = expr();
+					if (e.astType != AstType.expr_literal)
+						context.unrecoverable_error(e.loc, "Expected constant, while got '%s'",
+							lexer.getTokenString(e.loc));
+					expectAndConsume(TokenType.RBRACKET);
+					ulong length = (cast(LiteralExprNode*)e).value;
+					base = cast(TypeNode*)make!StaticArrayTypeNode(start, base, length);
+				}
+				else break;
+			}
+		}
+
+		return base;
 	}
 
 	BasicType parse_type_basic()
@@ -2356,7 +2437,7 @@ struct Parser {
 		{
 			nextToken();
 			t = n;
-			n = cast(ExpressionNode*)makeExpr!BinaryExprNode(start, BinOp.EQUAL, t, expr());
+			n = makeExpr!BinaryExprNode(start, BinOp.EQUAL, t, expr());
 		}
 		return n;
 	}
@@ -2380,7 +2461,7 @@ struct Parser {
 
 		nextToken();
 		t = n;
-		n = cast(ExpressionNode*)makeExpr!BinaryExprNode(start, op, t, sum());
+		n = makeExpr!BinaryExprNode(start, op, t, sum());
 
 		return n;
 	}
@@ -2400,12 +2481,12 @@ struct Parser {
 			}
 			nextToken();
 			t = n;
-			n = cast(ExpressionNode*)makeExpr!BinaryExprNode(start, op, t, term());
+			n = makeExpr!BinaryExprNode(start, op, t, term());
 		}
 		return n;
 	}
 
-	ExpressionNode* term() /* <term> ::= <id> | <id> "(" <expr_list> ")" | <int> | <paren_expr> */
+	ExpressionNode* term() /* <term> ::= <id> | <id> "(" <expr_list> ")" | <id> "[" <expr> "]" | <int> | <paren_expr> */
 	{
 		version(print_parse) writeln("term");
 		SourceLocation start = tok.loc;
@@ -2417,9 +2498,17 @@ struct Parser {
 				expectAndConsume(TokenType.LPAREN);
 				ExpressionNode*[] args = expr_list();
 				expectAndConsume(TokenType.RPAREN);
-				return cast(ExpressionNode*)makeExpr!CallExprNode(start, id, args);
+				return makeExpr!CallExprNode(start, id, args);
 			}
-			return cast(ExpressionNode*)makeExpr!VariableExprNode(start, id);
+			if (tok.type == TokenType.LBRACKET) // <term> ::= <id> "[" <expr> "]"
+			{
+				expectAndConsume(TokenType.LBRACKET);
+				ExpressionNode* index = expr();
+				expectAndConsume(TokenType.RBRACKET);
+				ExpressionNode* array = makeExpr!VariableExprNode(start, id);
+				return makeExpr!IndexExprNode(start, array, index);
+			}
+			return makeExpr!VariableExprNode(start, id);
 		}
 		else if (tok.type == TokenType.INT_LITERAL)
 		{
@@ -2510,7 +2599,7 @@ struct Symbol {
 		{
 			case decl_function: return (cast(FunctionDeclNode*)node).returnType;
 			case decl_var: return (cast(VariableDeclNode*)node).type;
-			case expr_var: .. case expr_call:
+			case expr_var, expr_literal, expr_bin_op, expr_call, expr_index, expr_type_conv:
 				return (cast(ExpressionNode*)node).type;
 			case type_basic: return cast(TypeNode*)node;
 			case type_user: return cast(TypeNode*)node;
@@ -2720,9 +2809,11 @@ struct SemanticDeclarations {
 	void visit(LiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {}
 	void visit(CallExprNode* c) {}
+	void visit(IndexExprNode* i) {}
 	void visit(TypeConvExprNode* c) {}
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
+	void visit(StaticArrayTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 }
 
@@ -2795,9 +2886,14 @@ struct SemanticLookup {
 	void visit(CallExprNode* c) {
 		c.resolveSymbol = scopeStack.lookup(c.id, c.loc);
 		foreach (arg; c.args) _visit(arg); }
+	void visit(IndexExprNode* i) {
+		_visit(i.array);
+		_visit(i.index);
+	}
 	void visit(TypeConvExprNode* t) { _visit(t.type); _visit(t.expr); }
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) { _visit(t.base); }
+	void visit(StaticArrayTypeNode* t) { _visit(t.base); }
 	void visit(UserTypeNode* t) { t.resolveSymbol = scopeStack.lookup(t.id, t.loc); }
 }
 
@@ -2990,6 +3086,7 @@ struct SemanticStaticTypes {
 				break;*/
 		}
 		b.type = resRype;
+		b.type.assertImplemented(b.loc, context);
 	}
 
 	void calcType(BinaryExprNode* b)
@@ -3103,6 +3200,12 @@ struct SemanticStaticTypes {
 		foreach (arg; c.args) _visit(arg);
 		c.type = c.getSym.getType;
 	}
+	void visit(IndexExprNode* i) {
+		_visit(i.array);
+		_visit(i.index);
+		autoconvTo(i.index, BasicType.t_i64, No.force);
+		i.type = i.array.type.getIndexType(context);
+	}
 	void visit(TypeConvExprNode* t) {
 		_visit(t.type);
 		_visit(t.expr);
@@ -3110,6 +3213,7 @@ struct SemanticStaticTypes {
 	}
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
+	void visit(StaticArrayTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 }
 
@@ -3478,11 +3582,15 @@ struct BinIrGenerationVisitor {
 	void visit(CallExprNode* c) {
 		context.internal_error(c.loc, "Call is not implemented");
 	}
+	void visit(IndexExprNode* i) {
+		context.internal_error(i.loc, "Index is not implemented");
+	}
 	void visit(TypeConvExprNode* t) {
 		context.internal_error(t.loc, "Type conversion is not implemented");
 	}
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
+	void visit(StaticArrayTypeNode* t) {}
 	void visit(UserTypeNode* t) {}
 }
 
@@ -5423,7 +5531,7 @@ struct StackLayout
 	StackSlot[] slots;
 
 	/// paramIndex == -1 for non-params
-	StackSlotId addStackItem(int size, int alignment, bool isParameter, ushort paramIndex)
+	StackSlotId addStackItem(ulong size, ulong alignment, bool isParameter, ushort paramIndex)
 	{
 		assert(size > 0);
 		assert(alignment > 0);
@@ -5441,8 +5549,8 @@ struct StackLayout
 
 struct StackSlot
 {
-	uint size;
-	uint alignment;
+	ulong size;
+	ulong alignment;
 	bool isParameter;
 	ushort paramIndex;
 	int offset;
