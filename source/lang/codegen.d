@@ -377,7 +377,7 @@ struct LangCodeGen
 		if (callee.native)
 		{
 			// hardcoded size of instruction (6)
-			int disp32 = cast(int)(&nativeFunctionTable[callee.index] - cast(void*)gen.pc - 6);
+			int disp32 = cast(int)(cast(void*)&nativeFunctionTable[callee.index] - cast(void*)gen.pc - 6);
 			gen.call(memAddrRipDisp32(cast(uint)disp32));
 		}
 		else
@@ -396,7 +396,7 @@ struct LangCodeGen
 		}
 		else
 		{
-			gen.call(gen.stubPC);
+			gen.call(gen.pc);
 		}
 	}
 }

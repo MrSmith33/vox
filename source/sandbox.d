@@ -26,7 +26,17 @@ void main()
 	//testPrintMemAddress();
 	//testVMs();
 	//testLang();
-	testLang2();
+	//testLang2();
+
+	{
+		CodeGen_x86_64 codeGen;
+		codeGen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
+		scope(exit) free_executable_memory(codeGen.encoder.freeBuffer);
+
+		codeGen.addq(Register.CX, Register.AX);
+		printHex(codeGen.encoder.code, 10);
+	}
+	testAll();
 	/*
 	writefln("main() == %s", runScript(input, "main"));
 	writefln("main() == %s", runScript(q{i32 main(){return 42;}}, "main"));
@@ -72,7 +82,7 @@ void main()
 	}
 
 	//printHex(codeGen.encoder.code, 10);
-	testAll();*/
+	*/
 }
 
 void testAll()
@@ -92,6 +102,7 @@ void testAll()
 	import asmtest.push;
 	import asmtest.cmp;
 	import asmtest.jmp_jcc_setcc;
+	import asmtest.imul;
 
 	testAdd(tester);
 	testMov(tester);
@@ -102,6 +113,7 @@ void testAll()
 	testPush(tester);
 	testCmp(tester);
 	testJmpJccSetcc(tester);
+	testImul(tester);
 }
 
 void testPrintMemAddress()
@@ -144,7 +156,7 @@ void emit_code_into_memory(ubyte[] mem)
 		// main
 		codeGen.beginFunction();
 		auto sub_call = codeGen.saveFixup();
-		codeGen.call(codeGen.stubPC);
+		codeGen.call(codeGen.pc);
 		codeGen.endFunction();
 
 		sub_call.call(codeGen.pc);

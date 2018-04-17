@@ -13,7 +13,7 @@ import std.stdio : writeln, write, writef, writefln, stdout;
 import std.format : formattedWrite, FormatSpec;
 import std.range : repeat;
 import std.bitmanip : bitfields;
-import std.algorithm : min, max, sort;
+import std.algorithm : min, max, sort, swap;
 
 // Grammar
 version = print;
@@ -35,13 +35,13 @@ version = print;
 	              "break" ";" /
 	              "continue" ";" /
 	              <block_statement> /
-	              <expression> ";" /
+	              <expression> ("=" <expression>)? ";" /
 	              <declaration_statement>
 
 	<declaration_statement> = <declaration>
 	<block_statement> = "{" <statement>* "}"
 
-	<expression> = <test> | <identifier> "=" <expression>
+	<expression> = <test>
 	<test> = <sum> | <sum> ("=="|"!="|"<"|">"|"<="|">=") <sum>
 	<sum> = <term> / <sum> ("+"|"-") <term>
 	<term> = <identifier> "(" <expression_list> ")" / <identifier> "[" <expression> "]" / <identifier> / <int_literal> / <paren_expression>
@@ -78,291 +78,319 @@ void main()
 	test();
 }
 
-void test()
+struct Test
 {
-	string input =
-		q{
-		i32 a;
-		struct structWIP {
-			i64 e;
-			i32 member(i32 param) {
-				i32 c;
-				i32 d;
-				a = b + c + d + e + g;
-			}
-			i32 g;
-		}
-		i32 b;
-	};
+	string testName;
+	string source;
+	string funcName;
+	alias Tester = void function(void* funcPtr);
+	void function(void* funcPtr) tester;
+}
 
-	string input2 = q{
-		void e()
-		{
-			i32 a;
-			i32 b;
+string input1 = q{
+	i32 a;
+	struct structWIP {
+		i64 e;
+		i32 member(i32 param) {
 			i32 c;
-
-			void f() {
-				i32 a;
-				i32 b;
-				i32 c;
-				a = b + c;
-			}
-
-			void g() {
-				i32 a;
-				i32 b;
-
-				void h() {
-					i32 c;
-					i32 d;
-					c = a + d;
-				}
-
-				void i() {
-					i32 b;
-					i32 d;
-					b = a + c;
-				}
-
-				b = a + c;
-			}
-
-			a = b + c;
+			i32 d;
+			a = b + c + d + e + g;
 		}
-	};
+		i32 g;
+	}
+	i32 b;
+};
 
-	string input3 = q{
-		A b;
-		struct A{
-			void fun(i32 param) {
-				//a = 1;
-				i32 a;
-				a = (param + 1) - var + fun42();
-			}
+string input2 = q{void e() {
+	i32 a;
+	i32 b;
+	i32 c;
+
+	void f() {
+		i32 a;
+		i32 b;
+		i32 c;
+		a = b + c;
+	}
+
+	void g() {
+		i32 a;
+		i32 b;
+
+		void h() {
+			i32 c;
+			i32 d;
+			c = a + d;
 		}
-		A a;
-		i32 var;
-		i32 fun42() { return 42; }
+
+		void i() {
+			i32 b;
+			i32 d;
+			b = a + c;
+		}
+
+		b = a + c;
+	}
+
+	a = b + c;
+}};
+
+string input3 = q{
+	A b;
+	struct A{
+		void fun(i32 param) {
+			//a = 1;
+			i32 a;
+			a = (param + 1) - var + fun42();
+		}
+	}
+	A a;
+	i32 var;
+	i32 fun42() { return 42; }
 	};
 
 	string input4 = q{
-		struct A {
-			int x;
-			struct B { int y; }
-			B b;
-		}
+	struct A {
+		int x;
+		struct B { int y; }
+		B b;
+	}
 
-		int i=0;
-		int j=0;
+	int i=0;
+	int j=0;
 
-		void f() {
-			A a;
-			a.x = 1+i*j;
-			a.b.y = 2;
-			bool b = 3 == a.x;
-			if ( i < j ) f();
-		}
-	};
+	void f() {
+		A a;
+		a.x = 1+i*j;
+		a.b.y = 2;
+		bool b = 3 == a.x;
+		if ( i < j ) f();
+	}
+};
 
-	// test implicit casting
-	string input5 = q{
-		void f() {
-			//struct A{}
-			//A a;
-			//if (a){} // error
-			f32 var_f32;
-			f64 var_f64;
-			//var_f32 = var_f64; // error
-			var_f64 = var_f32;
+// test implicit casting
+string input5 = q{void f() {
+	//struct A{}
+	//A a;
+	//if (a){} // error
+	f32 var_f32;
+	f64 var_f64;
+	//var_f32 = var_f64; // error
+	var_f64 = var_f32;
 
-			i8 var_i8;
-			if (var_i8){}
-			i16 var_i16;
-			if (var_i16){}
-			i32 var_i32;
-			if (var_i32){}
-			i64 var_i64;
-			if (var_i64){}
+	i8 var_i8;
+	if (var_i8){}
+	i16 var_i16;
+	if (var_i16){}
+	i32 var_i32;
+	if (var_i32){}
+	i64 var_i64;
+	if (var_i64){}
 
-			u8 var_u8;
-			if (var_u8){}
-			u16 var_u16;
-			if (var_u16){}
-			u32 var_u32;
-			if (var_u32){}
-			u64 var_u64;
-			if (var_u64){}
-		}
-	};
+	u8 var_u8;
+	if (var_u8){}
+	u16 var_u16;
+	if (var_u16){}
+	u32 var_u32;
+	if (var_u32){}
+	u64 var_u64;
+	if (var_u64){}
+}};
 
-	string input6 = q{
-		void f() {
-			f32 var_f32;
-			f64 var_f64;
-			var_f64 = var_f32;
-			i8 var_i8;
-			i16 var_i16;
-			i32 var_i32;
-			i64 var_i64;
-			u8 var_u8;
-			u16 var_u16;
-			u32 var_u32;
-			u64 var_u64;
+string input6 = q{void f() {
+	f32 var_f32;
+	f64 var_f64;
+	var_f64 = var_f32;
+	i8 var_i8;
+	i16 var_i16;
+	i32 var_i32;
+	i64 var_i64;
+	u8 var_u8;
+	u16 var_u16;
+	u32 var_u32;
+	u64 var_u64;
 
-			var_i8 + var_i16;
-			var_i8 + var_i32;
-			var_i8 + var_i64;
-			var_i8 + var_u8;
-			var_i8 + var_u16;
-			var_i8 + var_u32;
-			var_i8 + var_u64;
-			var_i8 + var_f32;
-			var_i8 + var_f64;
+	var_i8 + var_i16;
+	var_i8 + var_i32;
+	var_i8 + var_i64;
+	var_i8 + var_u8;
+	var_i8 + var_u16;
+	var_i8 + var_u32;
+	var_i8 + var_u64;
+	var_i8 + var_f32;
+	var_i8 + var_f64;
 
-			var_i16 + var_i32;
-			var_i16 + var_i64;
-			var_i16 + var_u8;
-			var_i16 + var_u16;
-			var_i16 + var_u32;
-			var_i16 + var_u64;
-			var_i16 + var_f32;
-			var_i16 + var_f64;
+	var_i16 + var_i32;
+	var_i16 + var_i64;
+	var_i16 + var_u8;
+	var_i16 + var_u16;
+	var_i16 + var_u32;
+	var_i16 + var_u64;
+	var_i16 + var_f32;
+	var_i16 + var_f64;
 
-			var_i32 + var_i32;
-			var_i32 + var_i64;
-			var_i32 + var_u8;
-			var_i32 + var_u16;
-			var_i32 + var_u32;
-			var_i32 + var_u64;
-			var_i32 + var_f32;
-			var_i32 + var_f64;
+	var_i32 + var_i32;
+	var_i32 + var_i64;
+	var_i32 + var_u8;
+	var_i32 + var_u16;
+	var_i32 + var_u32;
+	var_i32 + var_u64;
+	var_i32 + var_f32;
+	var_i32 + var_f64;
 
-			var_i64 + var_i64;
-			var_i64 + var_u8;
-			var_i64 + var_u16;
-			var_i64 + var_u32;
-			var_i64 + var_u64;
-			var_i64 + var_f32;
-			var_i64 + var_f64;
+	var_i64 + var_i64;
+	var_i64 + var_u8;
+	var_i64 + var_u16;
+	var_i64 + var_u32;
+	var_i64 + var_u64;
+	var_i64 + var_f32;
+	var_i64 + var_f64;
 
-			var_u8 + var_u8;
-			var_u8 + var_u16;
-			var_u8 + var_u32;
-			var_u8 + var_u64;
-			var_u8 + var_f32;
-			var_u8 + var_f64;
+	var_u8 + var_u8;
+	var_u8 + var_u16;
+	var_u8 + var_u32;
+	var_u8 + var_u64;
+	var_u8 + var_f32;
+	var_u8 + var_f64;
 
-			var_u16 + var_u16;
-			var_u16 + var_u32;
-			var_u16 + var_u64;
-			var_u16 + var_f32;
-			var_u16 + var_f64;
+	var_u16 + var_u16;
+	var_u16 + var_u32;
+	var_u16 + var_u64;
+	var_u16 + var_f32;
+	var_u16 + var_f64;
 
-			var_u32 + var_u32;
-			var_u32 + var_u64;
-			var_u32 + var_f32;
-			var_u32 + var_f64;
+	var_u32 + var_u32;
+	var_u32 + var_u64;
+	var_u32 + var_f32;
+	var_u32 + var_f64;
 
-			var_u64 + var_u64;
-			var_u64 + var_f32;
-			var_u64 + var_f64;
+	var_u64 + var_u64;
+	var_u64 + var_f32;
+	var_u64 + var_f64;
 
-			var_f32 + var_f32;
-			var_f32 + var_f64;
-		}
-	};
+	var_f32 + var_f32;
+	var_f32 + var_f64;
+}};
 
-	string input7 =
-	q{i32 fib(i32 number)
+string input7 = q{i32 fib(i32 number) {
+	if (number < 1) return 0;
+	if (number < 3) return 1;
+	return fib(number-1) + fib(number-2);
+}};
+
+string input9 = q{i32 sign(i32 number) {
+	i32 result;
+	if (1 == 1)
 	{
-		if (number < 1) return 0;
-		if (number < 3) return 1;
-		return fib(number-1) + fib(number-2);
-	}};
-
-	string input8 =
-	q{i32 sign(i32 number)
+		result = 1;
+	}
+	else
 	{
-		i32 result;
-		if (number < 0) result = 0-1;
-		else if (number > 0) result = 1;
-		else result = 0;
-		return result;
-	}};
+		result = 0;
+	}
+	return result;
+}};
 
-	string input9 =
-	q{i32 sign(i32 number)
-	{
-		i32 result;
-		if (1 == 1)
-		{
-			result = 1;
-		}
-		else
-		{
-			result = 0;
-		}
-		return result;
-	}};
+string input8 = q{i32 sign(i32 number) {
+	i32 result;
+	if (number < 0) result = 0-1;
+	else if (number > 0) result = 1;
+	else result = 0;
+	return result;
+}};
+alias Func8 = extern(C) int function(int);
+void tester8(Func8 fun) {
+	int res1 = fun(10);
+	int res2 = fun(0);
+	int res3 = fun(-10);
+	//writefln("sign(10) -> %s", res1);
+	//writefln("sign(0) -> %s", res2);
+	//writefln("sign(-10) -> %s", res3);
+}
 
-	string input10 =
-	q{i32 sign(i32* array)
-	{
-		return array[0];
-	}};
+immutable input10 = q{i32 test(i32* array) {
+	return array[0];
+}};
+alias Func10 = extern(C) int function(int*);
+void tester10(Func10 fun) {
+	int val = 42;
+	int res = fun(&val);
+	//writefln("test(&42) -> %s", res);
+	assert(res == 42);
+}
+auto test10 = Test("Test 10", input10, "test", cast(Test.Tester)&tester10);
 
+immutable input11 = q{i32 test(i32* array) {
+	return array[1];
+}};
+alias Func11 = extern(C) int function(int*);
+void tester11(Func11 fun) {
+	int[2] val = [42, 56];
+	int res = fun(val.ptr);
+	//writefln("test([42, 56].ptr) -> %s", res);
+	assert(res == 56);
+}
+auto test11 = Test("Test 11", input11, "test", cast(Test.Tester)&tester11);
+
+immutable input12 = q{i32 test(i32* array, i32 index) {
+	return array[index];
+}};
+alias Func12 = extern(C) int function(int*, int);
+void tester12(Func12 fun) {
+	int[2] val = [42, 56];
+	int res = fun(val.ptr, 1);
+	//writefln("test([42, 56].ptr, 1) -> %s", res);
+	assert(res == 56);
+}
+auto test12 = Test("Test 12", input12, "test", cast(Test.Tester)&tester12);
+
+immutable input13 = q{void test(i32* array, i32 index, i32 value) {
+	array[index] = value;
+}};
+alias Func13 = extern(C) void function(int*, int, int);
+void tester13(Func13 fun) {
+	int[2] val = [42, 56];
+	fun(val.ptr, 1, 20);
+	//writefln("test([42, 56].ptr, 1, 20) -> %s", val);
+	assert(val[1] == 20);
+}
+auto test13 = Test("Test 13", input13, "test", cast(Test.Tester)&tester13);
+
+void test()
+{
+	Test curTest = test13;
 	Driver driver;
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
-	try {
+	try
+	{
 		driver.initPasses();
-		ModuleDeclNode* mod = driver.compileModule(input10, codeBuffer);
-		auto astPrinter = AstPrinter(&driver.context, 2);
-		astPrinter.printAst(cast(AstNode*)mod);
-		stdout.flush;
-
-			auto funDecl = mod.findFunction("sign", &driver.context);
-			alias FunType = extern(C) int function(int);
-			FunType fun;
-			int res1;
-			int res2;
-			int res3;
-
-			if (funDecl.irData.funcPtr)
-			{
-				fun = cast(FunType)funDecl.irData.funcPtr;
-				foreach(_; 0..1)
-				{
-					res1 = fun(10);
-					res2 = fun(0);
-					res3 = fun(-10);
-				}
-			}
+		ModuleDeclNode* mod = driver.compileModule(curTest.source, codeBuffer);
+		if (mod is null) return;
 
 		version(print)
 		{
 			// Text dump
-			writeln("// source code");
+			auto astPrinter = AstPrinter(&driver.context, 2);
+			astPrinter.printAst(cast(AstNode*)mod);
+
+			writeln("// Source");
 			writeln(driver.context.input);
 
+			writeln("\n// IR");
 			TextSink sink;
 			mod.irModule.dump(sink, &driver.context);
-			writeln;
-			writeln("// Generated from binary IR");
 			writeln(sink.text);
-			writeln;
-			writeln("// Code");
+
+			writeln("\n// Amd64 code");
 			printHex(mod.irModule.code, 16);
 		}
 
-		/*
-		writefln("fun run x3 %ss", scaledNumberFmt(time11-time10));
-		writefln("fun %s", fun);
-		*/
-		writefln("sign(10) -> %s", res1);
-		writefln("sign(0) -> %s", res2);
-		writefln("sign(-10) -> %s", res3);
+		auto funDecl = mod.findFunction(curTest.funcName, &driver.context);
+		if (funDecl != null && funDecl.irData.funcPtr != null)
+		{
+			curTest.tester(funDecl.irData.funcPtr);
+		}
 	}
 	catch(CompilationException e) {
 		writeln(driver.context.sink.text);
@@ -526,7 +554,8 @@ struct Driver
 		catch(CompilationException e)
 		{
 			writeln(context.sink.text);
-			if (e.isICE) writeln(e);
+			//if (e.isICE) // always show stacktrace
+				writeln(e);
 		}
 		return context.mod;
 	}
@@ -584,7 +613,7 @@ struct CompilationContext
 	bool hasErrors;
 	TextSink sink;
 	bool crashOnICE = true;
-	bool buildDebug = true;
+	bool buildDebug = false;
 
 	//alias idString = idMap.get;
 	string idString(const Identifier id) { return idMap.get(id); }
@@ -645,6 +674,10 @@ struct CompilationContext
 		hasErrors = true;
 		tryCrashOnICE;
 		throw new CompilationException(true);
+	}
+
+	void unreachable() {
+		internal_error("Unreachable");
 	}
 
 	void internal_error(Args...)(SourceLocation loc, string format, Args args)
@@ -1424,6 +1457,7 @@ enum AstType : ubyte {
 	stmt_return,
 	stmt_break,
 	stmt_continue,
+	stmt_assign,
 
 	expr_var,
 	expr_literal,
@@ -1597,22 +1631,25 @@ struct TypeNode {
 	}
 
 	bool isImplemented() {
-		if (astType == AstType.type_basic)
+		switch (astType)
 		{
-			switch(basicTypeNode.basicType)
+			case AstType.type_basic:
+			switch (basicTypeNode.basicType)
 			{
 				case BasicType.t_bool: return true;
 				case BasicType.t_i32: return true;
 				case BasicType.t_i64: return true;
-				case BasicType.t_f32: return false;
-				case BasicType.t_f64: return false;
 				default: return false;
 			}
+
+			case AstType.type_ptr:
+				return ptrTypeNode.base.isImplemented;
+
+			default: return false;
 		}
-		return false;
 	}
 
-	TypeNode* getIndexType(CompilationContext* context) {
+	TypeNode* getElementType(CompilationContext* context) {
 		switch(astType)
 		{
 			case AstType.type_ptr: return ptrTypeNode.base;
@@ -1622,17 +1659,22 @@ struct TypeNode {
 	}
 
 	IrValueType irType(CompilationContext* context) {
-		if (astType == AstType.type_basic)
+		switch (astType)
 		{
+			case AstType.type_basic:
 			switch(basicTypeNode.basicType)
 			{
+				case BasicType.t_void: return IrValueType.i32;
 				case BasicType.t_bool: return IrValueType.i32;
 				case BasicType.t_i32: return IrValueType.i32;
 				case BasicType.t_i64: return IrValueType.i64;
-				//case BasicType.t_f32: return IrValueType.f32;
-				//case BasicType.t_f64: return IrValueType.f64;
 				default: break;
 			}
+			break;
+
+			case AstType.type_ptr: return IrValueType.ptr;
+
+			default: break;
 		}
 		context.internal_error(loc, "Cannot convert `%s` to IrValueType", astType);
 		assert(false);
@@ -1768,7 +1810,7 @@ struct VariableDeclNode {
 	ushort paramIndex; // 0 for non-params
 	IrRef irRef;
 	IrVar irVar; // unique id of variable within a function
-	StackSlotId stackSlotId;
+	IrRef stackSlotId;
 	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
 	bool forceMemoryStorage() { return cast(bool)(varFlags & VariableFlags.forceMemoryStorage); }
 }
@@ -1819,6 +1861,18 @@ struct BlockStmtNode {
 	Scope* _scope;
 }
 
+enum AssignOp : ubyte {
+	opAssign,
+	opIndexAssign
+}
+
+struct AssignStmtNode {
+	mixin AstNodeData!(AstType.stmt_assign, AstFlags.isStatement);
+	AssignOp op;
+	ExpressionNode* left;
+	ExpressionNode* right;
+}
+
 // ------------------------------- Expressions ---------------------------------
 // -----------------------------------------------------------------------------
 mixin template ExpressionNodeData(AstType _astType) {
@@ -1857,7 +1911,6 @@ enum BinOp : ubyte {
 	// arithmetic ops
 	//AND,
 	//ASHR,
-	EQUAL,
 	MINUS,
 	//OR,
 	//PERCENT,
@@ -1884,7 +1937,7 @@ enum BinOp : ubyte {
 
 enum BinOp BIN_OP_LOGIC_FIRST = BinOp.EQUAL_EQUAL;
 enum BinOp BIN_OP_LOGIC_LAST = BinOp.LESS_EQUAL;
-enum BinOp BIN_OP_ARITH_FIRST = BinOp.EQUAL;
+enum BinOp BIN_OP_ARITH_FIRST = BinOp.MINUS;
 enum BinOp BIN_OP_ARITH_LAST = BinOp.STAR;
 //enum BinOp BIN_OP_ARITH_EQUALS_FIRST = BinOp.AND_EQUAL;
 //enum BinOp BIN_OP_ARITH_EQUALS_LAST = BinOp.XOR_EQUAL;
@@ -1943,6 +1996,7 @@ mixin template AstVisitorMixin() {
 			case stmt_return: auto r = cast(ReturnStmtNode*)n; visit(r); break;
 			case stmt_break: auto b = cast(BreakStmtNode*)n; visit(b); break;
 			case stmt_continue: auto c = cast(ContinueStmtNode*)n; visit(c); break;
+			case stmt_assign: auto a = cast(AssignStmtNode*)n; visit(a); break;
 			case expr_var: auto v = cast(VariableExprNode*)n; visit(v); break;
 			case expr_literal: auto l = cast(LiteralExprNode*)n; visit(l); break;
 			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visit(b); break;
@@ -1982,6 +2036,8 @@ mixin template AstVisitorMixin() {
 		if (r.expression) _visit(r.expression); }
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
+	void visit(AssignStmtNode* a) {
+		_visit(a.left); _visit(a.right); }
 	void visit(VariableExprNode* v) {}
 	void visit(LiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {
@@ -2053,6 +2109,7 @@ struct AstPrinter {
 		if (r.expression) pr_node(cast(AstNode*)r.expression); }
 	void visit(BreakStmtNode* r) { print("BREAK"); }
 	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
+	void visit(AssignStmtNode* a) { print("ASSIGN"); pr_node(cast(AstNode*)a.left); pr_node(cast(AstNode*)a.right); }
 	void visit(VariableExprNode* v) {
 		if (v.isSymResolved)
 			print("VAR_USE ", v.getSym.getType.printer(context), " ", v.strId(context));
@@ -2097,18 +2154,24 @@ struct AstPrinter {
 //               #         #   #   #    #   #     #  #
 //               #        ##   ##  #     #   #####   #######
 // -----------------------------------------------------------------------------
-//version = print_parse;
+
 void pass_parser(ref CompilationContext ctx) {
 	Lexer lexer = Lexer(ctx.input);
 	Parser parser = Parser(&lexer, &ctx);
 	ctx.mod = parser.parseModule();
 }
 
+//version = print_parse;
 struct Parser {
 	Lexer* lexer;
 	CompilationContext* context;
 
 	Token tok;
+
+	int nesting;
+	auto indent() { return ' '.repeat(nesting*2); }
+	struct Scope { Parser* p; ~this(){--p.nesting;}}
+	Scope scop(Args...)(string name, Args args) { write(indent); writefln(name, args); ++nesting; return Scope(&this); }
 
 	enum tokenStashSize = 4;
 	enum STASH_MASK = tokenStashSize - 1;
@@ -2200,7 +2263,7 @@ struct Parser {
 	// ------------------------------ PARSING ----------------------------------
 
 	ModuleDeclNode* parseModule() { // <module> ::= <declaration>*
-		version(print_parse) writeln("parseModule");
+		version(print_parse) auto s1 = scop("parseModule");
 		SourceLocation start = tok.loc;
 		nextToken();
 		return make!ModuleDeclNode(start, parse_declarations(TokenType.EOI));
@@ -2218,10 +2281,11 @@ struct Parser {
 	/// Can return null
 	AstNode* parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
-		version(print_parse) writeln("parse_declaration");
+		version(print_parse) auto s1 = scop("parse_declaration %s", tok.loc);
 		SourceLocation start = tok.loc;
 		if (tok.type == TokenType.STRUCT_SYM) // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
 		{
+			version(print_parse) auto s2 = scop("struct %s", start);
 			nextToken();
 			Identifier structId = expectIdentifier();
 			expectAndConsume(TokenType.LCURLY);
@@ -2231,17 +2295,24 @@ struct Parser {
 		}
 		else // <func_declaration> / <var_declaration>
 		{
+			version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
 			TypeNode* type = parse_type();
-			if (type is null) return null;
+			if (type is null)
+			{
+				version(print_parse) auto s3 = scop("<type> is null %s", tok.loc);
+				return null;
+			}
 			Identifier declarationId = expectIdentifier();
 
 			if (tok.type == TokenType.SEMICOLON) // <var_declaration> ::= <type> <id> ";"
 			{
+				version(print_parse) auto s3 = scop("<var_declaration> %s", start);
 				nextToken();
 				return cast(AstNode*)make!VariableDeclNode(start, declarationId, type);
 			}
 			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" <block_statement>
 			{
+				version(print_parse) auto s3 = scop("<func_declaration> %s", start);
 				expectAndConsume(TokenType.LPAREN);
 				VariableDeclNode*[] params;
 				while (tok.type != TokenType.RPAREN)
@@ -2270,7 +2341,7 @@ struct Parser {
 	/// Can return null
 	TypeNode* parse_type_expected()
 	{
-		version(print_parse) writeln("parse_type_expected");
+		version(print_parse) auto s1 = scop("parse_type_expected %s", tok.loc);
 		auto type = parse_type();
 		if (type is null) context.unrecoverable_error(tok.loc, "Expected basic type, while got '%s'", lexer.getTokenString(tok));
 		return type;
@@ -2278,7 +2349,7 @@ struct Parser {
 
 	TypeNode* parse_type() // <type> = (<type_basic> / <type_user>) <type_specializer>*
 	{
-		version(print_parse) writeln("parse_type");
+		version(print_parse) auto s1 = scop("parse_type %s", tok.loc);
 		SourceLocation start = tok.loc;
 		TypeNode* base;
 		if (tok.type == TokenType.IDENTIFIER) {
@@ -2314,7 +2385,7 @@ struct Parser {
 
 	BasicType parse_type_basic()
 	{
-		version(print_parse) writeln("parse_type_basic");
+		version(print_parse) auto s1 = scop("parse_type_basic %s", tok.loc);
 		if (isBasicTypeToken(tok.type))
 		{
 			auto res = tokenTypeToBasicType(tok.type);
@@ -2327,7 +2398,7 @@ struct Parser {
 
 	BlockStmtNode* block_stmt() // <block_statement> ::= "{" <statement>* "}"
 	{
-		version(print_parse) writeln("block_stmt");
+		version(print_parse) auto s1 = scop("block_stmt %s", tok.loc);
 		AstNode*[] statements;
 		SourceLocation start = tok.loc;
 		expectAndConsume(TokenType.LCURLY);
@@ -2341,7 +2412,7 @@ struct Parser {
 
 	AstNode* statement()
 	{
-		version(print_parse) writeln("statement");
+		version(print_parse) auto s1 = scop("statement %s", tok.loc);
 		SourceLocation start = tok.loc;
 		switch (tok.type)
 		{
@@ -2387,6 +2458,7 @@ struct Parser {
 				return cast(AstNode*)block_stmt();
 			default:
 			{
+				version(print_parse) auto s2 = scop("default %s", tok.loc);
 				if (isBasicTypeToken(tok.type) || tok.type == TokenType.STRUCT_SYM) // declaration
 				{
 					AstNode* decl = parse_declaration;
@@ -2394,11 +2466,13 @@ struct Parser {
 				}
 				else if (tok.type == TokenType.IDENTIFIER)
 				{
+					version(print_parse) auto s3 = scop("<id> %s", tok.loc);
 					stashToken(); // copy to stash
 					lexToken(); // lex into tok
 
 					if (tok.type == TokenType.IDENTIFIER) // declaration
 					{
+						version(print_parse) auto s4 = scop("<id> declaration %s", tok.loc);
 						stashToken();
 						nextToken(); // move from stash to tok
 						AstNode* decl = parse_declaration;
@@ -2406,6 +2480,7 @@ struct Parser {
 					}
 					else // expression
 					{
+						version(print_parse) auto s4 = scop("<id> expression %s", tok.loc);
 						stashToken();
 						nextToken(); // move from stash to tok
 					}
@@ -2420,7 +2495,7 @@ struct Parser {
 	}
 
 	ExpressionNode* paren_expr() { /* <paren_expr> ::= "(" <expr> ")" */
-		version(print_parse) writeln("paren_expr");
+		version(print_parse) auto s1 = scop("paren_expr %s", tok.loc);
 		expectAndConsume(TokenType.LPAREN);
 		auto res = expr();
 		expectAndConsume(TokenType.RPAREN);
@@ -2428,22 +2503,29 @@ struct Parser {
 	}
 
 	ExpressionNode* expr() { /* <expr> ::= <test> | <id> "=" <expr> */
-		version(print_parse) writeln("expr");
+		version(print_parse) auto s1 = scop("expr %s", tok.loc);
 		SourceLocation start = tok.loc;
-		ExpressionNode* t, n;
-		if (tok.type != TokenType.IDENTIFIER) return test();
-		n = test();
-		if (n.astType == AstType.expr_var && tok.type == TokenType.EQUAL)
+		ExpressionNode* node = test(); // left hand side
+		if (tok.type == TokenType.EQUAL)
 		{
-			nextToken();
-			t = n;
-			n = makeExpr!BinaryExprNode(start, BinOp.EQUAL, t, expr());
+			AssignOp op;
+			if (node.astType == AstType.expr_var)
+				op = AssignOp.opAssign;
+			else if (node.astType == AstType.expr_index)
+				op = AssignOp.opIndexAssign;
+			else
+				context.error(node.loc, "cannot assign to %s", node.astType);
+
+			nextToken(); // skip '='
+			ExpressionNode* lhs = node;
+			ExpressionNode* rhs = expr();
+			node = cast(ExpressionNode*)make!AssignStmtNode(start, op, lhs, rhs);
 		}
-		return n;
+		return node;
 	}
 
 	ExpressionNode* test() { /* <test> ::= <sum> | <sum> "<" <sum> */
-		version(print_parse) writeln("test");
+		version(print_parse) auto s1 = scop("test %s", tok.loc);
 		SourceLocation start = tok.loc;
 		ExpressionNode* t, n = sum();
 
@@ -2459,7 +2541,7 @@ struct Parser {
 			default: return n;
 		}
 
-		nextToken();
+		nextToken(); // skip op
 		t = n;
 		n = makeExpr!BinaryExprNode(start, op, t, sum());
 
@@ -2467,7 +2549,7 @@ struct Parser {
 	}
 
 	ExpressionNode* sum() { /* <sum> ::= <term> | <sum> "+" <term> | <sum> "-" <term> */
-		version(print_parse) writeln("sum");
+		version(print_parse) auto s1 = scop("sum %s", tok.loc);
 		SourceLocation start = tok.loc;
 		ExpressionNode* n = term();
 		ExpressionNode* t;
@@ -2488,7 +2570,7 @@ struct Parser {
 
 	ExpressionNode* term() /* <term> ::= <id> | <id> "(" <expr_list> ")" | <id> "[" <expr> "]" | <int> | <paren_expr> */
 	{
-		version(print_parse) writeln("term");
+		version(print_parse) auto s1 = scop("term %s", tok.loc);
 		SourceLocation start = tok.loc;
 		if (tok.type == TokenType.IDENTIFIER)
 		{
@@ -2522,7 +2604,7 @@ struct Parser {
 
 	ExpressionNode*[] expr_list() // <expr_list> ::= (<expr> ",")*
 	{
-		version(print_parse) writeln("expr_list");
+		version(print_parse) auto s1 = scop("expr_list %s", tok.loc);
 		ExpressionNode*[] expressions;
 		while (tok.type != TokenType.RPAREN)
 		{
@@ -2805,6 +2887,7 @@ struct SemanticDeclarations {
 	void visit(ReturnStmtNode* r) {}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
+	void visit(AssignStmtNode* a) {}
 	void visit(VariableExprNode* v) {}
 	void visit(LiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {}
@@ -2880,6 +2963,7 @@ struct SemanticLookup {
 	}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
+	void visit(AssignStmtNode* a) { _visit(a.left); _visit(a.right); }
 	void visit(VariableExprNode* v) { v.resolveSymbol = scopeStack.lookup(v.id, v.loc); }
 	void visit(LiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) { _visit(b.left); _visit(b.right); }
@@ -3048,16 +3132,6 @@ struct SemanticStaticTypes {
 						b.right.type.typeName(context));
 				}
 				break;
-
-			case EQUAL: // int float
-				if (b.left.astType == AstType.expr_var)
-				{
-					autoconvTo(b.right, b.left.type);
-					resRype = b.right.type;
-				}
-				else
-					context.error(b.left.loc, "Cannot perform assignment into %s", b.left.astType);
-				break;
 		/*
 			// arithmetic op int
 			case AND: goto case;
@@ -3123,7 +3197,17 @@ struct SemanticStaticTypes {
 		checkReturnType(f);
 		curFunc = prevFunc;
 	}
-	void visit(VariableDeclNode* v) { _visit(v.type); }
+	void visit(VariableDeclNode* v) {
+		_visit(v.type);
+		switch (v.astType)
+		{
+			case AstType.type_static_array:
+				v.varFlags |= VariableFlags.forceMemoryStorage;
+				break;
+
+			default: break;
+		}
+	}
 	void visit(StructDeclNode* s) {
 		foreach (decl; s.declarations) _visit(decl);
 	}
@@ -3181,6 +3265,20 @@ struct SemanticStaticTypes {
 	}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
+	void visit(AssignStmtNode* a) {
+		_visit(a.left);
+		_visit(a.right);
+		assert(a.left.type, format("left(%s).type: is null", a.left.astType));
+		assert(a.right.type, format("right(%s).type: is null", a.right.astType));
+
+		if (a.left.astType == AstType.expr_var || a.left.astType == AstType.expr_index)
+		{
+			autoconvTo(a.right, a.left.type);
+		}
+		else
+			context.error(a.left.loc, "Cannot perform assignment into %s", a.left.astType);
+	}
+
 	// Get type from variable declaration
 	void visit(VariableExprNode* v) {
 		v.type = v.getSym.getType;
@@ -3204,10 +3302,9 @@ struct SemanticStaticTypes {
 		_visit(i.array);
 		_visit(i.index);
 		autoconvTo(i.index, BasicType.t_i64, No.force);
-		i.type = i.array.type.getIndexType(context);
+		i.type = i.array.type.getElementType(context);
 	}
 	void visit(TypeConvExprNode* t) {
-		_visit(t.type);
 		_visit(t.expr);
 		t.type.assertImplemented(t.loc, context);
 	}
@@ -3328,18 +3425,15 @@ struct BinIrGenerationVisitor {
 		}
 	}
 
-	void store(VariableDeclNode* v, IrRef irRef)
+	void store(VariableDeclNode* v, IrRef value)
 	{
 		if (v.forceMemoryStorage)
 		{
-			auto i = IrInstruction(IrOpcode.o_store, v.type.irType(context));
-			i.arg0 = irRef;
-			i.stackSlotId = v.stackSlotId;
-			curFunc.put(i);
+			curFunc.emitInstr2(IrOpcode.o_store, v.type.irType(context), v.stackSlotId, value);
 		}
 		else
 		{
-			curFunc.writeVariable(v.irVar, irRef);
+			curFunc.writeVariable(v.irVar, value);
 		}
 	}
 
@@ -3347,13 +3441,11 @@ struct BinIrGenerationVisitor {
 	{
 		if (v.forceMemoryStorage)
 		{
-			auto i = IrInstruction(IrOpcode.o_load, v.type.irType(context));
-			i.stackSlotId = v.stackSlotId;
-			return curFunc.put(i);
+			return curFunc.emitInstr1(IrOpcode.o_load, v.type.irType(context), v.stackSlotId);
 		}
 		else
 		{
-			return curFunc.readVariable(v.getSym.varDecl.irVar);
+			return curFunc.readVariable(v.irVar);
 		}
 	}
 
@@ -3404,9 +3496,9 @@ struct BinIrGenerationVisitor {
 			auto instr = &curFunc.instructions[valueRef.index];
 			instr.condition = inverseIrCond[instr.condition];
 		}
-		else if (valueRef.kind == IrValueKind.con)
+		else if (valueRef.isLiteral)
 		{
-			bool arg0 = curFunc.constants[valueRef.index].i1;
+			bool arg0 = curFunc.constants[valueRef.constIndex].i1;
 			condition.irRef = curFunc.put(!arg0);
 		}
 		else context.internal_error(condition.loc, "Cannot invert condition");
@@ -3425,9 +3517,9 @@ struct BinIrGenerationVisitor {
 		IrRef condRef = i.condition.irRef;
 
 		// Compile single branch if condition is constant
-		if (condRef.kind == IrValueKind.con)
+		if (condRef.isLiteral)
 		{
-			bool condValue = curFunc.constants[condRef.index].i1;
+			bool condValue = curFunc.constants[condRef.constIndex].i1;
 			if (condValue)
 			{
 				_visit(i.thenStatement);
@@ -3508,6 +3600,25 @@ struct BinIrGenerationVisitor {
 	}
 	void visit(BreakStmtNode* b) {}
 	void visit(ContinueStmtNode* c) {}
+	void visit(AssignStmtNode* a) {
+		currentAssignSide = CurrentAssignSide.leftSide;
+		_visit(a.left);
+		currentAssignSide = CurrentAssignSide.rightSide;
+		_visit(a.right);
+
+		final switch (a.op)
+		{
+			case AssignOp.opAssign:
+				auto varExpr = cast(VariableExprNode*)a.left;
+				store(varExpr.getSym.varDecl, a.right.irRef);
+				break;
+			case AssignOp.opIndexAssign:
+				auto indexExpr = cast(IndexExprNode*)a.left;
+				curFunc.emitInstr2(IrOpcode.o_store, indexExpr.type.irType(context), indexExpr.irRef, a.right.irRef);
+				break;
+		}
+		currentAssignSide = CurrentAssignSide.rightSide;
+	}
 	void visit(VariableExprNode* v) {
 		if (currentAssignSide == CurrentAssignSide.rightSide) {
 			v.irRef = load(v.getSym.varDecl);
@@ -3520,20 +3631,6 @@ struct BinIrGenerationVisitor {
 		auto parentAssignSide = currentAssignSide; // save
 		scope(exit) currentAssignSide = parentAssignSide; // restore
 
-		// handle assignment separately
-		if (b.op == BinOp.EQUAL)
-		{
-			currentAssignSide = CurrentAssignSide.leftSide;
-			_visit(cast(AstNode*)b.left);
-			currentAssignSide = CurrentAssignSide.rightSide;
-			_visit(cast(AstNode*)b.right);
-			assert(b.left.astType == AstType.expr_var);
-			auto varExpr = cast(VariableExprNode*)b.left;
-			store(varExpr.getSym.varDecl, b.right.irRef);
-			b.irRef = b.right.irRef;
-			return;
-		}
-
 		currentAssignSide = CurrentAssignSide.rightSide;
 		_visit(cast(AstNode*)b.left);
 		_visit(cast(AstNode*)b.right);
@@ -3541,12 +3638,11 @@ struct BinIrGenerationVisitor {
 		// constant folding
 		if (b.left.irRef.isCon && b.right.irRef.isCon)
 		{
-			long arg0 = curFunc.constants[b.left.irRef.index].i64;
-			long arg1 = curFunc.constants[b.right.irRef.index].i64;
+			long arg0 = curFunc.constants[b.left.irRef.constIndex].i64;
+			long arg1 = curFunc.constants[b.right.irRef.constIndex].i64;
 
 			switch(b.op)
 			{
-				case BinOp.EQUAL: assert(false);
 				case BinOp.EQUAL_EQUAL: b.irRef = curFunc.put(arg0 == arg1); return;
 				case BinOp.NOT_EQUAL: b.irRef = curFunc.put(arg0 != arg1); return;
 				case BinOp.GREATER: b.irRef = curFunc.put(arg0 > arg1); return;
@@ -3565,7 +3661,6 @@ struct BinIrGenerationVisitor {
 		auto rRef = b.right.irRef;
 		switch(b.op)
 		{
-			case BinOp.EQUAL: assert(false);
 			case BinOp.EQUAL_EQUAL: b.irRef = curFunc.emitInstrCmp(IrCond.eq, lRef, rRef); break;
 			case BinOp.NOT_EQUAL: b.irRef = curFunc.emitInstrCmp(IrCond.ne, lRef, rRef); break;
 			case BinOp.GREATER: b.irRef = curFunc.emitInstrCmp(IrCond.g, lRef, rRef); break;
@@ -3583,10 +3678,55 @@ struct BinIrGenerationVisitor {
 		context.internal_error(c.loc, "Call is not implemented");
 	}
 	void visit(IndexExprNode* i) {
-		context.internal_error(i.loc, "Index is not implemented");
+		auto parentAssignSide = currentAssignSide; // save
+		scope(exit) currentAssignSide = parentAssignSide; // restore
+		currentAssignSide = CurrentAssignSide.rightSide;
+		_visit(i.array);
+		_visit(i.index);
+
+		IrRef address;
+		if (i.index.irRef.isLiteral)
+		{
+			ulong elemSize = i.type.size;
+			ulong index = curFunc.constants[i.index.irRef.constIndex].i64;
+			if (index == 0)
+				address = i.array.irRef;
+			else
+			{
+				IrRef offset = curFunc.put(index * elemSize);
+				address = curFunc.emitInstr2(IrOpcode.o_add, IrValueType.ptr, i.array.irRef, offset);
+			}
+		}
+		else
+		{
+			IrRef scale = curFunc.put(i.type.size);
+			writefln("index %s", RefPr(curFunc, i.index.irRef));
+			IrRef offset = curFunc.emitInstr2(IrOpcode.o_mul, i.index.irRef.type, i.index.irRef, scale);
+			address = curFunc.emitInstr2(IrOpcode.o_add, IrValueType.ptr, i.array.irRef, offset);
+		}
+
+		if (parentAssignSide == CurrentAssignSide.rightSide) {
+			i.irRef = curFunc.emitInstr1(IrOpcode.o_load, i.type.irType(context), address);
+		}
+		else
+		{
+			i.irRef = address;
+		}
 	}
 	void visit(TypeConvExprNode* t) {
-		context.internal_error(t.loc, "Type conversion is not implemented");
+		_visit(cast(AstNode*)t.expr);
+
+		IrValueType to = t.type.irType(context);
+		IrValueType from = t.expr.type.irType(context);
+		if (t.expr.irRef.isLiteral || from == IrValueType.i32 && to == IrValueType.i64)
+		{
+			t.irRef = t.expr.irRef;
+			t.irRef.type = to;
+		}
+		else
+		{
+			t.irRef = curFunc.emitInstr1(IrOpcode.o_conv, to, t.expr.irRef);
+		}
 	}
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
@@ -3776,14 +3916,14 @@ struct IrFunction
 	IrRef put(long value) {
 		foreach(uint i, con; constants)
 			if (con.i64 == value)
-				return IrRef(i, IrValueKind.con, IrValueType.i64);
+				return IrRef(i, IrConstKind.literal, IrValueType.i64);
 		uint index = cast(uint)constants.length;
 		auto con = IrConstant(value);
 		constants ~= con;
 		if (con.numSignedBytes <= 2)
-			return IrRef(index, IrValueKind.con, IrValueType.i32);
+			return IrRef(index, IrConstKind.literal, IrValueType.i32);
 		else
-			return IrRef(index, IrValueKind.con, IrValueType.i64);
+			return IrRef(index, IrConstKind.literal, IrValueType.i64);
 	}
 
 	///
@@ -3810,6 +3950,7 @@ struct IrFunction
 		++currentBB.numInstrs;
 		uint index = cast(uint)instructions.length;
 		auto irRef = IrRef(index, IrValueKind.instr, instr.type);
+		//assert(irRef.isDefined, format("irRef is undefined. i %s, instr %s", index, instr.op));
 		if (instr.returnsValue)
 		{
 			instr.result = makeOperand(irRef);
@@ -3825,6 +3966,8 @@ struct IrFunction
 	/// Puts `user` into a list of users of `used` value
 	void addUser(IrRef user, IrRef used)
 	{
+		//assert(user.isDefined, "user is undefined");
+		//assert(used.isDefined, "used is undefined");
 		void addOpdUser(IrOperandId opdId)
 		{
 			assert(!opdId.isNull, format("result of %s is null", RefPr(&this, used)));
@@ -3834,8 +3977,15 @@ struct IrFunction
 
 		final switch (used.kind)
 		{
-			case IrValueKind.instr: auto opdId = instructions[used.index].result; addOpdUser(opdId); break;
-			case IrValueKind.con: constants[used.index].addUser(user); break;
+			case IrValueKind.instr:
+				auto opdId = instructions[used.index].result;
+				addOpdUser(opdId); break;
+			case IrValueKind.con:
+				final switch(used.constKind) {
+					case IrConstKind.literal: constants[used.constIndex].addUser(user); break;
+					case IrConstKind.stackSlotId: stackLayout.slots[used.constIndex].addUser(user); break;
+				}
+				break;
 			case IrValueKind.phi: auto opdId = phis[used.index].result; addOpdUser(opdId); break;
 		}
 	}
@@ -4060,9 +4210,9 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 	bool printVars = false;
 	bool printBlockIns =  true;
 	bool printBlockRefs = false;
-	bool printBlockInstrRange = true;
+	bool printBlockInstrRange = false;
 	bool printInstrIndex = true;
-	bool printUses = true;
+	bool printUses = false;
 
 	void printOpdUses(IrOperandId opdId) {
 		if (opdId.isNull) return;
@@ -4149,12 +4299,6 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 						default: break;
 					}
 
-					switch (instr.op) {
-						case IrOpcode.o_load: sink.putf("stack(%s)", instr.stackSlotId); break;
-						case IrOpcode.o_store: sink.putf(", stack(%s)", instr.stackSlotId); break;
-						default: break;
-					}
-
 					if (printUses) printOpdUses(instr.result);
 
 					sink.putln;
@@ -4185,6 +4329,14 @@ enum IrValueKind : ubyte
 	phi
 }
 
+enum IrConstKind : ubyte
+{
+	literal,
+	stackSlotId
+	// Later add function address, global address, table address
+	// array data? (binary blobs)
+}
+
 enum IrValueType : ubyte
 {
 	i1, // bool
@@ -4192,6 +4344,8 @@ enum IrValueType : ubyte
 	i64,
 	//f32,
 	//f64,
+
+	ptr,
 }
 
 struct BlockVarPair
@@ -4216,11 +4370,19 @@ struct RefPr
 		}
 		final switch(r.kind) {
 			case IrValueKind.con:
-				final switch(r.type) {
-					case IrValueType.i1:  sink.formattedWrite("i1  %s",  fun.constants[r.index].i1);  break;
-					case IrValueType.i32: sink.formattedWrite("i32 %s", fun.constants[r.index].i32); break;
-					case IrValueType.i64: sink.formattedWrite("i64 %s", fun.constants[r.index].i64); break;
-				} break;
+				final switch (r.constKind)
+				{
+					case IrConstKind.literal:
+					final switch (r.type) {
+						case IrValueType.i1:  sink.formattedWrite("i1  %s",  fun.constants[r.constIndex].i1);  break;
+						case IrValueType.i32: sink.formattedWrite("i32 %s", fun.constants[r.constIndex].i32); break;
+						case IrValueType.i64: sink.formattedWrite("i64 %s", fun.constants[r.constIndex].i64); break;
+						case IrValueType.ptr: sink.formattedWrite("ptr 0x%x", fun.constants[r.constIndex].i64); break;
+					} break;
+
+					case IrConstKind.stackSlotId: sink.formattedWrite("slot(%s)", r.constIndex); break;
+				}
+				break;
 			case IrValueKind.instr:
 				auto res = fun.instructions[r.index].result;
 				if (res.isNull) sink.formattedWrite("instr.%s", r.index);
@@ -4236,15 +4398,32 @@ struct IrRef
 	this(uint idx, IrValueKind k, IrValueType t) {
 		index = idx; isDefined = true; kind = k; type = t;
 	}
-	mixin(bitfields!(
-		// instruction/constant index
-		uint,        "index",     27,
-		bool,        "isDefined",  1,
-		IrValueKind, "kind",       2,
-		IrValueType, "type",       2
-	));
+	this(StackSlotId idx) {
+		constIndex = idx; isDefined = true; constKind = IrConstKind.stackSlotId; kind = IrValueKind.con; type = IrValueType.ptr;
+	}
+	this(uint idx, IrConstKind c, IrValueType t) {
+		constIndex = idx; isDefined = true; constKind = c; kind = IrValueKind.con; type = t;
+	}
+	union
+	{
+		mixin(bitfields!(
+			uint,        "index",     27, // instruction/phi index
+			bool,        "isDefined",  1,
+			IrValueKind, "kind",       2,
+			IrValueType, "type",       2
+		));
+		mixin(bitfields!(
+			uint,        "constIndex",     25,
+			IrConstKind, "constKind",       2, // 2 bits are taken out of `index`
+			uint,        "",                5
+		));
+	}
+	static assert(IrConstKind.max <= 3, "2 bits are reserved");
+	static assert(IrValueType.max <= 3, "2 bits are reserved");
+	static assert(IrValueKind.max <= 3, "2 bits are reserved");
 	bool isInstr() { return kind == IrValueKind.instr; }
 	bool isCon() { return kind == IrValueKind.con; }
+	bool isLiteral() { return kind == IrValueKind.con && constKind == IrConstKind.literal; }
 }
 
 /// result/argument of instruction
@@ -4473,10 +4652,6 @@ struct IrInstruction
 		struct {
 			IrRef arg0, arg1;
 		}
-		struct {
-			uint _1;
-			StackSlotId stackSlotId;
-		}
 		IrRef[2] _args;
 	}
 	IrRef[] args() { return _args[0..numArgs]; }
@@ -4496,18 +4671,19 @@ enum IrOpcode : ubyte
 	o_mul,
 	o_div,
 
-	o_load,
-	o_store,
+	o_load, // arg0 - address
+	o_store, // arg0 - address, arg1 - value
+
+	o_conv, // instruction type if target type
 }
 
-immutable ubyte[IrOpcode.max+1] numInstrArgs =  [0,0,0,0,1,2,2,2,2,2,0,1];
-immutable bool[IrOpcode.max+1] hasInstrReturn = [0,1,0,0,1,1,1,1,1,1,1,0];
+immutable numInstrArgs =  cast(ubyte[IrOpcode.max+1])[0,0,0,0,1,2,2,2,2,2,1,2,1];
+immutable hasInstrReturn = cast(bool[IrOpcode.max+1])[0,1,0,0,1,1,1,1,1,1,1,0,1];
 
+immutable irOpcodeNames = cast(string[IrOpcode.max+1])
+["nop", "param", "block", "block_end", "not", "icmp", "add", "sub", "mul", "div", "load", "store", "conv"];
 
-immutable string[IrOpcode.max+1] irOpcodeNames =
-["nop", "param", "block", "block_end", "not", "icmp", "add", "sub", "mul", "div", "load", "store"];
-
-immutable IrOpcode[] binOpToIrOpcode = [
+immutable binOpToIrOpcode = cast(IrOpcode[BinOp.max+1])[
 	IrOpcode.o_icmp,
 	IrOpcode.o_icmp,
 	IrOpcode.o_icmp,
@@ -4515,7 +4691,6 @@ immutable IrOpcode[] binOpToIrOpcode = [
 	IrOpcode.o_icmp,
 	IrOpcode.o_icmp,
 
-	IrOpcode.o_nop,
 	IrOpcode.o_sub,
 	IrOpcode.o_add,
 	IrOpcode.o_div,
@@ -4972,10 +5147,10 @@ struct LiveRange
 ///
 void pass_linear_scan(ref CompilationContext ctx) {
 	LinearScan linearScan;
-	linearScan.setup;
+	linearScan.setup(&ctx);
 	foreach (fun; ctx.mod.irModule.functions) {
-		linearScan.assignHints(*fun, ctx, *fun.callingConvention);
-		linearScan.scanFun(*fun, ctx);
+		linearScan.assignHints(*fun, *fun.callingConvention);
+		linearScan.scanFun(*fun);
 		linearScan.resolve(*fun);
 	}
 }
@@ -4990,13 +5165,15 @@ struct LinearScan
 	Buffer!NodeIndex inactive;
 	Buffer!NodeIndex handled;
 	PhysRegisters physRegs;
+	CompilationContext* ctx;
 
-	void setup()
+	void setup(CompilationContext* ctx)
 	{
+		this.ctx = ctx;
 		physRegs.setup;
 	}
 
-	void assignHints(ref IrFunction fun, ref CompilationContext ctx, ref CallConv callConv)
+	void assignHints(ref IrFunction fun, ref CallConv callConv)
 	{
 		// assign paramter registers and memory locations
 		foreach(i, ref instr; fun.parameters)
@@ -5043,7 +5220,7 @@ struct LinearScan
 
 			if current has a register assigned then add current to active
 	*/
-	void scanFun(ref IrFunction fun, ref CompilationContext ctx)
+	void scanFun(ref IrFunction fun)
 	{
 		import std.container.binaryheap;
 
@@ -5202,11 +5379,11 @@ struct LinearScan
 		RegisterRef hintReg = fun.operands[intervalId].storageHint.getRegHint;
 
 		PhysRegister[] candidates = physRegs.getClassRegs(currentIt.regClass);
-		foreach (i, ref r; candidates)
+		foreach (i, ref PhysRegister r; candidates)
 		{
 			if (r.freeUntilPos > maxPos) {
 				maxPos = r.freeUntilPos;
-				reg = RegisterRef(i, currentIt.regClass);
+				reg = r.regRef;
 			}
 		}
 
@@ -5263,6 +5440,7 @@ struct LinearScan
 	*/
 	void allocateBlockedReg(ref IrFunction fun, NodeIndex currentRangeId)
 	{
+		ctx.unreachable;
 		assert(false);
 	}
 
@@ -5304,7 +5482,7 @@ enum RegClass : ubyte
 
 struct PhysRegister
 {
-	ubyte id;
+	RegisterRef regRef;
 	int freeUntilPos;
 }
 
@@ -5323,14 +5501,14 @@ struct PhysRegisters
 	void setup()
 	{
 		gpr.length = 0;
-		flags ~= PhysRegister(0);
-		gpr ~= PhysRegister(Register.AX);
-		gpr ~= PhysRegister(Register.CX);
-		gpr ~= PhysRegister(Register.DX);
-		gpr ~= PhysRegister(Register.R8);
-		gpr ~= PhysRegister(Register.R9);
-		gpr ~= PhysRegister(Register.R10);
-		gpr ~= PhysRegister(Register.R11);
+		flags ~= PhysRegister(RegisterRef(0, 0, RegClass.flags));
+		gpr ~= PhysRegister(RegisterRef(0, Register.AX, RegClass.gpr));
+		gpr ~= PhysRegister(RegisterRef(1, Register.CX, RegClass.gpr));
+		gpr ~= PhysRegister(RegisterRef(2, Register.DX, RegClass.gpr));
+		gpr ~= PhysRegister(RegisterRef(3, Register.R8, RegClass.gpr));
+		gpr ~= PhysRegister(RegisterRef(4, Register.R9, RegClass.gpr));
+		gpr ~= PhysRegister(RegisterRef(5, Register.R10, RegClass.gpr));
+		gpr ~= PhysRegister(RegisterRef(6, Register.R11, RegClass.gpr));
 	}
 
 	void resetFreeUntilPos()
@@ -5351,53 +5529,66 @@ struct PhysRegisters
 struct OperandLocation
 {
 	this(RegisterRef reg) {
-		type = Type.physicalRegister;
+		type = OpdLocType.physicalRegister;
 		this.reg = reg;
 	}
-	this(StackSlotId stackSlotId) {
-		type = Type.stackSlot;
-		this.stackSlotId = stackSlotId;
-	}
 	static OperandLocation makeConstant(IrRef irRef) {
+		assert(irRef.kind == IrValueKind.con);
 		OperandLocation res;
-		res.type = Type.constant;
+		final switch(irRef.constKind)
+		{
+			case IrConstKind.literal: res.type = OpdLocType.constant; break;
+			case IrConstKind.stackSlotId: res.type = OpdLocType.stackSlot; break;
+		}
+
 		res.irRef = irRef;
 		return res;
 	}
-	enum Type : ubyte
-	{
-		constant,
-		virtualRegister,
-		physicalRegister,
-		//memoryAddress,
-		stackSlot
-	}
-	Type type;
+
+	bool isConstant() { return type == OpdLocType.constant; }
+
+	OpdLocType type;
 	union
 	{
 		IrRef irRef; // ref to instruction, phi or constant
-		StackSlotId stackSlotId;
 		RegisterRef reg;
 	}
 }
-
-MoveType calcMoveType(OperandLocation.Type dst, OperandLocation.Type src)
+enum OpdLocType : ubyte
 {
-	final switch(dst) with(OperandLocation.Type) {
+	constant,
+	virtualRegister,
+	physicalRegister,
+	memoryAddress,
+	stackSlot,
+}
+MoveType calcMoveType(OpdLocType dst, OpdLocType src)
+{
+	final switch(dst) with(OpdLocType) {
 		case constant: return MoveType.invalid;
 		case virtualRegister: return MoveType.invalid;
 		case physicalRegister:
-			final switch(src) with(OperandLocation.Type) {
+			final switch(src) with(OpdLocType) {
 				case constant: return MoveType.const_to_reg;
 				case virtualRegister: return MoveType.invalid;
 				case physicalRegister: return MoveType.reg_to_reg;
+				case memoryAddress: return MoveType.mem_to_reg;
 				case stackSlot: return MoveType.stack_to_reg;
 			}
+		case memoryAddress:
+			final switch(src) with(OpdLocType) {
+				case constant: return MoveType.const_to_mem;
+				case virtualRegister: return MoveType.invalid;
+				case physicalRegister: return MoveType.reg_to_mem;
+				case memoryAddress: return MoveType.invalid;
+				case stackSlot: return MoveType.invalid;
+			}
 		case stackSlot:
-			final switch(src) with(OperandLocation.Type) {
+			final switch(src) with(OpdLocType) {
 				case constant: return MoveType.const_to_stack;
 				case virtualRegister: return MoveType.invalid;
 				case physicalRegister: return MoveType.reg_to_stack;
+				case memoryAddress: return MoveType.invalid;
 				case stackSlot: return MoveType.invalid;
 			}
 	}
@@ -5411,6 +5602,9 @@ enum MoveType
 	reg_to_reg,
 	reg_to_stack,
 	stack_to_reg,
+	const_to_mem,
+	reg_to_mem,
+	mem_to_reg,
 }
 
 struct StorageHint
@@ -5443,8 +5637,13 @@ enum StorageHintType : ubyte
 /// Is used in IrValue to indicate the register that stores given IrValue
 struct RegisterRef
 {
-	this(size_t index, RegClass regClass) { this.index = cast(ubyte)index; this.regClass = regClass; }
+	this(size_t index, ubyte nativeReg, RegClass regClass) {
+		this.index = cast(ubyte)index;
+		this.nativeReg = nativeReg;
+		this.regClass = regClass;
+	}
 	ubyte index = ubyte.max;
+	ubyte nativeReg; // stores actual id of register (EAX, EDX etc)
 	RegClass regClass;
 	alias index this;
 	bool isNull() { return index == ubyte.max; }
@@ -5531,7 +5730,7 @@ struct StackLayout
 	StackSlot[] slots;
 
 	/// paramIndex == -1 for non-params
-	StackSlotId addStackItem(ulong size, ulong alignment, bool isParameter, ushort paramIndex)
+	IrRef addStackItem(ulong size, ulong alignment, bool isParameter, ushort paramIndex)
 	{
 		assert(size > 0);
 		assert(alignment > 0);
@@ -5543,7 +5742,7 @@ struct StackLayout
 		else ++numLocals;
 
 		slots ~= slot;
-		return id;
+		return IrRef(id);
 	}
 }
 
@@ -5553,7 +5752,9 @@ struct StackSlot
 	ulong alignment;
 	bool isParameter;
 	ushort paramIndex;
+	ushort numUses;
 	int offset;
+	void addUser(IrRef user) { ++numUses; }
 }
 
 struct StackSlotId
@@ -5595,11 +5796,11 @@ struct CallConv
 }
 
 __gshared CallConv win64_call_conv = CallConv(
-	[RegisterRef(Register.CX, RegClass.gpr),
-	RegisterRef(Register.DX, RegClass.gpr),
-	RegisterRef(Register.R8, RegClass.gpr),
-	RegisterRef(Register.R9, RegClass.gpr)],
-	RegisterRef(Register.AX, RegClass.gpr)
+	[RegisterRef(1, Register.CX, RegClass.gpr), // indicies into PhysRegisters.gpr
+	RegisterRef(2, Register.DX, RegClass.gpr),
+	RegisterRef(3, Register.R8, RegClass.gpr),
+	RegisterRef(4, Register.R9, RegClass.gpr)],
+	RegisterRef(0, Register.AX, RegClass.gpr)
 );
 /*
 /// State of single machine register
@@ -5741,7 +5942,7 @@ struct MachineState
 void pass_code_gen(ref CompilationContext ctx) {
 	IrToAmd64 gen;
 	gen.context = &ctx;
-	assert(ctx.codeBuffer.length);
+	ctx.assertf(ctx.codeBuffer.length > 0, "Code buffer is empty");
 	ctx.mod.irModule.codeBuffer = ctx.codeBuffer;
 	gen.visit(&ctx.mod.irModule);
 }
@@ -5838,7 +6039,7 @@ struct IrToAmd64
 	{
 		assert(valueRef.isDefined);
 		IrValue* value = &curFunc.deref(valueRef);
-		if (value.reg.isDefined) return cast(Register)value.reg.index;
+		if (value.reg.isDefined) return cast(Register)value.reg.nativeReg;
 
 		RegisterRef regRef = machineState.gprRegs.tryAlloc(valueRef);
 		if (!regRef.isDefined)
@@ -5847,7 +6048,7 @@ struct IrToAmd64
 			regRef.index = hint;
 			//assert(false);
 		}
-		Register reg0 = cast(Register)(regRef.index);
+		Register reg0 = cast(Register)(regRef.nativeReg);
 		writefln("load %s:%s into %s", valueRef.kind, valueRef.index, reg0);
 
 		final switch(valueRef.type)
@@ -5898,44 +6099,112 @@ struct IrToAmd64
 			case MoveType.invalid:
 				context.internal_error("Invalid move to %s from %s",
 					dst.type, src.type);
+				context.unreachable;
 				assert(false);
 
 			case MoveType.const_to_reg:
-				Register dstReg = cast(Register)(dst.reg.index);
-				long con = curFunc.constants[src.irRef.index].i64;
+				Register dstReg = cast(Register)(dst.reg.nativeReg);
+				long con = curFunc.constants[src.irRef.constIndex].i64;
 				//writefln("move.%s reg:%s, con:%s", argType, dstReg, con);
 				gen.mov(dstReg, Imm32(cast(uint)con), argType);
 				break;
 
 			case MoveType.const_to_stack:
-				long con = curFunc.constants[src.irRef.index].i64;
+				long con = curFunc.constants[src.irRef.constIndex].i64;
 				final switch(argType) {
 					case ArgType.BYTE:
-						gen.movb(localVarMemAddress(dst.stackSlotId), Imm8(cast(ubyte)con)); break;
+						gen.movb(localVarMemAddress(dst.irRef.constIndex), Imm8(cast(ubyte)con)); break;
 					case ArgType.WORD:
-						gen.movw(localVarMemAddress(dst.stackSlotId), Imm16(cast(ushort)con)); break;
+						gen.movw(localVarMemAddress(dst.irRef.constIndex), Imm16(cast(ushort)con)); break;
 					case ArgType.DWORD:
-						gen.movd(localVarMemAddress(dst.stackSlotId), Imm32(cast(uint)con)); break;
+						gen.movd(localVarMemAddress(dst.irRef.constIndex), Imm32(cast(uint)con)); break;
 					case ArgType.QWORD:
-						gen.movq(localVarMemAddress(dst.stackSlotId), Imm32(cast(uint)con)); break;
+						gen.movq(localVarMemAddress(dst.irRef.constIndex), Imm32(cast(uint)con)); break;
 				}
 				break;
 
 			case MoveType.reg_to_reg:
-				Register dstReg = cast(Register)(dst.reg.index);
-				Register srcReg = cast(Register)(src.reg.index);
+				Register dstReg = cast(Register)(dst.reg.nativeReg);
+				Register srcReg = cast(Register)(src.reg.nativeReg);
 				//writefln("move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
 				gen.mov(dstReg, srcReg, argType);
 				break;
 
 			case MoveType.reg_to_stack:
-				Register srcReg = cast(Register)(src.reg.index);
-				gen.mov(localVarMemAddress(dst.stackSlotId), srcReg, argType);
+				Register srcReg = cast(Register)(src.reg.nativeReg);
+				gen.mov(localVarMemAddress(dst.irRef.constIndex), srcReg, argType);
 				break;
 
 			case MoveType.stack_to_reg:
-				Register dstReg = cast(Register)(dst.reg.index);
-				gen.mov(dstReg, localVarMemAddress(src.stackSlotId), argType);
+				Register dstReg = cast(Register)(dst.reg.nativeReg);
+				gen.mov(dstReg, localVarMemAddress(src.irRef.constIndex), argType);
+				break;
+
+			case MoveType.const_to_mem:
+				context.internal_error("const_to_mem is not implemented");
+				break;
+
+			case MoveType.reg_to_mem:
+				context.internal_error("reg_to_mem is not implemented");
+				break;
+
+			case MoveType.mem_to_reg:
+				context.internal_error("mem_to_reg is not implemented");
+				break;
+		}
+	}
+
+	/// Generate move from src operand to dst operand. argType describes the size of operands.
+	void genLoad(OperandLocation dst, OperandLocation src, ArgType argType)
+	{
+		bool valid = dst.type == OpdLocType.physicalRegister;
+		context.assertf(valid, "Invalid load %s -> %s", src.type, dst.type);
+
+		switch(src.type)
+		{
+			case OpdLocType.physicalRegister:
+				Register dstReg = cast(Register)(dst.reg.nativeReg);
+				Register srcReg = cast(Register)(src.reg.nativeReg);
+				writefln("mov %s, [%s]", dstReg, srcReg);
+				gen.mov(dstReg, memAddrBase(srcReg), argType);
+
+				//context.internal_error("physicalRegister is not implemented");
+				break;
+
+			case OpdLocType.constant:
+				context.internal_error("constant is not implemented");
+				break;
+
+			default:
+				context.internal_error("default is not implemented");
+				break;
+		}
+	}
+
+	void genStore(OperandLocation dst, OperandLocation src, ArgType argType)
+	{
+		//bool valid = dst.type == OpdLocType.physicalRegister;
+		//context.assertf(valid, "Invalid load %s -> %s", src.type, dst.type);
+
+		switch (dst.type)
+		{
+			case OpdLocType.physicalRegister:
+				switch (src.type)
+				{
+					case OpdLocType.physicalRegister:
+						Register dstReg = cast(Register)(dst.reg.nativeReg);
+						Register srcReg = cast(Register)(src.reg.nativeReg);
+						writefln("mov [%s], %s", dstReg, srcReg);
+						gen.mov(memAddrBase(dstReg), srcReg, argType);
+						break;
+					default:
+						context.internal_error("store from %s is not implemented", src.type);
+						break;
+				}
+				break;
+
+			default:
+				context.internal_error("store %s <- %s is not implemented", dst.type, src.type);
 				break;
 		}
 	}
@@ -5948,17 +6217,17 @@ struct IrToAmd64
 		param.op = op;
 		param.argType = argType;
 
-		assert(dst.type == OperandLocation.Type.physicalRegister);
-		Register reg0 = cast(Register)(dst.reg.index);
+		context.assertf(dst.type == OpdLocType.physicalRegister, "Destination must be register");
+		Register reg0 = cast(Register)(dst.reg.nativeReg);
 		argDst.reg = reg0;
 		param.dstKind = AsmArgKind.REG;
 
 		//writefln("%s.%s %s %s", op, argType, dst.type, src.type);
 
-		final switch (src.type) with(OperandLocation.Type)
+		final switch (src.type) with(OpdLocType)
 		{
 			case constant:
-				IrConstant con = curFunc.constants[src.irRef.index];
+				IrConstant con = curFunc.constants[src.irRef.constIndex];
 				if (con.numSignedBytes == 1) {
 					param.immType = ArgType.BYTE;
 					argSrc.imm8 = Imm8(con.i8);
@@ -5970,13 +6239,14 @@ struct IrToAmd64
 				param.srcKind = AsmArgKind.IMM;
 				break;
 
-			case virtualRegister: assert(false);
+			case virtualRegister: context.unreachable; assert(false);
+			case memoryAddress: context.unreachable; assert(false);
 			case physicalRegister:
-				argSrc.reg = cast(Register)(src.reg.index);
+				argSrc.reg = cast(Register)(src.reg.nativeReg);
 				param.srcKind = AsmArgKind.REG;
 				break;
 
-			case stackSlot: assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
+			case stackSlot: context.unreachable; assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}
@@ -6077,25 +6347,79 @@ struct IrToAmd64
 				break;
 
 			case o_add, o_sub:
+				OperandLocation res = getLocation(instr.result);
 				OperandLocation arg0 = getLocation(instr.arg0);
 				OperandLocation arg1 = getLocation(instr.arg1);
+				genMove(res, arg0, irTypeToArgType(instr.type));
 				switch(instr.op) with(IrOpcode) {
-					case o_add: genRegular(arg0, arg1, AMD64OpRegular.add, argType); break;
-					case o_sub: genRegular(arg0, arg1, AMD64OpRegular.sub, argType); break;
-					default: assert(false);
+					case o_add: genRegular(res, arg1, AMD64OpRegular.add, argType); break;
+					case o_sub: genRegular(res, arg1, AMD64OpRegular.sub, argType); break;
+					default: context.internal_error("Unreachable");
+				}
+				break;
+
+			case o_mul:
+				OperandLocation res = getLocation(instr.result);
+				OperandLocation arg0 = getLocation(instr.arg0);
+				OperandLocation arg1 = getLocation(instr.arg1);
+				if (arg0.isConstant) swap(arg0, arg1);
+				if (!arg1.isConstant)
+					context.assertf(instr.arg0.type == instr.arg1.type,
+						"Type mismatch on imul %s != %s", instr.arg0.type, instr.arg1.type);
+				context.assertf(arg0.type == OpdLocType.physicalRegister, "arg0 is %s != phys reg", arg0.type);
+				Register regRes = cast(Register)(res.reg.nativeReg);
+				Register reg0 = cast(Register)(arg0.reg.nativeReg);
+				IrConstant con;
+				if (arg1.isConstant) con = curFunc.constants[arg1.irRef.constIndex];
+				switch (argType)
+				{
+					case ArgType.WORD:
+						if (arg1.isConstant) {
+							if (con.numSignedBytes == 1)
+								gen.imulw(regRes, reg0, Imm8(con.i8));
+							else if (con.numSignedBytes == 2)
+								gen.imulw(regRes, reg0, Imm16(con.i16));
+							else context.internal_error("Not implemented");
+						}
+						else context.internal_error("Not implemented");
+						break;
+
+					case ArgType.DWORD:
+						if (arg1.isConstant) {
+							if (con.numSignedBytes == 1)
+								gen.imuld(regRes, reg0, Imm8(con.i8));
+							else if (con.numSignedBytes >= 2 && con.numSignedBytes <= 4)
+								gen.imuld(regRes, reg0, Imm32(con.i32));
+							else context.internal_error("Not implemented");
+						}
+						else context.internal_error("Not implemented");
+						break;
+
+					case ArgType.QWORD:
+						if (arg1.isConstant) {
+							if (con.numSignedBytes == 1)
+								gen.imulq(regRes, reg0, Imm8(con.i8));
+							else if (con.numSignedBytes >= 2 && con.numSignedBytes <= 4)
+								gen.imulq(regRes, reg0, Imm32(con.i32));
+							else context.internal_error("Not implemented");
+						}
+						else context.internal_error("Not implemented");
+						break;
+
+					default: context.internal_error("Compilation of imul:%s is not implemented", argType); break;
 				}
 				break;
 
 			case o_store:
-				OperandLocation arg0 = OperandLocation(instr.stackSlotId);
-				OperandLocation arg1 = getLocation(instr.arg0);
-				genMove(arg0, arg1, argType);
+				OperandLocation addr = getLocation(instr.arg0);
+				OperandLocation value = getLocation(instr.arg1);
+				genStore(addr, value, argType);
 				break;
 
 			case o_load:
-				OperandLocation arg0 = getLocation(instr.result);
-				OperandLocation arg1 = OperandLocation(instr.stackSlotId);
-				genMove(arg0, arg1, argType);
+				OperandLocation value = getLocation(instr.result);
+				OperandLocation addr = getLocation(instr.arg0);
+				genLoad(value, addr, argType);
 				break;
 
 			//case o_not:
@@ -6162,7 +6486,7 @@ struct IrToAmd64
 		gen.ret();
 	}
 
-	MemAddress localVarMemAddress(StackSlotId stackSlotId)
+	MemAddress localVarMemAddress(uint stackSlotId)
 	{
 		int displacement = curFunc.stackLayout.slots[stackSlotId].offset;
 		Register baseReg = Register.SP;
@@ -6243,6 +6567,7 @@ ArgType irTypeToArgType(IrValueType t) {
 		case IrValueType.i1:  return ArgType.BYTE;
 		case IrValueType.i32: return ArgType.DWORD;
 		case IrValueType.i64: return ArgType.QWORD;
+		case IrValueType.ptr: return ArgType.QWORD;
 	}
 }
 
@@ -6534,6 +6859,13 @@ struct Encoder
 		sink_put(opcode);                                                       // Opcode
 		sink_put(encodeModRegRmByte(ModRmMod(0b11), src_reg, dst_rm));          // ModR/r
 	}
+	void putInstrBinaryRegRegImm(ArgType argType, O, I)(O opcode, Register dst_rm, Register src_reg, I src_imm) if (isAnyOpcode!O && isAnyImm!I) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		putRexByte_RB!argType(src_reg, dst_rm);                                 // REX
+		sink_put(opcode);                                                       // Opcode
+		sink_put(encodeModRegRmByte(ModRmMod(0b11), src_reg, dst_rm));          // ModR/r
+		sink_put(src_imm);                                                      // Imm8/16/32/64
+	}
 	// PUSH, POP, MOV, XCHG, BSWAP
 	void putInstrBinaryRegImm1(ArgType argType, I)(OP1 opcode, Register dst_rm, I src_imm) if (isAnyImm!I) {
 		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
@@ -6559,7 +6891,17 @@ struct Encoder
 		if (src_mem.hasDisp32)     sink_put(src_mem.disp32);                    // disp32
 		else if (src_mem.hasDisp8) sink_put(src_mem.disp8);                     // disp8
 	}
-	void putInstrBinaryMemImm(ArgType argType, I, O)(O opcode, ubyte regOpcode, MemAddress dst_mem, I src_imm) if (isAnyImm!I && isAnyOpcode!O) {
+	void putInstrBinaryRegMemImm(ArgType argType, O, I)(O opcode, Register reg, MemAddress src_mem, I src_imm) if (isAnyOpcode!O && isAnyImm!I) {
+		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
+		putRexByte_XB!argType(src_mem.indexReg, src_mem.baseReg);               // REX
+		sink_put(opcode);                                                       // Opcode
+		sink_put(src_mem.modRmByte(reg));                                       // ModR/M
+		if (src_mem.hasSibByte)	   sink_put(src_mem.sibByte);                   // SIB
+		if (src_mem.hasDisp32)     sink_put(src_mem.disp32);                    // disp32
+		else if (src_mem.hasDisp8) sink_put(src_mem.disp8);                     // disp8
+		sink_put(src_imm);                                                      // Imm8/16/32
+	}
+	void putInstrBinaryMemImm(ArgType argType, O, I)(O opcode, ubyte regOpcode, MemAddress dst_mem, I src_imm) if (isAnyOpcode!O && isAnyImm!I) {
 		putInstrBinaryRegMem!(argType, false)(opcode, cast(Register)regOpcode, dst_mem);
 		sink_put(src_imm);                                                      // Imm8/16/32
 	}
@@ -6679,7 +7021,7 @@ struct CodeGen_x86_64
 			0x20, // and,
 			0x28, // sub,
 			0x30, // xor,
-			0x38, // cmp
+			0x38, // cmp,
 		];
 
 		static immutable ubyte[] op_tbl_un = [
@@ -6696,26 +7038,26 @@ struct CodeGen_x86_64
 		{
 			case REG_REG:
 				final switch(param.argType) {
-					case ArgType.BYTE:  encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(op_tbl_bin[param.op+0]), dst.reg, src.reg); break;
-					case ArgType.WORD:  encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(op_tbl_bin[param.op+1]), dst.reg, src.reg); break;
-					case ArgType.DWORD: encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(op_tbl_bin[param.op+1]), dst.reg, src.reg); break;
-					case ArgType.QWORD: encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(op_tbl_bin[param.op+1]), dst.reg, src.reg); break;
+					case ArgType.BYTE:  encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(cast(ubyte)(op_tbl_bin[param.op]+0)), dst.reg, src.reg); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), dst.reg, src.reg); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), dst.reg, src.reg); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), dst.reg, src.reg); break;
 				} break;
 
 			case MEM_REG:
 				final switch(param.argType) {
-					case ArgType.BYTE:  encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(op_tbl_bin[param.op+0]), src.reg, dst.memAddress); break;
-					case ArgType.WORD:  encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(op_tbl_bin[param.op+1]), src.reg, dst.memAddress); break;
-					case ArgType.DWORD: encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(op_tbl_bin[param.op+1]), src.reg, dst.memAddress); break;
-					case ArgType.QWORD: encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(op_tbl_bin[param.op+1]), src.reg, dst.memAddress); break;
+					case ArgType.BYTE:  encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(cast(ubyte)(op_tbl_bin[param.op]+0)), src.reg, dst.memAddress); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), src.reg, dst.memAddress); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), src.reg, dst.memAddress); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), src.reg, dst.memAddress); break;
 				} break;
 
 			case REG_MEM:
 				final switch(param.argType) {
-					case ArgType.BYTE:  encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(op_tbl_bin[param.op+2]), dst.reg, src.memAddress); break;
-					case ArgType.WORD:  encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(op_tbl_bin[param.op+3]), dst.reg, src.memAddress); break;
-					case ArgType.DWORD: encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(op_tbl_bin[param.op+3]), dst.reg, src.memAddress); break;
-					case ArgType.QWORD: encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(op_tbl_bin[param.op+3]), dst.reg, src.memAddress); break;
+					case ArgType.BYTE:  encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(cast(ubyte)(op_tbl_bin[param.op]+2)), dst.reg, src.memAddress); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(cast(ubyte)(op_tbl_bin[param.op]+3)), dst.reg, src.memAddress); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+3)), dst.reg, src.memAddress); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+3)), dst.reg, src.memAddress); break;
 				} break;
 
 			case REG_IMM:
@@ -6817,6 +7159,27 @@ struct CodeGen_x86_64
 	void testw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(0x85), dst, src); }
 	void testd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(0x85), dst, src); }
 	void testq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(0x85), dst, src); }
+
+	void imulw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP2(0x0F, 0xAF), src, dst); }
+	void imuld(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xAF), src, dst); }
+	void imulq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xAF), src, dst); }
+	void imulw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP2(0x0F, 0xAF), dst, src); }
+	void imuld(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP2(0x0F, 0xAF), dst, src); }
+	void imulq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP2(0x0F, 0xAF), dst, src); }
+
+	void imulw(Register dst, Register src1, Imm8 src2) { encoder.putInstrBinaryRegRegImm!(ArgType.WORD) (OP1(0x6B), src1, dst, src2); }
+	void imuld(Register dst, Register src1, Imm8 src2) { encoder.putInstrBinaryRegRegImm!(ArgType.DWORD)(OP1(0x6B), src1, dst, src2); }
+	void imulq(Register dst, Register src1, Imm8 src2) { encoder.putInstrBinaryRegRegImm!(ArgType.QWORD)(OP1(0x6B), src1, dst, src2); }
+	void imulw(Register dst, Register src1, Imm16 src2){ encoder.putInstrBinaryRegRegImm!(ArgType.WORD) (OP1(0x69), src1, dst, src2); }
+	void imuld(Register dst, Register src1, Imm32 src2){ encoder.putInstrBinaryRegRegImm!(ArgType.DWORD)(OP1(0x69), src1, dst, src2); }
+	void imulq(Register dst, Register src1, Imm32 src2){ encoder.putInstrBinaryRegRegImm!(ArgType.QWORD)(OP1(0x69), src1, dst, src2); }
+
+	void imulw(Register dst, MemAddress src1, Imm8 src2) { encoder.putInstrBinaryRegMemImm!(ArgType.WORD) (OP1(0x6B), dst, src1, src2); }
+	void imuld(Register dst, MemAddress src1, Imm8 src2) { encoder.putInstrBinaryRegMemImm!(ArgType.DWORD)(OP1(0x6B), dst, src1, src2); }
+	void imulq(Register dst, MemAddress src1, Imm8 src2) { encoder.putInstrBinaryRegMemImm!(ArgType.QWORD)(OP1(0x6B), dst, src1, src2); }
+	void imulw(Register dst, MemAddress src1, Imm16 src2){ encoder.putInstrBinaryRegMemImm!(ArgType.WORD) (OP1(0x69), dst, src1, src2); }
+	void imuld(Register dst, MemAddress src1, Imm32 src2){ encoder.putInstrBinaryRegMemImm!(ArgType.DWORD)(OP1(0x69), dst, src1, src2); }
+	void imulq(Register dst, MemAddress src1, Imm32 src2){ encoder.putInstrBinaryRegMemImm!(ArgType.QWORD)(OP1(0x69), dst, src1, src2); }
 
 	void movzx_btow(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP2(0x0F, 0xB6), dst, src); }
 	void movzx_btod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xB6), dst, src); }
