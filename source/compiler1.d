@@ -356,9 +356,23 @@ void tester13(Func13 fun) {
 }
 auto test13 = Test("Test 13", input13, "test", cast(Test.Tester)&tester13);
 
+
+immutable input14 = q{void test(i32* array, i32 index, i32 value, i32 value2, i32 value3) {
+	array[index] = value + value2 + value3;
+}};
+alias Func14 = extern(C) void function(int*, int, int, int, int);
+void tester14(Func14 fun) {
+	int[2] val = [42, 56];
+	fun(val.ptr, 1, 10, 6, 4);
+	writefln("test([42, 56].ptr, 1, 10, 6, 4) -> %s", val);
+	assert(val[1] == 20);
+}
+auto test14 = Test("Test 14", input14, "test", cast(Test.Tester)&tester14);
+
+
 void test()
 {
-	Test curTest = test13;
+	Test curTest = test14;
 	Driver driver;
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
@@ -371,8 +385,8 @@ void test()
 		version(print)
 		{
 			// Text dump
-			auto astPrinter = AstPrinter(&driver.context, 2);
-			astPrinter.printAst(cast(AstNode*)mod);
+			//auto astPrinter = AstPrinter(&driver.context, 2);
+			//astPrinter.printAst(cast(AstNode*)mod);
 
 			writeln("// Source");
 			writeln(driver.context.input);
@@ -3457,7 +3471,11 @@ struct BinIrGenerationVisitor {
 		if (context.buildDebug)
 			v.varFlags |= VariableFlags.forceMemoryStorage;
 
-		if (v.forceMemoryStorage)
+		// Allocate stack slot for parameter that is passed via stack
+		bool isParamWithSlot = v.isParameter && curFunc.callingConvention.isParamOnStack(v.paramIndex);
+		bool needsStackSlot = v.forceMemoryStorage || isParamWithSlot;
+
+		if (needsStackSlot)
 		{
 			v.stackSlotId = curFunc.stackLayout.addStackItem(v.type.size, v.type.alignment, v.isParameter, v.paramIndex);
 		}
@@ -3465,7 +3483,10 @@ struct BinIrGenerationVisitor {
 		if (v.isParameter)
 		{
 			++curFunc.numParameters;
-			irRef = curFunc.emitInstr0(IrOpcode.o_param, v.type.irType(context));
+			auto instr = IrInstruction(IrOpcode.o_param, v.type.irType(context));
+			instr.paramIndex = v.paramIndex;
+			instr.stackSlot = v.stackSlotId;
+			irRef = curFunc.put(instr);
 			curFunc.writeVariable(v.irVar, irRef);
 		}
 		else
@@ -3700,7 +3721,6 @@ struct BinIrGenerationVisitor {
 		else
 		{
 			IrRef scale = curFunc.put(i.type.size);
-			writefln("index %s", RefPr(curFunc, i.index.irRef));
 			IrRef offset = curFunc.emitInstr2(IrOpcode.o_mul, i.index.irRef.type, i.index.irRef, scale);
 			address = curFunc.emitInstr2(IrOpcode.o_add, IrValueType.ptr, i.array.irRef, offset);
 		}
@@ -4213,6 +4233,7 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 	bool printBlockInstrRange = false;
 	bool printInstrIndex = true;
 	bool printUses = false;
+	bool printLive = false;
 
 	void printOpdUses(IrOperandId opdId) {
 		if (opdId.isNull) return;
@@ -4319,7 +4340,7 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 	}
 	sink.putln("}");
 
-	func.liveIntervals.print;
+	if (printLive) func.liveIntervals.print;
 }
 
 enum IrValueKind : ubyte
@@ -4651,6 +4672,10 @@ struct IrInstruction
 	union {
 		struct {
 			IrRef arg0, arg1;
+		}
+		struct { // parameter data
+			uint paramIndex;
+			IrRef stackSlot;
 		}
 		IrRef[2] _args;
 	}
@@ -5770,6 +5795,9 @@ struct CallConv
 	RegisterRef[] paramsInRegs;
 	RegisterRef returnReg;
 
+	bool isParamOnStack(size_t parIndex) {
+		return parIndex >= paramsInRegs.length;
+	}
 	void setParamHint(ref IrFunction fun, ref IrInstruction instr, size_t parIndex) {
 		StorageHint hint;
 		hint.isSet = true;
@@ -6018,7 +6046,6 @@ struct IrToAmd64
 		}
 		// RSP + 0 points to RET
 
-
 		// Establish frame pointer
 		if (USE_FRAME_POINTER)
 		{
@@ -6165,7 +6192,7 @@ struct IrToAmd64
 			case OpdLocType.physicalRegister:
 				Register dstReg = cast(Register)(dst.reg.nativeReg);
 				Register srcReg = cast(Register)(src.reg.nativeReg);
-				writefln("mov %s, [%s]", dstReg, srcReg);
+				//writefln("mov %s, [%s]", dstReg, srcReg);
 				gen.mov(dstReg, memAddrBase(srcReg), argType);
 
 				//context.internal_error("physicalRegister is not implemented");
@@ -6175,8 +6202,15 @@ struct IrToAmd64
 				context.internal_error("constant is not implemented");
 				break;
 
+			case OpdLocType.stackSlot:
+				Register dstReg = cast(Register)(dst.reg.nativeReg);
+				//writefln("mov %s, [slot(%s)]", dstReg, src.irRef.constIndex);
+				gen.mov(dstReg, localVarMemAddress(src.irRef.constIndex), argType);
+				//context.internal_error("stackSlot is not implemented");
+				break;
+
 			default:
-				context.internal_error("default is not implemented");
+				context.internal_error("default is not implemented %s", src.type);
 				break;
 		}
 	}
@@ -6194,7 +6228,7 @@ struct IrToAmd64
 					case OpdLocType.physicalRegister:
 						Register dstReg = cast(Register)(dst.reg.nativeReg);
 						Register srcReg = cast(Register)(src.reg.nativeReg);
-						writefln("mov [%s], %s", dstReg, srcReg);
+						//writefln("mov [%s], %s", dstReg, srcReg);
 						gen.mov(memAddrBase(dstReg), srcReg, argType);
 						break;
 					default:
@@ -6295,7 +6329,16 @@ struct IrToAmd64
 		switch (instr.op) with(IrOpcode)
 		{
 			case o_nop: break;
-			case o_param: break;
+			case o_param:
+				if (instr.stackSlot.isDefined)
+				{
+					//writefln("param %s %s", instr.paramIndex, RefPr(curFunc, instr.stackSlot));
+					OperandLocation value = getLocation(instr.result);
+					OperandLocation addr = getLocation(instr.stackSlot);
+					genLoad(value, addr, argType);
+				}
+				break;
+
 			case o_block: break;
 
 			case o_block_end:
