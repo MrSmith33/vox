@@ -21,22 +21,22 @@ version = print;
 	<module> = <declaration>* EOF
 	<declaration> = <func_decl> / <var_decl> / <struct_decl>
 
-	<func_decl> = <type> <identifier> "(" <param_list> ")" <block_statement>
+	<func_decl> = <type> <identifier> "(" <param_list> ")" (<block_statement> / ';')
 	<param_list> = <parameter> "," <parameter_list> / <parameter>?
-	<parameter> = <type> <identifier>
+	<parameter> = <type> <identifier>?
 
 	<var_decl> = <type> <identifier> ";"
 	<struct_decl> = "struct" <identifier> "{" <declaration>* "}"
 
 	<statement> = "if" <paren_expression> <statement> ("else" <statement>)?
-	              "while" <paren_expression> <statement> /
-	              "do" <statement> "while" <paren_expression> ";" /
-	              "return" <expression>? ";" /
-	              "break" ";" /
-	              "continue" ";" /
-	              <block_statement> /
-	              <expression> ("=" <expression>)? ";" /
-	              <declaration_statement>
+				  "while" <paren_expression> <statement> /
+				  "do" <statement> "while" <paren_expression> ";" /
+				  "return" <expression>? ";" /
+				  "continue" ";" /
+				  "break" ";" /
+				  <block_statement> /
+				  <expression> ("=" <expression>)? ";" /
+				  <declaration_statement>
 
 	<declaration_statement> = <declaration>
 	<block_statement> = "{" <statement>* "}"
@@ -370,9 +370,27 @@ void tester14(Func14 fun) {
 auto test14 = Test("Test 14", input14, "test", cast(Test.Tester)&tester14);
 
 
+immutable input15 = q{i32 test(i32 par) {
+	return external(par, 10, 20);
+}
+i32 external(i32, i32, i32);
+};
+alias Func15 = extern(C) int function(int par);
+extern(C) int test15_external_func(int par1, int par2, int par3) {
+	return par1 + par2 + par3;
+}
+void tester15(Func15 fun) {
+	int result = fun(10);
+	writefln("test() -> %s", result);
+	assert(result == 10);
+}
+auto test15 = Test("Test 15", input15, "test", cast(Test.Tester)&tester15);
+
+
+
 void test()
 {
-	Test curTest = test14;
+	Test curTest = test15;
 	Driver driver;
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
@@ -544,10 +562,18 @@ struct Driver
 		passes ~= CompilePass("Semantic lookup", &pass_semantic_lookup);
 		passes ~= CompilePass("Semantic types", &pass_semantic_type);
 		passes ~= CompilePass("IR gen", &pass_ir_gen);
+		// IR opt
+		// IR -> LIR
+		//passes ~= CompilePass("LIR gen", &pass_lir_gen);
+
+		// LIR liveness
 		passes ~= CompilePass("Live intervals", &pass_live_intervals);
+		// LIR regalloc
 		passes ~= CompilePass("Linear scan", &pass_linear_scan);
+		// Stack layout
 		passes ~= CompilePass("Stack layout", &pass_stack_layout);
-		passes ~= CompilePass("Code gen", &pass_code_gen);
+		// LIR -> machine code
+		//passes ~= CompilePass("Code gen", &pass_code_gen);
 	}
 
 	ModuleDeclNode* compileModule(string fileData, ubyte[] codeBuffer)
@@ -670,7 +696,7 @@ struct CompilationContext
 		throw new CompilationException();
 	}
 
-	void assertf(string file = __FILE__, int line = __LINE__, Args...)(bool cond, string fmt, lazy Args args)
+	void assertf(Args...)(bool cond, string fmt, lazy Args args, string file = __FILE__, int line = __LINE__)
 	{
 		if (cond) return;
 		sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
@@ -680,7 +706,7 @@ struct CompilationContext
 		throw new CompilationException(true);
 	}
 
-	void assertf(string file = __FILE__, int line = __LINE__, Args...)(bool cond, SourceLocation loc, string fmt, lazy Args args)
+	void assertf(Args...)(bool cond, SourceLocation loc, string fmt, lazy Args args, string file = __FILE__, int line = __LINE__)
 	{
 		if (cond) return;
 		sink.putf("%s(%s): file(%s, %s): ICE: ", file, line, loc.line+1, loc.col+1);
@@ -715,9 +741,9 @@ struct CompilationContext
 	private void tryCrashOnICE() {
 		if (crashOnICE)
 		{
-			//ubyte* nullPtr = null;
-			//nullPtr[0] = nullPtr[0];
-			assert(false, sink.text);
+			writeln(sink.text);
+			stdout.flush;
+			asm { db 0xcc; } // breakpoint
 		}
 	}
 
@@ -1340,6 +1366,8 @@ struct IdentifierMap {
 	string[] strings;
 	uint[string] map;
 
+	Buffer!char tempBuf;
+
 	string get(Identifier id) {
 		return strings[id];
 	}
@@ -1348,7 +1376,27 @@ struct IdentifierMap {
 		return map.get(str, uint.max);
 	}
 
-	Identifier getOrReg(string str) {
+	Identifier getOrRegWithSuffix(string str, size_t suffix) {
+		import std.format : formattedWrite;
+		tempBuf.clear;
+		tempBuf.put(str);
+		formattedWrite(tempBuf, "%s%s", str, suffix);
+		const(char)[] idString = tempBuf.data;
+		return getOrReg(idString);
+	}
+
+	Identifier getOrReg(const(char)[] str) {
+		uint id = map.get(cast(string)str, uint.max);
+		if (id == uint.max) {
+			string duppedKey = str.idup;
+			id = cast(uint)strings.length;
+			map[duppedKey] = id;
+			strings ~= duppedKey;
+		}
+		return id;
+	}
+
+	Identifier getOrRegNoDup(string str) {
 		uint id = map.get(str, uint.max);
 		if (id == uint.max) {
 			id = cast(uint)strings.length;
@@ -1806,7 +1854,7 @@ struct FunctionDeclNode {
 	mixin SymRefNodeData;
 	TypeNode* returnType;
 	VariableDeclNode*[] parameters;
-	BlockStmtNode* block_stmt;
+	BlockStmtNode* block_stmt; // null if external
 	Scope* _scope;
 	IrFunction irData;
 }
@@ -2030,7 +2078,7 @@ mixin template AstVisitorMixin() {
 		foreach (decl; m.declarations) _visit(decl); }
 	void visit(FunctionDeclNode* f) {
 		foreach (param; f.parameters) visit(param);
-		visit(f.block_stmt); }
+		if (f.block_stmt) visit(f.block_stmt); }
 	void visit(VariableDeclNode* v) {}
 	void visit(StructDeclNode* s) {
 		foreach (decl; s.declarations) _visit(decl); }
@@ -2093,7 +2141,7 @@ struct AstPrinter {
 	void visit(FunctionDeclNode* f) {
 		print("FUNC ", f.returnType.printer(context), " ", f.strId(context));
 		foreach (param; f.parameters) pr_node(cast(AstNode*)param);
-		pr_node(cast(AstNode*)f.block_stmt);
+		if (f.block_stmt) pr_node(cast(AstNode*)f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
 		print(v.isParameter ? "PARAM " : "VAR ", v.type.printer(context), " ", v.strId(context));
@@ -2271,7 +2319,7 @@ struct Parser {
 	Identifier tokenToId()
 	{
 		string name = lexer.getTokenString(tok);
-		return context.idMap.getOrReg(name);
+		return context.idMap.getOrRegNoDup(name);
 	}
 
 	// ------------------------------ PARSING ----------------------------------
@@ -2305,7 +2353,7 @@ struct Parser {
 			expectAndConsume(TokenType.LCURLY);
 			AstNode*[] declarations = parse_declarations(TokenType.RCURLY);
 			expectAndConsume(TokenType.RCURLY);
-			return cast(AstNode*)make!StructDeclNode(start, declarations, structId);
+			return cast(AstNode*)make!StructDeclNode(start, declarations, SymbolRef(structId));
 		}
 		else // <func_declaration> / <var_declaration>
 		{
@@ -2322,27 +2370,44 @@ struct Parser {
 			{
 				version(print_parse) auto s3 = scop("<var_declaration> %s", start);
 				nextToken();
-				return cast(AstNode*)make!VariableDeclNode(start, declarationId, type);
+				return cast(AstNode*)make!VariableDeclNode(start, SymbolRef(declarationId), type);
 			}
-			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" <block_statement>
+			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 			{
 				version(print_parse) auto s3 = scop("<func_declaration> %s", start);
 				expectAndConsume(TokenType.LPAREN);
 				VariableDeclNode*[] params;
 				while (tok.type != TokenType.RPAREN)
 				{
+					// <param> ::= <type> <identifier>?
 					TypeNode* paramType = parse_type_expected();
-					Identifier paramId = expectIdentifier();
-					VariableDeclNode* param = make!VariableDeclNode(start, paramId, paramType);
+					Identifier paramId;
+					size_t paramIndex = params.length;
+
+					if (tok.type == TokenType.IDENTIFIER) // named parameter
+						paramId = expectIdentifier();
+					else // anon parameter
+					{
+						paramId = context.idMap.getOrRegWithSuffix("__param_", paramIndex);
+					}
+
+					VariableDeclNode* param = make!VariableDeclNode(start, SymbolRef(paramId), paramType);
 					param.varFlags |= VariableFlags.isParameter;
-					param.paramIndex = cast(typeof(param.paramIndex))params.length;
+					param.paramIndex = cast(typeof(param.paramIndex))paramIndex;
 					params ~= param;
 					if (tok.type == TokenType.COMMA) nextToken();
 					else break;
 				}
 				expectAndConsume(TokenType.RPAREN);
-				BlockStmtNode* block = block_stmt();
-				return cast(AstNode*)make!FunctionDeclNode(start, declarationId, type, params, block);
+
+				BlockStmtNode* block;
+				if (tok.type != TokenType.SEMICOLON)
+				{
+					block = block_stmt();
+				}
+				else expectAndConsume(TokenType.SEMICOLON); // external function
+
+				return cast(AstNode*)make!FunctionDeclNode(start, SymbolRef(declarationId), type, params, block);
 			}
 			else
 			{
@@ -2368,7 +2433,7 @@ struct Parser {
 		TypeNode* base;
 		if (tok.type == TokenType.IDENTIFIER) {
 			Identifier id = expectIdentifier();
-			base = cast(TypeNode*)make!UserTypeNode(start, id);
+			base = cast(TypeNode*)make!UserTypeNode(start, SymbolRef(id));
 		} else if (isBasicTypeToken(tok.type)) {
 			base = context.basicTypeNodes(parse_type_basic());
 		}
@@ -2594,17 +2659,17 @@ struct Parser {
 				expectAndConsume(TokenType.LPAREN);
 				ExpressionNode*[] args = expr_list();
 				expectAndConsume(TokenType.RPAREN);
-				return makeExpr!CallExprNode(start, id, args);
+				return makeExpr!CallExprNode(start, SymbolRef(id), args);
 			}
 			if (tok.type == TokenType.LBRACKET) // <term> ::= <id> "[" <expr> "]"
 			{
 				expectAndConsume(TokenType.LBRACKET);
 				ExpressionNode* index = expr();
 				expectAndConsume(TokenType.RBRACKET);
-				ExpressionNode* array = makeExpr!VariableExprNode(start, id);
+				ExpressionNode* array = makeExpr!VariableExprNode(start, SymbolRef(id));
 				return makeExpr!IndexExprNode(start, array, index);
 			}
-			return makeExpr!VariableExprNode(start, id);
+			return makeExpr!VariableExprNode(start, SymbolRef(id));
 		}
 		else if (tok.type == TokenType.INT_LITERAL)
 		{
@@ -2858,7 +2923,7 @@ struct SemanticDeclarations {
 		f.resolveSymbol = scopeStack.insert(f.id, f.loc, SymbolClass.c_function, cast(AstNode*)f);
 		f._scope = scopeStack.pushScope(context.idString(f.id), Yes.ordered);
 		foreach (param; f.parameters) visit(param);
-		visit(f.block_stmt);
+		if (f.block_stmt) visit(f.block_stmt);
 		scopeStack.popScope1;
 	}
 	void visit(VariableDeclNode* v) {
@@ -2935,7 +3000,7 @@ struct SemanticLookup {
 		scopeStack.pushCompleteScope(f._scope);
 		_visit(f.returnType);
 		foreach (param; f.parameters) visit(param);
-		visit(f.block_stmt);
+		if (f.block_stmt) visit(f.block_stmt);
 		scopeStack.popScope2;
 	}
 	void visit(VariableDeclNode* v) { _visit(v.type); }
@@ -3185,7 +3250,7 @@ struct SemanticStaticTypes {
 		setResultType(b);
 	}
 
-	void checkReturnType(FunctionDeclNode* f) {
+	void checkBodyForReturnType(FunctionDeclNode* f) {
 		if (f.returnType.isVoid) return; // void functions don't need return at the end
 
 		if (f.block_stmt.statements.length > 0)
@@ -3207,8 +3272,11 @@ struct SemanticStaticTypes {
 		auto prevFunc = curFunc;
 		curFunc = f;
 		foreach (param; f.parameters) visit(param);
-		visit(f.block_stmt);
-		checkReturnType(f);
+		if (f.block_stmt)
+		{
+			visit(f.block_stmt);
+			checkBodyForReturnType(f);
+		}
 		curFunc = prevFunc;
 	}
 	void visit(VariableDeclNode* v) {
@@ -3309,7 +3377,26 @@ struct SemanticStaticTypes {
 	}
 	// Get type from function declaration
 	void visit(CallExprNode* c) {
-		foreach (arg; c.args) _visit(arg);
+		auto params = c.getSym.funcDecl.parameters;
+		auto numParams = params.length;
+		auto numArgs = c.args.length;
+
+		if (numArgs < numParams)
+			context.error(c.loc, "Insufficient parameters to '%s', got %s, expected %s",
+				c.strId(context), numArgs, numParams);
+		else if (numArgs > numParams)
+			context.error(c.loc, "Too much parameters to '%s', got %s, expected %s",
+				c.strId(context), numArgs, numParams);
+
+		foreach (i, ExpressionNode* arg; c.args)
+		{
+			_visit(arg);
+			if (arg.type != params[i].type)
+				context.error(arg.loc,
+					"Parameter %s, must have type %s, not %s", i+1,
+						params[i].type.printer(context),
+						arg.type.printer(context));
+		}
 		c.type = c.getSym.getType;
 	}
 	void visit(IndexExprNode* i) {
@@ -3383,15 +3470,17 @@ struct BinIrGenerationVisitor {
 	void visit(ModuleDeclNode* m)
 	{
 		irModule = &m.irModule;
-		tempId = context.idMap.getOrReg("__tmp");
-		startId = context.idMap.getOrReg("start");
-		thenId = context.idMap.getOrReg("then");
-		elseId = context.idMap.getOrReg("else");
-		blkId = context.idMap.getOrReg("blk");
+		tempId = context.idMap.getOrRegNoDup("__tmp");
+		startId = context.idMap.getOrRegNoDup("start");
+		thenId = context.idMap.getOrRegNoDup("then");
+		elseId = context.idMap.getOrRegNoDup("else");
+		blkId = context.idMap.getOrRegNoDup("blk");
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(FunctionDeclNode* f)
 	{
+		if (f.block_stmt is null) return;
+
 		// create new function
 		f.irData = IrFunction(f, &win64_call_conv, f.returnType.irType(context));
 
@@ -3695,8 +3784,24 @@ struct BinIrGenerationVisitor {
 			default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 		}
 	}
-	void visit(CallExprNode* c) {
-		context.internal_error(c.loc, "Call is not implemented");
+	void visit(CallExprNode* c)
+	{
+		foreach (i, ExpressionNode* arg; c.args) _visit(arg);
+
+		foreach (uint i, ExpressionNode* arg; c.args)
+		{
+			auto instr = IrInstruction(IrOpcode.o_call_arg);
+			instr._args[0] = arg.irRef;
+			instr.argIndex = i;
+			auto irRef = curFunc.put(instr);
+		}
+
+		auto callInstr = IrInstruction(IrOpcode.o_call, c.type.irType(context));
+		FunctionDeclNode* callee = c.getSym.funcDecl;
+		callInstr.callee = callee;
+		if (!callee.returnType.isVoid)
+			callInstr.returnsValue = true;
+		c.irRef = curFunc.put(callInstr);
 	}
 	void visit(IndexExprNode* i) {
 		auto parentAssignSide = currentAssignSide; // save
@@ -4233,7 +4338,7 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 	bool printBlockInstrRange = false;
 	bool printInstrIndex = true;
 	bool printUses = false;
-	bool printLive = false;
+	bool printLive = true;
 
 	void printOpdUses(IrOperandId opdId) {
 		if (opdId.isNull) return;
@@ -4293,21 +4398,32 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 		auto instrs = func.instructions[block.firstInstr+1..block.lastInstr+1];
 		// print all instructions
 		size_t i = block.firstInstr+1;
-		foreach(ref instr; instrs)
+		size_t numArgInstrs = 0;
+
+		foreach(localIndex, ref instr; instrs)
 		{
-			if (printInstrIndex) sink.putf("% 3s|", i);
+			if (numArgInstrs > 0)
+				ctx.assertf(instr.op == IrOpcode.o_call_arg ||
+					instr.op == IrOpcode.o_call, "Malformed IR: Call args followed by %s", instr.op);
+
 			switch(instr.op)
 			{
 				case IrOpcode.o_block: break;
 				case IrOpcode.o_block_end: break;
 				case IrOpcode.o_icmp:
+					if (printInstrIndex) sink.putf("% 3s|", i);
 					sink.putf("    %%%s = %- 3s %- 8s", instr.result, instr.type, instr.op);
 					sink.putf(" %s %s, %s", instr.condition, RefPr(&func, instr.arg0), RefPr(&func, instr.arg1));
 					if (printUses) printOpdUses(instr.result);
 					sink.putln;
 					break;
 
+				case IrOpcode.o_call_arg:
+					++numArgInstrs;
+					goto default;
+
 				default:
+					if (printInstrIndex) sink.putf("% 3s|", i);
 					if (instr.returnsValue) {
 						sink.putf("    %%%s = %- 3s %- 8s", instr.result, instr.type, instr.op);
 					}
@@ -4318,6 +4434,14 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 						case 2: sink.putf(" %s, %s", RefPr(&func, instr.arg0),
 							RefPr(&func, instr.arg1)); break;
 						default: break;
+					}
+
+					if (instr.op == IrOpcode.o_call)
+					{
+						auto argsInstrs = instrs[localIndex-numArgInstrs..localIndex];
+						sink.put("$");
+						sink.put(instr.callee.strId(ctx));
+						numArgInstrs = 0;
 					}
 
 					if (printUses) printOpdUses(instr.result);
@@ -4331,16 +4455,16 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 		// print jump/return at the end of block
 		final switch(block.exit.type) with(IrJump.Type) {
 			case none: sink.putln("  // block not sealed"); break;
-			case ret0: sink.putln("    return"); break;
-			case ret1: sink.putfln("    return %s", RefPr(&func, block.exit.value)); break;
-			case jmp:  sink.putfln("    jmp @%s", IrNameProxy(ctx, block.outs[0].name)); break;
-			case branch:  sink.putfln("    branch %s @%s, @%s",
+			case ret0: sink.putln("        return"); break;
+			case ret1: sink.putfln("        return %s", RefPr(&func, block.exit.value)); break;
+			case jmp:  sink.putfln("        jmp @%s", IrNameProxy(ctx, block.outs[0].name)); break;
+			case branch:  sink.putfln("        branch %s @%s, @%s",
 				RefPr(&func, block.exit.value), IrNameProxy(ctx, block.outs[0].name), IrNameProxy(ctx, block.outs[1].name)); break;
 		}
 	}
 	sink.putln("}");
 
-	if (printLive) func.liveIntervals.print;
+	if (printLive) func.liveIntervals.dump(sink);
 }
 
 enum IrValueKind : ubyte
@@ -4660,24 +4784,31 @@ struct IrInstruction
 	}
 	IrOpcode op;
 	IrValueType type;
-	IrCond condition;
 	mixin(bitfields!(
 		// number of `args` fields used: 0, 1, or 2
 		uint,        "numArgs",       2,
 		// true if `result` field is used
 		bool,        "returnsValue",  1,
-		uint,        "",              5
+		IrCond,      "condition",     3,
+		uint,        "",              2
 	));
 	IrOperandId result;
 	union {
 		struct {
 			IrRef arg0, arg1;
 		}
+		IrRef[2] _args;
 		struct { // parameter data
 			uint paramIndex;
 			IrRef stackSlot;
 		}
-		IrRef[2] _args;
+		struct { // argument data
+			uint _; // arg0
+			uint argIndex;
+		}
+		struct { // call data
+			FunctionDeclNode* callee;
+		}
 	}
 	IrRef[] args() { return _args[0..numArgs]; }
 }
@@ -4696,17 +4827,21 @@ enum IrOpcode : ubyte
 	o_mul,
 	o_div,
 
+	o_call, // stores return value and callee info
+	o_call_arg, // represents function call argument
+
 	o_load, // arg0 - address
 	o_store, // arg0 - address, arg1 - value
 
 	o_conv, // instruction type if target type
 }
 
-immutable numInstrArgs =  cast(ubyte[IrOpcode.max+1])[0,0,0,0,1,2,2,2,2,2,1,2,1];
-immutable hasInstrReturn = cast(bool[IrOpcode.max+1])[0,1,0,0,1,1,1,1,1,1,1,0,1];
+immutable numInstrArgs =  cast(ubyte[IrOpcode.max+1])[0,0,0,0,1,2,2,2,2,2,0,1,1,2,1];
+immutable hasInstrReturn = cast(bool[IrOpcode.max+1])[0,1,0,0,1,1,1,1,1,1,0,0,1,0,1];
 
 immutable irOpcodeNames = cast(string[IrOpcode.max+1])
-["nop", "param", "block", "block_end", "not", "icmp", "add", "sub", "mul", "div", "load", "store", "conv"];
+["nop", "param", "block", "block_end", "not", "icmp", "add", "sub", "mul", "div",
+"call", "call_arg", "load", "store", "conv"];
 
 immutable binOpToIrOpcode = cast(IrOpcode[BinOp.max+1])[
 	IrOpcode.o_icmp,
@@ -4907,7 +5042,6 @@ void pass_live_intervals(ref CompilationContext ctx)
 			// b.liveIn = live
 			blockLiveIn(block.index)[] = liveBuckets;
 		}
-		//fun.liveIntervals.print;
 	}
 }
 
@@ -5098,27 +5232,27 @@ struct FunctionLiveIntervals
 		return nextIndex;
 	}
 
-	void print() {
-		writeln("intervals:");
+	void dump(ref TextSink sink) {
+		sink.putln("intervals:");
 		//writeln(ranges.data);
 		foreach (i, it; intervals) {
 			NodeIndex cur = it.first;
 			if (cur.isNull) {
-				writefln("% 3s: null", i);
+				sink.putfln("% 3s: null", i);
 				continue;
 			}
 			if (it.reg.isNull)
-				writef("% 3s [no reg]:", i);
+				sink.putf("% 3s [no reg]:", i);
 			else
-				writef("% 3s [%s %2s]:", i, it.reg.regClass, it.reg);
+				sink.putf("% 3s [%s %2s]:", i, it.reg.regClass, it.reg);
 
 			while (!cur.isNull)
 			{
 				auto r = &ranges[cur];
-				writef(" (%s %s)", r.from, r.to);
+				sink.putf(" (%s %s)", r.from, r.to);
 				cur = r.nextIndex;
 			}
-			writeln;
+			sink.putln;
 		}
 	}
 }
@@ -5221,7 +5355,7 @@ struct LinearScan
 		unhandled = list of intervals sorted by increasing start positions
 		active = { }; inactive = { }; handled = { }
 
-		while unhandled != { } do
+		while unhandled != { } do
 			current = pick and remove first interval from unhandled
 			position = start position of current
 
@@ -5957,6 +6091,311 @@ struct MachineState
 }
 */
 
+
+//                           #         #####   ######
+//                           #           #     #     #
+//                           #           #     #     #
+//                           #           #     ######
+//                           #           #     #   #
+//                           #           #     #    #
+//                           ######    #####   #     #
+// -----------------------------------------------------------------------------
+
+/// Generates LIR from IR
+void pass_lir_gen(ref CompilationContext ctx) {
+	/*
+	IR_to_LIR gen;
+	gen.ctx = &ctx;
+	ctx.assertf(ctx.codeBuffer.length > 0, "Code buffer is empty");
+	ctx.mod.irModule.codeBuffer = ctx.codeBuffer;
+	gen.visit(&ctx.mod.irModule);
+	*/
+}
+/*
+struct LirFunction
+{
+	LirInstruction[] instructions;
+	IrConstant[] constants;
+
+	void put(LirInstruction instr)
+	{
+		uint index = cast(uint)instructions.length;
+		instructions.put(instr);
+		return LirRef(index);
+	}
+}
+
+enum LirValueKind : ubyte
+{
+	instr,
+	con,
+	phi
+}
+
+enum LirConstKind : ubyte
+{
+	literal,
+	stackSlotId
+}
+
+enum LirValueType : ubyte
+{
+	b,w,d,q
+}
+
+struct LirInstruction
+{
+	ushort op;
+	LirRef result;
+	union {
+		struct { LirRef arg0, arg1, arg2, arg3; }
+		LirRef[4] args;
+	}
+}
+
+struct LirRef
+{
+	this(uint idx, LirValueKind k, LirValueType t) {
+		index = idx; isDefined = true; kind = k; type = t;
+	}
+	this(StackSlotId idx) {
+		constIndex = idx; isDefined = true; constKind = IrConstKind.stackSlotId; kind = LirValueKind.con; type = LirValueType.ptr;
+	}
+	this(uint idx, IrConstKind c, LirValueType t) {
+		constIndex = idx; isDefined = true; constKind = c; kind = LirValueKind.con; type = t;
+	}
+	union
+	{
+		mixin(bitfields!(
+			uint,         "index",     27, // instruction/phi index
+			bool,         "isDefined",  1,
+			LirValueKind, "kind",       2,
+			LirValueType, "type",       2
+		));
+		mixin(bitfields!(
+			uint,        "constIndex",     25,
+			IrConstKind, "constKind",       2, // 2 bits are taken out of `index`
+			uint,        "",                5
+		));
+	}
+	static assert(IrConstKind.max <= 3, "2 bits are reserved");
+	static assert(LirValueType.max <= 3, "2 bits are reserved");
+	static assert(LirValueKind.max <= 3, "2 bits are reserved");
+	bool isInstr() { return kind == LirValueKind.instr; }
+	bool isCon() { return kind == LirValueKind.con; }
+	bool isLiteral() { return kind == LirValueKind.con && constKind == IrConstKind.literal; }
+}
+
+enum Amd64Op : ushort {
+	add,
+	sub,
+	mov,
+	imul,
+	or,
+	and,
+	xor,
+	not,
+	cmp,
+	inc,
+	dec,
+	neg,
+	mul,
+	div,
+	jmp,
+	call,
+	jcc,
+	setcc,
+	test,
+	movsx,
+	movzx,
+	ret,
+	pop,
+	push,
+	lea
+}*/
+/*
+struct IR_to_LIR
+{
+	CompilationContext* ctx;
+	private IrFunction* curFunc;
+	LirFunction lir;
+
+	void visit(IrModule* m) {
+		ctx.assertf(m !is null, "Module IR is null");
+		foreach (func; m.functions) visit(func);
+	}
+
+	void visit(IrFunction* func)
+	{
+		curFunc = func;
+
+		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
+		{
+			block.startPC = gen.pc;
+			foreach(ref instr; curFunc.instructions[block.firstInstr..block.lastInstr+1])
+			{
+				compileInstr(instr, *block);
+			}
+		}
+	}
+
+	void compileInstr(IrInstruction instr, ref IrBasicBlock block)
+	{
+		ArgType argType = irTypeToArgType(instr.type);
+
+		switch (instr.op) with(IrOpcode)
+		{
+			case o_nop: break;
+			case o_param:
+				if (instr.stackSlot.isDefined)
+				{
+					//writefln("param %s %s", instr.paramIndex, RefPr(curFunc, instr.stackSlot));
+					OperandLocation value = getLocation(instr.result);
+					OperandLocation addr = getLocation(instr.stackSlot);
+					genLoad(value, addr, argType);
+				}
+				break;
+
+			case o_block: break;
+
+			case o_block_end:
+				final switch(block.exit.type) with(IrJump.Type)
+				{
+					case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); break;
+					case ret1:
+						OperandLocation arg0 = getLocation(block.exit.value);
+						ArgType retType = irTypeToArgType(curFunc.returnType);
+						genMove(OperandLocation(curFunc.callingConvention.returnReg), arg0, retType);
+						goto case;
+
+					case ret0:
+						// ignore jump in the last Basic Block
+						if (block.next is null) break;
+						block.exit.fixup0 = gen.pc;
+						gen.jmp(Imm32(0));
+						//writefln("jmp");
+						break;
+
+					case jmp:
+						resolvePhis(block);
+						if (block.next != block.outs[0]) {
+							block.exit.fixup0 = gen.pc;
+							gen.jmp(Imm32(0));
+							//writefln("jmp");
+						}
+						break;
+
+					case branch:
+						block.exit.fixup0 = gen.pc;
+						// TODO missing phi resolution
+						gen.jcc(Condition.NZ, Imm32(0));
+						//writefln("jcc");
+						if (block.next != block.outs[1]) {
+							block.exit.fixup1 = gen.pc;
+							gen.jmp(Imm32(0));
+							//writefln("jmp");
+						}
+						break;
+				}
+				break;
+
+			case o_icmp:
+				OperandLocation arg0 = getLocation(instr.arg0);
+				OperandLocation arg1 = getLocation(instr.arg1);
+				ArgType cmpArgType = irTypeToArgType(instr.arg0.type);
+				genRegular(arg0, arg1, AMD64OpRegular.cmp, cmpArgType);
+				break;
+
+			case o_add, o_sub:
+				OperandLocation res = getLocation(instr.result);
+				OperandLocation arg0 = getLocation(instr.arg0);
+				OperandLocation arg1 = getLocation(instr.arg1);
+				genMove(res, arg0, irTypeToArgType(instr.type));
+				switch(instr.op) with(IrOpcode) {
+					case o_add: genRegular(res, arg1, AMD64OpRegular.add, argType); break;
+					case o_sub: genRegular(res, arg1, AMD64OpRegular.sub, argType); break;
+					default: context.internal_error("Unreachable");
+				}
+				break;
+
+			case o_mul:
+				OperandLocation res = getLocation(instr.result);
+				OperandLocation arg0 = getLocation(instr.arg0);
+				OperandLocation arg1 = getLocation(instr.arg1);
+				if (arg0.isConstant) swap(arg0, arg1);
+				if (!arg1.isConstant)
+					context.assertf(instr.arg0.type == instr.arg1.type,
+						"Type mismatch on imul %s != %s", instr.arg0.type, instr.arg1.type);
+				context.assertf(arg0.type == OpdLocType.physicalRegister, "arg0 is %s != phys reg", arg0.type);
+				Register regRes = cast(Register)(res.reg.nativeReg);
+				Register reg0 = cast(Register)(arg0.reg.nativeReg);
+				IrConstant con;
+				if (arg1.isConstant) con = curFunc.constants[arg1.irRef.constIndex];
+				switch (argType)
+				{
+					case ArgType.WORD:
+						if (arg1.isConstant) {
+							if (con.numSignedBytes == 1)
+								gen.imulw(regRes, reg0, Imm8(con.i8));
+							else if (con.numSignedBytes == 2)
+								gen.imulw(regRes, reg0, Imm16(con.i16));
+							else context.internal_error("Not implemented");
+						}
+						else context.internal_error("Not implemented");
+						break;
+
+					case ArgType.DWORD:
+						if (arg1.isConstant) {
+							if (con.numSignedBytes == 1)
+								gen.imuld(regRes, reg0, Imm8(con.i8));
+							else if (con.numSignedBytes >= 2 && con.numSignedBytes <= 4)
+								gen.imuld(regRes, reg0, Imm32(con.i32));
+							else context.internal_error("Not implemented");
+						}
+						else context.internal_error("Not implemented");
+						break;
+
+					case ArgType.QWORD:
+						if (arg1.isConstant) {
+							if (con.numSignedBytes == 1)
+								gen.imulq(regRes, reg0, Imm8(con.i8));
+							else if (con.numSignedBytes >= 2 && con.numSignedBytes <= 4)
+								gen.imulq(regRes, reg0, Imm32(con.i32));
+							else context.internal_error("Not implemented");
+						}
+						else context.internal_error("Not implemented");
+						break;
+
+					default: context.internal_error("Compilation of imul:%s is not implemented", argType); break;
+				}
+				break;
+
+			case o_store:
+				OperandLocation addr = getLocation(instr.arg0);
+				OperandLocation value = getLocation(instr.arg1);
+				genStore(addr, value, argType);
+				break;
+
+			case o_load:
+				OperandLocation value = getLocation(instr.result);
+				OperandLocation addr = getLocation(instr.arg0);
+				genLoad(value, addr, argType);
+				break;
+
+			//case o_not:
+			//	Register reg0;
+			//	gen.not(reg0, argType);
+			//	//writefln("not");
+			//	break;
+
+			default:
+				context.internal_error("Compilation of `%s` is not implemented. In BB `%s`",
+					instr.op, block.name);
+				break;
+		}
+	}
+}
+*/
 //          ####     ###    #####    #######    ####   #######  #     #
 //         #    #   #   #   #    #   #         #    #  #        ##    #
 //        #        #     #  #     #  #        #        #        # #   #
@@ -7172,6 +7611,7 @@ struct CodeGen_x86_64
 	mixin unaryInstr_RM!("neg", [0xF6,0xF7], 3);
 	mixin unaryInstr_RM!("mul", [0xF6,0xF7], 4);
 	mixin unaryInstr_RM!("div", [0xF6,0xF7], 6);
+	mixin unaryInstr_RM!("idiv", [0xF6,0xF7], 7);
 	mixin unaryInstr_RM!("not", [0xF6,0xF7], 2);
 
 	void nop() { encoder.putInstrNullary(OP1(0x90)); }
@@ -7378,7 +7818,7 @@ int calcScale(Num)(Num val)
 	import std.math: abs, floor, ceil, log10;
 	static int signum(T)(const T x) nothrow
 	{
-	    return (x > 0) - (x < 0);
+		return (x > 0) - (x < 0);
 	}
 
 	auto lg = log10(abs(val));
