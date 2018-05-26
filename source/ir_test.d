@@ -27,7 +27,7 @@ void example1()
 	// 3: a <- c + 23;
 	// 4: c <- a + d;
 
-	// This come from AST
+	// This comes from AST
 	Var var_a = Var(VarId(0), IrValueType.i32); // a
 	Var var_b = Var(VarId(1), IrValueType.i32); // b
 	Var var_c = Var(VarId(2), IrValueType.i32); // c

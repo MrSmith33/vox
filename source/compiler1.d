@@ -12,6 +12,7 @@ import std.typecons : Flag, Yes, No;
 import std.stdio : writeln, write, writef, writefln, stdout;
 import std.format : formattedWrite, FormatSpec;
 import std.range : repeat;
+import std.range : chain;
 import std.bitmanip : bitfields;
 import std.algorithm : min, max, sort, swap;
 
@@ -85,6 +86,13 @@ struct Test
 	string funcName;
 	alias Tester = void function(void* funcPtr);
 	void function(void* funcPtr) tester;
+	ExternalSymbol[] externalSymbols;
+}
+
+struct ExternalSymbol
+{
+	string name;
+	void* ptr;
 }
 
 string input1 = q{
@@ -379,25 +387,31 @@ alias Func15 = extern(C) int function(int par);
 extern(C) int test15_external_func(int par1, int par2, int par3) {
 	return par1 + par2 + par3;
 }
-void tester15(Func15 fun) {
-	int result = fun(10);
-	writefln("test() -> %s", result);
-	assert(result == 10);
+void tester15(Func15 funcPtr) {
+	int result = funcPtr(10);
+	writefln("fun(10) -> %s", result);
+	assert(result == 40);
 }
-auto test15 = Test("Test 15", input15, "test", cast(Test.Tester)&tester15);
-
+auto test15 = Test("Test 15", input15, "test", cast(Test.Tester)&tester15,
+	[ExternalSymbol("external", cast(void*)&test15_external_func)]);
 
 
 void test()
 {
 	Test curTest = test15;
 	Driver driver;
-	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
+
+	// Try to allocate code buffer closer to host code pages,
+	// so that 32-bit offset can be used for calls
+	size_t thisAddr = cast(size_t)&test;
+	size_t step = 0x10_000_000;
+	size_t aligned = alignValue(thisAddr, step) - step*4;
+	ubyte[] codeBuffer = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
 
 	try
 	{
 		driver.initPasses();
-		ModuleDeclNode* mod = driver.compileModule(curTest.source, codeBuffer);
+		ModuleDeclNode* mod = driver.compileModule(curTest.source, codeBuffer, curTest.externalSymbols);
 		if (mod is null) return;
 
 		version(print)
@@ -418,10 +432,10 @@ void test()
 			printHex(mod.irModule.code, 16);
 		}
 
-		auto funDecl = mod.findFunction(curTest.funcName, &driver.context);
-		if (funDecl != null && funDecl.irData.funcPtr != null)
+		FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
+		if (funDecl != null && funDecl.funcPtr != null)
 		{
-			curTest.tester(funDecl.irData.funcPtr);
+			curTest.tester(funDecl.funcPtr);
 		}
 	}
 	catch(CompilationException e) {
@@ -460,7 +474,7 @@ void bench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(input, codeBuffer);
+		mod = driver.compileModule(input, codeBuffer, null);
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);
@@ -573,12 +587,14 @@ struct Driver
 		// Stack layout
 		passes ~= CompilePass("Stack layout", &pass_stack_layout);
 		// LIR -> machine code
-		//passes ~= CompilePass("Code gen", &pass_code_gen);
+		passes ~= CompilePass("Code gen", &pass_code_gen);
 	}
 
-	ModuleDeclNode* compileModule(string fileData, ubyte[] codeBuffer)
+	ModuleDeclNode* compileModule(string fileData, ubyte[] codeBuffer, ExternalSymbol[] externalSymbols)
 	{
 		context = CompilationContext(fileData, codeBuffer);
+		foreach (ref extSym; externalSymbols)
+			context.externalSymbols[context.idMap.getOrReg(extSym.name)] = extSym;
 
 		try foreach (ref pass; passes)
 		{
@@ -640,19 +656,23 @@ int sign(int number)
 	return result;
 }
 
-// Parsing expressions - http://effbot.org/zone/simple-top-down-parsing.htm
-
+enum IceBehavior : ubyte {
+	error,
+	breakpoint
+}
 struct CompilationContext
 {
 	string input;
 	ubyte[] codeBuffer;
+	ExternalSymbol[Identifier] externalSymbols;
 	ModuleDeclNode* mod;
+	MachineInfo* machineInfo = &mach_info_x86_64;
 	ScopeStack scopeStack;
 
 	IdentifierMap idMap;
 	bool hasErrors;
 	TextSink sink;
-	bool crashOnICE = true;
+	IceBehavior iceBehavior = IceBehavior.error;
 	bool buildDebug = false;
 
 	//alias idString = idMap.get;
@@ -696,54 +716,59 @@ struct CompilationContext
 		throw new CompilationException();
 	}
 
-	void assertf(Args...)(bool cond, string fmt, lazy Args args, string file = __FILE__, int line = __LINE__)
+	void assertf(Args...)(bool cond, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
 		sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
 		sink.putfln(fmt, args);
 		hasErrors = true;
-		tryCrashOnICE;
+		handleICE;
 		throw new CompilationException(true);
 	}
 
-	void assertf(Args...)(bool cond, SourceLocation loc, string fmt, lazy Args args, string file = __FILE__, int line = __LINE__)
+	void assertf(Args...)(bool cond, SourceLocation loc, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
 		sink.putf("%s(%s): file(%s, %s): ICE: ", file, line, loc.line+1, loc.col+1);
 		sink.putfln(fmt, args);
 		hasErrors = true;
-		tryCrashOnICE;
+		handleICE;
 		throw new CompilationException(true);
 	}
 
-	void unreachable() {
-		internal_error("Unreachable");
+	void unreachable(string file = __MODULE__, int line = __LINE__) {
+		internal_error_impl("Unreachable", file, line);
 	}
 
-	void internal_error(Args...)(SourceLocation loc, string format, Args args)
+	void internal_error(Args...)(SourceLocation loc, string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
-		sink.putf("file(%s, %s): ICE: ", loc.line+1, loc.col+1);
+		sink.putf("source(%s, %s): ", loc.line+1, loc.col+1);
+		internal_error_impl(format, file, line, args);
+	}
+
+	void internal_error(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
+	{
+		internal_error_impl(format, file, line, args);
+	}
+
+	private void internal_error_impl(Args...)(string format, string file, int line, Args args)
+	{
+		sink.putf("ICE(%s:%s): ", file, line);
 		sink.putfln(format, args);
 		hasErrors = true;
-		tryCrashOnICE;
+		handleICE;
 		throw new CompilationException(true);
 	}
 
-	void internal_error(Args...)(string format, Args args)
-	{
-		sink.put("ICE: ");
-		sink.putfln(format, args);
-		hasErrors = true;
-		tryCrashOnICE;
-		throw new CompilationException(true);
-	}
-
-	private void tryCrashOnICE() {
-		if (crashOnICE)
+	private void handleICE() {
+		final switch(iceBehavior)
 		{
-			writeln(sink.text);
-			stdout.flush;
-			asm { db 0xcc; } // breakpoint
+			case IceBehavior.error: assert(false);
+			case IceBehavior.breakpoint:
+				writeln(sink.text);
+				stdout.flush;
+				asm { db 0xcc; } // breakpoint
+				break;
 		}
 	}
 
@@ -1857,6 +1882,8 @@ struct FunctionDeclNode {
 	BlockStmtNode* block_stmt; // null if external
 	Scope* _scope;
 	IrFunction irData;
+	/// Position in buffer or in memory
+	void* funcPtr;
 }
 
 enum VariableFlags : ubyte {
@@ -3479,7 +3506,19 @@ struct BinIrGenerationVisitor {
 	}
 	void visit(FunctionDeclNode* f)
 	{
-		if (f.block_stmt is null) return;
+		if (f.block_stmt is null)
+		{
+			ExternalSymbol* sym = f.id in context.externalSymbols;
+			if (sym is null)
+			{
+				context.error(f.loc,
+					"Unresolved external function %s", f.strId(context));
+				return;
+			}
+			f.funcPtr = sym.ptr;
+			// TODO check that parameters match
+			return;
+		}
 
 		// create new function
 		f.irData = IrFunction(f, &win64_call_conv, f.returnType.irType(context));
@@ -3792,6 +3831,7 @@ struct BinIrGenerationVisitor {
 		{
 			auto instr = IrInstruction(IrOpcode.o_call_arg);
 			instr._args[0] = arg.irRef;
+			instr.type = arg.type.irType(context);
 			instr.argIndex = i;
 			auto irRef = curFunc.put(instr);
 		}
@@ -3909,9 +3949,6 @@ struct IrFunction
 
 	/// Function return type. Only valid if function has return value. Check AST node.
 	IrValueType returnType;
-
-	/// Position in buffer or in memory
-	void* funcPtr;
 
 	/// The first Basic Block of the function
 	/// Also the first node in the linked list of Basic Blocks
@@ -4116,21 +4153,16 @@ struct IrFunction
 	}
 
 	/// Set hint for register allocator
-	void setStorageHint(IrOperandId opdId, StorageHint storageHint) {
-		operands[opdId].storageHint = storageHint;
-	}
-
-	/// ditto
 	void setStorageHint(IrRef irRef, StorageHint storageHint) {
 		final switch (irRef.kind) {
 			case IrValueKind.con: break;
 			case IrValueKind.instr:
 				IrOperandId opdId = instructions[irRef.index].result;
-				setStorageHint(opdId, storageHint);
+				liveIntervals.setStorageHint(opdId, storageHint);
 				break;
 			case IrValueKind.phi:
 				auto phi = &phis[irRef.index];
-				setStorageHint(phi.result, storageHint);
+				liveIntervals.setStorageHint(phi.result, storageHint);
 				foreach (IrPhiArg arg; phi.args)
 					setStorageHint(arg.value, storageHint);
 				break;
@@ -4138,13 +4170,22 @@ struct IrFunction
 	}
 
 	// can return null (for constants)
-	private IrOperandId getOperand(IrRef irRef)
+	IrOperandId getOperand(IrRef irRef)
 	{
 		final switch (irRef.kind)
 		{
 			case IrValueKind.instr: return instructions[irRef.index].result;
 			case IrValueKind.con: return IrOperandId();
 			case IrValueKind.phi: return phis[irRef.index].result;
+		}
+	}
+
+	uint linearPosition(IrRef irRef) {
+		final switch (irRef.kind)
+		{
+			case IrValueKind.con: assert(false);
+			case IrValueKind.instr: return irRef.index;
+			case IrValueKind.phi: return cast(uint)(phis[irRef.index].block.firstInstr);
 		}
 	}
 
@@ -4290,7 +4331,6 @@ struct IrFunction
 	{
 		for (NodeIndex cur = firstUser; !cur.isNull; cur = opdUses.nodes[cur].nextIndex)
 		{
-			auto node = opdUses.nodes[cur];
 			IrRef userRef = opdUses.nodes[cur].data;
 			final switch (userRef.kind) {
 				case IrValueKind.con: assert(false);
@@ -4576,7 +4616,6 @@ struct IrOperand
 {
 	// instruction or phi index
 	IrRef irRef;
-	StorageHint storageHint;
 	/// Indicates number of uses. There can be multiple uses per instruction.
 	/// 0 means unused, 1 means temporary, or more
 	ushort numUses;
@@ -4931,12 +4970,12 @@ void pass_live_intervals(ref CompilationContext ctx)
 		liveIn = BitArray(liveInData, numBucketsTotal * size_t.sizeof * 8);
 	}
 
-	foreach (ref fun; ctx.mod.irModule.functions)
+	foreach (IrFunction* fun; ctx.mod.irModule.functions)
 	{
 		size_t numValues = fun.operands.length;
 		size_t numBucketsPerBlock = divCeil(numValues, size_t.sizeof * 8);
 		allocSets(numBucketsPerBlock, fun.numBasicBlocks);
-		fun.liveIntervals.initIntervals(numValues, numValues);
+		fun.liveIntervals.initIntervals(numValues, numValues, ctx);
 
 		void liveAdd(IrOperandId opdId)
 		{
@@ -4985,7 +5024,8 @@ void pass_live_intervals(ref CompilationContext ctx)
 			foreach (size_t index; live.bitsSet)
 			{
 				// intervals[opd].addRange(block.from, block.to)
-				fun.liveIntervals.addRange(IrOperandId(cast(uint)index), cast(int)block.firstInstr, cast(int)block.lastInstr);
+				IntervalId intId = fun.liveIntervals.intervalId(IrOperandId(cast(uint)index));
+				fun.liveIntervals.addRange(intId, cast(int)block.firstInstr, cast(int)block.lastInstr);
 			}
 
 			void eachArg(IrRef opd, size_t opId) {
@@ -4993,7 +5033,8 @@ void pass_live_intervals(ref CompilationContext ctx)
 				if (opdId.isNull) return;
 
 				// intervals[opd].addRange(block.from, op.id)
-				fun.liveIntervals.addRange(opdId, cast(int)block.firstInstr, cast(int)opId);
+				IntervalId intId = fun.liveIntervals.intervalId(opdId);
+				fun.liveIntervals.addRange(intId, cast(int)block.firstInstr, cast(int)opId);
 
 				// live.add(opd)
 				liveAdd(opdId);
@@ -5024,6 +5065,20 @@ void pass_live_intervals(ref CompilationContext ctx)
 					// live.add(opd)
 					eachArg(opd, index);
 				}
+
+				switch(instr.op) with(IrOpcode)
+				{
+					case o_call:
+						foreach (reg; fun.callingConvention.volatileRegs)
+						{
+							IntervalId intId = fun.liveIntervals.intervalId(reg);
+							fun.liveIntervals.addRange(intId, cast(int)index, cast(int)index);
+						}
+						break;
+
+					default:
+						break;
+				}
 			}
 
 			// for each phi function phi of b do
@@ -5051,6 +5106,26 @@ struct FunctionLiveIntervals
 	// invariant: all ranges of one interval are sorted by `from` and do not intersect
 	Buffer!LiveRange ranges;
 	LiveInterval[] intervals;
+	size_t numFixedIntervals;
+
+	LiveInterval[] virtualIntervals() { return intervals[numFixedIntervals..$]; }
+	LiveInterval[] physicalIntervals() { return intervals[0..numFixedIntervals]; }
+
+	void initIntervals(size_t numIntervals, size_t reserveRanges, ref CompilationContext ctx) {
+		numFixedIntervals = ctx.machineInfo.numIntegerRegisters;
+		intervals.length = numFixedIntervals + numIntervals;
+		foreach (i, ref it; physicalIntervals)
+		{
+			it.reg = ctx.machineInfo.regs[i];
+			it.isFixed = true;
+		}
+		ranges.reserve(reserveRanges);
+	}
+
+	/// Set hint for register allocator
+	void setStorageHint(IrOperandId opdId, StorageHint storageHint) {
+		this[opdId].storageHint = storageHint;
+	}
 
 	bool intervalCoversPosition(NodeIndex cur, int position)
 	{
@@ -5059,20 +5134,43 @@ struct FunctionLiveIntervals
 			auto r = &ranges[cur];
 			if (position < r.from)
 				return false;
-			else if (position > r.to)
+			else if (position >= r.to)
 				cur = r.nextIndex;
-			else // from >= position <= to
+			else // from <= position < to
 				return true;
 		}
 		return false;
 	}
 
-	ref LiveInterval getInterval(NodeIndex rangeId)
+	int firstIntersection(NodeIndex a, NodeIndex b)
 	{
-		auto itId = ranges[rangeId].intervalId;
-		return intervals[itId];
+		while (true)
+		{
+			auto ra = &ranges[a];
+			auto rb = &ranges[b];
+			if (ra.intersectsWith(*rb)) {
+				return max(ra.from, rb.from);
+			}
+			else if (ra.from < rb.from) {
+				a = ra.nextIndex;
+				if (a.isNull) return int.max;
+			}
+			else { // rb.from > ra.from
+				b = rb.nextIndex;
+				if (b.isNull) return int.max;
+			}
+		}
 	}
 
+	ref LiveInterval opIndex(IntervalId intId) { return intervals[intId]; }
+	ref LiveInterval opIndex(IrOperandId opdId) { return intervals[numFixedIntervals + opdId]; }
+	ref LiveInterval opIndex(NodeIndex rangeId) { return intervals[ranges[rangeId].intervalId]; }
+
+	IntervalId intervalId(NodeIndex rangeId) { return ranges[rangeId].intervalId; }
+	IntervalId intervalId(IrOperandId opdId) { return IntervalId(numFixedIntervals + opdId); }
+	IntervalId intervalId(RegisterRef regRef) { return IntervalId(regRef.index); }
+	IrOperandId operandId(NodeIndex rangeId) { return operandId(ranges[rangeId].intervalId); }
+	IrOperandId operandId(IntervalId intId) { assert(intId >= numFixedIntervals); return IrOperandId(intId- numFixedIntervals); }
 	// returns rangeId pointing to range covering position or one to the right of pos.
 	// returns -1 if no ranges left after pos.
 	NodeIndex advanceRangeId(NodeIndex cur, int position)
@@ -5082,23 +5180,18 @@ struct FunctionLiveIntervals
 			auto r = &ranges[cur];
 			if (position < r.from)
 				return cur;
-			else if (position > r.to)
+			else if (position >= r.to)
 				cur = r.nextIndex;
-			else // from >= position <= to
+			else // from <= position < to
 				return cur;
 		}
 		return cur;
 	}
 
-	void initIntervals(size_t numIntervals, size_t reserveRanges) {
-		intervals.length = numIntervals;
-		ranges.reserve(reserveRanges);
-	}
-
 	// bounds are from block start to block end of the same block
 	// from is always == to block start
 	// checks for interval being null
-	void addRange(IrOperandId interval, int from, int to)
+	void addRange(IntervalId interval, int from, int to)
 	{
 		if (interval.isNull) return;
 		LiveRange newRange = LiveRange(from, to, interval);
@@ -5146,7 +5239,8 @@ struct FunctionLiveIntervals
 	}
 
 	// sets the definition position
-	void addDefinition(IrOperandId interval, IrValueType type, int from) {
+	void addDefinition(IrOperandId opdId, IrValueType type, int from) {
+		IntervalId interval = intervalId(opdId);
 		NodeIndex cur = intervals[interval].first;
 		intervals[interval].regClass = typeToRegClass(type);
 		if (!cur.isNull) {
@@ -5171,7 +5265,7 @@ struct FunctionLiveIntervals
 		ranges.put(range);
 	}
 
-	void appendRange(IrOperandId interval, LiveRange range)
+	void appendRange(IntervalId interval, LiveRange range)
 	{
 		NodeIndex last = intervals[interval].last;
 		NodeIndex index = NodeIndex(ranges.length);
@@ -5233,27 +5327,32 @@ struct FunctionLiveIntervals
 	}
 
 	void dump(ref TextSink sink) {
-		sink.putln("intervals:");
-		//writeln(ranges.data);
-		foreach (i, it; intervals) {
-			NodeIndex cur = it.first;
-			if (cur.isNull) {
-				sink.putfln("% 3s: null", i);
-				continue;
-			}
-			if (it.reg.isNull)
-				sink.putf("% 3s [no reg]:", i);
-			else
-				sink.putf("% 3s [%s %2s]:", i, it.reg.regClass, it.reg);
+		void dumpSub(LiveInterval[] intervals)
+		{
+			foreach (i, it; intervals) {
+				NodeIndex cur = it.first;
+				if (cur.isNull) {
+					sink.putfln("% 3s: null", i);
+					continue;
+				}
+				if (it.reg.isNull)
+					sink.putf("% 3s [no reg]:", i);
+				else
+					sink.putf("% 3s [%s %2s]:", i, it.reg.regClass, it.reg);
 
-			while (!cur.isNull)
-			{
-				auto r = &ranges[cur];
-				sink.putf(" (%s %s)", r.from, r.to);
-				cur = r.nextIndex;
+				while (!cur.isNull)
+				{
+					auto r = &ranges[cur];
+					sink.putf(" [%s; %s)", r.from, r.to);
+					cur = r.nextIndex;
+				}
+				sink.putln;
 			}
-			sink.putln;
 		}
+		sink.putln("fixed intervals:");
+		dumpSub(intervals[0..numFixedIntervals]);
+		sink.putln("virtual intervals:");
+		dumpSub(intervals[numFixedIntervals..$]);
 	}
 }
 
@@ -5264,20 +5363,31 @@ struct LiveInterval
 	NodeIndex last;
 	RegisterRef reg;
 	RegClass regClass;
+	bool isFixed;
+	StorageHint storageHint;
 }
 
-///
+struct IntervalId
+{
+	this(size_t idx) { index = cast(uint)idx; }
+	uint index = uint.max;
+	alias index this;
+	enum NULL = IntervalId();
+	bool isNull() { return index == uint.max; }
+}
+
+/// [from; to)
 struct LiveRange
 {
 	int from;
 	int to;
-	IrOperandId intervalId;
+	IntervalId intervalId;
 	NodeIndex prevIndex = NodeIndex.NULL;
 	NodeIndex nextIndex = NodeIndex.NULL;
 	bool isLast() { return nextIndex == NodeIndex.NULL; }
 	bool contains(int pos) {
 		if (pos < from) return false;
-		if (pos > to) return false;
+		if (pos >= to) return false;
 		return true;
 	}
 	void merge(LiveRange other) {
@@ -5287,6 +5397,12 @@ struct LiveRange
 	bool canBeMergedWith(const LiveRange other) {
 		if (to < other.from) return false;
 		if (from > other.to) return false;
+		return true;
+	}
+
+	bool intersectsWith(const LiveRange other) {
+		if (to <= other.from) return false;
+		if (from >= other.to) return false;
 		return true;
 	}
 }
@@ -5325,6 +5441,7 @@ struct LinearScan
 	Buffer!NodeIndex handled;
 	PhysRegisters physRegs;
 	CompilationContext* ctx;
+	FunctionLiveIntervals* live;
 
 	void setup(CompilationContext* ctx)
 	{
@@ -5383,7 +5500,8 @@ struct LinearScan
 	{
 		import std.container.binaryheap;
 
-		FunctionLiveIntervals* live = &fun.liveIntervals;
+		live = &fun.liveIntervals;
+		scope(exit) live = null;
 
 		int cmp(NodeIndex a, NodeIndex b) {
 			return live.ranges[a].from > live.ranges[b].from;
@@ -5398,12 +5516,16 @@ struct LinearScan
 		handled.clear;
 
 		unhandled.acquire(null);
-		foreach (it; live.intervals)
+		foreach (it; live.virtualIntervals)
 			if (!it.first.isNull)
 				unhandled.insert(it.first);
 		//writefln("unhandled %s", unhandled);
 
-		// while unhandled != { } do
+		foreach (it; live.physicalIntervals)
+			if (!it.first.isNull)
+				inactive.put(it.first);
+
+		// while unhandled != { } do
 		while (!unhandled.empty)
 		{
 			// current = pick and remove first interval from unhandled
@@ -5432,7 +5554,7 @@ struct LinearScan
 					active.removeInPlace(index);
 				}
 				// else if it does not cover position then
-				else if(!fun.liveIntervals.intervalCoversPosition(rangeId, position))
+				else if(!live.intervalCoversPosition(rangeId, position))
 				{
 					// move it from active to inactive
 					//writefln("%s isLast %s less %s", rangeId, range.isLast, range.to < position);
@@ -5460,7 +5582,7 @@ struct LinearScan
 					inactive.removeInPlace(index);
 				}
 				// 	else if it covers position then
-				else if(fun.liveIntervals.intervalCoversPosition(rangeId, position))
+				else if(live.intervalCoversPosition(rangeId, position))
 				{
 					// move it from inactive to active
 					//writefln("move %s inactive -> active", live.ranges[rangeId].intervalId);
@@ -5476,10 +5598,10 @@ struct LinearScan
 
 			// if allocation failed then AllocateBlockedReg
 			if (!success)
-				allocateBlockedReg(fun, currentId);
+				allocateBlockedReg(fun, currentId, position);
 
 			// if current has a register assigned then add current to active
-			if (!live.getInterval(currentId).reg.isNull)
+			if (!(*live)[currentId].reg.isNull)
 			{
 				//writefln("move current %s -> active", live.ranges[currentId].intervalId);
 				active.put(currentId);
@@ -5515,15 +5637,14 @@ struct LinearScan
 		// set freeUntilPos of all physical registers to maxInt
 		physRegs.resetFreeUntilPos;
 
-		IrOperandId intervalId = fun.liveIntervals.ranges[currentId].intervalId;
-		LiveInterval* currentIt = &fun.liveIntervals.intervals[intervalId];
-		int currentEnd = fun.liveIntervals.ranges[currentIt.last].to;
+		LiveInterval* currentIt = &fun.liveIntervals[currentId];
+		int currentEnd = live.ranges[currentIt.last].to;
 
 		// for each interval it in active do
 		//     freeUntilPos[it.reg] = 0
 		foreach (rangeId; active.data)
 		{
-			auto it = fun.liveIntervals.getInterval(rangeId);
+			auto it = fun.liveIntervals[rangeId];
 			assert(!it.reg.isNull);
 			physRegs[it.reg].freeUntilPos = 0;
 		}
@@ -5535,7 +5656,7 @@ struct LinearScan
 		RegisterRef reg;
 
 		// reg stored in hint
-		RegisterRef hintReg = fun.operands[intervalId].storageHint.getRegHint;
+		RegisterRef hintReg = currentIt.storageHint.getRegHint;
 
 		PhysRegister[] candidates = physRegs.getClassRegs(currentIt.regClass);
 		foreach (i, ref PhysRegister r; candidates)
@@ -5571,6 +5692,22 @@ struct LinearScan
 		}
 	}
 
+	int nextUseAfter(ref IrFunction fun, IrOperandId opdId, int after)
+	{
+		ListInfo usesList = fun.operands[opdId].usesList;
+		int closest = int.max;
+		for (NodeIndex cur = usesList.first; !cur.isNull; cur = fun.opdUses.nodes[cur].nextIndex)
+		{
+			IrRef userRef = fun.opdUses.nodes[cur].data;
+			int pos = fun.linearPosition(userRef);
+			if (pos > after && pos < closest)
+			{
+				closest = pos;
+			}
+		}
+		return closest;
+	}
+
 	/*
 	ALLOCATEBLOCKEDREG
 		set nextUsePos of all physical registers to maxInt
@@ -5597,8 +5734,62 @@ struct LinearScan
 		if current intersects with the fixed interval for reg then
 			split current before this intersection
 	*/
-	void allocateBlockedReg(ref IrFunction fun, NodeIndex currentRangeId)
+	void allocateBlockedReg(ref IrFunction fun, NodeIndex currentRangeId, int currentStart)
 	{
+		writefln("allocateBlockedReg of range %s, start %s", currentRangeId, currentStart);
+		// set nextUsePos of all physical registers to maxInt
+		physRegs.resetNextUsePos();
+
+		// for each interval it in active do
+		//     nextUsePos[it.reg] = next use of it after start of current
+		foreach (rangeId; active.data)
+		{
+			LiveInterval* it = &fun.liveIntervals[rangeId];
+			assert(!it.reg.isNull);
+			if (it.isFixed)
+			{
+				physRegs[it.reg].nextUsePos = currentStart;
+			}
+			else
+			{
+				IrOperandId opdId = live.operandId(rangeId);
+				physRegs[it.reg].nextUsePos = nextUseAfter(fun, opdId, currentStart);
+			}
+			writefln("nextUsePos of %s is %s", rangeId, physRegs[it.reg].nextUsePos);
+		}
+
+		// for each interval it in inactive intersecting with current do
+		//     nextUsePos[it.reg] = next use of it after start of current
+		foreach (rangeId; inactive.data)
+		{
+			LiveInterval* it = &fun.liveIntervals[rangeId];
+			assert(!it.reg.isNull);
+			if (it.isFixed)
+			{
+				int fistrIntersection = live.firstIntersection(currentRangeId, rangeId);
+				physRegs[it.reg].nextUsePos = min(fistrIntersection, physRegs[it.reg].nextUsePos);
+			}
+			else
+			{
+				IrOperandId opdId = live.operandId(rangeId);
+				physRegs[it.reg].nextUsePos = nextUseAfter(fun, opdId, currentStart);
+			}
+			writefln("nextUsePos of %s is %s", rangeId, physRegs[it.reg].nextUsePos);
+		}
+
+		// reg = register with highest nextUsePos
+		LiveInterval* currentIt = &fun.liveIntervals[currentRangeId];
+		PhysRegister[] regs = physRegs.getClassRegs(currentIt.regClass);
+		int maxUsePos = 0;
+		RegisterRef reg;
+		foreach (i, ref PhysRegister r; regs)
+		{
+			if (r.nextUsePos > maxUsePos) {
+				maxUsePos = r.nextUsePos;
+				reg = r.regRef;
+			}
+		}
+
 		ctx.unreachable;
 		assert(false);
 	}
@@ -5643,6 +5834,7 @@ struct PhysRegister
 {
 	RegisterRef regRef;
 	int freeUntilPos;
+	int nextUsePos;
 }
 
 struct PhysRegisters
@@ -5672,8 +5864,12 @@ struct PhysRegisters
 
 	void resetFreeUntilPos()
 	{
-		foreach (ref reg; gpr) reg.freeUntilPos = int.max;
-		foreach (ref reg; flags) reg.freeUntilPos = int.max;
+		foreach (ref reg; chain(gpr, flags)) reg.freeUntilPos = int.max;
+	}
+
+	void resetNextUsePos()
+	{
+		foreach (ref reg; chain(gpr, flags)) reg.nextUsePos = int.max;
 	}
 
 	PhysRegister[] getClassRegs(RegClass cls)
@@ -5923,11 +6119,27 @@ struct StackSlotId
 	bool isNull() { return id == uint.max; }
 }
 
+struct MachineInfo
+{
+	size_t numIntegerRegisters() { return regs.length; }
+	RegisterRef[] regs;
+}
+
+__gshared MachineInfo mach_info_x86_64 = MachineInfo(
+	[RegisterRef(0, Register.AX, RegClass.gpr),
+	RegisterRef(1, Register.CX, RegClass.gpr),
+	RegisterRef(2, Register.DX, RegClass.gpr),
+	RegisterRef(3, Register.R8, RegClass.gpr),
+	RegisterRef(4, Register.R9, RegClass.gpr),
+	RegisterRef(5, Register.R10, RegClass.gpr),
+	RegisterRef(6, Register.R11, RegClass.gpr)]);
+
 /// Info needed for calling convention implementation
 struct CallConv
 {
 	RegisterRef[] paramsInRegs;
 	RegisterRef returnReg;
+	RegisterRef[] volatileRegs;
 
 	bool isParamOnStack(size_t parIndex) {
 		return parIndex >= paramsInRegs.length;
@@ -5947,7 +6159,7 @@ struct CallConv
 			hint.stackSlot = StackSlotId(cast(uint)(parIndex - paramsInRegs.length));
 		}
 		hint.isParameter = true;
-		fun.setStorageHint(instr.result, hint);
+		fun.liveIntervals.setStorageHint(instr.result, hint);
 	}
 	void setReturnHint(ref IrFunction fun, IrRef irRef) {
 		StorageHint hint;
@@ -5962,7 +6174,15 @@ __gshared CallConv win64_call_conv = CallConv(
 	RegisterRef(2, Register.DX, RegClass.gpr),
 	RegisterRef(3, Register.R8, RegClass.gpr),
 	RegisterRef(4, Register.R9, RegClass.gpr)],
-	RegisterRef(0, Register.AX, RegClass.gpr)
+	RegisterRef(0, Register.AX, RegClass.gpr),  // return reg
+
+	[RegisterRef(0, Register.AX, RegClass.gpr), // volatile regs
+	RegisterRef(1, Register.CX, RegClass.gpr),
+	RegisterRef(2, Register.DX, RegClass.gpr),
+	RegisterRef(3, Register.R8, RegClass.gpr),
+	RegisterRef(4, Register.R9, RegClass.gpr),
+	RegisterRef(5, Register.R10, RegClass.gpr),
+	RegisterRef(6, Register.R11, RegClass.gpr)]
 );
 /*
 /// State of single machine register
@@ -6408,7 +6628,7 @@ struct IR_to_LIR
 /// Generates amd64 machine code from IR
 void pass_code_gen(ref CompilationContext ctx) {
 	IrToAmd64 gen;
-	gen.context = &ctx;
+	gen.ctx = &ctx;
 	ctx.assertf(ctx.codeBuffer.length > 0, "Code buffer is empty");
 	ctx.mod.irModule.codeBuffer = ctx.codeBuffer;
 	gen.visit(&ctx.mod.irModule);
@@ -6416,7 +6636,7 @@ void pass_code_gen(ref CompilationContext ctx) {
 
 struct IrToAmd64
 {
-	CompilationContext* context;
+	CompilationContext* ctx;
 
 	enum STACK_ITEM_SIZE = 8; // x86_64
 	enum USE_FRAME_POINTER = false;
@@ -6427,7 +6647,7 @@ struct IrToAmd64
 
 	static struct CallFixup {
 		Fixup call_fixup;
-		IrFunction* callee;
+		FunctionDeclNode* callee;
 	}
 
 	private Buffer!CallFixup callFixups;
@@ -6437,9 +6657,11 @@ struct IrToAmd64
 	private int numVars; // numLocals + numParams
 	private int reservedBytes;
 
+	private size_t numArgInstrs = 0;
+
 	void visit(IrModule* m) {
-		context.assertf(m !is null, "Module IR is null");
-		context.assertf(m.codeBuffer.length > 0, "No code buffer assigned");
+		ctx.assertf(m !is null, "Module IR is null");
+		ctx.assertf(m.codeBuffer.length > 0, "No code buffer assigned");
 
 		gen.encoder.setBuffer(m.codeBuffer);
 
@@ -6452,7 +6674,7 @@ struct IrToAmd64
 	void visit(IrFunction* func)
 	{
 		curFunc = func;
-		curFunc.funcPtr = gen.pc;
+		curFunc.node.funcPtr = gen.pc;
 		compileFuncProlog();
 		compileFuncBody();
 		fixJumpsAndReturns(gen.pc);
@@ -6462,8 +6684,8 @@ struct IrToAmd64
 	void fixCalls()
 	{
 		foreach (fixup; callFixups.data) {
+			//writefln("fix call to %s", cast(void*)fixup.callee.funcPtr);
 			genCall(fixup.call_fixup, fixup.callee);
-			writefln("fix call to %s", cast(void*)fixup.callee.funcPtr);
 		}
 		callFixups.clear();
 	}
@@ -6476,7 +6698,7 @@ struct IrToAmd64
 
 		// Copy parameters from registers to shadow space
 		// parameter 5 RSP + 40
-		if (context.buildDebug)
+		if (ctx.buildDebug)
 		{
 			if (numParams > 3) gen.movq(memAddrBaseDisp8(Register.SP, 32), Register.R9); // save fourth parameter
 			if (numParams > 2) gen.movq(memAddrBaseDisp8(Register.SP, 24), Register.R8); // save third parameter
@@ -6500,60 +6722,6 @@ struct IrToAmd64
 		}
 	}
 
-	/*
-	Register loadValue(IrRef valueRef, Register hint)
-	{
-		assert(valueRef.isDefined);
-		IrValue* value = &curFunc.deref(valueRef);
-		if (value.reg.isDefined) return cast(Register)value.reg.nativeReg;
-
-		RegisterRef regRef = machineState.gprRegs.tryAlloc(valueRef);
-		if (!regRef.isDefined)
-		{
-			spillReg(hint);
-			regRef.index = hint;
-			//assert(false);
-		}
-		Register reg0 = cast(Register)(regRef.nativeReg);
-		writefln("load %s:%s into %s", valueRef.kind, valueRef.index, reg0);
-
-		final switch(valueRef.type)
-		{
-			case IrValueType.i1: break;
-			case IrValueType.i32:
-				if (valueRef.isVar) gen.movd(reg0, localVarMemAddress(valueRef));
-				else gen.movd(reg0, Imm32(cast(uint)curFunc.constantData[valueRef.index].value));
-				break;
-			case IrValueType.i64:
-				if (valueRef.isVar) gen.movq(reg0, localVarMemAddress(valueRef));
-				else gen.movq(reg0, Imm64(curFunc.constantData[valueRef.index].value));
-				break;
-		}
-		return reg0;
-	}
-
-	void onRegAssign(Register dst, IrRef src)
-	{
-		auto regState = &machineState.gprRegs.regStates[dst];
-		regState.storedValue = src;
-	}
-
-	void storeValue(IrRef dest, Register reg)
-	{
-		if (!dest.isInstr) context.internal_error("Assignment into a constant");
-		writefln("store %s into %s:%s", reg, dest.kind, dest.index);
-		auto regState = &machineState.gprRegs.regStates[reg];
-		regState.storedValue = dest;
-		regState.isDirty = false;
-		final switch(dest.type)
-		{
-			case IrValueType.i1: break;
-			case IrValueType.i32: gen.movd(localVarMemAddress(dest), reg); break;
-			case IrValueType.i64: gen.movq(localVarMemAddress(dest), reg); break;
-		}
-	}
-	*/
-
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
 	void genMove(OperandLocation dst, OperandLocation src, ArgType argType)
 	{
@@ -6563,9 +6731,9 @@ struct IrToAmd64
 		final switch(moveType)
 		{
 			case MoveType.invalid:
-				context.internal_error("Invalid move to %s from %s",
+				ctx.internal_error("Invalid move to %s from %s",
 					dst.type, src.type);
-				context.unreachable;
+				ctx.unreachable;
 				assert(false);
 
 			case MoveType.const_to_reg:
@@ -6607,15 +6775,15 @@ struct IrToAmd64
 				break;
 
 			case MoveType.const_to_mem:
-				context.internal_error("const_to_mem is not implemented");
+				ctx.internal_error("const_to_mem is not implemented");
 				break;
 
 			case MoveType.reg_to_mem:
-				context.internal_error("reg_to_mem is not implemented");
+				ctx.internal_error("reg_to_mem is not implemented");
 				break;
 
 			case MoveType.mem_to_reg:
-				context.internal_error("mem_to_reg is not implemented");
+				ctx.internal_error("mem_to_reg is not implemented");
 				break;
 		}
 	}
@@ -6624,7 +6792,7 @@ struct IrToAmd64
 	void genLoad(OperandLocation dst, OperandLocation src, ArgType argType)
 	{
 		bool valid = dst.type == OpdLocType.physicalRegister;
-		context.assertf(valid, "Invalid load %s -> %s", src.type, dst.type);
+		ctx.assertf(valid, "Invalid load %s -> %s", src.type, dst.type);
 
 		switch(src.type)
 		{
@@ -6634,22 +6802,22 @@ struct IrToAmd64
 				//writefln("mov %s, [%s]", dstReg, srcReg);
 				gen.mov(dstReg, memAddrBase(srcReg), argType);
 
-				//context.internal_error("physicalRegister is not implemented");
+				//ctx.internal_error("physicalRegister is not implemented");
 				break;
 
 			case OpdLocType.constant:
-				context.internal_error("constant is not implemented");
+				ctx.internal_error("constant is not implemented");
 				break;
 
 			case OpdLocType.stackSlot:
 				Register dstReg = cast(Register)(dst.reg.nativeReg);
 				//writefln("mov %s, [slot(%s)]", dstReg, src.irRef.constIndex);
 				gen.mov(dstReg, localVarMemAddress(src.irRef.constIndex), argType);
-				//context.internal_error("stackSlot is not implemented");
+				//ctx.internal_error("stackSlot is not implemented");
 				break;
 
 			default:
-				context.internal_error("default is not implemented %s", src.type);
+				ctx.internal_error("default is not implemented %s", src.type);
 				break;
 		}
 	}
@@ -6657,11 +6825,11 @@ struct IrToAmd64
 	void genStore(OperandLocation dst, OperandLocation src, ArgType argType)
 	{
 		//bool valid = dst.type == OpdLocType.physicalRegister;
-		//context.assertf(valid, "Invalid load %s -> %s", src.type, dst.type);
+		//ctx.assertf(valid, "Invalid load %s -> %s", src.type, dst.type);
 
 		switch (dst.type)
 		{
-			case OpdLocType.physicalRegister:
+			case OpdLocType.physicalRegister: // store address is in register
 				switch (src.type)
 				{
 					case OpdLocType.physicalRegister:
@@ -6671,13 +6839,13 @@ struct IrToAmd64
 						gen.mov(memAddrBase(dstReg), srcReg, argType);
 						break;
 					default:
-						context.internal_error("store from %s is not implemented", src.type);
+						ctx.internal_error("store from %s is not implemented", src.type);
 						break;
 				}
 				break;
 
 			default:
-				context.internal_error("store %s <- %s is not implemented", dst.type, src.type);
+				ctx.internal_error("store %s <- %s is not implemented", dst.type, src.type);
 				break;
 		}
 	}
@@ -6690,7 +6858,7 @@ struct IrToAmd64
 		param.op = op;
 		param.argType = argType;
 
-		context.assertf(dst.type == OpdLocType.physicalRegister, "Destination must be register");
+		ctx.assertf(dst.type == OpdLocType.physicalRegister, "Destination must be register");
 		Register reg0 = cast(Register)(dst.reg.nativeReg);
 		argDst.reg = reg0;
 		param.dstKind = AsmArgKind.REG;
@@ -6712,21 +6880,21 @@ struct IrToAmd64
 				param.srcKind = AsmArgKind.IMM;
 				break;
 
-			case virtualRegister: context.unreachable; assert(false);
-			case memoryAddress: context.unreachable; assert(false);
+			case virtualRegister: ctx.unreachable; assert(false);
+			case memoryAddress: ctx.unreachable; assert(false);
 			case physicalRegister:
 				argSrc.reg = cast(Register)(src.reg.nativeReg);
 				param.srcKind = AsmArgKind.REG;
 				break;
 
-			case stackSlot: context.unreachable; assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
+			case stackSlot: ctx.unreachable; assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}
 
 	OperandLocation getLocation(IrOperandId opdId)
 	{
-		return OperandLocation(curFunc.liveIntervals.intervals[opdId].reg);
+		return OperandLocation(curFunc.liveIntervals[opdId].reg);
 	}
 
 	OperandLocation getLocation(IrRef irRef)
@@ -6741,12 +6909,13 @@ struct IrToAmd64
 	/// At the start all values are in memory/regs according to call conv
 	void compileFuncBody()
 	{
+		numArgInstrs = 0;
 		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
 		{
 			block.startPC = gen.pc;
-			foreach(ref instr; curFunc.instructions[block.firstInstr..block.lastInstr+1])
+			foreach(block_i; block.firstInstr..block.lastInstr+1)
 			{
-				compileInstr(instr, *block);
+				compileInstr(block.firstInstr+block_i, *block);
 			}
 		}
 	}
@@ -6761,9 +6930,14 @@ struct IrToAmd64
 						genMove(getLocation(phiRef), getLocation(arg.value), irTypeToArgType(phiRef.type));
 	}
 
-	void compileInstr(IrInstruction instr, ref IrBasicBlock block)
+	void compileInstr(size_t instrIndex, ref IrBasicBlock block)
 	{
+		IrInstruction instr = curFunc.instructions[instrIndex];
 		ArgType argType = irTypeToArgType(instr.type);
+
+		if (numArgInstrs > 0)
+			ctx.assertf(instr.op == IrOpcode.o_call_arg ||
+				instr.op == IrOpcode.o_call, "Malformed IR: Call args followed by %s", instr.op);
 
 		switch (instr.op) with(IrOpcode)
 		{
@@ -6783,7 +6957,7 @@ struct IrToAmd64
 			case o_block_end:
 				final switch(block.exit.type) with(IrJump.Type)
 				{
-					case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); break;
+					case none: ctx.internal_error("Compilation non-sealed basic block `%s`", block.name); break;
 					case ret1:
 						OperandLocation arg0 = getLocation(block.exit.value);
 						ArgType retType = irTypeToArgType(curFunc.returnType);
@@ -6836,7 +7010,7 @@ struct IrToAmd64
 				switch(instr.op) with(IrOpcode) {
 					case o_add: genRegular(res, arg1, AMD64OpRegular.add, argType); break;
 					case o_sub: genRegular(res, arg1, AMD64OpRegular.sub, argType); break;
-					default: context.internal_error("Unreachable");
+					default: ctx.internal_error("Unreachable");
 				}
 				break;
 
@@ -6846,9 +7020,9 @@ struct IrToAmd64
 				OperandLocation arg1 = getLocation(instr.arg1);
 				if (arg0.isConstant) swap(arg0, arg1);
 				if (!arg1.isConstant)
-					context.assertf(instr.arg0.type == instr.arg1.type,
+					ctx.assertf(instr.arg0.type == instr.arg1.type,
 						"Type mismatch on imul %s != %s", instr.arg0.type, instr.arg1.type);
-				context.assertf(arg0.type == OpdLocType.physicalRegister, "arg0 is %s != phys reg", arg0.type);
+				ctx.assertf(arg0.type == OpdLocType.physicalRegister, "arg0 is %s != phys reg", arg0.type);
 				Register regRes = cast(Register)(res.reg.nativeReg);
 				Register reg0 = cast(Register)(arg0.reg.nativeReg);
 				IrConstant con;
@@ -6861,9 +7035,9 @@ struct IrToAmd64
 								gen.imulw(regRes, reg0, Imm8(con.i8));
 							else if (con.numSignedBytes == 2)
 								gen.imulw(regRes, reg0, Imm16(con.i16));
-							else context.internal_error("Not implemented");
+							else ctx.internal_error("Not implemented");
 						}
-						else context.internal_error("Not implemented");
+						else ctx.internal_error("Not implemented");
 						break;
 
 					case ArgType.DWORD:
@@ -6872,9 +7046,9 @@ struct IrToAmd64
 								gen.imuld(regRes, reg0, Imm8(con.i8));
 							else if (con.numSignedBytes >= 2 && con.numSignedBytes <= 4)
 								gen.imuld(regRes, reg0, Imm32(con.i32));
-							else context.internal_error("Not implemented");
+							else ctx.internal_error("Not implemented");
 						}
-						else context.internal_error("Not implemented");
+						else ctx.internal_error("Not implemented");
 						break;
 
 					case ArgType.QWORD:
@@ -6883,12 +7057,12 @@ struct IrToAmd64
 								gen.imulq(regRes, reg0, Imm8(con.i8));
 							else if (con.numSignedBytes >= 2 && con.numSignedBytes <= 4)
 								gen.imulq(regRes, reg0, Imm32(con.i32));
-							else context.internal_error("Not implemented");
+							else ctx.internal_error("Not implemented");
 						}
-						else context.internal_error("Not implemented");
+						else ctx.internal_error("Not implemented");
 						break;
 
-					default: context.internal_error("Compilation of imul:%s is not implemented", argType); break;
+					default: ctx.internal_error("Compilation of imul:%s is not implemented", argType); break;
 				}
 				break;
 
@@ -6910,8 +7084,18 @@ struct IrToAmd64
 			//	//writefln("not");
 			//	break;
 
+			case o_call_arg:
+				++numArgInstrs;
+				break;
+
+			case o_call:
+				IrInstruction[] argsInstrs = curFunc.instructions[instrIndex-numArgInstrs..instrIndex];
+				compileCall(instr.callee, argsInstrs, instr);
+				numArgInstrs = 0;
+				break;
+
 			default:
-				context.internal_error("Compilation of `%s` is not implemented. In BB `%s`",
+				ctx.internal_error("Compilation of `%s` is not implemented. In BB `%s`",
 					instr.op, block.name);
 				break;
 		}
@@ -6922,7 +7106,7 @@ struct IrToAmd64
 		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
 		{
 			final switch(block.exit.type) with(IrJump.Type) {
-				case none: context.internal_error("Compilation non-sealed basic block `%s`", block.name); return;
+				case none: ctx.internal_error("Compilation non-sealed basic block `%s`", block.name); return;
 				case ret0, ret1:
 					// ignore jump in the last Basic Block
 					if (block.next is null) break;
@@ -6975,33 +7159,69 @@ struct IrToAmd64
 		return minMemAddrBaseDisp(baseReg, displacement);
 	}
 
-	void genCall(Gen)(ref Gen gen, IrFunction* callee)
+	void genPush(IrRef irRef)
 	{
-		/*
-		if (callee.native)
+		OperandLocation loc = getLocation(irRef);
+		switch (loc.type)
 		{
-			// hardcoded size of instruction (6)
-			int disp32 = cast(int)(&nativeFunctionTable[callee.index] - cast(void*)gen.pc - 6);
-			gen.call(memAddrRipDisp32(cast(uint)disp32));
+			case OpdLocType.constant:
+				IrConstant con = curFunc.constants[irRef.constIndex];
+				if (con.numSignedBytes == 1) gen.pushb(Imm8(con.i8));
+				else if (con.numSignedBytes == 2) gen.pushw(Imm16(con.i16));
+				else if (con.numSignedBytes == 4) gen.pushd(Imm32(con.i32));
+				else ctx.internal_error("64 bit push is not implemented");
+				break;
+
+			case OpdLocType.physicalRegister:
+				gen.pushq(cast(Register)(loc.reg.nativeReg));
+				break;
+			default:
+				ctx.internal_error("push of %s is not implemented", loc.type);
+				break;
 		}
-		else
-		{
-			if (!callee.funcPtr) throw new Error("Invalid funcPtr");
-			gen.call(cast(PC)callee.funcPtr);
-		}*/
 	}
 
-	void genFixup(IrFunction* callee)
-	{/*
-		callFixups.put(CallFixup(gen.saveFixup(), callee));
-		if (callee.native)
+	// TODO. Win64 call conv is hardcoded here
+	void compileCall(FunctionDeclNode* callee, IrInstruction[] args, IrInstruction instr)
+	{
+		int numParams = cast(int)callee.parameters.length;
+		int stackReserve = max(numParams, 4) * STACK_ITEM_SIZE;
+		if (numParams > 4)
 		{
-			gen.call(memAddrRipDisp32(0));
+			if (numParams % 2 == 1)
+			{
+				stackReserve += STACK_ITEM_SIZE;
+				gen.subq(Register.SP, Imm8(cast(byte)8));
+			}
+
+			foreach_reverse (ref arg; args[4..$])
+				genPush(arg.arg0);
 		}
-		else
-		{
-			gen.call(gen.stubPC);
-		}*/
+
+		foreach_reverse (i, ref arg; args[0..min(4, numParams)])
+			genMove(OperandLocation(curFunc.callingConvention.paramsInRegs[i]), getLocation(arg.arg0), irTypeToArgType(arg.type));
+		gen.subq(Register.SP, Imm8(cast(byte)32));
+
+		genFixup(callee);
+
+		OperandLocation res = getLocation(instr.result);
+		OperandLocation nativeRes = OperandLocation(curFunc.callingConvention.returnReg);
+		genMove(res, nativeRes, irTypeToArgType(instr.type));
+
+		if (stackReserve < byte.max) gen.addq(Register.SP, Imm8(cast(byte)stackReserve));
+		else gen.addq(Register.SP, Imm32(stackReserve));
+	}
+
+	void genCall(Gen)(ref Gen gen, FunctionDeclNode* callee)
+	{
+		gen.call(cast(PC)callee.funcPtr);
+	}
+
+	void genFixup(FunctionDeclNode* callee)
+	{
+		//writefln("Fixup of %s in %s", callee.strId(ctx), curFunc.node.strId(ctx));
+		callFixups.put(CallFixup(gen.saveFixup(), callee));
+		gen.call(gen.pc);
 	}
 }
 
@@ -7861,6 +8081,16 @@ T nextPOT(T)(T x)
 	++x;
 
 	return x;
+}
+
+T alignValue(T)(T value, T alignment) pure
+{
+	return cast(T)((value + (alignment-1)) & ~(alignment-1));
+}
+
+T paddingSize(T)(T address, T alignment)
+{
+	return cast(T)(alignValue(address, alignment) - address);
 }
 
 struct IndentTextSink

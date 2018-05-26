@@ -24,8 +24,8 @@ version = use_mmap;
 void main()
 {
 	testExeCompilation();
-	testObjLinking();
-	testObjLibDump();
+	//testObjLinking();
+	//testObjLibDump();
 }
 
 void testObjLibDump()
@@ -766,7 +766,7 @@ struct PecoffLib
 		ParsedLibMemberHeader readMemberHeader()
 		{
 			LibMemberHeader* firstMemberText = slicer.getPtrTo!LibMemberHeader;
-			auto firstMember = cast(ParsedLibMemberHeader)*firstMemberText;
+			ParsedLibMemberHeader firstMember = firstMemberText.parse;
 			firstMemberText.validate();
 			return firstMember;
 		}
@@ -874,8 +874,7 @@ struct LibMemberHeader
 			cast(ubyte[])EndOfHeader[], cast(ubyte[])END_OF_HEADER_VALUE));
 	}
 
-	ParsedLibMemberHeader opCast(T)() const @safe
-		if (is(Unqual!T == ParsedLibMemberHeader))
+	ParsedLibMemberHeader parse() const @safe
 	{
 		ParsedLibMemberHeader res;
 		res.Name = strip(Name[]);
