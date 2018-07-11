@@ -86,6 +86,7 @@ assert(val[1] == 10);
 # Roadmap
 
 1. Finish code gen for function calls.
+2. Add LIR (Lowlevel IR)
 2. Implement loops.
 3. Integrate code for executable generation in main code.
 4. Add a way for binding with DLLs in a language. DLL import tables are already implemented by `pecoff.d` file.
