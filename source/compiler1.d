@@ -809,7 +809,8 @@ struct CompilationContext
 			case IceBehavior.breakpoint:
 				writeln(sink.text);
 				stdout.flush;
-				asm { db 0xcc; } // breakpoint
+				version(DMD) asm { db 0xCC; } // breakpoint
+				version(LDC) assert(false); // LDC has no data in assembler
 				break;
 		}
 	}
@@ -1009,7 +1010,7 @@ struct Lexer {
 	{
 		Token tok;
 		while ((tok = nextToken()).type != TokenType.EOI)
-			if (auto res = dg(tok))
+			if (int res = dg(tok))
 				return res;
 		return 0;
 	}
@@ -3516,6 +3517,7 @@ struct BinIrGenerationVisitor {
 
 	IrModule* irModule;
 	IrBuilder builder;
+	IrFunction* ir;
 	CurrentAssignSide currentAssignSide;
 
 	// here are blocks that need their exit to be set to jump to outer block
@@ -3550,7 +3552,7 @@ struct BinIrGenerationVisitor {
 	}
 	void visit(FunctionDeclNode* f)
 	{
-		if (f.block_stmt is null)
+		if (f.block_stmt is null) // external function
 		{
 			ExternalSymbol* sym = f.id in context.externalSymbols;
 			if (sym is null)
@@ -3560,7 +3562,7 @@ struct BinIrGenerationVisitor {
 				return;
 			}
 			f.funcPtr = sym.ptr;
-			// TODO check that parameters match
+			// TODO: check that parameters match
 			return;
 		}
 
@@ -3570,13 +3572,14 @@ struct BinIrGenerationVisitor {
 		// TODO: use list of all functions that can be processed linearly, without recursion
 		auto prevBuilder = builder; // save previous builder
 		builder = IrBuilder(f.irData);
+		ir = builder.ir;
 
 		irModule.addFunction(f.irData);
 
 		// create Basic Block for function body
 		// other code will use `last` Basic Block
 		builder.addBasicBlock(IrName(startId));
-		++builder.currentBB.refCount;
+		builder.incBlockRefcount(builder.currentBB);
 		builder.sealBlock(builder.currentBB);
 
 		foreach (i, param; f.parameters)
@@ -3595,13 +3598,15 @@ struct BinIrGenerationVisitor {
 		builder.finishBlock();
 		addUsers();
 
-		// restore previous function
+		// restore previous function/builder
 		builder = prevBuilder;
+		ir = builder.ir;
 	}
 
+	// values can be used from exit instruction of basic block. Add them here
 	void addUsers()
 	{
-		for (IrBasicBlock* block = builder.ir.start; block; block = block.next)
+		foreach (ref IrBasicBlock block; ir.basicBlocks.range)
 		{
 			switch(block.exit.type) with(IrJump.Type) {
 				case ret1, branch: builder.addUser(block.lastInstrRef, block.exit.value); break;
@@ -3643,17 +3648,17 @@ struct BinIrGenerationVisitor {
 			v.varFlags |= VariableFlags.forceMemoryStorage;
 
 		// Allocate stack slot for parameter that is passed via stack
-		bool isParamWithSlot = v.isParameter && builder.ir.callingConvention.isParamOnStack(v.paramIndex);
+		bool isParamWithSlot = v.isParameter && ir.callingConvention.isParamOnStack(v.paramIndex);
 		bool needsStackSlot = v.forceMemoryStorage || isParamWithSlot;
 
 		if (needsStackSlot)
 		{
-			v.stackSlotId = builder.ir.stackLayout.addStackItem(v.type.size, v.type.alignment, v.isParameter, v.paramIndex);
+			v.stackSlotId = ir.stackLayout.addStackItem(v.type.size, v.type.alignment, v.isParameter, v.paramIndex);
 		}
 
 		if (v.isParameter)
 		{
-			++builder.ir.numParameters;
+			++ir.numParameters;
 			auto instr = IrInstruction(IrOpcode.o_param, v.type.irType(context));
 			instr.paramIndex = v.paramIndex;
 			instr.stackSlot = v.stackSlotId;
@@ -3675,7 +3680,7 @@ struct BinIrGenerationVisitor {
 		foreach (stmt; b.statements)
 		{
 			_visit(stmt);
-			if (builder.currentBB.isFinished) break;
+			if (ir.basicBlocks[builder.currentBB].isFinished) break;
 		}
 	}
 
@@ -3685,12 +3690,12 @@ struct BinIrGenerationVisitor {
 		// invert condition, so that we jump to else on success
 		if (valueRef.kind == IrValueKind.instr)
 		{
-			auto instr = &builder.ir.instructions[valueRef.index];
+			auto instr = &ir.instructions[valueRef.index];
 			instr.condition = inverseIrCond[instr.condition];
 		}
 		else if (valueRef.isLiteral)
 		{
-			bool arg0 = builder.ir.constants[valueRef.constIndex].i1;
+			bool arg0 = ir.constants[valueRef.constIndex].i1;
 			condition.irRef = builder.put(!arg0);
 		}
 		else context.internal_error(condition.loc, "Cannot invert condition");
@@ -3700,7 +3705,7 @@ struct BinIrGenerationVisitor {
 	{
 		IrRef valueRef = condition.irRef;
 		context.assertf(valueRef.kind == IrValueKind.instr, condition.loc, "Condition must be instruction");
-		return builder.ir.instructions[valueRef.index].condition;
+		return ir.instructions[valueRef.index].condition;
 	}
 
 	void visit(IfStmtNode* i)
@@ -3711,7 +3716,7 @@ struct BinIrGenerationVisitor {
 		// Compile single branch if condition is constant
 		if (condRef.isLiteral)
 		{
-			bool condValue = builder.ir.constants[condRef.constIndex].i1;
+			bool condValue = ir.constants[condRef.constIndex].i1;
 			if (condValue)
 			{
 				_visit(i.thenStatement);
@@ -3727,20 +3732,20 @@ struct BinIrGenerationVisitor {
 		IrCond cond = getCondition(i.condition);
 
 		// prevBB links to elseBB and (afterBB or thenBB)
-		IrBasicBlock* prevBB = builder.currentBB;
-		prevBB.exit = IrJump(IrJump.Type.branch, condRef, cond);
+		BasicBlockIndex prevBB = builder.currentBB;
+		ir.basicBlocks[prevBB].exit = IrJump(IrJump.Type.branch, condRef, cond);
 
 		// create Basic Block for then statement. It links to afterBB
-		IrBasicBlock* then_StartBB = builder.addBasicBlock(IrName(thenId, ++thenCounter));
+		BasicBlockIndex then_StartBB = builder.addBasicBlock(IrName(thenId, ++thenCounter));
 		builder.addBlockTarget(prevBB, then_StartBB);
 		builder.sealBlock(then_StartBB);
 
 		_visit(i.thenStatement);
-		IrBasicBlock* then_EndBB = builder.currentBB;
+		BasicBlockIndex then_EndBB = builder.currentBB;
 		builder.sealBlock(then_EndBB);
 
-		IrBasicBlock* else_StartBB;
-		IrBasicBlock* else_EndBB;
+		BasicBlockIndex else_StartBB;
+		BasicBlockIndex else_EndBB;
 		if (i.elseStatement)
 		{
 			else_StartBB = builder.addBasicBlock(IrName(elseId, ++elseCounter));
@@ -3751,19 +3756,19 @@ struct BinIrGenerationVisitor {
 			builder.sealBlock(else_EndBB);
 		}
 
-		IrBasicBlock* afterBB = builder.addBasicBlock(IrName(blkId, ++bbCounter));
+		BasicBlockIndex afterBB = builder.addBasicBlock(IrName(blkId, ++bbCounter));
 
-		if (!then_EndBB.isFinished)
+		if (!ir.basicBlocks[then_EndBB].isFinished)
 		{
-			then_EndBB.exit = IrJump(IrJump.Type.jmp);
+			ir.basicBlocks[then_EndBB].exit = IrJump(IrJump.Type.jmp);
 			builder.addBlockTarget(then_EndBB, afterBB);
 		}
 
 		if (i.elseStatement)
 		{
-			if (!else_EndBB.isFinished)
+			if (!ir.basicBlocks[else_EndBB].isFinished)
 			{
-				else_EndBB.exit = IrJump(IrJump.Type.jmp);
+				ir.basicBlocks[else_EndBB].exit = IrJump(IrJump.Type.jmp);
 				builder.addBlockTarget(else_EndBB, afterBB);
 			}
 		}
@@ -3786,9 +3791,9 @@ struct BinIrGenerationVisitor {
 		if (r.expression)
 		{
 			_visit(r.expression);
-			builder.currentBB.exit = IrJump(IrJump.Type.ret1, r.expression.irRef);
+			ir.basicBlocks[builder.currentBB].exit = IrJump(IrJump.Type.ret1, r.expression.irRef);
 		}
-		else builder.currentBB.exit = IrJump(IrJump.Type.ret0);
+		else ir.basicBlocks[builder.currentBB].exit = IrJump(IrJump.Type.ret0);
 	}
 	void visit(BreakStmtNode* b) {}
 	void visit(ContinueStmtNode* c) {}
@@ -3830,8 +3835,8 @@ struct BinIrGenerationVisitor {
 		// constant folding
 		if (b.left.irRef.isCon && b.right.irRef.isCon)
 		{
-			long arg0 = builder.ir.constants[b.left.irRef.constIndex].i64;
-			long arg1 = builder.ir.constants[b.right.irRef.constIndex].i64;
+			long arg0 = ir.constants[b.left.irRef.constIndex].i64;
+			long arg1 = ir.constants[b.right.irRef.constIndex].i64;
 
 			switch(b.op)
 			{
@@ -3897,7 +3902,7 @@ struct BinIrGenerationVisitor {
 		if (i.index.irRef.isLiteral)
 		{
 			ulong elemSize = i.type.size;
-			ulong index = builder.ir.constants[i.index.irRef.constIndex].i64;
+			ulong index = ir.constants[i.index.irRef.constIndex].i64;
 			if (index == 0)
 				address = i.array.irRef;
 			else
@@ -3993,15 +3998,17 @@ struct IrFunction
 	/// Function return type. Only valid if function has return value. Check AST node.
 	IrValueType returnType;
 
-	/// The first Basic Block of the function
-	/// Also the first node in the linked list of Basic Blocks
-	IrBasicBlock* start;
+	LinkedList!(IrBasicBlock, BasicBlockIndex) basicBlocks;
 
-	/// This is the last Basic Block in the linked list of blocks of this function
-	IrBasicBlock* last;
+	/// All blocks that can jump to `blockIndex`
+	BasicBlockIndex[] blockPredecessors(BasicBlockIndex blockIndex) {
+		return basicBlocks.multilist.nodes.data[blockIndex].data.ins;
+	}
 
-	///
-	uint numBasicBlocks;
+	/// All blocks `blockIndex` can jump to
+	BasicBlockIndex[] blockSuccessors(BasicBlockIndex blockIndex) {
+		return basicBlocks.multilist.nodes.data[blockIndex].data.outs;
+	}
 
 	// All constants. All have unique value.
 	IrConstant[] constants;
@@ -4049,7 +4056,7 @@ struct IrFunction
 		{
 			case IrValueKind.con: assert(false);
 			case IrValueKind.instr: return irRef.index;
-			case IrValueKind.phi: return cast(uint)(phis[irRef.index].block.firstInstr);
+			case IrValueKind.phi: return cast(uint)(basicBlocks[phis[irRef.index].blockIndex].firstInstr);
 		}
 	}
 
@@ -4069,6 +4076,26 @@ struct IrFunction
 				break;
 		}
 	}
+
+	void assignSequentialBlockIndices()
+	{
+		uint index;
+		foreach (ref IrBasicBlock block; basicBlocks.range)
+		{
+			block.seqIndex = index;
+			++index;
+		}
+	}
+
+	/// returns true if block `a` directly precedes block `b` in sequential order
+	bool areBlockSequential(ref IrBasicBlock a, ref IrBasicBlock b) {
+		return (a.seqIndex + 1) == b.seqIndex;
+	}
+
+	/// Returns true if `block` is last in sequential order
+	bool isLastBlock(ref IrBasicBlock block) {
+		return (block.seqIndex + 1) == basicBlocks.length;
+	}
 }
 
 struct IrBuilder
@@ -4076,10 +4103,9 @@ struct IrBuilder
 	IrFunction* ir;
 
 	/// Instructions are emitted to this block
-	IrBasicBlock* currentBB;
-
-	ref IrBasicBlock* start() { return ir.start; }
-	ref IrBasicBlock* last() { return ir.last; }
+	BasicBlockIndex currentBB;
+	ref IrBasicBlock start() { return ir.basicBlocks[BasicBlockIndex(ir.basicBlocks.listInfo.first)]; }
+	ref IrBasicBlock last() { return ir.basicBlocks[BasicBlockIndex(ir.basicBlocks.listInfo.last)]; }
 
 	/// Stores current definition of variable per block during SSA-form IR construction.
 	IrRef[BlockVarPair] blockVarDef;
@@ -4095,72 +4121,45 @@ struct IrBuilder
 
 	/// Automatically sets `start`, sets last and links blocks together
 	/// Sets currentBB to this block
-	IrBasicBlock* addBasicBlock(IrName name) {
+	BasicBlockIndex addBasicBlock(IrName name) {
 		finishBlock();
-		auto newBlock = new IrBasicBlock(name, BlockId(ir.numBasicBlocks));
-		++ir.numBasicBlocks;
-		if (start is null) start = newBlock;
-		else
-		{
-			newBlock.prev = last;
-			last.next = newBlock;
-		}
-		currentBB = last = newBlock;
-		newBlock.firstInstr = ir.instructions.length;
+
+		currentBB = ir.basicBlocks.putBack(IrBasicBlock(name));
+
+		auto newBlock = &ir.basicBlocks[currentBB];
+		newBlock.index = currentBB; // save index inside block
+
+		uint instrIndex = cast(uint)ir.instructions.length;
+		newBlock.firstInstr = instrIndex;
+		newBlock.lastInstr = instrIndex;
+
 		put(IrInstruction(IrOpcode.o_block));
-		return newBlock;
+		return currentBB;
 	}
 
 	/// Places ending instruction of current Basic Block
 	void finishBlock() {
-		if (currentBB) put(IrInstruction(IrOpcode.o_block_end));
+		if (!currentBB.isNull) put(IrInstruction(IrOpcode.o_block_end));
 	}
 
-	/// Adds control-flow edge pointing from `block` to `target`.
-	void addBlockTarget(IrBasicBlock* block, IrBasicBlock* target) {
-		block.outs ~= target;
-		++target.refCount;
-		target.ins ~= block;
+	/// Adds control-flow edge pointing `block` -> `target`.
+	void addBlockTarget(BasicBlockIndex block, BasicBlockIndex target) {
+		ir.basicBlocks[block].outs ~= target;
+		incBlockRefcount(target);
+		ir.basicBlocks[target].ins ~= block;
 	}
 
 	/// Disconnects Basic Block from it from predecessors/successors
 	/// Does not remove its instructions/phis
-	void removeBasicBlock(IrBasicBlock* bb) {
-		if (bb.prev)
-		{
-			if (bb.next)
-			{
-				bb.prev.next = bb.next;
-				bb.next.prev = bb.prev;
-			}
-			else
-			{
-				assert(last == bb);
-				last = bb.prev;
-				last.next = null;
-			}
-		}
-		else if (bb.next)
-		{
-			assert(start == bb);
-			start = bb.next;
-			start.prev = null;
-		}
-		else
-		{
-			// This may be an already deleted block
-			if (bb == start)
-			{
-				start = null;
-				assert(last == bb);
-				last = null;
-			}
-		}
-		bb.next = null;
-		bb.prev = null;
-		foreach(target; bb.outs) --target.refCount;
-		bb.outs = null;
+	void removeBasicBlock(BasicBlockIndex blockIndex) {
+		// TODO: no ins must be left at this point
+		ir.basicBlocks.freeNode(blockIndex);
+		foreach(BasicBlockIndex target; ir.basicBlocks[blockIndex].outs) decBlockRefcount(target);
+		ir.basicBlocks[blockIndex].outs = null;
 	}
+
+	void incBlockRefcount(BasicBlockIndex blockIndex) { ++ir.basicBlocks[blockIndex].refCount; }
+	void decBlockRefcount(BasicBlockIndex blockIndex) { assert(ir.basicBlocks[blockIndex].refCount); --ir.basicBlocks[blockIndex].refCount; }
 
 	/// Adds a constant to a list of constants of this function.
 	/// It tries to find existing constant with the same value and returns it if it does.
@@ -4198,8 +4197,8 @@ struct IrBuilder
 	/// Append instruction to current block (`currentBB`)
 	/// Adds user to instr arguments and creates operand for result.
 	IrRef put(IrInstruction instr) {
-		++currentBB.numInstrs;
 		uint index = cast(uint)ir.instructions.length;
+		ir.basicBlocks[currentBB].lastInstr = index;
 		auto irRef = IrRef(index, IrValueKind.instr, instr.type);
 		//assert(irRef.isDefined, format("irRef is undefined. i %s, instr %s", index, instr.op));
 		if (instr.returnsValue)
@@ -4272,66 +4271,70 @@ struct IrBuilder
 	}
 
 	// Adds phi function to specified block
-	private IrRef addPhi(IrBasicBlock* block, IrValueType type) {
+	private IrRef addPhi(BasicBlockIndex blockIndex, IrValueType type) {
 		uint index = cast(uint)ir.phis.length;
 		IrRef irRef = IrRef(index, IrValueKind.phi, type);
 		IrOperandId operand = makeOperand(irRef);
-		ir.phis ~= IrPhi(block, type, operand);
-		block.phis ~= irRef;
+		ir.phis ~= IrPhi(blockIndex, type, operand);
+		ir.basicBlocks[blockIndex].phis ~= irRef;
 		return irRef;
 	}
 
 	// Algorithm 1: Implementation of local value numbering
 	/// Redefines `variable` with `value`. Is used for assignment to variable
 	void writeVariable(IrVar variable, IrRef value) { writeVariable(variable, currentBB, value); }
-	void writeVariable(IrVar variable, IrBasicBlock* block, IrRef value) {
+	void writeVariable(IrVar variable, BasicBlockIndex blockIndex, IrRef value) {
 		//writefln("writeVariable %s:%s <- %s", variable.id, variable.name, RefPr(&this, value));
-		blockVarDef[BlockVarPair(block.index, variable.id)] = value;
+		blockVarDef[BlockVarPair(blockIndex, variable.id)] = value;
 	}
 
 	/// Returns the value that currently defines `variable`
 	IrRef readVariable(IrVar variable) { return readVariable(variable, currentBB); }
-	IrRef readVariable(IrVar variable, IrBasicBlock* block)
+	IrRef readVariable(IrVar variable, BasicBlockIndex blockIndex)
 	{
 		//writefln("readVariable %s:%s", variable.id, variable.name);
-		if (auto irRef = BlockVarPair(block.index, variable.id) in blockVarDef)
+		if (auto irRef = BlockVarPair(blockIndex, variable.id) in blockVarDef)
 			return *irRef;
-		return readVariableRecursive(variable, block);
+		return readVariableRecursive(variable, blockIndex);
 	}
 
 	// Algorithm 2: Implementation of global value numbering
-	private IrRef readVariableRecursive(IrVar variable, IrBasicBlock* block)
+	private IrRef readVariableRecursive(IrVar variable, BasicBlockIndex blockIndex)
 	{
 		IrRef value;
-		if (!block.isSealed) {
+		if (!ir.basicBlocks[blockIndex].isSealed) {
 			// Incomplete CFG
-			value = addPhi(block, variable.type);
-			block.incompletePhis ~= IncompletePhi(variable, value);
-		}
-		else if (block.ins.length == 1) {
-			// Optimize the common case of one predecessor: No phi needed
-			value = readVariable(variable, block.ins[0]);
+			value = addPhi(blockIndex, variable.type);
+			ir.basicBlocks[blockIndex].incompletePhis ~= IncompletePhi(variable, value);
 		}
 		else
 		{
-			// Break potential cycles with operandless phi
-			value = addPhi(block, variable.type);
-			writeVariable(variable, block, value);
-			value = addPhiOperands(variable, value, block);
+			BasicBlockIndex[] preds = ir.blockPredecessors(blockIndex);
+			if (preds.length == 1) {
+				// Optimize the common case of one predecessor: No phi needed
+				value = readVariable(variable, preds[0]);
+			}
+			else
+			{
+				// Break potential cycles with operandless phi
+				value = addPhi(blockIndex, variable.type);
+				writeVariable(variable, blockIndex, value);
+				value = addPhiOperands(variable, value, blockIndex);
+			}
 		}
-		writeVariable(variable, block, value);
+		writeVariable(variable, blockIndex, value);
 		return value;
 	}
 
 	// ditto
-	private IrRef addPhiOperands(IrVar variable, IrRef phiRef, IrBasicBlock* block)
+	private IrRef addPhiOperands(IrVar variable, IrRef phiRef, BasicBlockIndex blockIndex)
 	{
 		// Determine operands from predecessors
-		foreach (IrBasicBlock* pred; block.ins)
+		foreach (BasicBlockIndex predIndex; ir.blockPredecessors(blockIndex))
 		{
-			IrRef val = readVariable(variable, pred);
+			IrRef val = readVariable(variable, predIndex);
 			// Phi should not be cached before loop, since readVariable can add phi to phis, reallocating the array
-			ir.phis[phiRef.index].addArg(val, pred.index);
+			ir.phis[phiRef.index].addArg(val, predIndex);
 			addUser(phiRef, val);
 		}
 		return tryRemoveTrivialPhi(phiRef);
@@ -4356,11 +4359,11 @@ struct IrBuilder
 		}
 		// Remember all users except the phi itself
 		IrOperandId opdId = ir.phis[phiRef.index].result;
-		ListInfo usesList = ir.operands[opdId].usesList;
+		ListInfo!NodeIndex usesList = ir.operands[opdId].usesList;
 
 		// Reroute all uses of phi to same and remove phi
 		replaceBy(usesList.first, phiRef, same);
-		ir.phis[phiRef.index].block.phis.removeInPlace(phiRef);
+		ir.basicBlocks[ir.phis[phiRef.index].blockIndex].phis.removeInPlace(phiRef);
 		ir.phis[phiRef.index] = IrPhi();
 
 		// Try to recursively remove all phi users, which might have become trivial
@@ -4403,16 +4406,17 @@ struct IrBuilder
 	// Algorithm 4: Handling incomplete CFGs
 	/// Called after
 	/// Ignores already sealed blocks.
-	void sealBlock(IrBasicBlock* block)
+	void sealBlock(BasicBlockIndex blockIndex)
 	{
-		if (block.isSealed) return;
-		foreach (pair; block.incompletePhis)
-			addPhiOperands(pair.var, pair.phi, block);
-		block.isSealed = true;
+		IrBasicBlock* bb = &ir.basicBlocks[blockIndex];
+		if (bb.isSealed) return;
+		foreach (pair; bb.incompletePhis)
+			addPhiOperands(pair.var, pair.phi, blockIndex);
+		bb.isSealed = true;
 	}
 }
 
-pragma(msg, IrFunction.sizeof);
+pragma(msg, "func size ", IrFunction.sizeof);
 
 void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ctx)
 {
@@ -4455,10 +4459,10 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 		sink.putln;
 	}
 
-	for (IrBasicBlock* block = func.start; block; block = block.next)
+	foreach (BasicBlockIndex blockIndex, ref IrBasicBlock block; func.basicBlocks.range)
 	{
 		if (printInstrIndex) sink.put("   |");
-		sink.putf("  @%s:%s", IrNameProxy(ctx, block.name), block.index);
+		sink.putf("  @%s:%s", IrNameProxy(ctx, block.name), blockIndex);
 		if (printBlockRefs) sink.putf(" %s refs", block.refCount);
 		if (printBlockInstrRange) sink.putf(" instr[%s..%s]", block.firstInstr, block.lastInstr);
 		if (printBlockIns && block.ins)
@@ -4466,7 +4470,7 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 			sink.put(" in[");
 			foreach(i, pred; block.ins) {
 				if (i > 0) sink.put(", ");
-				sink.putf("@%s", IrNameProxy(ctx, pred.name));
+				sink.putf("@%s", IrNameProxy(ctx, func.basicBlocks[pred].name));
 			}
 			sink.put("]");
 		}
@@ -4479,7 +4483,7 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 			foreach(phi_i, arg; func.phis[phiRef.index].args)
 			{
 				if (phi_i > 0) sink.put(", ");
-				sink.putf("%s @%s", RefPr(&func, arg.value), arg.blockId);
+				sink.putf("%s @%s", RefPr(&func, arg.value), arg.blockIndex);
 			}
 			sink.put(")");
 			if (printUses) printOpdUses(res);
@@ -4549,9 +4553,14 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 			case none: sink.putln("  // block not sealed"); break;
 			case ret0: sink.putln("        return"); break;
 			case ret1: sink.putfln("        return %s", RefPr(&func, block.exit.value)); break;
-			case jmp:  sink.putfln("        jmp @%s", IrNameProxy(ctx, block.outs[0].name)); break;
-			case branch:  sink.putfln("        branch %s @%s, @%s",
-				RefPr(&func, block.exit.value), IrNameProxy(ctx, block.outs[0].name), IrNameProxy(ctx, block.outs[1].name)); break;
+			case jmp:  sink.putfln("        jmp @%s", IrNameProxy(ctx, func.basicBlocks[block.outs[0]].name)); break;
+			case branch:
+			{
+				sink.putfln("        branch %s @%s, @%s",
+					RefPr(&func, block.exit.value),
+					IrNameProxy(ctx, func.basicBlocks[block.outs[0]].name),
+					IrNameProxy(ctx, func.basicBlocks[block.outs[1]].name));
+			} break;
 		}
 	}
 	sink.putln("}");
@@ -4587,13 +4596,20 @@ enum IrValueType : ubyte
 
 struct BlockVarPair
 {
-	BlockId blockId;
+	BasicBlockIndex blockId;
 	IrVarId varId;
 }
 
 struct IrVarId { uint id; alias id this; }
 struct IrVar { string name; IrVarId id; IrValueType type; }
-struct BlockId { uint id; alias id this; }
+
+struct BasicBlockIndex {
+	this(size_t index) { this.index = cast(uint)index; }
+	enum BasicBlockIndex NULL = BasicBlockIndex(uint.max);
+	uint index = uint.max;
+	bool isNull() { return index == NULL; }
+	alias index this;
+}
 
 // print helper for refs
 struct RefPr
@@ -4674,7 +4690,7 @@ struct IrOperand
 	void addUser(IrRef user) { ++numUses; }
 
 	// info for the list of operand uses
-	ListInfo usesList;
+	ListInfo!NodeIndex usesList;
 }
 
 /// Id for IrOperand
@@ -4746,30 +4762,31 @@ struct IrNameProxy
 struct IrBasicBlock
 {
 	IrName name;
-	BlockId index;
+
+	/// Sequential basic block index (index space without holes)
+	uint seqIndex;
+
+	/// Index of basic block in storage (this index space may have holes)
+	BasicBlockIndex index;
+
+	/// The jump or return that must be the last instruction is stored in `exit`
+	uint firstInstr;
+
+	///
+	uint lastInstr;
 
 	/// Address of this Basic Block in generated code
 	PC startPC;
 
 	/// BBs that jump to this block
-	IrBasicBlock*[] ins;
+	BasicBlockIndex[] ins;
 
 	/// Number of jumps to this block. Starting block allways has additional ref.
 	int refCount;
 
 	/// BBs this block jumps or branches to. Null if ends with no jump/branch
-	IrBasicBlock*[] outs;
+	BasicBlockIndex[] outs;
 
-	/// The jump or return that must be the last instruction is stored in `exit`
-	size_t firstInstr;
-	///
-	size_t numInstrs;
-	///
-	size_t lastInstr() {
-		if (numInstrs)
-			return firstInstr + numInstrs - 1;
-		else return firstInstr;
-	}
 	///
 	IrRef lastInstrRef() {
 		return IrRef(cast(uint)lastInstr, IrValueKind.instr, IrValueType.init);
@@ -4779,11 +4796,7 @@ struct IrBasicBlock
 	/// Jumps use `outs` for targets
 	IrJump exit;
 
-	/// Next node in linked listed of Basic Blocks of the function
-	IrBasicBlock* next;
-	/// Prev node in linked listed of Basic Blocks of the function
-	IrBasicBlock* prev;
-
+	// TODO: move to ir builder
 	IncompletePhi[] incompletePhis;
 	IrRef[] phis;
 
@@ -4794,11 +4807,12 @@ struct IrBasicBlock
 
 	bool isFinished() { return exit.type != IrJump.Type.none; }
 }
+pragma(msg, "BB size ", IrBasicBlock.sizeof);
 
 /// Jumps use information stored in basic block
 struct IrJump
 {
-	enum Type
+	enum Type : ubyte
 	{
 		none, /// Basic Block is not yet complete
 		ret0, /// without return value
@@ -4820,9 +4834,6 @@ struct IrJump
 	PC fixup0;
 	// Used by backend, for second target of `branch` instruction
 	PC fixup1;
-
-	/// Is set to true by cmp instruction if it precedes branch
-	bool useFlagForCmp;
 }
 
 /// Per Basic Block info for unresolved Phi functions, when CFG is incomplete.
@@ -4836,21 +4847,21 @@ struct IncompletePhi
 
 struct IrPhi
 {
-	IrBasicBlock* block;
+	BasicBlockIndex blockIndex;
 	IrValueType type;
 	IrOperandId result;
 	IrPhiArg[] args;
 
-	void addArg(IrRef arg, BlockId block)
+	void addArg(IrRef arg, BasicBlockIndex argBlockIndex)
 	{
-		args ~= IrPhiArg(arg, block);
+		args ~= IrPhiArg(arg, argBlockIndex);
 	}
 }
 
 struct IrPhiArg
 {
 	IrRef value;
-	BlockId blockId;
+	BasicBlockIndex blockIndex;
 }
 
 enum IrCond : ubyte {
@@ -5024,9 +5035,10 @@ void pass_live_intervals(ref CompilationContext ctx)
 
 	foreach (IrFunction* fun; ctx.mod.irModule.functions)
 	{
+		fun.assignSequentialBlockIndices();
 		size_t numValues = fun.operands.length;
 		size_t numBucketsPerBlock = divCeil(numValues, size_t.sizeof * 8);
-		allocSets(numBucketsPerBlock, fun.numBasicBlocks);
+		allocSets(numBucketsPerBlock, fun.basicBlocks.length);
 		fun.liveIntervals.initIntervals(numValues, numValues, ctx);
 
 		void liveAdd(IrOperandId opdId)
@@ -5040,31 +5052,31 @@ void pass_live_intervals(ref CompilationContext ctx)
 			live[opdId] = false;
 		}
 
-		size_t[] blockLiveIn(BlockId blockIndex)
+		size_t[] blockLiveIn(BasicBlockIndex blockIndex)
 		{
-			size_t from = blockIndex * numBucketsPerBlock;
+			size_t from = fun.basicBlocks[blockIndex].seqIndex * numBucketsPerBlock;
 			size_t to = from + numBucketsPerBlock;
 			return liveInBuckets[from..to];
 		}
 
 		// algorithm start
 		// for each block b in reverse order do
-		for (IrBasicBlock* block = fun.last; block; block = block.prev)
+		foreach (ref IrBasicBlock block; fun.basicBlocks.range)
 		{
 			// live = union of successor.liveIn for each successor of block
 			liveData[] = 0;
-			foreach (IrBasicBlock* succ; block.outs)
+			foreach (BasicBlockIndex succIndex; block.outs)
 			{
-				foreach (size_t i, size_t bucket; blockLiveIn(succ.index))
+				foreach (size_t i, size_t bucket; blockLiveIn(succIndex))
 					liveBuckets[i] |= bucket;
 			}
 
 			// for each phi function phi of successors of block do
 			//     live.add(phi.inputOf(block))
-			foreach (IrBasicBlock* succ; block.outs)
-				foreach (ref IrRef phiRef; succ.phis)
+			foreach (BasicBlockIndex succIndex; block.outs)
+				foreach (ref IrRef phiRef; fun.basicBlocks[succIndex].phis)
 					foreach (ref IrPhiArg arg; fun.phis[phiRef.index].args)
-						if (arg.blockId == block.index)
+						if (arg.blockIndex == block.index)
 							liveAdd(fun.getOperand(arg.value));
 
 			//writef("in @%s live:", block.index);
@@ -5510,7 +5522,7 @@ struct LinearScan
 		}
 
 		// assign register hint to return values according to call conv
-		for (IrBasicBlock* block = fun.start; block; block = block.next)
+		foreach (ref IrBasicBlock block; fun.basicBlocks.range)
 		{
 			if (block.exit.type == IrJump.Type.ret1)
 			{
@@ -5746,7 +5758,7 @@ struct LinearScan
 
 	int nextUseAfter(ref IrFunction fun, IrOperandId opdId, int after)
 	{
-		ListInfo usesList = fun.operands[opdId].usesList;
+		ListInfo!NodeIndex usesList = fun.operands[opdId].usesList;
 		int closest = int.max;
 		for (NodeIndex cur = usesList.first; !cur.isNull; cur = fun.opdUses.nodes[cur].nextIndex)
 		{
@@ -6132,7 +6144,7 @@ void pass_stack_layout(ref CompilationContext ctx) {
 struct StackLayout
 {
 	int reservedBytes;
-	int numParams;
+	int numParams() { return cast(uint)slots.length - numLocals; }
 	int numLocals;
 	StackSlot[] slots;
 
@@ -6145,8 +6157,7 @@ struct StackLayout
 		auto id = StackSlotId(cast(uint)(slots.length));
 		auto slot = StackSlot(size, alignment, isParameter, paramIndex);
 
-		if (isParameter) ++numParams;
-		else ++numLocals;
+		if (!isParameter) ++numLocals;
 
 		slots ~= slot;
 		return IrRef(id);
@@ -6675,12 +6686,12 @@ struct IrToAmd64
 	void compileFuncBody()
 	{
 		numArgInstrs = 0;
-		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
+		foreach (ref IrBasicBlock block; curFunc.basicBlocks.range)
 		{
 			block.startPC = gen.pc;
 			foreach(block_i; block.firstInstr..block.lastInstr+1)
 			{
-				compileInstr(block_i, *block);
+				compileInstr(block_i, block);
 			}
 		}
 	}
@@ -6688,10 +6699,10 @@ struct IrToAmd64
 	void resolvePhis(ref IrBasicBlock block)
 	{
 		// TODO moves are not parallel here
-		foreach (IrBasicBlock* succ; block.outs)
-			foreach (ref IrRef phiRef; succ.phis)
+		foreach (BasicBlockIndex succIndex; block.outs)
+			foreach (ref IrRef phiRef; curFunc.basicBlocks[succIndex].phis)
 				foreach (ref IrPhiArg arg; curFunc.phis[phiRef.index].args)
-					if (arg.blockId == block.index)
+					if (arg.blockIndex == block.index)
 						genMove(getLocation(phiRef), getLocation(arg.value), irTypeToArgType(phiRef.type));
 	}
 
@@ -6731,7 +6742,8 @@ struct IrToAmd64
 
 					case ret0:
 						// ignore jump in the last Basic Block
-						if (block.next is null) break;
+						// all blocks that end with return0, jump to the last block (except for last one)
+						if (curFunc.isLastBlock(block)) break;
 						block.exit.fixup0 = gen.pc;
 						gen.jmp(Imm32(0));
 						//writefln("jmp");
@@ -6739,7 +6751,8 @@ struct IrToAmd64
 
 					case jmp:
 						resolvePhis(block);
-						if (block.next != block.outs[0]) {
+						IrBasicBlock* target = &curFunc.basicBlocks[block.outs[0]];
+						if (!curFunc.areBlockSequential(block, *target)) {
 							block.exit.fixup0 = gen.pc;
 							gen.jmp(Imm32(0));
 							//writefln("jmp");
@@ -6751,7 +6764,8 @@ struct IrToAmd64
 						// TODO missing phi resolution
 						gen.jcc(Condition.NZ, Imm32(0));
 						//writefln("jcc");
-						if (block.next != block.outs[1]) {
+						IrBasicBlock* secondTarget = &curFunc.basicBlocks[block.outs[1]];
+						if (!curFunc.areBlockSequential(block, *secondTarget)) {
 							block.exit.fixup1 = gen.pc;
 							gen.jmp(Imm32(0));
 							//writefln("jmp");
@@ -6868,32 +6882,34 @@ struct IrToAmd64
 
 	void fixJumpsAndReturns(PC returnTarget)
 	{
-		for (IrBasicBlock* block = curFunc.start; block; block = block.next)
+		foreach (ref IrBasicBlock block; curFunc.basicBlocks.range)
 		{
 			final switch(block.exit.type) with(IrJump.Type) {
 				case none: ctx.internal_error("Compilation non-sealed basic block `%s`", block.name); return;
 				case ret0, ret1:
 					// ignore jump in the last Basic Block
-					if (block.next is null) break;
-					auto fixup = gen.fixupAt(block.exit.fixup0);
+					if (curFunc.isLastBlock(block)) break;
+					Fixup fixup = gen.fixupAt(block.exit.fixup0);
 					fixup.jmpAbs(returnTarget);
 					break;
 				case jmp:
-					if (block.next != block.outs[0]) {
-						auto fixup = gen.fixupAt(block.exit.fixup0);
-						fixup.jmpAbs(block.outs[0].startPC);
+					IrBasicBlock* target = &curFunc.basicBlocks[block.outs[0]];
+					if (!curFunc.areBlockSequential(block, *target)) {
+						Fixup fixup = gen.fixupAt(block.exit.fixup0);
+						fixup.jmpAbs(target.startPC);
 					}
 					break;
 				case branch:
 					// Jump to not zero
-					auto fixup0 = gen.fixupAt(block.exit.fixup0);
+					Fixup fixup0 = gen.fixupAt(block.exit.fixup0);
 					Condition cond = IrCond_to_Condition[block.exit.condition];
-					fixup0.jccAbs(cond, block.outs[0].startPC);
+					fixup0.jccAbs(cond, curFunc.basicBlocks[block.outs[0]].startPC);
 					//writefln("fix jcc %s", cond);
 					// fallthrough or jump to zero
-					if (block.next != block.outs[1]) {
-						auto fixup1 = gen.fixupAt(block.exit.fixup1);
-						fixup1.jmpAbs(block.outs[1].startPC);
+					IrBasicBlock* secondTarget = &curFunc.basicBlocks[block.outs[1]];
+					if (!curFunc.areBlockSequential(block, *secondTarget)) {
+						Fixup fixup1 = gen.fixupAt(block.exit.fixup1);
+						fixup1.jmpAbs(secondTarget.startPC);
 					}
 					break;
 			}
@@ -7412,7 +7428,7 @@ struct Fixup
 		static foreach(Over; __traits(getOverloads, CodeGen_x86_64, member))
 		{
 			auto opDispatch(Parameters!(Over) args) {
-				auto tempPC = codeGen.encoder.pc;
+				PC tempPC = codeGen.encoder.pc;
 				codeGen.encoder.pc = fixupPC;
 				scope(exit)codeGen.encoder.pc = tempPC;
 				mixin("return codeGen."~member~"(args);");
@@ -7983,29 +7999,90 @@ struct NodeIndex {
 	alias id this;
 }
 
-struct ListInfo
+struct ListInfo(IndexT = NodeIndex)
 {
-	NodeIndex first;
-	NodeIndex last;
+	IndexT first;
+	IndexT last;
 }
 
-struct MultiLinkedList(NodeData)
+struct LinkedList(NodeData, IndexT = NodeIndex)
 {
+	MultiLinkedList!(NodeData, IndexT) multilist;
+	ListInfo!IndexT listInfo;
+	size_t length() { return multilist.numAllocatedNodes; }
+	multilist.NodeRange range() { return multilist.listRange(listInfo); }
+	multilist.NodeRangeReverse rangeReverse() { return multilist.listRangeReverse(listInfo); }
+	ref NodeData opIndex(IndexT nodeIndex) { return multilist.nodes[nodeIndex].data; }
+	IndexT putFront(NodeData nodeData) { return multilist.putFront(listInfo, nodeData); }
+	IndexT putBack(NodeData nodeData) { return multilist.putBack(listInfo, nodeData); }
+	IndexT freeNode(IndexT nodeIndex) { return multilist.freeNode(listInfo, nodeIndex); }
+}
+
+struct MultiLinkedList(NodeData, IndexT = NodeIndex)
+{
+	alias ListType = typeof(this);
 	struct Node
 	{
+		IndexT prevIndex;
+		IndexT nextIndex;
 		NodeData data;
-		NodeIndex prevIndex;
-		NodeIndex nextIndex;
 	}
 
-	Buffer!Node nodes;
-	// head of free nodes linked list
-	NodeIndex firstFreeNode;
-
-	NodeIndex putFront(ref ListInfo listInfo, NodeData nodeData)
+	struct NodeRange
 	{
-		NodeIndex firstIndex = listInfo.first;
-		NodeIndex index = allocNode(Node(nodeData));
+		ListType* list;
+		IndexT frontIndex;
+		int opApply(scope int delegate(ref NodeData) dg)
+		{
+			while (!frontIndex.isNull)
+			{
+				if (int res = dg(list.nodes[frontIndex].data))
+					return res;
+				frontIndex = list.nodes[frontIndex].nextIndex;
+			}
+			return 0;
+		}
+		int opApply(scope int delegate(IndexT, ref NodeData) dg)
+		{
+			while (!frontIndex.isNull)
+			{
+				if (int res = dg(frontIndex, list.nodes[frontIndex].data))
+					return res;
+				frontIndex = list.nodes[frontIndex].nextIndex;
+			}
+			return 0;
+		}
+	}
+
+	NodeRange listRange(ListInfo!IndexT list) { return NodeRange(&this, list.first); }
+
+	struct NodeRangeReverse
+	{
+		ListType* list;
+		IndexT backIndex;
+		int opApply(scope int delegate(ref NodeData) dg)
+		{
+			while (!backIndex.isNull)
+			{
+				if (int res = dg(list.nodes[backIndex].data))
+					return res;
+				backIndex = list.nodes[backIndex].prevIndex;
+			}
+			return 0;
+		}
+	}
+
+	NodeRangeReverse listRangeReverse(ListInfo!IndexT list) { return NodeRangeReverse(&this, list.last); }
+
+	Buffer!Node nodes;
+	size_t numAllocatedNodes;
+	// head of free nodes linked list
+	IndexT firstFreeNode;
+
+	IndexT putFront(ref ListInfo!IndexT listInfo, NodeData nodeData)
+	{
+		IndexT firstIndex = listInfo.first;
+		IndexT index = allocNode(Node(IndexT.NULL, IndexT.NULL, nodeData));
 
 		listInfo.first = index;
 		if (firstIndex.isNull)
@@ -8024,10 +8101,10 @@ struct MultiLinkedList(NodeData)
 		return index;
 	}
 
-	NodeIndex putBack(ref ListInfo listInfo, NodeData nodeData)
+	IndexT putBack(ref ListInfo!IndexT listInfo, NodeData nodeData)
 	{
-		NodeIndex lastIndex = listInfo.last;
-		NodeIndex index = allocNode(Node(nodeData));
+		IndexT lastIndex = listInfo.last;
+		IndexT index = allocNode(Node(IndexT.NULL, IndexT.NULL, nodeData));
 
 		listInfo.last = index;
 		if (lastIndex.isNull)
@@ -8046,36 +8123,38 @@ struct MultiLinkedList(NodeData)
 		return index;
 	}
 
-	private NodeIndex allocNode(Node node)
+	private IndexT allocNode(Node node)
 	{
+		++numAllocatedNodes;
 		if (firstFreeNode.isNull)
 		{
-			NodeIndex index = NodeIndex(nodes.length);
+			IndexT index = IndexT(nodes.length);
 			nodes.put(node);
 			return index;
 		}
 		else
 		{
-			NodeIndex index = firstFreeNode;
+			IndexT index = firstFreeNode;
 			firstFreeNode = nodes[firstFreeNode].nextIndex;
 			nodes[index] = node;
 			return index;
 		}
 	}
 
-	// returns rangeId of the next range
-	NodeIndex freeNode(ref ListInfo listInfo, NodeIndex nodeIndex)
+	// returns IndexT of the next node
+	IndexT freeNode(ref ListInfo!IndexT listInfo, IndexT nodeIndex)
 	{
-		auto node = &nodes[nodeIndex];
+		--numAllocatedNodes;
+		Node* node = &nodes[nodeIndex];
 
 		if (nodeIndex == listInfo.first) listInfo.first = node.nextIndex;
 		if (nodeIndex == listInfo.last) listInfo.last = node.prevIndex;
 
-		NodeIndex nextIndex = node.nextIndex;
+		IndexT nextIndex = node.nextIndex;
 
-		if (node.prevIndex != NodeIndex.NULL)
+		if (node.prevIndex != IndexT.NULL)
 			nodes[node.prevIndex].nextIndex = node.nextIndex;
-		if (node.nextIndex != NodeIndex.NULL)
+		if (node.nextIndex != IndexT.NULL)
 			nodes[node.nextIndex].prevIndex = node.prevIndex;
 
 		// add to free list
@@ -8092,7 +8171,7 @@ struct MultiLinkedList(NodeData)
 
 		{
 			write("free:");
-			NodeIndex cur = firstFreeNode;
+			IndexT cur = firstFreeNode;
 			while (!cur.isNull)
 			{
 				writef(" %s", cur);
@@ -8104,7 +8183,7 @@ struct MultiLinkedList(NodeData)
 		size_t i;
 		foreach (list; lists) {
 			scope(exit) ++i;
-			NodeIndex cur = list.first;
+			IndexT cur = list.first;
 
 			if (cur.isNull)
 			{
@@ -8116,7 +8195,7 @@ struct MultiLinkedList(NodeData)
 
 			while (!cur.isNull)
 			{
-				auto node = &nodes[cur];
+				Node* node = &nodes[cur];
 				writef(" (%s)", node.data);
 				cur = node.nextIndex;
 			}
