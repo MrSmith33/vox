@@ -1897,7 +1897,12 @@ mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
 	Scope* _scope;
+	FunctionDeclNode*[] functions;
 	IrModule irModule;
+
+	void addFunction(FunctionDeclNode* func) {
+		functions ~= func;
+	}
 
 	FunctionDeclNode* findFunction(string idStr, CompilationContext* ctx) {
 		Identifier id = ctx.idMap.find(idStr);
@@ -2987,11 +2992,12 @@ struct SemanticDeclarations {
 	ScopeStack* scopeStack;
 
 	void visit(ModuleDeclNode* m) {
-		m._scope = scopeStack.pushScope("Module", No.ordered);
-		foreach (decl; m.declarations) _visit(decl);
+		context.mod._scope = scopeStack.pushScope("Module", No.ordered);
+		foreach (decl; context.mod.declarations) _visit(decl);
 		scopeStack.popScope1;
 	}
 	void visit(FunctionDeclNode* f) {
+		context.mod.addFunction(f);
 		f.resolveSymbol = scopeStack.insert(f.id, f.loc, SymbolClass.c_function, cast(AstNode*)f);
 		f._scope = scopeStack.pushScope(context.idString(f.id), Yes.ordered);
 		foreach (param; f.parameters) visit(param);
@@ -3548,7 +3554,7 @@ struct BinIrGenerationVisitor {
 		thenId = context.idMap.getOrRegNoDup("then");
 		elseId = context.idMap.getOrRegNoDup("else");
 		blkId = context.idMap.getOrRegNoDup("blk");
-		foreach (decl; m.declarations) _visit(decl);
+		foreach (decl; m.functions) _visit(cast(AstNode*)decl);
 	}
 	void visit(FunctionDeclNode* f)
 	{
@@ -3570,8 +3576,7 @@ struct BinIrGenerationVisitor {
 		f.irData = new IrFunction(f, &win64_call_conv, f.returnType.irType(context));
 
 		// TODO: use list of all functions that can be processed linearly, without recursion
-		auto prevBuilder = builder; // save previous builder
-		builder = IrBuilder(f.irData);
+		builder.begin(f.irData);
 		ir = builder.ir;
 
 		irModule.addFunction(f.irData);
@@ -3597,10 +3602,6 @@ struct BinIrGenerationVisitor {
 		builder.sealBlock(builder.currentBB);
 		builder.finishBlock();
 		addUsers();
-
-		// restore previous function/builder
-		builder = prevBuilder;
-		ir = builder.ir;
 	}
 
 	// values can be used from exit instruction of basic block. Add them here
@@ -3989,6 +3990,21 @@ struct IrModule
 /// Linear SSA IR for function
 struct IrFunction
 {
+	this(this)
+	{
+		constants = constants.dup();
+		instructions = instructions.dup();
+		phis = phis.dup();
+		foreach (ref phi; phis) phi.args = phi.args.dup;
+		operands = operands.dup();
+		foreach (ref IrBasicBlock block; basicBlocks.range)
+		{
+			block.predecessors = block.predecessors.dup;
+			block.successors = block.successors.dup;
+			block.phis = block.phis.dup;
+		}
+	}
+
 	/// Ast node
 	FunctionDeclNode* node;
 
@@ -3999,16 +4015,6 @@ struct IrFunction
 	IrValueType returnType;
 
 	LinkedList!(IrBasicBlock, BasicBlockIndex) basicBlocks;
-
-	/// All blocks that can jump to `blockIndex`
-	BasicBlockIndex[] blockPredecessors(BasicBlockIndex blockIndex) {
-		return basicBlocks.multilist.nodes.data[blockIndex].data.ins;
-	}
-
-	/// All blocks `blockIndex` can jump to
-	BasicBlockIndex[] blockSuccessors(BasicBlockIndex blockIndex) {
-		return basicBlocks.multilist.nodes.data[blockIndex].data.outs;
-	}
 
 	// All constants. All have unique value.
 	IrConstant[] constants;
@@ -4100,6 +4106,15 @@ struct IrFunction
 
 struct IrBuilder
 {
+	/// Must be called before compilation of each function. Allows reusing internal buffers.
+	void begin(IrFunction* ir)
+	{
+		this.ir = ir;
+		currentBB = BasicBlockIndex.NULL;
+		blockVarDef.clear();
+		nextIrVarId = IrVarId(0);
+	}
+
 	IrFunction* ir;
 
 	/// Instructions are emitted to this block
@@ -4144,18 +4159,18 @@ struct IrBuilder
 
 	/// Adds control-flow edge pointing `block` -> `target`.
 	void addBlockTarget(BasicBlockIndex block, BasicBlockIndex target) {
-		ir.basicBlocks[block].outs ~= target;
+		ir.basicBlocks[block].successors ~= target;
 		incBlockRefcount(target);
-		ir.basicBlocks[target].ins ~= block;
+		ir.basicBlocks[target].predecessors ~= block;
 	}
 
 	/// Disconnects Basic Block from it from predecessors/successors
 	/// Does not remove its instructions/phis
 	void removeBasicBlock(BasicBlockIndex blockIndex) {
-		// TODO: no ins must be left at this point
+		// TODO: no predecessors must be left at this point
 		ir.basicBlocks.freeNode(blockIndex);
-		foreach(BasicBlockIndex target; ir.basicBlocks[blockIndex].outs) decBlockRefcount(target);
-		ir.basicBlocks[blockIndex].outs = null;
+		foreach(BasicBlockIndex target; ir.basicBlocks[blockIndex].successors) decBlockRefcount(target);
+		ir.basicBlocks[blockIndex].successors = null;
 	}
 
 	void incBlockRefcount(BasicBlockIndex blockIndex) { ++ir.basicBlocks[blockIndex].refCount; }
@@ -4309,7 +4324,7 @@ struct IrBuilder
 		}
 		else
 		{
-			BasicBlockIndex[] preds = ir.blockPredecessors(blockIndex);
+			BasicBlockIndex[] preds = ir.basicBlocks[blockIndex].predecessors;
 			if (preds.length == 1) {
 				// Optimize the common case of one predecessor: No phi needed
 				value = readVariable(variable, preds[0]);
@@ -4330,7 +4345,7 @@ struct IrBuilder
 	private IrRef addPhiOperands(IrVar variable, IrRef phiRef, BasicBlockIndex blockIndex)
 	{
 		// Determine operands from predecessors
-		foreach (BasicBlockIndex predIndex; ir.blockPredecessors(blockIndex))
+		foreach (BasicBlockIndex predIndex; ir.basicBlocks[blockIndex].predecessors)
 		{
 			IrRef val = readVariable(variable, predIndex);
 			// Phi should not be cached before loop, since readVariable can add phi to phis, reallocating the array
@@ -4412,6 +4427,7 @@ struct IrBuilder
 		if (bb.isSealed) return;
 		foreach (pair; bb.incompletePhis)
 			addPhiOperands(pair.var, pair.phi, blockIndex);
+		bb.incompletePhis = null;
 		bb.isSealed = true;
 	}
 }
@@ -4465,10 +4481,10 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 		sink.putf("  @%s:%s", IrNameProxy(ctx, block.name), blockIndex);
 		if (printBlockRefs) sink.putf(" %s refs", block.refCount);
 		if (printBlockInstrRange) sink.putf(" instr[%s..%s]", block.firstInstr, block.lastInstr);
-		if (printBlockIns && block.ins)
+		if (printBlockIns && block.predecessors)
 		{
 			sink.put(" in[");
-			foreach(i, pred; block.ins) {
+			foreach(i, pred; block.predecessors) {
 				if (i > 0) sink.put(", ");
 				sink.putf("@%s", IrNameProxy(ctx, func.basicBlocks[pred].name));
 			}
@@ -4553,13 +4569,13 @@ void dumpFunction(ref IrFunction func, ref TextSink sink, CompilationContext* ct
 			case none: sink.putln("  // block not sealed"); break;
 			case ret0: sink.putln("        return"); break;
 			case ret1: sink.putfln("        return %s", RefPr(&func, block.exit.value)); break;
-			case jmp:  sink.putfln("        jmp @%s", IrNameProxy(ctx, func.basicBlocks[block.outs[0]].name)); break;
+			case jmp:  sink.putfln("        jmp @%s", IrNameProxy(ctx, func.basicBlocks[block.successors[0]].name)); break;
 			case branch:
 			{
 				sink.putfln("        branch %s @%s, @%s",
 					RefPr(&func, block.exit.value),
-					IrNameProxy(ctx, func.basicBlocks[block.outs[0]].name),
-					IrNameProxy(ctx, func.basicBlocks[block.outs[1]].name));
+					IrNameProxy(ctx, func.basicBlocks[block.successors[0]].name),
+					IrNameProxy(ctx, func.basicBlocks[block.successors[1]].name));
 			} break;
 		}
 	}
@@ -4779,13 +4795,13 @@ struct IrBasicBlock
 	PC startPC;
 
 	/// BBs that jump to this block
-	BasicBlockIndex[] ins;
+	BasicBlockIndex[] predecessors;
 
 	/// Number of jumps to this block. Starting block allways has additional ref.
 	int refCount;
 
 	/// BBs this block jumps or branches to. Null if ends with no jump/branch
-	BasicBlockIndex[] outs;
+	BasicBlockIndex[] successors;
 
 	///
 	IrRef lastInstrRef() {
@@ -4793,7 +4809,7 @@ struct IrBasicBlock
 	}
 
 	/// Specifies the last instruction of this Basic Block
-	/// Jumps use `outs` for targets
+	/// Jumps use `successors` for targets
 	IrJump exit;
 
 	// TODO: move to ir builder
@@ -4914,6 +4930,7 @@ struct IrInstruction
 	}
 	IrRef[] args() { return _args[0..numArgs]; }
 }
+pragma(msg, IrInstruction.sizeof);
 
 enum IrOpcode : ubyte
 {
@@ -5065,7 +5082,7 @@ void pass_live_intervals(ref CompilationContext ctx)
 		{
 			// live = union of successor.liveIn for each successor of block
 			liveData[] = 0;
-			foreach (BasicBlockIndex succIndex; block.outs)
+			foreach (BasicBlockIndex succIndex; block.successors)
 			{
 				foreach (size_t i, size_t bucket; blockLiveIn(succIndex))
 					liveBuckets[i] |= bucket;
@@ -5073,7 +5090,7 @@ void pass_live_intervals(ref CompilationContext ctx)
 
 			// for each phi function phi of successors of block do
 			//     live.add(phi.inputOf(block))
-			foreach (BasicBlockIndex succIndex; block.outs)
+			foreach (BasicBlockIndex succIndex; block.successors)
 				foreach (ref IrRef phiRef; fun.basicBlocks[succIndex].phis)
 					foreach (ref IrPhiArg arg; fun.phis[phiRef.index].args)
 						if (arg.blockIndex == block.index)
@@ -5171,6 +5188,11 @@ struct FunctionLiveIntervals
 	Buffer!LiveRange ranges;
 	LiveInterval[] intervals;
 	size_t numFixedIntervals;
+
+	this(this)
+	{
+		intervals = intervals.dup;
+	}
 
 	LiveInterval[] virtualIntervals() { return intervals[numFixedIntervals..$]; }
 	LiveInterval[] physicalIntervals() { return intervals[0..numFixedIntervals]; }
@@ -6148,6 +6170,11 @@ struct StackLayout
 	int numLocals;
 	StackSlot[] slots;
 
+	this(this)
+	{
+		slots = slots.dup;
+	}
+
 	/// paramIndex == -1 for non-params
 	IrRef addStackItem(ulong size, ulong alignment, bool isParameter, ushort paramIndex)
 	{
@@ -6699,7 +6726,7 @@ struct IrToAmd64
 	void resolvePhis(ref IrBasicBlock block)
 	{
 		// TODO moves are not parallel here
-		foreach (BasicBlockIndex succIndex; block.outs)
+		foreach (BasicBlockIndex succIndex; block.successors)
 			foreach (ref IrRef phiRef; curFunc.basicBlocks[succIndex].phis)
 				foreach (ref IrPhiArg arg; curFunc.phis[phiRef.index].args)
 					if (arg.blockIndex == block.index)
@@ -6751,7 +6778,7 @@ struct IrToAmd64
 
 					case jmp:
 						resolvePhis(block);
-						IrBasicBlock* target = &curFunc.basicBlocks[block.outs[0]];
+						IrBasicBlock* target = &curFunc.basicBlocks[block.successors[0]];
 						if (!curFunc.areBlockSequential(block, *target)) {
 							block.exit.fixup0 = gen.pc;
 							gen.jmp(Imm32(0));
@@ -6764,7 +6791,7 @@ struct IrToAmd64
 						// TODO missing phi resolution
 						gen.jcc(Condition.NZ, Imm32(0));
 						//writefln("jcc");
-						IrBasicBlock* secondTarget = &curFunc.basicBlocks[block.outs[1]];
+						IrBasicBlock* secondTarget = &curFunc.basicBlocks[block.successors[1]];
 						if (!curFunc.areBlockSequential(block, *secondTarget)) {
 							block.exit.fixup1 = gen.pc;
 							gen.jmp(Imm32(0));
@@ -6893,7 +6920,7 @@ struct IrToAmd64
 					fixup.jmpAbs(returnTarget);
 					break;
 				case jmp:
-					IrBasicBlock* target = &curFunc.basicBlocks[block.outs[0]];
+					IrBasicBlock* target = &curFunc.basicBlocks[block.successors[0]];
 					if (!curFunc.areBlockSequential(block, *target)) {
 						Fixup fixup = gen.fixupAt(block.exit.fixup0);
 						fixup.jmpAbs(target.startPC);
@@ -6903,10 +6930,10 @@ struct IrToAmd64
 					// Jump to not zero
 					Fixup fixup0 = gen.fixupAt(block.exit.fixup0);
 					Condition cond = IrCond_to_Condition[block.exit.condition];
-					fixup0.jccAbs(cond, curFunc.basicBlocks[block.outs[0]].startPC);
+					fixup0.jccAbs(cond, curFunc.basicBlocks[block.successors[0]].startPC);
 					//writefln("fix jcc %s", cond);
 					// fallthrough or jump to zero
-					IrBasicBlock* secondTarget = &curFunc.basicBlocks[block.outs[1]];
+					IrBasicBlock* secondTarget = &curFunc.basicBlocks[block.successors[1]];
 					if (!curFunc.areBlockSequential(block, *secondTarget)) {
 						Fixup fixup1 = gen.fixupAt(block.exit.fixup1);
 						fixup1.jmpAbs(secondTarget.startPC);
@@ -7917,18 +7944,31 @@ struct Buffer(T)
 	import std.experimental.allocator.gc_allocator;
 	alias allocator = GCAllocator.instance;
 
-	T[] buf;
+	T* bufPtr;
+	uint capacity;
+	T[] buf() { return bufPtr[0..capacity]; }
 	// Must be kept private since it can be used to check for avaliable space
 	// when used as output range
-	private size_t length;
+	private uint length;
+
+	// postblit
+	this(this)
+	{
+		import core.memory;
+		void[] tmp = allocator.allocate(capacity*T.sizeof);
+		T* newBufPtr = cast(T*)tmp.ptr;
+		newBufPtr[0..length] = bufPtr[0..length];
+		bufPtr = newBufPtr;
+		GC.addRange(bufPtr, capacity * T.sizeof, typeid(T));
+	}
 
 	bool empty() { return length == 0; }
 
 	void put(T[] items ...)
 	{
 		reserve(items.length);
-		buf[length..length+items.length] = items;
-		length += items.length;
+		bufPtr[length..length+items.length] = items;
+		length += cast(uint)items.length;
 	}
 
 	void put(R)(R itemRange)
@@ -7940,39 +7980,36 @@ struct Buffer(T)
 	void stealthPut(T item)
 	{
 		reserve(1);
-		buf[length] = item;
+		bufPtr[length] = item;
 	}
 
 	ref T opIndex(size_t at)
 	{
-		return buf[at];
+		return bufPtr[at];
 	}
 
-	ref T back() { return buf[length-1]; }
+	ref T back() { return bufPtr[length-1]; }
 
 	inout(T[]) data() inout {
-		return buf[0..length];
+		return bufPtr[0..length];
 	}
 
 	void clear() nothrow {
 		length = 0;
 	}
 
-	size_t capacity() const @property {
-		return buf.length;
-	}
-
 	void reserve(size_t items)
 	{
-		if (buf.length - length < items)
+		if (capacity - length < items)
 		{
 			import core.memory;
-			GC.removeRange(buf.ptr);
-			size_t newCapacity = nextPOT(buf.length + items);
+			GC.removeRange(bufPtr);
+			size_t newCapacity = nextPOT(capacity + items);
 			void[] tmp = buf;
 			allocator.reallocate(tmp, newCapacity*T.sizeof);
-			buf = cast(T[])tmp;
-			GC.addRange(buf.ptr, buf.length * T.sizeof, typeid(T));
+			bufPtr = cast(T*)tmp.ptr;
+			capacity = cast(uint)(tmp.length / T.sizeof);
+			GC.addRange(bufPtr, capacity * T.sizeof, typeid(T));
 		}
 	}
 
@@ -7980,14 +8017,14 @@ struct Buffer(T)
 	{
 		if (index+1 != length)
 		{
-			buf[index] = buf[length-1];
+			bufPtr[index] = bufPtr[length-1];
 		}
 		--length;
 	}
 
 	void unput(size_t numItems)
 	{
-		length -= numItems;
+		length = cast(uint)(length - numItems);
 	}
 }
 
@@ -8021,6 +8058,12 @@ struct LinkedList(NodeData, IndexT = NodeIndex)
 struct MultiLinkedList(NodeData, IndexT = NodeIndex)
 {
 	alias ListType = typeof(this);
+
+	Buffer!Node nodes;
+	uint numAllocatedNodes;
+	// head of free nodes linked list
+	IndexT firstFreeNode;
+
 	struct Node
 	{
 		IndexT prevIndex;
@@ -8073,11 +8116,6 @@ struct MultiLinkedList(NodeData, IndexT = NodeIndex)
 	}
 
 	NodeRangeReverse listRangeReverse(ListInfo!IndexT list) { return NodeRangeReverse(&this, list.last); }
-
-	Buffer!Node nodes;
-	size_t numAllocatedNodes;
-	// head of free nodes linked list
-	IndexT firstFreeNode;
 
 	IndexT putFront(ref ListInfo!IndexT listInfo, NodeData nodeData)
 	{
