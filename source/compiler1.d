@@ -4419,7 +4419,8 @@ struct IrBuilder
 	}
 
 	// Algorithm 4: Handling incomplete CFGs
-	/// Called after
+	/// Basic block is sealed if no further predecessors will be added to the block.
+	/// Sealed block is not necessarily filled.
 	/// Ignores already sealed blocks.
 	void sealBlock(BasicBlockIndex blockIndex)
 	{
@@ -7981,6 +7982,14 @@ struct Buffer(T)
 	{
 		reserve(1);
 		bufPtr[length] = item;
+	}
+
+	/// Increases length and returns void-initialized slice to be filled by user
+	T[] voidPut(size_t howMany)
+	{
+		reserve(howMany);
+		length += howMany;
+		return buf[length-howMany..length];
 	}
 
 	ref T opIndex(size_t at)
