@@ -4,6 +4,7 @@
 module new_ir;
 
 import std.stdio;
+import std.string : format;
 import std.traits : getUDAs;
 import std.bitmanip : bitfields;
 import std.format : formattedWrite, FormatSpec;
@@ -34,18 +35,144 @@ void main()
 	IrBuilder builder;
 	IrFunction ir;
 	builder.begin(&ir);
+	IrIndex param0Index = builder.addInstruction!IrInstrParameter(ir.entryBasicBlock, IrOpcode.parameter);
+	ir.get!IrInstrParameter(param0Index).index = 0;
+
 	IrIndex block0 = builder.addBasicBlock();
 	ir.addBlockTarget(ir.entryBasicBlock, block0);
+	builder.addInstruction!(IrGenericInstr!(0, HasResult.no))(ir.entryBasicBlock, IrOpcode.block_exit_jump);
 	ir.addBlockTarget(block0, ir.exitBasicBlock);
+	IrIndex zeroVal = builder.addConstant(IrConstant(0));
 
-	writeln(ir.storage[]);
-	writeln(ir);
-	foreach(i, b; ir.blocks) writefln("%s %s", i, b);
+	auto br = builder.addInstruction!IrInstrBinaryBranch(block0, IrOpcode.block_exit_binary_branch);
+	with(ir.get!IrInstrBinaryBranch(br)) {
+		header.binaryCond = IrBinaryCondition.l;
+		args = [param0Index, zeroVal];
+	}
+
+
+	TextSink sink;
+	dumpFunction(ir, sink);
+	writeln(sink.text);
 	writefln("IR size: %s bytes", ir.storage[].length * uint.sizeof);
 }
 
+void dumpFunction(ref IrFunction func, ref TextSink sink)
+{
+	sink.putf("function (");
+	//foreach (i, param; func.parameters)
+	//{
+	//	sink.putf("%s %%%s", param.type, IrNameProxy(ctx, func.variableNames[i]));
+	//	if (i+1 < func.parameters.length) sink.put(", ");
+	//}
+	sink.putln(") {");
+
+	bool printVars = false;
+	bool printBlockIns =  true;
+	bool printBlockRefs = false;
+	bool printBlockInstrRange = false;
+	bool printInstrIndex = true;
+	bool printUses = true;
+	bool printLive = true;
+
+
+	void printRegUses(IrIndex result) {
+		auto vreg = &func.get!IrVirtualRegister(result);
+		sink.put(" uses [");
+		foreach (i, index; vreg.users.range(&func))
+		{
+			if (i > 0) sink.put(", ");
+			sink.putf(" %s", index);
+		}
+		sink.put("]");
+	}
+
+	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; func.blocks)
+	{
+		if (printInstrIndex) sink.put("   |");
+		sink.putf("  %s", blockIndex);
+		if (printBlockIns && block.predecessors.length > 0)
+		{
+			sink.putf(" in [");
+			foreach(i, predIndex; block.predecessors.range(&func)) {
+				if (i > 0) sink.put(", ");
+				sink.putf("%s", predIndex);
+			}
+			sink.put("]");
+		}
+		sink.putln;
+		//sink.putfln("%s", block.predecessors.items);
+		// phis
+		// instrs
+
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(&func))
+		{
+			if (printInstrIndex) sink.putf("% 3s|", instrIndex.storageUintIndex);
+
+			switch(instrHeader.op)
+			{
+				case IrOpcode.block_exit_jump:
+					sink.putf("    jmp %s", block.successors[0, &func]); break;
+				case IrOpcode.block_exit_unary_branch:
+					sink.putf("    branch %s %s", instrHeader.unaryCond, instrHeader.args[0]);
+					break;
+				case IrOpcode.block_exit_binary_branch:
+					sink.putf("    branch %s %s, %s", instrHeader.binaryCond, instrHeader.args[0], instrHeader.args[1]);
+					break;
+				case IrOpcode.parameter:
+					uint paramIndex = func.get!IrInstrParameter(instrIndex).index;
+					sink.putf("    %s = parameter%s", instrHeader.result, paramIndex);
+					break;
+				case IrOpcode.block_exit_return_void: sink.put("        return"); break;
+				case IrOpcode.block_exit_return_value: sink.putf("        return %s", instrHeader.args[0]); break;
+				default:
+					//if (printInstrIndex) sink.putf("% 3s|", i);
+					if (instrHeader.hasResult) {
+						sink.putf("    %s = %s", instrHeader.result, cast(IrOpcode)instrHeader.op);
+					}
+					else  sink.putf("    %s", cast(IrOpcode)instrHeader.op);
+
+					foreach (i, IrIndex arg; instrHeader.args)
+					{
+						if (i > 0) sink.put(",");
+						sink.putf(" %s", arg);
+					}
+
+					break;
+			}
+
+			if (printUses && instrHeader.hasResult) printRegUses(instrHeader.result);
+			sink.putln;
+		}
+	}
+
+	sink.putln("}");
+}
+
+/// Describes what IrIndex is pointing at
+/// Is used as UDA on instructions
+enum IrValueKind : ubyte
+{
+	none, /// Used for undefined indicies
+	listItem, /// Indicates items of linked list in SmallVector
+	instruction,
+	basicBlock,
+	constant,
+	phi,
+	memoryAddress,
+	virtualRegister,
+	physicalRegister,
+}
+
+/// Represent index of any IR entity inside function's ir array
 struct IrIndex
 {
+	this(uint _storageUintIndex, IrValueKind _kind)
+	{
+		storageUintIndex = _storageUintIndex;
+		kind = _kind;
+	}
+
 	union
 	{
 		mixin(bitfields!(
@@ -58,7 +185,17 @@ struct IrIndex
 	bool isDefined() { return asUint != 0; }
 
 	void toString(scope void delegate(const(char)[]) sink) const {
-		sink.formattedWrite("%s.%s", storageUintIndex, kind);
+		final switch(kind) with(IrValueKind) {
+			case none: sink("null"); break;
+			case listItem: sink.formattedWrite("l%s", storageUintIndex); break;
+			case instruction: sink.formattedWrite("i%s", storageUintIndex); break;
+			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
+			case constant: sink.formattedWrite("c%s", storageUintIndex); break;
+			case phi: sink.formattedWrite("φ%s", storageUintIndex); break;
+			case memoryAddress: sink.formattedWrite("m%s", storageUintIndex); break;
+			case virtualRegister: sink.formattedWrite("v%s", storageUintIndex); break;
+			case physicalRegister: sink.formattedWrite("p%s", storageUintIndex); break;
+		}
 	}
 
 	/// When this index represents index of 0's array item, produces
@@ -72,38 +209,87 @@ struct IrIndex
 	}
 }
 
-enum IrValueKind : ubyte
+enum HasResult : bool { no, yes }
+
+struct InstrInfo
 {
-	none, /// Used for undefined indicies
-	listItem,
-	instruction,
-	basicBlock,
-	constant,
-	phi,
-	memoryAddress,
-	virtualRegister,
-	physicalRegister,
+	IrValueKind kind;
+	uint numArgs;
+	HasResult hasResult;
+}
+
+enum getInstrInfo(T) = getUDAs!(T, InstrInfo)[0];
+
+/// Stores numeric constant data
+@InstrInfo(IrValueKind.constant)
+struct IrConstant
+{
+	this(long value) {
+		this.i64 = value;
+	}
+
+	ubyte numSignedBytes() {
+		if (cast(byte)(i64 & 0xFF) == i64)
+			return 1;
+		else if (cast(short)(i64 & 0xFFFF) == i64)
+			return 2;
+		else if (cast(int)(i64 & 0xFFFF_FFFF) == i64)
+			return 4;
+		else
+			return 8;
+	}
+
+	ubyte numUnsignedBytes() {
+		if (cast(ubyte)(i64 & 0xFF) == i64)
+			return 1;
+		else if (cast(ushort)(i64 & 0xFFFF) == i64)
+			return 2;
+		else if (cast(uint)(i64 & 0xFFFF_FFFF) == i64)
+			return 4;
+		else
+			return 8;
+	}
+
+	union {
+		bool i1;
+		byte i8;
+		short i16;
+		int i32;
+		long i64;
+	}
 }
 
 enum IrOpcode : ubyte
 {
-	undefined, // placed in 0 position of storage
+	parameter,
 	block_header,
 	block_exit_jump,
-	block_exit_branch_unary,
-	block_exit_branch_binary,
+	block_exit_unary_branch,
+	block_exit_binary_branch,
 	block_exit_return_void,
 	block_exit_return_value,
 }
 
+@InstrInfo(IrValueKind.virtualRegister)
+struct IrVirtualRegister
+{
+	/// Index of instruction that defines this register
+	IrIndex definition;
+	/// List of instruction indicies that use this register
+	SmallVector users;
+}
+
 /// Must end with one of block_exit_... instructions
-@(IrValueKind.basicBlock)
+@InstrInfo(IrValueKind.basicBlock)
 struct IrBasicBlockInstr
 {
+	IrIndex firstInstr; // points to itself if no instructions
+	IrIndex lastInstr; // points to itself if no instructions
 	IrIndex prevBlock; // null only if this is entryBasicBlock
 	IrIndex nextBlock; // null only if this is exitBasicBlock
-	IrIndex firstInstr; // not null
 	IrIndex firstPhi; // may be null
+
+	auto instructions(IrFunction* ir) { return InstrIterator(ir, &this); }
 
 	SmallVector predecessors;
 	SmallVector successors;
@@ -111,11 +297,89 @@ struct IrBasicBlockInstr
 	uint seqIndex;
 }
 
-struct IrInstructionHeader
+pragma(msg, "BB size: ", cast(int)IrBasicBlockInstr.sizeof, " bytes");
+
+/// Common prefix of all IR instruction structs
+@InstrInfo(IrValueKind.instruction)
+struct IrInstrHeader
 {
-	uint op;
+	ushort op;
+	ubyte numArgs;
+	union
+	{
+		mixin(bitfields!(
+			HasResult,         "hasResult",  1,
+			IrBinaryCondition, "binaryCond", 3,
+			uint, "",                        4
+		));
+		mixin(bitfields!(
+			uint,             "",          1,
+			IrUnaryCondition, "unaryCond", 3,
+			uint, "",                      4
+		));
+	}
+	static assert(IrBinaryCondition.max <= 0b111, "3 bits are reserved");
+	static assert(IrUnaryCondition.max <= 0b111, "3 bits are reserved");
+	//HasResult hasResult;
 	IrIndex prevInstr;
 	IrIndex nextInstr;
+
+	IrIndex[0] _payload;
+	ref IrIndex result() {
+		return _payload.ptr[0];
+	}
+	IrIndex[] args() {
+		return _payload.ptr[cast(size_t)hasResult..cast(size_t)hasResult+numArgs];
+	}
+}
+
+template IrGenericInstr(uint numArgs, HasResult hasResult)
+{
+	@InstrInfo(IrValueKind.instruction, numArgs, hasResult)
+	struct IrGenericInstr
+	{
+		IrInstrHeader header;
+		static if (hasResult)   IrIndex result;
+		static if (numArgs > 0) IrIndex[numArgs] args;
+	}
+}
+
+enum IrBinaryCondition : ubyte {
+	eq,
+	ne,
+	l,
+	le,
+	g,
+	ge
+}
+
+/// Uses header.binaryCond
+@InstrInfo(IrValueKind.instruction, 2, HasResult.no)
+struct IrInstrBinaryBranch
+{
+	IrInstrHeader header;
+	IrIndex[2] args;
+}
+
+enum IrUnaryCondition : ubyte {
+	zero,
+	not_zero
+}
+
+/// Uses header.unaryCond
+@InstrInfo(IrValueKind.instruction, 1, HasResult.no)
+struct IrInstrUnaryBranch
+{
+	IrInstrHeader header;
+	IrIndex arg;
+}
+
+@InstrInfo(IrValueKind.instruction, 0, HasResult.yes)
+struct IrInstrParameter
+{
+	IrInstrHeader header;
+	IrIndex result;
+	uint index;
 }
 
 struct IrVarId { uint id; alias id this; }
@@ -147,6 +411,7 @@ struct IrPhiArg
 struct IrFunction
 {
 	Buffer!uint storage;
+	Buffer!IrVirtualRegister virtualRegisters;
 	Buffer!uint temp;
 
 	uint numBasicBlocks;
@@ -160,34 +425,31 @@ struct IrFunction
 	// The last created basic block
 	IrIndex lastBasicBlock;
 
-	BasicBlockRange blocks() { return BasicBlockRange(&this); }
+	BlockIterator blocks() { return BlockIterator(&this); }
 
 	alias getBlock = get!IrBasicBlockInstr;
 
-	T* get(T)(IrIndex index)
+	ref T get(T)(IrIndex index)
 	{
-		return cast(T*)(&storage.bufPtr[index.storageUintIndex]);
+		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
+		assert(index.kind != IrValueKind.none, "null index");
+		return *cast(T*)(&storage.bufPtr[index.storageUintIndex]);
 	}
 
 	/// Returns index to allocated item
 	/// Allocates howMany items. By default allocates single item.
 	/// If howMany > 1 - returns index of first item, access other items via IrIndex.indexOf
+	/// T must have UDA of InstrInfo() value
 	IrIndex append(T)(uint howMany = 1)
 	{
-		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
-		alias udas = getUDAs!(T, IrValueKind);
+		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
 
 		IrIndex result;
 		result.storageUintIndex = storage.length;
-
-		static if (udas.length == 0)
-			result.kind = IrValueKind.none;
-		else static if (udas.length == 1)
-			result.kind = udas[0];
-		else static assert(false, "T must have 1 or 0 IrValueKind UDAs attached");
+		result.kind = getInstrInfo!T.kind;
 
 		storage.voidPut(divCeil(T.sizeof, uint.sizeof)*howMany);
-		get!T(result)[0..howMany] = T.init;
+		(&get!T(result))[0..howMany] = T.init;
 		return result;
 	}
 
@@ -200,7 +462,7 @@ struct IrFunction
 	/// Does not remove its instructions/phis
 	void removeBasicBlock(IrIndex basicBlockToRemove) {
 		--numBasicBlocks;
-		IrBasicBlockInstr* bb = get!IrBasicBlockInstr(basicBlockToRemove);
+		IrBasicBlockInstr* bb = &get!IrBasicBlockInstr(basicBlockToRemove);
 		if (bb.prevBlock.isDefined)
 			getBlock(bb.prevBlock).nextBlock = bb.nextBlock;
 		if (bb.nextBlock.isDefined)
@@ -215,16 +477,14 @@ struct IrFunction
 	}
 }
 
-struct BasicBlockRange
+struct BlockIterator
 {
 	IrFunction* ir;
-
-	int opApply(scope int delegate(IrIndex, ref IrBasicBlockInstr) dg)
-	{
+	int opApply(scope int delegate(IrIndex, ref IrBasicBlockInstr) dg) {
 		IrIndex next = ir.entryBasicBlock;
 		while (next.isDefined)
 		{
-			IrBasicBlockInstr* block = ir.getBlock(next);
+			IrBasicBlockInstr* block = &ir.getBlock(next);
 			if (int res = dg(next, *block))
 				return res;
 			next = block.nextBlock;
@@ -232,6 +492,24 @@ struct BasicBlockRange
 		return 0;
 	}
 }
+
+struct InstrIterator
+{
+	IrFunction* ir;
+	IrBasicBlockInstr* block;
+	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
+		IrIndex next = block.firstInstr;
+		while (next.isDefined)
+		{
+			IrInstrHeader* header = &ir.get!IrInstrHeader(next);
+			if (int res = dg(next, *header))
+				return res;
+			next = header.nextInstr;
+		}
+		return 0;
+	}
+}
+
 
 // papers:
 // 1. Simple and Efficient Construction of Static Single Assignment Form
@@ -307,14 +585,47 @@ struct IrBuilder
 	void addUser(IrIndex user, IrIndex used) { assert(false); }
 
 
-	void addInstruction(IrIndex basicBlock) { }
+	IrIndex addInstruction(I)(IrIndex blockIndex, ushort op) {
+		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		IrIndex instr = ir.append!I;
+		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+		instrHeader.op = op;
+		instrHeader.prevInstr = block.lastInstr; // points to prev instruction or to null
+		instrHeader.numArgs = getInstrInfo!I.numArgs;
+		instrHeader.hasResult = getInstrInfo!I.hasResult;
+
+		if (instrHeader.hasResult)
+		{
+			instrHeader.result = addVirtualRegister(instr);
+		}
+
+		if (!block.firstInstr.isDefined) {
+			block.firstInstr = instr;
+			block.lastInstr = instr;
+		} else {
+			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
+		}
+
+		return instr;
+	}
+
+	IrIndex addConstant(IrConstant con) {
+		IrIndex conIndex = ir.append!IrConstant;
+		ir.get!IrConstant(conIndex) = con;
+		return conIndex;
+	}
 
 
 	private void incBlockRefcount(IrIndex basicBlock) { assert(false); }
 	private void decBlockRefcount(IrIndex basicBlock) { assert(false); }
 
 	// Creates operand for result of phi/instruction that is defined by `definition`
-	private IrIndex addVirtualRegister(IrIndex definition) { assert(false); }
+	private IrIndex addVirtualRegister(IrIndex definition) {
+		IrIndex virtRegIndex = ir.append!IrVirtualRegister;
+		IrVirtualRegister* virtReg = &ir.get!IrVirtualRegister(virtRegIndex);
+		virtReg.definition = definition;
+		return virtRegIndex;
+	}
 
 	// ignores null opdId
 	private void removeVirtualRegister(IrIndex vreg) { assert(false); }
@@ -337,7 +648,7 @@ struct IrBuilder
 }
 
 /// Used for linked list
-@(IrValueKind.listItem)
+@InstrInfo(IrValueKind.listItem)
 struct ListItem
 {
 	IrIndex itemIndex;
@@ -359,12 +670,12 @@ struct SmallVector
 	{
 		if (items[0].kind == IrValueKind.listItem)
 			return listLength;
-		else if (items[0].isDefined)
-			return 0;
 		else if (items[1].isDefined)
+			return 2;
+		else if (items[0].isDefined)
 			return 1;
 		else
-			return 2;
+			return 0;
 	}
 
 	bool isBig()
@@ -377,12 +688,26 @@ struct SmallVector
 		return SmallVectorRange(this, ir);
 	}
 
+	IrIndex opIndex(size_t index, IrFunction* ir)
+	{
+		size_t len = length;
+		assert(index < len);
+		if (len < 3) return items[index];
+
+		foreach(i, val; range(ir))
+			if (i == index)
+				return val;
+		assert(false);
+	}
+
 	void append(IrFunction* ir, IrIndex itemData)
 	{
+		assert(itemData.kind != IrValueKind.listItem, "listItem is not storable inside SmallVector");
+		assert(itemData.kind != IrValueKind.none, "IrValueKind.none is not storable inside SmallVector");
 		if (isBig)
 		{
 			IrIndex newListItemIndex = ir.append!ListItem;
-			ListItem* listItem = ir.get!ListItem(newListItemIndex);
+			ListItem* listItem = &ir.get!ListItem(newListItemIndex);
 			*listItem = ListItem(itemData, firstListItem);
 			firstListItem = newListItemIndex;
 			++listLength;
@@ -400,7 +725,7 @@ struct SmallVector
 			else
 			{
 				IrIndex arrayIndex = ir.append!ListItem(3);
-				ListItem* itemArray = ir.get!ListItem(arrayIndex);
+				ListItem* itemArray = &ir.get!ListItem(arrayIndex);
 				itemArray[2] = ListItem(itemData);
 				itemArray[1] = ListItem(items[1], arrayIndex.indexOf!ListItem(2));
 				itemArray[0] = ListItem(items[0], arrayIndex.indexOf!ListItem(1));
@@ -410,7 +735,8 @@ struct SmallVector
 		}
 	}
 
-	void toString(scope void delegate(const(char)[]) sink) {
+	void toString(scope void delegate(const(char)[]) sink)
+	{
 		if (isBig)
 			sink.formattedWrite("[%s items]", listLength);
 		else if (items[1].isDefined)
@@ -421,32 +747,59 @@ struct SmallVector
 	}
 }
 
+unittest
+{
+	IrFunction ir;
+	SmallVector vec;
+
+	assert(vec.length == 0);
+	assert(!vec.isBig);
+
+	vec.append(&ir, IrIndex(1, IrValueKind.instruction));
+	assert(vec.length == 1);
+	assert(!vec.isBig);
+
+	vec.append(&ir, IrIndex(2, IrValueKind.instruction));
+	assert(vec.length == 2);
+	assert(!vec.isBig);
+
+	vec.append(&ir, IrIndex(3, IrValueKind.instruction));
+	assert(vec.length == 3);
+	assert(vec.isBig);
+
+	vec.append(&ir, IrIndex(4, IrValueKind.instruction));
+	assert(vec.length == 4);
+	assert(vec.isBig);
+}
+
 struct SmallVectorRange
 {
 	SmallVector vector;
 	IrFunction* ir;
 
-	int opApply(scope int delegate(IrIndex) dg)
+	int opApply(scope int delegate(size_t, IrIndex) dg)
 	{
 		if (vector.isBig) // length > 2
 		{
 			IrIndex next = vector.firstListItem;
+			size_t seqIndex = 0;
 			while (next.isDefined)
 			{
-				ListItem* listItem = ir.get!ListItem(next);
+				ListItem* listItem = &ir.get!ListItem(next);
 				next = listItem.nextItem;
-				if (int res = dg(listItem.itemIndex))
+				if (int res = dg(seqIndex, listItem.itemIndex))
 					return res;
+				++seqIndex;
 			}
 		}
 		else // 0, 1, 2
 		{
 			if (vector.items[0].isDefined)
 			{
-				if (int res = dg(vector.items[0])) return res;
+				if (int res = dg(0, vector.items[0])) return res;
 				if (vector.items[1].isDefined)
 				{
-					if (int res = dg(vector.items[1])) return res;
+					if (int res = dg(1, vector.items[1])) return res;
 				}
 			}
 		}
@@ -454,6 +807,32 @@ struct SmallVectorRange
 	}
 }
 
+struct TextSink
+{
+	import std.format : formattedWrite;
+	import std.string : stripRight;
+
+	Buffer!char data;
+
+	void clear() { data.clear(); }
+	string text() { return stripRight(cast(string)data.data); }
+
+	void put(in char[] str)
+	{
+		if (str.length == 0) return;
+		data.put(str);
+		data.stealthPut('\0');
+	}
+
+	void putf(Args...)(const(char)[] fmt, Args args) { formattedWrite(&this, fmt, args); }
+	void putfln(Args...)(const(char)[] fmt, Args args) { formattedWrite(&this, fmt, args); put("\n"); }
+	void putln(const(char)[] str = null) { put(str); put("\n"); }
+}
+
+struct ChunkedBuffer
+{
+
+}
 
 struct Buffer(T)
 {
