@@ -8,6 +8,7 @@ module utils;
 import std.traits : isIntegral;
 public import std.algorithm : min, max;
 import std.stdio;
+import std.string : format;
 
 enum size_t PAGE_SIZE = 4096;
 
@@ -271,16 +272,32 @@ struct Buffer(T)
 {
 	import std.experimental.allocator.gc_allocator;
 	alias allocator = GCAllocator.instance;
-	T[] buf;
+
+	T* bufPtr;
+	uint capacity;
+	T[] buf() { return bufPtr[0..capacity]; }
 	// Must be kept private since it can be used to check for avaliable space
 	// when used as output range
-	private size_t length;
+	private uint length;
+
+	// postblit
+	this(this)
+	{
+		import core.memory;
+		void[] tmp = allocator.allocate(capacity*T.sizeof);
+		T* newBufPtr = cast(T*)tmp.ptr;
+		newBufPtr[0..length] = bufPtr[0..length];
+		bufPtr = newBufPtr;
+		GC.addRange(bufPtr, capacity * T.sizeof, typeid(T));
+	}
+
+	bool empty() { return length == 0; }
 
 	void put(T[] items ...)
 	{
 		reserve(items.length);
-		buf[length..length+items.length] = items;
-		length += items.length;
+		bufPtr[length..length+items.length] = items;
+		length += cast(uint)items.length;
 	}
 
 	void put(R)(R itemRange)
@@ -292,29 +309,259 @@ struct Buffer(T)
 	void stealthPut(T item)
 	{
 		reserve(1);
-		buf[length] = item;
+		bufPtr[length] = item;
 	}
 
-	inout(T[]) data() inout {
-		return buf[0..length];
+	/// Increases length and returns void-initialized slice to be filled by user
+	T[] voidPut(size_t howMany)
+	{
+		reserve(howMany);
+		length += howMany;
+		return buf[length-howMany..length];
 	}
+
+	ref T opIndex(size_t at)
+	{
+		return bufPtr[at];
+	}
+
+	ref T back() { return bufPtr[length-1]; }
+
+	inout(T[]) data() inout {
+		return bufPtr[0..length];
+	}
+
+	alias opSlice = data;
 
 	void clear() nothrow {
 		length = 0;
 	}
 
-	size_t capacity() const @property {
-		return buf.length - length;
+	void reserve(size_t items)
+	{
+		if (capacity - length < items)
+		{
+			import core.memory;
+			GC.removeRange(bufPtr);
+			size_t newCapacity = nextPOT(capacity + items);
+			void[] tmp = buf;
+			allocator.reallocate(tmp, newCapacity*T.sizeof);
+			bufPtr = cast(T*)tmp.ptr;
+			capacity = cast(uint)(tmp.length / T.sizeof);
+			GC.addRange(bufPtr, capacity * T.sizeof, typeid(T));
+		}
+	}
+
+	void removeInPlace(size_t index)
+	{
+		if (index+1 != length)
+		{
+			bufPtr[index] = bufPtr[length-1];
+		}
+		--length;
+	}
+
+	void unput(size_t numItems)
+	{
+		length = cast(uint)(length - numItems);
+	}
+}
+
+
+struct TextSink
+{
+	import std.format : formattedWrite;
+	import std.string : stripRight;
+
+	Buffer!char data;
+
+	void clear() { data.clear(); }
+	string text() { return stripRight(cast(string)data.data); }
+
+	void put(in char[] str)
+	{
+		if (str.length == 0) return;
+		data.put(str);
+		data.stealthPut('\0');
+	}
+
+	void putf(Args...)(const(char)[] fmt, Args args) { formattedWrite(&this, fmt, args); }
+	void putfln(Args...)(const(char)[] fmt, Args args) { formattedWrite(&this, fmt, args); put("\n"); }
+	void putln(const(char)[] str = null) { put(str); put("\n"); }
+}
+
+struct FixedBuffer(T)
+{
+	T* bufPtr;
+	uint capacity;
+	void setBuffer(uint[] newBuffer) {
+		bufPtr = newBuffer.ptr;
+		assert(bufPtr);
+		assert(newBuffer.length <= uint.max, "capacity overflow");
+		capacity = cast(uint)newBuffer.length;
+		length = 0;
+	}
+	T[] buf() { return bufPtr[0..capacity]; }
+
+	uint length;
+
+	bool empty() { return length == 0; }
+
+	void put(T[] items ...)
+	{
+		reserve(items.length);
+		bufPtr[length..length+items.length] = items;
+		length += cast(uint)items.length;
+	}
+
+	void put(R)(R itemRange)
+	{
+		foreach(item; itemRange)
+			put(item);
+	}
+
+	void stealthPut(T item)
+	{
+		reserve(1);
+		bufPtr[length] = item;
+	}
+
+	/// Increases length and returns void-initialized slice to be filled by user
+	T[] voidPut(size_t howMany)
+	{
+		reserve(howMany);
+		length += howMany;
+		return buf[length-howMany..length];
+	}
+
+	ref T opIndex(size_t at)
+	{
+		return bufPtr[at];
+	}
+
+	ref T back() { return bufPtr[length-1]; }
+
+	inout(T[]) data() inout {
+		return bufPtr[0..length];
+	}
+
+	alias opSlice = data;
+
+	void clear() nothrow {
+		length = 0;
 	}
 
 	void reserve(size_t items)
 	{
-		if (buf.length - length < items)
+		if (capacity - length < items)
 		{
-			size_t newCapacity = nextPOT(buf.length + items);
-			void[] tmp = buf;
-			allocator.reallocate(tmp, newCapacity*T.sizeof);
-			buf = cast(T[])tmp;
+			assert(false, format("out of memory: capacity %s, length %s, requested %s", capacity, length, items));
 		}
+	}
+}
+
+struct Win32Allocator
+{
+	import core.sys.windows.windows;
+
+	enum PAGE_SIZE = 4096;
+	void* bufferPtr;
+	size_t reservedBytes;
+	size_t committedBytes;
+	size_t allocatedBytes;
+
+	bool reserve(size_t size)
+	{
+		reservedBytes = divCeil(size, PAGE_SIZE) * PAGE_SIZE; // round up to page size
+		bufferPtr = VirtualAlloc(null, reservedBytes, MEM_RESERVE, PAGE_NOACCESS);
+		version(print_allocator) writefln("reserve %s, ptr %X", size, bufferPtr);
+		return bufferPtr !is null;
+	}
+
+	void[] allocate(size_t numBytes)
+	{
+		version(print_allocator) writef("allocate %s, %s -> ", numBytes, this);
+		scope(exit) version(print_allocator) writeln(this);
+		if (numBytes == 0) return null;
+
+		size_t newAllocatedBytes = allocatedBytes + numBytes;
+
+		if (newAllocatedBytes > committedBytes) // commit more
+		{
+			size_t newCommittedBytes = alignValue(newAllocatedBytes, PAGE_SIZE);
+			size_t bytesToCommit = newCommittedBytes - committedBytes;
+			void* result = VirtualAlloc(bufferPtr + committedBytes, bytesToCommit, MEM_COMMIT, PAGE_READWRITE);
+			if (result is null) return null;
+			committedBytes = newCommittedBytes;
+		}
+
+		void* ptr = bufferPtr + allocatedBytes;
+		allocatedBytes = newAllocatedBytes;
+
+		return ptr[0..numBytes];
+	}
+
+	bool deallocate(void[] block)
+	{
+		version(print_allocator) writefln("deallocate %s", block.length);
+		if (block.ptr + block.length == bufferPtr + allocatedBytes)
+		{
+			// Shrink allocated part if block is at the end of allocated area
+			allocatedBytes -= block.length;
+		}
+		return true;
+	}
+
+	bool deallocateAll()
+	{
+		allocatedBytes = 0;
+		return true;
+	}
+
+	bool reallocate(ref void[] block, size_t newSize)
+	{
+		version(print_allocator) writefln("\nreallocate ptr %X size %s -> %s", block.ptr, block.length, newSize);
+
+		if (block.ptr + block.length == bufferPtr + allocatedBytes)
+		{
+			if (block.length >= newSize)
+			{
+				// Shrink if this is the last allocated block
+				allocatedBytes = allocatedBytes - (block.length - newSize);
+				block = block.ptr[0..newSize];
+				version(print_allocator) writeln("  shrink last block");
+				return true;
+			}
+
+			// Expand block that is the last allocated one
+			void[] extra = allocate(newSize - block.length);
+			if (extra.ptr !is null)
+			{
+				block = block.ptr[0..newSize];
+				version(print_allocator) writefln("  expand last block %X:%s", block.ptr, block.length);
+				return true;
+			}
+			return false;
+		}
+
+		if (block.length >= newSize)
+		{
+			// Dont reallocate if already satisfies
+			block = block.ptr[0..newSize];
+			version(print_allocator) writeln("  shrink block in place");
+			return true;
+		}
+
+		// attempt full reallocation / block is null
+		void[] newBlock = allocate(newSize);
+		version(print_allocator) writefln("  reallocate block %X:%s", newBlock.ptr, newBlock.length);
+		if (newBlock.ptr !is null)
+		{
+			newBlock[0..block.length] = block;
+			block = newBlock;
+			return true;
+		}
+
+		return false;
 	}
 }
