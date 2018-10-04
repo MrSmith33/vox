@@ -5,7 +5,7 @@ module new_ir;
 
 import std.stdio;
 import std.string : format;
-import std.traits : getUDAs;
+import std.traits : getUDAs, Parameters;
 import std.bitmanip : bitfields;
 import std.format : formattedWrite, FormatSpec;
 import utils;
@@ -43,8 +43,8 @@ void main()
 	// }
 
 	Win32Allocator allocator;
-	size_t memSize = 1024UL*1024*1024*10;
-	size_t arrSizes = 1024UL*1024*1024*5;
+	size_t memSize = 1024UL*1024*10;
+	size_t arrSizes = 1024UL*1024*5;
 	bool success = allocator.reserve(memSize);
 	assert(success, "allocator failed");
 
@@ -112,7 +112,7 @@ void main()
 	TextSink sink;
 	dumpFunction(&ir, sink);
 	writeln(sink.text);
-	writefln("IR size: %s bytes", ir.storage[].length * uint.sizeof);
+	writefln("IR size: %s uints | %s bytes", ir.storage[].length, ir.storage[].length * uint.sizeof);
 }
 
 void dumpFunction(IrFunction* ir, ref TextSink sink)
@@ -133,7 +133,7 @@ void dumpFunction(IrFunction* ir, ref TextSink sink)
 
 	void printRegUses(IrIndex result) {
 		auto vreg = &ir.get!IrVirtualRegister(result);
-		sink.put(" uses [");
+		sink.put(" used by [");
 		foreach (i, index; vreg.users.range(ir))
 		{
 			if (i > 0) sink.put(", ");
@@ -540,6 +540,7 @@ struct IrInstrHeader
 
 	IrIndex[0] _payload;
 	ref IrIndex result() {
+		assert(hasResult);
 		return _payload.ptr[0];
 	}
 	IrIndex[] args() {
@@ -1077,8 +1078,39 @@ struct IrBuilder
 		return same.value;
 	}
 
+	ref SmallVector usersOf(IrIndex someIndex)
+	{
+		final switch (someIndex.kind) with(IrValueKind) {
+			case none: assert(false);
+			case listItem: assert(false);
+			case instruction: return ir.get!IrVirtualRegister(ir.get!IrInstrHeader(someIndex).result).users;
+			case basicBlock: assert(false);
+			case constant: assert(false);
+			case phi: return ir.get!IrVirtualRegister(ir.get!IrPhiInstr(someIndex).result).users;
+			case memoryAddress: assert(false); // TODO
+			case virtualRegister: return ir.get!IrVirtualRegister(someIndex).users;
+			case physicalRegister: assert(false);
+		}
+	}
+
+	IrIndex definitionOf(IrIndex someIndex)
+	{
+		final switch (someIndex.kind) with(IrValueKind) {
+			case none: assert(false);
+			case listItem: assert(false);
+			case instruction: return someIndex;
+			case basicBlock: assert(false);
+			case constant: assert(false);
+			case phi: return someIndex;
+			case memoryAddress: assert(false); // TODO
+			case virtualRegister: return ir.get!IrVirtualRegister(someIndex).definition;
+			case physicalRegister: assert(false);
+		}
+	}
+
 	// ditto
 	/// Rewrites all users of phi to point to `byWhat` instead of its result `what`.
+	/// `what` is the result of phi (vreg), `phiUsers` is users of `what`
 	private void replaceBy(SmallVector phiUsers, IrIndex what, IrPhiArg byWhat) {
 		foreach (size_t i, IrIndex userIndex; phiUsers.range(ir))
 		{
@@ -1088,19 +1120,33 @@ struct IrBuilder
 				case instruction:
 					foreach (ref IrIndex arg; ir.get!IrInstrHeader(userIndex).args)
 						if (arg == what)
+						{
 							arg = byWhat.value;
+							replaceUserWith(byWhat.value, definitionOf(what), userIndex);
+						}
 					break;
 				case basicBlock: assert(false);
 				case constant: assert(false);
 				case phi:
 					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(userIndex).args(ir))
 						if (phiArg.value == what)
+						{
 							phiArg = byWhat;
+							replaceUserWith(byWhat.value, definitionOf(what), userIndex);
+						}
 					break;
 				case memoryAddress: assert(false); // TODO
 				case virtualRegister: assert(false);
 				case physicalRegister: assert(false);
 			}
+		}
+	}
+
+	private void replaceUserWith(IrIndex used, IrIndex what, IrIndex byWhat) {
+		foreach (ref IrIndex userIndex; usersOf(used).range(ir))
+		{
+			if (userIndex == what)
+				userIndex = byWhat;
 		}
 	}
 }
@@ -1143,7 +1189,7 @@ struct SmallVector
 
 	SmallVectorRange range(IrFunction* ir)
 	{
-		return SmallVectorRange(this, ir);
+		return SmallVectorRange(&this, ir);
 	}
 
 	IrIndex opIndex(size_t index, IrFunction* ir)
@@ -1234,10 +1280,20 @@ unittest
 
 struct SmallVectorRange
 {
-	SmallVector vector;
+	SmallVector* vector;
 	IrFunction* ir;
 
-	int opApply(scope int delegate(size_t, IrIndex) dg)
+	int opApply(scope int delegate(size_t, ref IrIndex) dg)
+	{
+		return opApplyImpl!2(dg);
+	}
+
+	int opApply(scope int delegate(ref IrIndex) dg)
+	{
+		return opApplyImpl!1(dg);
+	}
+
+	int opApplyImpl(uint size, Del)(scope Del dg)
 	{
 		if (vector.isBig) // length > 2
 		{
@@ -1247,19 +1303,32 @@ struct SmallVectorRange
 			{
 				ListItem* listItem = &ir.get!ListItem(next);
 				next = listItem.nextItem;
-				if (int res = dg(seqIndex, listItem.itemIndex))
-					return res;
-				++seqIndex;
+				static if (size == 2) {
+					if (int res = dg(seqIndex, listItem.itemIndex))
+						return res;
+					++seqIndex;
+				} else {
+					if (int res = dg(listItem.itemIndex))
+						return res;
+				}
 			}
 		}
 		else // 0, 1, 2
 		{
 			if (vector.items[0].isDefined)
 			{
-				if (int res = dg(0, vector.items[0])) return res;
-				if (vector.items[1].isDefined)
-				{
-					if (int res = dg(1, vector.items[1])) return res;
+				static if (size == 2) {
+					if (int res = dg(0, vector.items[0])) return res;
+					if (vector.items[1].isDefined)
+					{
+						if (int res = dg(1, vector.items[1])) return res;
+					}
+				} else {
+					if (int res = dg(vector.items[0])) return res;
+					if (vector.items[1].isDefined)
+					{
+						if (int res = dg(vector.items[1])) return res;
+					}
 				}
 			}
 		}
