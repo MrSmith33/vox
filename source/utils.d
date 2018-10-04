@@ -39,23 +39,30 @@ else version(Windows)
 	import core.sys.windows.windows : GetLastError, VirtualAlloc, VirtualFree, VirtualProtect, MEM_COMMIT,
 		PAGE_READWRITE, MEM_RELEASE, PAGE_EXECUTE_READWRITE, MEM_RESERVE;
 
-	ubyte[] allocate(size_t bytes, void* location, bool is_executable)
+	ubyte[] allocate(size_t bytes, void* location, MemType memoryType)
 	{
 		if (!bytes) return null;
 
-		//writefln("allocate 0x%s bytes at 0x%s", cast(void*)bytes, location);
+		int protection;
 
-		int protection = is_executable ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
+		final switch(memoryType)
+		{
+			case MemType.RW:  protection = PAGE_READWRITE; break;
+			case MemType.RWX: protection = PAGE_EXECUTE_READWRITE; break;
+		}
+
 		auto p = VirtualAlloc(location, bytes, MEM_COMMIT | MEM_RESERVE, protection);
+
 		if (p == null)
 		{
 			import std.stdio;
 			import std.windows.syserror;
 			int errCode = GetLastError();
 			writeln(sysErrorString(errCode));
-			assert(false);
+			assert(false, "VirtualAlloc alloc failed");
 			return null;
 		}
+
 		return cast(ubyte[])p[0 .. bytes];
 	}
 
@@ -68,33 +75,6 @@ else version(Windows)
 	{
 		uint val;
 		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_READWRITE, &val);
-	}
-
-	enum MemType
-	{
-		RW,
-		RWX
-	}
-
-	struct MemAllocator
-	{
-		void* location = cast(void*)0x4000_0000UL;
-		ubyte[] allocate(size_t bytes, MemType memoryType)
-		{
-			ubyte[] res;
-			final switch(memoryType)
-			{
-				case MemType.RW: res = .allocate(bytes, location, false); break;
-				case MemType.RWX: res = .allocate(bytes, location, true); break;
-			}
-			location += bytes;
-			return res;
-		}
-
-		void free(ubyte[] b)
-		{
-			deallocate(b);
-		}
 	}
 
 	void testAdresses()
@@ -129,9 +109,15 @@ else version(Windows)
 	}
 }
 
+enum MemType
+{
+	RW,
+	RWX
+}
+
 ubyte[] alloc_executable_memory(size_t bytes)
 {
-	return allocate(bytes, cast(void*)0x4000_0000UL, true);
+	return allocate(bytes, cast(void*)0x4000_0000UL, MemType.RWX);
 }
 
 bool free_executable_memory(ubyte[] bytes)
@@ -185,11 +171,8 @@ T paddingSize(T)(T address, T alignment)
 	return cast(T)(alignValue(address, alignment) - address);
 }
 
-import core.time : MonoTime, Duration, usecs, dur;
-
-MonoTime currTime() {
-	return MonoTime.currTime();
-}
+public import core.time : MonoTime, Duration, usecs, dur;
+MonoTime currTime() { return MonoTime.currTime(); }
 
 struct ScaledNumberFmt(T)
 {
@@ -278,7 +261,7 @@ struct Buffer(T)
 	T[] buf() { return bufPtr[0..capacity]; }
 	// Must be kept private since it can be used to check for avaliable space
 	// when used as output range
-	private uint length;
+	uint length;
 
 	// postblit
 	this(this)
@@ -367,6 +350,22 @@ struct Buffer(T)
 	}
 }
 
+struct IndentTextSink
+{
+	import std.range : repeat;
+	TextSink sink;
+	int indentSize = 2;
+	private int indent;
+
+	void putIndent() { sink.putf("%s", ' '.repeat(indent)); }
+	void put(in char[] str) { putIndent; sink.put(str); }
+	void putf(Args...)(const(char)[] fmt, Args args) { putIndent; sink.putf(fmt, args); }
+	void putfln(Args...)(const(char)[] fmt, Args args) { putIndent; sink.putfln(fmt, args); }
+	void putln(const(char)[] str = null) { putIndent; sink.putln(str); }
+
+	void push() { indent += indentSize; }
+	void pop() { indent -= indentSize; }
+}
 
 struct TextSink
 {
@@ -478,6 +477,15 @@ struct Win32Allocator
 		return bufferPtr !is null;
 	}
 
+	void releaseMemory()
+	{
+		VirtualFree(bufferPtr, 0, MEM_RELEASE);
+		bufferPtr = null;
+		reservedBytes = 0;
+		committedBytes = 0;
+		allocatedBytes = 0;
+	}
+
 	void[] allocate(size_t numBytes)
 	{
 		version(print_allocator) writef("allocate %s, %s -> ", numBytes, this);
@@ -564,4 +572,29 @@ struct Win32Allocator
 
 		return false;
 	}
+}
+
+T[] removeInPlace(T)(T[] array, T what)
+{
+	size_t i = 0;
+	size_t length = array.length;
+	while(i < length)
+	{
+		if (array[i] == what)
+		{
+			array[i] = array[length-1];
+			--length;
+		}
+		++i;
+	}
+	return assumeSafeAppend(array[0..length]);
+}
+
+unittest
+{
+	assert(removeInPlace([], 1) == []);
+	assert(removeInPlace([1], 1) == []);
+	assert(removeInPlace([1], 2) == [1]);
+	assert(removeInPlace([1, 2], 2) == [1]);
+	assert(removeInPlace([2, 1], 2) == [1]);
 }

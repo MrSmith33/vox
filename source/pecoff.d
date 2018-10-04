@@ -259,11 +259,10 @@ struct SymbolTable
 
 void testExeCompilation()
 {
-	MemAllocator allocator;
 	auto time0 = currTime;
 
-	ubyte[] buf = allocator.allocate(0x1000 * 20, MemType.RW);
-	scope(exit) allocator.free(buf);
+	ubyte[] buf = allocate(0x1000 * 20, null, MemType.RW);
+	scope(exit) deallocate(buf);
 	ubyte[] binaryMem = buf[0..2*0x1000];// = allocator.allocate(4096 * 8, MemType.RW);
 	ubyte[] importMem = buf[2*0x1000..4*0x1000];
 	ubyte[] dataMem = buf[4*0x1000..6*0x1000];
@@ -876,6 +875,7 @@ struct LibMemberHeader
 
 	ParsedLibMemberHeader parse() const @safe
 	{
+		import std.datetime.systime : SysTime;
 		ParsedLibMemberHeader res;
 		res.Name = strip(Name[]);
 		auto dateStripped = Date[].strip;
@@ -895,6 +895,7 @@ static assert(LibMemberHeader.sizeof == 60);
 
 struct ParsedLibMemberHeader
 {
+	import std.datetime.systime : SysTime;
 	align(1):
 	const(char)[] Name;
 	SysTime Date;
@@ -1346,7 +1347,7 @@ struct Executable
 		// COFF Header
 		coffFileHeader.Machine = MachineType.amd64;
 		coffFileHeader.NumberOfSections = cast(ushort)sections.length;
-		coffFileHeader.TimeDateStamp = Clock.currTime().toUnixTime;
+		coffFileHeader.TimeDateStamp = 0;
 		coffFileHeader.PointerToSymbolTable = 0;
 		coffFileHeader.NumberOfSymbols = 0;
 		coffFileHeader.Characteristics =
