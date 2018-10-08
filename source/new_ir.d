@@ -10,7 +10,8 @@ import std.bitmanip : bitfields;
 import std.format : formattedWrite, FormatSpec;
 import utils;
 
-void main()
+void main(){}
+unittest
 {
 	// function i32 $sign () {
 	//    |  @start:0
@@ -43,6 +44,8 @@ void main()
 	// }
 
 	Win32Allocator allocator;
+	scope(exit) allocator.releaseMemory();
+
 	size_t memSize = 1024UL*1024*10;
 	size_t arrSizes = 1024UL*1024*5;
 	bool success = allocator.reserve(memSize);
