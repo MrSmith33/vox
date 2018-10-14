@@ -16,7 +16,7 @@ import std.range : chain;
 import std.bitmanip : bitfields;
 import std.algorithm : min, max, sort, swap;
 
-import old_ir;
+import ir;
 import utils;
 import ir_to_amd64;
 
@@ -92,7 +92,7 @@ struct CompilationContext
 	IdentifierMap idMap;
 	bool hasErrors;
 	TextSink sink;
-	IceBehavior iceBehavior = IceBehavior.error;
+	IceBehavior iceBehavior = IceBehavior.breakpoint;
 	bool buildDebug = false;
 
 	//alias idString = idMap.get;
@@ -987,6 +987,8 @@ enum AstFlags {
 	isStatement   = 1 << 3,
 	isType        = 1 << 4,
 	isSymResolved = 1 << 5,
+	/// Is added to expression nodes that are being assigned to
+	isLvalue      = 1 << 6,
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
@@ -1016,6 +1018,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isStatement() { return cast(bool)(flags & AstFlags.isStatement); }
 	bool isType() { return cast(bool)(flags & AstFlags.isType); }
 	bool isSymResolved() { return cast(bool)(flags & AstFlags.isSymResolved); }
+	bool isLvalue() { return cast(bool)(flags & AstFlags.isLvalue); }
 }
 
 mixin template SymRefNodeData() {
@@ -1275,6 +1278,7 @@ mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
 	Scope* _scope;
+	/// Linear list of all functions of a module (including nested and methods)
 	FunctionDeclNode*[] functions;
 	IrModule irModule;
 
@@ -1318,14 +1322,14 @@ enum VariableFlags : ubyte {
 }
 
 struct VariableDeclNode {
-	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration);
+	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);
 	mixin SymRefNodeData;
 	TypeNode* type;
 	ubyte varFlags;
 	ushort paramIndex; // 0 for non-params
-	IrRef irRef;
+	IrIndex irRef;
 	IrVar irVar; // unique id of variable within a function
-	IrRef stackSlotId;
+	IrIndex stackSlotId;
 	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
 	bool forceMemoryStorage() { return cast(bool)(varFlags & VariableFlags.forceMemoryStorage); }
 }
@@ -1393,7 +1397,7 @@ struct AssignStmtNode {
 mixin template ExpressionNodeData(AstType _astType) {
 	mixin AstNodeData!(_astType, AstFlags.isExpression);
 	TypeNode* type;
-	IrRef irRef;
+	IrIndex irRef;
 }
 
 // Abstract node, must not be instantiated
@@ -1740,7 +1744,7 @@ struct Parser {
 
 	void setup() {}
 	T* make(T, Args...)(SourceLocation start, Args args) { return new T(start, args); }
-	ExpressionNode* makeExpr(T, Args...)(SourceLocation start, Args args) { return cast(ExpressionNode*)new T(start, null, IrRef(), args); }
+	ExpressionNode* makeExpr(T, Args...)(SourceLocation start, Args args) { return cast(ExpressionNode*)new T(start, null, IrIndex(), args); }
 
 	T* enforceNode(T)(T* t)
 	{
@@ -2051,6 +2055,7 @@ struct Parser {
 			nextToken(); // skip '='
 			ExpressionNode* lhs = node;
 			ExpressionNode* rhs = expr();
+			lhs.flags |= AstFlags.isLvalue;
 			node = cast(ExpressionNode*)make!AssignStmtNode(start, op, lhs, rhs);
 		}
 		return node;
@@ -2129,7 +2134,7 @@ struct Parser {
 			long value = lexer.getTokenNumber();
 			nextToken();
 			TypeNode* type = context.basicTypeNodes(BasicType.t_i32);
-			return cast(ExpressionNode*)make!LiteralExprNode(start, type, IrRef(), value);
+			return cast(ExpressionNode*)make!LiteralExprNode(start, type, IrIndex(), value);
 		}
 		else return paren_expr();
 	}
@@ -2580,7 +2585,7 @@ struct SemanticStaticTypes {
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert || force)
 			{
-				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrRef(), expr);
+				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
 				return true;
 			}
 		}
@@ -2604,7 +2609,7 @@ struct SemanticStaticTypes {
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert)
 			{
-				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrRef(), expr);
+				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
 				return true;
 			}
 		}
@@ -2806,8 +2811,8 @@ struct SemanticStaticTypes {
 	void visit(AssignStmtNode* a) {
 		_visit(a.left);
 		_visit(a.right);
-		assert(a.left.type, format("left(%s).type: is null", a.left.astType));
-		assert(a.right.type, format("right(%s).type: is null", a.right.astType));
+		context.assertf(a.left.type !is null, "left(%s).type: is null", a.left.astType);
+		context.assertf(a.right.type !is null, "right(%s).type: is null", a.right.astType);
 
 		if (a.left.astType == AstType.expr_var || a.left.astType == AstType.expr_index)
 		{
@@ -2889,11 +2894,11 @@ enum CurrentAssignSide
 }
 
 void pass_ir_gen(ref CompilationContext ctx) {
-	auto bin_irgen = BinIrGenerationVisitor(&ctx);
-	bin_irgen.visit(ctx.mod);
-	ctx.assertf(bin_irgen.irModule !is null, "Module IR is null");
+	//auto bin_irgen = BinIrGenerationVisitor(&ctx);
+	//bin_irgen.visit(ctx.mod);
+	//ctx.assertf(bin_irgen.irModule !is null, "Module IR is null");
 }
-
+/*
 /// Converts AST to in-memory linear IR
 struct BinIrGenerationVisitor {
 	mixin AstVisitorMixin;
@@ -2953,7 +2958,6 @@ struct BinIrGenerationVisitor {
 		// create new function
 		f.irData = new IrFunction(f, &win64_call_conv, f.returnType.irType(context));
 
-		// TODO: use list of all functions that can be processed linearly, without recursion
 		builder.begin(f.irData);
 		ir = builder.ir;
 
@@ -3021,7 +3025,7 @@ struct BinIrGenerationVisitor {
 	void visit(VariableDeclNode* v)
 	{
 		IrRef irRef;
-		v.irVar = IrVar(v.strId(context), builder.newIrVarId(), v.type.irType(context));
+		v.irVar = IrVar(v.id, builder.newIrVarId(), v.type.irType(context));
 
 		if (context.buildDebug)
 			v.varFlags |= VariableFlags.forceMemoryStorage;
@@ -3338,7 +3342,7 @@ struct OptimizeIrPass {
 	{
 	}
 }
-
+*/
 //                               #####   ######
 //                                 #     #     #
 //                                 #     #     #
@@ -3348,6 +3352,12 @@ struct OptimizeIrPass {
 //                               #####   #     #
 // -----------------------------------------------------------------------------
 
+/// Convenience struct for Id + num suffix
+struct IrName
+{
+	Identifier id;
+	uint suffix;
+}
 
 
 //    #         #####   ##   ##  #######  #     #  #######   #####    #####
@@ -3390,6 +3400,7 @@ for each block b in reverse order do
 			intervals[opd].addRange(b.from, loopEnd.to)
 	b.liveIn = live
 */
+/*
 void pass_live_intervals(ref CompilationContext ctx)
 {
 	import std.bitmanip : BitArray;
@@ -3866,7 +3877,7 @@ struct LiveRange
 		return true;
 	}
 }
-
+*/
 //     ######   #######    ####      #     #        #          ###      ####
 //     #     #  #         #    #     #     #        #         #   #    #    #
 //     #     #  #        #          ###    #        #        #     #  #
@@ -3880,6 +3891,7 @@ struct LiveRange
 /// Does linear scan register allocation.
 /// Uses live intervals produced by pass_live_intervals
 ///
+/+
 void pass_linear_scan(ref CompilationContext ctx) {
 	LinearScan linearScan;
 	linearScan.setup(&ctx);
@@ -4284,11 +4296,7 @@ RegClass typeToRegClass(IrValueType type)
 	return RegClass.gpr;
 }
 
-enum RegClass : ubyte
-{
-	gpr,
-	flags
-}
+
 
 struct PhysRegister
 {
@@ -4449,6 +4457,14 @@ enum StorageHintType : ubyte
 	stack
 }
 
++/
+
+enum RegClass : ubyte
+{
+	gpr,
+	flags
+}
+
 /// Is used in IrValue to indicate the register that stores given IrValue
 struct RegisterRef
 {
@@ -4464,7 +4480,6 @@ struct RegisterRef
 	bool isNull() { return index == ubyte.max; }
 }
 
-
 //                    #####   #######     #       ####   #    #
 //                   #     #     #        #      #    #  #   #
 //                   #           #       ###    #        #  #
@@ -4474,7 +4489,7 @@ struct RegisterRef
 //                    #####      #     ##   ##    ####   #    #
 // -----------------------------------------------------------------------------
 
-
+/+
 /// Arranges items on the stack according to calling convention
 void pass_stack_layout(ref CompilationContext ctx) {
 	IrModule* mod = &ctx.mod.irModule;
@@ -4582,6 +4597,7 @@ struct StackSlotId
 	alias id this;
 	bool isNull() { return id == uint.max; }
 }
++/
 
 struct MachineInfo
 {
@@ -4590,13 +4606,14 @@ struct MachineInfo
 }
 
 __gshared MachineInfo mach_info_x86_64 = MachineInfo(
-	[RegisterRef(0, Register.AX, RegClass.gpr),
+	/*[RegisterRef(0, Register.AX, RegClass.gpr),
 	RegisterRef(1, Register.CX, RegClass.gpr),
 	RegisterRef(2, Register.DX, RegClass.gpr),
 	RegisterRef(3, Register.R8, RegClass.gpr),
 	RegisterRef(4, Register.R9, RegClass.gpr),
 	RegisterRef(5, Register.R10, RegClass.gpr),
-	RegisterRef(6, Register.R11, RegClass.gpr)]);
+	RegisterRef(6, Register.R11, RegClass.gpr)]*/
+	);
 
 /// Info needed for calling convention implementation
 struct CallConv
@@ -4608,6 +4625,7 @@ struct CallConv
 	bool isParamOnStack(size_t parIndex) {
 		return parIndex >= paramsInRegs.length;
 	}
+	/*
 	void setParamHint(ref IrFunction fun, ref IrInstruction instr, size_t parIndex) {
 		StorageHint hint;
 		hint.isSet = true;
@@ -4625,16 +4643,16 @@ struct CallConv
 		hint.isParameter = true;
 		fun.liveIntervals.setStorageHint(instr.result, hint);
 	}
-	void setReturnHint(ref IrFunction fun, IrRef irRef) {
+	void setReturnHint(ref IrFunction fun, IrIndex irRef) {
 		StorageHint hint;
 		hint.isSet = true;
 		hint.reg = returnReg;
 		fun.setStorageHint(irRef, hint);
-	}
+	}*/
 }
 
 __gshared CallConv win64_call_conv = CallConv(
-	[RegisterRef(1, Register.CX, RegClass.gpr), // indicies into PhysRegisters.gpr
+	/*[RegisterRef(1, Register.CX, RegClass.gpr), // indicies into PhysRegisters.gpr
 	RegisterRef(2, Register.DX, RegClass.gpr),
 	RegisterRef(3, Register.R8, RegClass.gpr),
 	RegisterRef(4, Register.R9, RegClass.gpr)],
@@ -4646,7 +4664,7 @@ __gshared CallConv win64_call_conv = CallConv(
 	RegisterRef(3, Register.R8, RegClass.gpr),
 	RegisterRef(4, Register.R9, RegClass.gpr),
 	RegisterRef(5, Register.R10, RegClass.gpr),
-	RegisterRef(6, Register.R11, RegClass.gpr)]
+	RegisterRef(6, Register.R11, RegClass.gpr)]*/
 );
 /*
 /// State of single machine register
@@ -4774,7 +4792,6 @@ struct MachineState
 	RegisterClass flagsReg;
 }
 */
-
 
 //                           #         #####   ######
 //                           #           #     #     #

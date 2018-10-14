@@ -1,17 +1,20 @@
 /// IR that implements idea of storing everything (almost)
 /// inside a single array;
 /// Stores instructions in a linked list
-module new_ir;
+module ir;
 
 import std.stdio;
 import std.string : format;
 import std.traits : getUDAs, Parameters;
 import std.bitmanip : bitfields;
 import std.format : formattedWrite, FormatSpec;
+import compiler1;
 import utils;
 
-void main(){}
-unittest
+//version = standalone;
+version (standalone)
+{
+	void main()
 {
 	// function i32 $sign () {
 	//    |  @start:0
@@ -42,7 +45,7 @@ unittest
 	//     else result = 0;
 	//     return result;
 	// }
-
+	writefln("start");
 	Win32Allocator allocator;
 	scope(exit) allocator.releaseMemory();
 
@@ -53,8 +56,13 @@ unittest
 
 	IrBuilder builder;
 	IrFunction ir;
-	ir.storage.setBuffer(cast(uint[])allocator.allocate(arrSizes));
-	ir.temp.setBuffer(cast(uint[])allocator.allocate(arrSizes));
+	FixedBuffer!uint storage;
+	FixedBuffer!uint temp;
+
+	storage.setBuffer(cast(uint[])allocator.allocate(arrSizes));
+	temp.setBuffer(cast(uint[])allocator.allocate(arrSizes));
+	ir.storage = &storage;
+	ir.temp = &temp;
 
 	ir.returnType = IrValueType.i32;
 
@@ -107,15 +115,39 @@ unittest
 	IrIndex currentBlock = scope1ExitLabel.blockIndex;
 	builder.sealBlock(currentBlock);
 	//	return result;
-	builder.addReturnValue(currentBlock, builder.readVariable(currentBlock, resultVar));
+	builder.addReturn(currentBlock, builder.readVariable(currentBlock, resultVar));
 	//}
 
 	builder.sealBlock(ir.exitBasicBlock);
 
+	dumpFunction(&ir);
+	writefln("IR size: %s uints | %s bytes", storage.data.length, storage.data.length * uint.sizeof);
+}
+}
+
+struct IrModule
+{
+	IrFunction*[] functions;
+
+	ubyte[] codeBuffer;
+	ubyte[] code;
+
+	void addFunction(IrFunction* fun)
+	{
+		functions ~= fun;
+	}
+
+	void dump(ref TextSink sink, CompilationContext* context)
+	{
+		foreach (func; functions) dumpFunction(func, sink);
+	}
+}
+
+void dumpFunction(IrFunction* ir)
+{
 	TextSink sink;
-	dumpFunction(&ir, sink);
+	dumpFunction(ir, sink);
 	writeln(sink.text);
-	writefln("IR size: %s uints | %s bytes", ir.storage[].length, ir.storage[].length * uint.sizeof);
 }
 
 void dumpFunction(IrFunction* ir, ref TextSink sink)
@@ -148,7 +180,14 @@ void dumpFunction(IrFunction* ir, ref TextSink sink)
 	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
 	{
 		printInstrIndex(blockIndex);
-		sink.putf("  %s", blockIndex.printer(ir));
+		sink.putf("  %s ", blockIndex.printer(ir));
+
+		if (block.isSealed) sink.put("S");
+		else sink.put(".");
+
+		if (block.isFinished) sink.put("F");
+		else sink.put(".");
+
 		if (printBlockIns && block.predecessors.length > 0)
 		{
 			sink.putf(" in(");
@@ -290,7 +329,7 @@ struct IrIndex
 			case instruction: sink.formattedWrite("i%s", storageUintIndex); break;
 			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
 			case constant: sink.formattedWrite("c%s", storageUintIndex); break;
-			case phi: sink.formattedWrite("φ%s", storageUintIndex); break;
+			case phi: sink.formattedWrite("phi%s", storageUintIndex); break;
 			case memoryAddress: sink.formattedWrite("m%s", storageUintIndex); break;
 			case virtualRegister: sink.formattedWrite("v%s", storageUintIndex); break;
 			case physicalRegister: sink.formattedWrite("p%s", storageUintIndex); break;
@@ -308,6 +347,8 @@ struct IrIndex
 		result.storageUintIndex = cast(uint)(storageUintIndex + divCeil(T.sizeof, uint.sizeof) * offset);
 		return result;
 	}
+
+	bool isConstant() { return kind == IrValueKind.constant; }
 }
 
 struct IrIndexPrinter
@@ -322,7 +363,7 @@ struct IrIndexPrinter
 			case instruction: sink.formattedWrite("i%s", index.storageUintIndex); break;
 			case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
 			case constant: sink.formattedWrite("%s", ir.get!IrConstant(index).i64); break;
-			case phi: sink.formattedWrite("φ%s", index.storageUintIndex); break;
+			case phi: sink.formattedWrite("phi%s", index.storageUintIndex); break;
 			case memoryAddress: sink.formattedWrite("m%s", index.storageUintIndex); break;
 			case virtualRegister: sink.formattedWrite("v%s", index.storageUintIndex); break;
 			case physicalRegister: sink.formattedWrite("p%s", index.storageUintIndex); break;
@@ -450,6 +491,15 @@ enum IrOpcode : ubyte
 	block_exit_binary_branch,
 	block_exit_return_void,
 	block_exit_return_value,
+
+	set_binary_cond,
+	set_unary_cond,
+
+	store,
+	load,
+
+	add,
+	sub
 }
 
 @InstrInfo(IrValueKind.virtualRegister)
@@ -465,8 +515,8 @@ struct IrVirtualRegister
 @InstrInfo(IrValueKind.basicBlock)
 struct IrBasicBlockInstr
 {
-	IrIndex firstInstr; // points to itself if no instructions
-	IrIndex lastInstr; // points to itself if no instructions
+	IrIndex firstInstr; // null or first instruction
+	IrIndex lastInstr; // null or last instruction
 	IrIndex prevBlock; // null only if this is entryBasicBlock
 	IrIndex nextBlock; // null only if this is exitBasicBlock
 	IrIndex firstPhi; // may be null
@@ -478,7 +528,15 @@ struct IrBasicBlockInstr
 	SmallVector successors;
 
 	uint seqIndex;
-	bool isSealed;
+	mixin(bitfields!(
+		/// True if all predecessors was added
+		bool, "isSealed",   1,
+		/// True if block_exit instruction is in place
+		bool, "isFinished", 1,
+		uint, "",           6
+	));
+
+	IrName name;
 }
 pragma(msg, "BB size: ", cast(int)IrBasicBlockInstr.sizeof, " bytes");
 
@@ -563,25 +621,25 @@ template IrGenericInstr(uint numArgs, HasResult hasResult)
 }
 
 alias IrReturnValueInstr = IrGenericInstr!(1, HasResult.no);
+alias IrReturnVoidInstr = IrGenericInstr!(0, HasResult.no);
+alias IrStoreInstr = IrGenericInstr!(1, HasResult.no);
+alias IrLoadInstr = IrGenericInstr!(1, HasResult.yes);
+alias IrSetBinaryCondInstr = IrGenericInstr!(2, HasResult.yes);
+alias IrBinaryExprInstr = IrGenericInstr!(2, HasResult.yes);
 
 enum IrBinaryCondition : ubyte {
 	eq,
 	ne,
+	g,
+	ge,
 	l,
 	le,
-	g,
-	ge
 }
 
-string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", "<", "<=", ">", ">="];
+string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", ">", ">=", "<", "<="];
 
 /// Uses header.binaryCond
-@InstrInfo(IrValueKind.instruction, 2, HasResult.no)
-struct IrInstrBinaryBranch
-{
-	IrInstrHeader header;
-	IrIndex[2] args;
-}
+alias IrInstrBinaryBranch = IrGenericInstr!(2, HasResult.no);
 
 enum IrUnaryCondition : ubyte {
 	zero,
@@ -589,12 +647,7 @@ enum IrUnaryCondition : ubyte {
 }
 
 /// Uses header.unaryCond
-@InstrInfo(IrValueKind.instruction, 1, HasResult.no)
-struct IrInstrUnaryBranch
-{
-	IrInstrHeader header;
-	IrIndex arg;
-}
+alias IrInstrUnaryBranch = IrGenericInstr!(1, HasResult.no);
 
 @InstrInfo(IrValueKind.instruction, 0, HasResult.yes)
 struct IrInstrParameter
@@ -606,7 +659,6 @@ struct IrInstrParameter
 
 struct IrVarId { uint id; alias id this; }
 struct IrVar { Identifier name; IrVarId id; IrValueType type; }
-struct Identifier { uint index; }
 
 enum IrValueType : ubyte
 {
@@ -627,8 +679,8 @@ struct BlockVarPair
 
 struct IrFunction
 {
-	FixedBuffer!uint storage;
-	FixedBuffer!uint temp;
+	FixedBuffer!uint* storage;
+	FixedBuffer!uint* temp;
 
 	uint numBasicBlocks;
 
@@ -757,7 +809,8 @@ struct IrBuilder
 		blockVarDef.clear();
 
 		// Add dummy item into storage, since 0 index represents null
-		ir.storage.put(0);
+		if (ir.storage.length == 0)
+			ir.storage.put(0);
 
 		// Canonical function CFG has entry block, and single exit block.
 		ir.numBasicBlocks = 2;
@@ -766,6 +819,7 @@ struct IrBuilder
 		ir.exitBasicBlock = ir.append!IrBasicBlockInstr;
 
 		ir.getBlock(ir.entryBasicBlock).nextBlock = ir.exitBasicBlock;
+		sealBlock(ir.entryBasicBlock);
 		ir.getBlock(ir.exitBasicBlock).prevBlock = ir.entryBasicBlock;
 		currentBB = ir.entryBasicBlock;
 
@@ -777,6 +831,11 @@ struct IrBuilder
 			ir.get!IrReturnValueInstr(retIndex).args[0] = retValue;
 			addUser(retIndex, retValue);
 		}
+		else
+		{
+			addInstruction!IrReturnVoidInstr(ir.exitBasicBlock, IrOpcode.block_exit_return_void);
+		}
+		ir.getBlock(ir.exitBasicBlock).isFinished = true;
 	}
 
 	/// Sets currentBB to this block
@@ -881,8 +940,45 @@ struct IrBuilder
 		return instr;
 	}
 
+	/// Returns virtual register of result
+	IrIndex emitBinaryInstr(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1)
+	{
+		auto instr = addInstruction!IrSetBinaryCondInstr(blockIndex, IrOpcode.set_binary_cond);
+		IrIndex vreg = addVirtualRegister(instr);
+		with(ir.get!IrSetBinaryCondInstr(instr)) {
+			header.binaryCond = cond;
+			args = [arg0, arg1];
+			result = vreg;
+		}
+		return vreg;
+	}
+
+	/// Returns virtual register of result
+	IrIndex emitBinaryInstr(IrIndex blockIndex, IrOpcode op, IrIndex arg0, IrIndex arg1)
+	{
+		auto instr = addInstruction!IrBinaryExprInstr(blockIndex, op);
+		IrIndex vreg = addVirtualRegister(instr);
+		with(ir.get!IrBinaryExprInstr(instr)) {
+			args = [arg0, arg1];
+			result = vreg;
+		}
+		return vreg;
+	}
+
+	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1, ref IrLabel trueExit, ref IrLabel falseExit)
+	{
+		auto res = addBinBranch(blockIndex, cond, arg0, arg1);
+		forceAllocLabelBlock(trueExit, 1);
+		forceAllocLabelBlock(falseExit, 1);
+		ir.addBlockTarget(blockIndex, trueExit.blockIndex);
+		ir.addBlockTarget(blockIndex, falseExit.blockIndex);
+		return res;
+	}
 	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1)
 	{
+		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		assert(!block.isFinished);
+		block.isFinished = true;
 		auto branch = addInstruction!IrInstrBinaryBranch(blockIndex, IrOpcode.block_exit_binary_branch);
 		with(ir.get!IrInstrBinaryBranch(branch)) {
 			header.binaryCond = cond;
@@ -893,7 +989,7 @@ struct IrBuilder
 		return branch;
 	}
 
-	void addReturnValue(IrIndex blockIndex, IrIndex returnValue)
+	void addReturn(IrIndex blockIndex, IrIndex returnValue)
 	{
 		assert(ir.returnType != IrValueType.void_t);
 		writeVariable(blockIndex, returnVar, returnValue);
@@ -901,8 +997,18 @@ struct IrBuilder
 		ir.addBlockTarget(blockIndex, ir.exitBasicBlock);
 	}
 
+	void addReturn(IrIndex blockIndex)
+	{
+		assert(ir.returnType == IrValueType.void_t);
+		addJump(blockIndex);
+		ir.addBlockTarget(blockIndex, ir.exitBasicBlock);
+	}
+
 	IrIndex addJump(IrIndex blockIndex)
 	{
+		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		assert(!block.isFinished);
+		block.isFinished = true;
 		return addInstruction!(IrGenericInstr!(0, HasResult.no))(blockIndex, IrOpcode.block_exit_jump);
 	}
 
@@ -911,20 +1017,53 @@ struct IrBuilder
 		switch (label.numPredecessors)
 		{
 			case 0:
+				// label.blockIndex points to block that started the scope
+				// no block was created for label yet
 				label.numPredecessors = 1;
 				label.blockIndex = blockIndex;
 				break;
 			case 1:
-				label.numPredecessors = 1;
+				// label.blockIndex points to the only predecessor of label block
+				// no block was created for label yet
+				label.numPredecessors = 2;
+				IrIndex firstPred = label.blockIndex;
+				label.blockIndex = addBasicBlock;
+				ir.addBlockTarget(firstPred, label.blockIndex);
+				// block may be finished if binary branch targets label
+				//if (!ir.getBlock(firstPred).isFinished)
+				addJump(firstPred);
+				goto default;
+			default:
+				// label.blockIndex points to label's own block
+				++label.numPredecessors;
+				ir.addBlockTarget(blockIndex, label.blockIndex);
+				addJump(blockIndex);
+				break;
+		}
+	}
+
+	private void forceAllocLabelBlock(ref IrLabel label, int newPredecessors)
+	{
+		switch (label.numPredecessors)
+		{
+			case 0:
+				// label.blockIndex points to block that started the scope
+				// no block was created for label yet
+				label.numPredecessors = newPredecessors;
+				label.blockIndex = addBasicBlock;
+				break;
+			case 1:
+				// label.blockIndex points to the only predecessor of label block
+				// no block was created for label yet
+				label.numPredecessors = 1 + newPredecessors;
 				IrIndex firstPred = label.blockIndex;
 				label.blockIndex = addBasicBlock;
 				ir.addBlockTarget(firstPred, label.blockIndex);
 				addJump(firstPred);
-				goto default;
+				break;
 			default:
-				++label.numPredecessors;
-				ir.addBlockTarget(blockIndex, label.blockIndex);
-				addJump(blockIndex);
+				// label.blockIndex points to label's own block
+				label.numPredecessors += newPredecessors;
 				break;
 		}
 	}
@@ -969,12 +1108,23 @@ struct IrBuilder
 
 	private void removePhi(IrIndex phiIndex)
 	{
-		// TODO: free list of phis
+		writefln("remove phi %s", phiIndex);
 		IrPhiInstr* phi = &ir.get!IrPhiInstr(phiIndex);
 		IrBasicBlockInstr* block = &ir.getBlock(phi.blockIndex);
+		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir))
+		{
+			writefln("  %s = %s", phi.result, phiIndex);
+		}
+		// TODO: free list of phis
 		if (block.firstPhi == phiIndex) block.firstPhi = phi.nextPhi;
 		if (phi.nextPhi.isDefined) ir.get!IrPhiInstr(phi.nextPhi).prevPhi = phi.prevPhi;
 		if (phi.prevPhi.isDefined) ir.get!IrPhiInstr(phi.prevPhi).nextPhi = phi.nextPhi;
+		writefln("after remove phi %s", phiIndex);
+		IrBasicBlockInstr* block1 = &ir.getBlock(phi.blockIndex);
+		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block1.phis(ir))
+		{
+			writefln("  %s = %s", phi.result, phiIndex);
+		}
 	}
 
 	// Algorithm 2: Implementation of global value numbering
@@ -1032,6 +1182,7 @@ struct IrBuilder
 		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(ir))
 		{
 			IrIndex value = readVariable(predIndex, variable);
+			writefln("phi operand %s", value);
 			// Phi should not be cached before loop, since readVariable can add phi to phis, reallocating the array
 			addPhiArg(phi, predIndex, value);
 			addUser(phi, value);
@@ -1053,14 +1204,20 @@ struct IrBuilder
 		IrPhiArg same;
 		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(phiIndex).args(ir))
 		{
+			writefln("arg %s", phiArg.value);
 			if (phiArg.value == same.value || phiArg.value == phiIndex) {
+				writefln("  same");
 				continue; // Unique value or self−reference
 			}
 			if (same != IrPhiArg()) {
+				writefln("  non-trivial");
 				return ir.get!IrPhiInstr(phiIndex).result; // The phi merges at least two values: not trivial
 			}
+			writefln("  same = %s", phiArg.value);
 			same = phiArg;
 		}
+		writefln("  trivial");
+		assert(same.value.isDefined, "Phi function got no arguments");
 
 		// Remember all users except the phi itself
 		IrIndex phiResultIndex = ir.get!IrPhiInstr(phiIndex).result;
@@ -1079,21 +1236,6 @@ struct IrBuilder
 
 		removeVirtualRegister(phiResultIndex);
 		return same.value;
-	}
-
-	ref SmallVector usersOf(IrIndex someIndex)
-	{
-		final switch (someIndex.kind) with(IrValueKind) {
-			case none: assert(false);
-			case listItem: assert(false);
-			case instruction: return ir.get!IrVirtualRegister(ir.get!IrInstrHeader(someIndex).result).users;
-			case basicBlock: assert(false);
-			case constant: assert(false);
-			case phi: return ir.get!IrVirtualRegister(ir.get!IrPhiInstr(someIndex).result).users;
-			case memoryAddress: assert(false); // TODO
-			case virtualRegister: return ir.get!IrVirtualRegister(someIndex).users;
-			case physicalRegister: assert(false);
-		}
 	}
 
 	IrIndex definitionOf(IrIndex someIndex)
@@ -1146,10 +1288,13 @@ struct IrBuilder
 	}
 
 	private void replaceUserWith(IrIndex used, IrIndex what, IrIndex byWhat) {
-		foreach (ref IrIndex userIndex; usersOf(used).range(ir))
-		{
-			if (userIndex == what)
-				userIndex = byWhat;
+		final switch (used.kind) with(IrValueKind) {
+			case none, listItem, basicBlock, physicalRegister: assert(false);
+			case instruction: return ir.get!IrVirtualRegister(ir.get!IrInstrHeader(used).result).users.replaceAll(ir, what, byWhat);
+			case constant: return; // constants dont track users
+			case phi: return ir.get!IrVirtualRegister(ir.get!IrPhiInstr(used).result).users.replaceAll(ir, what, byWhat);
+			case memoryAddress: assert(false); // TODO, has single user
+			case virtualRegister: return ir.get!IrVirtualRegister(used).users.replaceAll(ir, what, byWhat);
 		}
 	}
 }
@@ -1193,6 +1338,14 @@ struct SmallVector
 	SmallVectorRange range(IrFunction* ir)
 	{
 		return SmallVectorRange(&this, ir);
+	}
+
+	void replaceAll(IrFunction* ir, IrIndex what, IrIndex byWhat)
+	{
+		foreach (ref IrIndex item; range(ir))
+		{
+			if (item == what) item = byWhat;
+		}
 	}
 
 	IrIndex opIndex(size_t index, IrFunction* ir)

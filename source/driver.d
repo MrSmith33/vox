@@ -3,8 +3,9 @@ module driver;
 import std.stdio : writeln, write, writef, writefln, stdout;
 import compiler1;
 import ir_to_amd64;
-import old_ir;
+import ir;
 import utils;
+import ast_to_ir;
 
 void main()
 {
@@ -23,12 +24,18 @@ void test()
 	// so that 32-bit offset can be used for calls
 	size_t thisAddr = cast(size_t)&test;
 	size_t step = 0x10_000_000;
-	size_t aligned = alignValue(thisAddr, step) - step*5;
-	ubyte[] codeBuffer = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
+	size_t aligned = alignValue(thisAddr, step) - step*20;
+	ubyte[] codeBuffer;// = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
 
 	try
 	{
-		driver.initPasses(oldCompilerPasses);
+		version(print)
+		{
+			writeln("// Source");
+			writeln(curTest.source);
+		}
+
+		driver.initPasses(compilerPasses);
 		ModuleDeclNode* mod = driver.compileModule(curTest.source, codeBuffer, curTest.externalSymbols);
 		if (mod is null) return;
 
@@ -37,9 +44,6 @@ void test()
 			// Text dump
 			//auto astPrinter = AstPrinter(&driver.context, 2);
 			//astPrinter.printAst(cast(AstNode*)mod);
-
-			writeln("// Source");
-			writeln(driver.context.input);
 
 			writeln("\n// IR");
 			TextSink sink;
@@ -84,7 +88,7 @@ void bench()
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
 	Driver driver;
-	driver.initPasses(oldCompilerPasses);
+	driver.initPasses(compilerPasses);
 
 	enum iters = 100_000;
 	auto times = PerPassTimeMeasurements(iters, driver.passes);
@@ -100,8 +104,8 @@ void bench()
 
 	times.print;
 }
-
-CompilePass[] oldCompilerPasses = [
+/*
+CompilePass[] compilerPasses = [
 	CompilePass("Parse", &pass_parser),
 	CompilePass("Semantic insert", &pass_semantic_decl),
 	CompilePass("Semantic lookup", &pass_semantic_lookup),
@@ -115,6 +119,14 @@ CompilePass[] oldCompilerPasses = [
 	CompilePass("Stack layout", &pass_stack_layout),
 	// LIR -> machine code
 	CompilePass("Code gen", &pass_code_gen),
+];
+*/
+CompilePass[] compilerPasses = [
+	CompilePass("Parse", &pass_parser),
+	CompilePass("Semantic insert", &pass_semantic_decl),
+	CompilePass("Semantic lookup", &pass_semantic_lookup),
+	CompilePass("Semantic types", &pass_semantic_type),
+	CompilePass("IR gen", &pass_new_ir_gen)
 ];
 
 struct Driver

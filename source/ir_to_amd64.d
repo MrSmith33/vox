@@ -3,19 +3,19 @@ module ir_to_amd64;
 
 import std.algorithm : swap;
 
-import old_ir;
+import ir;
 import utils;
 import compiler1;
 
 /// Generates amd64 machine code from IR
 void pass_code_gen(ref CompilationContext ctx) {
-	IrToAmd64 gen;
-	gen.ctx = &ctx;
+	//IrToAmd64 gen;
+	//gen.ctx = &ctx;
 	ctx.assertf(ctx.codeBuffer.length > 0, "Code buffer is empty");
-	ctx.mod.irModule.codeBuffer = ctx.codeBuffer;
-	gen.visit(&ctx.mod.irModule);
+	//ctx.mod.irModule.codeBuffer = ctx.codeBuffer;
+	//gen.visit(&ctx.mod.irModule);
 }
-
+/*
 struct IrToAmd64
 {
 	CompilationContext* ctx;
@@ -25,7 +25,7 @@ struct IrToAmd64
 	CodeGen_x86_64 gen;
 
 	/// Those two store a state of variables and registers
-	private IrFunction* curFunc;
+	private OldIrFunction* curFunc;
 
 	static struct CallFixup {
 		Fixup call_fixup;
@@ -41,7 +41,7 @@ struct IrToAmd64
 
 	private size_t numArgInstrs = 0;
 
-	void visit(IrModule* m) {
+	void visit(OldIrModule* m) {
 		ctx.assertf(m !is null, "Module IR is null");
 		ctx.assertf(m.codeBuffer.length > 0, "No code buffer assigned");
 
@@ -53,7 +53,7 @@ struct IrToAmd64
 		m.code = gen.encoder.code;
 	}
 
-	void visit(IrFunction* func)
+	void visit(OldIrFunction* func)
 	{
 		curFunc = func;
 		curFunc.node.funcPtr = gen.pc;
@@ -1358,3 +1358,4 @@ mixin template unaryInstr_RM(string name, ubyte[2] opcodes, ubyte extraOpcode) {
 	mixin(format("void %sd(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.DWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
 	mixin(format("void %sq(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.QWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
 }
+*/

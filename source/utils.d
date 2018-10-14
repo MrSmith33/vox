@@ -58,6 +58,7 @@ else version(Windows)
 			import std.stdio;
 			import std.windows.syserror;
 			int errCode = GetLastError();
+			writefln("allocate(%s:bytes, %s:location, %s:memoryType", bytes, location, memoryType);
 			writeln(sysErrorString(errCode));
 			assert(false, "VirtualAlloc alloc failed");
 			return null;
@@ -443,8 +444,6 @@ struct FixedBuffer(T)
 	inout(T[]) data() inout {
 		return bufPtr[0..length];
 	}
-
-	alias opSlice = data;
 
 	void clear() nothrow {
 		length = 0;
