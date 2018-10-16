@@ -19,12 +19,10 @@ void pass_new_ir_gen(ref CompilationContext ctx) {
 	//ctx.assertf(astToIr.irModule !is null, "Module IR is null");
 }
 
-version = IrGenPrint;
+//version = IrGenPrint;
 
 /// Converts AST to in-memory linear IR
 struct AstToIr {
-	CompilationContext* context;
-
 	void visitType(TypeNode* n) {
 		context.assertf(n.isType, n.loc, "Expected type, not %s", n.astType);
 		switch(n.astType) with(AstType)
@@ -104,6 +102,8 @@ struct AstToIr {
 		}
 	}
 
+	CompilationContext* context;
+
 	Identifier tempId;
 	Identifier startId;
 	Identifier thenId;
@@ -112,38 +112,27 @@ struct AstToIr {
 
 	IrBuilder builder;
 	IrFunction* ir;
-	//IrModule* mod;
-	FixedBuffer!uint storage;
-	FixedBuffer!uint temp;
 
 	void visit(ModuleDeclNode* m)
 	{
 		version(IrGenPrint) writeln("[IR GEN] module begin");
-		//mod = new IrModule;
-		Win32Allocator allocator;
-		scope(exit) allocator.releaseMemory();
-
-		size_t memSize = 1024UL*1024*10;
-		size_t arrSizes = 1024UL*1024*5;
-		bool success = allocator.reserve(memSize);
-		context.assertf(success, "allocator failed");
-
-		storage.setBuffer(cast(uint[])allocator.allocate(arrSizes));
-		temp.setBuffer(cast(uint[])allocator.allocate(arrSizes));
 
 		tempId = context.idMap.getOrRegNoDup("__tmp");
 		startId = context.idMap.getOrRegNoDup("start");
 		thenId = context.idMap.getOrRegNoDup("then");
 		elseId = context.idMap.getOrRegNoDup("else");
 		blkId = context.idMap.getOrRegNoDup("blk");
-		foreach (decl; m.functions) visit(decl);
+		foreach (decl; m.functions) {
+			visit(decl);
+			m.irModule.addFunction(decl.irData);
+		}
 		version(IrGenPrint) writeln("[IR GEN] module end");
 	}
 
 	void visit(FunctionDeclNode* f)
 	{
 		version(IrGenPrint) writefln("[IR GEN] function (%s) begin", f.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] function (%s) end", f.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] function (%s) end", f.loc);
 		if (f.block_stmt is null) // external function
 		{
 			ExternalSymbol* sym = f.id in context.externalSymbols;
@@ -160,16 +149,14 @@ struct AstToIr {
 
 		// create new function
 		ir = new IrFunction;
-		f.newIrData = ir;
+		f.irData = ir;
 		ir.returnType = IrValueType.i32;
 
-		ir.storage = &storage;
-		ir.temp = &temp;
+		ir.storage = &context.irBuffer;
+		ir.temp = &context.tempBuffer;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
 		builder.begin(ir);
-
-		//irModule.addFunction(f.irData);
 
 		version(IrGenPrint) writefln("[IR GEN] function parameters");
 		foreach (i, param; f.parameters)
@@ -209,9 +196,6 @@ struct AstToIr {
 
 		// all blocks with return (exit predecessors) already connected, seal exit block
 		builder.sealBlock(ir.exitBasicBlock);
-
-		dumpFunction(ir);
-		writefln("IR size: %s uints | %s bytes", storage.data.length, storage.data.length * uint.sizeof);
 	}
 
 	void store(IrIndex currentBlock, VariableDeclNode* v, IrIndex value)
@@ -245,7 +229,7 @@ struct AstToIr {
 	void visit(VariableDeclNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(IrGenPrint) writefln("[IR GEN] Var decl (%s) begin %s", v.loc, v.strId(context));
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] Var decl (%s) end %s", v.loc, v.strId(context));
+		version(IrGenPrint) scope(success) writefln("[IR GEN] Var decl (%s) end %s", v.loc, v.strId(context));
 		v.irVar = IrVar(v.id, builder.newIrVarId());//, v.type.irType(context));
 
 		//if (context.buildDebug)
@@ -284,7 +268,7 @@ struct AstToIr {
 	void visit(BlockStmtNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(IrGenPrint) writefln("[IR GEN] block (%s) begin", b.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] block (%s) end", b.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] block (%s) end", b.loc);
 		foreach (i, AstNode* stmt; b.statements)
 		{
 			version(IrGenPrint) writefln("[IR GEN]   stmt %s/%s", i+1, b.statements.length);
@@ -327,7 +311,7 @@ struct AstToIr {
 		if (i.elseStatement) // if then else
 		{
 			version(IrGenPrint) writefln("[IR GEN] if-else (%s) begin", i.loc);
-			version(IrGenPrint) scope(exit) writefln("[IR GEN] if-else (%s) end", i.loc);
+			version(IrGenPrint) scope(success) writefln("[IR GEN] if-else (%s) end", i.loc);
 			IrLabel trueLabel = IrLabel(currentBlock);
 			IrLabel falseLabel = IrLabel(currentBlock);
 			visitExprBranch(i.condition, currentBlock, trueLabel, falseLabel);
@@ -353,7 +337,7 @@ struct AstToIr {
 		else // if then
 		{
 			version(IrGenPrint) writefln("[IR GEN] if (%s) begin", i.loc);
-			version(IrGenPrint) scope(exit) writefln("[IR GEN] if (%s) end", i.loc);
+			version(IrGenPrint) scope(success) writefln("[IR GEN] if (%s) end", i.loc);
 			IrLabel trueLabel = IrLabel(currentBlock);
 			visitExprBranch(i.condition, currentBlock, trueLabel, nextStmt);
 
@@ -376,7 +360,7 @@ struct AstToIr {
 	void visit(ReturnStmtNode* r, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(IrGenPrint) writefln("[IR GEN] return (%s) begin", r.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] return (%s) end", r.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] return (%s) end", r.loc);
 		if (r.expression)
 		{
 			IrLabel afterExpr = IrLabel(currentBlock);
@@ -391,7 +375,7 @@ struct AstToIr {
 	void visit(AssignStmtNode* a, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(IrGenPrint) writefln("[IR GEN] assign (%s) begin", a.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] assign (%s) end", a.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] assign (%s) end", a.loc);
 		IrLabel afterLeft = IrLabel(currentBlock);
 		visitExprValue(a.left, currentBlock, afterLeft);
 		currentBlock = afterLeft.blockIndex;
@@ -417,7 +401,7 @@ struct AstToIr {
 	void visitExprValue(VariableExprNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(IrGenPrint) writefln("[IR GEN] var expr value (%s) begin", v.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] var expr value (%s) end", v.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr value (%s) end", v.loc);
 		if (!v.isLvalue)
 		{
 			v.irRef = load(currentBlock, v.getSym.varDecl);
@@ -427,7 +411,7 @@ struct AstToIr {
 	void visitExprBranch(VariableExprNode* v, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
 		version(IrGenPrint) writefln("[IR GEN] var expr branch (%s) begin", v.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] var expr branch (%s) end", v.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr branch (%s) end", v.loc);
 		v.irRef = load(currentBlock, v.getSym.varDecl);
 		placeUnaryBranch(v.irRef, currentBlock, trueExit, falseExit);
 	}
@@ -546,14 +530,14 @@ struct AstToIr {
 	void visitExprBranch(BinaryExprNode* b, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
 		version(IrGenPrint) writefln("[IR GEN] bin expr branch (%s) begin", b.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] bin expr branch (%s) end", b.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] bin expr branch (%s) end", b.loc);
 		visitBinOpImpl!false(b, currentBlock, trueExit, falseExit);
 	}
 
 	void visitExprValue(BinaryExprNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(IrGenPrint) writefln("[IR GEN] bin expr value (%s) begin", b.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] bin expr value (%s) end", b.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] bin expr value (%s) end", b.loc);
 		IrLabel fake;
 		visitBinOpImpl!true(b, currentBlock, nextStmt, fake);
 		assert(fake.numPredecessors == 0);
@@ -562,12 +546,12 @@ struct AstToIr {
 	void visitExprBranch(CallExprNode* c, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
 		version(IrGenPrint) writefln("[IR GEN] call branch (%s) begin", c.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] call branch (%s) begin", c.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] call branch (%s) begin", c.loc);
 	}
 	void visitExprValue(CallExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(IrGenPrint) writefln("[IR GEN] call value (%s) begin", c.loc);
-		version(IrGenPrint) scope(exit) writefln("[IR GEN] call value (%s) begin", c.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] call value (%s) begin", c.loc);
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprBranch(IndexExprNode* i, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit) {

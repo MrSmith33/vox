@@ -27,16 +27,22 @@ void test()
 	size_t aligned = alignValue(thisAddr, step) - step*20;
 	ubyte[] codeBuffer;// = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
 
+	Win32Allocator allocator;
+	scope(exit) allocator.releaseMemory();
+
+	// IrIndex can address 2^28 * 4 bytes = 1GB
+	size_t irMemSize = 1024UL*1024*1024*2;
+	size_t arrSizes = 1024UL*1024*1024;
+	bool success = allocator.reserve(irMemSize);
+	driver.context.assertf(success, "allocator failed");
+
+	ubyte[] irBuffer = cast(ubyte[])allocator.allocate(arrSizes);
+	ubyte[] tempBuffer = cast(ubyte[])allocator.allocate(arrSizes);
+
 	try
 	{
-		version(print)
-		{
-			writeln("// Source");
-			writeln(curTest.source);
-		}
-
 		driver.initPasses(compilerPasses);
-		ModuleDeclNode* mod = driver.compileModule(curTest.source, codeBuffer, curTest.externalSymbols);
+		ModuleDeclNode* mod = driver.compileModule(curTest.source, codeBuffer, irBuffer, tempBuffer, curTest.externalSymbols);
 		if (mod is null) return;
 
 		version(print)
@@ -44,6 +50,9 @@ void test()
 			// Text dump
 			//auto astPrinter = AstPrinter(&driver.context, 2);
 			//astPrinter.printAst(cast(AstNode*)mod);
+
+			writeln("// Source");
+			writeln(curTest.source);
 
 			writeln("\n// IR");
 			TextSink sink;
@@ -88,6 +97,18 @@ void bench()
 	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
 
 	Driver driver;
+	Win32Allocator allocator;
+	scope(exit) allocator.releaseMemory();
+
+	// IrIndex can address 2^28 * 4 bytes = 1GB
+	size_t irMemSize = 1024UL*1024*1024*2;
+	size_t arrSizes = 1024UL*1024*1024;
+	bool success = allocator.reserve(irMemSize);
+	driver.context.assertf(success, "allocator failed");
+
+	ubyte[] irBuffer = cast(ubyte[])allocator.allocate(arrSizes);
+	ubyte[] tempBuffer = cast(ubyte[])allocator.allocate(arrSizes);
+
 	driver.initPasses(compilerPasses);
 
 	enum iters = 100_000;
@@ -96,7 +117,7 @@ void bench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(input, codeBuffer, null);
+		mod = driver.compileModule(input, codeBuffer, irBuffer, tempBuffer, null);
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);
@@ -139,9 +160,14 @@ struct Driver
 		passes = passes_;
 	}
 
-	ModuleDeclNode* compileModule(string fileData, ubyte[] codeBuffer, ExternalSymbol[] externalSymbols)
+	ModuleDeclNode* compileModule(
+		string fileData,
+		ubyte[] codeBuffer, ubyte[] irBuffer, ubyte[] tempBuffer,
+		ExternalSymbol[] externalSymbols)
 	{
 		context = CompilationContext(fileData, codeBuffer);
+		context.irBuffer.setBuffer(cast(uint[])irBuffer);
+		context.tempBuffer.setBuffer(cast(uint[])tempBuffer);
 		foreach (ref extSym; externalSymbols)
 			context.externalSymbols[context.idMap.getOrReg(extSym.name)] = extSym;
 

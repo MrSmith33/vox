@@ -85,6 +85,9 @@ struct CompilationContext
 	string input;
 	ubyte[] codeBuffer;
 	ExternalSymbol[Identifier] externalSymbols;
+	FixedBuffer!uint irBuffer;
+	FixedBuffer!uint tempBuffer;
+
 	ModuleDeclNode* mod;
 	MachineInfo* machineInfo = &mach_info_x86_64;
 	ScopeStack scopeStack;

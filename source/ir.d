@@ -125,6 +125,8 @@ version (standalone)
 }
 }
 
+//version = IrPrint;
+
 struct IrModule
 {
 	IrFunction*[] functions;
@@ -285,6 +287,8 @@ void dumpFunction(IrFunction* ir, ref TextSink sink)
 	}
 
 	sink.putln("}");
+	sink.putfln("IR size: %s uints | %s bytes",
+		ir.storage.data.length, ir.storage.data.length * uint.sizeof);
 }
 
 /// Describes what IrIndex is pointing at
@@ -1108,22 +1112,24 @@ struct IrBuilder
 
 	private void removePhi(IrIndex phiIndex)
 	{
-		writefln("remove phi %s", phiIndex);
+		version(IrPrint) writefln("[IR] remove phi %s", phiIndex);
 		IrPhiInstr* phi = &ir.get!IrPhiInstr(phiIndex);
 		IrBasicBlockInstr* block = &ir.getBlock(phi.blockIndex);
-		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir))
-		{
-			writefln("  %s = %s", phi.result, phiIndex);
+		version(IrPrint) {
+			foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir)) {
+				writefln("[IR]   %s = %s", phi.result, phiIndex);
+			}
 		}
 		// TODO: free list of phis
 		if (block.firstPhi == phiIndex) block.firstPhi = phi.nextPhi;
 		if (phi.nextPhi.isDefined) ir.get!IrPhiInstr(phi.nextPhi).prevPhi = phi.prevPhi;
 		if (phi.prevPhi.isDefined) ir.get!IrPhiInstr(phi.prevPhi).nextPhi = phi.nextPhi;
-		writefln("after remove phi %s", phiIndex);
-		IrBasicBlockInstr* block1 = &ir.getBlock(phi.blockIndex);
-		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block1.phis(ir))
-		{
-			writefln("  %s = %s", phi.result, phiIndex);
+		version(IrPrint) writefln("[IR] after remove phi %s", phiIndex);
+		version(IrPrint) {
+			IrBasicBlockInstr* block1 = &ir.getBlock(phi.blockIndex);
+			foreach(IrIndex phiIndex, ref IrPhiInstr phi; block1.phis(ir)) {
+				writefln("[IR]   %s = %s", phi.result, phiIndex);
+			}
 		}
 	}
 
@@ -1182,7 +1188,7 @@ struct IrBuilder
 		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(ir))
 		{
 			IrIndex value = readVariable(predIndex, variable);
-			writefln("phi operand %s", value);
+			version(IrPrint) writefln("[IR] phi operand %s", value);
 			// Phi should not be cached before loop, since readVariable can add phi to phis, reallocating the array
 			addPhiArg(phi, predIndex, value);
 			addUser(phi, value);
@@ -1204,19 +1210,19 @@ struct IrBuilder
 		IrPhiArg same;
 		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(phiIndex).args(ir))
 		{
-			writefln("arg %s", phiArg.value);
+			version(IrPrint) writefln("[IR] arg %s", phiArg.value);
 			if (phiArg.value == same.value || phiArg.value == phiIndex) {
-				writefln("  same");
+				version(IrPrint) writefln("[IR]   same");
 				continue; // Unique value or self−reference
 			}
 			if (same != IrPhiArg()) {
-				writefln("  non-trivial");
+				version(IrPrint) writefln("[IR]   non-trivial");
 				return ir.get!IrPhiInstr(phiIndex).result; // The phi merges at least two values: not trivial
 			}
-			writefln("  same = %s", phiArg.value);
+			version(IrPrint) writefln("[IR]   same = %s", phiArg.value);
 			same = phiArg;
 		}
-		writefln("  trivial");
+		version(IrPrint) writefln("[IR]   trivial");
 		assert(same.value.isDefined, "Phi function got no arguments");
 
 		// Remember all users except the phi itself
