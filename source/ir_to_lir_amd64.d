@@ -35,5 +35,54 @@ struct IrToLir
 		context.tempBuffer.clear;
 
 		builder.beginLir(lir, ir, context);
+
+		// Mirror of original IR, we will put the new IrIndex of copied entities there
+		// and later use this info to rewire all connections between basic blocks
+		uint[] irMirror = context.tempBuffer.voidPut(ir.storageLength);
+		irMirror[] = 0;
+
+		IrIndex prevBlock;
+		// dup basic blocks
+		foreach (IrIndex blockIndex, ref IrBasicBlockInstr irBlock; ir.blocks)
+		{
+			IrIndex lirBlock = builder.append!IrBasicBlockInstr;
+			irMirror[blockIndex.storageUintIndex] = lirBlock.asUint;
+			lir.getBlock(lirBlock) = irBlock;
+
+			if (blockIndex == ir.entryBasicBlock)
+			{
+				lir.entryBasicBlock = lirBlock;
+			}
+			else if (blockIndex == ir.exitBasicBlock)
+			{
+				lir.exitBasicBlock = lirBlock;
+				lir.getBlock(lirBlock).prevBlock = prevBlock;
+				lir.getBlock(prevBlock).nextBlock = lirBlock;
+			}
+			else
+			{
+				lir.getBlock(lirBlock).prevBlock = prevBlock;
+				lir.getBlock(prevBlock).nextBlock = lirBlock;
+			}
+
+			prevBlock = lirBlock;
+		}
+
+		void fixIndex(ref IrIndex index)
+		{
+			index = IrIndex.fromUint(irMirror[index.storageUintIndex]);
+		}
+
+		// fix references
+		foreach (IrIndex blockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		{
+			foreach(ref pred; lirBlock.predecessors.range(lir)) fixIndex(pred);
+			foreach(ref succ; lirBlock.successors.range(lir)) fixIndex(succ);
+			lirBlock.firstInstr = IrIndex();
+			lirBlock.lastInstr = IrIndex();
+			lirBlock.firstPhi = IrIndex();
+		}
+
+		dumpFunction(lir, context);
 	}
 }

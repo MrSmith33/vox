@@ -314,6 +314,13 @@ struct IrIndex
 		kind = _kind;
 	}
 
+	static IrIndex fromUint(uint data)
+	{
+		IrIndex res;
+		res.asUint = data;
+		return res;
+	}
+
 	union
 	{
 		mixin(bitfields!(
@@ -543,7 +550,7 @@ struct IrBasicBlockInstr
 
 	IrName name;
 }
-pragma(msg, "BB size: ", cast(int)IrBasicBlockInstr.sizeof, " bytes");
+//pragma(msg, "BB size: ", cast(int)IrBasicBlockInstr.sizeof, " bytes");
 
 struct PhiIterator
 {
@@ -694,9 +701,6 @@ struct IrFunction
 	/// Special block. Automatically created. All returns must jump to it.
 	IrIndex exitBasicBlock;
 
-	// The last created basic block
-	IrIndex lastBasicBlock;
-
 	///
 	IrValueType returnType;
 
@@ -740,7 +744,8 @@ struct IrBuilder
 	CompilationContext* context;
 	IrFunction* ir;
 
-	IrIndex lastBB;
+	// The last created basic block
+	IrIndex lastBasicBlock;
 
 	// Stores current definition of variable per block during SSA-form IR construction.
 	private IrIndex[BlockVarPair] blockVarDef;
@@ -787,13 +792,6 @@ struct IrBuilder
 		ir.storageLength = 0;
 
 		blockVarDef.clear();
-
-		// dup basic blocks
-		foreach (IrIndex blockIndex, ref IrBasicBlockInstr irBlock; ir.blocks)
-		{
-			IrIndex lirBlock = append!IrBasicBlockInstr;
-			lir.getBlock(lirBlock) = irBlock;
-		}
 	}
 
 	private void setupEntryExitBlocks()
@@ -808,7 +806,7 @@ struct IrBuilder
 		ir.getBlock(ir.entryBasicBlock).nextBlock = ir.exitBasicBlock;
 		sealBlock(ir.entryBasicBlock);
 		ir.getBlock(ir.exitBasicBlock).prevBlock = ir.entryBasicBlock;
-		lastBB = ir.entryBasicBlock;
+		lastBasicBlock = ir.entryBasicBlock;
 	}
 
 	ref T getTemp(T)(IrIndex index)
@@ -860,17 +858,17 @@ struct IrBuilder
 		ir.getBlock(toBasicBlockIndex).predecessors.append(&this, fromBasicBlockIndex);
 	}
 
-	/// Sets lastBB to this block
+	/// Sets lastBasicBlock to this block
 	IrIndex addBasicBlock() {
-		assert(lastBB.isDefined);
+		assert(lastBasicBlock.isDefined);
 		++ir.numBasicBlocks;
 		IrIndex newBlock = append!IrBasicBlockInstr;
-		ir.getBlock(newBlock).nextBlock = ir.getBlock(lastBB).nextBlock;
-		ir.getBlock(newBlock).prevBlock = lastBB;
-		ir.getBlock(ir.getBlock(lastBB).nextBlock).prevBlock = newBlock;
-		ir.getBlock(lastBB).nextBlock = newBlock;
-		lastBB = newBlock;
-		return lastBB;
+		ir.getBlock(newBlock).nextBlock = ir.getBlock(lastBasicBlock).nextBlock;
+		ir.getBlock(newBlock).prevBlock = lastBasicBlock;
+		ir.getBlock(ir.getBlock(lastBasicBlock).nextBlock).prevBlock = newBlock;
+		ir.getBlock(lastBasicBlock).nextBlock = newBlock;
+		lastBasicBlock = newBlock;
+		return lastBasicBlock;
 	}
 
 	/// Does not remove its instructions/phis
