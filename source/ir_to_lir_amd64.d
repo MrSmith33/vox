@@ -32,11 +32,8 @@ struct IrToLir
 		lir = new IrFunction;
 		lir.returnType = IrValueType.i32;
 
-		lir.storage = &context.irBuffer;
-		lir.temp = &context.tempBuffer;
+		context.tempBuffer.clear;
 
-		lir.temp.clear;
-
-		builder.beginLir(lir, ir);
+		builder.beginLir(lir, ir, context);
 	}
 }

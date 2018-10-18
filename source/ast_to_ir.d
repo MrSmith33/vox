@@ -153,13 +153,10 @@ struct AstToIr
 		ir = new IrFunction;
 		f.irData = ir;
 		ir.returnType = IrValueType.i32;
-
-		ir.storage = &context.irBuffer;
-		ir.temp = &context.tempBuffer;
 		ir.name = f.id;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
-		builder.begin(ir);
+		builder.begin(ir, context);
 
 		version(IrGenPrint) writefln("[IR GEN] function parameters");
 		foreach (i, param; f.parameters)

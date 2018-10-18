@@ -456,6 +456,11 @@ struct FixedBuffer(T)
 			assert(false, format("out of memory: capacity %s, length %s, requested %s", capacity, length, items));
 		}
 	}
+
+	T[] freePart()
+	{
+		return bufPtr[length..capacity];
+	}
 }
 
 struct Win32Allocator

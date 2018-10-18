@@ -57,19 +57,15 @@ version (standalone)
 	CompilationContext ctx;
 	IrBuilder builder;
 	IrFunction ir;
-	FixedBuffer!uint storage;
-	FixedBuffer!uint temp;
 
-	storage.setBuffer(cast(uint[])allocator.allocate(arrSizes));
-	temp.setBuffer(cast(uint[])allocator.allocate(arrSizes));
-	ir.storage = &storage;
-	ir.temp = &temp;
+	ctx.irBuffer.setBuffer(cast(uint[])allocator.allocate(arrSizes));
+	ctx.tempBuffer.setBuffer(cast(uint[])allocator.allocate(arrSizes));
 
 	ir.returnType = IrValueType.i32;
 	ir.name = ctx.idMap.getOrReg("sign");
 
 	//i32 sign(i32 number)
-	builder.begin(&ir);
+	builder.begin(&ir, &ctx);
 	IrIndex param0Index = builder.addInstruction!IrInstrParameter(ir.entryBasicBlock, IrOpcode.parameter);
 	ir.get!IrInstrParameter(param0Index).index = 0;
 	IrIndex param0Value = ir.get!IrInstrHeader(param0Index).result;
@@ -123,7 +119,6 @@ version (standalone)
 	builder.sealBlock(ir.exitBasicBlock);
 
 	dumpFunction(&ir, &ctx);
-	writefln("IR size: %s uints | %s bytes", storage.data.length, storage.data.length * uint.sizeof);
 }
 }
 
@@ -174,7 +169,7 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 
 	void printRegUses(IrIndex result) {
 		auto vreg = &ir.get!IrVirtualRegister(result);
-		sink.put(" used by [");
+		sink.put(" users [");
 		foreach (i, index; vreg.users.range(ir))
 		{
 			if (i > 0) sink.put(", ");
@@ -292,7 +287,7 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 
 	sink.putln("}");
 	sink.putfln("IR size: %s uints | %s bytes",
-		ir.storage.data.length, ir.storage.data.length * uint.sizeof);
+		ir.storageLength, ir.storageLength * uint.sizeof);
 }
 
 /// Describes what IrIndex is pointing at
@@ -325,7 +320,7 @@ struct IrIndex
 			uint,        "storageUintIndex", 28, // is never 0 for defined index
 			IrValueKind, "kind",              4  // is never 0 for defined index
 		));
-		uint asUint; // is never 0 for defined index
+		uint asUint;
 	}
 	static assert(IrValueKind.max <= 0b1111, "4 bits are reserved");
 	bool isDefined() { return asUint != 0; }
@@ -689,8 +684,9 @@ struct BlockVarPair
 
 struct IrFunction
 {
-	FixedBuffer!uint* storage;
-	FixedBuffer!uint* temp;
+	uint[] storage;
+	/// number of uints allocated from storage
+	uint storageLength;
 
 	/// Special block. Automatically created. Program start. Created first.
 	IrIndex entryBasicBlock;
@@ -716,24 +712,7 @@ struct IrFunction
 	{
 		assert(index.kind != IrValueKind.none, "null index");
 		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
-		return *cast(T*)(&storage.bufPtr[index.storageUintIndex]);
-	}
-
-	/// Does not remove its instructions/phis
-	/*void removeBasicBlock(IrIndex basicBlockToRemove) {
-		--numBasicBlocks;
-		IrBasicBlockInstr* bb = &get!IrBasicBlockInstr(basicBlockToRemove);
-		if (bb.prevBlock.isDefined)
-			getBlock(bb.prevBlock).nextBlock = bb.nextBlock;
-		if (bb.nextBlock.isDefined)
-			getBlock(bb.nextBlock).prevBlock = bb.prevBlock;
-	}*/
-
-	void computeBlockOrder()
-	{
-		uint[] orderArray = temp.voidPut(numBasicBlocks);
-		scope(exit) temp.clear;
-		// todo
+		return *cast(T*)(&storage[index.storageUintIndex]);
 	}
 }
 
@@ -758,6 +737,7 @@ struct BlockIterator
 // 1. Simple and Efficient Construction of Static Single Assignment Form
 struct IrBuilder
 {
+	CompilationContext* context;
 	IrFunction* ir;
 
 	IrIndex lastBB;
@@ -772,13 +752,14 @@ struct IrBuilder
 
 	/// Must be called before compilation of each function. Allows reusing temp buffers.
 	/// Sets up entry and exit basic blocks.
-	void begin(IrFunction* ir) {
+	void begin(IrFunction* ir, CompilationContext* context) {
+		this.context = context;
 		this.ir = ir;
-		blockVarDef.clear();
 
-		// Add dummy item into storage, since 0 index represents null
-		if (ir.storage.length == 0)
-			ir.storage.put(0);
+		ir.storage = context.irBuffer.freePart;
+		ir.storageLength = 0;
+
+		blockVarDef.clear();
 
 		setupEntryExitBlocks();
 
@@ -798,13 +779,14 @@ struct IrBuilder
 	}
 
 	/// Must be called before IR to LIR pass
-	void beginLir(IrFunction* lir, IrFunction* oldIr) {
+	void beginLir(IrFunction* lir, IrFunction* oldIr, CompilationContext* context) {
+		this.context = context;
 		this.ir = lir;
-		blockVarDef.clear();
 
-		// Add dummy item into storage, since 0 index represents null
-		if (ir.storage.length == 0)
-			ir.storage.put(0);
+		ir.storage = context.irBuffer.freePart;
+		ir.storageLength = 0;
+
+		blockVarDef.clear();
 
 		// dup basic blocks
 		foreach (IrIndex blockIndex, ref IrBasicBlockInstr irBlock; ir.blocks)
@@ -833,7 +815,7 @@ struct IrBuilder
 	{
 		assert(index.kind != IrValueKind.none, "null index");
 		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
-		return *cast(T*)(&ir.temp.bufPtr[index.storageUintIndex]);
+		return *cast(T*)(&context.tempBuffer.bufPtr[index.storageUintIndex]);
 	}
 
 	/// Returns index to allocated item
@@ -845,10 +827,13 @@ struct IrBuilder
 		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
 
 		IrIndex result;
-		result.storageUintIndex = ir.storage.length;
+		result.storageUintIndex = ir.storageLength;
 		result.kind = getInstrInfo!T.kind;
 
-		ir.storage.voidPut(divCeil(T.sizeof, uint.sizeof)*howMany);
+		size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof)*howMany;
+		ir.storageLength += numAllocatedSlots;
+		context.irBuffer.length += numAllocatedSlots;
+
 		(&ir.get!T(result))[0..howMany] = T.init;
 		return result;
 	}
@@ -859,10 +844,12 @@ struct IrBuilder
 		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
 
 		IrIndex result;
-		result.storageUintIndex = ir.temp.length;
+		result.storageUintIndex = context.tempBuffer.length;
 		result.kind = getInstrInfo!T.kind;
 
-		ir.temp.voidPut(divCeil(T.sizeof, uint.sizeof)*howMany);
+		size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof)*howMany;
+		context.tempBuffer.voidPut(numAllocatedSlots);
+
 		(&getTemp!T(result))[0..howMany] = T.init;
 		return result;
 	}
@@ -885,6 +872,16 @@ struct IrBuilder
 		lastBB = newBlock;
 		return lastBB;
 	}
+
+	/// Does not remove its instructions/phis
+	/*void removeBasicBlock(IrIndex basicBlockToRemove) {
+		--numBasicBlocks;
+		IrBasicBlockInstr* bb = &get!IrBasicBlockInstr(basicBlockToRemove);
+		if (bb.prevBlock.isDefined)
+			getBlock(bb.prevBlock).nextBlock = bb.nextBlock;
+		if (bb.nextBlock.isDefined)
+			getBlock(bb.nextBlock).prevBlock = bb.prevBlock;
+	}*/
 
 	// Algorithm 4: Handling incomplete CFGs
 	/// Basic block is sealed if no further predecessors will be added to the block.
