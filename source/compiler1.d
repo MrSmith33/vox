@@ -18,7 +18,6 @@ import std.algorithm : min, max, sort, swap;
 
 import ir;
 import utils;
-import ir_to_amd64;
 
 // Grammar
 /**

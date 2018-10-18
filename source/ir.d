@@ -54,6 +54,7 @@ version (standalone)
 	bool success = allocator.reserve(memSize);
 	assert(success, "allocator failed");
 
+	CompilationContext ctx;
 	IrBuilder builder;
 	IrFunction ir;
 	FixedBuffer!uint storage;
@@ -65,6 +66,7 @@ version (standalone)
 	ir.temp = &temp;
 
 	ir.returnType = IrValueType.i32;
+	ir.name = ctx.idMap.getOrReg("sign");
 
 	//i32 sign(i32 number)
 	builder.begin(&ir);
@@ -74,7 +76,7 @@ version (standalone)
 	builder.addJump(ir.entryBasicBlock);
 	//{
 	IrIndex start_block = builder.addBasicBlock();
-	ir.addBlockTarget(ir.entryBasicBlock, start_block);
+	builder.addBlockTarget(ir.entryBasicBlock, start_block);
 	builder.sealBlock(start_block);
 	//	i32 result;
 	IrIndex zeroVal = builder.addConstant(IrConstant(0));
@@ -85,9 +87,9 @@ version (standalone)
 	IrIndex else_1_block = builder.addBasicBlock();
 	//	if (number < 0)
 	builder.addBinBranch(start_block, IrBinaryCondition.l, param0Value, zeroVal);
-	ir.addBlockTarget(start_block, then_1_block);
+	builder.addBlockTarget(start_block, then_1_block);
 	builder.sealBlock(then_1_block);
-	ir.addBlockTarget(start_block, else_1_block);
+	builder.addBlockTarget(start_block, else_1_block);
 	builder.sealBlock(else_1_block);
 	//		result = 0-1;
 	IrIndex minusOneVal = builder.addConstant(IrConstant(-1));
@@ -99,9 +101,9 @@ version (standalone)
 	builder.addBinBranch(else_1_block, IrBinaryCondition.g, param0Value, zeroVal);
 	IrIndex then_2_block = builder.addBasicBlock();
 	IrIndex else_2_block = builder.addBasicBlock();
-	ir.addBlockTarget(else_1_block, then_2_block);
+	builder.addBlockTarget(else_1_block, then_2_block);
 	builder.sealBlock(then_2_block);
-	ir.addBlockTarget(else_1_block, else_2_block);
+	builder.addBlockTarget(else_1_block, else_2_block);
 	builder.sealBlock(else_2_block);
 	//			result = 1;
 	IrIndex oneVal = builder.addConstant(IrConstant(1));
@@ -120,7 +122,7 @@ version (standalone)
 
 	builder.sealBlock(ir.exitBasicBlock);
 
-	dumpFunction(&ir);
+	dumpFunction(&ir, &ctx);
 	writefln("IR size: %s uints | %s bytes", storage.data.length, storage.data.length * uint.sizeof);
 }
 }
@@ -141,20 +143,22 @@ struct IrModule
 
 	void dump(ref TextSink sink, CompilationContext* context)
 	{
-		foreach (func; functions) dumpFunction(func, sink);
+		foreach (func; functions) dumpFunction(func, sink, context);
 	}
 }
 
-void dumpFunction(IrFunction* ir)
+void dumpFunction(IrFunction* ir, CompilationContext* ctx)
 {
 	TextSink sink;
-	dumpFunction(ir, sink);
+	dumpFunction(ir, sink, ctx);
 	writeln(sink.text);
 }
 
-void dumpFunction(IrFunction* ir, ref TextSink sink)
+void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 {
-	sink.putfln("function () {");
+	sink.put("function ");
+	sink.put(ctx.idString(ir.name));
+	sink.putln("() {");
 	bool printVars = false;
 	bool printBlockIns =  true;
 	bool printBlockRefs = false;
@@ -486,7 +490,7 @@ struct IrIncompletePhi
 	IrIndex nextListItem;
 }
 
-enum IrOpcode : ubyte
+enum IrOpcode : ushort
 {
 	parameter,
 	block_header,
@@ -503,7 +507,9 @@ enum IrOpcode : ubyte
 	load,
 
 	add,
-	sub
+	sub,
+
+	LAST_IR_OPCODE
 }
 
 @InstrInfo(IrValueKind.virtualRegister)
@@ -686,8 +692,6 @@ struct IrFunction
 	FixedBuffer!uint* storage;
 	FixedBuffer!uint* temp;
 
-	uint numBasicBlocks;
-
 	/// Special block. Automatically created. Program start. Created first.
 	IrIndex entryBasicBlock;
 
@@ -700,6 +704,10 @@ struct IrFunction
 	///
 	IrValueType returnType;
 
+	uint numBasicBlocks;
+
+	Identifier name;
+
 	BlockIterator blocks() { return BlockIterator(&this); }
 
 	alias getBlock = get!IrBasicBlockInstr;
@@ -709,50 +717,6 @@ struct IrFunction
 		assert(index.kind != IrValueKind.none, "null index");
 		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
 		return *cast(T*)(&storage.bufPtr[index.storageUintIndex]);
-	}
-
-	ref T getTemp(T)(IrIndex index)
-	{
-		assert(index.kind != IrValueKind.none, "null index");
-		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
-		return *cast(T*)(&temp.bufPtr[index.storageUintIndex]);
-	}
-
-	/// Returns index to allocated item
-	/// Allocates howMany items. By default allocates single item.
-	/// If howMany > 1 - returns index of first item, access other items via IrIndex.indexOf
-	/// T must have UDA of InstrInfo() value
-	IrIndex append(T)(uint howMany = 1)
-	{
-		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
-
-		IrIndex result;
-		result.storageUintIndex = storage.length;
-		result.kind = getInstrInfo!T.kind;
-
-		storage.voidPut(divCeil(T.sizeof, uint.sizeof)*howMany);
-		(&get!T(result))[0..howMany] = T.init;
-		return result;
-	}
-
-	/// ditto
-	IrIndex appendTemp(T)(uint howMany = 1)
-	{
-		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
-
-		IrIndex result;
-		result.storageUintIndex = temp.length;
-		result.kind = getInstrInfo!T.kind;
-
-		temp.voidPut(divCeil(T.sizeof, uint.sizeof)*howMany);
-		(&getTemp!T(result))[0..howMany] = T.init;
-		return result;
-	}
-
-	/// Adds control-flow edge pointing `fromBlock` -> `toBlock`.
-	void addBlockTarget(IrIndex fromBasicBlockIndex, IrIndex toBasicBlockIndex) {
-		getBlock(fromBasicBlockIndex).successors.append(&this, toBasicBlockIndex);
-		getBlock(toBasicBlockIndex).predecessors.append(&this, fromBasicBlockIndex);
 	}
 
 	/// Does not remove its instructions/phis
@@ -796,7 +760,7 @@ struct IrBuilder
 {
 	IrFunction* ir;
 
-	IrIndex currentBB;
+	IrIndex lastBB;
 
 	// Stores current definition of variable per block during SSA-form IR construction.
 	private IrIndex[BlockVarPair] blockVarDef;
@@ -816,16 +780,7 @@ struct IrBuilder
 		if (ir.storage.length == 0)
 			ir.storage.put(0);
 
-		// Canonical function CFG has entry block, and single exit block.
-		ir.numBasicBlocks = 2;
-
-		ir.entryBasicBlock = ir.append!IrBasicBlockInstr;
-		ir.exitBasicBlock = ir.append!IrBasicBlockInstr;
-
-		ir.getBlock(ir.entryBasicBlock).nextBlock = ir.exitBasicBlock;
-		sealBlock(ir.entryBasicBlock);
-		ir.getBlock(ir.exitBasicBlock).prevBlock = ir.entryBasicBlock;
-		currentBB = ir.entryBasicBlock;
+		setupEntryExitBlocks();
 
 		if (ir.returnType != IrValueType.void_t)
 		{
@@ -842,17 +797,93 @@ struct IrBuilder
 		ir.getBlock(ir.exitBasicBlock).isFinished = true;
 	}
 
-	/// Sets currentBB to this block
+	/// Must be called before IR to LIR pass
+	void beginLir(IrFunction* lir, IrFunction* oldIr) {
+		this.ir = lir;
+		blockVarDef.clear();
+
+		// Add dummy item into storage, since 0 index represents null
+		if (ir.storage.length == 0)
+			ir.storage.put(0);
+
+		// dup basic blocks
+		foreach (IrIndex blockIndex, ref IrBasicBlockInstr irBlock; ir.blocks)
+		{
+			IrIndex lirBlock = append!IrBasicBlockInstr;
+			lir.getBlock(lirBlock) = irBlock;
+		}
+	}
+
+	private void setupEntryExitBlocks()
+	{
+		assert(ir.numBasicBlocks == 0);
+		// Canonical function CFG has entry block, and single exit block.
+		ir.numBasicBlocks = 2;
+
+		ir.entryBasicBlock = append!IrBasicBlockInstr;
+		ir.exitBasicBlock = append!IrBasicBlockInstr;
+
+		ir.getBlock(ir.entryBasicBlock).nextBlock = ir.exitBasicBlock;
+		sealBlock(ir.entryBasicBlock);
+		ir.getBlock(ir.exitBasicBlock).prevBlock = ir.entryBasicBlock;
+		lastBB = ir.entryBasicBlock;
+	}
+
+	ref T getTemp(T)(IrIndex index)
+	{
+		assert(index.kind != IrValueKind.none, "null index");
+		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
+		return *cast(T*)(&ir.temp.bufPtr[index.storageUintIndex]);
+	}
+
+	/// Returns index to allocated item
+	/// Allocates howMany items. By default allocates single item.
+	/// If howMany > 1 - returns index of first item, access other items via IrIndex.indexOf
+	/// T must have UDA of InstrInfo() value
+	IrIndex append(T)(uint howMany = 1)
+	{
+		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
+
+		IrIndex result;
+		result.storageUintIndex = ir.storage.length;
+		result.kind = getInstrInfo!T.kind;
+
+		ir.storage.voidPut(divCeil(T.sizeof, uint.sizeof)*howMany);
+		(&ir.get!T(result))[0..howMany] = T.init;
+		return result;
+	}
+
+	/// ditto
+	IrIndex appendTemp(T)(uint howMany = 1)
+	{
+		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
+
+		IrIndex result;
+		result.storageUintIndex = ir.temp.length;
+		result.kind = getInstrInfo!T.kind;
+
+		ir.temp.voidPut(divCeil(T.sizeof, uint.sizeof)*howMany);
+		(&getTemp!T(result))[0..howMany] = T.init;
+		return result;
+	}
+
+	/// Adds control-flow edge pointing `fromBlock` -> `toBlock`.
+	void addBlockTarget(IrIndex fromBasicBlockIndex, IrIndex toBasicBlockIndex) {
+		ir.getBlock(fromBasicBlockIndex).successors.append(&this, toBasicBlockIndex);
+		ir.getBlock(toBasicBlockIndex).predecessors.append(&this, fromBasicBlockIndex);
+	}
+
+	/// Sets lastBB to this block
 	IrIndex addBasicBlock() {
-		assert(currentBB.isDefined);
+		assert(lastBB.isDefined);
 		++ir.numBasicBlocks;
-		IrIndex newBlock = ir.append!IrBasicBlockInstr;
-		ir.getBlock(newBlock).nextBlock = ir.getBlock(currentBB).nextBlock;
-		ir.getBlock(newBlock).prevBlock = currentBB;
-		ir.getBlock(ir.getBlock(currentBB).nextBlock).prevBlock = newBlock;
-		ir.getBlock(currentBB).nextBlock = newBlock;
-		currentBB = newBlock;
-		return currentBB;
+		IrIndex newBlock = append!IrBasicBlockInstr;
+		ir.getBlock(newBlock).nextBlock = ir.getBlock(lastBB).nextBlock;
+		ir.getBlock(newBlock).prevBlock = lastBB;
+		ir.getBlock(ir.getBlock(lastBB).nextBlock).prevBlock = newBlock;
+		ir.getBlock(lastBB).nextBlock = newBlock;
+		lastBB = newBlock;
+		return lastBB;
 	}
 
 	// Algorithm 4: Handling incomplete CFGs
@@ -865,7 +896,7 @@ struct IrBuilder
 		IrIndex index = blockToIrIncompletePhi.get(basicBlockToSeal, IrIndex());
 		while (index.isDefined)
 		{
-			IrIncompletePhi ip = ir.getTemp!IrIncompletePhi(index);
+			IrIncompletePhi ip = getTemp!IrIncompletePhi(index);
 			addPhiOperands(basicBlockToSeal, ip.var, ip.phi);
 			index = ip.nextListItem;
 		}
@@ -912,7 +943,7 @@ struct IrBuilder
 			case phi: assert(false); // must be virt reg instead
 			case memoryAddress: break; // allowed, noop
 			case virtualRegister:
-				ir.get!IrVirtualRegister(used).users.append(ir, user);
+				ir.get!IrVirtualRegister(used).users.append(&this, user);
 				break;
 			case physicalRegister: break; // allowed, noop
 		}
@@ -920,7 +951,7 @@ struct IrBuilder
 
 	IrIndex addInstruction(I)(IrIndex blockIndex, ushort op) {
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
-		IrIndex instr = ir.append!I;
+		IrIndex instr = append!I;
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
 		instrHeader.op = op;
 		instrHeader.prevInstr = block.lastInstr; // points to prev instruction or to null
@@ -974,8 +1005,8 @@ struct IrBuilder
 		auto res = addBinBranch(blockIndex, cond, arg0, arg1);
 		forceAllocLabelBlock(trueExit, 1);
 		forceAllocLabelBlock(falseExit, 1);
-		ir.addBlockTarget(blockIndex, trueExit.blockIndex);
-		ir.addBlockTarget(blockIndex, falseExit.blockIndex);
+		addBlockTarget(blockIndex, trueExit.blockIndex);
+		addBlockTarget(blockIndex, falseExit.blockIndex);
 		return res;
 	}
 	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1)
@@ -998,14 +1029,14 @@ struct IrBuilder
 		assert(ir.returnType != IrValueType.void_t);
 		writeVariable(blockIndex, returnVar, returnValue);
 		addJump(blockIndex);
-		ir.addBlockTarget(blockIndex, ir.exitBasicBlock);
+		addBlockTarget(blockIndex, ir.exitBasicBlock);
 	}
 
 	void addReturn(IrIndex blockIndex)
 	{
 		assert(ir.returnType == IrValueType.void_t);
 		addJump(blockIndex);
-		ir.addBlockTarget(blockIndex, ir.exitBasicBlock);
+		addBlockTarget(blockIndex, ir.exitBasicBlock);
 	}
 
 	IrIndex addJump(IrIndex blockIndex)
@@ -1032,7 +1063,7 @@ struct IrBuilder
 				label.numPredecessors = 2;
 				IrIndex firstPred = label.blockIndex;
 				label.blockIndex = addBasicBlock;
-				ir.addBlockTarget(firstPred, label.blockIndex);
+				addBlockTarget(firstPred, label.blockIndex);
 				// block may be finished if binary branch targets label
 				//if (!ir.getBlock(firstPred).isFinished)
 				addJump(firstPred);
@@ -1040,7 +1071,7 @@ struct IrBuilder
 			default:
 				// label.blockIndex points to label's own block
 				++label.numPredecessors;
-				ir.addBlockTarget(blockIndex, label.blockIndex);
+				addBlockTarget(blockIndex, label.blockIndex);
 				addJump(blockIndex);
 				break;
 		}
@@ -1062,7 +1093,7 @@ struct IrBuilder
 				label.numPredecessors = 1 + newPredecessors;
 				IrIndex firstPred = label.blockIndex;
 				label.blockIndex = addBasicBlock;
-				ir.addBlockTarget(firstPred, label.blockIndex);
+				addBlockTarget(firstPred, label.blockIndex);
 				addJump(firstPred);
 				break;
 			default:
@@ -1073,7 +1104,7 @@ struct IrBuilder
 	}
 
 	IrIndex addConstant(IrConstant con) {
-		IrIndex conIndex = ir.append!IrConstant;
+		IrIndex conIndex = append!IrConstant;
 		ir.get!IrConstant(conIndex) = con;
 		return conIndex;
 	}
@@ -1084,7 +1115,7 @@ struct IrBuilder
 
 	// Creates operand for result of phi/instruction that is defined by `definition`
 	private IrIndex addVirtualRegister(IrIndex definition) {
-		IrIndex virtRegIndex = ir.append!IrVirtualRegister;
+		IrIndex virtRegIndex = append!IrVirtualRegister;
 		IrVirtualRegister* virtReg = &ir.get!IrVirtualRegister(virtRegIndex);
 		virtReg.definition = definition;
 		return virtRegIndex;
@@ -1098,7 +1129,7 @@ struct IrBuilder
 
 	// Adds phi function to specified block
 	private IrIndex addPhi(IrIndex blockIndex) {
-		IrIndex phiIndex = ir.append!IrPhiInstr;
+		IrIndex phiIndex = append!IrPhiInstr;
 		IrIndex vreg = addVirtualRegister(phiIndex);
 		ir.get!IrPhiInstr(phiIndex) = IrPhiInstr(blockIndex, vreg);
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
@@ -1143,14 +1174,14 @@ struct IrBuilder
 			value = ir.get!IrPhiInstr(phiIndex).result;
 			blockToIrIncompletePhi.update(blockIndex,
 				{
-					IrIndex incompletePhi = ir.appendTemp!IrIncompletePhi;
-					ir.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex);
+					IrIndex incompletePhi = appendTemp!IrIncompletePhi;
+					getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex);
 					return incompletePhi;
 				},
 				(ref IrIndex oldPhi)
 				{
-					IrIndex incompletePhi = ir.appendTemp!IrIncompletePhi;
-					ir.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex, oldPhi);
+					IrIndex incompletePhi = appendTemp!IrIncompletePhi;
+					getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex, oldPhi);
 					return incompletePhi;
 				});
 		}
@@ -1198,7 +1229,7 @@ struct IrBuilder
 
 	private void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
 	{
-		IrIndex phiArg = ir.append!IrPhiArg;
+		IrIndex phiArg = append!IrPhiArg;
 		auto phi = &ir.get!IrPhiInstr(phiIndex);
 		ir.get!IrPhiArg(phiArg) = IrPhiArg(value, blockIndex, phi.firstArgListItem);
 		phi.firstArgListItem = phiArg;
@@ -1366,14 +1397,14 @@ struct SmallVector
 		assert(false);
 	}
 
-	void append(IrFunction* ir, IrIndex itemData)
+	void append(IrBuilder* builder, IrIndex itemData)
 	{
 		assert(itemData.kind != IrValueKind.listItem, "listItem is not storable inside SmallVector");
 		assert(itemData.kind != IrValueKind.none, "IrValueKind.none is not storable inside SmallVector");
 		if (isBig)
 		{
-			IrIndex newListItemIndex = ir.append!ListItem;
-			ListItem* listItem = &ir.get!ListItem(newListItemIndex);
+			IrIndex newListItemIndex = builder.append!ListItem;
+			ListItem* listItem = &builder.ir.get!ListItem(newListItemIndex);
 			*listItem = ListItem(itemData, firstListItem);
 			firstListItem = newListItemIndex;
 			++listLength;
@@ -1390,8 +1421,8 @@ struct SmallVector
 			}
 			else
 			{
-				IrIndex arrayIndex = ir.append!ListItem(3);
-				ListItem* itemArray = &ir.get!ListItem(arrayIndex);
+				IrIndex arrayIndex = builder.append!ListItem(3);
+				ListItem* itemArray = &builder.ir.get!ListItem(arrayIndex);
 				itemArray[2] = ListItem(itemData);
 				itemArray[1] = ListItem(items[1], arrayIndex.indexOf!ListItem(2));
 				itemArray[0] = ListItem(items[0], arrayIndex.indexOf!ListItem(1));

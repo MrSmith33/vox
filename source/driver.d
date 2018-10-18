@@ -2,10 +2,15 @@ module driver;
 
 import std.stdio : writeln, write, writef, writefln, stdout;
 import compiler1;
-import ir_to_amd64;
 import ir;
 import utils;
 import ast_to_ir;
+import ir_to_lir_amd64;
+
+unittest
+{
+	writefln("unittest");
+}
 
 void main()
 {
@@ -147,7 +152,8 @@ CompilePass[] compilerPasses = [
 	CompilePass("Semantic insert", &pass_semantic_decl),
 	CompilePass("Semantic lookup", &pass_semantic_lookup),
 	CompilePass("Semantic types", &pass_semantic_type),
-	CompilePass("IR gen", &pass_new_ir_gen)
+	CompilePass("IR gen", &pass_new_ir_gen),
+	CompilePass("IR to LIR AMD64", &pass_ir_to_lir_amd64)
 ];
 
 struct Driver

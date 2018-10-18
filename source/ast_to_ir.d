@@ -22,7 +22,8 @@ void pass_new_ir_gen(ref CompilationContext ctx) {
 //version = IrGenPrint;
 
 /// Converts AST to in-memory linear IR
-struct AstToIr {
+struct AstToIr
+{
 	void visitType(TypeNode* n) {
 		context.assertf(n.isType, n.loc, "Expected type, not %s", n.astType);
 		switch(n.astType) with(AstType)
@@ -124,7 +125,8 @@ struct AstToIr {
 		blkId = context.idMap.getOrRegNoDup("blk");
 		foreach (decl; m.functions) {
 			visit(decl);
-			m.irModule.addFunction(decl.irData);
+			// can be null if function is external
+			if (decl.irData) m.irModule.addFunction(decl.irData);
 		}
 		version(IrGenPrint) writeln("[IR GEN] module end");
 	}
@@ -154,6 +156,7 @@ struct AstToIr {
 
 		ir.storage = &context.irBuffer;
 		ir.temp = &context.tempBuffer;
+		ir.name = f.id;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
 		builder.begin(ir);
@@ -168,7 +171,7 @@ struct AstToIr {
 		builder.addJump(ir.entryBasicBlock);
 
 		IrIndex body_block = builder.addBasicBlock();
-		ir.addBlockTarget(ir.entryBasicBlock, body_block);
+		builder.addBlockTarget(ir.entryBasicBlock, body_block);
 		builder.sealBlock(body_block);
 
 		// label at the end of body
