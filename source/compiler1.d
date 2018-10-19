@@ -91,11 +91,24 @@ struct CompilationContext
 	MachineInfo* machineInfo = &mach_info_x86_64;
 	ScopeStack scopeStack;
 
+	IrConstant[] constants;
 	IdentifierMap idMap;
 	bool hasErrors;
 	TextSink sink;
 	IceBehavior iceBehavior = IceBehavior.breakpoint;
 	bool buildDebug = false;
+
+	IrIndex addConstant(IrConstant con) {
+		IrIndex conIndex = IrIndex(cast(uint)constants.length, IrValueKind.constant);
+		constants ~= con;
+		return conIndex;
+	}
+
+	ref IrConstant getConstant(IrIndex index) {
+		assert(index.kind == IrValueKind.constant);
+		assert(index.storageUintIndex < constants.length);
+		return constants[index.storageUintIndex];
+	}
 
 	//alias idString = idMap.get;
 	string idString(const Identifier id) { return idMap.get(id); }

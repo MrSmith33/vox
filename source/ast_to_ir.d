@@ -256,7 +256,7 @@ struct AstToIr
 		}
 		else
 		{
-			IrIndex value = builder.addConstant(IrConstant(0));
+			IrIndex value = context.addConstant(IrConstant(0));
 			store(currentBlock, v, value);
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -418,7 +418,7 @@ struct AstToIr
 	void visitExprValue(LiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(IrGenPrint) writefln("[IR GEN] literal value (%s) value %s", c.loc, c.value);
-		c.irRef = builder.addConstant(IrConstant(c.value));
+		c.irRef = context.addConstant(IrConstant(c.value));
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprBranch(LiteralExprNode* c, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
@@ -474,12 +474,12 @@ struct AstToIr
 		// constant folding
 		if (b.left.irRef.isConstant && b.right.irRef.isConstant)
 		{
-			long arg0 = ir.get!IrConstant(cast(IrIndex)b.left.irRef).i64;
-			long arg1 = ir.get!IrConstant(cast(IrIndex)b.right.irRef).i64;
+			long arg0 = context.getConstant(cast(IrIndex)b.left.irRef).i64;
+			long arg1 = context.getConstant(cast(IrIndex)b.right.irRef).i64;
 			long value = calcBinOp(b.op, arg0, arg1);
 			static if (forValue)
 			{
-				b.irRef = builder.addConstant(IrConstant(value));
+				b.irRef = context.addConstant(IrConstant(value));
 			}
 			else
 			{
@@ -518,7 +518,9 @@ struct AstToIr
 			{
 				case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op branch %s", b.op);
-					builder.addBinBranch(currentBlock, convertBinOpToIrCond(b.op), lRef, rRef, trueExit, falseExit);
+					auto branch = builder.addBinBranch(currentBlock, convertBinOpToIrCond(b.op), lRef, rRef, trueExit, falseExit);
+					builder.addUser(branch, lRef);
+					builder.addUser(branch, rRef);
 					break;
 
 				// TODO && || !

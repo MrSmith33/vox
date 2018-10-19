@@ -75,26 +75,32 @@ version (standalone)
 	builder.addBlockTarget(ir.entryBasicBlock, start_block);
 	builder.sealBlock(start_block);
 	//	i32 result;
-	IrIndex zeroVal = builder.addConstant(IrConstant(0));
+	IrIndex zeroVal = ctx.addConstant(IrConstant(0));
 	IrVar resultVar = IrVar(Identifier(0), builder.newIrVarId());
 	builder.writeVariable(start_block, resultVar, zeroVal);
 	IrLabel scope1ExitLabel = IrLabel(start_block);
 	IrIndex then_1_block = builder.addBasicBlock();
 	IrIndex else_1_block = builder.addBasicBlock();
 	//	if (number < 0)
-	builder.addBinBranch(start_block, IrBinaryCondition.l, param0Value, zeroVal);
+	auto branch1 = builder.addBinBranch(start_block, IrBinaryCondition.l, param0Value, zeroVal);
+	builder.addUser(branch1, param0Value);
+	builder.addUser(branch1, zeroVal);
+
 	builder.addBlockTarget(start_block, then_1_block);
 	builder.sealBlock(then_1_block);
 	builder.addBlockTarget(start_block, else_1_block);
 	builder.sealBlock(else_1_block);
 	//		result = 0-1;
-	IrIndex minusOneVal = builder.addConstant(IrConstant(-1));
+	IrIndex minusOneVal = ctx.addConstant(IrConstant(-1));
 	builder.writeVariable(then_1_block, resultVar, minusOneVal);
 	builder.addJumpToLabel(then_1_block, scope1ExitLabel);
 	//	else
 	//	{
 	//		if (number > 0)
-	builder.addBinBranch(else_1_block, IrBinaryCondition.g, param0Value, zeroVal);
+	auto branch2 = builder.addBinBranch(else_1_block, IrBinaryCondition.g, param0Value, zeroVal);
+	builder.addUser(branch2, param0Value);
+	builder.addUser(branch2, zeroVal);
+
 	IrIndex then_2_block = builder.addBasicBlock();
 	IrIndex else_2_block = builder.addBasicBlock();
 	builder.addBlockTarget(else_1_block, then_2_block);
@@ -102,7 +108,7 @@ version (standalone)
 	builder.addBlockTarget(else_1_block, else_2_block);
 	builder.sealBlock(else_2_block);
 	//			result = 1;
-	IrIndex oneVal = builder.addConstant(IrConstant(1));
+	IrIndex oneVal = ctx.addConstant(IrConstant(1));
 	builder.writeVariable(then_2_block, resultVar, oneVal);
 	builder.addJumpToLabel(then_2_block, scope1ExitLabel);
 	//		else
@@ -155,12 +161,14 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 	sink.put(ctx.idString(ir.name));
 	sink.putln("() {");
 	bool printVars = false;
-	bool printBlockIns =  true;
+	bool printBlockFlags = true;
+	bool printBlockIns = true;
+	bool printBlockOuts = false;
 	bool printBlockRefs = false;
 	bool printInstrIndexEnabled = true;
 	bool printUses = true;
 	bool printLive = true;
-	int indexPadding = numDigitsInNumber(ir.storage.length);
+	int indexPadding = numDigitsInNumber(ir.storageLength);
 
 	void printInstrIndex(IrIndex someIndex) {
 		if (!printInstrIndexEnabled) return;
@@ -173,7 +181,7 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 		foreach (i, index; vreg.users.range(ir))
 		{
 			if (i > 0) sink.put(", ");
-			sink.putf("%s", index.printer(ir));
+			sink.putf("%s", index);
 		}
 		sink.put("]");
 	}
@@ -181,20 +189,32 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
 	{
 		printInstrIndex(blockIndex);
-		sink.putf("  %s ", blockIndex.printer(ir));
+		sink.putf("  %s ", blockIndex);
 
-		if (block.isSealed) sink.put("S");
-		else sink.put(".");
+		if (printBlockFlags)
+		{
+			if (block.isSealed) sink.put("S");
+			else sink.put(".");
 
-		if (block.isFinished) sink.put("F");
-		else sink.put(".");
+			if (block.isFinished) sink.put("F");
+			else sink.put(".");
+		}
 
 		if (printBlockIns && block.predecessors.length > 0)
 		{
 			sink.putf(" in(");
 			foreach(i, predIndex; block.predecessors.range(ir)) {
 				if (i > 0) sink.put(", ");
-				sink.putf("%s", predIndex.printer(ir));
+				sink.putf("%s", predIndex);
+			}
+			sink.put(")");
+		}
+		if (printBlockOuts && block.successors.length > 0)
+		{
+			sink.putf(" out(");
+			foreach(i, succIndex; block.successors.range(ir)) {
+				if (i > 0) sink.put(", ");
+				sink.putf("%s", succIndex);
 			}
 			sink.put(")");
 		}
@@ -208,7 +228,7 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
 				if (arg_i > 0) sink.put(", ");
-				sink.putf("%s %s", phiArg.value.printer(ir), phiArg.basicBlock.printer(ir));
+				sink.putf("%s %s", phiArg.value, phiArg.basicBlock);
 			}
 			sink.put(")");
 			if (printUses) printRegUses(phi.result);
@@ -223,41 +243,41 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 			switch(instrHeader.op)
 			{
 				case IrOpcode.block_exit_jump:
-					sink.putf("    jmp %s", block.successors[0, ir].printer(ir));
+					sink.putf("    jmp %s", block.successors[0, ir]);
 					break;
 
 				case IrOpcode.block_exit_unary_branch:
 					sink.putf("    if %s %s then %s else %s",
 						instrHeader.unaryCond,
-						instrHeader.args[0].printer(ir),
-						block.successors[0, ir].printer(ir),
-						block.successors[1, ir].printer(ir));
+						instrHeader.args[0],
+						block.successors[0, ir],
+						block.successors[1, ir]);
 					break;
 
 				case IrOpcode.block_exit_binary_branch:
 					sink.putf("    if %s %s %s then ",
-						instrHeader.args[0].printer(ir),
+						instrHeader.args[0],
 						binaryCondStrings[instrHeader.binaryCond],
-						instrHeader.args[1].printer(ir));
+						instrHeader.args[1]);
 					switch (block.successors.length) {
 						case 0:
 							sink.put("<null> else <null>");
 							break;
 						case 1:
 							sink.putf("%s else <null>",
-								block.successors[0, ir].printer(ir));
+								block.successors[0, ir]);
 							break;
 						default:
 							sink.putf("%s else %s",
-								block.successors[0, ir].printer(ir),
-								block.successors[1, ir].printer(ir));
+								block.successors[0, ir],
+								block.successors[1, ir]);
 							break;
 					}
 					break;
 
 				case IrOpcode.parameter:
 					uint paramIndex = ir.get!IrInstrParameter(instrIndex).index;
-					sink.putf("    %s = parameter%s", instrHeader.result.printer(ir), paramIndex);
+					sink.putf("    %s = parameter%s", instrHeader.result, paramIndex);
 					break;
 
 				case IrOpcode.block_exit_return_void:
@@ -265,17 +285,17 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 					break;
 
 				case IrOpcode.block_exit_return_value:
-					sink.putf("    return %s", instrHeader.args[0].printer(ir));
+					sink.putf("    return %s", instrHeader.args[0]);
 					break;
 
 				default:
 					if (instrHeader.hasResult)
-						sink.putf("    %s = %s", instrHeader.result.printer(ir), cast(IrOpcode)instrHeader.op);
+						sink.putf("    %s = %s", instrHeader.result, cast(IrOpcode)instrHeader.op);
 					else  sink.putf("    %s", cast(IrOpcode)instrHeader.op);
 					foreach (i, IrIndex arg; instrHeader.args)
 					{
 						if (i > 0) sink.put(",");
-						sink.putf(" %s", arg.printer(ir));
+						sink.putf(" %s", arg);
 					}
 					break;
 			}
@@ -346,8 +366,6 @@ struct IrIndex
 		}
 	}
 
-	IrIndexPrinter printer(IrFunction* func) { return IrIndexPrinter(this, func); }
-
 	/// When this index represents index of 0's array item, produces
 	/// index of this array items. Calling with 0 returns itself.
 	IrIndex indexOf(T)(size_t offset)
@@ -359,26 +377,6 @@ struct IrIndex
 	}
 
 	bool isConstant() { return kind == IrValueKind.constant; }
-}
-
-struct IrIndexPrinter
-{
-	IrIndex index;
-	IrFunction* ir;
-
-	void toString(scope void delegate(const(char)[]) sink) {
-		final switch(index.kind) with(IrValueKind) {
-			case none: sink("<null>"); break;
-			case listItem: sink.formattedWrite("l%s", index.storageUintIndex); break;
-			case instruction: sink.formattedWrite("i%s", index.storageUintIndex); break;
-			case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
-			case constant: sink.formattedWrite("%s", ir.get!IrConstant(index).i64); break;
-			case phi: sink.formattedWrite("phi%s", index.storageUintIndex); break;
-			case memoryAddress: sink.formattedWrite("m%s", index.storageUintIndex); break;
-			case virtualRegister: sink.formattedWrite("v%s", index.storageUintIndex); break;
-			case physicalRegister: sink.formattedWrite("p%s", index.storageUintIndex); break;
-		}
-	}
 }
 
 struct IrLabel
@@ -403,7 +401,6 @@ struct InstrInfo
 enum getInstrInfo(T) = getUDAs!(T, InstrInfo)[0];
 
 /// Stores numeric constant data
-@InstrInfo(IrValueKind.constant)
 struct IrConstant
 {
 	this(long value) {
@@ -711,6 +708,7 @@ struct IrFunction
 	BlockIterator blocks() { return BlockIterator(&this); }
 
 	alias getBlock = get!IrBasicBlockInstr;
+	alias getPhi = get!IrPhiInstr;
 
 	ref T get(T)(IrIndex index)
 	{
@@ -822,7 +820,7 @@ struct IrBuilder
 	/// T must have UDA of InstrInfo() value
 	IrIndex append(T)(uint howMany = 1)
 	{
-		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
+		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
 
 		IrIndex result;
 		result.storageUintIndex = ir.storageLength;
@@ -839,7 +837,7 @@ struct IrBuilder
 	/// ditto
 	IrIndex appendTemp(T)(uint howMany = 1)
 	{
-		static assert(T.alignof == 4 || is(T == IrConstant), "Can only store types aligned to 4 bytes");
+		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
 
 		IrIndex result;
 		result.storageUintIndex = context.tempBuffer.length;
@@ -964,8 +962,6 @@ struct IrBuilder
 		} else {
 			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
 		}
-		// TODO add users
-
 
 		return instr;
 	}
@@ -1014,8 +1010,19 @@ struct IrBuilder
 			header.binaryCond = cond;
 			args = [arg0, arg1];
 		}
-		addUser(branch, arg0);
-		addUser(branch, arg1);
+		return branch;
+	}
+
+	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrIndex arg0)
+	{
+		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		assert(!block.isFinished);
+		block.isFinished = true;
+		auto branch = addInstruction!IrInstrBinaryBranch(blockIndex, IrOpcode.block_exit_unary_branch);
+		with(ir.get!IrInstrUnaryBranch(branch)) {
+			header.unaryCond = cond;
+			args = [arg0];
+		}
 		return branch;
 	}
 
@@ -1098,12 +1105,6 @@ struct IrBuilder
 		}
 	}
 
-	IrIndex addConstant(IrConstant con) {
-		IrIndex conIndex = append!IrConstant;
-		ir.get!IrConstant(conIndex) = con;
-		return conIndex;
-	}
-
 
 	private void incBlockRefcount(IrIndex basicBlock) { assert(false); }
 	private void decBlockRefcount(IrIndex basicBlock) { assert(false); }
@@ -1123,7 +1124,7 @@ struct IrBuilder
 	}
 
 	// Adds phi function to specified block
-	private IrIndex addPhi(IrIndex blockIndex) {
+	IrIndex addPhi(IrIndex blockIndex) {
 		IrIndex phiIndex = append!IrPhiInstr;
 		IrIndex vreg = addVirtualRegister(phiIndex);
 		ir.get!IrPhiInstr(phiIndex) = IrPhiInstr(blockIndex, vreg);
@@ -1222,7 +1223,7 @@ struct IrBuilder
 		return tryRemoveTrivialPhi(phi);
 	}
 
-	private void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
+	void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
 	{
 		IrIndex phiArg = append!IrPhiArg;
 		auto phi = &ir.get!IrPhiInstr(phiIndex);

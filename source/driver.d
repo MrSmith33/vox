@@ -25,29 +25,18 @@ void test()
 	Test curTest = test8;
 	Driver driver;
 
-	// Try to allocate code buffer closer to host code pages,
-	// so that 32-bit offset can be used for calls
-	size_t thisAddr = cast(size_t)&test;
-	size_t step = 0x10_000_000;
-	size_t aligned = alignValue(thisAddr, step) - step*20;
-	ubyte[] codeBuffer;// = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
-
-	Win32Allocator allocator;
-	scope(exit) allocator.releaseMemory();
-
-	// IrIndex can address 2^28 * 4 bytes = 1GB
-	size_t irMemSize = 1024UL*1024*1024*2;
-	size_t arrSizes = 1024UL*1024*1024;
-	bool success = allocator.reserve(irMemSize);
-	driver.context.assertf(success, "allocator failed");
-
-	ubyte[] irBuffer = cast(ubyte[])allocator.allocate(arrSizes);
-	ubyte[] tempBuffer = cast(ubyte[])allocator.allocate(arrSizes);
-
 	try
 	{
-		driver.initPasses(compilerPasses);
-		ModuleDeclNode* mod = driver.compileModule(curTest.source, codeBuffer, irBuffer, tempBuffer, curTest.externalSymbols);
+		driver.initialize(compilerPasses);
+		scope(exit) driver.releaseMemory;
+
+		enum NUM_ITERS = 1;
+		auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
+		auto time1 = currTime;
+		ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.externalSymbols);
+		auto time2 = currTime;
+		times.onIteration(0, time2-time1);
+
 		if (mod is null) return;
 
 		version(print)
@@ -66,6 +55,8 @@ void test()
 
 			writeln("\n// Amd64 code");
 			printHex(mod.irModule.code, 16);
+
+			times.print;
 		}
 
 		FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
@@ -99,22 +90,9 @@ void bench()
 		return result;
 	}};
 
-	ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
-
 	Driver driver;
-	Win32Allocator allocator;
-	scope(exit) allocator.releaseMemory();
-
-	// IrIndex can address 2^28 * 4 bytes = 1GB
-	size_t irMemSize = 1024UL*1024*1024*2;
-	size_t arrSizes = 1024UL*1024*1024;
-	bool success = allocator.reserve(irMemSize);
-	driver.context.assertf(success, "allocator failed");
-
-	ubyte[] irBuffer = cast(ubyte[])allocator.allocate(arrSizes);
-	ubyte[] tempBuffer = cast(ubyte[])allocator.allocate(arrSizes);
-
-	driver.initPasses(compilerPasses);
+	driver.initialize(compilerPasses);
+	scope(exit) driver.releaseMemory;
 
 	enum iters = 100_000;
 	auto times = PerPassTimeMeasurements(iters, driver.passes);
@@ -122,7 +100,7 @@ void bench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(input, codeBuffer, irBuffer, tempBuffer, null);
+		mod = driver.compileModule(input, null);
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);
@@ -130,30 +108,22 @@ void bench()
 
 	times.print;
 }
-/*
-CompilePass[] compilerPasses = [
-	CompilePass("Parse", &pass_parser),
-	CompilePass("Semantic insert", &pass_semantic_decl),
-	CompilePass("Semantic lookup", &pass_semantic_lookup),
-	CompilePass("Semantic types", &pass_semantic_type),
-	CompilePass("IR gen", &pass_ir_gen),
-	// IR liveness
-	CompilePass("Live intervals", &pass_live_intervals),
-	// IR regalloc
-	CompilePass("Linear scan", &pass_linear_scan),
-	// Stack layout
-	CompilePass("Stack layout", &pass_stack_layout),
-	// LIR -> machine code
-	CompilePass("Code gen", &pass_code_gen),
-];
-*/
+
 CompilePass[] compilerPasses = [
 	CompilePass("Parse", &pass_parser),
 	CompilePass("Semantic insert", &pass_semantic_decl),
 	CompilePass("Semantic lookup", &pass_semantic_lookup),
 	CompilePass("Semantic types", &pass_semantic_type),
 	CompilePass("IR gen", &pass_new_ir_gen),
-	CompilePass("IR to LIR AMD64", &pass_ir_to_lir_amd64)
+	CompilePass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
+	//// IR liveness
+	//CompilePass("Live intervals", &pass_live_intervals),
+	//// IR regalloc
+	//CompilePass("Linear scan", &pass_linear_scan),
+	//// Stack layout
+	//CompilePass("Stack layout", &pass_stack_layout),
+	//// LIR -> machine code
+	//CompilePass("Code gen", &pass_code_gen),
 ];
 
 struct Driver
@@ -161,17 +131,40 @@ struct Driver
 	CompilationContext context;
 	CompilePass[] passes;
 
-	void initPasses(CompilePass[] passes_)
+	Win32Allocator allocator;
+	ubyte[] codeBuffer;
+	ubyte[] irBuffer;
+	ubyte[] tempBuffer;
+
+	void initialize(CompilePass[] passes_)
 	{
 		passes = passes_;
+
+		// Try to allocate code buffer closer to host code pages,
+		// so that 32-bit offset can be used for calls
+		size_t thisAddr = cast(size_t)((&initialize).ptr); // take address of function in memory
+		size_t step = 0x10_000_000;
+		size_t aligned = alignValue(thisAddr, step) - step*20;
+		//codeBuffer = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
+
+		// IrIndex can address 2^28 * 4 bytes = 1GB
+		size_t irMemSize = 1024UL*1024*1024*2;
+		size_t arrSizes = 1024UL*1024*1024;
+		bool success = allocator.reserve(irMemSize);
+		context.assertf(success, "allocator failed");
+
+		irBuffer = cast(ubyte[])allocator.allocate(arrSizes);
+		tempBuffer = cast(ubyte[])allocator.allocate(arrSizes);
 	}
 
-	ModuleDeclNode* compileModule(
-		string fileData,
-		ubyte[] codeBuffer, ubyte[] irBuffer, ubyte[] tempBuffer,
-		ExternalSymbol[] externalSymbols)
+	void releaseMemory()
 	{
-		context = CompilationContext(fileData, codeBuffer);
+		allocator.releaseMemory();
+	}
+
+	ModuleDeclNode* compileModule(string moduleSource, ExternalSymbol[] externalSymbols)
+	{
+		context = CompilationContext(moduleSource, codeBuffer);
 		context.irBuffer.setBuffer(cast(uint[])irBuffer);
 		context.tempBuffer.setBuffer(cast(uint[])tempBuffer);
 		foreach (ref extSym; externalSymbols)
