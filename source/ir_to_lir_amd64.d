@@ -46,8 +46,11 @@ struct IrToLir
 		foreach (IrIndex blockIndex, ref IrBasicBlockInstr irBlock; ir.blocks)
 		{
 			IrIndex lirBlock = builder.append!IrBasicBlockInstr;
+			//writefln("old %s is new %s", blockIndex.storageUintIndex, lirBlock.storageUintIndex);
 			irMirror[blockIndex.storageUintIndex] = lirBlock.asUint;
-			lir.getBlock(lirBlock) = irBlock;
+			lir.getBlock(lirBlock).name = irBlock.name;
+			foreach(IrIndex pred; irBlock.predecessors.range(ir)) lir.getBlock(lirBlock).predecessors.append(&builder, pred);
+			foreach(IrIndex succ; irBlock.successors.range(ir)) lir.getBlock(lirBlock).successors.append(&builder, succ);
 
 			if (blockIndex == ir.entryBasicBlock)
 			{
