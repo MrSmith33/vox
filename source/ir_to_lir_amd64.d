@@ -166,7 +166,7 @@ struct IrToLir
 			}
 		}
 
-		writeln("// LIR");
-		dumpFunction(lir, context);
+		//writeln("// LIR");
+		//dumpFunction(lir, context);
 	}
 }

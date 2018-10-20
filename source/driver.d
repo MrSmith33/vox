@@ -191,6 +191,14 @@ struct Driver
 	}
 }
 
+struct CompilePass
+{
+	string name;
+	void function(ref CompilationContext context) run;
+
+	Duration duration;
+}
+
 struct Test
 {
 	string testName;
@@ -199,6 +207,87 @@ struct Test
 	alias Tester = void function(void* funcPtr);
 	void function(void* funcPtr) tester;
 	ExternalSymbol[] externalSymbols;
+}
+
+struct PerPassTimeMeasurements
+{
+	TimeMeasurements totalTimes;
+	TimeMeasurements[] passTimes;
+	CompilePass[] passes;
+
+	this(size_t numIters, CompilePass[] passes)
+	{
+		this.passes = passes;
+		totalTimes = TimeMeasurements(numIters);
+		passTimes = new TimeMeasurements[passes.length];
+		foreach (ref times; passTimes) times = TimeMeasurements(numIters);
+	}
+
+	void onIteration(size_t iterIndex, Duration iterTime)
+	{
+		totalTimes.onIteration(iterIndex, iterTime);
+		foreach (passIndex, ref pass; passes)
+			passTimes[passIndex].onIteration(iterIndex, pass.duration);
+	}
+
+	void print()
+	{
+		void printRow(string name, ref TimeMeasurements times)
+		{
+			writef("%- 20s", name);
+			times.print;
+			writeln;
+		}
+
+		writef("Iterations % 9s", scaledNumberFmt(totalTimes.numIters));
+		totalTimes.printHeader; writeln;
+		printRow("Total", totalTimes);
+		foreach (passIndex, ref times; passTimes)
+			printRow(passes[passIndex].name, times);
+	}
+}
+
+struct TimeMeasurements
+{
+	size_t numIters;
+	Duration[] iterTimes;
+	Duration totalTime;
+	Duration avgTime() { return totalTime/numIters; }
+	Duration minTime = Duration.max;
+	Duration maxTime = Duration.min;
+
+	this(size_t numIters)
+	{
+		this.numIters = numIters;
+		iterTimes = new Duration[numIters];
+	}
+
+	void onIteration(size_t iterIndex, Duration iterTime)
+	{
+		iterTimes[iterIndex] = iterTime;
+		totalTime += iterTime;
+		minTime = min(iterTime, minTime);
+		maxTime = max(iterTime, maxTime);
+	}
+
+	enum showNumFirstIters = 3;
+
+	void printHeader()
+	{
+		foreach (i; 0..min(numIters, showNumFirstIters))
+			writef("  iter %s", i);
+		write("   total     avg     min     max");
+	}
+
+	void print()
+	{
+		foreach (i; 0..min(numIters, showNumFirstIters))
+			writef(" % 6ss", scaledNumberFmt(iterTimes[i]));
+		writef(" % 6ss", scaledNumberFmt(totalTime));
+		writef(" % 6ss", scaledNumberFmt(avgTime));
+		writef(" % 6ss", scaledNumberFmt(minTime));
+		writef(" % 6ss", scaledNumberFmt(maxTime));
+	}
 }
 
 
@@ -551,95 +640,6 @@ void tester17(Func17 funcPtr) {
 }
 auto test17 = Test("Test 17", input17, "test", cast(Test.Tester)&tester17,
 	[ExternalSymbol("external", cast(void*)&test17_external_func)]);
-
-struct PerPassTimeMeasurements
-{
-	TimeMeasurements totalTimes;
-	TimeMeasurements[] passTimes;
-	CompilePass[] passes;
-
-	this(size_t numIters, CompilePass[] passes)
-	{
-		this.passes = passes;
-		totalTimes = TimeMeasurements(numIters);
-		passTimes = new TimeMeasurements[passes.length];
-		foreach (ref times; passTimes) times = TimeMeasurements(numIters);
-	}
-
-	void onIteration(size_t iterIndex, Duration iterTime)
-	{
-		totalTimes.onIteration(iterIndex, iterTime);
-		foreach (passIndex, ref pass; passes)
-			passTimes[passIndex].onIteration(iterIndex, pass.duration);
-	}
-
-	void print()
-	{
-		void printRow(string name, ref TimeMeasurements times)
-		{
-			writef("%- 20s", name);
-			times.print;
-			writeln;
-		}
-
-		writef("Iterations % 9s", scaledNumberFmt(totalTimes.numIters));
-		totalTimes.printHeader; writeln;
-		printRow("Total", totalTimes);
-		foreach (passIndex, ref times; passTimes)
-			printRow(passes[passIndex].name, times);
-	}
-}
-
-struct TimeMeasurements
-{
-	size_t numIters;
-	Duration[] iterTimes;
-	Duration totalTime;
-	Duration avgTime() { return totalTime/numIters; }
-	Duration minTime = Duration.max;
-	Duration maxTime = Duration.min;
-
-	this(size_t numIters)
-	{
-		this.numIters = numIters;
-		iterTimes = new Duration[numIters];
-	}
-
-	void onIteration(size_t iterIndex, Duration iterTime)
-	{
-		iterTimes[iterIndex] = iterTime;
-		totalTime += iterTime;
-		minTime = min(iterTime, minTime);
-		maxTime = max(iterTime, maxTime);
-	}
-
-	enum showNumFirstIters = 3;
-
-	void printHeader()
-	{
-		foreach (i; 0..min(numIters, showNumFirstIters))
-			writef("  iter %s", i);
-		write("   total     avg     min     max");
-	}
-
-	void print()
-	{
-		foreach (i; 0..min(numIters, showNumFirstIters))
-			writef(" % 6ss", scaledNumberFmt(iterTimes[i]));
-		writef(" % 6ss", scaledNumberFmt(totalTime));
-		writef(" % 6ss", scaledNumberFmt(avgTime));
-		writef(" % 6ss", scaledNumberFmt(minTime));
-		writef(" % 6ss", scaledNumberFmt(maxTime));
-	}
-}
-
-struct CompilePass
-{
-	string name;
-	void function(ref CompilationContext context) run;
-
-	Duration duration;
-}
 
 void testNativeFun()
 {

@@ -5,18 +5,9 @@ import compiler1;
 import ir;
 import utils;
 
-/// Specifies where the expression is located relative to assign symbol.
-/// This is set by assign expression. For ex, before visiting expression on the left it is set to leftSide
-enum CurrentAssignSide
-{
-	rightSide,
-	leftSide
-}
-
 void pass_new_ir_gen(ref CompilationContext ctx) {
 	auto astToIr = AstToIr(&ctx);
 	astToIr.visit(ctx.mod);
-	//ctx.assertf(astToIr.irModule !is null, "Module IR is null");
 }
 
 //version = IrGenPrint;
