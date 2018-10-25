@@ -506,9 +506,7 @@ enum IrOpcode : ushort
 	load,
 
 	add,
-	sub,
-
-	LAST_IR_OPCODE
+	sub
 }
 
 @InstrInfo(IrValueKind.virtualRegister)
@@ -589,6 +587,7 @@ struct IrInstrHeader
 {
 	ushort op;
 	ubyte numArgs;
+
 	union
 	{
 		mixin(bitfields!(
@@ -604,15 +603,17 @@ struct IrInstrHeader
 	}
 	static assert(IrBinaryCondition.max <= 0b111, "3 bits are reserved");
 	static assert(IrUnaryCondition.max <= 0b111, "3 bits are reserved");
-	//HasResult hasResult;
+
 	IrIndex prevInstr;
 	IrIndex nextInstr;
 
 	IrIndex[0] _payload;
+
 	ref IrIndex result() {
 		assert(hasResult);
 		return _payload.ptr[0];
 	}
+
 	IrIndex[] args() {
 		return _payload.ptr[cast(size_t)hasResult..cast(size_t)hasResult+numArgs];
 	}
@@ -807,13 +808,6 @@ struct IrBuilder
 		lastBasicBlock = ir.entryBasicBlock;
 	}
 
-	ref T getTemp(T)(IrIndex index)
-	{
-		assert(index.kind != IrValueKind.none, "null index");
-		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
-		return *cast(T*)(&context.tempBuffer.bufPtr[index.storageUintIndex]);
-	}
-
 	/// Returns index to allocated item
 	/// Allocates howMany items. By default allocates single item.
 	/// If howMany > 1 - returns index of first item, access other items via IrIndex.indexOf
@@ -831,22 +825,6 @@ struct IrBuilder
 		context.irBuffer.length += numAllocatedSlots;
 
 		(&ir.get!T(result))[0..howMany] = T.init;
-		return result;
-	}
-
-	/// ditto
-	IrIndex appendTemp(T)(uint howMany = 1)
-	{
-		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
-
-		IrIndex result;
-		result.storageUintIndex = context.tempBuffer.length;
-		result.kind = getInstrInfo!T.kind;
-
-		size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof)*howMany;
-		context.tempBuffer.voidPut(numAllocatedSlots);
-
-		(&getTemp!T(result))[0..howMany] = T.init;
 		return result;
 	}
 
@@ -889,7 +867,7 @@ struct IrBuilder
 		IrIndex index = blockToIrIncompletePhi.get(basicBlockToSeal, IrIndex());
 		while (index.isDefined)
 		{
-			IrIncompletePhi ip = getTemp!IrIncompletePhi(index);
+			IrIncompletePhi ip = context.getTemp!IrIncompletePhi(index);
 			addPhiOperands(basicBlockToSeal, ip.var, ip.phi);
 			index = ip.nextListItem;
 		}
@@ -1170,14 +1148,14 @@ struct IrBuilder
 			value = ir.get!IrPhiInstr(phiIndex).result;
 			blockToIrIncompletePhi.update(blockIndex,
 				{
-					IrIndex incompletePhi = appendTemp!IrIncompletePhi;
-					getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex);
+					IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
+					context.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex);
 					return incompletePhi;
 				},
 				(ref IrIndex oldPhi)
 				{
-					IrIndex incompletePhi = appendTemp!IrIncompletePhi;
-					getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex, oldPhi);
+					IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
+					context.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex, oldPhi);
 					return incompletePhi;
 				});
 		}

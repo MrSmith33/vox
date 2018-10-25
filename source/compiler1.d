@@ -211,6 +211,28 @@ struct CompilationContext
 	void throwOnErrors() {
 		if (hasErrors) throw new CompilationException();
 	}
+
+	IrIndex appendTemp(T)(uint howMany = 1)
+	{
+		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
+
+		IrIndex result;
+		result.storageUintIndex = tempBuffer.length;
+		result.kind = getInstrInfo!T.kind;
+
+		size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof)*howMany;
+		tempBuffer.voidPut(numAllocatedSlots);
+
+		(&getTemp!T(result))[0..howMany] = T.init;
+		return result;
+	}
+
+	ref T getTemp(T)(IrIndex index)
+	{
+		assert(index.kind != IrValueKind.none, "null index");
+		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
+		return *cast(T*)(&tempBuffer.bufPtr[index.storageUintIndex]);
+	}
 }
 
 class CompilationException : Exception { this(bool isICE=false){ super(null); this.isICE = isICE; } bool isICE; }
