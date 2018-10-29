@@ -8,13 +8,13 @@ import std.string : format;
 import std.traits : getUDAs, Parameters;
 import std.bitmanip : bitfields;
 import std.format : formattedWrite, FormatSpec;
+
 import compiler1;
+import driver;
 import utils;
 
 //version = standalone;
-version (standalone)
-{
-	void main()
+version (standalone) void main()
 {
 	// function i32 $sign () {
 	//    |  @start:0
@@ -46,27 +46,19 @@ version (standalone)
 	//     return result;
 	// }
 	writefln("start");
-	Win32Allocator allocator;
-	scope(exit) allocator.releaseMemory();
+	Driver driver;
+	driver.initialize(null);
+	scope(exit) driver.releaseMemory;
 
-	size_t memSize = 1024UL*1024*10;
-	size_t arrSizes = 1024UL*1024*5;
-	bool success = allocator.reserve(memSize);
-	assert(success, "allocator failed");
-
-	CompilationContext ctx;
 	IrBuilder builder;
 	IrFunction ir;
 
-	ctx.irBuffer.setBuffer(cast(uint[])allocator.allocate(arrSizes));
-	ctx.tempBuffer.setBuffer(cast(uint[])allocator.allocate(arrSizes));
-
 	ir.returnType = IrValueType.i32;
-	ir.name = ctx.idMap.getOrReg("sign");
+	ir.name = driver.context.idMap.getOrReg("sign");
 
 	//i32 sign(i32 number)
-	builder.begin(&ir, &ctx);
-	IrIndex param0Index = builder.addInstruction!IrInstrParameter(ir.entryBasicBlock, IrOpcode.parameter);
+	builder.begin(&ir, &driver.context);
+	IrIndex param0Index = builder.addInstruction!IrInstrParameter(ir.entryBasicBlock);
 	ir.get!IrInstrParameter(param0Index).index = 0;
 	IrIndex param0Value = ir.get!IrInstrHeader(param0Index).result;
 	builder.addJump(ir.entryBasicBlock);
@@ -75,7 +67,7 @@ version (standalone)
 	builder.addBlockTarget(ir.entryBasicBlock, start_block);
 	builder.sealBlock(start_block);
 	//	i32 result;
-	IrIndex zeroVal = ctx.addConstant(IrConstant(0));
+	IrIndex zeroVal = driver.context.addConstant(IrConstant(0));
 	IrVar resultVar = IrVar(Identifier(0), builder.newIrVarId());
 	builder.writeVariable(start_block, resultVar, zeroVal);
 	IrLabel scope1ExitLabel = IrLabel(start_block);
@@ -91,7 +83,7 @@ version (standalone)
 	builder.addBlockTarget(start_block, else_1_block);
 	builder.sealBlock(else_1_block);
 	//		result = 0-1;
-	IrIndex minusOneVal = ctx.addConstant(IrConstant(-1));
+	IrIndex minusOneVal = driver.context.addConstant(IrConstant(-1));
 	builder.writeVariable(then_1_block, resultVar, minusOneVal);
 	builder.addJumpToLabel(then_1_block, scope1ExitLabel);
 	//	else
@@ -108,7 +100,7 @@ version (standalone)
 	builder.addBlockTarget(else_1_block, else_2_block);
 	builder.sealBlock(else_2_block);
 	//			result = 1;
-	IrIndex oneVal = ctx.addConstant(IrConstant(1));
+	IrIndex oneVal = driver.context.addConstant(IrConstant(1));
 	builder.writeVariable(then_2_block, resultVar, oneVal);
 	builder.addJumpToLabel(then_2_block, scope1ExitLabel);
 	//		else
@@ -124,8 +116,9 @@ version (standalone)
 
 	builder.sealBlock(ir.exitBasicBlock);
 
-	dumpFunction(&ir, &ctx);
-}
+	FuncDumpSettings dumpSettings;
+	dumpSettings.dumper = &dumpIrInstr;
+	dumpFunction(&ir, &driver.context, dumpSettings);
 }
 
 //version = IrPrint;
@@ -142,40 +135,49 @@ struct IrModule
 		functions ~= fun;
 	}
 
-	void dump(ref TextSink sink, CompilationContext* context)
+	void dump(ref TextSink sink, CompilationContext* context, ref FuncDumpSettings settings)
 	{
-		foreach (func; functions) dumpFunction(func, sink, context);
+		foreach (func; functions) dumpFunction(func, sink, context, settings);
 	}
 }
 
-void dumpFunction(IrFunction* ir, CompilationContext* ctx)
-{
-	TextSink sink;
-	dumpFunction(ir, sink, ctx);
-	writeln(sink.text);
-}
+alias InstructionDumper = void function(ref InstrPrintInfo p);
 
-void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
+struct FuncDumpSettings
 {
-	sink.put("function ");
-	sink.put(ctx.idString(ir.name));
-	sink.putln("() {");
 	bool printVars = false;
-	bool printBlockFlags = true;
+	bool printBlockFlags = false;
 	bool printBlockIns = true;
 	bool printBlockOuts = false;
 	bool printBlockRefs = false;
 	bool printInstrIndexEnabled = true;
 	bool printUses = true;
 	bool printLive = true;
+	InstructionDumper dumper;
+}
+
+void dumpFunction(IrFunction* ir, CompilationContext* ctx, ref FuncDumpSettings settings)
+{
+	TextSink sink;
+	dumpFunction(ir, sink, ctx, settings);
+	writeln(sink.text);
+}
+
+void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx, ref FuncDumpSettings settings)
+{
+	sink.put("function ");
+	sink.put(ctx.idString(ir.name));
+	sink.putln("() {");
+
 	int indexPadding = numDigitsInNumber(ir.storageLength);
 
 	void printInstrIndex(IrIndex someIndex) {
-		if (!printInstrIndexEnabled) return;
+		if (!settings.printInstrIndexEnabled) return;
 		sink.putf("%*s|", indexPadding, someIndex.storageUintIndex);
 	}
 
 	void printRegUses(IrIndex result) {
+		if (result.kind == IrValueKind.physicalRegister) return;
 		auto vreg = &ir.get!IrVirtualRegister(result);
 		sink.put(" users [");
 		foreach (i, index; vreg.users.range(ir))
@@ -186,21 +188,29 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 		sink.put("]");
 	}
 
+	InstrPrintInfo printer;
+	printer.sink = &sink;
+	printer.ir = ir;
+	printer.settings = &settings;
+
 	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
 	{
-		printInstrIndex(blockIndex);
-		sink.putf("  %s ", blockIndex);
+		printer.blockIndex = blockIndex;
+		printer.block = &block;
 
-		if (printBlockFlags)
+		printInstrIndex(blockIndex);
+		sink.putf("  %s", blockIndex);
+
+		if (settings.printBlockFlags)
 		{
-			if (block.isSealed) sink.put("S");
-			else sink.put(".");
+			if (block.isSealed) sink.put(" S");
+			else sink.put(" .");
 
 			if (block.isFinished) sink.put("F");
 			else sink.put(".");
 		}
 
-		if (printBlockIns && block.predecessors.length > 0)
+		if (settings.printBlockIns && block.predecessors.length > 0)
 		{
 			sink.putf(" in(");
 			foreach(i, predIndex; block.predecessors.range(ir)) {
@@ -209,7 +219,7 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 			}
 			sink.put(")");
 		}
-		if (printBlockOuts && block.successors.length > 0)
+		if (settings.printBlockOuts && block.successors.length > 0)
 		{
 			sink.putf(" out(");
 			foreach(i, succIndex; block.successors.range(ir)) {
@@ -231,7 +241,7 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 				sink.putf("%s %s", phiArg.value, phiArg.basicBlock);
 			}
 			sink.put(")");
-			if (printUses) printRegUses(phi.result);
+			if (settings.printUses) printRegUses(phi.result);
 			sink.putln;
 		}
 
@@ -240,67 +250,13 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 		{
 			printInstrIndex(instrIndex);
 
-			switch(instrHeader.op)
-			{
-				case IrOpcode.block_exit_jump:
-					sink.putf("    jmp %s", block.successors[0, ir]);
-					break;
+			// print instr
+			printer.instrIndex = instrIndex;
+			printer.instrHeader = &instrHeader;
 
-				case IrOpcode.block_exit_unary_branch:
-					sink.putf("    if %s %s then %s else %s",
-						instrHeader.unaryCond,
-						instrHeader.args[0],
-						block.successors[0, ir],
-						block.successors[1, ir]);
-					break;
+			settings.dumper(printer);
 
-				case IrOpcode.block_exit_binary_branch:
-					sink.putf("    if %s %s %s then ",
-						instrHeader.args[0],
-						binaryCondStrings[instrHeader.binaryCond],
-						instrHeader.args[1]);
-					switch (block.successors.length) {
-						case 0:
-							sink.put("<null> else <null>");
-							break;
-						case 1:
-							sink.putf("%s else <null>",
-								block.successors[0, ir]);
-							break;
-						default:
-							sink.putf("%s else %s",
-								block.successors[0, ir],
-								block.successors[1, ir]);
-							break;
-					}
-					break;
-
-				case IrOpcode.parameter:
-					uint paramIndex = ir.get!IrInstrParameter(instrIndex).index;
-					sink.putf("    %s = parameter%s", instrHeader.result, paramIndex);
-					break;
-
-				case IrOpcode.block_exit_return_void:
-					sink.put("     return");
-					break;
-
-				case IrOpcode.block_exit_return_value:
-					sink.putf("    return %s", instrHeader.args[0]);
-					break;
-
-				default:
-					if (instrHeader.hasResult)
-						sink.putf("    %s = %s", instrHeader.result, cast(IrOpcode)instrHeader.op);
-					else  sink.putf("    %s", cast(IrOpcode)instrHeader.op);
-					foreach (i, IrIndex arg; instrHeader.args)
-					{
-						if (i > 0) sink.put(",");
-						sink.putf(" %s", arg);
-					}
-					break;
-			}
-
-			if (printUses && instrHeader.hasResult) printRegUses(instrHeader.result);
+			if (settings.printUses && instrHeader.hasResult) printRegUses(instrHeader.result);
 			sink.putln;
 		}
 	}
@@ -308,6 +264,80 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx)
 	sink.putln("}");
 	sink.putfln("IR size: %s uints | %s bytes",
 		ir.storageLength, ir.storageLength * uint.sizeof);
+}
+
+struct InstrPrintInfo
+{
+	TextSink* sink;
+	IrFunction* ir;
+	IrIndex blockIndex;
+	IrBasicBlockInstr* block;
+	IrIndex instrIndex;
+	IrInstrHeader* instrHeader;
+	FuncDumpSettings* settings;
+}
+
+void dumpIrInstr(ref InstrPrintInfo p)
+{
+	switch(p.instrHeader.op)
+	{
+		case IrOpcode.block_exit_jump:
+			p.sink.putf("    jmp %s", p.block.successors[0, p.ir]);
+			break;
+
+		case IrOpcode.block_exit_unary_branch:
+			p.sink.putf("    if %s %s then %s else %s",
+				p.instrHeader.cond,
+				p.instrHeader.args[0],
+				p.block.successors[0, p.ir],
+				p.block.successors[1, p.ir]);
+			break;
+
+		case IrOpcode.block_exit_binary_branch:
+			p.sink.putf("    if %s %s %s then ",
+				p.instrHeader.args[0],
+				binaryCondStrings[p.instrHeader.cond],
+				p.instrHeader.args[1]);
+			switch (p.block.successors.length) {
+				case 0:
+					p.sink.put("<null> else <null>");
+					break;
+				case 1:
+					p.sink.putf("%s else <null>",
+						p.block.successors[0, p.ir]);
+					break;
+				default:
+					p.sink.putf("%s else %s",
+						p.block.successors[0, p.ir],
+						p.block.successors[1, p.ir]);
+					break;
+			}
+			break;
+
+		case IrOpcode.parameter:
+			uint paramIndex = p.ir.get!IrInstrParameter(p.instrIndex).index;
+			p.sink.putf("    %s = parameter%s", p.instrHeader.result, paramIndex);
+			break;
+
+		case IrOpcode.block_exit_return_void:
+			p.sink.put("     return");
+			break;
+
+		case IrOpcode.block_exit_return_value:
+			p.sink.putf("    return %s", p.instrHeader.args[0]);
+			break;
+
+		default:
+			if (p.instrHeader.hasResult)
+				p.sink.putf("    %s = %s", p.instrHeader.result, cast(IrOpcode)p.instrHeader.op);
+			else  p.sink.putf("    %s", cast(IrOpcode)p.instrHeader.op);
+			foreach (i, IrIndex arg; p.instrHeader.args)
+			{
+				if (i > 0) p.sink.put(",");
+				p.sink.putf(" %s", arg);
+			}
+			break;
+	}
 }
 
 /// Describes what IrIndex is pointing at
@@ -344,10 +374,10 @@ struct IrIndex
 	union
 	{
 		mixin(bitfields!(
-			uint,        "storageUintIndex", 28, // is never 0 for defined index
+			uint,        "storageUintIndex", 28, // may be 0 for defined index
 			IrValueKind, "kind",              4  // is never 0 for defined index
 		));
-		uint asUint;
+		uint asUint; // is 0 for undefined index
 	}
 	static assert(IrValueKind.max <= 0b1111, "4 bits are reserved");
 	bool isDefined() { return asUint != 0; }
@@ -355,14 +385,14 @@ struct IrIndex
 	void toString(scope void delegate(const(char)[]) sink) const {
 		final switch(kind) with(IrValueKind) {
 			case none: sink("<null>"); break;
-			case listItem: sink.formattedWrite("l%s", storageUintIndex); break;
-			case instruction: sink.formattedWrite("i%s", storageUintIndex); break;
+			case listItem: sink.formattedWrite("l.%s", storageUintIndex); break;
+			case instruction: sink.formattedWrite("i.%s", storageUintIndex); break;
 			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
-			case constant: sink.formattedWrite("c%s", storageUintIndex); break;
-			case phi: sink.formattedWrite("phi%s", storageUintIndex); break;
-			case memoryAddress: sink.formattedWrite("m%s", storageUintIndex); break;
-			case virtualRegister: sink.formattedWrite("v%s", storageUintIndex); break;
-			case physicalRegister: sink.formattedWrite("p%s", storageUintIndex); break;
+			case constant: sink.formattedWrite("c.%s", storageUintIndex); break;
+			case phi: sink.formattedWrite("phi.%s", storageUintIndex); break;
+			case memoryAddress: sink.formattedWrite("m.%s", storageUintIndex); break;
+			case virtualRegister: sink.formattedWrite("v.%s", storageUintIndex); break;
+			case physicalRegister: sink.formattedWrite("p.%s", storageUintIndex); break;
 		}
 	}
 
@@ -393,14 +423,16 @@ enum HasResult : bool { no, yes }
 
 struct InstrInfo
 {
-	IrValueKind kind;
+	ushort opcode;
 	uint numArgs;
 	HasResult hasResult;
 }
 
 enum getInstrInfo(T) = getUDAs!(T, InstrInfo)[0];
+enum getIrValueKind(T) = getUDAs!(T, IrValueKind)[0];
 
 /// Stores numeric constant data
+@(IrValueKind.constant)
 struct IrConstant
 {
 	this(long value) {
@@ -439,7 +471,7 @@ struct IrConstant
 }
 
 ///
-@InstrInfo(IrValueKind.phi)
+@(IrValueKind.phi)
 struct IrPhiInstr
 {
 	IrIndex blockIndex;
@@ -471,7 +503,7 @@ struct PhiArgIterator
 }
 
 ///
-@InstrInfo(IrValueKind.listItem)
+@(IrValueKind.listItem)
 struct IrPhiArg
 {
 	IrIndex value;
@@ -481,7 +513,7 @@ struct IrPhiArg
 
 /// Per Basic Block info for unresolved Phi functions, when CFG is incomplete.
 /// Finished IR contains no such values
-@InstrInfo(IrValueKind.listItem)
+@(IrValueKind.listItem)
 struct IrIncompletePhi
 {
 	IrVar var;
@@ -491,13 +523,16 @@ struct IrIncompletePhi
 
 enum IrOpcode : ushort
 {
-	parameter,
-	block_header,
+	// used as placeholder inside generic instructions. Must not remain in IR.
+	invalid,
+
 	block_exit_jump,
 	block_exit_unary_branch,
 	block_exit_binary_branch,
 	block_exit_return_void,
 	block_exit_return_value,
+
+	parameter,
 
 	set_binary_cond,
 	set_unary_cond,
@@ -509,7 +544,7 @@ enum IrOpcode : ushort
 	sub
 }
 
-@InstrInfo(IrValueKind.virtualRegister)
+@(IrValueKind.virtualRegister)
 struct IrVirtualRegister
 {
 	/// Index of instruction that defines this register
@@ -519,7 +554,7 @@ struct IrVirtualRegister
 }
 
 /// Must end with one of block_exit_... instructions
-@InstrInfo(IrValueKind.basicBlock)
+@(IrValueKind.basicBlock)
 struct IrBasicBlockInstr
 {
 	IrIndex firstInstr; // null or first instruction
@@ -582,27 +617,20 @@ struct InstrIterator
 }
 
 /// Common prefix of all IR instruction structs
-@InstrInfo(IrValueKind.instruction)
+@(IrValueKind.instruction) @InstrInfo()
 struct IrInstrHeader
 {
 	ushort op;
 	ubyte numArgs;
 
-	union
-	{
-		mixin(bitfields!(
-			HasResult,         "hasResult",  1,
-			IrBinaryCondition, "binaryCond", 3,
-			uint, "",                        4
-		));
-		mixin(bitfields!(
-			uint,             "",          1,
-			IrUnaryCondition, "unaryCond", 3,
-			uint, "",                      4
-		));
-	}
-	static assert(IrBinaryCondition.max <= 0b111, "3 bits are reserved");
-	static assert(IrUnaryCondition.max <= 0b111, "3 bits are reserved");
+	mixin(bitfields!(
+		HasResult,  "hasResult", 1,
+		ubyte,      "cond",      4,
+		uint, "",                3
+	));
+
+	static assert(IrBinaryCondition.max <= 0b1111, "4 bits are reserved");
+	static assert(IrUnaryCondition.max <= 0b1111, "4 bits are reserved");
 
 	IrIndex prevInstr;
 	IrIndex nextInstr;
@@ -619,23 +647,33 @@ struct IrInstrHeader
 	}
 }
 
-template IrGenericInstr(uint numArgs, HasResult hasResult)
+template IrGenericInstr(ushort opcode, uint numArgs, HasResult hasResult)
 {
-	@InstrInfo(IrValueKind.instruction, numArgs, hasResult)
+	@(IrValueKind.instruction) @InstrInfo(opcode, numArgs, hasResult)
 	struct IrGenericInstr
 	{
 		IrInstrHeader header;
 		static if (hasResult)   IrIndex result;
 		static if (numArgs > 0) IrIndex[numArgs] args;
+
+		/// takes result + all arguments
+		void initialize(IrIndex[hasResult + numArgs] payload ...)
+		{
+			header.op = opcode;
+			header.numArgs = numArgs;
+			header.hasResult = hasResult;
+			header._payload.ptr[0..hasResult + numArgs] = payload;
+		}
 	}
 }
 
-alias IrReturnValueInstr = IrGenericInstr!(1, HasResult.no);
-alias IrReturnVoidInstr = IrGenericInstr!(0, HasResult.no);
-alias IrStoreInstr = IrGenericInstr!(1, HasResult.no);
-alias IrLoadInstr = IrGenericInstr!(1, HasResult.yes);
-alias IrSetBinaryCondInstr = IrGenericInstr!(2, HasResult.yes);
-alias IrBinaryExprInstr = IrGenericInstr!(2, HasResult.yes);
+alias IrReturnValueInstr = IrGenericInstr!(IrOpcode.block_exit_return_value, 1, HasResult.no);
+alias IrReturnVoidInstr = IrGenericInstr!(IrOpcode.block_exit_return_void, 0, HasResult.no);
+alias IrStoreInstr = IrGenericInstr!(IrOpcode.store, 1, HasResult.no);
+alias IrLoadInstr = IrGenericInstr!(IrOpcode.load, 1, HasResult.yes);
+alias IrSetBinaryCondInstr = IrGenericInstr!(IrOpcode.set_binary_cond, 2, HasResult.yes);
+alias IrBinaryExprInstr(ushort opcode) = IrGenericInstr!(opcode, 2, HasResult.yes);
+alias IrInstrJump = IrGenericInstr!(IrOpcode.block_exit_jump, 0, HasResult.no);
 
 enum IrBinaryCondition : ubyte {
 	eq,
@@ -648,18 +686,18 @@ enum IrBinaryCondition : ubyte {
 
 string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", ">", ">=", "<", "<="];
 
-/// Uses header.binaryCond
-alias IrInstrBinaryBranch = IrGenericInstr!(2, HasResult.no);
+/// Uses header.cond
+alias IrInstrBinaryBranch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, HasResult.no);
 
 enum IrUnaryCondition : ubyte {
 	zero,
 	not_zero
 }
 
-/// Uses header.unaryCond
-alias IrInstrUnaryBranch = IrGenericInstr!(1, HasResult.no);
+/// Uses header.cond
+alias IrInstrUnaryBranch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, HasResult.no);
 
-@InstrInfo(IrValueKind.instruction, 0, HasResult.yes)
+@(IrValueKind.instruction) @InstrInfo(IrOpcode.parameter, 0, HasResult.yes)
 struct IrInstrParameter
 {
 	IrInstrHeader header;
@@ -714,7 +752,7 @@ struct IrFunction
 	ref T get(T)(IrIndex index)
 	{
 		assert(index.kind != IrValueKind.none, "null index");
-		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
+		assert(index.kind == getIrValueKind!T, format("%s != %s", index.kind, getIrValueKind!T));
 		return *cast(T*)(&storage[index.storageUintIndex]);
 	}
 }
@@ -769,7 +807,7 @@ struct IrBuilder
 
 		if (ir.returnType != IrValueType.void_t)
 		{
-			IrIndex retIndex = addInstruction!IrReturnValueInstr(ir.exitBasicBlock, IrOpcode.block_exit_return_value);
+			IrIndex retIndex = addInstruction!IrReturnValueInstr(ir.exitBasicBlock);
 			returnVar = IrVar(Identifier(0), newIrVarId());
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
 			ir.get!IrReturnValueInstr(retIndex).args[0] = retValue;
@@ -777,7 +815,7 @@ struct IrBuilder
 		}
 		else
 		{
-			addInstruction!IrReturnVoidInstr(ir.exitBasicBlock, IrOpcode.block_exit_return_void);
+			addInstruction!IrReturnVoidInstr(ir.exitBasicBlock);
 		}
 		ir.getBlock(ir.exitBasicBlock).isFinished = true;
 	}
@@ -793,7 +831,7 @@ struct IrBuilder
 		blockVarDef.clear();
 	}
 
-	private void setupEntryExitBlocks()
+	void setupEntryExitBlocks()
 	{
 		assert(ir.numBasicBlocks == 0);
 		// Canonical function CFG has entry block, and single exit block.
@@ -811,21 +849,38 @@ struct IrBuilder
 	/// Returns index to allocated item
 	/// Allocates howMany items. By default allocates single item.
 	/// If howMany > 1 - returns index of first item, access other items via IrIndex.indexOf
-	/// T must have UDA of InstrInfo() value
+	/// T must have UDA of IrValueKind value
 	IrIndex append(T)(uint howMany = 1)
+	{
+		IrIndex index = appendVoid!T(howMany);
+		(&ir.get!T(index))[0..howMany] = T.init;
+		return index;
+	}
+
+	/// Returns index to uninitialized memory for all requested items.
+	/// Allocates howMany items. By default allocates single item.
+	/// If howMany > 1 - resultIndex has index of first item, access other items via IrIndex.indexOf
+	/// T must have UDA of IrValueKind value
+	IrIndex appendVoid(T)(uint howMany = 1)
 	{
 		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
 
-		IrIndex result;
-		result.storageUintIndex = ir.storageLength;
-		result.kind = getInstrInfo!T.kind;
+		IrIndex resultIndex = IrIndex(ir.storageLength, getIrValueKind!T);
 
-		size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof)*howMany;
+		enum allocSize = divCeil(T.sizeof, uint.sizeof);
+		size_t numAllocatedSlots = allocSize * howMany;
 		ir.storageLength += numAllocatedSlots;
 		context.irBuffer.length += numAllocatedSlots;
 
-		(&ir.get!T(result))[0..howMany] = T.init;
-		return result;
+		return resultIndex;
+	}
+
+	/// appendVoid + appendBlockInstr
+	IrIndex appendVoidToBlock(T)(IrIndex blockIndex, uint howMany = 1)
+	{
+		IrIndex instr = appendVoid!T(howMany);
+		appendBlockInstr(blockIndex, instr);
+		return instr;
 	}
 
 	/// Adds control-flow edge pointing `fromBlock` -> `toBlock`.
@@ -920,11 +975,12 @@ struct IrBuilder
 		}
 	}
 
-	IrIndex addInstruction(I)(IrIndex blockIndex, ushort op) {
+	IrIndex addInstruction(I)(IrIndex blockIndex)
+	{
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
 		IrIndex instr = append!I;
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
-		instrHeader.op = op;
+		instrHeader.op = getInstrInfo!I.opcode;
 		instrHeader.prevInstr = block.lastInstr; // points to prev instruction or to null
 		instrHeader.numArgs = getInstrInfo!I.numArgs;
 		instrHeader.hasResult = getInstrInfo!I.hasResult;
@@ -944,13 +1000,30 @@ struct IrBuilder
 		return instr;
 	}
 
+	/// Adds instruction to the end of basic block
+	/// Doesn't set any instruction info except prevInstr index
+	void appendBlockInstr(IrIndex blockIndex, IrIndex instr)
+	{
+		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+
+		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+		instrHeader.prevInstr = block.lastInstr; // points to prev instruction or to null
+
+		if (!block.firstInstr.isDefined) {
+			block.firstInstr = instr;
+			block.lastInstr = instr;
+		} else {
+			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
+		}
+	}
+
 	/// Returns virtual register of result
 	IrIndex emitBinaryInstr(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1)
 	{
-		auto instr = addInstruction!IrSetBinaryCondInstr(blockIndex, IrOpcode.set_binary_cond);
+		auto instr = addInstruction!IrSetBinaryCondInstr(blockIndex);
 		IrIndex vreg = addVirtualRegister(instr);
 		with(ir.get!IrSetBinaryCondInstr(instr)) {
-			header.binaryCond = cond;
+			header.cond = cond;
 			args = [arg0, arg1];
 			result = vreg;
 		}
@@ -958,12 +1031,14 @@ struct IrBuilder
 	}
 
 	/// Returns virtual register of result
-	IrIndex emitBinaryInstr(IrIndex blockIndex, IrOpcode op, IrIndex arg0, IrIndex arg1)
+	IrIndex emitBinaryInstr(IrIndex blockIndex, IrOpcode opcode, IrIndex arg0, IrIndex arg1)
 	{
-		auto instr = addInstruction!IrBinaryExprInstr(blockIndex, op);
+		alias InstT = IrBinaryExprInstr!(IrOpcode.invalid);
+		auto instr = addInstruction!InstT(blockIndex);
 		IrIndex vreg = addVirtualRegister(instr);
-		with(ir.get!IrBinaryExprInstr(instr)) {
+		with(ir.get!InstT(instr)) {
 			args = [arg0, arg1];
+			header.op = opcode; // replace IrOpcode.invalid with actual opcode
 			result = vreg;
 		}
 		return vreg;
@@ -978,14 +1053,15 @@ struct IrBuilder
 		addBlockTarget(blockIndex, falseExit.blockIndex);
 		return res;
 	}
+
 	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1)
 	{
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		auto branch = addInstruction!IrInstrBinaryBranch(blockIndex, IrOpcode.block_exit_binary_branch);
+		auto branch = addInstruction!IrInstrBinaryBranch(blockIndex);
 		with(ir.get!IrInstrBinaryBranch(branch)) {
-			header.binaryCond = cond;
+			header.cond = cond;
 			args = [arg0, arg1];
 		}
 		return branch;
@@ -996,9 +1072,9 @@ struct IrBuilder
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		auto branch = addInstruction!IrInstrBinaryBranch(blockIndex, IrOpcode.block_exit_unary_branch);
+		auto branch = addInstruction!IrInstrBinaryBranch(blockIndex);
 		with(ir.get!IrInstrUnaryBranch(branch)) {
-			header.unaryCond = cond;
+			header.cond = cond;
 			args = [arg0];
 		}
 		return branch;
@@ -1024,7 +1100,7 @@ struct IrBuilder
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		return addInstruction!(IrGenericInstr!(0, HasResult.no))(blockIndex, IrOpcode.block_exit_jump);
+		return addInstruction!IrInstrJump(blockIndex);
 	}
 
 	void addJumpToLabel(IrIndex blockIndex, ref IrLabel label)
@@ -1088,7 +1164,7 @@ struct IrBuilder
 	private void decBlockRefcount(IrIndex basicBlock) { assert(false); }
 
 	// Creates operand for result of phi/instruction that is defined by `definition`
-	private IrIndex addVirtualRegister(IrIndex definition) {
+	IrIndex addVirtualRegister(IrIndex definition) {
 		IrIndex virtRegIndex = append!IrVirtualRegister;
 		IrVirtualRegister* virtReg = &ir.get!IrVirtualRegister(virtRegIndex);
 		virtReg.definition = definition;
@@ -1311,7 +1387,7 @@ struct IrBuilder
 }
 
 /// Used for linked list
-@InstrInfo(IrValueKind.listItem)
+@(IrValueKind.listItem)
 struct ListItem
 {
 	IrIndex itemIndex;

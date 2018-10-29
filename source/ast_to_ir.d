@@ -193,7 +193,7 @@ struct AstToIr
 	{
 		//if (v.forceMemoryStorage)
 		//{
-		//	builder.addInstruction!IrStoreInstr(currentBlock, IrOpcode.store);
+		//	builder.addInstruction!IrStoreInstr(currentBlock);
 		//	builder.emitInstr2(IrOpcode.o_store, v.type.irType(context), v.stackSlotId, value);
 		//}
 		//else
@@ -238,7 +238,7 @@ struct AstToIr
 		if (v.isParameter)
 		{
 			//++ir.numParameters;
-			IrIndex paramIndex = builder.addInstruction!IrInstrParameter(ir.entryBasicBlock, IrOpcode.parameter);
+			IrIndex paramIndex = builder.addInstruction!IrInstrParameter(ir.entryBasicBlock);
 			ir.get!IrInstrParameter(paramIndex).index = v.paramIndex;
 			IrIndex paramValue = ir.get!IrInstrHeader(paramIndex).result;
 			//instr.stackSlot = v.stackSlotId;

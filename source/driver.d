@@ -12,7 +12,8 @@ unittest
 	writefln("unittest");
 }
 
-void main()
+//version = standalone;
+version (standalone) void main()
 {
 	//bench();
 	test();
@@ -50,7 +51,9 @@ void test()
 
 			writeln("\n// IR");
 			TextSink sink;
-			mod.irModule.dump(sink, &driver.context);
+			FuncDumpSettings dumpSettings;
+			dumpSettings.dumper = &dumpIrInstr;
+			mod.irModule.dump(sink, &driver.context, dumpSettings);
 			writeln(sink.text);
 
 			writeln("\n// Amd64 code");
@@ -155,6 +158,10 @@ struct Driver
 
 		irBuffer = cast(ubyte[])allocator.allocate(arrSizes);
 		tempBuffer = cast(ubyte[])allocator.allocate(arrSizes);
+
+		context.codeBuffer = codeBuffer;
+		context.irBuffer.setBuffer(cast(uint[])irBuffer);
+		context.tempBuffer.setBuffer(cast(uint[])tempBuffer);
 	}
 
 	void releaseMemory()
@@ -164,9 +171,7 @@ struct Driver
 
 	ModuleDeclNode* compileModule(string moduleSource, ExternalSymbol[] externalSymbols)
 	{
-		context = CompilationContext(moduleSource, codeBuffer);
-		context.irBuffer.setBuffer(cast(uint[])irBuffer);
-		context.tempBuffer.setBuffer(cast(uint[])tempBuffer);
+		context.input = moduleSource;
 		foreach (ref extSym; externalSymbols)
 			context.externalSymbols[context.idMap.getOrReg(extSym.name)] = extSym;
 

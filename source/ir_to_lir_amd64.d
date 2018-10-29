@@ -87,7 +87,7 @@ struct IrToLir
 				recordIndex(phi.result, lir.getPhi(newPhi).result);
 				foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 				{
-					builder.addPhiArg(newPhi, lirBlock, phiArg.value);
+					builder.addPhiArg(newPhi, phiArg.basicBlock, phiArg.value);
 				}
 			}
 
@@ -97,7 +97,7 @@ struct IrToLir
 				switch(instrHeader.op)
 				{
 					case IrOpcode.parameter:
-						IrIndex paramIndex = builder.addInstruction!IrInstrParameter(lirBlock, IrOpcode.parameter);
+						IrIndex paramIndex = builder.addInstruction!IrInstrParameter(lirBlock);
 						recordIndex(instrIndex, paramIndex);
 						lir.get!IrInstrParameter(paramIndex).index = ir.get!IrInstrParameter(instrIndex).index;
 						IrIndex paramValue = lir.get!IrInstrHeader(paramIndex).result;
@@ -109,21 +109,21 @@ struct IrToLir
 						break;
 
 					case IrOpcode.block_exit_unary_branch:
-						IrIndex branchIndex = builder.addUnaryBranch(lirBlock, instrHeader.unaryCond, instrHeader.args[0]);
+						IrIndex branchIndex = builder.addUnaryBranch(lirBlock, cast(IrUnaryCondition)instrHeader.cond, instrHeader.args[0]);
 						recordIndex(instrIndex, branchIndex);
 						break;
 
 					case IrOpcode.block_exit_binary_branch:
-						IrIndex branchIndex = builder.addBinBranch(lirBlock, instrHeader.binaryCond, instrHeader.args[0], instrHeader.args[1]);
+						IrIndex branchIndex = builder.addBinBranch(lirBlock, cast(IrBinaryCondition)instrHeader.cond, instrHeader.args[0], instrHeader.args[1]);
 						recordIndex(instrIndex, branchIndex);
 						break;
 
 					case IrOpcode.block_exit_return_void:
-						builder.addInstruction!IrReturnVoidInstr(lirBlock, IrOpcode.block_exit_return_void);
+						builder.addInstruction!IrReturnVoidInstr(lirBlock);
 						break;
 
 					case IrOpcode.block_exit_return_value:
-						IrIndex retIndex = builder.addInstruction!IrReturnValueInstr(lirBlock, IrOpcode.block_exit_return_value);
+						IrIndex retIndex = builder.addInstruction!IrReturnValueInstr(lirBlock);
 						lir.get!IrReturnValueInstr(retIndex).args[0] = instrHeader.args[0];
 						recordIndex(instrIndex, retIndex);
 						break;

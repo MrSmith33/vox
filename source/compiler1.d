@@ -218,7 +218,7 @@ struct CompilationContext
 
 		IrIndex result;
 		result.storageUintIndex = tempBuffer.length;
-		result.kind = getInstrInfo!T.kind;
+		result.kind = getIrValueKind!T;
 
 		size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof)*howMany;
 		tempBuffer.voidPut(numAllocatedSlots);
@@ -230,7 +230,7 @@ struct CompilationContext
 	ref T getTemp(T)(IrIndex index)
 	{
 		assert(index.kind != IrValueKind.none, "null index");
-		assert(index.kind == getInstrInfo!T.kind, format("%s != %s", index.kind, getInstrInfo!T.kind));
+		assert(index.kind == getIrValueKind!T, format("%s != %s", index.kind, getIrValueKind!T));
 		return *cast(T*)(&tempBuffer.bufPtr[index.storageUintIndex]);
 	}
 }
