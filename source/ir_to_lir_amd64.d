@@ -41,6 +41,7 @@ struct IrToLir
 		uint[] irMirror = context.tempBuffer.voidPut(ir.storageLength);
 		irMirror[] = 0;
 
+		// save map from old index to new index
 		void recordIndex(IrIndex oldIndex, IrIndex newIndex)
 		{
 			assert(oldIndex.isDefined);
@@ -48,10 +49,16 @@ struct IrToLir
 			irMirror[oldIndex.storageUintIndex] = newIndex.asUint;
 		}
 
+		IrIndex newIndexFromOldIndex(IrIndex oldIndex)
+		{
+			return IrIndex.fromUint(irMirror[oldIndex.storageUintIndex]);
+		}
+
 		void fixIndex(ref IrIndex index)
 		{
 			assert(index.isDefined);
 			if (index.kind == IrValueKind.constant) return;
+			if (index.kind == IrValueKind.physicalRegister) return;
 
 			//writefln("%s -> %s", index, IrIndex.fromUint(irMirror[index.storageUintIndex]));
 			index = IrIndex.fromUint(irMirror[index.storageUintIndex]);
@@ -62,11 +69,13 @@ struct IrToLir
 		foreach (IrIndex blockIndex, ref IrBasicBlockInstr irBlock; ir.blocks)
 		{
 			IrIndex lirBlock = builder.append!IrBasicBlockInstr;
-			//writefln("old %s is new %s", blockIndex.storageUintIndex, lirBlock.storageUintIndex);
 			recordIndex(blockIndex, lirBlock);
 			lir.getBlock(lirBlock).name = irBlock.name;
 			foreach(IrIndex pred; irBlock.predecessors.range(ir)) lir.getBlock(lirBlock).predecessors.append(&builder, pred);
 			foreach(IrIndex succ; irBlock.successors.range(ir)) lir.getBlock(lirBlock).successors.append(&builder, succ);
+
+			// temporarily store link to old block
+			lir.getBlock(lirBlock).firstInstr = blockIndex;
 
 			if (blockIndex == ir.entryBasicBlock) {
 				lir.entryBasicBlock = lirBlock;
@@ -91,60 +100,85 @@ struct IrToLir
 				}
 			}
 
-			// Add instructions with old args
-			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; irBlock.instructions(ir))
-			{
-				switch(instrHeader.op)
-				{
-					case IrOpcode.parameter:
-						IrIndex paramIndex = builder.addInstruction!IrInstrParameter(lirBlock);
-						recordIndex(instrIndex, paramIndex);
-						lir.get!IrInstrParameter(paramIndex).index = ir.get!IrInstrParameter(instrIndex).index;
-						IrIndex paramValue = lir.get!IrInstrHeader(paramIndex).result;
-						recordIndex(instrHeader.result, paramValue);
-						break;
-
-					case IrOpcode.block_exit_jump:
-						builder.addJump(lirBlock);
-						break;
-
-					case IrOpcode.block_exit_unary_branch:
-						IrIndex branchIndex = builder.addUnaryBranch(lirBlock, cast(IrUnaryCondition)instrHeader.cond, instrHeader.args[0]);
-						recordIndex(instrIndex, branchIndex);
-						break;
-
-					case IrOpcode.block_exit_binary_branch:
-						IrIndex branchIndex = builder.addBinBranch(lirBlock, cast(IrBinaryCondition)instrHeader.cond, instrHeader.args[0], instrHeader.args[1]);
-						recordIndex(instrIndex, branchIndex);
-						break;
-
-					case IrOpcode.block_exit_return_void:
-						builder.addInstruction!IrReturnVoidInstr(lirBlock);
-						break;
-
-					case IrOpcode.block_exit_return_value:
-						IrIndex retIndex = builder.addInstruction!IrReturnValueInstr(lirBlock);
-						lir.get!IrReturnValueInstr(retIndex).args[0] = instrHeader.args[0];
-						recordIndex(instrIndex, retIndex);
-						break;
-
-					default:
-						//writefln("inst %s", cast(IrOpcode)instrHeader.op);
-				}
-			}
-
 			prevBlock = lirBlock;
 		}
 
-		foreach (IrIndex blockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		// fix successors predecessors links
+		foreach (IrIndex lirBlockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
 		{
 			lirBlock.isSealed = true;
 			lirBlock.isFinished = true;
 
-			//writefln("block %s", blockIndex);
 			foreach(ref pred; lirBlock.predecessors.range(lir)) fixIndex(pred);
 			foreach(ref succ; lirBlock.successors.range(lir)) fixIndex(succ);
 
+			// get the temp and null it
+			IrIndex irBlockIndex = lirBlock.firstInstr;
+			lirBlock.firstInstr = IrIndex();
+
+			// Add instructions with old args
+			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; ir.getBlock(irBlockIndex).instructions(ir))
+			{
+				switch(instrHeader.op)
+				{
+					case IrOpcode.parameter:
+						IrIndex paramIndex = builder.appendVoidToBlock!LirAmd64Instr_mov(lirBlockIndex);
+						recordIndex(instrIndex, paramIndex);
+
+						IrIndex paramValue = builder.addVirtualRegister(paramIndex);
+						lir.get!LirAmd64Instr_mov(paramIndex).initialize(paramValue, amd64_register_index.ax);
+						recordIndex(instrHeader.result, paramValue);
+						break;
+
+					case IrOpcode.block_exit_jump:
+						IrIndex jmp = builder.addInstruction!LirAmd64Instr_jmp(lirBlockIndex);
+						lir.get!LirAmd64Instr_jmp(jmp).args[0] = ir.getBlock(irBlockIndex).successors[0, lir];
+						break;
+
+					case IrOpcode.block_exit_unary_branch:
+						//IrIndex branchIndex = builder.addUnaryBranch(lirBlockIndex, cast(IrUnaryCondition)instrHeader.cond, instrHeader.args[0]);
+						//recordIndex(instrIndex, branchIndex);
+						assert(false);
+						break;
+
+					case IrOpcode.block_exit_binary_branch:
+						IrIndex cmp = builder.addInstruction!LirAmd64Instr_cmp(lirBlockIndex);
+						lir.get!LirAmd64Instr_cmp(cmp).args[0] = instrHeader.args[0];
+						lir.get!LirAmd64Instr_cmp(cmp).args[1] = instrHeader.args[1];
+
+						Amd64Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
+						IrIndex jcc = builder.addInstruction!LirAmd64Instr_jcc(lirBlockIndex);
+						lir.get!LirAmd64Instr_jcc(jcc).header.cond = cond;
+						lir.get!LirAmd64Instr_jcc(jcc).args[0] = ir.getBlock(irBlockIndex).successors[0, ir];
+
+						IrIndex jmp = builder.addInstruction!LirAmd64Instr_jmp(lirBlockIndex);
+						lir.get!LirAmd64Instr_jmp(jmp).args[0] = ir.getBlock(irBlockIndex).successors[1, ir];
+
+						recordIndex(instrIndex, cmp);
+						break;
+
+					case IrOpcode.block_exit_return_void:
+						IrIndex ret = builder.addInstruction!LirAmd64Instr_return(lirBlockIndex);
+						break;
+
+					case IrOpcode.block_exit_return_value:
+						IrIndex movIndex = builder.appendVoidToBlock!LirAmd64Instr_mov(lirBlockIndex);
+						lir.get!LirAmd64Instr_mov(movIndex)
+							.initialize(amd64_register_index.ax, instrHeader.args[0]);
+
+						IrIndex retIndex = builder.addInstruction!LirAmd64Instr_return(lirBlockIndex);
+
+						recordIndex(instrIndex, retIndex);
+						break;
+
+					default:
+						writefln("inst %s", cast(IrOpcode)instrHeader.op);
+				}
+			}
+		}
+
+		foreach (IrIndex blockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		{
 			// replace old args with new args and add users
 			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(lir))
 			{
@@ -166,7 +200,18 @@ struct IrToLir
 			}
 		}
 
-		//writeln("// LIR");
-		//dumpFunction(lir, context);
+		writeln("// LIR");
+		FuncDumpSettings dumpSettings;
+		dumpSettings.dumper = &dumpAmd64Instr;
+		dumpFunction(lir, context, dumpSettings);
 	}
 }
+
+Amd64Condition[] IrBinCondToAmd64Condition = [
+	Amd64Condition.E,  // eq
+	Amd64Condition.NE, // ne
+	Amd64Condition.G,  // g
+	Amd64Condition.GE, // ge
+	Amd64Condition.L,  // l
+	Amd64Condition.LE, // le
+];

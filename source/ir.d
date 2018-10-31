@@ -961,12 +961,12 @@ struct IrBuilder
 		assert(user.isDefined, "user is undefined");
 		assert(used.isDefined, "used is undefined");
 		final switch (used.kind) with(IrValueKind) {
-			case none: assert(false);
-			case listItem: assert(false);
-			case instruction: assert(false);
-			case basicBlock: assert(false);
+			case none: assert(false, "addUser none");
+			case listItem: assert(false, "addUser listItem");
+			case instruction: assert(false, "addUser instruction");
+			case basicBlock: break; // allowed. As argument of jmp jcc
 			case constant: break; // allowed, noop
-			case phi: assert(false); // must be virt reg instead
+			case phi: assert(false, "addUser phi"); // must be virt reg instead
 			case memoryAddress: break; // allowed, noop
 			case virtualRegister:
 				ir.get!IrVirtualRegister(used).users.append(&this, user);
@@ -995,6 +995,7 @@ struct IrBuilder
 			block.lastInstr = instr;
 		} else {
 			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
+			block.lastInstr = instr;
 		}
 
 		return instr;
@@ -1014,6 +1015,7 @@ struct IrBuilder
 			block.lastInstr = instr;
 		} else {
 			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
+			block.lastInstr = instr;
 		}
 	}
 

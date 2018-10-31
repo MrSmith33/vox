@@ -7,7 +7,7 @@ import driver;
 import compiler1;
 import ir;
 
-version = standalone;
+//version = standalone;
 version (standalone) void main()
 {
 	// i32 sign(i32 number) {

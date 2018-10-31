@@ -7,12 +7,7 @@ import utils;
 import ast_to_ir;
 import ir_to_lir_amd64;
 
-unittest
-{
-	writefln("unittest");
-}
-
-//version = standalone;
+version = standalone;
 version (standalone) void main()
 {
 	//bench();
