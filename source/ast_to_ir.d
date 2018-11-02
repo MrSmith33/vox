@@ -1,11 +1,15 @@
+/**
+Copyright: Copyright (c) 2017-2018 Andrey Penechko.
+License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+Authors: Andrey Penechko.
+*/
 module ast_to_ir;
 
 import std.stdio;
-import compiler1;
-import ir;
-import utils;
+import all;
 
-void pass_new_ir_gen(ref CompilationContext ctx) {
+
+void pass_ir_gen(ref CompilationContext ctx) {
 	auto astToIr = AstToIr(&ctx);
 	astToIr.visit(ctx.mod);
 }

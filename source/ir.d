@@ -1,3 +1,9 @@
+/**
+Copyright: Copyright (c) 2017-2018 Andrey Penechko.
+License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+Authors: Andrey Penechko.
+*/
+
 /// IR that implements idea of storing everything (almost)
 /// inside a single array;
 /// Stores instructions in a linked list
@@ -9,9 +15,7 @@ import std.traits : getUDAs, Parameters;
 import std.bitmanip : bitfields;
 import std.format : formattedWrite, FormatSpec;
 
-import compiler1;
-import driver;
-import utils;
+import all;
 
 //version = standalone;
 version (standalone) void main()
@@ -338,6 +342,13 @@ void dumpIrInstr(ref InstrPrintInfo p)
 			}
 			break;
 	}
+}
+
+/// Convenience struct for Id + num suffix
+struct IrName
+{
+	Identifier id;
+	uint suffix;
 }
 
 /// Describes what IrIndex is pointing at

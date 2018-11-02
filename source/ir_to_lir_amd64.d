@@ -1,9 +1,13 @@
+/**
+Copyright: Copyright (c) 2017-2018 Andrey Penechko.
+License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+Authors: Andrey Penechko.
+*/
 module ir_to_lir_amd64;
 
 import std.stdio;
-import compiler1;
-import lir_amd64;
-import ir;
+import all;
+
 
 void pass_ir_to_lir_amd64(ref CompilationContext ctx)
 {
