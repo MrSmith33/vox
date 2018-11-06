@@ -8,6 +8,7 @@ module symbol;
 import std.string : format;
 import all;
 
+///
 enum SymbolClass : ubyte
 {
 	c_function,
@@ -15,11 +16,13 @@ enum SymbolClass : ubyte
 	c_struct
 }
 
+///
 enum SymbolFlags : ubyte
 {
 	isInOrderedScope = 1 << 0,
 }
 
+///
 struct SymbolRef
 {
 	this(Identifier identifier)
@@ -36,6 +39,7 @@ struct SymbolRef
 	Identifier id(bool resolved) { return resolved ? _symbol.id : _id; }
 }
 
+///
 struct Symbol
 {
 	Identifier id;

@@ -528,6 +528,7 @@ struct SemanticStaticTypes
 	void visit(FunctionDeclNode* f) {
 		auto prevFunc = curFunc;
 		curFunc = f;
+		f.callingConvention = &win64_call_conv;
 		foreach (param; f.parameters) visit(param);
 		if (f.block_stmt)
 		{

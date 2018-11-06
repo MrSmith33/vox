@@ -17,7 +17,7 @@ CompilePass[] compilerPasses = [
 	CompilePass("IR gen", &pass_ir_gen),
 	CompilePass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
 	//// IR liveness
-	//CompilePass("Live intervals", &pass_live_intervals),
+	CompilePass("Live intervals", &pass_live_intervals),
 	//// IR regalloc
 	//CompilePass("Linear scan", &pass_linear_scan),
 	//// Stack layout

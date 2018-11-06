@@ -149,6 +149,7 @@ struct AstToIr
 		f.irData = ir;
 		ir.returnType = IrValueType.i32;
 		ir.name = f.id;
+		ir.callingConvention = f.callingConvention;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
 		builder.begin(ir, context);

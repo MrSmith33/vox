@@ -23,8 +23,11 @@ struct IrToLir
 
 	void visit(ref IrModule mod)
 	{
-		foreach (IrFunction* f; mod.functions)
+		context.mod.lirModule.functions.length = mod.functions.length;
+		foreach (i, IrFunction* f; mod.functions)
 		{
+			lir = new IrFunction;
+			context.mod.lirModule.functions[i] = lir;
 			visit(f);
 		}
 	}
@@ -33,8 +36,8 @@ struct IrToLir
 	{
 		//writefln("IR to LIR %s", context.idString(ir.name));
 
-		lir = new IrFunction;
 		lir.returnType = IrValueType.i32;
+		lir.callingConvention = ir.callingConvention;
 
 		context.tempBuffer.clear;
 
@@ -42,20 +45,20 @@ struct IrToLir
 
 		// Mirror of original IR, we will put the new IrIndex of copied entities there
 		// and later use this info to rewire all connections between basic blocks
-		uint[] irMirror = context.tempBuffer.voidPut(ir.storageLength);
-		irMirror[] = 0;
+		IrMirror!IrIndex mirror;
+		mirror.create(context, ir);
 
 		// save map from old index to new index
 		void recordIndex(IrIndex oldIndex, IrIndex newIndex)
 		{
 			assert(oldIndex.isDefined);
 			assert(newIndex.isDefined);
-			irMirror[oldIndex.storageUintIndex] = newIndex.asUint;
+			mirror[oldIndex] = newIndex;
 		}
 
 		IrIndex newIndexFromOldIndex(IrIndex oldIndex)
 		{
-			return IrIndex.fromUint(irMirror[oldIndex.storageUintIndex]);
+			return mirror[oldIndex];
 		}
 
 		void fixIndex(ref IrIndex index)
@@ -64,8 +67,8 @@ struct IrToLir
 			if (index.kind == IrValueKind.constant) return;
 			if (index.kind == IrValueKind.physicalRegister) return;
 
-			//writefln("%s -> %s", index, IrIndex.fromUint(irMirror[index.storageUintIndex]));
-			index = IrIndex.fromUint(irMirror[index.storageUintIndex]);
+			//writefln("%s -> %s", index, mirror[index.storageUintIndex]);
+			index = mirror[index];
 		}
 
 		IrIndex prevBlock;
@@ -73,10 +76,15 @@ struct IrToLir
 		foreach (IrIndex blockIndex, ref IrBasicBlockInstr irBlock; ir.blocks)
 		{
 			IrIndex lirBlock = builder.append!IrBasicBlockInstr;
+			++lir.numBasicBlocks;
 			recordIndex(blockIndex, lirBlock);
 			lir.getBlock(lirBlock).name = irBlock.name;
-			foreach(IrIndex pred; irBlock.predecessors.range(ir)) lir.getBlock(lirBlock).predecessors.append(&builder, pred);
-			foreach(IrIndex succ; irBlock.successors.range(ir)) lir.getBlock(lirBlock).successors.append(&builder, succ);
+			foreach(IrIndex pred; irBlock.predecessors.range(ir)) {
+				lir.getBlock(lirBlock).predecessors.append(&builder, pred);
+			}
+			foreach(IrIndex succ; irBlock.successors.range(ir)) {
+				lir.getBlock(lirBlock).successors.append(&builder, succ);
+			}
 
 			// temporarily store link to old block
 			lir.getBlock(lirBlock).firstInstr = blockIndex;
@@ -126,11 +134,16 @@ struct IrToLir
 				switch(instrHeader.op)
 				{
 					case IrOpcode.parameter:
-						IrIndex paramIndex = builder.appendVoidToBlock!LirAmd64Instr_mov(lirBlockIndex);
-						recordIndex(instrIndex, paramIndex);
+						IrIndex movIndex = builder.appendVoidToBlock!LirAmd64Instr_mov(lirBlockIndex);
+						recordIndex(instrIndex, movIndex);
 
-						IrIndex paramValue = builder.addVirtualRegister(paramIndex);
-						lir.get!LirAmd64Instr_mov(paramIndex).initialize(paramValue, amd64_register_index.ax);
+						IrIndex paramValue = builder.addVirtualRegister(movIndex);
+						uint paramIndex = ir.get!IrInstrParameter(instrIndex).index;
+						context.assertf(paramIndex < lir.callingConvention.paramsInRegs.length,
+							"Only parameters passed through registers are implemented");
+
+						lir.get!LirAmd64Instr_mov(movIndex)
+							.initialize(paramValue, lir.callingConvention.paramsInRegs[paramIndex]);
 						recordIndex(instrHeader.result, paramValue);
 						break;
 
@@ -168,7 +181,7 @@ struct IrToLir
 					case IrOpcode.block_exit_return_value:
 						IrIndex movIndex = builder.appendVoidToBlock!LirAmd64Instr_mov(lirBlockIndex);
 						lir.get!LirAmd64Instr_mov(movIndex)
-							.initialize(amd64_register_index.ax, instrHeader.args[0]);
+							.initialize(lir.callingConvention.returnReg, instrHeader.args[0]);
 
 						IrIndex retIndex = builder.addInstruction!LirAmd64Instr_return(lirBlockIndex);
 
@@ -203,11 +216,6 @@ struct IrToLir
 				}
 			}
 		}
-
-		writeln("// LIR");
-		FuncDumpSettings dumpSettings;
-		dumpSettings.dumper = &dumpAmd64Instr;
-		dumpFunction(lir, context, dumpSettings);
 	}
 }
 

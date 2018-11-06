@@ -28,7 +28,7 @@ struct CompilationContext
 	/// Module declaration
 	ModuleDeclNode* mod;
 	/// Target machine info
-	MachineInfo* machineInfo = &mach_info_x86_64;
+	MachineInfo* machineInfo = &mach_info_amd64;
 	/// Passed between semantics passes
 	ScopeStack scopeStack;
 

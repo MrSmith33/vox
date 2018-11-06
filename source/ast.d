@@ -344,6 +344,7 @@ struct ModuleDeclNode {
 	/// Linear list of all functions of a module (including nested and methods)
 	FunctionDeclNode*[] functions;
 	IrModule irModule;
+	IrModule lirModule;
 
 	void addFunction(FunctionDeclNode* func) {
 		functions ~= func;
@@ -377,6 +378,7 @@ struct FunctionDeclNode {
 	IrFunction* irData;
 	/// Position in buffer or in memory
 	void* funcPtr;
+	CallConv* callingConvention;
 }
 
 enum VariableFlags : ubyte {

@@ -8,15 +8,17 @@ module all;
 public:
 import ast;
 import ast_to_ir;
-import compiler1;
 import context;
 import driver;
 import identifier;
 import ir;
 import ir_to_lir_amd64;
 import lir_amd64;
+import liveness;
 import parser;
+import register_allocation;
 import semantics;
+import stack_layout;
 import symbol;
 import type;
 import utils;

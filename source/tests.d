@@ -38,11 +38,16 @@ void test()
 			writeln("// Source");
 			writeln(curTest.source);
 
-			writeln("\n// IR");
 			TextSink sink;
+			sink.putln("\n// IR");
 			FuncDumpSettings dumpSettings;
 			dumpSettings.dumper = &dumpIrInstr;
 			mod.irModule.dump(sink, &driver.context, dumpSettings);
+
+			sink.putln("\n// LIR");
+			dumpSettings.dumper = &dumpAmd64Instr;
+			mod.lirModule.dump(sink, &driver.context, dumpSettings);
+
 			writeln(sink.text);
 
 			writeln("\n// Amd64 code");

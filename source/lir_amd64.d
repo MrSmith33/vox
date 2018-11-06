@@ -7,6 +7,7 @@ module lir_amd64;
 
 import std.bitmanip : bitfields;
 import std.stdio;
+import std.format;
 
 import all;
 
@@ -194,29 +195,36 @@ version (standalone) void main()
 struct PhysicalRegister
 {
 	string name;
+	IrIndex index;
 }
 
-/// IrIndex.storageUintIndex points into this array when its kind is IrValueKind.physicalRegister
-PhysicalRegister[] amd64_registers = [
-	PhysicalRegister("ax"),
-	PhysicalRegister("cx"),
-	PhysicalRegister("dx"),
-	PhysicalRegister("bx"),
-	PhysicalRegister("sp"),
-	PhysicalRegister("bp"),
-	PhysicalRegister("si"),
-	PhysicalRegister("di"),
-	PhysicalRegister("r8"),
-	PhysicalRegister("r9"),
-	PhysicalRegister("r10"),
-	PhysicalRegister("r11"),
-	PhysicalRegister("r12"),
-	PhysicalRegister("r13"),
-	PhysicalRegister("r14"),
-	PhysicalRegister("r15"),
-	];
+struct MachineInfo
+{
+	PhysicalRegister[] registers;
+}
 
-enum amd64_register_index : IrIndex {
+__gshared MachineInfo mach_info_amd64 = MachineInfo(
+	[
+		PhysicalRegister("ax", amd64_reg.ax),
+		PhysicalRegister("cx", amd64_reg.cx),
+		PhysicalRegister("dx", amd64_reg.dx),
+		PhysicalRegister("bx", amd64_reg.bx),
+		PhysicalRegister("sp", amd64_reg.sp),
+		PhysicalRegister("bp", amd64_reg.bp),
+		PhysicalRegister("si", amd64_reg.si),
+		PhysicalRegister("di", amd64_reg.di),
+		PhysicalRegister("r8", amd64_reg.r8),
+		PhysicalRegister("r9", amd64_reg.r9),
+		PhysicalRegister("r10", amd64_reg.r10),
+		PhysicalRegister("r11", amd64_reg.r11),
+		PhysicalRegister("r12", amd64_reg.r12),
+		PhysicalRegister("r13", amd64_reg.r13),
+		PhysicalRegister("r14", amd64_reg.r14),
+		PhysicalRegister("r15", amd64_reg.r15),
+	],
+);
+
+enum amd64_reg : IrIndex {
 	ax = IrIndex(0, IrValueKind.physicalRegister),
 	cx = IrIndex(1, IrValueKind.physicalRegister),
 	dx = IrIndex(2, IrValueKind.physicalRegister),
@@ -234,6 +242,55 @@ enum amd64_register_index : IrIndex {
 	r14 = IrIndex(14, IrValueKind.physicalRegister),
 	r15 = IrIndex(15, IrValueKind.physicalRegister),
 }
+
+struct CallConv
+{
+	IrIndex[] paramsInRegs;
+	IrIndex returnReg;
+	IrIndex[] volatileRegs;
+	IrIndex[] allocatableRegs;
+	/// Not included into allocatableRegs
+	/// Can be used as frame pointer when
+	/// frame pointer is enable for the function, or
+	/// can be used as allocatable register if not
+	IrIndex framePointer;
+
+	bool isParamOnStack(size_t parIndex) {
+		return parIndex >= paramsInRegs.length;
+	}
+}
+
+__gshared CallConv win64_call_conv = CallConv
+(
+	[amd64_reg.cx, amd64_reg.dx, amd64_reg.r8, amd64_reg.r9],
+
+	amd64_reg.ax,  // return reg
+
+	[amd64_reg.ax, // volatile regs
+	amd64_reg.cx,
+	amd64_reg.dx,
+	amd64_reg.r8,
+	amd64_reg.r9,
+	amd64_reg.r10,
+	amd64_reg.r11],
+
+	[amd64_reg.ax, // avaliable for allocation
+	amd64_reg.cx,
+	amd64_reg.dx,
+	amd64_reg.bx,
+	amd64_reg.si,
+	amd64_reg.di,
+	amd64_reg.r8,
+	amd64_reg.r9,
+	amd64_reg.r10,
+	amd64_reg.r11,
+	amd64_reg.r12,
+	amd64_reg.r13,
+	amd64_reg.r14,
+	amd64_reg.r15],
+
+	amd64_reg.bp, // frame pointer
+);
 
 ///
 enum Amd64Opcode : ushort {
@@ -328,19 +385,42 @@ enum Amd64Condition : ubyte {
 
 void dumpAmd64Instr(ref InstrPrintInfo p)
 {
+	void printIndex(IrIndex i)
+	{
+		final switch(i.kind) with(IrValueKind) {
+			case none: p.sink.put("<null>"); break;
+			case listItem: p.sink.putf("l.%s", i.storageUintIndex); break;
+			case instruction: p.sink.putf("i.%s", i.storageUintIndex); break;
+			case basicBlock: p.sink.putf("@%s", i.storageUintIndex); break;
+			case constant: p.sink.putf("%s", p.context.constants[i.storageUintIndex].i64); break;
+			case phi: p.sink.putf("phi.%s", i.storageUintIndex); break;
+			case memoryAddress: p.sink.putf("m.%s", i.storageUintIndex); break;
+			case virtualRegister: p.sink.putf("v.%s", i.storageUintIndex); break;
+			// TODO, HACK: 32-bit version of register is hardcoded here
+			case physicalRegister: p.sink.put("e"); p.sink.put(mach_info_amd64.registers[i.storageUintIndex].name); break;
+		}
+	}
+
 	switch(p.instrHeader.op)
 	{
 		case Amd64Opcode.jcc:
-			p.sink.putf("    j%s %s", cast(Amd64Condition)p.instrHeader.cond, p.instrHeader.args[0]);
+			p.sink.putf("    j%s ", cast(Amd64Condition)p.instrHeader.cond);
+			printIndex(p.instrHeader.args[0]);
 			break;
 		default:
 			if (p.instrHeader.hasResult)
-				p.sink.putf("    %s = %s", p.instrHeader.result, cast(Amd64Opcode)p.instrHeader.op);
+			{
+				p.sink.put("    ");
+				printIndex(p.instrHeader.result);
+				p.sink.putf(" = %s", cast(Amd64Opcode)p.instrHeader.op);
+			}
 			else  p.sink.putf("    %s", cast(Amd64Opcode)p.instrHeader.op);
+
+			if (p.instrHeader.args.length > 0) p.sink.put(" ");
 			foreach (i, IrIndex arg; p.instrHeader.args)
 			{
-				if (i > 0) p.sink.put(",");
-				p.sink.putf(" %s", arg);
+				if (i > 0) p.sink.put(", ");
+				printIndex(arg);
 			}
 			break;
 	}
