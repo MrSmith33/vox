@@ -9,8 +9,8 @@ import bench;
 import tests;
 
 version = standalone;
-version (standalone) void main()
+version(standalone) void main()
 {
-	//bench();
+	//runBench();
 	test();
 }

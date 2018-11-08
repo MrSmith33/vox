@@ -177,14 +177,17 @@ MonoTime currTime() { return MonoTime.currTime(); }
 
 struct ScaledNumberFmt(T)
 {
+	import std.format : formattedWrite, FormatSpec;
 	T value;
-	void toString()(scope void delegate(const(char)[]) sink)
+	void toString(scope void delegate(const(char)[]) sink, const ref FormatSpec!char fmt)
 	{
 		int scale = calcScale(value);
 		auto scaledValue = scaled(value, -scale);
 		int digits = numDigitsInNumber(scaledValue);
-		import std.format : formattedWrite;
-		sink.formattedWrite("%*.*f%s", digits, 3-digits, scaledValue, scaleSuffixes[scaleToScaleIndex(scale)]);
+		string suffix = scaleSuffixes[scaleToScaleIndex(scale)]; // length is 1 or 0
+		int width = fmt.width - cast(int)suffix.length;
+		int precision = min(3-digits, fmt.precision); // gives 0 or 1
+		sink.formattedWrite("%*.*f%s", width, precision, scaledValue, suffix);
 	}
 }
 
@@ -204,8 +207,8 @@ immutable string[] scaleSuffixes = ["y","z","a","f","p","n","u","m","","K","M","
 
 int numDigitsInNumber(Num)(const Num val)
 {
-	import std.math: abs;
-	ulong absVal = cast(ulong)abs(val);
+	import std.math: abs, round;
+	ulong absVal = cast(ulong)val.abs.round;
 	int numDigits = 1;
 
 	while (absVal >= 10)
@@ -221,7 +224,7 @@ int calcScale(Num)(Num val)
 {
 	import std.algorithm: clamp;
 	import std.math: abs, floor, ceil, log10;
-	static int signum(T)(const T x) nothrow
+	static int signum(T)(const T x) pure nothrow
 	{
 	    return (x > 0) - (x < 0);
 	}
@@ -236,7 +239,11 @@ int calcScale(Num)(Num val)
 	else
 		scale = cast(int)(floor(absLog/3.0))*3;
 
-	int clampedScale = clamp(scale * logSign, -24, 24);
+	int clampedScale = scale * logSign;
+	if (clampedScale < -24)
+		clampedScale = 0; // prevent zero, or values smaller that yotta- to display as yotta
+	else if (clampedScale > 24)
+		clampedScale = 24;
 
 	return clampedScale;
 }

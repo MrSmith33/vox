@@ -7,7 +7,7 @@ module bench;
 
 import all;
 
-void bench()
+void runBench()
 {
 	ModuleDeclNode* mod;
 	string input =

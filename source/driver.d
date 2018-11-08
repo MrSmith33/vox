@@ -131,7 +131,7 @@ struct PerPassTimeMeasurements
 			writeln;
 		}
 
-		writef("Iterations % 9s", scaledNumberFmt(totalTimes.numIters));
+		writef("Iterations % 5.0s    ", scaledNumberFmt(totalTimes.numIters));
 		totalTimes.printHeader; writeln;
 		printRow("Total", totalTimes);
 		foreach (passIndex, ref times; passTimes)
@@ -166,18 +166,32 @@ struct TimeMeasurements
 
 	void printHeader()
 	{
-		foreach (i; 0..min(numIters, showNumFirstIters))
-			writef("  iter %s", i);
-		write("   total     avg     min     max");
+		if (numIters == 1)
+		{
+			write("    time");
+		}
+		else
+		{
+			foreach (i; 0..min(numIters, showNumFirstIters))
+				writef("  iter %s", i);
+			write("   total     avg     min     max");
+		}
 	}
 
 	void print()
 	{
-		foreach (i; 0..min(numIters, showNumFirstIters))
-			writef(" % 6ss", scaledNumberFmt(iterTimes[i]));
-		writef(" % 6ss", scaledNumberFmt(totalTime));
-		writef(" % 6ss", scaledNumberFmt(avgTime));
-		writef(" % 6ss", scaledNumberFmt(minTime));
-		writef(" % 6ss", scaledNumberFmt(maxTime));
+		if (numIters == 1)
+		{
+			writef(" % 6.1ss", scaledNumberFmt(iterTimes[0]));
+		}
+		else
+		{
+			foreach (i; 0..min(numIters, showNumFirstIters))
+				writef(" % 6.1ss", scaledNumberFmt(iterTimes[i]));
+			writef(" % 6.1ss", scaledNumberFmt(totalTime));
+			writef(" % 6.1ss", scaledNumberFmt(avgTime));
+			writef(" % 6.1ss", scaledNumberFmt(minTime));
+			writef(" % 6.1ss", scaledNumberFmt(maxTime));
+		}
 	}
 }
