@@ -63,6 +63,7 @@ struct IrIndex
 
 	bool isConstant() { return kind == IrValueKind.constant; }
 	bool isVirtReg() { return kind == IrValueKind.virtualRegister; }
+	bool isPhysReg() { return kind == IrValueKind.physicalRegister; }
 	bool isSomeReg() {
 		return kind == IrValueKind.virtualRegister ||
 			kind == IrValueKind.physicalRegister;

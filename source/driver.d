@@ -19,7 +19,7 @@ CompilePass[] compilerPasses = [
 	//// IR liveness
 	CompilePass("Live intervals", &pass_live_intervals),
 	//// IR regalloc
-	//CompilePass("Linear scan", &pass_linear_scan),
+	CompilePass("Linear scan", &pass_linear_scan),
 	//// Stack layout
 	//CompilePass("Stack layout", &pass_stack_layout),
 	//// LIR -> machine code

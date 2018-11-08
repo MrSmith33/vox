@@ -9,10 +9,10 @@ import std.stdio;
 import all;
 
 
-void pass_ir_to_lir_amd64(ref CompilationContext ctx)
+void pass_ir_to_lir_amd64(ref CompilationContext context)
 {
-	auto pass = IrToLir(&ctx);
-	pass.visit(ctx.mod.irModule);
+	auto pass = IrToLir(&context);
+	pass.run;
 }
 
 struct IrToLir
@@ -21,21 +21,21 @@ struct IrToLir
 	IrFunction* lir;
 	IrBuilder builder;
 
-	void visit(ref IrModule mod)
+	void run()
 	{
-		context.mod.lirModule.functions.length = mod.functions.length;
-		foreach (i, IrFunction* f; mod.functions)
+		context.mod.lirModule.functions.length = context.mod.functions.length;
+		foreach (i, FunctionDeclNode* fun; context.mod.functions)
 		{
 			lir = new IrFunction;
+			fun.lirData = lir;
 			context.mod.lirModule.functions[i] = lir;
-			visit(f);
+			processFunc(fun.irData);
 		}
 	}
 
-	void visit(IrFunction* ir)
+	void processFunc(IrFunction* ir)
 	{
 		//writefln("IR to LIR %s", context.idString(ir.name));
-
 		lir.returnType = IrValueType.i32;
 		lir.callingConvention = ir.callingConvention;
 

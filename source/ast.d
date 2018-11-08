@@ -376,6 +376,8 @@ struct FunctionDeclNode {
 	BlockStmtNode* block_stmt; // null if external
 	Scope* _scope;
 	IrFunction* irData;
+	IrFunction* lirData;
+	FunctionLiveIntervals* liveIntervals;
 	/// Position in buffer or in memory
 	void* funcPtr;
 	CallConv* callingConvention;

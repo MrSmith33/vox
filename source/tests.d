@@ -8,7 +8,7 @@ import tests;
 import std.stdio;
 import all;
 
-version = print;
+//version = print;
 
 void test()
 {

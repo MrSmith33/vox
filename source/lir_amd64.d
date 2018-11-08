@@ -201,6 +201,7 @@ struct PhysicalRegister
 struct MachineInfo
 {
 	PhysicalRegister[] registers;
+	LirInstrInfo[] instrInfo;
 }
 
 __gshared MachineInfo mach_info_amd64 = MachineInfo(
@@ -222,6 +223,7 @@ __gshared MachineInfo mach_info_amd64 = MachineInfo(
 		PhysicalRegister("r14", amd64_reg.r14),
 		PhysicalRegister("r15", amd64_reg.r15),
 	],
+	gatherInfos()
 );
 
 enum amd64_reg : IrIndex {
@@ -292,38 +294,54 @@ __gshared CallConv win64_call_conv = CallConv
 	amd64_reg.bp, // frame pointer
 );
 
+private alias _lii = LirInstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	add,
-	sub,
-	imul,
-	or,
-	and,
-	xor,
-	mul,
-	div,
-	lea,
+	@_lii(false) add,
+	@_lii(false) sub,
+	@_lii(false) imul,
+	@_lii(false) or,
+	@_lii(false) and,
+	@_lii(false) xor,
+	@_lii(false) mul,
+	@_lii(false) div,
+	@_lii(false) lea,
 
-	mov,
-	movsx,
-	movzx,
+	@_lii(true)  mov,
+	@_lii(false) movsx,
+	@_lii(false) movzx,
 
-	not,
-	neg,
+	@_lii(false) not,
+	@_lii(false) neg,
 
-	cmp,
-	test,
+	@_lii(false) cmp,
+	@_lii(false) test,
 
-	jmp,
-	jcc,
+	@_lii(false) jmp,
+	@_lii(false) jcc,
 
-	setcc,
+	@_lii(false) setcc,
 
-	call,
-	ret,
+	@_lii(false) call,
+	@_lii(false) ret,
 
-	pop,
-	push,
+	@_lii(false) pop,
+	@_lii(false) push,
+}
+
+struct LirInstrInfo
+{
+	bool isMov;
+}
+
+LirInstrInfo[] gatherInfos()
+{
+	LirInstrInfo[] res = new LirInstrInfo[__traits(allMembers, Amd64Opcode).length];
+	foreach (i, m; __traits(allMembers, Amd64Opcode))
+	{
+		res[i] = __traits(getAttributes, mixin("Amd64Opcode."~m))[0];
+	}
+	return res;
 }
 
 alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, HasResult.yes);

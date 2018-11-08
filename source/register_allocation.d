@@ -17,22 +17,22 @@ import std.bitmanip : bitfields;
 import std.algorithm : min, max, sort, swap;
 
 import all;
-/+
+
+version = RAPrint;
+
 /// Does linear scan register allocation.
 /// Uses live intervals produced by pass_live_intervals
-void pass_linear_scan(ref CompilationContext ctx) {
+void pass_linear_scan(ref CompilationContext context) {
 	LinearScan linearScan;
-	linearScan.setup(&ctx);
-	foreach (fun; ctx.mod.irModule.functions) {
-		linearScan.assignHints(*fun, *fun.callingConvention);
-		linearScan.scanFun(*fun);
-		linearScan.resolve(*fun);
+	linearScan.context = &context;
+	foreach (FunctionDeclNode* fun; context.mod.functions) {
+		linearScan.scanFun(fun);
 	}
 }
 
 struct PhysRegister
 {
-	RegisterRef regRef;
+	IrIndex regRef;
 	int freeUntilPos;
 	int nextUsePos;
 }
@@ -41,20 +41,18 @@ struct PhysRegisters
 {
 	PhysRegister[] gpr;
 
-	ref PhysRegister opIndex(RegisterRef reg) {
-		return gpr[reg];
+	ref PhysRegister opIndex(IrIndex reg) {
+		return gpr[reg.storageUintIndex];
 	}
 
-	void setup()
+	void setup(FunctionDeclNode* fun)
 	{
-		gpr.length = 0;
-		gpr ~= PhysRegister(RegisterRef(0, Register.AX));
-		gpr ~= PhysRegister(RegisterRef(1, Register.CX));
-		gpr ~= PhysRegister(RegisterRef(2, Register.DX));
-		gpr ~= PhysRegister(RegisterRef(3, Register.R8));
-		gpr ~= PhysRegister(RegisterRef(4, Register.R9));
-		gpr ~= PhysRegister(RegisterRef(5, Register.R10));
-		gpr ~= PhysRegister(RegisterRef(6, Register.R11));
+		const IrIndex[] regs = fun.callingConvention.allocatableRegs;
+		gpr.length = regs.length;
+		foreach(i, reg; regs)
+		{
+			gpr[i] = PhysRegister(reg);
+		}
 	}
 
 	void resetFreeUntilPos()
@@ -65,14 +63,6 @@ struct PhysRegisters
 	void resetNextUsePos()
 	{
 		foreach (ref reg; gpr) reg.nextUsePos = int.max;
-	}
-
-	PhysRegister[] getClassRegs(RegClass cls)
-	{
-		final switch(cls) {
-			case RegClass.gpr: return gpr;
-			case RegClass.flags: return flags;
-		}
 	}
 }
 
@@ -86,15 +76,13 @@ struct LinearScan
 	Buffer!NodeIndex inactive;
 	Buffer!NodeIndex handled;
 	PhysRegisters physRegs;
-	CompilationContext* ctx;
-	FunctionLiveIntervals* live;
+	CompilationContext* context;
 
-	void setup(CompilationContext* ctx)
-	{
-		this.ctx = ctx;
-		physRegs.setup;
-	}
+	FunctionLiveIntervals* livePtr;
+	ref FunctionLiveIntervals live() { return *livePtr; }
+	IrFunction* lir;
 
+	/*
 	void assignHints(ref IrFunction fun, ref CallConv callConv)
 	{
 		// assign paramter registers and memory locations
@@ -112,7 +100,7 @@ struct LinearScan
 			}
 		}
 	}
-
+*/
 	/*
 		LinearScan
 		unhandled = list of intervals sorted by increasing start positions
@@ -142,12 +130,22 @@ struct LinearScan
 
 			if current has a register assigned then add current to active
 	*/
-	void scanFun(ref IrFunction fun)
+	void scanFun(FunctionDeclNode* fun)
 	{
 		import std.container.binaryheap;
 
-		live = &fun.liveIntervals;
-		scope(exit) live = null;
+		lir = fun.lirData;
+		livePtr = fun.liveIntervals;
+		physRegs.setup(fun);
+
+		scope(exit) {
+			TextSink sink;
+			live.dump(sink);
+			writeln(sink.text);
+
+			lir = null;
+			livePtr = null;
+		}
 
 		int cmp(NodeIndex a, NodeIndex b) {
 			return live.ranges[a].from > live.ranges[b].from;
@@ -165,11 +163,12 @@ struct LinearScan
 		foreach (it; live.virtualIntervals)
 			if (!it.first.isNull)
 				unhandled.insert(it.first);
-		//writefln("unhandled %s", unhandled);
 
 		foreach (it; live.physicalIntervals)
 			if (!it.first.isNull)
 				inactive.put(it.first);
+
+		writefln("intervals %s", live.intervals[live.numFixedIntervals..$]);
 
 		// while unhandled != { } do
 		while (!unhandled.empty)
@@ -180,7 +179,8 @@ struct LinearScan
 
 			// position = start position of current
 			int position = live.ranges[currentId].from;
-			//writefln("current %s pos %s", live.ranges[currentId].intervalId, position);
+			version(RAPrint) writefln("current %s pos %s", live.ranges[currentId].intervalIndex, position);
+			version(RAPrint) writefln("  active len %s, inactive len %s", active.length, inactive.length);
 
 			size_t index;
 			// // check for intervals in active that are handled or inactive
@@ -195,7 +195,7 @@ struct LinearScan
 				if (rangeId.isNull)
 				{
 					// move it from active to handled
-					//writefln("move %s active -> handled", range.intervalId);
+					version(RAPrint) writefln("  move %s active -> handled", range.intervalIndex);
 					//handled.put(rangeId);
 					active.removeInPlace(index);
 				}
@@ -203,8 +203,8 @@ struct LinearScan
 				else if(!live.intervalCoversPosition(rangeId, position))
 				{
 					// move it from active to inactive
-					//writefln("%s isLast %s less %s", rangeId, range.isLast, range.to < position);
-					//writefln("move %s active -> inactive", range.intervalId);
+					version(RAPrint) writefln("  %s isLast %s less %s", rangeId, range.isLast, range.to < position);
+					version(RAPrint) writefln("  move %s active -> inactive", range.intervalIndex);
 					inactive.put(rangeId);
 					active.removeInPlace(index);
 				}
@@ -223,7 +223,7 @@ struct LinearScan
 				if (live.ranges[rangeId].isLast && live.ranges[rangeId].to < position)
 				{
 					// move it from inactive to handled
-					//writefln("move %s inactive -> handled", live.ranges[rangeId].intervalId);
+					version(RAPrint) writefln("  move %s inactive -> handled", live.ranges[rangeId].intervalIndex);
 					//handled.put(rangeId);
 					inactive.removeInPlace(index);
 				}
@@ -231,7 +231,7 @@ struct LinearScan
 				else if(live.intervalCoversPosition(rangeId, position))
 				{
 					// move it from inactive to active
-					//writefln("move %s inactive -> active", live.ranges[rangeId].intervalId);
+					version(RAPrint) writefln("  move %s inactive -> active", live.ranges[rangeId].intervalIndex);
 					active.put(rangeId);
 					inactive.removeInPlace(index);
 				}
@@ -240,19 +240,21 @@ struct LinearScan
 			}
 
 			// find a register for current
-			bool success = tryAllocateFreeReg(fun, currentId);
+			bool success = tryAllocateFreeReg(currentId);
 
 			// if allocation failed then AllocateBlockedReg
 			if (!success)
-				allocateBlockedReg(fun, currentId, position);
+				allocateBlockedReg(currentId, position);
 
 			// if current has a register assigned then add current to active
-			if (!(*live)[currentId].reg.isNull)
+			if (live[currentId].reg.isDefined)
 			{
-				//writefln("move current %s -> active", live.ranges[currentId].intervalId);
+				version(RAPrint) writefln("  move current %s -> active", live.ranges[currentId].intervalIndex);
 				active.put(currentId);
 			}
 		}
+
+		resolve();
 
 		unhandledStorage = unhandled.release;
 	}
@@ -278,20 +280,20 @@ struct LinearScan
 			current.reg = reg
 			split current before freeUntilPos[reg]
 	*/
-	bool tryAllocateFreeReg(ref IrFunction fun, NodeIndex currentId)
+	bool tryAllocateFreeReg(NodeIndex currentId)
 	{
 		// set freeUntilPos of all physical registers to maxInt
 		physRegs.resetFreeUntilPos;
 
-		LiveInterval* currentIt = &fun.liveIntervals[currentId];
+		LiveInterval* currentIt = &live[currentId];
 		int currentEnd = live.ranges[currentIt.last].to;
 
 		// for each interval it in active do
 		//     freeUntilPos[it.reg] = 0
 		foreach (rangeId; active.data)
 		{
-			auto it = fun.liveIntervals[rangeId];
-			assert(!it.reg.isNull);
+			auto it = live[rangeId];
+			assert(it.reg.isDefined);
 			physRegs[it.reg].freeUntilPos = 0;
 		}
 
@@ -299,12 +301,12 @@ struct LinearScan
 
 		// reg = register with highest freeUntilPos
 		int maxPos = 0;
-		RegisterRef reg;
+		IrIndex reg;
 
 		// reg stored in hint
-		RegisterRef hintReg = currentIt.storageHint.getRegHint;
+		IrIndex hintReg = currentIt.storageHint;
 
-		PhysRegister[] candidates = physRegs.getClassRegs(currentIt.regClass);
+		PhysRegister[] candidates = physRegs.gpr;
 		foreach (i, ref PhysRegister r; candidates)
 		{
 			if (r.freeUntilPos > maxPos) {
@@ -315,37 +317,49 @@ struct LinearScan
 
 		if (maxPos == 0)
 		{
+			// no register available without spilling
+			version(RAPrint) writeln("    no register available without spilling");
 			return false;
 		}
 		else
 		{
-			if (!hintReg.isNull)
+			version(RAPrint) writefln("    hint is %s", hintReg);
+			if (hintReg.isDefined)
 			{
 				if (currentEnd < physRegs[hintReg].freeUntilPos)
-					reg = hintReg;
+				{
+					// register available for the whole interval
+					currentIt.reg = hintReg;
+					version(RAPrint) writefln("    alloc hint %s", hintReg);
+					return true;
+				}
+				else
+				{
+					version(RAPrint) writefln("    hint %s is not available for the whole interval", hintReg);
+				}
 			}
 
 			if (currentEnd < maxPos)
 			{
 				currentIt.reg = reg;
+				version(RAPrint) writefln("    alloc %s", reg);
 				return true;
 			}
 			else
 			{
 				// split
+				version(RAPrint) writefln("    alloc + split %s", reg);
 				return false;
 			}
 		}
 	}
 
-	int nextUseAfter(ref IrFunction fun, IrOperandId opdId, int after)
+	int nextUseAfter(LiveInterval* it, int after)
 	{
-		ListInfo!NodeIndex usesList = fun.operands[opdId].usesList;
 		int closest = int.max;
-		for (NodeIndex cur = usesList.first; !cur.isNull; cur = fun.opdUses.nodes[cur].nextIndex)
+		foreach(IrIndex user; lir.getVirtReg(it.definition).users.range(lir))
 		{
-			IrRef userRef = fun.opdUses.nodes[cur].data;
-			int pos = fun.linearPosition(userRef);
+			int pos = live.linearIndicies[user];
 			if (pos > after && pos < closest)
 			{
 				closest = pos;
@@ -380,7 +394,7 @@ struct LinearScan
 		if current intersects with the fixed interval for reg then
 			split current before this intersection
 	*/
-	void allocateBlockedReg(ref IrFunction fun, NodeIndex currentRangeId, int currentStart)
+	void allocateBlockedReg(NodeIndex currentRangeId, int currentStart)
 	{
 		writefln("allocateBlockedReg of range %s, start %s", currentRangeId, currentStart);
 		// set nextUsePos of all physical registers to maxInt
@@ -390,16 +404,15 @@ struct LinearScan
 		//     nextUsePos[it.reg] = next use of it after start of current
 		foreach (rangeId; active.data)
 		{
-			LiveInterval* it = &fun.liveIntervals[rangeId];
-			assert(!it.reg.isNull);
+			LiveInterval* it = &live[rangeId];
+			assert(it.reg.isDefined);
 			if (it.isFixed)
 			{
 				physRegs[it.reg].nextUsePos = currentStart;
 			}
 			else
 			{
-				IrOperandId opdId = live.operandId(rangeId);
-				physRegs[it.reg].nextUsePos = nextUseAfter(fun, opdId, currentStart);
+				physRegs[it.reg].nextUsePos = nextUseAfter(it, currentStart);
 			}
 			writefln("nextUsePos of %s is %s", rangeId, physRegs[it.reg].nextUsePos);
 		}
@@ -408,8 +421,8 @@ struct LinearScan
 		//     nextUsePos[it.reg] = next use of it after start of current
 		foreach (rangeId; inactive.data)
 		{
-			LiveInterval* it = &fun.liveIntervals[rangeId];
-			assert(!it.reg.isNull);
+			LiveInterval* it = &live[rangeId];
+			assert(it.reg.isDefined);
 			if (it.isFixed)
 			{
 				int fistrIntersection = live.firstIntersection(currentRangeId, rangeId);
@@ -417,17 +430,16 @@ struct LinearScan
 			}
 			else
 			{
-				IrOperandId opdId = live.operandId(rangeId);
-				physRegs[it.reg].nextUsePos = nextUseAfter(fun, opdId, currentStart);
+				physRegs[it.reg].nextUsePos = nextUseAfter(it, currentStart);
 			}
 			writefln("nextUsePos of %s is %s", rangeId, physRegs[it.reg].nextUsePos);
 		}
 
 		// reg = register with highest nextUsePos
-		LiveInterval* currentIt = &fun.liveIntervals[currentRangeId];
-		PhysRegister[] regs = physRegs.getClassRegs(currentIt.regClass);
+		LiveInterval* currentIt = &live[currentRangeId];
+		PhysRegister[] regs = physRegs.gpr;
 		int maxUsePos = 0;
-		RegisterRef reg;
+		IrIndex reg;
 		foreach (i, ref PhysRegister r; regs)
 		{
 			if (r.nextUsePos > maxUsePos) {
@@ -436,7 +448,7 @@ struct LinearScan
 			}
 		}
 
-		ctx.unreachable;
+		context.unreachable;
 		assert(false);
 	}
 
@@ -458,9 +470,8 @@ struct LinearScan
 				mapping.add(moveFrom, moveTo)
 		mapping.orderAndInsertMoves()
 	*/
-	void resolve(ref IrFunction fun)
+	void resolve()
 	{
 
 	}
 }
-+/
