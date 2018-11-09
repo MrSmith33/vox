@@ -18,7 +18,6 @@ void pass_ir_to_lir_amd64(ref CompilationContext context)
 struct IrToLir
 {
 	CompilationContext* context;
-	IrFunction* lir;
 	IrBuilder builder;
 
 	void run()
@@ -26,14 +25,13 @@ struct IrToLir
 		context.mod.lirModule.functions.length = context.mod.functions.length;
 		foreach (i, FunctionDeclNode* fun; context.mod.functions)
 		{
-			lir = new IrFunction;
-			fun.lirData = lir;
-			context.mod.lirModule.functions[i] = lir;
-			processFunc(fun.irData);
+			fun.lirData = new IrFunction;
+			context.mod.lirModule.functions[i] = fun.lirData;
+			processFunc(*fun.irData, *fun.lirData);
 		}
 	}
 
-	void processFunc(IrFunction* ir)
+	void processFunc(ref IrFunction ir, ref IrFunction lir)
 	{
 		//writefln("IR to LIR %s", context.idString(ir.name));
 		lir.returnType = IrValueType.i32;
@@ -41,12 +39,12 @@ struct IrToLir
 
 		context.tempBuffer.clear;
 
-		builder.beginLir(lir, ir, context);
+		builder.beginLir(&lir, &ir, context);
 
 		// Mirror of original IR, we will put the new IrIndex of copied entities there
 		// and later use this info to rewire all connections between basic blocks
 		IrMirror!IrIndex mirror;
-		mirror.create(context, ir);
+		mirror.create(context, &ir);
 
 		// save map from old index to new index
 		void recordIndex(IrIndex oldIndex, IrIndex newIndex)
@@ -149,29 +147,20 @@ struct IrToLir
 
 					case IrOpcode.block_exit_jump:
 						IrIndex jmp = builder.addInstruction!LirAmd64Instr_jmp(lirBlockIndex);
-						lir.get!LirAmd64Instr_jmp(jmp).args[0] = ir.getBlock(irBlockIndex).successors[0, lir];
 						break;
 
 					case IrOpcode.block_exit_unary_branch:
-						//IrIndex branchIndex = builder.addUnaryBranch(lirBlockIndex, cast(IrUnaryCondition)instrHeader.cond, instrHeader.args[0]);
-						//recordIndex(instrIndex, branchIndex);
-						assert(false);
+						IrIndex branchIndex = builder.addInstruction!LirAmd64Instr_un_branch(lirBlockIndex);
+						lir.get!IrInstrHeader(branchIndex).args[] = instrHeader.args;
+						lir.get!IrInstrHeader(branchIndex).cond = instrHeader.cond;
+						recordIndex(instrIndex, branchIndex);
 						break;
 
 					case IrOpcode.block_exit_binary_branch:
-						IrIndex cmp = builder.addInstruction!LirAmd64Instr_cmp(lirBlockIndex);
-						lir.get!LirAmd64Instr_cmp(cmp).args[0] = instrHeader.args[0];
-						lir.get!LirAmd64Instr_cmp(cmp).args[1] = instrHeader.args[1];
-
-						Amd64Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
-						IrIndex jcc = builder.addInstruction!LirAmd64Instr_jcc(lirBlockIndex);
-						lir.get!LirAmd64Instr_jcc(jcc).header.cond = cond;
-						lir.get!LirAmd64Instr_jcc(jcc).args[0] = ir.getBlock(irBlockIndex).successors[0, ir];
-
-						IrIndex jmp = builder.addInstruction!LirAmd64Instr_jmp(lirBlockIndex);
-						lir.get!LirAmd64Instr_jmp(jmp).args[0] = ir.getBlock(irBlockIndex).successors[1, ir];
-
-						recordIndex(instrIndex, cmp);
+						IrIndex branchIndex = builder.addInstruction!LirAmd64Instr_bin_branch(lirBlockIndex);
+						lir.get!IrInstrHeader(branchIndex).args[] = instrHeader.args;
+						lir.get!IrInstrHeader(branchIndex).cond = instrHeader.cond;
+						recordIndex(instrIndex, branchIndex);
 						break;
 
 					case IrOpcode.block_exit_return_void:
@@ -211,6 +200,7 @@ struct IrToLir
 			{
 				foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(lir))
 				{
+					fixIndex(phiArg.basicBlock);
 					fixIndex(phiArg.value);
 					builder.addUser(phiIndex, phiArg.value);
 				}
@@ -218,12 +208,3 @@ struct IrToLir
 		}
 	}
 }
-
-Amd64Condition[] IrBinCondToAmd64Condition = [
-	Amd64Condition.E,  // eq
-	Amd64Condition.NE, // ne
-	Amd64Condition.G,  // g
-	Amd64Condition.GE, // ge
-	Amd64Condition.L,  // l
-	Amd64Condition.LE, // le
-];

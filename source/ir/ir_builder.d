@@ -203,6 +203,7 @@ struct IrBuilder
 			case constant: break; // allowed, noop
 			case phi: assert(false, "addUser phi"); // must be virt reg instead
 			case memoryAddress: break; // allowed, noop
+			case stackSlot: break; // allowed, noop
 			case virtualRegister:
 				ir.getVirtReg(used).users.append(&this, user);
 				break;
@@ -502,7 +503,7 @@ struct IrBuilder
 			SmallVector preds = ir.getBlock(blockIndex).predecessors;
 			if (preds.length == 1) {
 				// Optimize the common case of one predecessor: No phi needed
-				value = readVariable(preds[0, ir], variable);
+				value = readVariable(preds[0, *ir], variable);
 			}
 			else
 			{
@@ -528,7 +529,7 @@ struct IrBuilder
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex addPhiOperands(IrIndex blockIndex, IrVar variable, IrIndex phi) {
 		// Determine operands from predecessors
-		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(ir))
+		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(*ir))
 		{
 			IrIndex value = readVariable(predIndex, variable);
 			version(IrPrint) writefln("[IR] phi operand %s", value);
@@ -551,7 +552,7 @@ struct IrBuilder
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex) {
 		IrPhiArg same;
-		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(phiIndex).args(ir))
+		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(phiIndex).args(*ir))
 		{
 			version(IrPrint) writefln("[IR] arg %s", phiArg.value);
 			if (phiArg.value == same.value || phiArg.value == phiIndex) {
@@ -579,7 +580,7 @@ struct IrBuilder
 		removePhi(phiIndex);
 
 		// Try to recursively remove all phi users, which might have become trivial
-		foreach (i, index; users.range(ir))
+		foreach (i, index; users.range(*ir))
 			if (index.kind == IrValueKind.phi && index != phiIndex)
 				tryRemoveTrivialPhi(index);
 
@@ -597,6 +598,7 @@ struct IrBuilder
 			case constant: assert(false);
 			case phi: return someIndex;
 			case memoryAddress: assert(false); // TODO
+			case stackSlot: assert(false); // TODO
 			case virtualRegister: return ir.getVirtReg(someIndex).definition;
 			case physicalRegister: assert(false);
 		}
@@ -606,7 +608,7 @@ struct IrBuilder
 	/// Rewrites all users of phi to point to `byWhat` instead of its result `what`.
 	/// `what` is the result of phi (vreg), `phiUsers` is users of `what`
 	private void replaceBy(SmallVector phiUsers, IrIndex what, IrPhiArg byWhat) {
-		foreach (size_t i, IrIndex userIndex; phiUsers.range(ir))
+		foreach (size_t i, IrIndex userIndex; phiUsers.range(*ir))
 		{
 			final switch (userIndex.kind) with(IrValueKind) {
 				case none: assert(false);
@@ -622,7 +624,7 @@ struct IrBuilder
 				case basicBlock: assert(false);
 				case constant: assert(false);
 				case phi:
-					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(userIndex).args(ir))
+					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(userIndex).args(*ir))
 						if (phiArg.value == what)
 						{
 							phiArg = byWhat;
@@ -630,6 +632,7 @@ struct IrBuilder
 						}
 					break;
 				case memoryAddress: assert(false); // TODO
+				case stackSlot: assert(false); // TODO
 				case virtualRegister: assert(false);
 				case physicalRegister: assert(false);
 			}
@@ -639,11 +642,12 @@ struct IrBuilder
 	private void replaceUserWith(IrIndex used, IrIndex what, IrIndex byWhat) {
 		final switch (used.kind) with(IrValueKind) {
 			case none, listItem, basicBlock, physicalRegister: assert(false);
-			case instruction: return ir.getVirtReg(ir.get!IrInstrHeader(used).result).users.replaceAll(ir, what, byWhat);
+			case instruction: return ir.getVirtReg(ir.get!IrInstrHeader(used).result).users.replaceAll(*ir, what, byWhat);
 			case constant: return; // constants dont track users
-			case phi: return ir.getVirtReg(ir.get!IrPhiInstr(used).result).users.replaceAll(ir, what, byWhat);
+			case phi: return ir.getVirtReg(ir.get!IrPhiInstr(used).result).users.replaceAll(*ir, what, byWhat);
 			case memoryAddress: assert(false); // TODO, has single user
-			case virtualRegister: return ir.getVirtReg(used).users.replaceAll(ir, what, byWhat);
+			case stackSlot: assert(false); // TODO
+			case virtualRegister: return ir.getVirtReg(used).users.replaceAll(*ir, what, byWhat);
 		}
 	}
 }

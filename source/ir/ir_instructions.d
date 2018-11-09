@@ -35,7 +35,7 @@ struct IrPhiInstr
 	IrIndex prevPhi;
 	IrIndex firstArgListItem;
 
-	PhiArgIterator args(IrFunction* ir) { return PhiArgIterator(ir, firstArgListItem); }
+	PhiArgIterator args(ref IrFunction ir) { return PhiArgIterator(&ir, firstArgListItem); }
 }
 
 struct PhiArgIterator
@@ -134,14 +134,15 @@ struct IrBasicBlockInstr
 	IrIndex nextBlock; // null only if this is exitBasicBlock
 	IrIndex firstPhi; // may be null
 
-	PhiIterator phis(IrFunction* ir) { return PhiIterator(ir, &this); }
-	InstrIterator instructions(IrFunction* ir) { return InstrIterator(ir, &this); }
-	InstrReverseIterator instructionsReverse(IrFunction* ir) { return InstrReverseIterator(ir, &this); }
+	PhiIterator phis(ref IrFunction ir) { return PhiIterator(&ir, &this); }
+	InstrIterator instructions(ref IrFunction ir) { return InstrIterator(&ir, &this); }
+	InstrReverseIterator instructionsReverse(ref IrFunction ir) { return InstrReverseIterator(&ir, &this); }
 
 	SmallVector predecessors;
 	SmallVector successors;
 
 	uint seqIndex;
+
 	mixin(bitfields!(
 		/// True if all predecessors was added
 		bool, "isSealed",   1,
@@ -275,12 +276,35 @@ enum IrBinaryCondition : ubyte {
 
 string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", ">", ">=", "<", "<="];
 
+IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
+{
+	final switch(cond) with(IrBinaryCondition)
+	{
+		case eq: return ne;
+		case ne: return eq;
+		case g:  return le;
+		case ge: return l;
+		case l:  return ge;
+		case le: return g;
+	}
+}
+
 /// Uses header.cond
 alias IrInstrBinaryBranch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, HasResult.no);
 
 enum IrUnaryCondition : ubyte {
 	zero,
 	not_zero
+}
+string[] unaryCondStrings = cast(string[IrUnaryCondition.max+1])["", "!"];
+
+IrUnaryCondition invertUnaryCond(IrUnaryCondition cond)
+{
+	final switch(cond) with(IrUnaryCondition)
+	{
+		case zero: return not_zero;
+		case not_zero: return zero;
+	}
 }
 
 /// Uses header.cond

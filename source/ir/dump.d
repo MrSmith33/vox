@@ -26,14 +26,14 @@ struct FuncDumpSettings
 	InstructionDumper dumper;
 }
 
-void dumpFunction(IrFunction* ir, CompilationContext* ctx, ref FuncDumpSettings settings)
+void dumpFunction(ref IrFunction ir, ref CompilationContext ctx, ref FuncDumpSettings settings)
 {
 	TextSink sink;
 	dumpFunction(ir, sink, ctx, settings);
 	writeln(sink.text);
 }
 
-void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx, ref FuncDumpSettings settings)
+void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext ctx, ref FuncDumpSettings settings)
 {
 	sink.put("function ");
 	sink.put(ctx.idString(ir.name));
@@ -59,9 +59,9 @@ void dumpFunction(IrFunction* ir, ref TextSink sink, CompilationContext* ctx, re
 	}
 
 	InstrPrintInfo printer;
-	printer.context = ctx;
+	printer.context = &ctx;
 	printer.sink = &sink;
-	printer.ir = ir;
+	printer.ir = &ir;
 	printer.settings = &settings;
 
 	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
@@ -154,36 +154,15 @@ void dumpIrInstr(ref InstrPrintInfo p)
 	switch(p.instrHeader.op)
 	{
 		case IrOpcode.block_exit_jump:
-			p.sink.putf("    jmp %s", p.block.successors[0, p.ir]);
+			p.sink.putf("    jmp %s", p.block.successors[0, *p.ir]);
 			break;
 
 		case IrOpcode.block_exit_unary_branch:
-			p.sink.putf("    if %s %s then %s else %s",
-				p.instrHeader.cond,
-				p.instrHeader.args[0],
-				p.block.successors[0, p.ir],
-				p.block.successors[1, p.ir]);
+			dumpUnBranch(p);
 			break;
 
 		case IrOpcode.block_exit_binary_branch:
-			p.sink.putf("    if %s %s %s then ",
-				p.instrHeader.args[0],
-				binaryCondStrings[p.instrHeader.cond],
-				p.instrHeader.args[1]);
-			switch (p.block.successors.length) {
-				case 0:
-					p.sink.put("<null> else <null>");
-					break;
-				case 1:
-					p.sink.putf("%s else <null>",
-						p.block.successors[0, p.ir]);
-					break;
-				default:
-					p.sink.putf("%s else %s",
-						p.block.successors[0, p.ir],
-						p.block.successors[1, p.ir]);
-					break;
-			}
+			dumpBinBranch(p);
 			break;
 
 		case IrOpcode.parameter:
@@ -208,6 +187,41 @@ void dumpIrInstr(ref InstrPrintInfo p)
 				if (i > 0) p.sink.put(",");
 				p.sink.putf(" %s", arg);
 			}
+			break;
+	}
+}
+
+void dumpUnBranch(ref InstrPrintInfo p)
+{
+	p.sink.putf("    if %s%s then ",
+				unaryCondStrings[p.instrHeader.cond],
+				p.instrHeader.args[0]);
+	dumpBranchTargets(p);
+}
+
+void dumpBinBranch(ref InstrPrintInfo p)
+{
+	p.sink.putf("    if %s %s %s then ",
+		p.instrHeader.args[0],
+		binaryCondStrings[p.instrHeader.cond],
+		p.instrHeader.args[1]);
+	dumpBranchTargets(p);
+}
+
+void dumpBranchTargets(ref InstrPrintInfo p)
+{
+	switch (p.block.successors.length) {
+		case 0:
+			p.sink.put("<null> else <null>");
+			break;
+		case 1:
+			p.sink.putf("%s else <null>",
+				p.block.successors[0, *p.ir]);
+			break;
+		default:
+			p.sink.putf("%s else %s",
+				p.block.successors[0, *p.ir],
+				p.block.successors[1, *p.ir]);
 			break;
 	}
 }

@@ -53,6 +53,8 @@ struct IrFunction
 	/// Total number of virtual registers
 	uint numVirtualRegisters;
 
+	VregIterator virtualRegsiters() { return VregIterator(&this); }
+
 	///
 	IrValueType returnType;
 	///
@@ -84,6 +86,21 @@ struct IrFunction
 	}
 }
 
+void removeInstruction(ref IrFunction ir, IrIndex blockIndex, IrIndex instrIndex)
+{
+	IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+	IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instrIndex);
+
+	if (instrIndex == block.firstInstr)
+		block.firstInstr = instrHeader.nextInstr;
+	if (instrIndex == block.lastInstr)
+		block.lastInstr = instrHeader.prevInstr;
+	if (instrHeader.prevInstr.isDefined)
+		ir.get!IrInstrHeader(instrHeader.prevInstr).nextInstr = instrHeader.nextInstr;
+	if (instrHeader.nextInstr.isDefined)
+		ir.get!IrInstrHeader(instrHeader.nextInstr).prevInstr = instrHeader.prevInstr;
+}
+
 struct BlockIterator
 {
 	IrFunction* ir;
@@ -95,6 +112,22 @@ struct BlockIterator
 			if (int res = dg(next, *block))
 				return res;
 			next = block.nextBlock;
+		}
+		return 0;
+	}
+}
+
+struct VregIterator
+{
+	IrFunction* ir;
+	int opApply(scope int delegate(IrIndex, ref IrVirtualRegister) dg) {
+		IrIndex next = ir.firstVirtualReg;
+		while (next.isDefined)
+		{
+			IrVirtualRegister* vreg = &ir.getVirtReg(next);
+			if (int res = dg(next, *vreg))
+				return res;
+			next = vreg.nextVirtReg;
 		}
 		return 0;
 	}

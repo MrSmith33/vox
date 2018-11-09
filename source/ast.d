@@ -345,6 +345,7 @@ struct ModuleDeclNode {
 	FunctionDeclNode*[] functions;
 	IrModule irModule;
 	IrModule lirModule;
+	ubyte[] code;
 
 	void addFunction(FunctionDeclNode* func) {
 		functions ~= func;
@@ -378,6 +379,7 @@ struct FunctionDeclNode {
 	IrFunction* irData;
 	IrFunction* lirData;
 	FunctionLiveIntervals* liveIntervals;
+	ubyte[] code;
 	/// Position in buffer or in memory
 	void* funcPtr;
 	CallConv* callingConvention;

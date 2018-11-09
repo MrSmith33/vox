@@ -380,6 +380,44 @@ Imm32 jumpOffset(PC from, PC to) {
 	return Imm32(cast(int)(to - from));
 }
 
+enum AsmArgKind : ubyte { REG, IMM, MEM }
+enum AsmArgKindProduct : ubyte {
+//	REG      IMM      MEM         left
+	REG_REG, IMM_REG, MEM_REG, // REG  right
+	REG_IMM, IMM_IMM, MEM_IMM, // IMM
+	REG_MEM, IMM_MEM, MEM_MEM, // MEM
+}
+AsmArgKindProduct asmArgKindProduct(AsmArgKind left, AsmArgKind right) {
+	return cast(AsmArgKindProduct)(left + 3 * right);
+}
+union AsmArg
+{
+	Imm8 imm8;
+	Imm16 imm16;
+	Imm32 imm32;
+	Imm64 imm64;
+	Register reg;
+	MemAddress memAddress;
+}
+
+enum AMD64OpRegular : ubyte {
+	add,
+	or,
+	and,
+	sub,
+	xor,
+	cmp
+}
+
+struct AsmOpParam
+{
+	AsmArgKind dstKind;
+	AsmArgKind srcKind;
+	AMD64OpRegular op;
+	ArgType argType;
+	ArgType immType;
+}
+
 // Sink defines put(T) for ubyte, ubyte[], Imm8, Imm16, Imm32, Imm64
 struct CodeGen_x86_64
 {
@@ -535,6 +573,92 @@ struct CodeGen_x86_64
 	void ret(Imm16 bytesToPop) { encoder.putInstrNullaryImm(OP1(0xC2), bytesToPop); }
 
 	void int3() { encoder.putInstrNullary(OP1(0xCC)); }
+
+	void encodeRegular(AsmArg dst, AsmArg src, AsmOpParam param)
+	{
+		static immutable ubyte[] op_tbl_bin = [
+			0x00, // add,
+			0x08, // or,
+			0x20, // and,
+			0x28, // sub,
+			0x30, // xor,
+			0x38, // cmp,
+		];
+
+		static immutable ubyte[] op_tbl_un = [
+			0, // add,
+			1, // or,
+			4, // and,
+			5, // sub,
+			6, // xor,
+			7, // cmp
+		];
+
+		AsmArgKindProduct prod = asmArgKindProduct(param.dstKind, param.srcKind);
+		final switch(prod) with(AsmArgKindProduct)
+		{
+			case REG_REG:
+				final switch(param.argType) {
+					case ArgType.BYTE:  encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(cast(ubyte)(op_tbl_bin[param.op]+0)), dst.reg, src.reg); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), dst.reg, src.reg); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), dst.reg, src.reg); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), dst.reg, src.reg); break;
+				} break;
+
+			case MEM_REG:
+				final switch(param.argType) {
+					case ArgType.BYTE:  encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(cast(ubyte)(op_tbl_bin[param.op]+0)), src.reg, dst.memAddress); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), src.reg, dst.memAddress); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), src.reg, dst.memAddress); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+1)), src.reg, dst.memAddress); break;
+				} break;
+
+			case REG_MEM:
+				final switch(param.argType) {
+					case ArgType.BYTE:  encoder.putInstrBinaryRegMem!(ArgType.BYTE) (OP1(cast(ubyte)(op_tbl_bin[param.op]+2)), dst.reg, src.memAddress); break;
+					case ArgType.WORD:  encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(cast(ubyte)(op_tbl_bin[param.op]+3)), dst.reg, src.memAddress); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+3)), dst.reg, src.memAddress); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(cast(ubyte)(op_tbl_bin[param.op]+3)), dst.reg, src.memAddress); break;
+				} break;
+
+			case REG_IMM:
+				assert(param.argType == param.immType || param.immType == ArgType.BYTE);
+				final switch(param.immType)
+				{
+					case ArgType.BYTE:
+						final switch(param.argType) {
+							case ArgType.BYTE:  encoder.putInstrBinaryRegImm2!(ArgType.BYTE)  (OP1(0x80), op_tbl_un[param.op], dst.reg, src.imm8); break;
+							case ArgType.WORD:  encoder.putInstrBinaryRegImm2!(ArgType.WORD)  (OP1(0x83), op_tbl_un[param.op], dst.reg, src.imm8); break;
+							case ArgType.DWORD: encoder.putInstrBinaryRegImm2!(ArgType.DWORD) (OP1(0x83), op_tbl_un[param.op], dst.reg, src.imm8); break;
+							case ArgType.QWORD: encoder.putInstrBinaryRegImm2!(ArgType.QWORD) (OP1(0x83), op_tbl_un[param.op], dst.reg, src.imm8); break;
+						} break;
+
+					case ArgType.WORD:  encoder.putInstrBinaryRegImm2!(ArgType.WORD)  (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm16); break;
+					case ArgType.DWORD: encoder.putInstrBinaryRegImm2!(ArgType.DWORD) (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm32); break;
+					case ArgType.QWORD: encoder.putInstrBinaryRegImm2!(ArgType.QWORD) (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm32); break;
+				} break;
+
+			case MEM_IMM:
+				assert(param.argType == param.immType || param.immType == ArgType.BYTE);
+				final switch(param.immType)
+				{
+					case ArgType.BYTE:
+						final switch(param.argType) {
+							case ArgType.BYTE:  encoder.putInstrBinaryMemImm!(ArgType.BYTE)  (OP1(0x80), op_tbl_un[param.op], dst.memAddress, src.imm8); break;
+							case ArgType.WORD:  encoder.putInstrBinaryMemImm!(ArgType.WORD)  (OP1(0x83), op_tbl_un[param.op], dst.memAddress, src.imm8); break;
+							case ArgType.DWORD: encoder.putInstrBinaryMemImm!(ArgType.DWORD) (OP1(0x83), op_tbl_un[param.op], dst.memAddress, src.imm8); break;
+							case ArgType.QWORD: encoder.putInstrBinaryMemImm!(ArgType.QWORD) (OP1(0x83), op_tbl_un[param.op], dst.memAddress, src.imm8); break;
+						} break;
+
+					case ArgType.WORD:  encoder.putInstrBinaryMemImm!(ArgType.WORD)  (OP1(0x81), op_tbl_un[param.op], dst.memAddress, src.imm16); break;
+					case ArgType.DWORD: encoder.putInstrBinaryMemImm!(ArgType.DWORD) (OP1(0x81), op_tbl_un[param.op], dst.memAddress, src.imm32); break;
+					case ArgType.QWORD: encoder.putInstrBinaryMemImm!(ArgType.QWORD) (OP1(0x81), op_tbl_un[param.op], dst.memAddress, src.imm32); break;
+				} break;
+
+			case IMM_REG, IMM_IMM, IMM_MEM, MEM_MEM:
+				assert(false);
+		}
+	}
 }
 
 mixin template instrMOV() {

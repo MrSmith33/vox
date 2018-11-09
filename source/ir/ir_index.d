@@ -46,6 +46,7 @@ struct IrIndex
 			case constant: sink.formattedWrite("c.%s", storageUintIndex); break;
 			case phi: sink.formattedWrite("phi.%s", storageUintIndex); break;
 			case memoryAddress: sink.formattedWrite("m.%s", storageUintIndex); break;
+			case stackSlot: sink.formattedWrite("s.%s", storageUintIndex); break;
 			case virtualRegister: sink.formattedWrite("v.%s", storageUintIndex); break;
 			case physicalRegister: sink.formattedWrite("p.%s", storageUintIndex); break;
 		}

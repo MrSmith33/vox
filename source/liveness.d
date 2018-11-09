@@ -52,6 +52,240 @@ for each block b in reverse order do
 //version = LivePrint;
 void pass_live_intervals(ref CompilationContext context)
 {
+	LiveBitmap liveBitmap;
+	foreach (FunctionDeclNode* fun; context.mod.functions)
+	{
+		fun.liveIntervals = new FunctionLiveIntervals(fun.lirData);
+		pass_live_intervals_func(context, *fun.liveIntervals, *fun.lirData, liveBitmap);
+	}
+}
+
+void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIntervals liveIntervals, ref IrFunction ir, ref LiveBitmap liveBitmap)
+{
+	context.assertf(ir.callingConvention !is null, "Calling convention is null");
+
+	size_t numVregs = ir.numVirtualRegisters;
+	size_t numBucketsPerBlock = divCeil(numVregs, size_t.sizeof * 8);
+	liveBitmap.allocSets(numBucketsPerBlock, ir.numBasicBlocks);
+
+	liveIntervals.initIntervals(&context);
+	liveIntervals.linearIndicies.create(&context, &ir);
+
+	// enumerate all basic blocks, instructions
+	// phi functions use index of the block
+	uint enumerationIndex = 0;
+	enum ENUM_STEP = 2;
+	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
+	{
+		version(LivePrint) writefln("[LIVE] %s %s", enumerationIndex, blockIndex);
+		// Allocate index for block start
+		liveIntervals.linearIndicies[blockIndex] = enumerationIndex;
+		enumerationIndex += ENUM_STEP;
+		// enumerate instructions
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
+		{
+			version(LivePrint) writefln("[LIVE]   %s %s", enumerationIndex, instrIndex);
+			liveIntervals.linearIndicies[instrIndex] = enumerationIndex;
+			enumerationIndex += ENUM_STEP;
+		}
+	}
+
+	void liveAdd(IrIndex someOperand)
+	{
+		context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
+		version(LivePrint) writefln("[LIVE] liveAdd %s #%s", someOperand, ir.getVirtReg(someOperand).seqIndex);
+		liveBitmap.live[ir.getVirtReg(someOperand).seqIndex] = true;
+	}
+
+	void liveRemove(IrIndex someOperand)
+	{
+		context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
+		version(LivePrint) writefln("[LIVE] liveRemove %s #%s", someOperand, ir.getVirtReg(someOperand).seqIndex);
+		liveBitmap.live[ir.getVirtReg(someOperand).seqIndex] = false;
+	}
+
+	size_t[] blockLiveIn(IrIndex blockIndex)
+	{
+		size_t from = ir.getBlock(blockIndex).seqIndex * numBucketsPerBlock;
+		size_t to = from + numBucketsPerBlock;
+		return liveBitmap.liveInBuckets[from..to];
+	}
+
+	// algorithm start
+	// for each block b in reverse order do
+	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocksReverse)
+	{
+		uint phiInstrLinearPositions = liveIntervals.linearIndicies[blockIndex];
+
+		// live = union of successor.liveIn for each successor of block
+		liveBitmap.liveData[] = 0;
+		foreach (IrIndex succIndex; block.successors.range(ir))
+		{
+			foreach (size_t i, size_t bucket; blockLiveIn(succIndex))
+				liveBitmap.liveBuckets[i] |= bucket;
+		}
+
+		// for each phi function phi of successors of block do
+		//     live.add(phi.inputOf(block))
+		foreach (IrIndex succIndex; block.successors.range(ir))
+			foreach (IrIndex phiIndex, ref IrPhiInstr phi; ir.getBlock(succIndex).phis(ir))
+				foreach (i, ref IrPhiArg arg; phi.args(ir))
+					if (arg.basicBlock == blockIndex)
+						if (arg.value.isVirtReg)
+							liveAdd(arg.value);
+
+		//writef("in @%s live:", liveIntervals.linearIndicies[blockIndex]);
+		//foreach (size_t index; live.bitsSet)
+		//	writef(" %s", index);
+		//writeln;
+
+		// for each opd in live do
+		foreach (size_t index; liveBitmap.live.bitsSet)
+		{
+			// intervals[opd].addRange(block.from, block.to)
+			IntervalIndex interval = liveIntervals.intervalIndex(VregIntervalIndex(cast(uint)index));
+			liveIntervals.addRange(interval, phiInstrLinearPositions,
+				liveIntervals.linearIndicies[block.lastInstr]);
+			version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)", index,
+				phiInstrLinearPositions,
+				liveIntervals.linearIndicies[block.lastInstr]);
+		}
+
+		// for each operation op of b in reverse order do
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
+		{
+			uint linearInstrIndex = liveIntervals.linearIndicies[instrIndex];
+
+			// assign interval hints
+			// if non-mov instruction assigns to phys register,
+			// movs must follow instruction immidiately matching the order of results
+			// if non-mov instruction accepts 1 or more phys registers, then
+			// it must be preceded by movs from vregs to pregs in matching order
+			// Example:
+			// eax = v.20 // args[0]
+			// ecx = v.45 // args[2]
+			// edx, ecx = some_instr(eax, v.100, ecx) // edx is results[0]
+			// v.200 = edx // results[0] (aka result)
+			// v.300 = ecx // results[1]
+			bool isMov = context.machineInfo.instrInfo[instrHeader.op].flags & LirInstrFlags.isMov;
+			if (isMov)
+			{
+				IrIndex from = instrHeader.args[0];
+				IrIndex to = instrHeader.result;
+				if (from.isPhysReg && to.isVirtReg)
+				{
+					auto vii = VregIntervalIndex(ir.getVirtReg(to).seqIndex);
+					liveIntervals.setVirtRegHint(vii, from);
+				}
+				else if (from.isVirtReg && to.isPhysReg)
+				{
+					auto vii = VregIntervalIndex(ir.getVirtReg(from).seqIndex);
+					liveIntervals.setVirtRegHint(vii, to);
+				}
+			}
+			else
+			{
+				if (instrHeader.hasResult && instrHeader.result.isPhysReg)
+				{
+					// add fixed interval to the next instr
+					IntervalIndex interval = liveIntervals.intervalIndex(PregIntervalIndex(instrHeader.result));
+					liveIntervals.addRange(interval, linearInstrIndex, linearInstrIndex+2);
+				}
+			}
+
+			// for each output operand opd of op do
+			if (instrHeader.hasResult)
+			{
+				if (instrHeader.result.isVirtReg)
+				{
+					// intervals[opd].setFrom(op.id)
+					auto vii = VregIntervalIndex(ir.getVirtReg(instrHeader.result).seqIndex);
+					liveIntervals.setFrom(vii, instrHeader.result, linearInstrIndex);
+					version(LivePrint)
+						writefln("[LIVE] setFrom vreg.#%s %s",
+							ir.getVirtReg(instrHeader.result).seqIndex, linearInstrIndex);
+					// live.remove(opd)
+					liveRemove(instrHeader.result);
+				}
+				else if (instrHeader.result.isPhysReg && !isMov)
+				{
+					// non-mov, extend fixed interval to the next instr (which must be mov from that phys reg)
+					IntervalIndex interval = liveIntervals.intervalIndex(PregIntervalIndex(instrHeader.result));
+					liveIntervals.addRange(interval, linearInstrIndex, linearInstrIndex+2);
+				}
+			}
+
+			int numPhysRegArgs = 0;
+			// for each input operand opd of op do
+			foreach(IrIndex arg; instrHeader.args)
+			{
+				if (arg.isVirtReg)
+				{
+					// intervals[opd].addRange(b.from, op.id)
+					auto vii = VregIntervalIndex(ir.getVirtReg(arg).seqIndex);
+					IntervalIndex interval = liveIntervals.intervalIndex(vii);
+					liveIntervals.addRange(interval, phiInstrLinearPositions, linearInstrIndex);
+					version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)",
+						ir.getVirtReg(arg).seqIndex, phiInstrLinearPositions, linearInstrIndex);
+
+					// live.add(opd)
+					liveAdd(arg);
+				}
+				else if (arg.isPhysReg)
+				{
+					++numPhysRegArgs;
+				}
+			}
+
+			if (!isMov)
+			{
+				foreach(IrIndex arg; instrHeader.args)
+				{
+					if (arg.isPhysReg)
+					{
+						// non-mov, extend fixed interval to the preceding mov instr
+						IntervalIndex interval = liveIntervals.intervalIndex(PregIntervalIndex(arg));
+						liveIntervals.addRange(interval, linearInstrIndex - numPhysRegArgs*2, linearInstrIndex);
+						--numPhysRegArgs;
+					}
+				}
+			}
+
+			// TODO: add fixed intervals fo function calls
+			//liveIntervals.addRange(intId, linearInstrIndex, linearInstrIndex);
+		}
+
+		// for each phi function phi of b do
+		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir))
+		{
+			// live.remove(phi.output)
+			if (phi.result.isVirtReg) {
+				liveRemove(phi.result);
+				auto vii = VregIntervalIndex(ir.getVirtReg(phi.result).seqIndex);
+				liveIntervals.setFrom(vii, phi.result, phiInstrLinearPositions);
+			}
+		}
+
+		// TODO
+		// if b is loop header then
+		//     loopEnd = last block of the loop starting at b
+		//     for each opd in live do
+		//         intervals[opd].addRange(b.from, loopEnd.to)
+
+		// b.liveIn = live
+		blockLiveIn(blockIndex)[] = liveBitmap.liveBuckets;
+	}
+
+	version(LivePrint)
+	{
+		TextSink sink;
+		liveIntervals.dump(sink);
+		writeln(sink.text);
+	}
+}
+
+struct LiveBitmap
+{
 	import std.bitmanip : BitArray;
 	// We store a bit array per basic block. Each bit shows liveness of operand per block
 	// Padding aligns number of bits to multiple of size_t bits.
@@ -83,240 +317,13 @@ void pass_live_intervals(ref CompilationContext context)
 		liveInBuckets = liveInData[0..numBucketsTotal];
 		liveIn = BitArray(liveInData, numBucketsTotal * size_t.sizeof * 8);
 	}
-
-	foreach (FunctionDeclNode* fun; context.mod.functions)
-	{
-		IrFunction* ir = fun.lirData;
-		context.assertf(ir.callingConvention !is null, "Calling convention is null");
-
-		ir.assignSequentialBlockIndices();
-
-		size_t numVregs = ir.numVirtualRegisters;
-		size_t numBucketsPerBlock = divCeil(numVregs, size_t.sizeof * 8);
-		allocSets(numBucketsPerBlock, ir.numBasicBlocks);
-
-		fun.liveIntervals = new FunctionLiveIntervals();
-		fun.liveIntervals.initIntervals(&context, ir);
-		fun.liveIntervals.linearIndicies.create(&context, ir);
-
-		// enumerate all basic blocks, instructions
-		// phi functions use index of the block
-		uint enumerationIndex = 0;
-		enum ENUM_STEP = 2;
-		foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
-		{
-			version(LivePrint) writefln("[LIVE] %s %s", enumerationIndex, blockIndex);
-			// Allocate index for block start
-			fun.liveIntervals.linearIndicies[blockIndex] = enumerationIndex;
-			enumerationIndex += ENUM_STEP;
-			// enumerate instructions
-			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
-			{
-				version(LivePrint) writefln("[LIVE]   %s %s", enumerationIndex, instrIndex);
-				fun.liveIntervals.linearIndicies[instrIndex] = enumerationIndex;
-				enumerationIndex += ENUM_STEP;
-			}
-		}
-
-		void liveAdd(IrIndex someOperand)
-		{
-			context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
-			version(LivePrint) writefln("[LIVE] liveAdd %s #%s", someOperand, ir.getVirtReg(someOperand).seqIndex);
-			live[ir.getVirtReg(someOperand).seqIndex] = true;
-		}
-
-		void liveRemove(IrIndex someOperand)
-		{
-			context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
-			version(LivePrint) writefln("[LIVE] liveRemove %s #%s", someOperand, ir.getVirtReg(someOperand).seqIndex);
-			live[ir.getVirtReg(someOperand).seqIndex] = false;
-		}
-
-		size_t[] blockLiveIn(IrIndex blockIndex)
-		{
-			size_t from = ir.getBlock(blockIndex).seqIndex * numBucketsPerBlock;
-			size_t to = from + numBucketsPerBlock;
-			return liveInBuckets[from..to];
-		}
-
-		// algorithm start
-		// for each block b in reverse order do
-		foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocksReverse)
-		{
-			uint phiInstrLinearPositions = fun.liveIntervals.linearIndicies[blockIndex];
-
-			// live = union of successor.liveIn for each successor of block
-			liveData[] = 0;
-			foreach (IrIndex succIndex; block.successors.range(ir))
-			{
-				foreach (size_t i, size_t bucket; blockLiveIn(succIndex))
-					liveBuckets[i] |= bucket;
-			}
-
-			// for each phi function phi of successors of block do
-			//     live.add(phi.inputOf(block))
-			foreach (IrIndex succIndex; block.successors.range(ir))
-				foreach (IrIndex phiIndex, ref IrPhiInstr phi; ir.getBlock(succIndex).phis(ir))
-					foreach (i, ref IrPhiArg arg; phi.args(ir))
-						if (arg.basicBlock == blockIndex)
-							if (arg.value.isVirtReg)
-								liveAdd(arg.value);
-
-			//writef("in @%s live:", fun.liveIntervals.linearIndicies[blockIndex]);
-			//foreach (size_t index; live.bitsSet)
-			//	writef(" %s", index);
-			//writeln;
-
-			// for each opd in live do
-			foreach (size_t index; live.bitsSet)
-			{
-				// intervals[opd].addRange(block.from, block.to)
-				IntervalIndex interval = fun.liveIntervals.intervalIndex(VregIntervalIndex(cast(uint)index));
-				fun.liveIntervals.addRange(interval, phiInstrLinearPositions,
-					fun.liveIntervals.linearIndicies[block.lastInstr]);
-				version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)", index,
-					phiInstrLinearPositions,
-					fun.liveIntervals.linearIndicies[block.lastInstr]);
-			}
-
-			// for each operation op of b in reverse order do
-			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
-			{
-				uint linearInstrIndex = fun.liveIntervals.linearIndicies[instrIndex];
-
-				// assign interval hints
-				// if non-mov instruction assigns to phys register,
-				// movs must follow instruction immidiately matching the order of results
-				// if non-mov instruction accepts 1 or more phys registers, then
-				// it must be preceded by movs from vregs to pregs in matching order
-				// Example:
-				// eax = v.20 // args[0]
-				// ecx = v.45 // args[2]
-				// edx, ecx = some_instr(eax, v.100, ecx) // edx is results[0]
-				// v.200 = edx // results[0] (aka result)
-				// v.300 = ecx // results[1]
-				bool isMov = context.machineInfo.instrInfo[instrHeader.op].isMov;
-				if (isMov)
-				{
-					IrIndex from = instrHeader.args[0];
-					IrIndex to = instrHeader.result;
-					if (from.isPhysReg && to.isVirtReg)
-					{
-						auto vii = VregIntervalIndex(ir.getVirtReg(to).seqIndex);
-						fun.liveIntervals.setVirtRegHint(vii, from);
-					}
-					else if (from.isVirtReg && to.isPhysReg)
-					{
-						auto vii = VregIntervalIndex(ir.getVirtReg(from).seqIndex);
-						fun.liveIntervals.setVirtRegHint(vii, to);
-					}
-				}
-				else
-				{
-					if (instrHeader.hasResult && instrHeader.result.isPhysReg)
-					{
-						// add fixed interval to the next instr
-						IntervalIndex interval = fun.liveIntervals.intervalIndex(PregIntervalIndex(instrHeader.result));
-						fun.liveIntervals.addRange(interval, linearInstrIndex, linearInstrIndex+2);
-					}
-				}
-
-				// for each output operand opd of op do
-				if (instrHeader.hasResult)
-				{
-					if (instrHeader.result.isVirtReg)
-					{
-						// intervals[opd].setFrom(op.id)
-						auto vii = VregIntervalIndex(ir.getVirtReg(instrHeader.result).seqIndex);
-						fun.liveIntervals.setFrom(vii, instrHeader.result, linearInstrIndex);
-						version(LivePrint)
-							writefln("[LIVE] setFrom vreg.#%s %s",
-								ir.getVirtReg(instrHeader.result).seqIndex, linearInstrIndex);
-						// live.remove(opd)
-						liveRemove(instrHeader.result);
-					}
-					else if (instrHeader.result.isPhysReg && !isMov)
-					{
-						// non-mov, extend fixed interval to the next instr (which must be mov from that phys reg)
-						IntervalIndex interval = fun.liveIntervals.intervalIndex(PregIntervalIndex(instrHeader.result));
-						fun.liveIntervals.addRange(interval, linearInstrIndex, linearInstrIndex+2);
-					}
-				}
-
-				int numPhysRegArgs = 0;
-				// for each input operand opd of op do
-				foreach(IrIndex arg; instrHeader.args)
-				{
-					if (arg.isVirtReg)
-					{
-						// intervals[opd].addRange(b.from, op.id)
-						auto vii = VregIntervalIndex(ir.getVirtReg(arg).seqIndex);
-						IntervalIndex interval = fun.liveIntervals.intervalIndex(vii);
-						fun.liveIntervals.addRange(interval, phiInstrLinearPositions, linearInstrIndex);
-						version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)",
-							ir.getVirtReg(arg).seqIndex, phiInstrLinearPositions, linearInstrIndex);
-
-						// live.add(opd)
-						liveAdd(arg);
-					}
-					else if (arg.isPhysReg)
-					{
-						++numPhysRegArgs;
-					}
-				}
-
-				if (!isMov)
-				{
-					foreach(IrIndex arg; instrHeader.args)
-					{
-						if (arg.isPhysReg)
-						{
-							// non-mov, extend fixed interval to the preceding mov instr
-							IntervalIndex interval = fun.liveIntervals.intervalIndex(PregIntervalIndex(arg));
-							fun.liveIntervals.addRange(interval, linearInstrIndex - numPhysRegArgs*2, linearInstrIndex);
-							--numPhysRegArgs;
-						}
-					}
-				}
-
-				// TODO: add fixed intervals fo function calls
-				//fun.liveIntervals.addRange(intId, linearInstrIndex, linearInstrIndex);
-			}
-
-			// for each phi function phi of b do
-			foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir))
-			{
-				// live.remove(phi.output)
-				if (phi.result.isVirtReg) {
-					liveRemove(phi.result);
-					auto vii = VregIntervalIndex(ir.getVirtReg(phi.result).seqIndex);
-					fun.liveIntervals.setFrom(vii, phi.result, phiInstrLinearPositions);
-				}
-			}
-
-			// TODO
-			// if b is loop header then
-			//     loopEnd = last block of the loop starting at b
-			//     for each opd in live do
-			//         intervals[opd].addRange(b.from, loopEnd.to)
-
-			// b.liveIn = live
-			blockLiveIn(blockIndex)[] = liveBuckets;
-		}
-
-		version(LivePrint)
-		{
-			TextSink sink;
-			fun.liveIntervals.dump(sink);
-			writeln(sink.text);
-		}
-	}
 }
 
 
 ///
 struct FunctionLiveIntervals
 {
+	IrFunction* ir;
 	// invariant: all ranges of one interval are sorted by `from` and do not intersect
 	Buffer!LiveRange ranges;
 	LiveInterval[] intervals;
@@ -328,7 +335,7 @@ struct FunctionLiveIntervals
 	LiveInterval[] virtualIntervals() { return intervals[numFixedIntervals..$]; }
 	LiveInterval[] physicalIntervals() { return intervals[0..numFixedIntervals]; }
 
-	void initIntervals(CompilationContext* context, IrFunction* ir) {
+	void initIntervals(CompilationContext* context) {
 		numFixedIntervals = context.machineInfo.registers.length;
 		intervals.length = numFixedIntervals + ir.numVirtualRegisters;
 		foreach (i, ref it; physicalIntervals)
@@ -337,6 +344,20 @@ struct FunctionLiveIntervals
 			it.isFixed = true;
 		}
 		ranges.reserve(ir.numVirtualRegisters);
+	}
+
+	IrIndex getRegFor(IrIndex index)
+	{
+		if (index.isVirtReg)
+		{
+			auto vii = VregIntervalIndex(ir.getVirtReg(index).seqIndex);
+			return intervals[intervalIndex(vii)].reg;
+		}
+		else if (index.isPhysReg)
+		{
+			return index;
+		}
+		assert(false);
 	}
 
 	/// Set hint for register allocator

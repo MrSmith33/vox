@@ -12,16 +12,13 @@ struct IrModule
 {
 	IrFunction*[] functions;
 
-	ubyte[] codeBuffer;
-	ubyte[] code;
-
 	void addFunction(IrFunction* fun)
 	{
 		functions ~= fun;
 	}
 
-	void dump(ref TextSink sink, CompilationContext* context, ref FuncDumpSettings settings)
+	void dump(ref TextSink sink, ref CompilationContext context, ref FuncDumpSettings settings)
 	{
-		foreach (func; functions) dumpFunction(func, sink, context, settings);
+		foreach (func; functions) dumpFunction(*func, sink, context, settings);
 	}
 }

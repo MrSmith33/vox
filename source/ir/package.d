@@ -150,6 +150,7 @@ enum IrValueKind : ubyte
 	constant,
 	phi,
 	memoryAddress,
+	stackSlot,
 	virtualRegister,
 	physicalRegister,
 }
@@ -260,12 +261,12 @@ struct SmallVector
 		return items[0].kind == IrValueKind.listItem;
 	}
 
-	SmallVectorRange range(IrFunction* ir)
+	SmallVectorRange range(ref IrFunction ir)
 	{
-		return SmallVectorRange(&this, ir);
+		return SmallVectorRange(&this, &ir);
 	}
 
-	void replaceAll(IrFunction* ir, IrIndex what, IrIndex byWhat)
+	void replaceAll(ref IrFunction ir, IrIndex what, IrIndex byWhat)
 	{
 		foreach (ref IrIndex item; range(ir))
 		{
@@ -273,13 +274,19 @@ struct SmallVector
 		}
 	}
 
-	IrIndex opIndex(size_t index, IrFunction* ir)
+	ref IrIndex opIndex(size_t index, ref IrFunction ir)
 	{
 		size_t len = length;
 		assert(index < len);
 		if (len < 3) return items[index];
 
-		foreach(i, val; range(ir))
+		return opIndexSecond(index, ir);
+	}
+
+	// second part of opIndex. Workaround bug https://issues.dlang.org/show_bug.cgi?id=19384
+	private ref IrIndex opIndexSecond(size_t index, ref IrFunction ir)
+	{
+		foreach(i, ref val; range(ir))
 			if (i == index)
 				return val;
 		assert(false);

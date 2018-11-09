@@ -42,23 +42,25 @@ void test()
 			sink.putln("\n// IR");
 			FuncDumpSettings dumpSettings;
 			dumpSettings.dumper = &dumpIrInstr;
-			mod.irModule.dump(sink, &driver.context, dumpSettings);
+			mod.irModule.dump(sink, driver.context, dumpSettings);
 
 			sink.putln("\n// LIR");
 			dumpSettings.dumper = &dumpAmd64Instr;
-			mod.lirModule.dump(sink, &driver.context, dumpSettings);
+			mod.lirModule.dump(sink, driver.context, dumpSettings);
 
 			writeln(sink.text);
 
 			writeln("\n// Amd64 code");
-			printHex(mod.irModule.code, 16);
+			printHex(mod.code, 16);
 
+			writeln;
 			times.print;
 		}
 
 		FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
 		if (funDecl != null && funDecl.funcPtr != null)
 		{
+			version(print) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
 			curTest.tester(funDecl.funcPtr);
 		}
 	}
@@ -309,7 +311,6 @@ void tester8(Func8 sign) {
 	assert(res1 == 1);
 	assert(res2 == 0);
 	assert(res3 == -1);
-
 	//writefln("sign(10) -> %s", res1);
 	//writefln("sign(0) -> %s", res2);
 	//writefln("sign(-10) -> %s", res3);

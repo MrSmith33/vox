@@ -10,6 +10,7 @@ import std.stdio;
 import std.format;
 
 import all;
+import amd64asm;
 
 //version = standalone;
 version (standalone) void main()
@@ -297,41 +298,51 @@ __gshared CallConv win64_call_conv = CallConv
 private alias _lii = LirInstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	@_lii(false) add,
-	@_lii(false) sub,
-	@_lii(false) imul,
-	@_lii(false) or,
-	@_lii(false) and,
-	@_lii(false) xor,
-	@_lii(false) mul,
-	@_lii(false) div,
-	@_lii(false) lea,
+	@_lii() add,
+	@_lii() sub,
+	@_lii() imul,
+	@_lii() or,
+	@_lii() and,
+	@_lii() xor,
+	@_lii() mul,
+	@_lii() div,
+	@_lii() lea,
 
-	@_lii(true)  mov,
-	@_lii(false) movsx,
-	@_lii(false) movzx,
+	@_lii(LirInstrFlags.isMov) mov,
+	@_lii() movsx,
+	@_lii() movzx,
 
-	@_lii(false) not,
-	@_lii(false) neg,
+	@_lii() not,
+	@_lii() neg,
 
-	@_lii(false) cmp,
-	@_lii(false) test,
+	@_lii() cmp,
+	@_lii() test,
 
-	@_lii(false) jmp,
-	@_lii(false) jcc,
+	// machine specific branches
+	@_lii(LirInstrFlags.isJump) jmp,
+	@_lii() jcc,
+	// high-level branches
+	@_lii(LirInstrFlags.isBranch) bin_branch,
+	@_lii(LirInstrFlags.isBranch) un_branch,
 
-	@_lii(false) setcc,
+	@_lii() setcc,
 
-	@_lii(false) call,
-	@_lii(false) ret,
+	@_lii() call,
+	@_lii() ret,
 
-	@_lii(false) pop,
-	@_lii(false) push,
+	@_lii() pop,
+	@_lii() push,
+}
+
+enum LirInstrFlags {
+	isMov = 1 << 0,
+	isBranch = 1 << 1,
+	isJump = 1 << 2,
 }
 
 struct LirInstrInfo
 {
-	bool isMov;
+	uint flags;
 }
 
 LirInstrInfo[] gatherInfos()
@@ -348,7 +359,9 @@ alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, HasResult.yes);
 alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, HasResult.yes);
 alias LirAmd64Instr_cmp = IrGenericInstr!(Amd64Opcode.cmp, 2, HasResult.no);
 alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1, HasResult.no);
-alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 1, HasResult.no);
+alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0, HasResult.no);
+alias LirAmd64Instr_bin_branch = IrGenericInstr!(Amd64Opcode.bin_branch, 2, HasResult.no);
+alias LirAmd64Instr_un_branch = IrGenericInstr!(Amd64Opcode.un_branch, 1, HasResult.no);
 alias LirAmd64Instr_test = IrGenericInstr!(Amd64Opcode.test, 1, HasResult.no);
 alias LirAmd64Instr_return = IrGenericInstr!(Amd64Opcode.ret, 0, HasResult.no);
 alias LirAmd64Instr_mov = IrGenericInstr!(Amd64Opcode.mov, 1, HasResult.yes);
@@ -366,40 +379,19 @@ struct LirAmd64Instr_call
 	IrInstrHeader header;
 }
 
-/// The terms "less" and "greater" are used for comparisons of signed integers.
-/// The terms "above" and "below" are used for unsigned integers.
-enum Amd64Condition : ubyte {
-	O   = 0x0, /// overflow (OF=1).
-	NO  = 0x1, /// not overflow (OF=0).
-	B   = 0x2, /// below (CF=1).
-	C   = 0x2, /// carry (CF=1).
-	NAE = 0x2, /// not above or equal (CF=1).
-	AE  = 0x3, /// above or equal (CF=0).
-	NB  = 0x3, /// not below (CF=0).
-	NC  = 0x3, /// not carry (CF=0).
-	E   = 0x4, /// equal (ZF=1).
-	Z   = 0x4, /// zero (ZF = 1).
-	NE  = 0x5, /// not equal (ZF=0).
-	NZ  = 0x5, /// not zero (ZF=0).
-	BE  = 0x6, /// below or equal (CF=1 or ZF=1).
-	NA  = 0x6, /// not above (CF=1 or ZF=1).
-	A   = 0x7, /// above (CF=0 and ZF=0).
-	NBE = 0x7, /// not below or equal (CF=0 andZF=0).
-	S   = 0x8, /// sign (SF=1).
-	NS  = 0x9, /// not sign (SF=0).
-	P   = 0xA, /// parity (PF=1).
-	PE  = 0xA, /// parity even (PF=1).
-	NP  = 0xB, /// not parity (PF=0).
-	PO  = 0xB, /// parity odd (PF=0).
-	L   = 0xC, /// less (SF≠ OF).
-	NGE = 0xC, /// not greater or equal (SF≠ OF).
-	GE  = 0xD, /// greater or equal (SF=OF).
-	NL  = 0xD, /// not less (SF=OF).
-	LE  = 0xE, /// less or equal (ZF=1 or SF≠ OF).
-	NG  = 0xE, /// not greater (ZF=1 or SF≠ OF).
-	G   = 0xF, /// greater (ZF=0 and SF=OF).
-	NLE = 0xF, /// not less or equal (ZF=0 andSF=OF).
-}
+Condition[] IrBinCondToAmd64Condition = [
+	Condition.E,  // eq
+	Condition.NE, // ne
+	Condition.G,  // g
+	Condition.GE, // ge
+	Condition.L,  // l
+	Condition.LE, // le
+];
+
+Condition[] IrUnCondToAmd64Condition = [
+	Condition.Z,  // zero
+	Condition.NZ, // not_zero
+];
 
 void dumpAmd64Instr(ref InstrPrintInfo p)
 {
@@ -413,6 +405,7 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 			case constant: p.sink.putf("%s", p.context.constants[i.storageUintIndex].i64); break;
 			case phi: p.sink.putf("phi.%s", i.storageUintIndex); break;
 			case memoryAddress: p.sink.putf("m.%s", i.storageUintIndex); break;
+			case stackSlot: p.sink.putf("s.%s", i.storageUintIndex); break;
 			case virtualRegister: p.sink.putf("v.%s", i.storageUintIndex); break;
 			// TODO, HACK: 32-bit version of register is hardcoded here
 			case physicalRegister: p.sink.put("e"); p.sink.put(mach_info_amd64.registers[i.storageUintIndex].name); break;
@@ -421,8 +414,14 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 
 	switch(p.instrHeader.op)
 	{
+		case Amd64Opcode.bin_branch:
+			dumpBinBranch(p);
+			break;
+		case Amd64Opcode.un_branch:
+			dumpUnBranch(p);
+			break;
 		case Amd64Opcode.jcc:
-			p.sink.putf("    j%s ", cast(Amd64Condition)p.instrHeader.cond);
+			p.sink.putf("    j%s ", cast(Condition)p.instrHeader.cond);
 			printIndex(p.instrHeader.args[0]);
 			break;
 		default:

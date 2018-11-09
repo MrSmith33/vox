@@ -18,7 +18,7 @@ import std.algorithm : min, max, sort, swap;
 
 import all;
 
-version = RAPrint;
+//version = RAPrint;
 
 /// Does linear scan register allocation.
 /// Uses live intervals produced by pass_live_intervals
@@ -139,9 +139,9 @@ struct LinearScan
 		physRegs.setup(fun);
 
 		scope(exit) {
-			TextSink sink;
-			live.dump(sink);
-			writeln(sink.text);
+			//TextSink sink;
+			//live.dump(sink);
+			//writeln(sink.text);
 
 			lir = null;
 			livePtr = null;
@@ -168,7 +168,7 @@ struct LinearScan
 			if (!it.first.isNull)
 				inactive.put(it.first);
 
-		writefln("intervals %s", live.intervals[live.numFixedIntervals..$]);
+		version(RAPrint) writefln("intervals %s", live.intervals[live.numFixedIntervals..$]);
 
 		// while unhandled != { } do
 		while (!unhandled.empty)
@@ -254,6 +254,7 @@ struct LinearScan
 			}
 		}
 
+		fixInstructionArgs();
 		resolve();
 
 		unhandledStorage = unhandled.release;
@@ -357,7 +358,7 @@ struct LinearScan
 	int nextUseAfter(LiveInterval* it, int after)
 	{
 		int closest = int.max;
-		foreach(IrIndex user; lir.getVirtReg(it.definition).users.range(lir))
+		foreach(IrIndex user; lir.getVirtReg(it.definition).users.range(*lir))
 		{
 			int pos = live.linearIndicies[user];
 			if (pos > after && pos < closest)
@@ -450,6 +451,44 @@ struct LinearScan
 
 		context.unreachable;
 		assert(false);
+	}
+
+	// Replaces all uses of virtual registers with physical registers or stack slots
+	void fixInstructionArgs()
+	{
+		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
+		{
+			IrIndex reg = live.getRegFor(vregIndex);
+			foreach (size_t i, IrIndex userIndex; vreg.users.range(*lir))
+			{
+				final switch (userIndex.kind) with(IrValueKind)
+				{
+					case none, listItem, virtualRegister, physicalRegister, constant, basicBlock, stackSlot: assert(false);
+					case instruction:
+						foreach (ref IrIndex arg; lir.get!IrInstrHeader(userIndex).args)
+							if (arg == vregIndex)
+							{
+								arg = reg;
+							}
+						break;
+					case phi:
+						foreach (size_t i, ref IrPhiArg phiArg; lir.get!IrPhiInstr(userIndex).args(*lir))
+							if (phiArg.value == vregIndex)
+							{
+								phiArg.value = reg;
+							}
+						break;
+					case memoryAddress: assert(false); // TODO
+				}
+			}
+
+			switch(vreg.definition.kind) with(IrValueKind)
+			{
+				case instruction: lir.get!IrInstrHeader(vreg.definition).result = reg; break;
+				case phi: lir.get!IrPhiInstr(vreg.definition).result = reg; break;
+				default: assert(false);
+			}
+		}
 	}
 
 	/*

@@ -16,14 +16,16 @@ CompilePass[] compilerPasses = [
 	CompilePass("Semantic types", &pass_semantic_type),
 	CompilePass("IR gen", &pass_ir_gen),
 	CompilePass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
-	//// IR liveness
+	CompilePass("Optimize", &pass_optimize_ir),
+
+	// IR liveness
 	CompilePass("Live intervals", &pass_live_intervals),
-	//// IR regalloc
+	// IR regalloc
 	CompilePass("Linear scan", &pass_linear_scan),
-	//// Stack layout
+	// Stack layout
 	//CompilePass("Stack layout", &pass_stack_layout),
-	//// LIR -> machine code
-	//CompilePass("Code gen", &pass_code_gen),
+	// LIR -> machine code
+	CompilePass("Code gen", &pass_emit_mc_amd64),
 ];
 
 struct Driver
@@ -44,8 +46,9 @@ struct Driver
 		// so that 32-bit offset can be used for calls
 		size_t thisAddr = cast(size_t)((&initialize).ptr); // take address of function in memory
 		size_t step = 0x10_000_000;
-		size_t aligned = alignValue(thisAddr, step) - step*20;
-		//codeBuffer = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
+		size_t aligned = alignValue(thisAddr, step) + step*5;
+		codeBuffer = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
+		//writefln("thisAddr h%x, codeBuffer h%x..h%x", thisAddr, codeBuffer.ptr, codeBuffer.ptr+codeBuffer.length);
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
 		size_t irMemSize = 1024UL*1024*1024*2;
