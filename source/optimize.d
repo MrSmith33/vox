@@ -39,7 +39,7 @@ void func_pass_invert_conditions(ref CompilationContext context, ref IrFunction 
 {
 	ir.assignSequentialBlockIndices();
 
-	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		if (!block.lastInstr.isDefined) continue;
 
@@ -73,7 +73,7 @@ void func_pass_invert_conditions(ref CompilationContext context, ref IrFunction 
 
 void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction ir)
 {
-	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocksReverse)
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
 		{
@@ -96,7 +96,7 @@ void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction i
 /*
 void lir_func_pass_simplify(ref CompilationContext context, ref IrFunction ir)
 {
-	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocksReverse)
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
 		{
@@ -126,7 +126,7 @@ void pass_optimize_lir_func(ref CompilationContext context, ref IrFunction ir)
 {
 	ir.assignSequentialBlockIndices();
 
-	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		if (!block.lastInstr.isDefined) continue;
 

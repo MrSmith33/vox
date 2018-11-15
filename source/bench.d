@@ -22,6 +22,7 @@ void runBench()
 
 	Driver driver;
 	driver.initialize(compilerPasses);
+	//driver.context.validateIr = true;
 	scope(exit) driver.releaseMemory;
 
 	enum iters = 100_000;

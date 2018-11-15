@@ -58,7 +58,7 @@ struct CodeEmitter
 	{
 		lir.assignSequentialBlockIndices();
 
-		foreach (IrIndex lirBlockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		foreach (IrIndex lirBlockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{
 			blockStarts[lirBlock.seqIndex] = gen.pc;
 			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(*lir))
@@ -125,7 +125,7 @@ struct CodeEmitter
 
 	void fixJumps()
 	{
-		foreach (IrIndex lirBlockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		foreach (IrIndex lirBlockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{
 			PC[2] fixups = jumpFixups[lirBlock.seqIndex];
 			if (fixups[0] !is null) fixJump(fixups[0], lirBlock.successors[0, *lir]);
@@ -133,14 +133,14 @@ struct CodeEmitter
 		}
 	}
 
-	void resolve(IrIndex lirBlockIndex, ref IrBasicBlockInstr lirBlock)
+	void resolve(IrIndex lirBlockIndex, ref IrBasicBlock lirBlock)
 	{
 		version(emit_mc_print) writefln("resolve %s", lirBlockIndex);
 		foreach(IrIndex succIndex; lirBlock.successors.range(*lir))
 		{
 			version(emit_mc_print) writefln("  succ %s", succIndex);
-			IrBasicBlockInstr* successor = &lir.getBlock(succIndex);
-			foreach(IrIndex phiIndex, ref IrPhiInstr phi; successor.phis(*lir))
+			IrBasicBlock* successor = &lir.getBlock(succIndex);
+			foreach(IrIndex phiIndex, ref IrPhi phi; successor.phis(*lir))
 			{
 				version(emit_mc_print) writefln("    phi %s", phiIndex);
 				foreach (size_t arg_i, ref IrPhiArg arg; phi.args(*lir))

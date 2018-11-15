@@ -64,7 +64,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 	printer.ir = &ir;
 	printer.settings = &settings;
 
-	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		printer.blockIndex = blockIndex;
 		printer.block = &block;
@@ -102,7 +102,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		sink.putln;
 
 		// phis
-		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir))
+		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
 			printInstrIndex(phiIndex);
 			sink.putf("    %s = %s(", phi.result, phiIndex);
@@ -143,7 +143,7 @@ struct InstrPrintInfo
 	TextSink* sink;
 	IrFunction* ir;
 	IrIndex blockIndex;
-	IrBasicBlockInstr* block;
+	IrBasicBlock* block;
 	IrIndex instrIndex;
 	IrInstrHeader* instrHeader;
 	FuncDumpSettings* settings;
@@ -166,7 +166,7 @@ void dumpIrInstr(ref InstrPrintInfo p)
 			break;
 
 		case IrOpcode.parameter:
-			uint paramIndex = p.ir.get!IrInstrParameter(p.instrIndex).index;
+			uint paramIndex = p.ir.get!IrInstr_parameter(p.instrIndex).index;
 			p.sink.putf("    %s = parameter%s", p.instrHeader.result, paramIndex);
 			break;
 

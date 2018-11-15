@@ -75,7 +75,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 	// phi functions use index of the block
 	uint enumerationIndex = 0;
 	enum ENUM_STEP = 2;
-	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		version(LivePrint) writefln("[LIVE] %s %s", enumerationIndex, blockIndex);
 		// Allocate index for block start
@@ -113,7 +113,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 
 	// algorithm start
 	// for each block b in reverse order do
-	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocksReverse)
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
 		uint phiInstrLinearPositions = liveIntervals.linearIndicies[blockIndex];
 
@@ -128,7 +128,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 		// for each phi function phi of successors of block do
 		//     live.add(phi.inputOf(block))
 		foreach (IrIndex succIndex; block.successors.range(ir))
-			foreach (IrIndex phiIndex, ref IrPhiInstr phi; ir.getBlock(succIndex).phis(ir))
+			foreach (IrIndex phiIndex, ref IrPhi phi; ir.getBlock(succIndex).phis(ir))
 				foreach (i, ref IrPhiArg arg; phi.args(ir))
 					if (arg.basicBlock == blockIndex)
 						if (arg.value.isVirtReg)
@@ -257,7 +257,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 		}
 
 		// for each phi function phi of b do
-		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir))
+		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
 			// live.remove(phi.output)
 			if (phi.result.isVirtReg) {

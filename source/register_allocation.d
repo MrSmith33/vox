@@ -472,7 +472,7 @@ struct LinearScan
 							}
 						break;
 					case phi:
-						foreach (size_t i, ref IrPhiArg phiArg; lir.get!IrPhiInstr(userIndex).args(*lir))
+						foreach (size_t i, ref IrPhiArg phiArg; lir.get!IrPhi(userIndex).args(*lir))
 							if (phiArg.value == vregIndex)
 							{
 								phiArg.value = reg;
@@ -485,7 +485,7 @@ struct LinearScan
 			switch(vreg.definition.kind) with(IrValueKind)
 			{
 				case instruction: lir.get!IrInstrHeader(vreg.definition).result = reg; break;
-				case phi: lir.get!IrPhiInstr(vreg.definition).result = reg; break;
+				case phi: lir.get!IrPhi(vreg.definition).result = reg; break;
 				default: assert(false);
 			}
 		}

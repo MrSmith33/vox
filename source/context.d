@@ -44,6 +44,8 @@ struct CompilationContext
 	IceBehavior iceBehavior = IceBehavior.breakpoint;
 	/// If true attempt to maximize debuggability
 	bool buildDebug = false;
+	/// If true, every pass that generates IR, performs validation
+	bool validateIr = false;
 
 	IrIndex addConstant(IrConstant con)
 	{

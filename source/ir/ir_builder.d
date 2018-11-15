@@ -3,6 +3,7 @@ Copyright: Copyright (c) 2017-2018 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
+/// IR Builder. IR creation API
 module ir.ir_builder;
 
 import std.string : format;
@@ -58,11 +59,11 @@ struct IrBuilder
 		{
 			returnVar = IrVar(Identifier(0), newIrVarId());
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
-			emitInstr!IrReturnValueInstr(ir.exitBasicBlock, retValue);
+			emitInstr!IrInstr_return_value(ir.exitBasicBlock, retValue);
 		}
 		else
 		{
-			emitInstr!IrReturnVoidInstr(ir.exitBasicBlock);
+			emitInstr!IrInstr_return_void(ir.exitBasicBlock);
 		}
 		ir.getBlock(ir.exitBasicBlock).isFinished = true;
 	}
@@ -84,8 +85,8 @@ struct IrBuilder
 		// Canonical function CFG has entry block, and single exit block.
 		ir.numBasicBlocks = 2;
 
-		ir.entryBasicBlock = append!IrBasicBlockInstr;
-		ir.exitBasicBlock = append!IrBasicBlockInstr;
+		ir.entryBasicBlock = append!IrBasicBlock;
+		ir.exitBasicBlock = append!IrBasicBlock;
 
 		ir.getBlock(ir.entryBasicBlock).nextBlock = ir.exitBasicBlock;
 		sealBlock(ir.entryBasicBlock);
@@ -140,7 +141,7 @@ struct IrBuilder
 	IrIndex addBasicBlock() {
 		assert(ir.lastBasicBlock.isDefined);
 		++ir.numBasicBlocks;
-		IrIndex newBlock = append!IrBasicBlockInstr;
+		IrIndex newBlock = append!IrBasicBlock;
 		ir.getBlock(newBlock).nextBlock = ir.getBlock(ir.lastBasicBlock).nextBlock;
 		ir.getBlock(newBlock).prevBlock = ir.lastBasicBlock;
 		ir.getBlock(ir.getBlock(ir.lastBasicBlock).nextBlock).prevBlock = newBlock;
@@ -152,7 +153,7 @@ struct IrBuilder
 	/// Does not remove its instructions/phis
 	/*void removeBasicBlock(IrIndex basicBlockToRemove) {
 		--numBasicBlocks;
-		IrBasicBlockInstr* bb = &get!IrBasicBlockInstr(basicBlockToRemove);
+		IrBasicBlock* bb = &get!IrBasicBlock(basicBlockToRemove);
 		if (bb.prevBlock.isDefined)
 			getBlock(bb.prevBlock).nextBlock = bb.nextBlock;
 		if (bb.nextBlock.isDefined)
@@ -164,7 +165,7 @@ struct IrBuilder
 	/// Sealed block is not necessarily filled.
 	/// Ignores already sealed blocks.
 	void sealBlock(IrIndex basicBlockToSeal) {
-		IrBasicBlockInstr* bb = &ir.getBlock(basicBlockToSeal);
+		IrBasicBlock* bb = &ir.getBlock(basicBlockToSeal);
 		if (bb.isSealed) return;
 		IrIndex index = blockToIrIncompletePhi.get(basicBlockToSeal, IrIndex());
 		while (index.isDefined)
@@ -277,7 +278,7 @@ struct IrBuilder
 	//
 	private auto emitInstrImpl(I)(IrIndex blockIndex, IrIndex[] args, ExtraInstrArgs extra)
 	{
-		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		IrIndex instr = append!I;
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
 
@@ -343,7 +344,7 @@ struct IrBuilder
 	/// Doesn't set any instruction info except prevInstr index
 	void appendBlockInstr(IrIndex blockIndex, IrIndex instr)
 	{
-		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = &ir.getBlock(blockIndex);
 
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
 		instrHeader.prevInstr = block.lastInstr; // points to prev instruction or to null
@@ -369,18 +370,18 @@ struct IrBuilder
 
 	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1)
 	{
-		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		return emitInstr!IrInstrBinaryBranch(blockIndex, cond, arg0, arg1);
+		return emitInstr!IrInstr_binary_branch(blockIndex, cond, arg0, arg1);
 	}
 
 	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrIndex arg0)
 	{
-		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		return emitInstr!IrInstrUnaryBranch(blockIndex, cond, arg0);
+		return emitInstr!IrInstr_unary_branch(blockIndex, cond, arg0);
 	}
 
 	void addReturn(IrIndex blockIndex, IrIndex returnValue)
@@ -402,10 +403,10 @@ struct IrBuilder
 
 	IrIndex addJump(IrIndex blockIndex)
 	{
-		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		return emitInstr!IrInstrJump(blockIndex);
+		return emitInstr!IrInstr_jump(blockIndex);
 	}
 
 	void addJumpToLabel(IrIndex blockIndex, ref IrLabel label)
@@ -509,13 +510,13 @@ struct IrBuilder
 	// Adds phi function to specified block
 	IrIndex addPhi(IrIndex blockIndex)
 	{
-		IrIndex phiIndex = append!IrPhiInstr;
+		IrIndex phiIndex = append!IrPhi;
 		IrIndex vreg = addVirtualRegister(phiIndex);
-		ir.get!IrPhiInstr(phiIndex) = IrPhiInstr(blockIndex, vreg);
-		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+		ir.get!IrPhi(phiIndex) = IrPhi(blockIndex, vreg);
+		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		if (block.firstPhi.isDefined) {
-			ir.get!IrPhiInstr(block.firstPhi).prevPhi = phiIndex;
-			ir.get!IrPhiInstr(phiIndex).nextPhi = block.firstPhi;
+			ir.get!IrPhi(block.firstPhi).prevPhi = phiIndex;
+			ir.get!IrPhi(phiIndex).nextPhi = block.firstPhi;
 		}
 		block.firstPhi = phiIndex;
 		return phiIndex;
@@ -524,21 +525,21 @@ struct IrBuilder
 	private void removePhi(IrIndex phiIndex)
 	{
 		version(IrPrint) writefln("[IR] remove phi %s", phiIndex);
-		IrPhiInstr* phi = &ir.get!IrPhiInstr(phiIndex);
-		IrBasicBlockInstr* block = &ir.getBlock(phi.blockIndex);
+		IrPhi* phi = &ir.get!IrPhi(phiIndex);
+		IrBasicBlock* block = &ir.getBlock(phi.blockIndex);
 		version(IrPrint) {
-			foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir)) {
+			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
 			}
 		}
 		// TODO: free list of phis
 		if (block.firstPhi == phiIndex) block.firstPhi = phi.nextPhi;
-		if (phi.nextPhi.isDefined) ir.get!IrPhiInstr(phi.nextPhi).prevPhi = phi.prevPhi;
-		if (phi.prevPhi.isDefined) ir.get!IrPhiInstr(phi.prevPhi).nextPhi = phi.nextPhi;
+		if (phi.nextPhi.isDefined) ir.get!IrPhi(phi.nextPhi).prevPhi = phi.prevPhi;
+		if (phi.prevPhi.isDefined) ir.get!IrPhi(phi.prevPhi).nextPhi = phi.nextPhi;
 		version(IrPrint) writefln("[IR] after remove phi %s", phiIndex);
 		version(IrPrint) {
-			IrBasicBlockInstr* block1 = &ir.getBlock(phi.blockIndex);
-			foreach(IrIndex phiIndex, ref IrPhiInstr phi; block1.phis(ir)) {
+			IrBasicBlock* block1 = &ir.getBlock(phi.blockIndex);
+			foreach(IrIndex phiIndex, ref IrPhi phi; block1.phis(ir)) {
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
 			}
 		}
@@ -551,7 +552,7 @@ struct IrBuilder
 		if (!ir.getBlock(blockIndex).isSealed) {
 			// Incomplete CFG
 			IrIndex phiIndex = addPhi(blockIndex);
-			value = ir.get!IrPhiInstr(phiIndex).result;
+			value = ir.get!IrPhi(phiIndex).result;
 			blockToIrIncompletePhi.update(blockIndex,
 				{
 					IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
@@ -576,7 +577,7 @@ struct IrBuilder
 			{
 				// Break potential cycles with operandless phi
 				IrIndex phiIndex = addPhi(blockIndex);
-				value = ir.get!IrPhiInstr(phiIndex).result;
+				value = ir.get!IrPhi(phiIndex).result;
 				writeVariable(blockIndex, variable, value);
 				value = addPhiOperands(blockIndex, variable, phiIndex);
 			}
@@ -610,7 +611,7 @@ struct IrBuilder
 	void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
 	{
 		IrIndex phiArg = append!IrPhiArg;
-		auto phi = &ir.get!IrPhiInstr(phiIndex);
+		auto phi = &ir.get!IrPhi(phiIndex);
 		ir.get!IrPhiArg(phiArg) = IrPhiArg(value, blockIndex, phi.firstArgListItem);
 		phi.firstArgListItem = phiArg;
 	}
@@ -619,7 +620,7 @@ struct IrBuilder
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex) {
 		IrPhiArg same;
-		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(phiIndex).args(*ir))
+		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(*ir))
 		{
 			version(IrPrint) writefln("[IR] arg %s", phiArg.value);
 			if (phiArg.value == same.value || phiArg.value == phiIndex) {
@@ -628,7 +629,7 @@ struct IrBuilder
 			}
 			if (same != IrPhiArg()) {
 				version(IrPrint) writefln("[IR]   non-trivial");
-				return ir.get!IrPhiInstr(phiIndex).result; // The phi merges at least two values: not trivial
+				return ir.get!IrPhi(phiIndex).result; // The phi merges at least two values: not trivial
 			}
 			version(IrPrint) writefln("[IR]   same = %s", phiArg.value);
 			same = phiArg;
@@ -637,7 +638,7 @@ struct IrBuilder
 		assert(same.value.isDefined, "Phi function got no arguments");
 
 		// Remember all users except the phi itself
-		IrIndex phiResultIndex = ir.get!IrPhiInstr(phiIndex).result;
+		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
 		assert(phiResultIndex.kind == IrValueKind.virtualRegister, format("%s", phiResultIndex));
 
 		SmallVector users = ir.getVirtReg(phiResultIndex).users;
@@ -691,7 +692,7 @@ struct IrBuilder
 				case basicBlock: assert(false);
 				case constant: assert(false);
 				case phi:
-					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhiInstr(userIndex).args(*ir))
+					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(*ir))
 						if (phiArg.value == what)
 						{
 							phiArg = byWhat;
@@ -711,7 +712,7 @@ struct IrBuilder
 			case none, listItem, basicBlock, physicalRegister: assert(false);
 			case instruction: return ir.getVirtReg(ir.get!IrInstrHeader(used).result).users.replaceAll(*ir, what, byWhat);
 			case constant: return; // constants dont track users
-			case phi: return ir.getVirtReg(ir.get!IrPhiInstr(used).result).users.replaceAll(*ir, what, byWhat);
+			case phi: return ir.getVirtReg(ir.get!IrPhi(used).result).users.replaceAll(*ir, what, byWhat);
 			case memoryAddress: assert(false); // TODO, has single user
 			case stackSlot: assert(false); // TODO
 			case virtualRegister: return ir.getVirtReg(used).users.replaceAll(*ir, what, byWhat);

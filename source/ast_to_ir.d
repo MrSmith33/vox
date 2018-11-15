@@ -202,7 +202,7 @@ struct AstToIr
 	{
 		//if (v.forceMemoryStorage)
 		//{
-		//	builder.addInstruction!IrStoreInstr(currentBlock);
+		//	builder.addInstruction!IrInstr_store(currentBlock);
 		//	builder.emitInstr2(IrOpcode.o_store, v.type.irType(context), v.stackSlotId, value);
 		//}
 		//else
@@ -247,8 +247,8 @@ struct AstToIr
 		if (v.isParameter)
 		{
 			//++ir.numParameters;
-			InstrWithResult param = builder.emitInstr!IrInstrParameter(ir.entryBasicBlock);
-			ir.get!IrInstrParameter(param.instruction).index = v.paramIndex;
+			InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock);
+			ir.get!IrInstr_parameter(param.instruction).index = v.paramIndex;
 			//instr.stackSlot = v.stackSlotId;
 
 			builder.writeVariable(currentBlock, v.irVar, param.result);
@@ -501,7 +501,7 @@ struct AstToIr
 			{
 				case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op value %s", b.op);
-					b.irRef = builder.emitInstr!IrSetBinaryCondInstr(
+					b.irRef = builder.emitInstr!IrInstr_set_binary_cond(
 						currentBlock, convertBinOpToIrCond(b.op), lRef, rRef).result;
 					break;
 
@@ -592,7 +592,7 @@ struct AstToIr
 		if (i.isLvalue) {
 			i.irRef = address;
 		} else {
-			i.irRef = builder.emitInstr!IrLoadInstr(currentBlock, address).result;
+			i.irRef = builder.emitInstr!IrInstr_load(currentBlock, address).result;
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}

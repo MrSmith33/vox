@@ -72,9 +72,9 @@ struct IrToLir
 
 		IrIndex prevBlock;
 		// dup basic blocks
-		foreach (IrIndex blockIndex, ref IrBasicBlockInstr irBlock; ir.blocks)
+		foreach (IrIndex blockIndex, ref IrBasicBlock irBlock; ir.blocks)
 		{
-			IrIndex lirBlock = builder.append!IrBasicBlockInstr;
+			IrIndex lirBlock = builder.append!IrBasicBlock;
 			++lir.numBasicBlocks;
 			recordIndex(blockIndex, lirBlock);
 			lir.getBlock(lirBlock).name = irBlock.name;
@@ -100,7 +100,7 @@ struct IrToLir
 			}
 
 			// Add phis with old args
-			foreach(IrIndex phiIndex, ref IrPhiInstr phi; irBlock.phis(ir))
+			foreach(IrIndex phiIndex, ref IrPhi phi; irBlock.phis(ir))
 			{
 				IrIndex newPhi = builder.addPhi(lirBlock);
 				recordIndex(phiIndex, newPhi);
@@ -115,7 +115,7 @@ struct IrToLir
 		}
 
 		// fix successors predecessors links
-		foreach (IrIndex lirBlockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		foreach (IrIndex lirBlockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{
 			lirBlock.isSealed = true;
 			lirBlock.isFinished = true;
@@ -149,7 +149,7 @@ struct IrToLir
 				switch(instrHeader.op)
 				{
 					case IrOpcode.parameter:
-						uint paramIndex = ir.get!IrInstrParameter(instrIndex).index;
+						uint paramIndex = ir.get!IrInstr_parameter(instrIndex).index;
 						context.assertf(paramIndex < lir.callingConvention.paramsInRegs.length,
 							"Only parameters passed through registers are implemented");
 
@@ -222,7 +222,7 @@ struct IrToLir
 			builder.addUser(instrIndex, arg);
 		}
 
-		void fixInstrs(IrIndex blockIndex, ref IrBasicBlockInstr lirBlock)
+		void fixInstrs(IrIndex blockIndex, ref IrBasicBlock lirBlock)
 		{
 			// replace old args with new args and add users
 			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(lir))
@@ -234,10 +234,10 @@ struct IrToLir
 			}
 		}
 
-		void fixPhis(IrIndex blockIndex, ref IrBasicBlockInstr lirBlock)
+		void fixPhis(IrIndex blockIndex, ref IrBasicBlock lirBlock)
 		{
 			// fix phi args and add users
-			foreach(IrIndex phiIndex, ref IrPhiInstr phi; lirBlock.phis(lir))
+			foreach(IrIndex phiIndex, ref IrPhi phi; lirBlock.phis(lir))
 			{
 				foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(lir))
 				{
@@ -248,7 +248,7 @@ struct IrToLir
 			}
 		}
 
-		foreach (IrIndex blockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		foreach (IrIndex blockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{
 			fixInstrs(blockIndex, lirBlock);
 			fixPhis(blockIndex, lirBlock);

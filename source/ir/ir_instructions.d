@@ -3,9 +3,10 @@ Copyright: Copyright (c) 2017-2018 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
+/// IR instruction format and metadata
 module ir.ir_instructions;
 
-import std.traits : getUDAs, Parameters;
+import std.traits : getUDAs;
 import std.bitmanip : bitfields;
 
 import all;
@@ -55,59 +56,6 @@ alias IFLG = IrInstrFlags;
 enum getInstrInfo(T) = getUDAs!(T, InstrInfo)[0];
 enum getIrValueKind(T) = getUDAs!(T, IrValueKind)[0];
 
-
-///
-@(IrValueKind.phi)
-struct IrPhiInstr
-{
-	IrIndex blockIndex;
-	IrIndex result;
-	IrIndex nextPhi;
-	IrIndex prevPhi;
-	IrIndex firstArgListItem;
-
-	PhiArgIterator args(ref IrFunction ir) { return PhiArgIterator(&ir, firstArgListItem); }
-}
-
-struct PhiArgIterator
-{
-	IrFunction* ir;
-	IrIndex firstArgListItem;
-	int opApply(scope int delegate(size_t, ref IrPhiArg) dg) {
-		IrIndex next = firstArgListItem;
-		size_t i = 0;
-		while (next.isDefined)
-		{
-			IrPhiArg* arg = &ir.get!IrPhiArg(next);
-			if (int res = dg(i, *arg))
-				return res;
-			++i;
-			next = arg.nextListItem;
-		}
-		return 0;
-	}
-}
-
-///
-@(IrValueKind.listItem)
-struct IrPhiArg
-{
-	IrIndex value;
-	/// Immediate predecessor that provides the value
-	IrIndex basicBlock;
-	IrIndex nextListItem;
-}
-
-/// Per Basic Block info for unresolved Phi functions, when CFG is incomplete.
-/// Finished IR contains no such values
-@(IrValueKind.listItem)
-struct IrIncompletePhi
-{
-	IrVar var;
-	IrIndex phi;
-	IrIndex nextListItem;
-}
-
 enum IrOpcode : ushort
 {
 	// used as placeholder inside generic instructions. Must not remain in IR.
@@ -139,119 +87,7 @@ bool hasSideEffects(IrOpcode opcode)
 	return opcode == IrOpcode.store;
 }
 
-@(IrValueKind.virtualRegister)
-struct IrVirtualRegister
-{
-	/// Index of instruction that defines this register
-	IrIndex definition;
-	/// List of instruction indicies that use this register
-	SmallVector users;
-	IrIndex prevVirtReg; /// null only if this is firstVirtualReg
-	IrIndex nextVirtReg; /// null only if this is lastVirtualReg
-	/// Sequential index for random access
-	uint seqIndex;
-}
 
-/// Generates temporary array of all virtual register indicies
-IrIndex[] virtualRegArray(CompilationContext* context, IrFunction* ir)
-{
-	IrIndex[] result = cast(IrIndex[])context.tempBuffer.voidPut(ir.numVirtualRegisters);
-	for (IrIndex vreg = ir.firstVirtualReg; vreg.isDefined; vreg = ir.getVirtReg(vreg).nextVirtReg)
-	{
-		result[ir.getVirtReg(vreg).seqIndex] = vreg;
-	}
-	return result;
-}
-
-/// Must end with one of block_exit_... instructions
-@(IrValueKind.basicBlock)
-struct IrBasicBlockInstr
-{
-	IrIndex firstInstr; // null or first instruction
-	IrIndex lastInstr; // null or last instruction
-	IrIndex prevBlock; // null only if this is entryBasicBlock
-	IrIndex nextBlock; // null only if this is exitBasicBlock
-	IrIndex firstPhi; // may be null
-
-	PhiIterator phis(ref IrFunction ir) { return PhiIterator(&ir, &this); }
-	InstrIterator instructions(ref IrFunction ir) { return InstrIterator(&ir, &this); }
-	InstrReverseIterator instructionsReverse(ref IrFunction ir) { return InstrReverseIterator(&ir, &this); }
-
-	SmallVector predecessors;
-	SmallVector successors;
-
-	uint seqIndex;
-
-	mixin(bitfields!(
-		/// True if all predecessors was added
-		bool, "isSealed",   1,
-		/// True if block_exit instruction is in place
-		bool, "isFinished", 1,
-		uint, "",           6
-	));
-
-	IrName name;
-}
-//pragma(msg, "BB size: ", cast(int)IrBasicBlockInstr.sizeof, " bytes");
-
-struct PhiIterator
-{
-	IrFunction* ir;
-	IrBasicBlockInstr* block;
-	int opApply(scope int delegate(IrIndex, ref IrPhiInstr) dg) {
-		IrIndex next = block.firstPhi;
-		while (next.isDefined)
-		{
-			IrPhiInstr* phi = &ir.get!IrPhiInstr(next);
-			if (int res = dg(next, *phi))
-				return res;
-			next = phi.nextPhi;
-		}
-		return 0;
-	}
-}
-
-struct InstrIterator
-{
-	IrFunction* ir;
-	IrBasicBlockInstr* block;
-	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
-		IrIndex current = block.firstInstr;
-		while (current.isDefined)
-		{
-			IrIndex indexCopy = current;
-			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
-
-			// save current before invoking delegate, which can remove current instruction
-			current = header.nextInstr;
-
-			if (int res = dg(indexCopy, *header))
-				return res;
-		}
-		return 0;
-	}
-}
-
-struct InstrReverseIterator
-{
-	IrFunction* ir;
-	IrBasicBlockInstr* block;
-	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
-		IrIndex current = block.lastInstr;
-		while (current.isDefined)
-		{
-			IrIndex indexCopy = current;
-			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
-
-			// save current before invoking delegate, which can remove current instruction
-			current = header.prevInstr;
-
-			if (int res = dg(indexCopy, *header))
-				return res;
-		}
-		return 0;
-	}
-}
 
 /// Common prefix of all IR instruction structs
 @(IrValueKind.instruction) @InstrInfo()
@@ -297,17 +133,15 @@ template IrGenericInstr(ushort opcode, uint numArgs, uint flags = 0)
 	}
 }
 
-alias IrReturnValueInstr = IrGenericInstr!(IrOpcode.block_exit_return_value, 1);
-alias IrReturnVoidInstr = IrGenericInstr!(IrOpcode.block_exit_return_void, 0);
-alias IrStoreInstr = IrGenericInstr!(IrOpcode.store, 1);
-alias IrLoadInstr = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
-alias IrSetBinaryCondInstr = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
+alias IrInstr_return_value = IrGenericInstr!(IrOpcode.block_exit_return_value, 1);
+alias IrInstr_return_void = IrGenericInstr!(IrOpcode.block_exit_return_void, 0);
+alias IrInstr_store = IrGenericInstr!(IrOpcode.store, 1);
+alias IrInstr_load = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
+alias IrInstr_set_binary_cond = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
 alias IrInstr_add = IrGenericInstr!(IrOpcode.add, 2, IFLG.hasResult);
 alias IrInstr_sub = IrGenericInstr!(IrOpcode.sub, 2, IFLG.hasResult);
 alias IrInstr_mul = IrGenericInstr!(IrOpcode.mul, 2, IFLG.hasResult);
-alias IrBinaryExprInstr(ushort opcode) = IrGenericInstr!(opcode, 2, IFLG.hasResult);
-alias IrUnaryExprInstr(ushort opcode) = IrGenericInstr!(opcode, 1, IFLG.hasResult);
-alias IrInstrJump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
+alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
 
 enum IrBinaryCondition : ubyte {
 	eq,
@@ -334,7 +168,7 @@ IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
 }
 
 /// Uses header.cond
-alias IrInstrBinaryBranch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, IFLG.hasCondition);
+alias IrInstr_binary_branch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, IFLG.hasCondition);
 
 enum IrUnaryCondition : ubyte {
 	zero,
@@ -352,10 +186,10 @@ IrUnaryCondition invertUnaryCond(IrUnaryCondition cond)
 }
 
 /// Uses header.cond
-alias IrInstrUnaryBranch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, IFLG.hasCondition);
+alias IrInstr_unary_branch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, IFLG.hasCondition);
 
 @(IrValueKind.instruction) @InstrInfo(IrOpcode.parameter, 0, IFLG.hasResult)
-struct IrInstrParameter
+struct IrInstr_parameter
 {
 	IrInstrHeader header;
 	IrIndex result;

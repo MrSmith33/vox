@@ -3,6 +3,7 @@ Copyright: Copyright (c) 2017-2018 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
+/// IR Function
 module ir.ir_function;
 
 import std.string : format;
@@ -66,8 +67,8 @@ struct IrFunction
 	BlockIterator blocks() { return BlockIterator(&this); }
 	BlockReverseIterator blocksReverse() { return BlockReverseIterator(&this); }
 
-	alias getBlock = get!IrBasicBlockInstr;
-	alias getPhi = get!IrPhiInstr;
+	alias getBlock = get!IrBasicBlock;
+	alias getPhi = get!IrPhi;
 	alias getVirtReg = get!IrVirtualRegister;
 
 	ref T get(T)(IrIndex index)
@@ -80,7 +81,7 @@ struct IrFunction
 	void assignSequentialBlockIndices()
 	{
 		uint index;
-		foreach (idx, ref IrBasicBlockInstr block; blocks)
+		foreach (idx, ref IrBasicBlock block; blocks)
 		{
 			block.seqIndex = index++;
 		}
@@ -91,7 +92,7 @@ struct IrFunction
 // only safe to delete current instruction while iterating
 void removeInstruction(ref IrFunction ir, IrIndex blockIndex, IrIndex instrIndex)
 {
-	IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
+	IrBasicBlock* block = &ir.getBlock(blockIndex);
 	IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instrIndex);
 
 	if (instrIndex == block.firstInstr)
@@ -125,11 +126,11 @@ void removeUser(ref IrFunction ir, IrIndex user, IrIndex used) {
 struct BlockIterator
 {
 	IrFunction* ir;
-	int opApply(scope int delegate(IrIndex, ref IrBasicBlockInstr) dg) {
+	int opApply(scope int delegate(IrIndex, ref IrBasicBlock) dg) {
 		IrIndex next = ir.entryBasicBlock;
 		while (next.isDefined)
 		{
-			IrBasicBlockInstr* block = &ir.getBlock(next);
+			IrBasicBlock* block = &ir.getBlock(next);
 			if (int res = dg(next, *block))
 				return res;
 			next = block.nextBlock;
@@ -157,11 +158,11 @@ struct VregIterator
 struct BlockReverseIterator
 {
 	IrFunction* ir;
-	int opApply(scope int delegate(IrIndex, ref IrBasicBlockInstr) dg) {
+	int opApply(scope int delegate(IrIndex, ref IrBasicBlock) dg) {
 		IrIndex prev = ir.exitBasicBlock;
 		while (prev.isDefined)
 		{
-			IrBasicBlockInstr* block = &ir.getBlock(prev);
+			IrBasicBlock* block = &ir.getBlock(prev);
 			if (int res = dg(prev, *block))
 				return res;
 			prev = block.prevBlock;
@@ -172,7 +173,7 @@ struct BlockReverseIterator
 
 void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 {
-	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		// Check that all users of virtual reg point to definition
 		void checkArg(IrIndex argUser, IrIndex arg)
@@ -226,7 +227,7 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 				checkArg(user, result);
 		}
 
-		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir))
+		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
