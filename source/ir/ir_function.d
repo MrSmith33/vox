@@ -8,6 +8,7 @@ module ir.ir_function;
 import std.string : format;
 
 import all;
+import ir.ir_index;
 
 /// Allows associating a single uint sized item with any object in original IR
 /// IR must be immutable (no new items must added)
@@ -86,6 +87,8 @@ struct IrFunction
 	}
 }
 
+// instruction iterators are aware of this
+// only safe to delete current instruction while iterating
 void removeInstruction(ref IrFunction ir, IrIndex blockIndex, IrIndex instrIndex)
 {
 	IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
@@ -99,6 +102,24 @@ void removeInstruction(ref IrFunction ir, IrIndex blockIndex, IrIndex instrIndex
 		ir.get!IrInstrHeader(instrHeader.prevInstr).nextInstr = instrHeader.nextInstr;
 	if (instrHeader.nextInstr.isDefined)
 		ir.get!IrInstrHeader(instrHeader.nextInstr).prevInstr = instrHeader.prevInstr;
+}
+
+void removeUser(ref IrFunction ir, IrIndex user, IrIndex used) {
+	assert(used.isDefined, "used is undefined");
+	final switch (used.kind) with(IrValueKind) {
+		case none: assert(false, "removeUser none");
+		case listItem: assert(false, "removeUser listItem");
+		case instruction: assert(false, "removeUser instruction");
+		case basicBlock: break; // allowed. As argument of jmp jcc
+		case constant: break; // allowed, noop
+		case phi: assert(false, "removeUser phi"); // must be virt reg instead
+		case memoryAddress: break; // allowed, noop
+		case stackSlot: break; // allowed, noop
+		case virtualRegister:
+			ir.getVirtReg(used).users.remove(ir, user);
+			break;
+		case physicalRegister: break; // allowed, noop
+	}
 }
 
 struct BlockIterator
@@ -146,5 +167,89 @@ struct BlockReverseIterator
 			prev = block.prevBlock;
 		}
 		return 0;
+	}
+}
+
+void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
+{
+	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocks)
+	{
+		// Check that all users of virtual reg point to definition
+		void checkArg(IrIndex argUser, IrIndex arg)
+		{
+			if (!arg.isVirtReg) return;
+
+			auto vreg = &ir.getVirtReg(arg);
+
+			// How many times 'argUser' is found in vreg.users
+			uint numVregUses = 0;
+			foreach (i, IrIndex user; vreg.users.range(ir))
+				if (user == argUser)
+					++numVregUses;
+
+			// How many times 'args' is found in instr.args
+			uint timesUsed = 0;
+
+			if (argUser.isInstruction)
+			{
+				foreach (i, IrIndex instrArg; ir.get!IrInstrHeader(argUser).args)
+					if (instrArg == arg)
+						++timesUsed;
+			}
+			else if (argUser.isPhi)
+			{
+				foreach(size_t arg_i, ref IrPhiArg phiArg; ir.getPhi(argUser).args(ir))
+					if (phiArg.value == arg)
+						++timesUsed;
+			}
+			else
+			{
+				context.assertf(false, "Virtual register cannot be used by %s", argUser.kind);
+			}
+
+			// For each use of arg by argUser there must one item in users list of vreg and in args list of user
+			context.assertf(numVregUses == timesUsed,
+				"Virtual register %s appears %s times as argument of %s, but instruction appears as user only %s times",
+					arg, timesUsed, argUser, numVregUses);
+		}
+
+		void checkResult(IrIndex definition, IrIndex result)
+		{
+			auto vreg = &ir.getVirtReg(result);
+
+			// Check that all users of virtual reg point to definition
+			context.assertf(vreg.definition == definition,
+				"Virtual register definition %s doesn't match instruction %s",
+				vreg.definition, definition);
+
+			foreach (i, IrIndex user; vreg.users.range(ir))
+				checkArg(user, result);
+		}
+
+		foreach(IrIndex phiIndex, ref IrPhiInstr phi; block.phis(ir))
+		{
+			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+			{
+				checkArg(phiIndex, phiArg.value);
+			}
+
+			checkResult(phiIndex, phi.result);
+		}
+
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
+		{
+			foreach (i, IrIndex arg; instrHeader.args)
+			{
+				checkArg(instrIndex, arg);
+			}
+
+			if (instrHeader.hasResult)
+			{
+				if (instrHeader.result.isVirtReg)
+				{
+					checkResult(instrIndex, instrHeader.result);
+				}
+			}
+		}
 	}
 }

@@ -6,26 +6,36 @@ Authors: Andrey Penechko.
 
 module optimize;
 
+import std.stdio;
 import all;
 
 alias FuncPass = void function(ref CompilationContext, ref IrFunction);
 
 void apply_ir_func_pass(ref CompilationContext context, FuncPass pass)
 {
-	foreach (FunctionDeclNode* fun; context.mod.functions) pass(context, *fun.irData);
+	foreach (FunctionDeclNode* fun; context.mod.functions) {
+		pass(context, *fun.irData);
+		if (context.validateIr)
+			validateIrFunction(context, *fun.irData);
+	}
 }
 
 void apply_lir_func_pass(ref CompilationContext context, FuncPass pass)
 {
-	foreach (FunctionDeclNode* fun; context.mod.functions) pass(context, *fun.lirData);
+	foreach (FunctionDeclNode* fun; context.mod.functions) {
+		pass(context, *fun.lirData);
+		if (context.validateIr)
+			validateIrFunction(context, *fun.lirData);
+	}
 }
 
 void pass_optimize_ir(ref CompilationContext context)
 {
-	apply_ir_func_pass(context, &pass_optimize_ir_func);
+	apply_ir_func_pass(context, &func_pass_invert_conditions);
+	apply_ir_func_pass(context, &func_pass_remove_dead_code);
 }
 
-void pass_optimize_ir_func(ref CompilationContext context, ref IrFunction ir)
+void func_pass_invert_conditions(ref CompilationContext context, ref IrFunction ir)
 {
 	ir.assignSequentialBlockIndices();
 
@@ -61,6 +71,52 @@ void pass_optimize_ir_func(ref CompilationContext context, ref IrFunction ir)
 	}
 }
 
+void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction ir)
+{
+	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocksReverse)
+	{
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
+		{
+			if (hasSideEffects(cast(IrOpcode)instrHeader.op)) continue;
+			if (!instrHeader.hasResult) continue;
+
+			context.assertf(instrHeader.result.isVirtReg, "instruction result must be virt reg");
+			if (ir.getVirtReg(instrHeader.result).users.length > 0) continue;
+
+			// we found some dead instruction, remove it
+			foreach(ref IrIndex arg; instrHeader.args) {
+				removeUser(ir, instrIndex, arg);
+			}
+			removeInstruction(ir, blockIndex, instrIndex);
+			//writefln("remove dead %s", instrIndex);
+		}
+	}
+}
+
+/*
+void lir_func_pass_simplify(ref CompilationContext context, ref IrFunction ir)
+{
+	foreach (IrIndex blockIndex, ref IrBasicBlockInstr block; ir.blocksReverse)
+	{
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
+		{
+			switch(cast(Amd64Opcode)instrHeader.op) with(Amd64Opcode)
+			{
+				case mov:
+					static assert(LirAmd64Instr_xor.sizeof == LirAmd64Instr_mov.sizeof);
+					// replace 'mov reg, 0' with xor reg reg
+					IrIndex dst = instrHeader.result;
+					IrIndex src = instrHeader.args[0];
+					if (src.isConstant && context.getConstant(src).i64 == 0)
+					{
+
+					}
+				default: break;
+			}
+		}
+	}
+}
+*/
 void pass_optimize_lir(ref CompilationContext context)
 {
 	apply_lir_func_pass(context, &pass_optimize_lir_func);
@@ -75,9 +131,9 @@ void pass_optimize_lir_func(ref CompilationContext context, ref IrFunction ir)
 		if (!block.lastInstr.isDefined) continue;
 
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(block.lastInstr);
-		auto flags = context.machineInfo.instrInfo[instrHeader.op].flags;
+		auto isJump = context.machineInfo.instrInfo[instrHeader.op].isJump;
 
-		if (flags & LirInstrFlags.isJump)
+		if (isJump)
 		{
 			uint seqIndex0 = ir.getBlock(block.successors[0, ir]).seqIndex;
 			// successor is the next instruction after current block

@@ -68,6 +68,12 @@ struct CodeEmitter
 					case Amd64Opcode.mov:
 						genMove(instrHeader.result, instrHeader.args[0]);
 						break;
+					case Amd64Opcode.load:
+						genLoad(instrHeader.result, instrHeader.args[0], ArgType.DWORD);
+						break;
+					case Amd64Opcode.store:
+						genStore(instrHeader.args[0], instrHeader.args[1], ArgType.DWORD);
+						break;
 					case Amd64Opcode.jmp:
 						resolve(lirBlockIndex, lirBlock);
 						if (lirBlock.seqIndex + 1 != lir.getBlock(lirBlock.successors[0, *lir]).seqIndex)
@@ -214,8 +220,8 @@ struct CodeEmitter
 				break;
 
 			case MoveType.const_to_stack:
-			//	long con = curFunc.constants[src.storageUintIndex.i64;
-			//	gen.movd(localVarMemAddress(dst.irRef.constIndex), Imm32(cast(uint)con));
+				//long con = context.getConstant(src).i64;
+				//gen.movd(localVarMemAddress(dstReg), Imm32(cast(uint)con));
 				context.internal_error("const_to_stack is not implemented");
 				break;
 
@@ -244,6 +250,62 @@ struct CodeEmitter
 
 			case MoveType.mem_to_reg:
 				context.internal_error("mem_to_reg is not implemented");
+				break;
+		}
+	}
+
+	/// Generate move from src operand to dst operand. argType describes the size of operands.
+	// If src is phys reg the it is used as address base.
+	// dst must be phys reg
+	void genLoad(IrIndex dst, IrIndex src, ArgType argType)
+	{
+		bool valid = dst.isPhysReg && src.isPhysReg;
+		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
+
+		Register srcReg = cast(Register)src.storageUintIndex;
+		Register dstReg = cast(Register)dst.storageUintIndex;
+
+		switch(src.kind) with(IrValueKind)
+		{
+			case physicalRegister:
+				gen.mov(dstReg, memAddrBase(srcReg), argType);
+				break;
+
+			case stackSlot:
+				//gen.movd(dstReg, localVarMemAddress(src.irRef.storageUintIndex), argType);
+				context.internal_error("stackSlot load is not implemented");
+				break;
+
+			default:
+				context.internal_error("invalid source of load %s", src.kind);
+				break;
+		}
+	}
+
+	void genStore(IrIndex dst, IrIndex src, ArgType argType)
+	{
+		bool valid = dst.isPhysReg && (src.isConstant || src.isPhysReg); // store to memAddress, stackSlot not implemented
+		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
+
+		Register srcReg = cast(Register)src.storageUintIndex;
+		Register dstReg = cast(Register)dst.storageUintIndex;
+
+		switch (dst.kind) with(IrValueKind)
+		{
+			case physicalRegister: // store address is in register
+				switch (src.kind)
+				{
+					case physicalRegister:
+						gen.mov(memAddrBase(dstReg), srcReg, argType);
+						break;
+					default:
+						context.internal_error("store from %s is not implemented", src.kind);
+						break;
+				}
+				break;
+
+			default:
+				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);
 				break;
 		}
 	}

@@ -8,72 +8,94 @@ import tests;
 import std.stdio;
 import all;
 
-//version = print;
-
-void test()
+void runAllTests()
 {
-	Test curTest = test8;
 	Driver driver;
+	driver.initialize(compilerPasses);
+	driver.context.validateIr = true;
+	scope(exit) driver.releaseMemory;
 
+	FuncDumpSettings dumpSettings;
+
+	writefln("Running tests");
+	tryRunSingleTest(driver, dumpSettings, DumpTest.no, test8);
+	// doesn't work because semantic pass doesn't do data flow analysis
+	// and can't detect that all paths return. (Perhaps check this in IR gen pass?).
+	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test8_1);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.no, test10);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.no, test9);
+	writefln("Done");
+}
+
+enum DumpTest : bool { no = false, yes = true }
+
+void tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
+{
 	try
 	{
-		driver.initialize(compilerPasses);
-		scope(exit) driver.releaseMemory;
-
-		enum NUM_ITERS = 1;
-		auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
-		auto time1 = currTime;
-		ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.externalSymbols);
-		auto time2 = currTime;
-		times.onIteration(0, time2-time1);
-
-		if (mod is null) return;
-
-		version(print)
-		{
-			// Text dump
-			//auto astPrinter = AstPrinter(&driver.context, 2);
-			//astPrinter.printAst(cast(AstNode*)mod);
-
-			writeln("// Source");
-			writeln(curTest.source);
-
-			TextSink sink;
-			sink.putln("\n// IR");
-			FuncDumpSettings dumpSettings;
-			dumpSettings.dumper = &dumpIrInstr;
-			mod.irModule.dump(sink, driver.context, dumpSettings);
-
-			sink.putln("\n// LIR");
-			dumpSettings.dumper = &dumpAmd64Instr;
-			mod.lirModule.dump(sink, driver.context, dumpSettings);
-
-			writeln(sink.text);
-
-			writeln("\n// Amd64 code");
-			printHex(mod.code, 16);
-
-			writeln;
-			times.print;
-		}
-
-		FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
-		if (funDecl != null && funDecl.funcPtr != null)
-		{
-			version(print) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
-			curTest.tester(funDecl.funcPtr);
-		}
+		runSingleTest(driver, dumpSettings, dumpTest, curTest);
 	}
 	catch(CompilationException e) {
-		writeln(driver.context.sink.text);
+		//writeln(driver.context.sink.text);
 		if (e.isICE)
 			writeln(e);
 	}
 	catch(Throwable t) {
-		writeln(driver.context.sink.text);
+		//writeln(driver.context.sink.text);
 		writeln(t);
 	}
-	//testNativeFun;
+}
+
+void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
+{
+	scope(success) writefln("%s success", curTest.testName);
+	scope(failure) writefln("%s failed", curTest.testName);
+
+	enum NUM_ITERS = 1;
+	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
+	auto time1 = currTime;
+	ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.externalSymbols);
+	auto time2 = currTime;
+	times.onIteration(0, time2-time1);
+
+	if (mod is null) return;
+
+	if (dumpTest)
+	{
+		// Text dump
+		//auto astPrinter = AstPrinter(&driver.context, 2);
+		//astPrinter.printAst(cast(AstNode*)mod);
+
+		writeln("// Source");
+		writeln(curTest.source);
+
+		TextSink sink;
+		sink.putln("\n// IR");
+		dumpSettings.dumper = &dumpIrInstr;
+		mod.irModule.dump(sink, driver.context, dumpSettings);
+
+		sink.putln("\n// LIR");
+		dumpSettings.dumper = &dumpAmd64Instr;
+		mod.lirModule.dump(sink, driver.context, dumpSettings);
+
+		writeln(sink.text);
+
+		writeln("\n// Amd64 code");
+		printHex(mod.code, 16);
+
+		writeln;
+		times.print;
+	}
+
+	if (curTest.funcName is null) return;
+
+	FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
+
+	if (funDecl != null && funDecl.funcPtr != null)
+	{
+		if(dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
+		curTest.tester(funDecl.funcPtr);
+	}
 }
 
 struct Test
@@ -277,7 +299,7 @@ string input7 = q{i32 fib(i32 number) {
 	return fib(number-1) + fib(number-2);
 }};
 
-string input9 = q{i32 sign(i32 number) {
+immutable input9 = q{i32 test(i32 number) {
 	i32 result;
 	if (1 == 1)
 	{
@@ -289,6 +311,7 @@ string input9 = q{i32 sign(i32 number) {
 	}
 	return result;
 }};
+auto test9 = Test("Test 9", input9);
 
 immutable input8 = q{i32 sign(i32 number) {
 	i32 result;
@@ -308,14 +331,15 @@ void tester8(Func8 sign) {
 	int res1 = sign(10);
 	int res2 = sign(0);
 	int res3 = sign(-10);
-	assert(res1 == 1);
-	assert(res2 == 0);
-	assert(res3 == -1);
 	//writefln("sign(10) -> %s", res1);
 	//writefln("sign(0) -> %s", res2);
 	//writefln("sign(-10) -> %s", res3);
+	assert(res1 == 1);
+	assert(res2 == 0);
+	assert(res3 == -1);
 }
 auto test8 = Test("Test 8", input8, "sign", cast(Test.Tester)&tester8);
+auto test8_1 = Test("Test 8.1", input8_1, "sign", cast(Test.Tester)&tester8);
 
 immutable input10 = q{i32 test(i32* array) {
 	return array[0];

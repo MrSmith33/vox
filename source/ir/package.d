@@ -85,8 +85,6 @@ version (standalone) void main()
 	IrIndex else_1_block = builder.addBasicBlock();
 	//	if (number < 0)
 	auto branch1 = builder.addBinBranch(start_block, IrBinaryCondition.l, param0Value, zeroVal);
-	builder.addUser(branch1, param0Value);
-	builder.addUser(branch1, zeroVal);
 
 	builder.addBlockTarget(start_block, then_1_block);
 	builder.sealBlock(then_1_block);
@@ -100,8 +98,6 @@ version (standalone) void main()
 	//	{
 	//		if (number > 0)
 	auto branch2 = builder.addBinBranch(else_1_block, IrBinaryCondition.g, param0Value, zeroVal);
-	builder.addUser(branch2, param0Value);
-	builder.addUser(branch2, zeroVal);
 
 	IrIndex then_2_block = builder.addBasicBlock();
 	IrIndex else_2_block = builder.addBasicBlock();
@@ -274,6 +270,49 @@ struct SmallVector
 		}
 	}
 
+	void remove(ref IrFunction ir, IrIndex what)
+	{
+		if (isBig) // linked list
+		{
+			IrIndex prevIndex;
+			IrIndex curIndex = firstListItem;
+			while (curIndex.isDefined)
+			{
+				ListItem* cur = &ir.get!ListItem(curIndex);
+				if (cur.itemIndex == what) {
+					if (prevIndex.isDefined) {
+						ListItem* prev = &ir.get!ListItem(prevIndex);
+						prev.nextItem = cur.nextItem;
+					} else {
+						firstListItem = cur.nextItem;
+					}
+					--listLength;
+				} else {
+					prevIndex = curIndex;
+				}
+				curIndex = cur.nextItem;
+			}
+		}
+		else // 0, 1, 2
+		{
+			// no harm if what or items[0/1] is null here
+			if (items[0] == what) {
+				// remove first item in-place
+				if (items[1] == what) {
+					// and second too
+					items[0] = IrIndex();
+				} else {
+					// only first
+					items[0] = items[1];
+				}
+				items[1] = IrIndex();
+			} else if (items[1] == what) {
+				// remove second item in-place
+				items[1] = IrIndex();
+			}
+		}
+	}
+
 	ref IrIndex opIndex(size_t index, ref IrFunction ir)
 	{
 		size_t len = length;
@@ -383,7 +422,7 @@ struct SmallVectorRange
 
 	int opApplyImpl(uint size, Del)(scope Del dg)
 	{
-		if (vector.isBig) // length > 2
+		if (vector.isBig) // linked list
 		{
 			IrIndex next = vector.firstListItem;
 			size_t seqIndex = 0;

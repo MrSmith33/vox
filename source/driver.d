@@ -15,8 +15,8 @@ CompilePass[] compilerPasses = [
 	CompilePass("Semantic lookup", &pass_semantic_lookup),
 	CompilePass("Semantic types", &pass_semantic_type),
 	CompilePass("IR gen", &pass_ir_gen),
-	CompilePass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
 	CompilePass("Optimize", &pass_optimize_ir),
+	CompilePass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
 
 	// IR liveness
 	CompilePass("Live intervals", &pass_live_intervals),

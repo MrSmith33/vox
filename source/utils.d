@@ -313,12 +313,13 @@ struct Buffer(T)
 
 	ref T opIndex(size_t at)
 	{
+		assert(at < capacity, format("opIndex(%s), capacity %s", at, capacity));
 		return bufPtr[at];
 	}
 
 	ref T back() { return bufPtr[length-1]; }
 
-	inout(T[]) data() inout {
+	T[] data() {
 		return bufPtr[0..length];
 	}
 

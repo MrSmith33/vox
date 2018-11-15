@@ -12,6 +12,20 @@ import ir.ir_index;
 
 //version = IrPrint;
 
+struct InstrWithResult
+{
+	IrIndex instruction;
+	IrIndex result;
+}
+
+struct ExtraInstrArgs
+{
+	ubyte cond; // used when IrInstrFlags.hasCondition is set
+	IrOpcode opcode; // used when opcode is IrOpcode.invalid
+	bool hasResult;
+	bool addUsers = true;
+}
+
 // papers:
 // 1. Simple and Efficient Construction of Static Single Assignment Form
 struct IrBuilder
@@ -42,15 +56,13 @@ struct IrBuilder
 
 		if (ir.returnType != IrValueType.void_t)
 		{
-			IrIndex retIndex = addInstruction!IrReturnValueInstr(ir.exitBasicBlock);
 			returnVar = IrVar(Identifier(0), newIrVarId());
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
-			ir.get!IrReturnValueInstr(retIndex).args[0] = retValue;
-			addUser(retIndex, retValue);
+			emitInstr!IrReturnValueInstr(ir.exitBasicBlock, retValue);
 		}
 		else
 		{
-			addInstruction!IrReturnVoidInstr(ir.exitBasicBlock);
+			emitInstr!IrReturnVoidInstr(ir.exitBasicBlock);
 		}
 		ir.getBlock(ir.exitBasicBlock).isFinished = true;
 	}
@@ -176,10 +188,10 @@ struct IrBuilder
 	void writeVariable(IrIndex blockIndex, IrVar variable, IrIndex value) {
 		with(IrValueKind)
 		{
-			assert(
+			context.assertf(
 				value.kind == constant ||
 				value.kind == virtualRegister ||
-				value.kind == physicalRegister, format("%s", value));
+				value.kind == physicalRegister, "writeVariable(block %s, variable %s, value %s)", blockIndex, variable, value);
 		}
 		blockVarDef[BlockVarPair(blockIndex, variable.id)] = value;
 	}
@@ -211,20 +223,72 @@ struct IrBuilder
 		}
 	}
 
-	IrIndex addInstruction(I)(IrIndex blockIndex)
+	/// Returns InstrWithResult (if instr has result) or IrIndex instruction
+	/// Always returns InstrWithResult when instruction has variadic result
+	///   in this case result can be null if no result is requested
+	auto emitInstr(I)(IrIndex blockIndex, IrIndex[] args ...)
+	{
+		// TODO assert if I requires ExtraInstrArgs data
+		return emitInstr!I(blockIndex, args, ExtraInstrArgs());
+	}
+
+	/// ditto
+	auto emitInstr(I)(IrIndex blockIndex, IrIndex result, IrIndex[] args)
+	{
+		// TODO assert if I requires ExtraInstrArgs data
+		return emitInstr!I(blockIndex, result, args, ExtraInstrArgs());
+	}
+
+	/// ditto
+	auto emitInstr(I, C : ubyte)(IrIndex blockIndex, C cond, IrIndex[] args ...)
+	{
+		static assert(getInstrInfo!I.hasCondition,
+			format("Trying to emit %s with condition", I.stringof));
+		// TODO assert if I requires ExtraInstrArgs data
+		return emitInstr!I(blockIndex, args, ExtraInstrArgs(cond));
+	}
+
+	/// ditto
+	auto emitInstr(I)(IrIndex blockIndex, IrIndex[] args, ExtraInstrArgs extra)
+	{
+		IrIndex instr = emitInstrImpl!I(blockIndex, args, extra);
+		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+		static if (getInstrInfo!I.hasResult || getInstrInfo!I.hasVariadicResult) {
+			if (instrHeader.hasResult) {
+				instrHeader.result = addVirtualRegister(instr);
+			}
+			return InstrWithResult(instr, instrHeader.result);
+		} else {
+			return instr;
+		}
+	}
+
+	/// Allows to set the result
+	auto emitInstr(I)(IrIndex blockIndex, IrIndex result, IrIndex[] args, ExtraInstrArgs extra)
+	{
+		static assert(getInstrInfo!I.hasResult || getInstrInfo!I.hasVariadicResult);
+		extra.hasResult = true;
+		IrIndex instr = emitInstrImpl!I(blockIndex, args, extra);
+		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+		instrHeader.result = result;
+		return InstrWithResult(instr, instrHeader.result);
+	}
+
+	//
+	private auto emitInstrImpl(I)(IrIndex blockIndex, IrIndex[] args, ExtraInstrArgs extra)
 	{
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
 		IrIndex instr = append!I;
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
-		instrHeader.op = getInstrInfo!I.opcode;
-		instrHeader.prevInstr = block.lastInstr; // points to prev instruction or to null
-		instrHeader.numArgs = getInstrInfo!I.numArgs;
-		instrHeader.hasResult = getInstrInfo!I.hasResult;
 
-		if (instrHeader.hasResult)
-		{
-			instrHeader.result = addVirtualRegister(instr);
-		}
+		// opcode
+		static if (getInstrInfo!I.opcode == IrOpcode.invalid)
+			instrHeader.op = extra.opcode;
+		else
+			instrHeader.op = getInstrInfo!I.opcode;
+
+		// points to prev instruction in block or to null
+		instrHeader.prevInstr = block.lastInstr;
 
 		if (!block.firstInstr.isDefined) {
 			block.firstInstr = instr;
@@ -232,6 +296,44 @@ struct IrBuilder
 		} else {
 			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
 			block.lastInstr = instr;
+		}
+
+		// result
+		static if (getInstrInfo!I.hasVariadicResult) {
+			instrHeader.hasResult = extra.hasResult;
+			// allocate result slot after instruction header
+			if (extra.hasResult) appendVoid!IrIndex;
+		} else {
+			instrHeader.hasResult = getInstrInfo!I.hasResult;
+		}
+
+		// condition
+		static if (getInstrInfo!I.hasCondition) {
+			instrHeader.cond = extra.cond;
+		}
+
+		// arguments
+		static if (getInstrInfo!I.hasVariadicArgs) {
+			context.assertf(args.length <= IrInstrHeader.numArgs.max,
+				"Too many arguments (%s), max is %s", args.length, IrInstrHeader.numArgs.max);
+			instrHeader.numArgs = args.length;
+			// allocate argument slots after optional result
+			appendVoid!IrIndex(args.length);
+		} else {
+			context.assertf(getInstrInfo!I.numArgs == args.length,
+				"Instruction %s requires %s args, while passed %s",
+				I.stringof, getInstrInfo!I.numArgs, args.length);
+			instrHeader.numArgs = getInstrInfo!I.numArgs;
+		}
+
+		// set arguments
+		instrHeader.args[] = args;
+
+		// Instruction uses its arguments
+		if (extra.addUsers) {
+			foreach(IrIndex arg; args) {
+				addUser(instr, arg);
+			}
 		}
 
 		return instr;
@@ -255,33 +357,6 @@ struct IrBuilder
 		}
 	}
 
-	/// Returns virtual register of result
-	IrIndex emitBinaryInstr(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1)
-	{
-		auto instr = addInstruction!IrSetBinaryCondInstr(blockIndex);
-		IrIndex vreg = addVirtualRegister(instr);
-		with(ir.get!IrSetBinaryCondInstr(instr)) {
-			header.cond = cond;
-			args = [arg0, arg1];
-			result = vreg;
-		}
-		return vreg;
-	}
-
-	/// Returns virtual register of result
-	IrIndex emitBinaryInstr(IrIndex blockIndex, IrOpcode opcode, IrIndex arg0, IrIndex arg1)
-	{
-		alias InstT = IrBinaryExprInstr!(IrOpcode.invalid);
-		auto instr = addInstruction!InstT(blockIndex);
-		IrIndex vreg = addVirtualRegister(instr);
-		with(ir.get!InstT(instr)) {
-			args = [arg0, arg1];
-			header.op = opcode; // replace IrOpcode.invalid with actual opcode
-			result = vreg;
-		}
-		return vreg;
-	}
-
 	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
 		auto res = addBinBranch(blockIndex, cond, arg0, arg1);
@@ -297,12 +372,7 @@ struct IrBuilder
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		auto branch = addInstruction!IrInstrBinaryBranch(blockIndex);
-		with(ir.get!IrInstrBinaryBranch(branch)) {
-			header.cond = cond;
-			args = [arg0, arg1];
-		}
-		return branch;
+		return emitInstr!IrInstrBinaryBranch(blockIndex, cond, arg0, arg1);
 	}
 
 	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrIndex arg0)
@@ -310,17 +380,13 @@ struct IrBuilder
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		auto branch = addInstruction!IrInstrBinaryBranch(blockIndex);
-		with(ir.get!IrInstrUnaryBranch(branch)) {
-			header.cond = cond;
-			args = [arg0];
-		}
-		return branch;
+		return emitInstr!IrInstrUnaryBranch(blockIndex, cond, arg0);
 	}
 
 	void addReturn(IrIndex blockIndex, IrIndex returnValue)
 	{
-		assert(ir.returnType != IrValueType.void_t);
+		context.assertf(returnValue.isDefined, "addReturn %s", returnValue);
+		context.assertf(ir.returnType != IrValueType.void_t, "Trying to return value from void function");
 		writeVariable(blockIndex, returnVar, returnValue);
 		addJump(blockIndex);
 		addBlockTarget(blockIndex, ir.exitBasicBlock);
@@ -328,6 +394,7 @@ struct IrBuilder
 
 	void addReturn(IrIndex blockIndex)
 	{
+		context.assertf(ir.returnType == IrValueType.void_t, "Trying to return void from non-void function");
 		assert(ir.returnType == IrValueType.void_t);
 		addJump(blockIndex);
 		addBlockTarget(blockIndex, ir.exitBasicBlock);
@@ -338,7 +405,7 @@ struct IrBuilder
 		IrBasicBlockInstr* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		return addInstruction!IrInstrJump(blockIndex);
+		return emitInstr!IrInstrJump(blockIndex);
 	}
 
 	void addJumpToLabel(IrIndex blockIndex, ref IrLabel label)

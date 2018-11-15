@@ -121,7 +121,11 @@ struct AstToIr
 		foreach (decl; m.functions) {
 			visit(decl);
 			// can be null if function is external
-			if (decl.irData) m.irModule.addFunction(decl.irData);
+			if (decl.irData)
+			{
+				m.irModule.addFunction(decl.irData);
+				if (context.validateIr) validateIrFunction(*context, *decl.irData);
+			}
 		}
 		version(IrGenPrint) writeln("[IR GEN] module end");
 	}
@@ -243,12 +247,11 @@ struct AstToIr
 		if (v.isParameter)
 		{
 			//++ir.numParameters;
-			IrIndex paramIndex = builder.addInstruction!IrInstrParameter(ir.entryBasicBlock);
-			ir.get!IrInstrParameter(paramIndex).index = v.paramIndex;
-			IrIndex paramValue = ir.get!IrInstrHeader(paramIndex).result;
+			InstrWithResult param = builder.emitInstr!IrInstrParameter(ir.entryBasicBlock);
+			ir.get!IrInstrParameter(param.instruction).index = v.paramIndex;
 			//instr.stackSlot = v.stackSlotId;
 
-			builder.writeVariable(currentBlock, v.irVar, paramValue);
+			builder.writeVariable(currentBlock, v.irVar, param.result);
 		}
 		else
 		{
@@ -458,12 +461,13 @@ struct AstToIr
 		return cast(IrBinaryCondition)(op - BinOp.EQUAL_EQUAL);
 	}
 
-
+	// In value mode only uses trueExit as nextStmt
 	void visitBinOpImpl(bool forValue)(BinaryExprNode* b, ref IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
 		IrLabel afterLeft = IrLabel(currentBlock);
 		visitExprValue(b.left, currentBlock, afterLeft);
-		IrLabel afterRight = IrLabel(afterLeft.blockIndex);
+		currentBlock = afterLeft.blockIndex;
+		IrLabel afterRight = IrLabel(currentBlock);
 		visitExprValue(b.right, currentBlock, afterRight);
 		currentBlock = afterRight.blockIndex;
 
@@ -497,12 +501,13 @@ struct AstToIr
 			{
 				case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op value %s", b.op);
-					b.irRef = builder.emitBinaryInstr(currentBlock, convertBinOpToIrCond(b.op), lRef, rRef);
+					b.irRef = builder.emitInstr!IrSetBinaryCondInstr(
+						currentBlock, convertBinOpToIrCond(b.op), lRef, rRef).result;
 					break;
 
 				// TODO
-				case PLUS: b.irRef = builder.emitBinaryInstr(currentBlock, IrOpcode.add, lRef, rRef); break;
-				case MINUS: b.irRef = builder.emitBinaryInstr(currentBlock, IrOpcode.sub, lRef, rRef); break;
+				case PLUS: b.irRef = builder.emitInstr!IrInstr_add(currentBlock, lRef, rRef).result; break;
+				case MINUS: b.irRef = builder.emitInstr!IrInstr_sub(currentBlock, lRef, rRef).result; break;
 
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}
@@ -515,8 +520,6 @@ struct AstToIr
 				case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op branch %s", b.op);
 					auto branch = builder.addBinBranch(currentBlock, convertBinOpToIrCond(b.op), lRef, rRef, trueExit, falseExit);
-					builder.addUser(branch, lRef);
-					builder.addUser(branch, rRef);
 					break;
 
 				// TODO && || !
@@ -543,23 +546,76 @@ struct AstToIr
 
 	void visitExprBranch(CallExprNode* c, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
+		context.unreachable;
 		version(IrGenPrint) writefln("[IR GEN] call branch (%s) begin", c.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] call branch (%s) begin", c.loc);
 	}
 	void visitExprValue(CallExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		context.unreachable;
 		version(IrGenPrint) writefln("[IR GEN] call value (%s) begin", c.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] call value (%s) begin", c.loc);
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprBranch(IndexExprNode* i, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit) {
+		context.unreachable;
 	}
-	void visitExprValue(IndexExprNode* i, IrIndex currentBlock, ref IrLabel nextStmt) {
+	void visitExprValue(IndexExprNode* i, IrIndex currentBlock, ref IrLabel nextStmt)
+	{
+		IrLabel afterIndex = IrLabel(currentBlock);
+		visitExprValue(i.array, currentBlock, afterIndex);
+		currentBlock = afterIndex.blockIndex;
+
+		IrLabel afterRight = IrLabel(currentBlock);
+		visitExprValue(i.index, currentBlock, afterRight);
+		currentBlock = afterRight.blockIndex;
+
+		IrIndex address;
+		if (i.index.irRef.isConstant)
+		{
+			ulong elemSize = i.type.size;
+			ulong index = context.getConstant(i.index.irRef).i64;
+			if (index == 0) {
+				address = i.array.irRef;
+			} else {
+				IrIndex offset = context.addConstant(IrConstant(index * elemSize));
+				address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irRef, offset).result;
+			}
+		}
+		else
+		{
+			IrIndex scale = context.addConstant(IrConstant(i.type.size));
+			IrIndex offset = builder.emitInstr!IrInstr_mul(currentBlock, i.index.irRef, scale).result;
+			address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irRef, offset).result;
+		}
+
+		if (i.isLvalue) {
+			i.irRef = address;
+		} else {
+			i.irRef = builder.emitInstr!IrLoadInstr(currentBlock, address).result;
+		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
+
 	void visitExprBranch(TypeConvExprNode* t, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit) {
+		context.unreachable;
 	}
 	void visitExprValue(TypeConvExprNode* t, IrIndex currentBlock, ref IrLabel nextStmt) {
+		IrLabel afterExpr = IrLabel(currentBlock);
+		visitExprValue(t.expr, currentBlock, afterExpr);
+		currentBlock = afterExpr.blockIndex;
+
+		IrValueType to = t.type.irType(context);
+		IrValueType from = t.expr.type.irType(context);
+		if (t.expr.irRef.isConstant || (from == IrValueType.i32 && to == IrValueType.i64))
+		{
+			t.irRef = t.expr.irRef;
+		}
+		else
+		{
+			//t.irRef = builder.emitInstr1(IrOpcode.o_conv, to, t.expr.irRef);
+			context.internal_error(t.loc, "%s to %s", t.expr.type.printer(context), t.type.printer(context));
+		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visit(BasicTypeNode* t) {}

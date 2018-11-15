@@ -28,6 +28,7 @@ struct IrToLir
 			fun.lirData = new IrFunction;
 			context.mod.lirModule.functions[i] = fun.lirData;
 			processFunc(*fun.irData, *fun.lirData);
+			if (context.validateIr) validateIrFunction(*context, *fun.lirData);
 		}
 	}
 
@@ -129,72 +130,112 @@ struct IrToLir
 			// Add instructions with old args
 			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; ir.getBlock(irBlockIndex).instructions(ir))
 			{
+				auto emitLirInstr(I)()
+				{
+					ExtraInstrArgs extra = {addUsers : false};
+					static if (getInstrInfo!I.hasResult)
+					{
+						InstrWithResult res = builder.emitInstr!I(lirBlockIndex, instrHeader.args, extra);
+						recordIndex(instrIndex, res.instruction);
+						recordIndex(instrHeader.result, res.result);
+					}
+					else
+					{
+						IrIndex res = builder.emitInstr!I(lirBlockIndex, instrHeader.args, extra);
+						recordIndex(instrIndex, res);
+					}
+				}
+
 				switch(instrHeader.op)
 				{
 					case IrOpcode.parameter:
-						IrIndex movIndex = builder.appendVoidToBlock!LirAmd64Instr_mov(lirBlockIndex);
-						recordIndex(instrIndex, movIndex);
-
-						IrIndex paramValue = builder.addVirtualRegister(movIndex);
 						uint paramIndex = ir.get!IrInstrParameter(instrIndex).index;
 						context.assertf(paramIndex < lir.callingConvention.paramsInRegs.length,
 							"Only parameters passed through registers are implemented");
 
-						lir.get!LirAmd64Instr_mov(movIndex)
-							.initialize(paramValue, lir.callingConvention.paramsInRegs[paramIndex]);
-						recordIndex(instrHeader.result, paramValue);
+						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(
+							lirBlockIndex,
+							lir.callingConvention.paramsInRegs[paramIndex]);
+						recordIndex(instrIndex, instr.instruction);
+						recordIndex(instrHeader.result, instr.result);
+						break;
+
+					case IrOpcode.add:
+						emitLirInstr!LirAmd64Instr_add;
+						break;
+
+					case IrOpcode.sub:
+						emitLirInstr!LirAmd64Instr_sub;
+						break;
+
+					case IrOpcode.mul:
+						emitLirInstr!LirAmd64Instr_mul;
+						break;
+
+					case IrOpcode.load:
+						emitLirInstr!LirAmd64Instr_load;
+						break;
+
+					case IrOpcode.store:
+						emitLirInstr!LirAmd64Instr_store;
 						break;
 
 					case IrOpcode.block_exit_jump:
-						IrIndex jmp = builder.addInstruction!LirAmd64Instr_jmp(lirBlockIndex);
+						builder.emitInstr!LirAmd64Instr_jmp(lirBlockIndex);
 						break;
 
 					case IrOpcode.block_exit_unary_branch:
-						IrIndex branchIndex = builder.addInstruction!LirAmd64Instr_un_branch(lirBlockIndex);
-						lir.get!IrInstrHeader(branchIndex).args[] = instrHeader.args;
-						lir.get!IrInstrHeader(branchIndex).cond = instrHeader.cond;
-						recordIndex(instrIndex, branchIndex);
+						ExtraInstrArgs extra = {addUsers : false, cond : instrHeader.cond};
+						IrIndex instruction = builder.emitInstr!LirAmd64Instr_un_branch(
+							lirBlockIndex, instrHeader.args, extra);
+						recordIndex(instrIndex, instruction);
 						break;
 
 					case IrOpcode.block_exit_binary_branch:
-						IrIndex branchIndex = builder.addInstruction!LirAmd64Instr_bin_branch(lirBlockIndex);
-						lir.get!IrInstrHeader(branchIndex).args[] = instrHeader.args;
-						lir.get!IrInstrHeader(branchIndex).cond = instrHeader.cond;
-						recordIndex(instrIndex, branchIndex);
+						ExtraInstrArgs extra = {addUsers : false, cond : instrHeader.cond};
+						IrIndex instruction = builder.emitInstr!LirAmd64Instr_bin_branch(
+							lirBlockIndex, instrHeader.args, extra);
+						recordIndex(instrIndex, instruction);
 						break;
 
 					case IrOpcode.block_exit_return_void:
-						IrIndex ret = builder.addInstruction!LirAmd64Instr_return(lirBlockIndex);
+						builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
 						break;
 
 					case IrOpcode.block_exit_return_value:
-						IrIndex movIndex = builder.appendVoidToBlock!LirAmd64Instr_mov(lirBlockIndex);
-						lir.get!LirAmd64Instr_mov(movIndex)
-							.initialize(lir.callingConvention.returnReg, instrHeader.args[0]);
-
-						IrIndex retIndex = builder.addInstruction!LirAmd64Instr_return(lirBlockIndex);
-
-						recordIndex(instrIndex, retIndex);
+						builder.emitInstr!LirAmd64Instr_mov(
+							lirBlockIndex, lir.callingConvention.returnReg, instrHeader.args);
+						IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
+						recordIndex(instrIndex, instruction);
 						break;
 
 					default:
 						writefln("inst %s", cast(IrOpcode)instrHeader.op);
+						context.unreachable;
 				}
 			}
 		}
 
-		foreach (IrIndex blockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		void fixArg(IrIndex instrIndex, ref IrIndex arg)
+		{
+			fixIndex(arg);
+			builder.addUser(instrIndex, arg);
+		}
+
+		void fixInstrs(IrIndex blockIndex, ref IrBasicBlockInstr lirBlock)
 		{
 			// replace old args with new args and add users
 			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(lir))
 			{
 				foreach(ref IrIndex arg; instrHeader.args)
 				{
-					fixIndex(arg);
-					builder.addUser(instrIndex, arg);
+					fixArg(instrIndex, arg);
 				}
 			}
+		}
 
+		void fixPhis(IrIndex blockIndex, ref IrBasicBlockInstr lirBlock)
+		{
 			// fix phi args and add users
 			foreach(IrIndex phiIndex, ref IrPhiInstr phi; lirBlock.phis(lir))
 			{
@@ -205,6 +246,12 @@ struct IrToLir
 					builder.addUser(phiIndex, phiArg.value);
 				}
 			}
+		}
+
+		foreach (IrIndex blockIndex, ref IrBasicBlockInstr lirBlock; lir.blocks)
+		{
+			fixInstrs(blockIndex, lirBlock);
+			fixPhis(blockIndex, lirBlock);
 		}
 	}
 }

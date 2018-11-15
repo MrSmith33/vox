@@ -12,14 +12,45 @@ import all;
 import ir.ir_index;
 
 
-enum HasResult : bool { no, yes }
-
 struct InstrInfo
 {
 	ushort opcode;
 	uint numArgs;
-	HasResult hasResult;
+	/// Set of IrInstrFlags
+	uint flags;
+	static assert(IrInstrFlags.max <= uint.max, "Not enough bits for flags");
+
+	bool isMov() { return (flags & IFLG.isMov) != 0; }
+	bool isJump() { return (flags & IFLG.isJump) != 0; }
+	bool isBranch() { return (flags & IFLG.isBranch) != 0; }
+	bool isLoad() { return (flags & IFLG.isLoad) != 0; }
+	bool isStore() { return (flags & IFLG.isStore) != 0; }
+	bool modifiesMemory() { return (flags & IFLG.modifiesMemory) != 0; }
+	bool hasResult() { return (flags & IFLG.hasResult) != 0; }
+	bool hasVariadicArgs() { return (flags & IFLG.hasVariadicArgs) != 0; }
+	bool hasVariadicResult() { return (flags & IFLG.hasVariadicResult) != 0; }
+	bool hasCondition() { return (flags & IFLG.hasCondition) != 0; }
 }
+
+enum IrInstrFlags : uint {
+	hasResult = 1 << 0,
+	isMov = 1 << 1,
+	isBranch = 1 << 2,
+	isJump = 1 << 3,
+	isLoad = 1 << 4,
+	isStore = 1 << 5,
+	modifiesMemory = 1 << 6,
+	/// If set InstrInfo.numArgs must be zero
+	/// and IrInstrHeader.numArgs is set at runtime
+	hasVariadicArgs = 1 << 7,
+	/// If set IFLG.hasResult flag must not be set
+	/// and IrInstrHeader.hasResult is set at runtime
+	hasVariadicResult = 1 << 8,
+	/// If set IrInstrHeader.cond is used
+	hasCondition = 1 << 9,
+}
+
+alias IFLG = IrInstrFlags;
 
 enum getInstrInfo(T) = getUDAs!(T, InstrInfo)[0];
 enum getIrValueKind(T) = getUDAs!(T, IrValueKind)[0];
@@ -96,8 +127,16 @@ enum IrOpcode : ushort
 	store,
 	load,
 
+	conv,
+
 	add,
-	sub
+	sub,
+	mul,
+}
+
+bool hasSideEffects(IrOpcode opcode)
+{
+	return opcode == IrOpcode.store;
 }
 
 @(IrValueKind.virtualRegister)
@@ -177,13 +216,17 @@ struct InstrIterator
 	IrFunction* ir;
 	IrBasicBlockInstr* block;
 	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
-		IrIndex next = block.firstInstr;
-		while (next.isDefined)
+		IrIndex current = block.firstInstr;
+		while (current.isDefined)
 		{
-			IrInstrHeader* header = &ir.get!IrInstrHeader(next);
-			if (int res = dg(next, *header))
+			IrIndex indexCopy = current;
+			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
+
+			// save current before invoking delegate, which can remove current instruction
+			current = header.nextInstr;
+
+			if (int res = dg(indexCopy, *header))
 				return res;
-			next = header.nextInstr;
 		}
 		return 0;
 	}
@@ -194,13 +237,17 @@ struct InstrReverseIterator
 	IrFunction* ir;
 	IrBasicBlockInstr* block;
 	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
-		IrIndex prev = block.lastInstr;
-		while (prev.isDefined)
+		IrIndex current = block.lastInstr;
+		while (current.isDefined)
 		{
-			IrInstrHeader* header = &ir.get!IrInstrHeader(prev);
-			if (int res = dg(prev, *header))
+			IrIndex indexCopy = current;
+			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
+
+			// save current before invoking delegate, which can remove current instruction
+			current = header.prevInstr;
+
+			if (int res = dg(indexCopy, *header))
 				return res;
-			prev = header.prevInstr;
 		}
 		return 0;
 	}
@@ -214,7 +261,7 @@ struct IrInstrHeader
 	ubyte numArgs;
 
 	mixin(bitfields!(
-		HasResult,  "hasResult", 1,
+		bool,       "hasResult", 1,
 		ubyte,      "cond",      4,
 		uint, "",                3
 	));
@@ -237,33 +284,30 @@ struct IrInstrHeader
 	}
 }
 
-template IrGenericInstr(ushort opcode, uint numArgs, HasResult hasResult)
+template IrGenericInstr(ushort opcode, uint numArgs, uint flags = 0)
 {
-	@(IrValueKind.instruction) @InstrInfo(opcode, numArgs, hasResult)
+	enum hasResult = (flags & IFLG.hasResult) != 0;
+
+	@(IrValueKind.instruction) @InstrInfo(opcode, numArgs, flags)
 	struct IrGenericInstr
 	{
 		IrInstrHeader header;
 		static if (hasResult)   IrIndex result;
 		static if (numArgs > 0) IrIndex[numArgs] args;
-
-		/// takes result + all arguments
-		void initialize(IrIndex[hasResult + numArgs] payload ...)
-		{
-			header.op = opcode;
-			header.numArgs = numArgs;
-			header.hasResult = hasResult;
-			header._payload.ptr[0..hasResult + numArgs] = payload;
-		}
 	}
 }
 
-alias IrReturnValueInstr = IrGenericInstr!(IrOpcode.block_exit_return_value, 1, HasResult.no);
-alias IrReturnVoidInstr = IrGenericInstr!(IrOpcode.block_exit_return_void, 0, HasResult.no);
-alias IrStoreInstr = IrGenericInstr!(IrOpcode.store, 1, HasResult.no);
-alias IrLoadInstr = IrGenericInstr!(IrOpcode.load, 1, HasResult.yes);
-alias IrSetBinaryCondInstr = IrGenericInstr!(IrOpcode.set_binary_cond, 2, HasResult.yes);
-alias IrBinaryExprInstr(ushort opcode) = IrGenericInstr!(opcode, 2, HasResult.yes);
-alias IrInstrJump = IrGenericInstr!(IrOpcode.block_exit_jump, 0, HasResult.no);
+alias IrReturnValueInstr = IrGenericInstr!(IrOpcode.block_exit_return_value, 1);
+alias IrReturnVoidInstr = IrGenericInstr!(IrOpcode.block_exit_return_void, 0);
+alias IrStoreInstr = IrGenericInstr!(IrOpcode.store, 1);
+alias IrLoadInstr = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
+alias IrSetBinaryCondInstr = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
+alias IrInstr_add = IrGenericInstr!(IrOpcode.add, 2, IFLG.hasResult);
+alias IrInstr_sub = IrGenericInstr!(IrOpcode.sub, 2, IFLG.hasResult);
+alias IrInstr_mul = IrGenericInstr!(IrOpcode.mul, 2, IFLG.hasResult);
+alias IrBinaryExprInstr(ushort opcode) = IrGenericInstr!(opcode, 2, IFLG.hasResult);
+alias IrUnaryExprInstr(ushort opcode) = IrGenericInstr!(opcode, 1, IFLG.hasResult);
+alias IrInstrJump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
 
 enum IrBinaryCondition : ubyte {
 	eq,
@@ -290,7 +334,7 @@ IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
 }
 
 /// Uses header.cond
-alias IrInstrBinaryBranch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, HasResult.no);
+alias IrInstrBinaryBranch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, IFLG.hasCondition);
 
 enum IrUnaryCondition : ubyte {
 	zero,
@@ -308,9 +352,9 @@ IrUnaryCondition invertUnaryCond(IrUnaryCondition cond)
 }
 
 /// Uses header.cond
-alias IrInstrUnaryBranch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, HasResult.no);
+alias IrInstrUnaryBranch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, IFLG.hasCondition);
 
-@(IrValueKind.instruction) @InstrInfo(IrOpcode.parameter, 0, HasResult.yes)
+@(IrValueKind.instruction) @InstrInfo(IrOpcode.parameter, 0, IFLG.hasResult)
 struct IrInstrParameter
 {
 	IrInstrHeader header;

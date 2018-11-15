@@ -202,7 +202,7 @@ struct PhysicalRegister
 struct MachineInfo
 {
 	PhysicalRegister[] registers;
-	LirInstrInfo[] instrInfo;
+	InstrInfo[] instrInfo;
 }
 
 __gshared MachineInfo mach_info_amd64 = MachineInfo(
@@ -265,6 +265,7 @@ struct CallConv
 
 __gshared CallConv win64_call_conv = CallConv
 (
+	// parameters in registers
 	[amd64_reg.cx, amd64_reg.dx, amd64_reg.r8, amd64_reg.r9],
 
 	amd64_reg.ax,  // return reg
@@ -295,59 +296,50 @@ __gshared CallConv win64_call_conv = CallConv
 	amd64_reg.bp, // frame pointer
 );
 
-private alias _lii = LirInstrInfo;
+private alias _ii = InstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	@_lii() add,
-	@_lii() sub,
-	@_lii() imul,
-	@_lii() or,
-	@_lii() and,
-	@_lii() xor,
-	@_lii() mul,
-	@_lii() div,
-	@_lii() lea,
+	@_ii() add,
+	@_ii() sub,
+	@_ii() imul,
+	@_ii() or,
+	@_ii() and,
+	@_ii() xor,
+	@_ii() mul,
+	@_ii() div,
+	@_ii() lea,
 
-	@_lii(LirInstrFlags.isMov) mov,
-	@_lii() movsx,
-	@_lii() movzx,
+	@_ii(0,1,IFLG.isMov) mov, // rr, ri
+	@_ii(0,1,IFLG.isLoad) load,
+	@_ii(0,2,IFLG.isStore) store,
+	@_ii() movsx,
+	@_ii() movzx,
 
-	@_lii() not,
-	@_lii() neg,
+	@_ii() not,
+	@_ii() neg,
 
-	@_lii() cmp,
-	@_lii() test,
+	@_ii() cmp,
+	@_ii() test,
 
 	// machine specific branches
-	@_lii(LirInstrFlags.isJump) jmp,
-	@_lii() jcc,
+	@_ii(0,0,IFLG.isJump) jmp,
+	@_ii() jcc,
 	// high-level branches
-	@_lii(LirInstrFlags.isBranch) bin_branch,
-	@_lii(LirInstrFlags.isBranch) un_branch,
+	@_ii(0,2,IFLG.isBranch) bin_branch,
+	@_ii(0,2,IFLG.isBranch) un_branch,
 
-	@_lii() setcc,
+	@_ii() setcc,
 
-	@_lii() call,
-	@_lii() ret,
+	@_ii() call,
+	@_ii() ret,
 
-	@_lii() pop,
-	@_lii() push,
+	@_ii() pop,
+	@_ii() push,
 }
 
-enum LirInstrFlags {
-	isMov = 1 << 0,
-	isBranch = 1 << 1,
-	isJump = 1 << 2,
-}
-
-struct LirInstrInfo
+InstrInfo[] gatherInfos()
 {
-	uint flags;
-}
-
-LirInstrInfo[] gatherInfos()
-{
-	LirInstrInfo[] res = new LirInstrInfo[__traits(allMembers, Amd64Opcode).length];
+	InstrInfo[] res = new InstrInfo[__traits(allMembers, Amd64Opcode).length];
 	foreach (i, m; __traits(allMembers, Amd64Opcode))
 	{
 		res[i] = __traits(getAttributes, mixin("Amd64Opcode."~m))[0];
@@ -355,16 +347,20 @@ LirInstrInfo[] gatherInfos()
 	return res;
 }
 
-alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, HasResult.yes);
-alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, HasResult.yes);
-alias LirAmd64Instr_cmp = IrGenericInstr!(Amd64Opcode.cmp, 2, HasResult.no);
-alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1, HasResult.no);
-alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0, HasResult.no);
-alias LirAmd64Instr_bin_branch = IrGenericInstr!(Amd64Opcode.bin_branch, 2, HasResult.no);
-alias LirAmd64Instr_un_branch = IrGenericInstr!(Amd64Opcode.un_branch, 1, HasResult.no);
-alias LirAmd64Instr_test = IrGenericInstr!(Amd64Opcode.test, 1, HasResult.no);
-alias LirAmd64Instr_return = IrGenericInstr!(Amd64Opcode.ret, 0, HasResult.no);
-alias LirAmd64Instr_mov = IrGenericInstr!(Amd64Opcode.mov, 1, HasResult.yes);
+alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult);
+alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult);
+alias LirAmd64Instr_mul = IrGenericInstr!(Amd64Opcode.mul, 2, IFLG.hasResult);
+alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult);
+alias LirAmd64Instr_cmp = IrGenericInstr!(Amd64Opcode.cmp, 2);
+alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1);
+alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0);
+alias LirAmd64Instr_bin_branch = IrGenericInstr!(Amd64Opcode.bin_branch, 2, IFLG.hasCondition);
+alias LirAmd64Instr_un_branch = IrGenericInstr!(Amd64Opcode.un_branch, 1, IFLG.hasCondition);
+alias LirAmd64Instr_test = IrGenericInstr!(Amd64Opcode.test, 1);
+alias LirAmd64Instr_return = IrGenericInstr!(Amd64Opcode.ret, 0);
+alias LirAmd64Instr_mov = IrGenericInstr!(Amd64Opcode.mov, 1, IFLG.hasResult); // mov rr/ri
+alias LirAmd64Instr_load = IrGenericInstr!(Amd64Opcode.load, 1, IFLG.hasResult); // mov rm
+alias LirAmd64Instr_store = IrGenericInstr!(Amd64Opcode.store, 2); // mov mr/mi
 
 // call layout
 // - header

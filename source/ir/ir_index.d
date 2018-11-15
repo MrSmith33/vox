@@ -11,6 +11,7 @@ import std.bitmanip : bitfields;
 import all;
 
 /// Represent index of any IR entity inside function's ir array
+@(IrValueKind.none)
 struct IrIndex
 {
 	this(uint _storageUintIndex, IrValueKind _kind)
@@ -62,6 +63,8 @@ struct IrIndex
 		return result;
 	}
 
+	bool isInstruction() { return kind == IrValueKind.instruction; }
+	bool isPhi() { return kind == IrValueKind.phi; }
 	bool isConstant() { return kind == IrValueKind.constant; }
 	bool isVirtReg() { return kind == IrValueKind.virtualRegister; }
 	bool isPhysReg() { return kind == IrValueKind.physicalRegister; }

@@ -12,5 +12,5 @@ version = standalone;
 version(standalone) void main()
 {
 	//runBench();
-	test();
+	runAllTests();
 }
