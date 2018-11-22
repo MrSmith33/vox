@@ -238,7 +238,7 @@ struct TypeNode {
 			case AstType.type_basic:
 			switch(basicTypeNode.basicType)
 			{
-				case BasicType.t_void: return IrValueType.i32;
+				case BasicType.t_void: return IrValueType.void_t;
 				case BasicType.t_bool: return IrValueType.i32;
 				case BasicType.t_i32: return IrValueType.i32;
 				case BasicType.t_i64: return IrValueType.i64;
@@ -348,6 +348,7 @@ struct ModuleDeclNode {
 	ubyte[] code;
 
 	void addFunction(FunctionDeclNode* func) {
+		func.index = FunctionIndex(cast(uint)functions.length);
 		functions ~= func;
 	}
 
@@ -369,6 +370,13 @@ struct StructDeclNode {
 	Scope* _scope;
 }
 
+/// Points into ModuleDeclNode.functions
+struct FunctionIndex
+{
+	uint index;
+	alias index this;
+}
+
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
 	mixin SymRefNodeData;
@@ -383,6 +391,10 @@ struct FunctionDeclNode {
 	/// Position in buffer or in memory
 	void* funcPtr;
 	CallConv* callingConvention;
+	FunctionIndex index;
+
+	/// External functions have no body
+	bool isExternal() { return block_stmt is null; }
 }
 
 enum VariableFlags : ubyte {
@@ -394,6 +406,7 @@ struct VariableDeclNode {
 	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);
 	mixin SymRefNodeData;
 	TypeNode* type;
+	ExpressionNode* initializer; // may be null
 	ubyte varFlags;
 	ushort paramIndex; // 0 for non-params
 	IrIndex irRef;

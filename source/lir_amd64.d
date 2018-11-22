@@ -76,6 +76,7 @@ struct CallConv
 	/// frame pointer is enable for the function, or
 	/// can be used as allocatable register if not
 	IrIndex framePointer;
+	IrIndex stackPointer;
 
 	bool isParamOnStack(size_t parIndex) {
 		return parIndex >= paramsInRegs.length;
@@ -100,19 +101,22 @@ __gshared CallConv win64_call_conv = CallConv
 	[amd64_reg.ax, // avaliable for allocation
 	amd64_reg.cx,
 	amd64_reg.dx,
-	amd64_reg.bx,
-	amd64_reg.si,
-	amd64_reg.di,
 	amd64_reg.r8,
 	amd64_reg.r9,
 	amd64_reg.r10,
 	amd64_reg.r11,
+
+	// callee saved
+	amd64_reg.bx,
+	amd64_reg.si,
+	amd64_reg.di,
 	amd64_reg.r12,
 	amd64_reg.r13,
 	amd64_reg.r14,
 	amd64_reg.r15],
 
 	amd64_reg.bp, // frame pointer
+	amd64_reg.sp, // stack pointer
 );
 
 private alias _ii = InstrInfo;
@@ -166,9 +170,9 @@ InstrInfo[] gatherInfos()
 	return res;
 }
 
-alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult);
-alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult);
-alias LirAmd64Instr_mul = IrGenericInstr!(Amd64Opcode.mul, 2, IFLG.hasResult);
+alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult); // arg0 = arg0 + arg1
+alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult); // arg0 = arg0 - arg1
+alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult);
 alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult);
 alias LirAmd64Instr_cmp = IrGenericInstr!(Amd64Opcode.cmp, 2);
 alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1);
@@ -176,11 +180,11 @@ alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0);
 alias LirAmd64Instr_bin_branch = IrGenericInstr!(Amd64Opcode.bin_branch, 2, IFLG.hasCondition);
 alias LirAmd64Instr_un_branch = IrGenericInstr!(Amd64Opcode.un_branch, 1, IFLG.hasCondition);
 alias LirAmd64Instr_test = IrGenericInstr!(Amd64Opcode.test, 1);
+alias LirAmd64Instr_push = IrGenericInstr!(Amd64Opcode.push, 0);
 alias LirAmd64Instr_return = IrGenericInstr!(Amd64Opcode.ret, 0);
 alias LirAmd64Instr_mov = IrGenericInstr!(Amd64Opcode.mov, 1, IFLG.hasResult); // mov rr/ri
 alias LirAmd64Instr_load = IrGenericInstr!(Amd64Opcode.load, 1, IFLG.hasResult); // mov rm
 alias LirAmd64Instr_store = IrGenericInstr!(Amd64Opcode.store, 2); // mov mr/mi
-
 // call layout
 // - header
 // - result (if callee is non-void)
@@ -189,10 +193,7 @@ alias LirAmd64Instr_store = IrGenericInstr!(Amd64Opcode.store, 2); // mov mr/mi
 // - ...
 // - argN
 ///
-struct LirAmd64Instr_call
-{
-	IrInstrHeader header;
-}
+alias LirAmd64Instr_call = IrGenericInstr!(Amd64Opcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);
 
 Condition[] IrBinCondToAmd64Condition = [
 	Condition.E,  // eq
@@ -208,27 +209,15 @@ Condition[] IrUnCondToAmd64Condition = [
 	Condition.NZ, // not_zero
 ];
 
+IrDumpHandlers lirAmd64DumpHandlers = IrDumpHandlers(&dumpAmd64Instr, &dumpLirAmd64Index);
+
 void dumpAmd64Instr(ref InstrPrintInfo p)
 {
-	void printIndex(IrIndex i)
-	{
-		final switch(i.kind) with(IrValueKind) {
-			case none: p.sink.put("<null>"); break;
-			case listItem: p.sink.putf("l.%s", i.storageUintIndex); break;
-			case instruction: p.sink.putf("i.%s", i.storageUintIndex); break;
-			case basicBlock: p.sink.putf("@%s", i.storageUintIndex); break;
-			case constant: p.sink.putf("%s", p.context.constants[i.storageUintIndex].i64); break;
-			case phi: p.sink.putf("phi.%s", i.storageUintIndex); break;
-			case memoryAddress: p.sink.putf("m.%s", i.storageUintIndex); break;
-			case stackSlot: p.sink.putf("s.%s", i.storageUintIndex); break;
-			case virtualRegister: p.sink.putf("v.%s", i.storageUintIndex); break;
-			// TODO, HACK: 32-bit version of register is hardcoded here
-			case physicalRegister: p.sink.put("e"); p.sink.put(mach_info_amd64.registers[i.storageUintIndex].name); break;
-		}
-	}
-
 	switch(p.instrHeader.op)
 	{
+		case Amd64Opcode.call:
+			dumpCall(p);
+			break;
 		case Amd64Opcode.bin_branch:
 			dumpBinBranch(p);
 			break;
@@ -237,13 +226,13 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 			break;
 		case Amd64Opcode.jcc:
 			p.sink.putf("    j%s ", cast(Condition)p.instrHeader.cond);
-			printIndex(p.instrHeader.args[0]);
+			p.dumpIndex(p.instrHeader.args[0]);
 			break;
 		default:
 			if (p.instrHeader.hasResult)
 			{
 				p.sink.put("    ");
-				printIndex(p.instrHeader.result);
+				p.dumpIndex(p.instrHeader.result);
 				p.sink.putf(" = %s", cast(Amd64Opcode)p.instrHeader.op);
 			}
 			else  p.sink.putf("    %s", cast(Amd64Opcode)p.instrHeader.op);
@@ -252,9 +241,26 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 			foreach (i, IrIndex arg; p.instrHeader.args)
 			{
 				if (i > 0) p.sink.put(", ");
-				printIndex(arg);
+				p.dumpIndex(arg);
 			}
 			break;
+	}
+}
+
+void dumpLirAmd64Index(ref InstrPrintInfo p, IrIndex i)
+{
+	final switch(i.kind) with(IrValueKind) {
+		case none: p.sink.put("<null>"); break;
+		case listItem: p.sink.putf("l.%s", i.storageUintIndex); break;
+		case instruction: p.sink.putf("i.%s", i.storageUintIndex); break;
+		case basicBlock: p.sink.putf("@%s", i.storageUintIndex); break;
+		case constant: p.sink.putf("%s", p.context.constants[i.storageUintIndex].i64); break;
+		case phi: p.sink.putf("phi.%s", i.storageUintIndex); break;
+		case memoryAddress: p.sink.putf("m.%s", i.storageUintIndex); break;
+		case stackSlot: p.sink.putf("s.%s", i.storageUintIndex); break;
+		case virtualRegister: p.sink.putf("v.%s", i.storageUintIndex); break;
+		// TODO, HACK: 32-bit version of register is hardcoded here
+		case physicalRegister: p.sink.put("e"); p.sink.put(mach_info_amd64.registers[i.storageUintIndex].name); break;
 	}
 }
 

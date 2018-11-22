@@ -21,7 +21,7 @@ import all;
 	<param_list> = <parameter> "," <parameter_list> / <parameter>?
 	<parameter> = <type> <identifier>?
 
-	<var_decl> = <type> <identifier> ";"
+	<var_decl> = <type> <identifier> ("=" <expression>)? ";"
 	<struct_decl> = "struct" <identifier> "{" <declaration>* "}"
 
 	<statement> = "if" <paren_expression> <statement> ("else" <statement>)?
@@ -749,12 +749,16 @@ struct Parser {
 		return t;
 	}
 
-	void expectAndConsume(TokenType type) {
+	void expect(TokenType type) {
 		if (tok.type != type) {
 			string tokenString = lexer.getTokenString(tok);
 			context.unrecoverable_error(tok.loc, "Expected `%s` token, while got `%s` token '%s'",
 				type, tok.type, tokenString);
 		}
+	}
+
+	void expectAndConsume(TokenType type) {
+		expect(type);
 		nextToken();
 	}
 
@@ -797,7 +801,7 @@ struct Parser {
 		if (tok.type == TokenType.STRUCT_SYM) // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
 		{
 			version(print_parse) auto s2 = scop("struct %s", start);
-			nextToken();
+			nextToken(); // skip "struct"
 			Identifier structId = expectIdentifier();
 			expectAndConsume(TokenType.LCURLY);
 			AstNode*[] declarations = parse_declarations(TokenType.RCURLY);
@@ -815,10 +819,24 @@ struct Parser {
 			}
 			Identifier declarationId = expectIdentifier();
 
+			if (tok.type == TokenType.EQUAL) // "=" <expression>
+			{
+				// <var_decl> = <type> <identifier> ("=" <expression>)? ";"
+				nextToken(); // skip "="
+				ExpressionNode* initializer = expr();
+				if (!initializer.isExpression) {
+					string tokenString = lexer.getTokenString(initializer.loc);
+					context.unrecoverable_error(initializer.loc,
+						"Variable declaration can be only initialized with expressions, not with %s, '%s'",
+						initializer.astType, tokenString);
+				}
+				expect(TokenType.SEMICOLON);
+			}
+
 			if (tok.type == TokenType.SEMICOLON) // <var_declaration> ::= <type> <id> ";"
 			{
 				version(print_parse) auto s3 = scop("<var_declaration> %s", start);
-				nextToken();
+				nextToken(); // skip ";"
 				return cast(AstNode*)make!VariableDeclNode(start, SymbolRef(declarationId), type);
 			}
 			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
@@ -844,7 +862,7 @@ struct Parser {
 					param.varFlags |= VariableFlags.isParameter;
 					param.paramIndex = cast(typeof(param.paramIndex))paramIndex;
 					params ~= param;
-					if (tok.type == TokenType.COMMA) nextToken();
+					if (tok.type == TokenType.COMMA) nextToken(); // skip ","
 					else break;
 				}
 				expectAndConsume(TokenType.RPAREN);
@@ -1121,7 +1139,7 @@ struct Parser {
 			}
 			return makeExpr!VariableExprNode(start, SymbolRef(id));
 		}
-		else if (tok.type == TokenType.INT_LITERAL)
+		else if (tok.type == TokenType.INT_LITERAL) // <int>
 		{
 			long value = lexer.getTokenNumber();
 			nextToken();

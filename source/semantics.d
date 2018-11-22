@@ -5,6 +5,7 @@ Authors: Andrey Penechko.
 */
 module semantics;
 
+import std.stdio;
 import std.string : format;
 import std.typecons : Flag, Yes, No;
 import all;
@@ -517,9 +518,10 @@ struct SemanticStaticTypes
 				return; // return type is already checked
 		}
 
-		context.error(f.loc,
-			"function `%s` has no return statement, but is expected to return a value of type %s",
-			context.idString(f.id), f.returnType.typeName(context));
+		// is checked in IR gen
+		//context.error(f.loc,
+		//	"function `%s` has no return statement, but is expected to return a value of type %s",
+		//	context.idString(f.id), f.returnType.typeName(context));
 	}
 
 	void visit(ModuleDeclNode* m) {

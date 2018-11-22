@@ -27,7 +27,7 @@ struct IdentifierMap {
 		import std.format : formattedWrite;
 		tempBuf.clear;
 		tempBuf.put(str);
-		formattedWrite(tempBuf, "%s%s", str, suffix);
+		formattedWrite(tempBuf, "%s", suffix);
 		const(char)[] idString = tempBuf.data;
 		return getOrReg(idString);
 	}

@@ -13,19 +13,19 @@ alias FuncPass = void function(ref CompilationContext, ref IrFunction);
 
 void apply_ir_func_pass(ref CompilationContext context, FuncPass pass)
 {
-	foreach (FunctionDeclNode* fun; context.mod.functions) {
-		pass(context, *fun.irData);
+	foreach (IrFunction* ir; context.mod.irModule.functions) {
+		pass(context, *ir);
 		if (context.validateIr)
-			validateIrFunction(context, *fun.irData);
+			validateIrFunction(context, *ir);
 	}
 }
 
 void apply_lir_func_pass(ref CompilationContext context, FuncPass pass)
 {
-	foreach (FunctionDeclNode* fun; context.mod.functions) {
-		pass(context, *fun.lirData);
+	foreach (IrFunction* lir; context.mod.lirModule.functions) {
+		pass(context, *lir);
 		if (context.validateIr)
-			validateIrFunction(context, *fun.lirData);
+			validateIrFunction(context, *lir);
 	}
 }
 

@@ -26,6 +26,7 @@ void pass_linear_scan(ref CompilationContext context) {
 	LinearScan linearScan;
 	linearScan.context = &context;
 	foreach (FunctionDeclNode* fun; context.mod.functions) {
+		if (fun.isExternal) continue;
 		linearScan.scanFun(fun);
 	}
 }

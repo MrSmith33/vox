@@ -49,9 +49,9 @@ struct SmallVector
 		return items[0].kind == IrValueKind.listItem;
 	}
 
-	SmallVectorRange range(ref IrFunction ir)
+	SmallVectorIterator range(ref IrFunction ir)
 	{
-		return SmallVectorRange(&this, &ir);
+		return SmallVectorIterator(&this, &ir);
 	}
 
 	void replaceAll(ref IrFunction ir, IrIndex what, IrIndex byWhat)
@@ -197,7 +197,7 @@ unittest
 	assert(vec.isBig);
 }
 
-struct SmallVectorRange
+struct SmallVectorIterator
 {
 	SmallVector* vector;
 	IrFunction* ir;

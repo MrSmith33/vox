@@ -11,7 +11,28 @@ import std.stdio;
 
 import all;
 
+struct InstrPrintInfo
+{
+	CompilationContext* context;
+	TextSink* sink;
+	IrFunction* ir;
+	IrIndex blockIndex;
+	IrBasicBlock* block;
+	IrIndex instrIndex;
+	IrInstrHeader* instrHeader;
+	FuncDumpSettings* settings;
+	void dumpInstr() { settings.handlers.instrDumper(this); }
+	void dumpIndex(IrIndex i) { settings.handlers.indexDumper(this, i); }
+}
+
+struct IrDumpHandlers
+{
+	InstructionDumper instrDumper;
+	IrIndexDumper indexDumper;
+}
+
 alias InstructionDumper = void function(ref InstrPrintInfo p);
+alias IrIndexDumper = void function(ref InstrPrintInfo, IrIndex);
 
 struct FuncDumpSettings
 {
@@ -23,7 +44,18 @@ struct FuncDumpSettings
 	bool printInstrIndexEnabled = true;
 	bool printUses = true;
 	bool printLive = true;
-	InstructionDumper dumper;
+	IrDumpHandlers* handlers;
+	void dumpInstr(ref InstrPrintInfo p) { handlers.instrDumper(p); }
+	void dumpIndex(ref InstrPrintInfo p, IrIndex i) { handlers.indexDumper(p, i); }
+}
+
+IrDumpHandlers irDumpHandlers = IrDumpHandlers(&dumpIrInstr, &dumpIrIndex);
+
+void dumpFunction_ir(ref IrFunction ir, ref CompilationContext ctx)
+{
+	FuncDumpSettings settings;
+	settings.handlers = &irDumpHandlers;
+	dumpFunction(ir, ctx, settings);
 }
 
 void dumpFunction(ref IrFunction ir, ref CompilationContext ctx, ref FuncDumpSettings settings)
@@ -37,8 +69,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 {
 	sink.put("function ");
 	sink.put(ctx.idString(ir.name));
-	sink.putln("() {");
-
+	sink.putfln("() %s bytes {", ir.storageLength * uint.sizeof);
 	int indexPadding = numDigitsInNumber(ir.storageLength);
 
 	void printInstrIndex(IrIndex someIndex) {
@@ -125,7 +156,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 			printer.instrIndex = instrIndex;
 			printer.instrHeader = &instrHeader;
 
-			settings.dumper(printer);
+			printer.dumpInstr();
 
 			if (settings.printUses && instrHeader.hasResult) printRegUses(instrHeader.result);
 			sink.putln;
@@ -133,36 +164,23 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 	}
 
 	sink.putln("}");
-	sink.putfln("IR size: %s uints | %s bytes",
-		ir.storageLength, ir.storageLength * uint.sizeof);
 }
 
-struct InstrPrintInfo
+void dumpIrIndex(ref InstrPrintInfo p, IrIndex index)
 {
-	CompilationContext* context;
-	TextSink* sink;
-	IrFunction* ir;
-	IrIndex blockIndex;
-	IrBasicBlock* block;
-	IrIndex instrIndex;
-	IrInstrHeader* instrHeader;
-	FuncDumpSettings* settings;
+	p.sink.putf("%s", index);
 }
 
 void dumpIrInstr(ref InstrPrintInfo p)
 {
 	switch(p.instrHeader.op)
 	{
+		case IrOpcode.call: dumpCall(p); break;
+		case IrOpcode.block_exit_unary_branch: dumpUnBranch(p); break;
+		case IrOpcode.block_exit_binary_branch: dumpBinBranch(p); break;
+
 		case IrOpcode.block_exit_jump:
 			p.sink.putf("    jmp %s", p.block.successors[0, *p.ir]);
-			break;
-
-		case IrOpcode.block_exit_unary_branch:
-			dumpUnBranch(p);
-			break;
-
-		case IrOpcode.block_exit_binary_branch:
-			dumpBinBranch(p);
 			break;
 
 		case IrOpcode.parameter:
@@ -182,29 +200,47 @@ void dumpIrInstr(ref InstrPrintInfo p)
 			if (p.instrHeader.hasResult)
 				p.sink.putf("    %s = %s", p.instrHeader.result, cast(IrOpcode)p.instrHeader.op);
 			else  p.sink.putf("    %s", cast(IrOpcode)p.instrHeader.op);
-			foreach (i, IrIndex arg; p.instrHeader.args)
-			{
-				if (i > 0) p.sink.put(",");
-				p.sink.putf(" %s", arg);
-			}
+			dumpArgs(p);
 			break;
+	}
+}
+
+void dumpCall(ref InstrPrintInfo p)
+{
+	FunctionIndex calleeIndex = p.instrHeader.tail!IrInstrTail_call.callee;
+	FunctionDeclNode* callee = p.context.mod.functions[calleeIndex];
+	if (p.instrHeader.hasResult)
+		p.sink.putf("    %s = call %s", p.instrHeader.result, callee.strId(p.context));
+	else
+		p.sink.putf("    call %s", callee.strId(p.context));
+	dumpArgs(p);
+}
+
+void dumpArgs(ref InstrPrintInfo p)
+{
+	foreach (i, IrIndex arg; p.instrHeader.args)
+	{
+		if (i > 0) p.sink.put(",");
+		p.sink.put(" ");
+		p.dumpIndex(arg);
 	}
 }
 
 void dumpUnBranch(ref InstrPrintInfo p)
 {
-	p.sink.putf("    if %s%s then ",
-				unaryCondStrings[p.instrHeader.cond],
-				p.instrHeader.args[0]);
+	p.sink.putf("    if %s", unaryCondStrings[p.instrHeader.cond]);
+	p.sink.put(" then ");
+	p.dumpIndex(p.instrHeader.args[0]);
 	dumpBranchTargets(p);
 }
 
 void dumpBinBranch(ref InstrPrintInfo p)
 {
-	p.sink.putf("    if %s %s %s then ",
-		p.instrHeader.args[0],
-		binaryCondStrings[p.instrHeader.cond],
-		p.instrHeader.args[1]);
+	p.sink.putf("    if ");
+	p.dumpIndex(p.instrHeader.args[0]);
+	p.sink.putf(" %s ", binaryCondStrings[p.instrHeader.cond]);
+	p.dumpIndex(p.instrHeader.args[1]);
+	p.sink.put(" then ");
 	dumpBranchTargets(p);
 }
 
@@ -215,13 +251,13 @@ void dumpBranchTargets(ref InstrPrintInfo p)
 			p.sink.put("<null> else <null>");
 			break;
 		case 1:
-			p.sink.putf("%s else <null>",
-				p.block.successors[0, *p.ir]);
+			p.dumpIndex(p.block.successors[0, *p.ir]);
+			p.sink.put(" else <null>");
 			break;
 		default:
-			p.sink.putf("%s else %s",
-				p.block.successors[0, *p.ir],
-				p.block.successors[1, *p.ir]);
+			p.dumpIndex(p.block.successors[0, *p.ir]);
+			p.sink.put(" else ");
+			p.dumpIndex(p.block.successors[1, *p.ir]);
 			break;
 	}
 }

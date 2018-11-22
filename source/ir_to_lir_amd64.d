@@ -22,11 +22,12 @@ struct IrToLir
 
 	void run()
 	{
-		context.mod.lirModule.functions.length = context.mod.functions.length;
 		foreach (i, FunctionDeclNode* fun; context.mod.functions)
 		{
+			if (fun.isExternal) continue;
+
 			fun.lirData = new IrFunction;
-			context.mod.lirModule.functions[i] = fun.lirData;
+			context.mod.lirModule.addFunction(fun.lirData);
 			processFunc(*fun.irData, *fun.lirData);
 			if (context.validateIr) validateIrFunction(*context, *fun.lirData);
 		}
@@ -35,11 +36,12 @@ struct IrToLir
 	void processFunc(ref IrFunction ir, ref IrFunction lir)
 	{
 		//writefln("IR to LIR %s", context.idString(ir.name));
-		lir.returnType = IrValueType.i32;
+		lir.returnType = ir.returnType;
 		lir.callingConvention = ir.callingConvention;
 
 		context.tempBuffer.clear;
 
+		lir.name = ir.name;
 		builder.beginLir(&lir, &ir, context);
 
 		// Mirror of original IR, we will put the new IrIndex of copied entities there
@@ -135,13 +137,13 @@ struct IrToLir
 					ExtraInstrArgs extra = {addUsers : false};
 					static if (getInstrInfo!I.hasResult)
 					{
-						InstrWithResult res = builder.emitInstr!I(lirBlockIndex, instrHeader.args, extra);
+						InstrWithResult res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, res.instruction);
 						recordIndex(instrHeader.result, res.result);
 					}
 					else
 					{
-						IrIndex res = builder.emitInstr!I(lirBlockIndex, instrHeader.args, extra);
+						IrIndex res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, res);
 					}
 				}
@@ -160,25 +162,58 @@ struct IrToLir
 						recordIndex(instrHeader.result, instr.result);
 						break;
 
-					case IrOpcode.add:
-						emitLirInstr!LirAmd64Instr_add;
+					// TODO. Win64 call conv is hardcoded here
+					case IrOpcode.call:
+						size_t numArgs = instrHeader.args.length;
+
+						if (numArgs > 4)
+						{
+							if (numArgs % 2 == 1)
+							{
+								IrIndex const_8 = context.addConstant(IrConstant(8));
+								IrIndex[2] args = [lir.callingConvention.stackPointer, const_8];
+								builder.emitInstr!LirAmd64Instr_sub(lirBlockIndex, args);
+							}
+
+							foreach_reverse (IrIndex arg; instrHeader.args[4..$])
+							{
+								ExtraInstrArgs extra = {addUsers : false};
+								builder.emitInstr!LirAmd64Instr_push(lirBlockIndex, extra, arg);
+							}
+						}
+
+						enum MAX_PHYS_ARGS = 255;
+						size_t numPhysRegs = min(4, numArgs);
+						IrIndex[MAX_PHYS_ARGS] physArgs;
+						foreach_reverse (i, IrIndex arg; instrHeader.args[0..numPhysRegs])
+						{
+							physArgs[i] = lir.callingConvention.paramsInRegs[i];
+							ExtraInstrArgs extra = {addUsers : false, result : lir.callingConvention.paramsInRegs[i]};
+							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, arg);
+						}
+
+						ExtraInstrArgs extra = {
+							addUsers : false,
+							hasResult : instrHeader.hasResult,
+							result : lir.callingConvention.returnReg};
+
+						InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
+							lirBlockIndex, extra, physArgs[0..numPhysRegs]);
+						builder.emitInstrTail(instrHeader.tail!IrInstrTail_call);
+
+						if (extra.hasResult) {
+							// mov to virt reg
+							InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, lir.callingConvention.returnReg);
+							recordIndex(instrHeader.result, movInstr.result);
+						}
+						recordIndex(instrIndex, callInstr.instruction);
 						break;
 
-					case IrOpcode.sub:
-						emitLirInstr!LirAmd64Instr_sub;
-						break;
-
-					case IrOpcode.mul:
-						emitLirInstr!LirAmd64Instr_mul;
-						break;
-
-					case IrOpcode.load:
-						emitLirInstr!LirAmd64Instr_load;
-						break;
-
-					case IrOpcode.store:
-						emitLirInstr!LirAmd64Instr_store;
-						break;
+					case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;
+					case IrOpcode.sub: emitLirInstr!LirAmd64Instr_sub; break;
+					case IrOpcode.mul: emitLirInstr!LirAmd64Instr_imul; break;
+					case IrOpcode.load: emitLirInstr!LirAmd64Instr_load; break;
+					case IrOpcode.store: emitLirInstr!LirAmd64Instr_store; break;
 
 					case IrOpcode.block_exit_jump:
 						builder.emitInstr!LirAmd64Instr_jmp(lirBlockIndex);
@@ -187,14 +222,14 @@ struct IrToLir
 					case IrOpcode.block_exit_unary_branch:
 						ExtraInstrArgs extra = {addUsers : false, cond : instrHeader.cond};
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_un_branch(
-							lirBlockIndex, instrHeader.args, extra);
+							lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, instruction);
 						break;
 
 					case IrOpcode.block_exit_binary_branch:
 						ExtraInstrArgs extra = {addUsers : false, cond : instrHeader.cond};
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_bin_branch(
-							lirBlockIndex, instrHeader.args, extra);
+							lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, instruction);
 						break;
 
@@ -203,8 +238,8 @@ struct IrToLir
 						break;
 
 					case IrOpcode.block_exit_return_value:
-						builder.emitInstr!LirAmd64Instr_mov(
-							lirBlockIndex, lir.callingConvention.returnReg, instrHeader.args);
+						ExtraInstrArgs extra = {addUsers : false, result : lir.callingConvention.returnReg};
+						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, instrHeader.args);
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
 						recordIndex(instrIndex, instruction);
 						break;

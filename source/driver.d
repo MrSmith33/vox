@@ -21,11 +21,11 @@ CompilePass[] compilerPasses = [
 	// IR liveness
 	CompilePass("Live intervals", &pass_live_intervals),
 	// IR regalloc
-	CompilePass("Linear scan", &pass_linear_scan),
+	//CompilePass("Linear scan", &pass_linear_scan),
 	// Stack layout
 	//CompilePass("Stack layout", &pass_stack_layout),
 	// LIR -> machine code
-	CompilePass("Code gen", &pass_emit_mc_amd64),
+	//CompilePass("Code gen", &pass_emit_mc_amd64),
 ];
 
 struct Driver
@@ -75,23 +75,20 @@ struct Driver
 		foreach (ref extSym; externalSymbols)
 			context.externalSymbols[context.idMap.getOrReg(extSym.name)] = extSym;
 
-		try foreach (ref pass; passes)
+		foreach (ref pass; passes)
 		{
 			auto time1 = currTime;
 
+			// throws immediately on unrecoverable error or ICE
 			pass.run(context);
 
 			auto time2 = currTime;
 			pass.duration = time2-time1;
 
+			// throws if there were recoverable error in the pass
 			context.throwOnErrors;
 		}
-		catch(CompilationException e)
-		{
-			writeln(context.sink.text);
-			//if (e.isICE) // always show stacktrace
-				writeln(e);
-		}
+
 		return context.mod;
 	}
 }

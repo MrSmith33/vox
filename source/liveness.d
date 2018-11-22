@@ -55,6 +55,7 @@ void pass_live_intervals(ref CompilationContext context)
 	LiveBitmap liveBitmap;
 	foreach (FunctionDeclNode* fun; context.mod.functions)
 	{
+		if (fun.isExternal) continue;
 		fun.liveIntervals = new FunctionLiveIntervals(fun.lirData);
 		pass_live_intervals_func(context, *fun.liveIntervals, *fun.lirData, liveBitmap);
 	}
@@ -269,9 +270,14 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 
 		// TODO
 		// if b is loop header then
-		//     loopEnd = last block of the loop starting at b
-		//     for each opd in live do
-		//         intervals[opd].addRange(b.from, loopEnd.to)
+		if (block.isLoopHeader)
+		{
+			//     loopEnd = last block of the loop starting at b
+
+			//     for each opd in live do
+			//         intervals[opd].addRange(b.from, loopEnd.to)
+
+		}
 
 		// b.liveIn = live
 		blockLiveIn(blockIndex)[] = liveBitmap.liveBuckets;

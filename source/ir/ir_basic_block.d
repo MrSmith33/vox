@@ -10,6 +10,7 @@ import std.bitmanip : bitfields;
 import all;
 
 /// Must end with one of block_exit_... instructions
+/// Only single loop end must be predecessor of loop header
 @(IrValueKind.basicBlock)
 struct IrBasicBlock
 {
@@ -30,10 +31,14 @@ struct IrBasicBlock
 
 	mixin(bitfields!(
 		/// True if all predecessors was added
-		bool, "isSealed",   1,
+		bool, "isSealed",     1,
 		/// True if block_exit instruction is in place
-		bool, "isFinished", 1,
-		uint, "",           6
+		bool, "isFinished",   1,
+		// if true, block has single 'loop end' predecessor
+		bool, "isLoopHeader", 1,
+		// if true, block has single jump to 'loop header'
+		bool, "isLoopEnd",    1,
+		uint, "",             4
 	));
 
 	IrName name;

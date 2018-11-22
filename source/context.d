@@ -38,6 +38,8 @@ struct CompilationContext
 	IdentifierMap idMap;
 	/// True if current/last pass had errors
 	bool hasErrors;
+	/// If true, stack traces are added to output
+	bool printTraceOnError;
 	/// Text output for errors
 	TextSink sink;
 	/// What happens on Internal Compiler Error
@@ -90,6 +92,11 @@ struct CompilationContext
 	{
 		sink.putf("file(%s, %s): Error: ", loc.line+1, loc.col+1);
 		sink.putfln(format, args);
+		if (printTraceOnError)
+			try
+				throw new Exception(null);
+			catch (Exception e)
+				sink.putf("%s", e.info);
 		hasErrors = true;
 	}
 
@@ -97,6 +104,11 @@ struct CompilationContext
 	{
 		sink.putf("file(%s, %s): Error: ", loc.line+1, loc.col+1);
 		sink.putfln(format, args);
+		if (printTraceOnError)
+			try
+				throw new Exception(null);
+			catch (Exception e)
+				sink.putf("%s", e.info);
 		hasErrors = true;
 		throw new CompilationException();
 	}

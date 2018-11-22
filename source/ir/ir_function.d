@@ -175,6 +175,16 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 {
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
+		if (!block.isSealed)
+		{
+			context.internal_error("Unsealed basic block %s", blockIndex);
+		}
+
+		if (!block.isFinished)
+		{
+			context.internal_error("Unfinished basic block %s", blockIndex);
+		}
+
 		// Check that all users of virtual reg point to definition
 		void checkArg(IrIndex argUser, IrIndex arg)
 		{
@@ -205,7 +215,7 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 			}
 			else
 			{
-				context.assertf(false, "Virtual register cannot be used by %s", argUser.kind);
+				context.internal_error("Virtual register cannot be used by %s", argUser.kind);
 			}
 
 			// For each use of arg by argUser there must one item in users list of vreg and in args list of user

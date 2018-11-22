@@ -33,10 +33,16 @@ struct IrName
 
 struct IrLabel
 {
-	/// If numPredecessors == 0, is null
-	/// If numPredecessors == 1, points to first predecessor
-	/// If numPredecessors > 1,  points to a new block
+	/// If isAllocated
+	///   blockIndex points to new block
+	/// else
+	///   If numPredecessors == 0, blockIndex points to currentBlock at
+	//      scope start
+	///   If numPredecessors == 1, blockIndex points to first predecessor
+	/// If numPredecessors > 1, blockIndex points to a new block and isAllocated must be true
 	IrIndex blockIndex;
+	///
+	bool isAllocated;
 	///
 	uint numPredecessors;
 }

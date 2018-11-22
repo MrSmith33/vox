@@ -6,6 +6,7 @@ Authors: Andrey Penechko.
 /// IR Builder. IR creation API
 module ir.ir_builder;
 
+import std.stdio;
 import std.string : format;
 
 import all;
@@ -23,8 +24,21 @@ struct ExtraInstrArgs
 {
 	ubyte cond; // used when IrInstrFlags.hasCondition is set
 	IrOpcode opcode; // used when opcode is IrOpcode.invalid
-	bool hasResult;
 	bool addUsers = true;
+
+	/// Is checked when instruction has variadic result (IrInstrFlags.hasVariadicResult).
+	/// If 'hasResult' is false, no result is allocated and 'result' value is ignored.
+	/// If 'hasResult' is true, then 'result' is checked:
+	///    If 'result' is defined:
+	///       then instrHeader.result is set to its value.
+	///       or else a new virtual register is created.
+	bool hasResult;
+
+	/// If instruction has variadic result, see 'hasResult' comment.
+	/// If instruction always has result, then 'result' is used when defined.
+	///    when not defined, new virtual register is created
+	/// If instruction always has no result, 'result' value is ignored
+	IrIndex result;
 }
 
 // papers:
@@ -126,6 +140,7 @@ struct IrBuilder
 	/// appendVoid + appendBlockInstr
 	IrIndex appendVoidToBlock(T)(IrIndex blockIndex, uint howMany = 1)
 	{
+		// TODO: check that T is instruction
 		IrIndex instr = appendVoid!T(howMany);
 		appendBlockInstr(blockIndex, instr);
 		return instr;
@@ -224,59 +239,29 @@ struct IrBuilder
 		}
 	}
 
-	/// Returns InstrWithResult (if instr has result) or IrIndex instruction
+	/// Used to place data after variadic members.
+	/// Can be accessed via IrInstrHeader.tail!T.
+	void emitInstrTail(T)(T tailData)
+	{
+		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
+		T* tail = cast(T*)(&context.irBuffer.bufPtr[ir.storageLength]);
+		*tail = tailData;
+		ir.storageLength += numAllocatedSlots;
+		context.irBuffer.length += numAllocatedSlots;
+	}
+
+	/// Returns InstrWithResult (if instr has result) or IrIndex instruction otherwise
 	/// Always returns InstrWithResult when instruction has variadic result
 	///   in this case result can be null if no result is requested
+	/// See: ExtraInstrArgs
 	auto emitInstr(I)(IrIndex blockIndex, IrIndex[] args ...)
 	{
 		// TODO assert if I requires ExtraInstrArgs data
-		return emitInstr!I(blockIndex, args, ExtraInstrArgs());
+		return emitInstr!I(blockIndex, ExtraInstrArgs(), args);
 	}
 
 	/// ditto
-	auto emitInstr(I)(IrIndex blockIndex, IrIndex result, IrIndex[] args)
-	{
-		// TODO assert if I requires ExtraInstrArgs data
-		return emitInstr!I(blockIndex, result, args, ExtraInstrArgs());
-	}
-
-	/// ditto
-	auto emitInstr(I, C : ubyte)(IrIndex blockIndex, C cond, IrIndex[] args ...)
-	{
-		static assert(getInstrInfo!I.hasCondition,
-			format("Trying to emit %s with condition", I.stringof));
-		// TODO assert if I requires ExtraInstrArgs data
-		return emitInstr!I(blockIndex, args, ExtraInstrArgs(cond));
-	}
-
-	/// ditto
-	auto emitInstr(I)(IrIndex blockIndex, IrIndex[] args, ExtraInstrArgs extra)
-	{
-		IrIndex instr = emitInstrImpl!I(blockIndex, args, extra);
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
-		static if (getInstrInfo!I.hasResult || getInstrInfo!I.hasVariadicResult) {
-			if (instrHeader.hasResult) {
-				instrHeader.result = addVirtualRegister(instr);
-			}
-			return InstrWithResult(instr, instrHeader.result);
-		} else {
-			return instr;
-		}
-	}
-
-	/// Allows to set the result
-	auto emitInstr(I)(IrIndex blockIndex, IrIndex result, IrIndex[] args, ExtraInstrArgs extra)
-	{
-		static assert(getInstrInfo!I.hasResult || getInstrInfo!I.hasVariadicResult);
-		extra.hasResult = true;
-		IrIndex instr = emitInstrImpl!I(blockIndex, args, extra);
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
-		instrHeader.result = result;
-		return InstrWithResult(instr, instrHeader.result);
-	}
-
-	//
-	private auto emitInstrImpl(I)(IrIndex blockIndex, IrIndex[] args, ExtraInstrArgs extra)
+	auto emitInstr(I)(IrIndex blockIndex, ExtraInstrArgs extra, IrIndex[] args ...)
 	{
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		IrIndex instr = append!I;
@@ -300,12 +285,31 @@ struct IrBuilder
 		}
 
 		// result
-		static if (getInstrInfo!I.hasVariadicResult) {
-			instrHeader.hasResult = extra.hasResult;
-			// allocate result slot after instruction header
-			if (extra.hasResult) appendVoid!IrIndex;
-		} else {
-			instrHeader.hasResult = getInstrInfo!I.hasResult;
+		static if (getInstrInfo!I.hasVariadicResult)
+		{
+			if (extra.hasResult)
+			{
+				appendVoid!IrIndex;
+				instrHeader.hasResult = true;
+				if (extra.result.isDefined)
+					instrHeader.result = extra.result;
+				else
+					instrHeader.result = addVirtualRegister(instr);
+			}
+			else instrHeader.hasResult = false;
+		}
+		else static if (getInstrInfo!I.hasResult)
+		{
+			appendVoid!IrIndex;
+			instrHeader.hasResult = true;
+			if (extra.result.isDefined)
+				instrHeader.result = extra.result;
+			else
+				instrHeader.result = addVirtualRegister(instr);
+		}
+		else
+		{
+			instrHeader.hasResult = false;
 		}
 
 		// condition
@@ -317,9 +321,9 @@ struct IrBuilder
 		static if (getInstrInfo!I.hasVariadicArgs) {
 			context.assertf(args.length <= IrInstrHeader.numArgs.max,
 				"Too many arguments (%s), max is %s", args.length, IrInstrHeader.numArgs.max);
-			instrHeader.numArgs = args.length;
+			instrHeader.numArgs = cast(typeof(instrHeader.numArgs))args.length;
 			// allocate argument slots after optional result
-			appendVoid!IrIndex(args.length);
+			appendVoid!IrIndex(cast(uint)args.length);
 		} else {
 			context.assertf(getInstrInfo!I.numArgs == args.length,
 				"Instruction %s requires %s args, while passed %s",
@@ -337,7 +341,14 @@ struct IrBuilder
 			}
 		}
 
-		return instr;
+		static if (getInstrInfo!I.hasResult || getInstrInfo!I.hasVariadicResult) {
+			if (instrHeader.hasResult)
+				return InstrWithResult(instr, instrHeader.result);
+			else
+				return InstrWithResult(instr, IrIndex());
+		} else {
+			return instr;
+		}
 	}
 
 	/// Adds instruction to the end of basic block
@@ -373,7 +384,18 @@ struct IrBuilder
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		return emitInstr!IrInstr_binary_branch(blockIndex, cond, arg0, arg1);
+		ExtraInstrArgs extra = {cond : cond};
+		return emitInstr!IrInstr_binary_branch(blockIndex, extra, arg0, arg1);
+	}
+
+	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrIndex arg0, ref IrLabel trueExit, ref IrLabel falseExit)
+	{
+		auto res = addUnaryBranch(blockIndex, cond, arg0);
+		forceAllocLabelBlock(trueExit, 1);
+		forceAllocLabelBlock(falseExit, 1);
+		addBlockTarget(blockIndex, trueExit.blockIndex);
+		addBlockTarget(blockIndex, falseExit.blockIndex);
+		return res;
 	}
 
 	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrIndex arg0)
@@ -381,7 +403,8 @@ struct IrBuilder
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		return emitInstr!IrInstr_unary_branch(blockIndex, cond, arg0);
+		ExtraInstrArgs extra = {cond : cond};
+		return emitInstr!IrInstr_unary_branch(blockIndex, extra, arg0);
 	}
 
 	void addReturn(IrIndex blockIndex, IrIndex returnValue)
@@ -411,6 +434,14 @@ struct IrBuilder
 
 	void addJumpToLabel(IrIndex blockIndex, ref IrLabel label)
 	{
+		if (label.isAllocated)
+		{
+			// label.blockIndex points to label's own block
+			++label.numPredecessors;
+			addBlockTarget(blockIndex, label.blockIndex);
+			addJump(blockIndex);
+		}
+		else
 		switch (label.numPredecessors)
 		{
 			case 0:
@@ -422,47 +453,54 @@ struct IrBuilder
 			case 1:
 				// label.blockIndex points to the only predecessor of label block
 				// no block was created for label yet
-				label.numPredecessors = 2;
 				IrIndex firstPred = label.blockIndex;
-				label.blockIndex = addBasicBlock;
-				addBlockTarget(firstPred, label.blockIndex);
-				// block may be finished if binary branch targets label
-				//if (!ir.getBlock(firstPred).isFinished)
+				IrIndex secondPred = blockIndex;
+
+				IrIndex labelBlock = addBasicBlock;
+
 				addJump(firstPred);
-				goto default;
-			default:
-				// label.blockIndex points to label's own block
-				++label.numPredecessors;
-				addBlockTarget(blockIndex, label.blockIndex);
-				addJump(blockIndex);
+				addJump(secondPred);
+				addBlockTarget(firstPred, labelBlock);
+				addBlockTarget(secondPred, labelBlock);
+
+				label.blockIndex = labelBlock;
+				label.numPredecessors = 2;
+				label.isAllocated = true;
 				break;
+			default:
+				context.unreachable;
+				assert(false);
 		}
 	}
 
-	private void forceAllocLabelBlock(ref IrLabel label, int newPredecessors)
+	void forceAllocLabelBlock(ref IrLabel label, int newPredecessors = 0)
 	{
-		switch (label.numPredecessors)
+		if (!label.isAllocated)
 		{
-			case 0:
-				// label.blockIndex points to block that started the scope
-				// no block was created for label yet
-				label.numPredecessors = newPredecessors;
-				label.blockIndex = addBasicBlock;
-				break;
-			case 1:
-				// label.blockIndex points to the only predecessor of label block
-				// no block was created for label yet
-				label.numPredecessors = 1 + newPredecessors;
-				IrIndex firstPred = label.blockIndex;
-				label.blockIndex = addBasicBlock;
-				addBlockTarget(firstPred, label.blockIndex);
-				addJump(firstPred);
-				break;
-			default:
-				// label.blockIndex points to label's own block
-				label.numPredecessors += newPredecessors;
-				break;
+			switch (label.numPredecessors)
+			{
+				case 0:
+					// label.blockIndex points to block that started the scope
+					// no block was created for label yet
+					label.blockIndex = addBasicBlock;
+					label.isAllocated = true;
+					break;
+				case 1:
+					// label.blockIndex points to the only predecessor of label block
+					// no block was created for label yet
+					IrIndex firstPred = label.blockIndex;
+					label.blockIndex = addBasicBlock;
+					addBlockTarget(firstPred, label.blockIndex);
+					addJump(firstPred);
+					label.isAllocated = true;
+					break;
+				default:
+					context.unreachable;
+					assert(false);
+			}
 		}
+
+		label.numPredecessors += newPredecessors;
 	}
 
 	private void incBlockRefcount(IrIndex basicBlock) { assert(false); }

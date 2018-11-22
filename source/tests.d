@@ -13,17 +13,25 @@ void runAllTests()
 	Driver driver;
 	driver.initialize(compilerPasses);
 	driver.context.validateIr = true;
+	driver.context.printTraceOnError = true;
 	scope(exit) driver.releaseMemory;
 
 	FuncDumpSettings dumpSettings;
 
 	writefln("Running tests");
-	tryRunSingleTest(driver, dumpSettings, DumpTest.no, test8);
-	// doesn't work because semantic pass doesn't do data flow analysis
-	// and can't detect that all paths return. (Perhaps check this in IR gen pass?).
-	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test8_1);
-	tryRunSingleTest(driver, dumpSettings, DumpTest.no, test10);
-	tryRunSingleTest(driver, dumpSettings, DumpTest.no, test9);
+	Test[] testsThatPass = [test8, test8_1, test10, test9, test18, test19, test20];
+	void runAll()
+	{
+		foreach(ref test; testsThatPass)
+		{
+			tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
+		}
+	}
+
+	//runAll();
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test21);
+
+	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 	writefln("Done");
 }
 
@@ -36,12 +44,12 @@ void tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, Dump
 		runSingleTest(driver, dumpSettings, dumpTest, curTest);
 	}
 	catch(CompilationException e) {
-		//writeln(driver.context.sink.text);
+		writeln(driver.context.sink.text);
 		if (e.isICE)
 			writeln(e);
 	}
 	catch(Throwable t) {
-		//writeln(driver.context.sink.text);
+		writeln(driver.context.sink.text);
 		writeln(t);
 	}
 }
@@ -71,11 +79,11 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 		TextSink sink;
 		sink.putln("\n// IR");
-		dumpSettings.dumper = &dumpIrInstr;
+		dumpSettings.handlers = &irDumpHandlers;
 		mod.irModule.dump(sink, driver.context, dumpSettings);
 
 		sink.putln("\n// LIR");
-		dumpSettings.dumper = &dumpAmd64Instr;
+		dumpSettings.handlers = &lirAmd64DumpHandlers;
 		mod.lirModule.dump(sink, driver.context, dumpSettings);
 
 		writeln(sink.text);
@@ -371,9 +379,11 @@ immutable input12 = q{i32 test(i32* array, i32 index) {
 alias Func12 = extern(C) int function(int*, int);
 void tester12(Func12 fun) {
 	int[2] val = [42, 56];
-	int res = fun(val.ptr, 1);
+	int res0 = fun(val.ptr, 0);
+	int res1 = fun(val.ptr, 1);
 	//writefln("test([42, 56].ptr, 1) -> %s", res);
-	assert(res == 56);
+	assert(res0 == 42);
+	assert(res1 == 56);
 }
 auto test12 = Test("Test 12", input12, "test", cast(Test.Tester)&tester12);
 
@@ -457,6 +467,47 @@ void tester17(Func17 funcPtr) {
 }
 auto test17 = Test("Test 17", input17, "test", cast(Test.Tester)&tester17,
 	[ExternalSymbol("external", cast(void*)&test17_external_func)]);
+
+// test empty void function
+immutable input18 = q{void test() {}};
+alias Func18 = extern(C) void function();
+void tester18(Func18 fun) { fun(); }
+auto test18 = Test("Test 18", input18, "test", cast(Test.Tester)&tester18);
+
+// test empty void function with return
+immutable input19 = q{void test() { return; }};
+alias Func19 = extern(C) void function();
+void tester19(Func19 fun) { fun(); }
+auto test19 = Test("Test 19", input19, "test", cast(Test.Tester)&tester19);
+
+// test empty i32 function without return and with control flow
+immutable input20 = q{void test(i32 i) { if(i){}else{} }};
+alias Func20 = extern(C) void function(int);
+void tester20(Func20 fun) { fun(1); }
+auto test20 = Test("Test 20", input20, "test", cast(Test.Tester)&tester20);
+
+// test fibonacci. while loop. func call
+immutable input21 =
+q{void print(i32); // external
+void fibonacci() {
+	i32 lo = 0;
+	i32 hi = 1;
+	while (hi < 10000) {
+		hi = hi + lo;
+		lo = hi - lo;
+		print(lo);
+	}
+}};
+alias Func21 = extern(C) void function();
+void tester21(Func21 fibonacci) {
+	fibonacci();
+	writeln;
+}
+extern(C) void test21_external_func(int par1) {
+	write(par1, " ");
+}
+auto test21 = Test("Test 21", input21, "test", cast(Test.Tester)&tester21,
+	[ExternalSymbol("print", cast(void*)&test21_external_func)]);
 
 void testNativeFun()
 {

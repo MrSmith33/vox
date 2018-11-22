@@ -68,6 +68,7 @@ enum IrOpcode : ushort
 	block_exit_return_value,
 
 	parameter,
+	call,
 
 	set_binary_cond,
 	set_unary_cond,
@@ -84,7 +85,7 @@ enum IrOpcode : ushort
 
 bool hasSideEffects(IrOpcode opcode)
 {
-	return opcode == IrOpcode.store;
+	return opcode == IrOpcode.store || opcode == IrOpcode.call;
 }
 
 
@@ -118,6 +119,12 @@ struct IrInstrHeader
 	IrIndex[] args() {
 		return _payload.ptr[cast(size_t)hasResult..cast(size_t)hasResult+numArgs];
 	}
+
+	/// Returns data past arguments for variadic instructions
+	ref T tail(T)() {
+
+		return *cast(T*)(_payload.ptr + cast(size_t)hasResult + numArgs);
+	}
 }
 
 template IrGenericInstr(ushort opcode, uint numArgs, uint flags = 0)
@@ -135,13 +142,14 @@ template IrGenericInstr(ushort opcode, uint numArgs, uint flags = 0)
 
 alias IrInstr_return_value = IrGenericInstr!(IrOpcode.block_exit_return_value, 1);
 alias IrInstr_return_void = IrGenericInstr!(IrOpcode.block_exit_return_void, 0);
-alias IrInstr_store = IrGenericInstr!(IrOpcode.store, 1);
+alias IrInstr_store = IrGenericInstr!(IrOpcode.store, 2);
 alias IrInstr_load = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
 alias IrInstr_set_binary_cond = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
 alias IrInstr_add = IrGenericInstr!(IrOpcode.add, 2, IFLG.hasResult);
 alias IrInstr_sub = IrGenericInstr!(IrOpcode.sub, 2, IFLG.hasResult);
 alias IrInstr_mul = IrGenericInstr!(IrOpcode.mul, 2, IFLG.hasResult);
 alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
+alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);
 
 enum IrBinaryCondition : ubyte {
 	eq,
@@ -194,4 +202,9 @@ struct IrInstr_parameter
 	IrInstrHeader header;
 	IrIndex result;
 	uint index;
+}
+
+struct IrInstrTail_call
+{
+	FunctionIndex callee;
 }

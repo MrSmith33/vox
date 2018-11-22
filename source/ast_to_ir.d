@@ -15,6 +15,7 @@ void pass_ir_gen(ref CompilationContext ctx) {
 }
 
 //version = IrGenPrint;
+//version = CfgGenPrint;
 
 /// Converts AST to in-memory linear IR
 struct AstToIr
@@ -35,12 +36,12 @@ struct AstToIr
 		context.assertf(n.isExpression, n.loc, "Expected expression, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case expr_var: auto v = cast(VariableExprNode*)n; visitExprValue(v, currentBlock, nextStmt); break;
-			case expr_literal: auto l = cast(LiteralExprNode*)n; visitExprValue(l, currentBlock, nextStmt); break;
-			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visitExprValue(b, currentBlock, nextStmt); break;
-			case expr_call: auto c = cast(CallExprNode*)n; visitExprValue(c, currentBlock, nextStmt); break;
-			case expr_index: auto i = cast(IndexExprNode*)n; visitExprValue(i, currentBlock, nextStmt); break;
-			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visitExprValue(t, currentBlock, nextStmt); break;
+			case expr_var: visitExprValue(cast(VariableExprNode*)n, currentBlock, nextStmt); break;
+			case expr_literal: visitExprValue(cast(LiteralExprNode*)n, currentBlock, nextStmt); break;
+			case expr_bin_op: visitExprValue(cast(BinaryExprNode*)n, currentBlock, nextStmt); break;
+			case expr_call: visitExprValue(cast(CallExprNode*)n, currentBlock, nextStmt); break;
+			case expr_index: visitExprValue(cast(IndexExprNode*)n, currentBlock, nextStmt); break;
+			case expr_type_conv: visitExprValue(cast(TypeConvExprNode*)n, currentBlock, nextStmt); break;
 
 			default: context.unreachable(); assert(false);
 		}
@@ -49,11 +50,11 @@ struct AstToIr
 		context.assertf(n.isExpression, n.loc, "Expected expression, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case expr_var: auto v = cast(VariableExprNode*)n; visitExprBranch(v, currentBlock, trueExit, falseExit); break;
-			case expr_literal: auto l = cast(LiteralExprNode*)n; visitExprBranch(l, currentBlock, trueExit, falseExit); break;
+			case expr_var, expr_literal, expr_call, expr_index:
+				context.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
+				break;
+
 			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visitExprBranch(b, currentBlock, trueExit, falseExit); break;
-			case expr_call: auto c = cast(CallExprNode*)n; visitExprBranch(c, currentBlock, trueExit, falseExit); break;
-			case expr_index: auto i = cast(IndexExprNode*)n; visitExprBranch(i, currentBlock, trueExit, falseExit); break;
 			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visitExprBranch(t, currentBlock, trueExit, falseExit); break;
 
 			default: context.unreachable(); assert(false);
@@ -73,26 +74,27 @@ struct AstToIr
 
 			default: context.unreachable(); assert(false);
 		}
-
 	}
 	void visitStmt(AstNode* n, IrIndex currentBlock, ref IrLabel nextStmt) {
-		if (n.isDeclaration)
-		{
+		if (n.isDeclaration) {
 			visitDecl(n, currentBlock, nextStmt);
+			return;
+		} else if (n.isExpression) {
+			visitExprValue(cast(ExpressionNode*)n, currentBlock, nextStmt);
 			return;
 		}
 
 		context.assertf(n.isStatement, n.loc, "Expected statement, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case stmt_block: auto b = cast(BlockStmtNode*)n; visit(b, currentBlock, nextStmt); break;
-			case stmt_if: auto i = cast(IfStmtNode*)n; visit(i, currentBlock, nextStmt); break;
-			case stmt_while: auto w = cast(WhileStmtNode*)n; visit(w, currentBlock, nextStmt); break;
-			case stmt_do_while: auto d = cast(DoWhileStmtNode*)n; visit(d, currentBlock, nextStmt); break;
-			case stmt_return: auto r = cast(ReturnStmtNode*)n; visit(r, currentBlock, nextStmt); break;
-			case stmt_break: auto b = cast(BreakStmtNode*)n; visit(b, currentBlock, nextStmt); break;
-			case stmt_continue: auto c = cast(ContinueStmtNode*)n; visit(c, currentBlock, nextStmt); break;
-			case stmt_assign: auto a = cast(AssignStmtNode*)n; visit(a, currentBlock, nextStmt); break;
+			case stmt_block: visit(cast(BlockStmtNode*)n, currentBlock, nextStmt); break;
+			case stmt_if: visit(cast(IfStmtNode*)n, currentBlock, nextStmt); break;
+			case stmt_while: visit(cast(WhileStmtNode*)n, currentBlock, nextStmt); break;
+			case stmt_do_while: visit(cast(DoWhileStmtNode*)n, currentBlock, nextStmt); break;
+			case stmt_return: visit(cast(ReturnStmtNode*)n, currentBlock, nextStmt); break;
+			case stmt_break: visit(cast(BreakStmtNode*)n, currentBlock, nextStmt); break;
+			case stmt_continue: visit(cast(ContinueStmtNode*)n, currentBlock, nextStmt); break;
+			case stmt_assign: visit(cast(AssignStmtNode*)n, currentBlock, nextStmt); break;
 
 			default: context.unreachable(); assert(false);
 		}
@@ -108,6 +110,9 @@ struct AstToIr
 
 	IrBuilder builder;
 	IrFunction* ir;
+
+	enum MAX_ARGS = 255;
+	IrIndex[MAX_ARGS] argsBuf;
 
 	void visit(ModuleDeclNode* m)
 	{
@@ -134,7 +139,7 @@ struct AstToIr
 	{
 		version(IrGenPrint) writefln("[IR GEN] function (%s) begin", f.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] function (%s) end", f.loc);
-		if (f.block_stmt is null) // external function
+		if (f.isExternal) // external function
 		{
 			ExternalSymbol* sym = f.id in context.externalSymbols;
 			if (sym is null)
@@ -151,7 +156,7 @@ struct AstToIr
 		// create new function
 		ir = new IrFunction;
 		f.irData = ir;
-		ir.returnType = IrValueType.i32;
+		ir.returnType = f.returnType.irType(context);
 		ir.name = f.id;
 		ir.callingConvention = f.callingConvention;
 
@@ -182,19 +187,33 @@ struct AstToIr
 		// In case new block was created, no new predecessors will be added
 		builder.sealBlock(currentBlock);
 
+		//writefln("cur block %s finished %s", currentBlock, ir.getBlock(currentBlock).isFinished);
+		//writefln("end reached %s", bodyExitLabel.numPredecessors != 0);
+
 		version(IrGenPrint) writefln("[IR GEN] function return");
 		if (ir.returnType != IrValueType.void_t)
 		{
 			// currentBlock must be finished with retVal
+			if (!ir.getBlock(currentBlock).isFinished)
+			{
+				context.error(f.loc,
+					"function `%s` has no return statement, but is expected to return a value of type %s",
+					context.idString(f.id), f.returnType.typeName(context));
+			}
 		}
 		else
 		{
 			// currentBlock must be finished with ret or, not finished
+			if (!ir.getBlock(currentBlock).isFinished)
+			{
+				builder.addReturn(currentBlock);
+			}
 		}
 
 		version(IrGenPrint) writefln("[IR GEN] function seal exit");
+		//dumpFunction_ir(*ir, *context);
 
-		// all blocks with return (exit predecessors) already connected, seal exit block
+		// all blocks with return (exit's predecessors) already connected, seal exit block
 		builder.sealBlock(ir.exitBasicBlock);
 	}
 
@@ -207,7 +226,8 @@ struct AstToIr
 		//}
 		//else
 		//{
-			version(IrGenPrint) writefln("[IR GEN] store %s to %s", value, v.irVar.name);
+			version(IrGenPrint) writefln("[IR GEN] store %s to '%s'",
+				value, context.idString(v.irVar.name));
 			builder.writeVariable(currentBlock, v.irVar, value);
 		//}
 	}
@@ -221,13 +241,16 @@ struct AstToIr
 		//else
 		//{
 			auto result = builder.readVariable(currentBlock, v.irVar);
-			version(IrGenPrint) writefln("[IR GEN] load %s from %s", result, v.irVar.name);
+			version(IrGenPrint) writefln("[IR GEN] load %s from '%s'",
+				result, context.idString(v.irVar.name));
 			return result;
 		//}
 	}
 
 	void visit(VariableDeclNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg VAR_DECL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end VAR_DECL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] Var decl (%s) begin %s", v.loc, v.strId(context));
 		version(IrGenPrint) scope(success) writefln("[IR GEN] Var decl (%s) end %s", v.loc, v.strId(context));
 		v.irVar = IrVar(v.id, builder.newIrVarId());//, v.type.irType(context));
@@ -255,7 +278,16 @@ struct AstToIr
 		}
 		else
 		{
-			IrIndex value = context.addConstant(IrConstant(0));
+			IrIndex value;
+			if (v.initializer)
+			{
+				IrLabel afterExpr = IrLabel(currentBlock);
+				visitExprValue(v.initializer, currentBlock, afterExpr);
+				value = v.initializer.irRef;
+				currentBlock = afterExpr.blockIndex;
+			}
+			else
+				value = context.addConstant(IrConstant(0));
 			store(currentBlock, v, value);
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -266,6 +298,8 @@ struct AstToIr
 	}
 	void visit(BlockStmtNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg BLOCK cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end BLOCK cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] block (%s) begin", b.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] block (%s) end", b.loc);
 		foreach (i, AstNode* stmt; b.statements)
@@ -276,6 +310,7 @@ struct AstToIr
 			{
 				// nested statement will jump here at its end
 				IrLabel afterStmt = IrLabel(currentBlock);
+				version(CfgGenPrint) writefln("[CFG GEN] beg cur %s afterStmt %s", currentBlock, afterStmt);
 
 				// compile nested statement
 				visitStmt(stmt, currentBlock, afterStmt);
@@ -285,7 +320,7 @@ struct AstToIr
 					version(IrGenPrint) writefln("[IR GEN]   no returns from stmt %s/%s, skipping the rest", i+1, b.statements.length);
 					// Nested statement never returns here
 					// Skip the rest of block statements
-					break;
+					return;
 				}
 
 				// If statement returned, get the new current block,
@@ -293,27 +328,37 @@ struct AstToIr
 				currentBlock = afterStmt.blockIndex;
 				// Also seal it, since no other block can jump here
 				builder.sealBlock(currentBlock);
+				version(CfgGenPrint) writefln("[CFG GEN] end cur %s afterStmt %s", currentBlock, afterStmt);
 			}
 			else // last statement
 			{
+				version(CfgGenPrint) writefln("[CFG GEN] beg last cur %s next %s", currentBlock, nextStmt);
 				// let last statement exit straight to outer scope
 				visitStmt(stmt, currentBlock, nextStmt);
+				version(CfgGenPrint) writefln("[CFG GEN] end last cur %s next %s", currentBlock, nextStmt);
 
 				// if statement hasn't returned here, let outer scope handle this
 				// the body exit is handled by function decl code
 			}
 		}
+
+		if (b.statements.length == 0)
+			builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
 	void visit(IfStmtNode* i, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg IF cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end IF cur %s next %s", currentBlock, nextStmt);
 		if (i.elseStatement) // if then else
 		{
 			version(IrGenPrint) writefln("[IR GEN] if-else (%s) begin", i.loc);
 			version(IrGenPrint) scope(success) writefln("[IR GEN] if-else (%s) end", i.loc);
 			IrLabel trueLabel = IrLabel(currentBlock);
 			IrLabel falseLabel = IrLabel(currentBlock);
+			version(CfgGenPrint) writefln("[CFG GEN] before cond expr: true %s false %s", trueLabel, falseLabel);
 			visitExprBranch(i.condition, currentBlock, trueLabel, falseLabel);
+			version(CfgGenPrint) writefln("[CFG GEN] after cond expr: true %s false %s", trueLabel, falseLabel);
 
 			if (trueLabel.numPredecessors != 0)
 			{
@@ -323,6 +368,7 @@ struct AstToIr
 			}
 			else
 				version(IrGenPrint) writeln("[IR GEN]   skip then stmt. Condition didn't jump here");
+			version(CfgGenPrint) writefln("[CFG GEN] after true stmt: true %s false %s", trueLabel, falseLabel);
 
 			if (falseLabel.numPredecessors != 0)
 			{
@@ -332,13 +378,16 @@ struct AstToIr
 			}
 			else
 				version(IrGenPrint) writeln("[IR GEN]   skip else stmt. Condition didn't jump here");
+			version(CfgGenPrint) writefln("[CFG GEN] after false stmt: true %s false %s", trueLabel, falseLabel);
 		}
 		else // if then
 		{
 			version(IrGenPrint) writefln("[IR GEN] if (%s) begin", i.loc);
 			version(IrGenPrint) scope(success) writefln("[IR GEN] if (%s) end", i.loc);
 			IrLabel trueLabel = IrLabel(currentBlock);
+			version(CfgGenPrint) writefln("[CFG GEN] before cond expr: true %s next %s", trueLabel, nextStmt);
 			visitExprBranch(i.condition, currentBlock, trueLabel, nextStmt);
+			version(CfgGenPrint) writefln("[CFG GEN] after cond expr: true %s next %s", trueLabel, nextStmt);
 
 			if (trueLabel.numPredecessors != 0)
 			{
@@ -348,16 +397,50 @@ struct AstToIr
 			}
 			else
 				version(IrGenPrint) writeln("[IR GEN]   skip then stmt. Condition didn't jump here");
+			version(CfgGenPrint) writefln("[CFG GEN] after true stmt: true %s next %s", trueLabel, nextStmt);
 		}
 	}
 	void visit(WhileStmtNode* w, IrIndex currentBlock, ref IrLabel nextStmt) {
+		version(CfgGenPrint) writefln("[CFG GEN] beg WHILE cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end WHILE cur %s next %s", currentBlock, nextStmt);
+		//writefln("loop cur 1 %s", currentBlock);
+		// loop header
+		IrLabel loopHeaderLabel = IrLabel(currentBlock);
+		builder.addJumpToLabel(currentBlock, loopHeaderLabel);
 
+		// we need loop header in a separate block because it will
+		// have 2 predecessors: currentBlock and loop body
+		builder.forceAllocLabelBlock(loopHeaderLabel);
+		IrIndex loopHeaderBlock = loopHeaderLabel.blockIndex;
+		//writefln("loop head %s", loopHeaderBlock);
+		ir.getBlock(loopHeaderBlock).isLoopHeader = true;
+
+		IrLabel bodyLabel = IrLabel(currentBlock);
+		builder.forceAllocLabelBlock(bodyLabel);
+		//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
+
+		// will force allocate body block
+		visitExprBranch(w.condition, loopHeaderBlock, bodyLabel, nextStmt);
+
+		currentBlock = bodyLabel.blockIndex;
+		//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
+		builder.sealBlock(currentBlock);
+
+		// body
+
+		IrBasicBlock* block = &ir.getBlock(currentBlock);
+		assert(!block.isFinished);
+		visitStmt(w.statement, currentBlock, loopHeaderLabel);
+
+		builder.sealBlock(loopHeaderBlock);
 	}
 	void visit(DoWhileStmtNode* d, IrIndex currentBlock, ref IrLabel nextStmt) {
-
+		context.unreachable;
 	}
 	void visit(ReturnStmtNode* r, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg RETURN cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end RETURN cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] return (%s) begin", r.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] return (%s) end", r.loc);
 		if (r.expression)
@@ -369,10 +452,16 @@ struct AstToIr
 		}
 		else builder.addReturn(currentBlock);
 	}
-	void visit(BreakStmtNode* b, IrIndex currentBlock, ref IrLabel nextStmt) {}
-	void visit(ContinueStmtNode* c, IrIndex currentBlock, ref IrLabel nextStmt) {}
+	void visit(BreakStmtNode* b, IrIndex currentBlock, ref IrLabel nextStmt) {
+		context.unreachable;
+	}
+	void visit(ContinueStmtNode* c, IrIndex currentBlock, ref IrLabel nextStmt) {
+		context.unreachable;
+	}
 	void visit(AssignStmtNode* a, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg ASSIGN cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end ASSIGN cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] assign (%s) begin", a.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] assign (%s) end", a.loc);
 		IrLabel afterLeft = IrLabel(currentBlock);
@@ -389,9 +478,8 @@ struct AstToIr
 				store(currentBlock, varExpr.getSym.varDecl, a.right.irRef);
 				break;
 			case AssignOp.opIndexAssign:
-				//auto indexExpr = cast(IndexExprNode*)a.left;
-				//builder.emitInstr2(IrOpcode.o_store, indexExpr.type.irType(context), indexExpr.irRef, a.right.irRef);
-				assert(false);
+				auto indexExpr = cast(IndexExprNode*)a.left;
+				builder.emitInstr!IrInstr_store(currentBlock, indexExpr.irRef, a.right.irRef);
 				break;
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -399,6 +487,8 @@ struct AstToIr
 
 	void visitExprValue(VariableExprNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg VAR_USE VAL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end VAR_USE VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] var expr value (%s) begin", v.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr value (%s) end", v.loc);
 		if (!v.isLvalue)
@@ -407,34 +497,21 @@ struct AstToIr
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
-	void visitExprBranch(VariableExprNode* v, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
-	{
-		version(IrGenPrint) writefln("[IR GEN] var expr branch (%s) begin", v.loc);
-		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr branch (%s) end", v.loc);
-		v.irRef = load(currentBlock, v.getSym.varDecl);
-		placeUnaryBranch(v.irRef, currentBlock, trueExit, falseExit);
-	}
 	void visitExprValue(LiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg LITERAL VAL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] literal value (%s) value %s", c.loc, c.value);
 		c.irRef = context.addConstant(IrConstant(c.value));
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
-	void visitExprBranch(LiteralExprNode* c, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
-	{
-		version(IrGenPrint) writefln("[IR GEN] literal branch (%s) value %s", c.loc, c.value);
-		if (c.value)
-			builder.addJumpToLabel(currentBlock, trueExit);
-		else
-			builder.addJumpToLabel(currentBlock, falseExit);
-	}
 	void placeUnaryBranch(IrIndex value, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
-
+		context.unreachable;
 	}
 	void placeBinaryBranch(BinOp op, IrIndex left, IrIndex right, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
-
+		context.unreachable;
 	}
 
 	long calcBinOp(BinOp op, long a, long b)
@@ -467,9 +544,11 @@ struct AstToIr
 		IrLabel afterLeft = IrLabel(currentBlock);
 		visitExprValue(b.left, currentBlock, afterLeft);
 		currentBlock = afterLeft.blockIndex;
+		version(CfgGenPrint) writefln("[CFG GEN] after left cur %s true %s false %s", currentBlock, trueExit, falseExit);
 		IrLabel afterRight = IrLabel(currentBlock);
 		visitExprValue(b.right, currentBlock, afterRight);
 		currentBlock = afterRight.blockIndex;
+		version(CfgGenPrint) writefln("[CFG GEN] after right cur %s true %s false %s", currentBlock, trueExit, falseExit);
 
 		// constant folding
 		if (b.left.irRef.isConstant && b.right.irRef.isConstant)
@@ -501,8 +580,9 @@ struct AstToIr
 			{
 				case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op value %s", b.op);
+					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op)};
 					b.irRef = builder.emitInstr!IrInstr_set_binary_cond(
-						currentBlock, convertBinOpToIrCond(b.op), lRef, rRef).result;
+						currentBlock, extra, lRef, rRef).result;
 					break;
 
 				// TODO
@@ -530,6 +610,8 @@ struct AstToIr
 
 	void visitExprBranch(BinaryExprNode* b, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg BINOP BR cur %s true %s false %s", currentBlock, trueExit, falseExit);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end BINOP BR cur %s true %s false %s", currentBlock, trueExit, falseExit);
 		version(IrGenPrint) writefln("[IR GEN] bin expr branch (%s) begin", b.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] bin expr branch (%s) end", b.loc);
 		visitBinOpImpl!false(b, currentBlock, trueExit, falseExit);
@@ -537,6 +619,8 @@ struct AstToIr
 
 	void visitExprValue(BinaryExprNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg BINOP VAL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end BINOP VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] bin expr value (%s) begin", b.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] bin expr value (%s) end", b.loc);
 		IrLabel fake;
@@ -544,24 +628,50 @@ struct AstToIr
 		assert(fake.numPredecessors == 0);
 	}
 
-	void visitExprBranch(CallExprNode* c, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
-	{
-		context.unreachable;
-		version(IrGenPrint) writefln("[IR GEN] call branch (%s) begin", c.loc);
-		version(IrGenPrint) scope(success) writefln("[IR GEN] call branch (%s) begin", c.loc);
-	}
 	void visitExprValue(CallExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
-		context.unreachable;
+		version(CfgGenPrint) writefln("[CFG GEN] beg CALL VAL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end CALL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] call value (%s) begin", c.loc);
-		version(IrGenPrint) scope(success) writefln("[IR GEN] call value (%s) begin", c.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] call value (%s) end", c.loc);
+
+		context.assertf(c.args.length <= MAX_ARGS,
+			"Cannot generate a call with %s arguments, max args is %s",
+			c.args.length, MAX_ARGS);
+
+		foreach (i, ExpressionNode* arg; c.args) {
+			IrLabel afterArg = IrLabel(currentBlock);
+			visitExprValue(arg, currentBlock, afterArg);
+			currentBlock = afterArg.blockIndex;
+			argsBuf[i] = arg.irRef;
+		}
+
+		IrIndex[] args = argsBuf[0..c.args.length];
+		FunctionDeclNode* callee = c.getSym.funcDecl;
+
+		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.index);
+		context.assertf(callee.index < context.mod.functions.length,
+			"Callee index is out of bounds: index %s, num functions %s",
+			callee.index, context.mod.functions.length);
+
+		if (callee.returnType.isVoid) {
+			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, args);
+			context.assertf(!res.result.isDefined, "Call has result");
+		} else {
+			ExtraInstrArgs extra = {hasResult : true};
+			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, extra, args);
+			c.irRef = res.result;
+		}
+
+		builder.emitInstrTail(IrInstrTail_call(callee.index));
+
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
-	void visitExprBranch(IndexExprNode* i, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit) {
-		context.unreachable;
-	}
+
 	void visitExprValue(IndexExprNode* i, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		version(CfgGenPrint) writefln("[CFG GEN] beg INDEX VAL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end INDEX VAL cur %s next %s", currentBlock, nextStmt);
 		IrLabel afterIndex = IrLabel(currentBlock);
 		visitExprValue(i.array, currentBlock, afterIndex);
 		currentBlock = afterIndex.blockIndex;
@@ -598,9 +708,39 @@ struct AstToIr
 	}
 
 	void visitExprBranch(TypeConvExprNode* t, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit) {
+		version(CfgGenPrint) writefln("[CFG GEN] beg TYPE_CONV BR cur %s true %s false %s", currentBlock, trueExit, falseExit);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end TYPE_CONV BR cur %s true %s false %s", currentBlock, trueExit, falseExit);
+		IrLabel afterExpr = IrLabel(currentBlock);
+		visitExprValue(t.expr, currentBlock, afterExpr);
+		currentBlock = afterExpr.blockIndex;
+
+		IrValueType to = t.type.irType(context);
+		IrValueType from = t.expr.type.irType(context);
+		if (t.expr.irRef.isConstant)
+		{
+			long value = context.getConstant(cast(IrIndex)t.expr.irRef).i64;
+			if (value != 0)
+				builder.addJumpToLabel(currentBlock, trueExit);
+			else
+				builder.addJumpToLabel(currentBlock, falseExit);
+			return;
+		}
+		else if (from == IrValueType.i32 || from == IrValueType.i64)
+		{
+			t.irRef = t.expr.irRef;
+			builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, t.expr.irRef, trueExit, falseExit);
+			return;
+		}
+		else
+		{
+			//t.irRef = builder.emitInstr1(IrOpcode.o_conv, to, t.expr.irRef);
+			context.internal_error(t.loc, "%s to %s", t.expr.type.printer(context), t.type.printer(context));
+		}
 		context.unreachable;
 	}
 	void visitExprValue(TypeConvExprNode* t, IrIndex currentBlock, ref IrLabel nextStmt) {
+		version(CfgGenPrint) writefln("[CFG GEN] beg TYPE_CONV VAL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end TYPE_CONV VAL cur %s next %s", currentBlock, nextStmt);
 		IrLabel afterExpr = IrLabel(currentBlock);
 		visitExprValue(t.expr, currentBlock, afterExpr);
 		currentBlock = afterExpr.blockIndex;
@@ -618,8 +758,8 @@ struct AstToIr
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
-	void visit(BasicTypeNode* t) {}
-	void visit(PtrTypeNode* t) {}
-	void visit(StaticArrayTypeNode* t) {}
-	void visit(UserTypeNode* t) {}
+	void visit(BasicTypeNode* t) { context.unreachable; }
+	void visit(PtrTypeNode* t) { context.unreachable; }
+	void visit(StaticArrayTypeNode* t) { context.unreachable; }
+	void visit(UserTypeNode* t) { context.unreachable; }
 }
