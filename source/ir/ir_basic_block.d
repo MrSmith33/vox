@@ -11,6 +11,7 @@ import all;
 
 /// Must end with one of block_exit_... instructions
 /// Only single loop end must be predecessor of loop header
+/// first and last instructions point to this basic block in prevInstr, nextInstr respectively
 @(IrValueKind.basicBlock)
 struct IrBasicBlock
 {
@@ -21,8 +22,9 @@ struct IrBasicBlock
 	IrIndex firstPhi; // may be null
 
 	PhiIterator phis(ref IrFunction ir) { return PhiIterator(&ir, &this); }
-	InstrIterator instructions(ref IrFunction ir) { return InstrIterator(&ir, &this); }
-	InstrReverseIterator instructionsReverse(ref IrFunction ir) { return InstrReverseIterator(&ir, &this); }
+	InstrIterator instructions(ref IrFunction ir) { return InstrIterator(&ir, firstInstr); }
+	InstrReverseIterator instructionsReverse(ref IrFunction ir) { return InstrReverseIterator(&ir, lastInstr); }
+	bool hasPhis() { return firstPhi.isDefined; }
 
 	SmallVector predecessors;
 	SmallVector successors;
@@ -34,16 +36,19 @@ struct IrBasicBlock
 		bool, "isSealed",     1,
 		/// True if block_exit instruction is in place
 		bool, "isFinished",   1,
-		// if true, block has single 'loop end' predecessor
+		// if true, block is loop header and has incoming back edges
 		bool, "isLoopHeader", 1,
-		// if true, block has single jump to 'loop header'
-		bool, "isLoopEnd",    1,
-		uint, "",             4
+		uint, "",             5
 	));
 
 	IrName name;
 }
 //pragma(msg, "BB size: ", cast(int)IrBasicBlock.sizeof, " bytes");
+
+void removeAllPhis(ref IrBasicBlock block)
+{
+	block.firstPhi = IrIndex();
+}
 
 struct PhiIterator
 {
@@ -65,10 +70,11 @@ struct PhiIterator
 struct InstrIterator
 {
 	IrFunction* ir;
-	IrBasicBlock* block;
+	IrIndex firstInstr;
 	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
-		IrIndex current = block.firstInstr;
-		while (current.isDefined)
+		IrIndex current = firstInstr;
+		// will be 'none' if no instructions in basic block
+		while (current.isInstruction)
 		{
 			IrIndex indexCopy = current;
 			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
@@ -86,10 +92,11 @@ struct InstrIterator
 struct InstrReverseIterator
 {
 	IrFunction* ir;
-	IrBasicBlock* block;
+	IrIndex lastInstr;
 	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
-		IrIndex current = block.lastInstr;
-		while (current.isDefined)
+		IrIndex current = lastInstr;
+		// will be 'none' if no instructions in basic block
+		while (current.isInstruction)
 		{
 			IrIndex indexCopy = current;
 			IrInstrHeader* header = &ir.get!IrInstrHeader(current);

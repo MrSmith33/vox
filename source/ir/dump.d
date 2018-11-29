@@ -78,7 +78,9 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 	}
 
 	void printRegUses(IrIndex result) {
-		if (result.kind == IrValueKind.physicalRegister) return;
+		if (result.isPhysReg) return;
+		if (result.isStackSlot) return;
+
 		auto vreg = &ir.getVirtReg(result);
 		sink.put(" users [");
 		foreach (i, index; vreg.users.range(ir))
@@ -109,6 +111,9 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 			else sink.put(" .");
 
 			if (block.isFinished) sink.put("F");
+			else sink.put(".");
+
+			if (block.isLoopHeader) sink.put("L");
 			else sink.put(".");
 		}
 
@@ -178,10 +183,7 @@ void dumpIrInstr(ref InstrPrintInfo p)
 		case IrOpcode.call: dumpCall(p); break;
 		case IrOpcode.block_exit_unary_branch: dumpUnBranch(p); break;
 		case IrOpcode.block_exit_binary_branch: dumpBinBranch(p); break;
-
-		case IrOpcode.block_exit_jump:
-			p.sink.putf("    jmp %s", p.block.successors[0, *p.ir]);
-			break;
+		case IrOpcode.block_exit_jump: dumpJmp(p); break;
 
 		case IrOpcode.parameter:
 			uint paramIndex = p.ir.get!IrInstr_parameter(p.instrIndex).index;
@@ -224,6 +226,15 @@ void dumpArgs(ref InstrPrintInfo p)
 		p.sink.put(" ");
 		p.dumpIndex(arg);
 	}
+}
+
+void dumpJmp(ref InstrPrintInfo p)
+{
+	p.sink.put("    jmp ");
+	if (p.block.successors.length > 0)
+		p.sink.putf("%s", p.block.successors[0, *p.ir]);
+	else
+		p.sink.put("<null>");
 }
 
 void dumpUnBranch(ref InstrPrintInfo p)

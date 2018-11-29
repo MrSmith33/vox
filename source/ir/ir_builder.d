@@ -24,6 +24,7 @@ struct ExtraInstrArgs
 {
 	ubyte cond; // used when IrInstrFlags.hasCondition is set
 	IrOpcode opcode; // used when opcode is IrOpcode.invalid
+
 	bool addUsers = true;
 
 	/// Is checked when instruction has variadic result (IrInstrFlags.hasVariadicResult).
@@ -62,7 +63,7 @@ struct IrBuilder
 		this.context = context;
 		this.ir = ir;
 
-		ir.storage = context.irBuffer.freePart;
+		ir.storage = context.irBuffer.freePart.ptr;
 		ir.storageLength = 0;
 
 		blockVarDef.clear();
@@ -87,8 +88,28 @@ struct IrBuilder
 		this.context = context;
 		this.ir = lir;
 
-		ir.storage = context.irBuffer.freePart;
+		ir.storage = context.irBuffer.freePart.ptr;
 		ir.storageLength = 0;
+
+		blockVarDef.clear();
+	}
+
+	/// Copies ir data to the end of IR buffer, to allow for modification
+	void beginDup(IrFunction* ir, CompilationContext* context) {
+		this.context = context;
+		this.ir = ir;
+
+		// IR is already at the end of buffer
+		if (context.irBuffer.freePart.ptr == ir.storage + ir.storageLength)
+		{
+			// noop
+		}
+		else
+		{
+			uint[] buf = context.irBuffer.voidPut(ir.storageLength);
+			buf = ir.storage[0..ir.storageLength]; // copy
+			ir.storage = buf.ptr;
+		}
 
 		blockVarDef.clear();
 	}
@@ -244,7 +265,7 @@ struct IrBuilder
 	void emitInstrTail(T)(T tailData)
 	{
 		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
-		T* tail = cast(T*)(&context.irBuffer.bufPtr[ir.storageLength]);
+		T* tail = cast(T*)(&ir.storage[ir.storageLength]);
 		*tail = tailData;
 		ir.storageLength += numAllocatedSlots;
 		context.irBuffer.length += numAllocatedSlots;
@@ -263,7 +284,20 @@ struct IrBuilder
 	/// ditto
 	auto emitInstr(I)(IrIndex blockIndex, ExtraInstrArgs extra, IrIndex[] args ...)
 	{
-		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		static if (getInstrInfo!I.mayHaveResult) {
+			InstrWithResult result = emitInstr!I(extra, args);
+			appendBlockInstr(blockIndex, result.instruction);
+			return result;
+		} else {
+			IrIndex result = emitInstr!I(extra, args);
+			appendBlockInstr(blockIndex, result);
+			return result;
+		}
+	}
+
+	/// Only creates instruction
+	auto emitInstr(I)(ExtraInstrArgs extra, IrIndex[] args ...)
+	{
 		IrIndex instr = append!I;
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
 
@@ -272,17 +306,6 @@ struct IrBuilder
 			instrHeader.op = extra.opcode;
 		else
 			instrHeader.op = getInstrInfo!I.opcode;
-
-		// points to prev instruction in block or to null
-		instrHeader.prevInstr = block.lastInstr;
-
-		if (!block.firstInstr.isDefined) {
-			block.firstInstr = instr;
-			block.lastInstr = instr;
-		} else {
-			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
-			block.lastInstr = instr;
-		}
 
 		// result
 		static if (getInstrInfo!I.hasVariadicResult)
@@ -341,7 +364,7 @@ struct IrBuilder
 			}
 		}
 
-		static if (getInstrInfo!I.hasResult || getInstrInfo!I.hasVariadicResult) {
+		static if (getInstrInfo!I.mayHaveResult) {
 			if (instrHeader.hasResult)
 				return InstrWithResult(instr, instrHeader.result);
 			else
@@ -352,21 +375,95 @@ struct IrBuilder
 	}
 
 	/// Adds instruction to the end of basic block
-	/// Doesn't set any instruction info except prevInstr index
+	/// Doesn't set any instruction info except prevInstr, nextInstr index
 	void appendBlockInstr(IrIndex blockIndex, IrIndex instr)
 	{
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
-
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
-		instrHeader.prevInstr = block.lastInstr; // points to prev instruction or to null
+
+		instrHeader.nextInstr = blockIndex;
 
 		if (!block.firstInstr.isDefined) {
+			instrHeader.prevInstr = blockIndex;
 			block.firstInstr = instr;
 			block.lastInstr = instr;
 		} else {
+			// points to prev instruction
+			instrHeader.prevInstr = block.lastInstr;
 			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
 			block.lastInstr = instr;
 		}
+	}
+
+	/// Adds instruction to the start of basic block
+	/// Doesn't set any instruction info except prevInstr, nextInstr index
+	void prependBlockInstr(IrIndex blockIndex, IrIndex instr)
+	{
+		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+
+		instrHeader.prevInstr = blockIndex;
+
+		if (!block.lastInstr.isDefined) {
+			instrHeader.nextInstr = blockIndex;
+			block.lastInstr = instr;
+			block.firstInstr = instr;
+		} else {
+			// points to next instruction
+			instrHeader.nextInstr = block.firstInstr;
+			ir.get!IrInstrHeader(block.firstInstr).prevInstr = instr;
+			block.firstInstr = instr;
+		}
+	}
+
+	/// Inserts 'instr' after 'afterInstr'
+	void insertAfterInstr(IrIndex afterInstr, IrIndex instr)
+	{
+		IrInstrHeader* afterInstrHeader = &ir.get!IrInstrHeader(afterInstr);
+		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+
+		instrHeader.prevInstr = afterInstr;
+		instrHeader.nextInstr = afterInstrHeader.nextInstr;
+
+		if (afterInstrHeader.nextInstr.isBasicBlock) {
+			// 'afterInstr' is the last instr in the block
+			ir.getBlock(afterInstrHeader.nextInstr).lastInstr = instr;
+		} else {
+			// There must be instr after 'afterInstr'
+			ir.get!IrInstrHeader(afterInstrHeader.nextInstr).prevInstr = instr;
+		}
+		afterInstrHeader.nextInstr = instr;
+	}
+
+	/// Inserts 'instr' before lastInstr of basic block 'blockIndex'
+	void insertBeforeLastInstr(IrIndex blockIndex, IrIndex instr)
+	{
+		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		if (block.lastInstr.isDefined) {
+			insertBeforeInstr(block.lastInstr, instr);
+		} else {
+			appendBlockInstr(blockIndex, instr);
+		}
+	}
+
+	/// Inserts 'instr' before 'beforeInstr'
+	void insertBeforeInstr(IrIndex beforeInstr, IrIndex instr)
+	{
+		IrInstrHeader* beforeInstrHeader = &ir.get!IrInstrHeader(beforeInstr);
+		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+
+		instrHeader.nextInstr = beforeInstr;
+		instrHeader.prevInstr = beforeInstrHeader.prevInstr;
+
+		if (beforeInstrHeader.prevInstr.isBasicBlock) {
+			// 'beforeInstr' is the first instr in the block
+			ir.getBlock(beforeInstrHeader.prevInstr).firstInstr = instr;
+		} else {
+			// There must be instr before 'beforeInstr'
+			ir.get!IrInstrHeader(beforeInstrHeader.prevInstr).nextInstr = instr;
+		}
+
+		beforeInstrHeader.prevInstr = instr;
 	}
 
 	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1, ref IrLabel trueExit, ref IrLabel falseExit)
@@ -576,8 +673,7 @@ struct IrBuilder
 		if (phi.prevPhi.isDefined) ir.get!IrPhi(phi.prevPhi).nextPhi = phi.nextPhi;
 		version(IrPrint) writefln("[IR] after remove phi %s", phiIndex);
 		version(IrPrint) {
-			IrBasicBlock* block1 = &ir.getBlock(phi.blockIndex);
-			foreach(IrIndex phiIndex, ref IrPhi phi; block1.phis(ir)) {
+			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
 			}
 		}

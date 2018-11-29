@@ -376,7 +376,7 @@ struct Fixup32
 }
 
 Imm32 jumpOffset(PC from, PC to) {
-	assert(to - from == cast(int)(to - from), "offset is not representible as int");
+	assert(to - from == cast(int)(to - from), format("offset from %s to %s is %X and is not representible as int", from, to, to-from));
 	return Imm32(cast(int)(to - from));
 }
 
@@ -501,6 +501,7 @@ struct CodeGen_x86_64
 	void nop() { encoder.putInstrNullary(OP1(0x90)); }
 
 	/// relative call to target virtual address.
+	void call(Imm32 targetOffset) { encoder.putInstrNullaryImm(OP1(0xE8), targetOffset); } // relative to next instr
 	void call(PC target) { encoder.putInstrNullaryImm(OP1(0xE8), jumpOffset(encoder.pc + 5, target)); } // relative to next instr
 	void call(Register target) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xFF), 2, target); } // absolute address
 	void call(MemAddress target) { encoder.putInstrUnaryMem!(ArgType.DWORD)(OP1(0xFF), 2, target); } // absolute address, use DWORD to omit REX.W

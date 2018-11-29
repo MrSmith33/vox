@@ -31,6 +31,11 @@ struct InstrInfo
 	bool hasVariadicArgs() { return (flags & IFLG.hasVariadicArgs) != 0; }
 	bool hasVariadicResult() { return (flags & IFLG.hasVariadicResult) != 0; }
 	bool hasCondition() { return (flags & IFLG.hasCondition) != 0; }
+	bool isTwoOperandForm() { return (flags & IFLG.isTwoOperandForm) != 0; }
+	bool isCommutative() { return (flags & IFLG.isCommutative) != 0; }
+	bool isCall() { return (flags & IFLG.isCall) != 0; }
+
+	bool mayHaveResult() { return hasResult || hasVariadicResult; }
 }
 
 enum IrInstrFlags : uint {
@@ -49,6 +54,12 @@ enum IrInstrFlags : uint {
 	hasVariadicResult = 1 << 8,
 	/// If set IrInstrHeader.cond is used
 	hasCondition = 1 << 9,
+	/// If set machine instruction requires a = a op b form
+	/// while IR instruction has a = b op c form
+	isTwoOperandForm = 1 << 10,
+	/// If order of arguments doesn't change the result
+	isCommutative = 1 << 11,
+	isCall = 1 << 12,
 }
 
 alias IFLG = IrInstrFlags;
@@ -106,7 +117,9 @@ struct IrInstrHeader
 	static assert(IrBinaryCondition.max <= 0b1111, "4 bits are reserved");
 	static assert(IrUnaryCondition.max <= 0b1111, "4 bits are reserved");
 
+	// points to basic block if first instruction of basic block
 	IrIndex prevInstr;
+	// points to basic block if last instruction of basic block
 	IrIndex nextInstr;
 
 	IrIndex[0] _payload;

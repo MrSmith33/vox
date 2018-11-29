@@ -71,9 +71,10 @@ struct CallConv
 	IrIndex returnReg;
 	IrIndex[] volatileRegs;
 	IrIndex[] allocatableRegs;
+	IrIndex[] calleeSaved;
 	/// Not included into allocatableRegs
 	/// Can be used as frame pointer when
-	/// frame pointer is enable for the function, or
+	/// frame pointer is enabled for the function, or
 	/// can be used as allocatable register if not
 	IrIndex framePointer;
 	IrIndex stackPointer;
@@ -98,7 +99,8 @@ __gshared CallConv win64_call_conv = CallConv
 	amd64_reg.r10,
 	amd64_reg.r11],
 
-	[amd64_reg.ax, // avaliable for allocation
+	// avaliable for allocation
+	[amd64_reg.ax, // volatile regs, zero cost
 	amd64_reg.cx,
 	amd64_reg.dx,
 	amd64_reg.r8,
@@ -107,7 +109,15 @@ __gshared CallConv win64_call_conv = CallConv
 	amd64_reg.r11,
 
 	// callee saved
-	amd64_reg.bx,
+	amd64_reg.bx, // need to save/restore to use
+	amd64_reg.si,
+	amd64_reg.di,
+	amd64_reg.r12,
+	amd64_reg.r13,
+	amd64_reg.r14,
+	amd64_reg.r15],
+
+	[amd64_reg.bx, // callee saved regs
 	amd64_reg.si,
 	amd64_reg.di,
 	amd64_reg.r12,
@@ -122,12 +132,12 @@ __gshared CallConv win64_call_conv = CallConv
 private alias _ii = InstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	@_ii() add,
-	@_ii() sub,
-	@_ii() imul,
-	@_ii() or,
-	@_ii() and,
-	@_ii() xor,
+	@_ii(1,2,IFLG.isTwoOperandForm) add,
+	@_ii(1,2,IFLG.isTwoOperandForm) sub,
+	@_ii(1,2,IFLG.isTwoOperandForm) imul,
+	@_ii(1,2,IFLG.isTwoOperandForm) or,
+	@_ii(1,2,IFLG.isTwoOperandForm) and,
+	@_ii(1,2,IFLG.isTwoOperandForm) xor,
 	@_ii() mul,
 	@_ii() div,
 	@_ii() lea,
@@ -153,7 +163,7 @@ enum Amd64Opcode : ushort {
 
 	@_ii() setcc,
 
-	@_ii() call,
+	@_ii(0,0,IFLG.isCall) call,
 	@_ii() ret,
 
 	@_ii() pop,
@@ -170,10 +180,10 @@ InstrInfo[] gatherInfos()
 	return res;
 }
 
-alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult); // arg0 = arg0 + arg1
-alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult); // arg0 = arg0 - arg1
-alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult);
-alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult);
+alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult | IFLG.isTwoOperandForm); // arg0 = arg0 + arg1
+alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult | IFLG.isTwoOperandForm); // arg0 = arg0 - arg1
+alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
+alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
 alias LirAmd64Instr_cmp = IrGenericInstr!(Amd64Opcode.cmp, 2);
 alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1);
 alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0);
@@ -211,6 +221,13 @@ Condition[] IrUnCondToAmd64Condition = [
 
 IrDumpHandlers lirAmd64DumpHandlers = IrDumpHandlers(&dumpAmd64Instr, &dumpLirAmd64Index);
 
+void dumpFunction_lir_amd64(ref IrFunction lir, ref CompilationContext ctx)
+{
+	FuncDumpSettings settings;
+	settings.handlers = &lirAmd64DumpHandlers;
+	dumpFunction(lir, ctx, settings);
+}
+
 void dumpAmd64Instr(ref InstrPrintInfo p)
 {
 	switch(p.instrHeader.op)
@@ -224,6 +241,7 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 		case Amd64Opcode.un_branch:
 			dumpUnBranch(p);
 			break;
+		case Amd64Opcode.jmp: dumpJmp(p); break;
 		case Amd64Opcode.jcc:
 			p.sink.putf("    j%s ", cast(Condition)p.instrHeader.cond);
 			p.dumpIndex(p.instrHeader.args[0]);
@@ -254,7 +272,7 @@ void dumpLirAmd64Index(ref InstrPrintInfo p, IrIndex i)
 		case listItem: p.sink.putf("l.%s", i.storageUintIndex); break;
 		case instruction: p.sink.putf("i.%s", i.storageUintIndex); break;
 		case basicBlock: p.sink.putf("@%s", i.storageUintIndex); break;
-		case constant: p.sink.putf("%s", p.context.constants[i.storageUintIndex].i64); break;
+		case constant: p.sink.putf("%s", p.context.getConstant(i).i64); break;
 		case phi: p.sink.putf("phi.%s", i.storageUintIndex); break;
 		case memoryAddress: p.sink.putf("m.%s", i.storageUintIndex); break;
 		case stackSlot: p.sink.putf("s.%s", i.storageUintIndex); break;
@@ -277,7 +295,7 @@ struct LirBuilder
 		this.lir = lir;
 		this.ir = ir;
 
-		lir.storage = context.irBuffer.freePart;
+		lir.storage = context.irBuffer.freePart.ptr;
 		lir.storageLength = 0;
 	}
 }

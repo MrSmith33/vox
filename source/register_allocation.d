@@ -31,39 +31,70 @@ void pass_linear_scan(ref CompilationContext context) {
 	}
 }
 
-struct PhysRegister
+struct RegisterState
 {
-	IrIndex regRef;
+	IrIndex index;
+	bool isAllocatable;
+	bool isUsed;
+	bool isCalleeSaved;
 	int freeUntilPos;
 	int nextUsePos;
 }
 
 struct PhysRegisters
 {
-	PhysRegister[] gpr;
+	RegisterState[] gpr;
+	const(IrIndex)[] allocatableRegs;
 
-	ref PhysRegister opIndex(IrIndex reg) {
+	ref RegisterState opIndex(IrIndex reg) {
 		return gpr[reg.storageUintIndex];
 	}
 
-	void setup(FunctionDeclNode* fun)
+	void setup(FunctionDeclNode* fun, MachineInfo* machineInfo)
 	{
-		const IrIndex[] regs = fun.callingConvention.allocatableRegs;
-		gpr.length = regs.length;
-		foreach(i, reg; regs)
+		allocatableRegs = fun.callingConvention.allocatableRegs;
+		gpr.length = machineInfo.registers.length;
+
+		foreach(i, ref RegisterState reg; gpr)
 		{
-			gpr[i] = PhysRegister(reg);
+			reg = RegisterState(machineInfo.registers[i].index);
+		}
+
+		foreach(i, reg; allocatableRegs)
+		{
+			opIndex(reg).isAllocatable = true;
+		}
+
+		foreach(i, reg; fun.callingConvention.calleeSaved)
+		{
+			opIndex(reg).isCalleeSaved = true;
 		}
 	}
 
 	void resetFreeUntilPos()
 	{
-		foreach (ref reg; gpr) reg.freeUntilPos = int.max;
+		foreach (ref reg; gpr) {
+			if (reg.isAllocatable)
+				reg.freeUntilPos = int.max;
+			else
+				reg.freeUntilPos = 0; // prevent allocation
+		}
 	}
 
 	void resetNextUsePos()
 	{
-		foreach (ref reg; gpr) reg.nextUsePos = int.max;
+		foreach (ref reg; gpr) {
+			if (reg.isAllocatable)
+				reg.nextUsePos = int.max;
+			else
+				reg.nextUsePos = 0; // prevent allocation
+		}
+	}
+
+	void markAsUsed(IrIndex reg)
+	{
+		assert(gpr[reg.storageUintIndex].isAllocatable);
+		gpr[reg.storageUintIndex].isUsed = true;
 	}
 }
 
@@ -82,26 +113,8 @@ struct LinearScan
 	FunctionLiveIntervals* livePtr;
 	ref FunctionLiveIntervals live() { return *livePtr; }
 	IrFunction* lir;
+	IrBuilder builder;
 
-	/*
-	void assignHints(ref IrFunction fun, ref CallConv callConv)
-	{
-		// assign paramter registers and memory locations
-		foreach(i, ref instr; fun.parameters)
-		{
-			callConv.setParamHint(fun, instr, i);
-		}
-
-		// assign register hint to return values according to call conv
-		foreach (ref IrBasicBlock block; fun.basicBlocks.range)
-		{
-			if (block.exit.type == IrJump.Type.ret1)
-			{
-				callConv.setReturnHint(fun, block.exit.value);
-			}
-		}
-	}
-*/
 	/*
 		LinearScan
 		unhandled = list of intervals sorted by increasing start positions
@@ -136,8 +149,9 @@ struct LinearScan
 		import std.container.binaryheap;
 
 		lir = fun.lirData;
+		builder.beginDup(lir, context);
 		livePtr = fun.liveIntervals;
-		physRegs.setup(fun);
+		physRegs.setup(fun, context.machineInfo);
 
 		scope(exit) {
 			//TextSink sink;
@@ -169,7 +183,7 @@ struct LinearScan
 			if (!it.first.isNull)
 				inactive.put(it.first);
 
-		version(RAPrint) writefln("intervals %s", live.intervals[live.numFixedIntervals..$]);
+		version(RAPrint) writefln("intervals %s", live.intervals.data[live.numFixedIntervals..$]);
 
 		// while unhandled != { } do
 		while (!unhandled.empty)
@@ -257,6 +271,8 @@ struct LinearScan
 
 		fixInstructionArgs();
 		resolve();
+		genSaveCalleeSavedRegs(fun.stackLayout);
+		if (context.validateIr) validateIrFunction(*context, *lir);
 
 		unhandledStorage = unhandled.release;
 	}
@@ -269,6 +285,7 @@ struct LinearScan
 			freeUntilPos[it.reg] = 0
 		for each interval it in inactive intersecting with current do
 			freeUntilPos[it.reg] = next intersection of it with current
+		// clarification: if current intersects active and inactive, freeUntilPos is 0
 
 		reg = register with highest freeUntilPos
 		if freeUntilPos[reg] = 0 then
@@ -290,16 +307,49 @@ struct LinearScan
 		LiveInterval* currentIt = &live[currentId];
 		int currentEnd = live.ranges[currentIt.last].to;
 
+		static struct FreeUntilPos {
+			int num;
+			void toString(scope void delegate(const(char)[]) sink) {
+				if (num == int.max) formattedWrite(sink, "max");
+				else formattedWrite(sink, "%s", num);
+			}
+		}
+
 		// for each interval it in active do
 		//     freeUntilPos[it.reg] = 0
+		version(RAPrint) write("  active:");
 		foreach (rangeId; active.data)
 		{
 			auto it = live[rangeId];
 			assert(it.reg.isDefined);
 			physRegs[it.reg].freeUntilPos = 0;
+			version(RAPrint) writef(" %s:=0", it.reg);
 		}
+		version(RAPrint) writeln;
 
-		// check inactive : TODO
+		// for each interval it in inactive intersecting with current do
+		//   freeUntilPos[it.reg] = next intersection of it with current
+		version(RAPrint) write("  inactive:");
+		foreach (rangeId; inactive.data)
+		{
+			LiveInterval it = live[rangeId];
+			assert(it.reg.isDefined);
+
+			version(RAPrint) writef(" %s(%s)", it.reg, FreeUntilPos(physRegs[it.reg].freeUntilPos));
+
+			// if current intersects both active and inactive, freeUntilPos stays 0
+			if (physRegs[it.reg].freeUntilPos == 0) continue;
+
+			// in case there is no intersection will return int.max (noop)
+			int firstIntersection = live.firstIntersection(currentId, rangeId);
+			physRegs[it.reg].freeUntilPos = firstIntersection;
+
+			version(RAPrint) writef(":=%s", FreeUntilPos(firstIntersection));
+		}
+		version(RAPrint) writeln;
+
+		version(RAPrint) writefln("  Try alloc free reg for %s #%s",
+			currentIt.definition, live.ranges[currentId].intervalIndex);
 
 		// reg = register with highest freeUntilPos
 		int maxPos = 0;
@@ -308,14 +358,18 @@ struct LinearScan
 		// reg stored in hint
 		IrIndex hintReg = currentIt.storageHint;
 
-		PhysRegister[] candidates = physRegs.gpr;
-		foreach (i, ref PhysRegister r; candidates)
+		const IrIndex[] candidates = physRegs.allocatableRegs;
+		version(RAPrint) write("  candidates:");
+		foreach (i, IrIndex r; candidates)
 		{
-			if (r.freeUntilPos > maxPos) {
-				maxPos = r.freeUntilPos;
-				reg = r.regRef;
+			version(RAPrint) writef(" %s:%s", r, FreeUntilPos(physRegs[r].freeUntilPos));
+
+			if (physRegs[r].freeUntilPos > maxPos) {
+				maxPos = physRegs[r].freeUntilPos;
+				reg = r;
 			}
 		}
+		version(RAPrint) writeln;
 
 		if (maxPos == 0)
 		{
@@ -332,6 +386,7 @@ struct LinearScan
 				{
 					// register available for the whole interval
 					currentIt.reg = hintReg;
+					physRegs.markAsUsed(hintReg);
 					version(RAPrint) writefln("    alloc hint %s", hintReg);
 					return true;
 				}
@@ -344,6 +399,7 @@ struct LinearScan
 			if (currentEnd < maxPos)
 			{
 				currentIt.reg = reg;
+				physRegs.markAsUsed(reg);
 				version(RAPrint) writefln("    alloc %s", reg);
 				return true;
 			}
@@ -427,8 +483,8 @@ struct LinearScan
 			assert(it.reg.isDefined);
 			if (it.isFixed)
 			{
-				int fistrIntersection = live.firstIntersection(currentRangeId, rangeId);
-				physRegs[it.reg].nextUsePos = min(fistrIntersection, physRegs[it.reg].nextUsePos);
+				int firstIntersection = live.firstIntersection(currentRangeId, rangeId);
+				physRegs[it.reg].nextUsePos = min(firstIntersection, physRegs[it.reg].nextUsePos);
 			}
 			else
 			{
@@ -439,16 +495,17 @@ struct LinearScan
 
 		// reg = register with highest nextUsePos
 		LiveInterval* currentIt = &live[currentRangeId];
-		PhysRegister[] regs = physRegs.gpr;
+		const IrIndex[] candidates = physRegs.allocatableRegs;
 		int maxUsePos = 0;
 		IrIndex reg;
-		foreach (i, ref PhysRegister r; regs)
+		foreach (i, IrIndex r; candidates)
 		{
-			if (r.nextUsePos > maxUsePos) {
-				maxUsePos = r.nextUsePos;
-				reg = r.regRef;
+			if (physRegs[r].nextUsePos > maxUsePos) {
+				maxUsePos = physRegs[r].nextUsePos;
+				reg = r;
 			}
 		}
+		// physRegs.markAsUsed(reg);
 
 		context.unreachable;
 		assert(false);
@@ -457,6 +514,7 @@ struct LinearScan
 	// Replaces all uses of virtual registers with physical registers or stack slots
 	void fixInstructionArgs()
 	{
+		// fix uses first, because we may copy arg to result below
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
 		{
 			IrIndex reg = live.getRegFor(vregIndex);
@@ -482,10 +540,101 @@ struct LinearScan
 					case memoryAddress: assert(false); // TODO
 				}
 			}
+		}
 
+		// fix results
+		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
+		{
+			IrIndex reg = live.getRegFor(vregIndex);
 			switch(vreg.definition.kind) with(IrValueKind)
 			{
-				case instruction: lir.get!IrInstrHeader(vreg.definition).result = reg; break;
+				case instruction:
+					IrInstrHeader* instrHeader = &lir.get!IrInstrHeader(vreg.definition);
+					instrHeader.result = reg;
+					InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
+
+					// Insert mov for instructions requiring two-operand form (like x86 xor)
+					if (instrInfo.isTwoOperandForm)
+					{
+						// Rewrite
+						// r1 = r2 op r3
+						// as
+						// r1 = r2
+						// r1 = r1 op r3
+						//
+						// if r2 != r3
+						// {
+						//     if r1 == r2 {
+						//         "r1 = op r1 r3"
+						//     } else if r1 == r3 {
+						//         if (op.isCommutative) { // "r1 = op r3 r2"
+						//             "r1 = op r1 r2"
+						//         } else {
+						//             // error
+						//             // this case is handled inside liveness analysis
+						//             //
+						//         }
+						//     }
+						//     else
+						//     {
+						//         "mov r1 r2"
+						//         "r1 = op r1 r3"
+						//     }
+						// }
+						// else // "r1 = op r2 r2"
+						// {
+						//     "mov r1 r2" if r1 != r2
+						//     "r1 = op r1 r1"
+						// }
+
+						IrIndex r1 = instrHeader.result;
+						IrIndex r2 = instrHeader.args[0];
+						IrIndex r3 = instrHeader.args[1];
+						if (r2 != r3)
+						{
+							if (r1 == r2)
+							{
+								// "r1 = op r1 r3", noop
+							}
+							else if (r1 == r3) // r1 = op r2 r1
+							{
+								if (instrInfo.isCommutative) // r1 = op r1 r2
+								{
+									instrHeader.args[0] = r1;
+									instrHeader.args[1] = r2;
+								}
+								else
+								{
+									context.internal_error("Unhandled non-commutative instruction in RA");
+								}
+							}
+							else // r1 = op r2 r3; all different
+							{
+								// mov r1 r2
+								ExtraInstrArgs extra = {addUsers : false, result : r1};
+								InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
+								builder.insertBeforeInstr(vreg.definition, instr.instruction);
+								// r1 = op r1 r3
+								instrHeader.args[0] = r1;
+							}
+						}
+						else // r2 == r3
+						{
+							if (r1 != r2)
+							{
+								ExtraInstrArgs extra = {addUsers : false, result : r1};
+								InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
+								builder.insertBeforeInstr(vreg.definition, instr.instruction);
+							}
+							instrHeader.args[0] = r1;
+						}
+
+						// validation
+						context.assertf(instrHeader.result == instrHeader.args[0],
+							"two-operand form not ensured res(%s) != arg0(%s)", instrHeader.result, instrHeader.args[0]);
+					}
+
+					break;
 				case phi: lir.get!IrPhi(vreg.definition).result = reg; break;
 				default: assert(false);
 			}
@@ -512,6 +661,70 @@ struct LinearScan
 	*/
 	void resolve()
 	{
+		version(RAPrint) writefln("resolve");
 
+		void onEdge(
+			IrIndex predIndex, ref IrBasicBlock predBlock,
+			IrIndex succIndex, ref IrBasicBlock succBlock)
+		{
+			version(RAPrint) writefln("  edge %s -> %s", predIndex, succIndex);
+			foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(*lir))
+			{
+				version(RAPrint) writef("    phi %s res %s", phiIndex, phi.result);
+				foreach (size_t arg_i, ref IrPhiArg arg; phi.args(*lir))
+				{
+					if (arg.basicBlock == predIndex)
+					{
+						IrIndex moveFrom = arg.value;
+						IrIndex moveTo = phi.result;
+
+						// TODO: proper ordering
+						version(RAPrint) writefln(" arg %s %s", arg.basicBlock, arg.value);
+						if (moveFrom != moveTo)
+						{
+							ExtraInstrArgs extra = {addUsers : false, result : moveTo};
+							InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, moveFrom);
+							builder.insertBeforeLastInstr(predIndex, instr.instruction);
+						}
+					}
+				}
+			}
+		}
+
+		foreach (IrIndex succIndex, ref IrBasicBlock succBlock; lir.blocks)
+		{
+			if (!succBlock.hasPhis) continue;
+
+			foreach (IrIndex predIndex; succBlock.predecessors.range(*lir))
+			{
+				IrBasicBlock* predBlock = &lir.getBlock(predIndex);
+				onEdge(predIndex, *predBlock, succIndex, succBlock);
+			}
+		}
+
+		foreach (IrIndex index, ref IrBasicBlock block; lir.blocks)
+			block.removeAllPhis;
+	}
+
+	void genSaveCalleeSavedRegs(ref StackLayout stackLayout)
+	{
+		IrIndex entryBlock = lir.entryBasicBlock;
+		IrIndex exitBlock = lir.exitBasicBlock;
+		foreach(reg; physRegs.gpr)
+		{
+			if (reg.isCalleeSaved && reg.isUsed)
+			{
+				IrIndex slot = stackLayout.addStackItem(4, 4, false, 0);
+
+				// save register
+				IrIndex instrStore = builder.emitInstr!LirAmd64Instr_store(ExtraInstrArgs(), slot, reg.index);
+				builder.prependBlockInstr(entryBlock, instrStore);
+
+				// restore register
+				ExtraInstrArgs extra = {result : reg.index};
+				InstrWithResult instrLoad = builder.emitInstr!LirAmd64Instr_load(extra, slot);
+				builder.insertBeforeLastInstr(exitBlock, instrLoad.instruction);
+			}
+		}
 	}
 }

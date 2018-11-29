@@ -391,6 +391,7 @@ struct FunctionDeclNode {
 	/// Position in buffer or in memory
 	void* funcPtr;
 	CallConv* callingConvention;
+	StackLayout stackLayout;
 	FunctionIndex index;
 
 	/// External functions have no body
@@ -684,6 +685,7 @@ struct AstPrinter {
 	}
 	void visit(VariableDeclNode* v) {
 		print(v.isParameter ? "PARAM " : "VAR ", v.type.printer(context), " ", v.strId(context));
+		if (v.initializer) pr_node(cast(AstNode*)v.initializer);
 	}
 	void visit(StructDeclNode* s) {
 		print("STRUCT ", s.strId(context));

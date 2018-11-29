@@ -35,7 +35,7 @@ struct IrMirror(T)
 
 struct IrFunction
 {
-	uint[] storage;
+	uint* storage;
 	/// number of uints allocated from storage
 	uint storageLength;
 
@@ -239,12 +239,26 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 
 		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
+			size_t numPhiArgs = 0;
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
+				++numPhiArgs;
 				checkArg(phiIndex, phiArg.value);
 			}
 
+			// check that phi-function receives values from all predecessors
+			size_t numPredecessors = 0;
+			foreach(IrIndex predIndex; block.predecessors.range(ir))
+			{
+				++numPredecessors;
+			}
+
+			context.assertf(numPhiArgs == numPredecessors,
+				"Number of predecessors: %s doesn't match number of phi arguments: %s",
+				numPredecessors, numPhiArgs);
+
 			checkResult(phiIndex, phi.result);
+			//writefln("phi %s args %s preds %s", phiIndex, numPhiArgs, numPredecessors);
 		}
 
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))

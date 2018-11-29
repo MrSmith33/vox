@@ -15,7 +15,6 @@ import amd64asm;
 void pass_emit_mc_amd64(ref CompilationContext context)
 {
 	context.assertf(context.codeBuffer.length > 0, "Code buffer is empty");
-
 	auto emitter = CodeEmitter(&context);
 	emitter.compileModule;
 }
@@ -32,12 +31,23 @@ struct CodeEmitter
 	PC[] blockStarts;
 	PC[2][] jumpFixups;
 
+	static struct CallFixup {
+		PC address; // address after call instruction
+		FunctionIndex calleeIndex;
+	}
+
+	private Buffer!CallFixup callFixups;
+
 	void compileModule()
 	{
 		gen.encoder.setBuffer(context.codeBuffer);
 		//writefln("code buf %s", context.codeBuffer.ptr);
-		foreach(f; context.mod.functions) compileFunction(f);
+		foreach(f; context.mod.functions) {
+			if (f.isExternal) continue;
+			compileFunction(f);
+		}
 
+		fixCalls();
 		context.mod.code = gen.encoder.code;
 	}
 
@@ -66,7 +76,7 @@ struct CodeEmitter
 				switch(cast(Amd64Opcode)instrHeader.op)
 				{
 					case Amd64Opcode.mov:
-						genMove(instrHeader.result, instrHeader.args[0]);
+						genMove(instrHeader.result, instrHeader.args[0], ArgType.DWORD);
 						break;
 					case Amd64Opcode.load:
 						genLoad(instrHeader.result, instrHeader.args[0], ArgType.DWORD);
@@ -74,8 +84,18 @@ struct CodeEmitter
 					case Amd64Opcode.store:
 						genStore(instrHeader.args[0], instrHeader.args[1], ArgType.DWORD);
 						break;
+					case Amd64Opcode.add:
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.add, ArgType.DWORD);
+						break;
+					case Amd64Opcode.sub:
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.sub, ArgType.DWORD);
+						break;
+					case Amd64Opcode.call:
+						gen.call(Imm32(0));
+						FunctionIndex calleeIndex = instrHeader.tail!IrInstrTail_call.callee;
+						callFixups.put(CallFixup(gen.pc, calleeIndex));
+						break;
 					case Amd64Opcode.jmp:
-						resolve(lirBlockIndex, lirBlock);
 						if (lirBlock.seqIndex + 1 != lir.getBlock(lirBlock.successors[0, *lir]).seqIndex)
 						{
 							gen.jmp(Imm32(0));
@@ -83,7 +103,7 @@ struct CodeEmitter
 						}
 						break;
 					case Amd64Opcode.bin_branch:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.cmp);
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.cmp, ArgType.DWORD);
 						Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
@@ -96,7 +116,6 @@ struct CodeEmitter
 					case Amd64Opcode.un_branch:
 						Register reg = cast(Register)instrHeader.args[0].storageUintIndex;
 						gen.testd(reg, reg);
-						// TODO missing phi resolution
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
@@ -117,6 +136,16 @@ struct CodeEmitter
 		}
 	}
 
+	void fixCalls()
+	{
+		foreach (CallFixup fixup; callFixups.data) {
+			FunctionDeclNode* callee = context.mod.functions[fixup.calleeIndex];
+			//writefln("fix call to '%s' @%s", callee.strId(context), cast(void*)callee.funcPtr);
+			*cast(Imm32*)(fixup.address-4) = jumpOffset(fixup.address, cast(PC)callee.funcPtr);
+		}
+		callFixups.clear();
+	}
+
 	void fixJump(PC fixup, lazy IrIndex targetBlock)
 	{
 		PC succPC = blockStarts[lir.getBlock(targetBlock).seqIndex];
@@ -133,36 +162,27 @@ struct CodeEmitter
 		}
 	}
 
-	void resolve(IrIndex lirBlockIndex, ref IrBasicBlock lirBlock)
-	{
-		version(emit_mc_print) writefln("resolve %s", lirBlockIndex);
-		foreach(IrIndex succIndex; lirBlock.successors.range(*lir))
-		{
-			version(emit_mc_print) writefln("  succ %s", succIndex);
-			IrBasicBlock* successor = &lir.getBlock(succIndex);
-			foreach(IrIndex phiIndex, ref IrPhi phi; successor.phis(*lir))
-			{
-				version(emit_mc_print) writefln("    phi %s", phiIndex);
-				foreach (size_t arg_i, ref IrPhiArg arg; phi.args(*lir))
-				{
-					version(emit_mc_print) writefln("      arg %s %s", arg.basicBlock, arg.value);
-					if (arg.basicBlock == lirBlockIndex)
-						genMove(phi.result, arg.value);
-				}
-			}
-		}
+	MemAddress localVarMemAddress(IrIndex stackSlotIndex) {
+		context.assertf(stackSlotIndex.isStackSlot, "Index is not stack slot, but %s", stackSlotIndex.kind);
+		auto stackSlot = &fun.stackLayout[stackSlotIndex];
+		Register baseReg = indexToRegister(stackSlot.baseReg);
+		return minMemAddrBaseDisp(baseReg, stackSlot.displacement);
 	}
 
-	void genRegular(IrIndex dst, IrIndex src, AMD64OpRegular op)
+	Register indexToRegister(IrIndex regIndex) {
+		context.assertf(regIndex.isPhysReg, "Index is not register, but %s", regIndex.kind);
+		return cast(Register)regIndex.storageUintIndex;
+	}
+
+	void genRegular(IrIndex dst, IrIndex src, AMD64OpRegular op, ArgType argType)
 	{
 		AsmArg argDst;
 		AsmArg argSrc;
 		AsmOpParam param;
 		param.op = op;
-		param.argType = ArgType.DWORD; // TODO: remove hardcode
+		param.argType = argType;
 
-		context.assertf(dst.isPhysReg, "Destination must be register");
-		argDst.reg = cast(Register)dst.storageUintIndex;
+		argDst.reg = indexToRegister(dst);
 		param.dstKind = AsmArgKind.REG;
 
 		//writefln("%s.%s %s %s", op, argType, dst.type, src.type);
@@ -171,7 +191,7 @@ struct CodeEmitter
 		{
 			case none, listItem, instruction, basicBlock, phi: assert(false);
 			case constant:
-				IrConstant con = context.constants[src.storageUintIndex];
+				IrConstant con = context.getConstant(src);
 				if (con.numSignedBytes == 1) {
 					param.immType = ArgType.BYTE;
 					argSrc.imm8 = Imm8(con.i8);
@@ -186,7 +206,7 @@ struct CodeEmitter
 			case virtualRegister: context.unreachable; assert(false);
 			case memoryAddress: context.unreachable; assert(false);
 			case physicalRegister:
-				argSrc.reg = cast(Register)src.storageUintIndex;
+				argSrc.reg = indexToRegister(src);
 				param.srcKind = AsmArgKind.REG;
 				break;
 
@@ -196,60 +216,39 @@ struct CodeEmitter
 	}
 
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
-	void genMove(IrIndex dst, IrIndex src)
+	void genMove(IrIndex dst, IrIndex src, ArgType argType)
 	{
 		version(emit_mc_print) writefln("genMove %s %s", dst, src);
 		MoveType moveType = calcMoveType(dst.kind, src.kind);
+
 		if (moveType != MoveType.invalid && dst == src) return;
 
 		Register srcReg = cast(Register)src.storageUintIndex;
 		Register dstReg = cast(Register)dst.storageUintIndex;
 
-		final switch(moveType)
+		switch(moveType)
 		{
-			case MoveType.invalid:
-				context.internal_error("Invalid move to %s from %s",
-					dst.kind, src.kind);
-				context.unreachable;
+			default:
+				context.internal_error("Invalid move to %s from %s", dst.kind, src.kind);
 				assert(false);
 
 			case MoveType.const_to_reg:
-				long con = context.constants[src.storageUintIndex].i64;
+				uint con = context.getConstant(src).i32;
 				//writefln("move.%s reg:%s, con:%s", argType, dstReg, con);
-				gen.movd(dstReg, Imm32(cast(uint)con));
-				break;
-
-			case MoveType.const_to_stack:
-				//long con = context.getConstant(src).i64;
-				//gen.movd(localVarMemAddress(dstReg), Imm32(cast(uint)con));
-				context.internal_error("const_to_stack is not implemented");
+				if (con == 0)
+				{
+					AsmArg argDst = {reg : dstReg};
+					AsmArg argSrc = {reg : srcReg};
+					AsmOpParam param = AsmOpParam(AsmArgKind.REG, AsmArgKind.REG, AMD64OpRegular.xor, argType);
+					gen.encodeRegular(argDst, argSrc, param);
+				}
+				else
+					gen.mov(dstReg, Imm32(con), argType);
 				break;
 
 			case MoveType.reg_to_reg:
 				//writefln("move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
-				gen.movd(dstReg, srcReg);
-				break;
-
-			case MoveType.reg_to_stack:
-			//	gen.mov(localVarMemAddress(dst.irRef.constIndex), srcReg, argType);
-				context.internal_error("reg_to_stack is not implemented");
-				break;
-
-			case MoveType.stack_to_reg:
-			//	gen.mov(dstReg, localVarMemAddress(src.irRef.constIndex), argType);
-				context.internal_error("stack_to_reg is not implemented");
-				break;
-
-			case MoveType.const_to_mem:
-				context.internal_error("const_to_mem is not implemented");
-				break;
-
-			case MoveType.reg_to_mem:
-				context.internal_error("reg_to_mem is not implemented");
-				break;
-
-			case MoveType.mem_to_reg:
-				context.internal_error("mem_to_reg is not implemented");
+				gen.mov(dstReg, srcReg, argType);
 				break;
 		}
 	}
@@ -259,21 +258,20 @@ struct CodeEmitter
 	// dst must be phys reg
 	void genLoad(IrIndex dst, IrIndex src, ArgType argType)
 	{
-		bool valid = dst.isPhysReg && src.isPhysReg;
+		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot);
 		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
 
-		Register srcReg = cast(Register)src.storageUintIndex;
-		Register dstReg = cast(Register)dst.storageUintIndex;
+		Register dstReg = indexToRegister(dst);
 
 		switch(src.kind) with(IrValueKind)
 		{
 			case physicalRegister:
+				Register srcReg = indexToRegister(src);
 				gen.mov(dstReg, memAddrBase(srcReg), argType);
 				break;
 
 			case stackSlot:
-				//gen.movd(dstReg, localVarMemAddress(src.irRef.storageUintIndex), argType);
-				context.internal_error("stackSlot load is not implemented");
+				gen.movd(dstReg, localVarMemAddress(src));
 				break;
 
 			default:
@@ -284,26 +282,31 @@ struct CodeEmitter
 
 	void genStore(IrIndex dst, IrIndex src, ArgType argType)
 	{
-		bool valid = dst.isPhysReg && (src.isConstant || src.isPhysReg); // store to memAddress, stackSlot not implemented
-		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
-
-		Register srcReg = cast(Register)src.storageUintIndex;
-		Register dstReg = cast(Register)dst.storageUintIndex;
-
+		MemAddress dstMem;
 		switch (dst.kind) with(IrValueKind)
 		{
 			case physicalRegister: // store address is in register
-				switch (src.kind)
-				{
-					case physicalRegister:
-						gen.mov(memAddrBase(dstReg), srcReg, argType);
-						break;
-					default:
-						context.internal_error("store from %s is not implemented", src.kind);
-						break;
-				}
+				Register dstReg = indexToRegister(dst);
+				dstMem = memAddrBase(dstReg);
 				break;
+			case stackSlot:
+				dstMem = localVarMemAddress(dst);
+				break;
+			default:
+				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);
+				break;
+		}
 
+		switch (src.kind) with(IrValueKind)
+		{
+			case constant:
+				uint con = context.getConstant(src).i32;
+				gen.mov(dstMem, Imm32(con), argType);
+				break;
+			case physicalRegister:
+				Register srcReg = indexToRegister(src);
+				gen.mov(dstMem, srcReg, argType);
+				break;
 			default:
 				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);
 				break;

@@ -39,6 +39,9 @@ for each block b in reverse order do
 		for each input operand opd of op do
 			intervals[opd].addRange(b.from, op.id)
 			live.add(opd)
+		// extension
+		if op requires two operand form and op is not commutative
+			we need to extend range of right-most opd by 1
 
 	for each phi function phi of b do
 		live.remove(phi.output)
@@ -74,6 +77,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 
 	// enumerate all basic blocks, instructions
 	// phi functions use index of the block
+	// we can assume all blocks to have at least single instruction (exit instruction)
 	uint enumerationIndex = 0;
 	enum ENUM_STEP = 2;
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
@@ -116,7 +120,9 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 	// for each block b in reverse order do
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
-		uint phiInstrLinearPositions = liveIntervals.linearIndicies[blockIndex];
+		// Is also where phi functions are located
+		uint blockFromPos = liveIntervals.linearIndicies[blockIndex];
+		version(LivePrint) writefln("[LIVE] % 3s %s", blockFromPos, blockIndex);
 
 		// live = union of successor.liveIn for each successor of block
 		liveBitmap.liveData[] = 0;
@@ -145,10 +151,10 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 		{
 			// intervals[opd].addRange(block.from, block.to)
 			IntervalIndex interval = liveIntervals.intervalIndex(VregIntervalIndex(cast(uint)index));
-			liveIntervals.addRange(interval, phiInstrLinearPositions,
+			liveIntervals.addRange(interval, blockFromPos,
 				liveIntervals.linearIndicies[block.lastInstr]);
 			version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)", index,
-				phiInstrLinearPositions,
+				blockFromPos,
 				liveIntervals.linearIndicies[block.lastInstr]);
 		}
 
@@ -156,6 +162,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
 		{
 			uint linearInstrIndex = liveIntervals.linearIndicies[instrIndex];
+			version(LivePrint) writefln("[LIVE]   % 3s %s", linearInstrIndex, instrIndex);
 
 			// -------------- Assign interval hints --------------
 			// if non-mov instruction assigns to phys register,
@@ -168,9 +175,10 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			// edx, ecx = some_instr(eax, v.100, ecx) // edx is results[0]
 			// v.200 = edx // results[0] (aka result)
 			// v.300 = ecx // results[1]
-			bool isMov = context.machineInfo.instrInfo[instrHeader.op].isMov;
-			//writefln("isMov %s %s", cast(Amd64Opcode)instrHeader.op, isMov);
-			if (isMov)
+
+			InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
+			//writefln("isMov %s %s", cast(Amd64Opcode)instrHeader.op, instrInfo.isMov);
+			if (instrInfo.isMov)
 			{
 				IrIndex from = instrHeader.args[0];
 				IrIndex to = instrHeader.result;
@@ -209,7 +217,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 					// live.remove(opd)
 					liveRemove(instrHeader.result);
 				}
-				else if (instrHeader.result.isPhysReg && !isMov)
+				else if (instrHeader.result.isPhysReg && !instrInfo.isMov)
 				{
 					// non-mov, extend fixed interval to the next instr (which must be mov from that phys reg)
 					IntervalIndex interval = liveIntervals.intervalIndex(PregIntervalIndex(instrHeader.result));
@@ -224,11 +232,13 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 				if (arg.isVirtReg)
 				{
 					// intervals[opd].addRange(b.from, op.id)
-					auto vii = VregIntervalIndex(ir.getVirtReg(arg).seqIndex);
+					auto seqIndex = ir.getVirtReg(arg).seqIndex;
+					auto vii = VregIntervalIndex(seqIndex);
 					IntervalIndex interval = liveIntervals.intervalIndex(vii);
-					liveIntervals.addRange(interval, phiInstrLinearPositions, linearInstrIndex);
-					version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)",
-						ir.getVirtReg(arg).seqIndex, phiInstrLinearPositions, linearInstrIndex);
+					liveIntervals.addRange(interval, blockFromPos, linearInstrIndex);
+					version(LivePrint) writefln("[LIVE] addRange %s #%s [%s; %s)",
+						liveIntervals[interval].definition, seqIndex,
+						blockFromPos, linearInstrIndex);
 
 					// live.add(opd)
 					liveAdd(arg);
@@ -239,7 +249,24 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 				}
 			}
 
-			if (!isMov)
+			// extension
+			// if op requires two operand form and op is not commutative and arg0 != arg1
+			//   we need to extend range of right-most opd by 1
+			if (instrInfo.isTwoOperandForm && !instrInfo.isCommutative)
+			{
+				IrIndex arg0 = instrHeader.args[0];
+				IrIndex arg1 = instrHeader.args[1];
+				if (arg1.isVirtReg)
+				if (arg0 != arg1)
+				{
+					auto vii = VregIntervalIndex(ir.getVirtReg(arg1).seqIndex);
+					IntervalIndex interval = liveIntervals.intervalIndex(vii);
+					liveIntervals.addRange(interval, blockFromPos, linearInstrIndex+1);
+					version(LivePrint) writefln("[LIVE] addRange +1 %s", arg1);
+				}
+			}
+
+			if (!instrInfo.isMov)
 			{
 				foreach(IrIndex arg; instrHeader.args)
 				{
@@ -253,8 +280,18 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 				}
 			}
 
-			// TODO: add fixed intervals fo function calls
-			//liveIntervals.addRange(intId, linearInstrIndex, linearInstrIndex);
+			// add fixed intervals fo function calls
+			if (instrInfo.isCall)
+			{
+				FunctionIndex calleeIndex = instrHeader.tail!IrInstrTail_call.callee;
+				FunctionDeclNode* callee = context.mod.functions[calleeIndex];
+				CallConv* callingConvention = callee.callingConvention;
+				IrIndex[] volatileRegs = callingConvention.volatileRegs;
+				foreach(IrIndex reg; volatileRegs) {
+					IntervalIndex interval = liveIntervals.intervalIndex(PregIntervalIndex(reg));
+					liveIntervals.addRange(interval, linearInstrIndex, linearInstrIndex+1);
+				}
+			}
 		}
 
 		// for each phi function phi of b do
@@ -264,19 +301,39 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			if (phi.result.isVirtReg) {
 				liveRemove(phi.result);
 				auto vii = VregIntervalIndex(ir.getVirtReg(phi.result).seqIndex);
-				liveIntervals.setFrom(vii, phi.result, phiInstrLinearPositions);
+				liveIntervals.setFrom(vii, phi.result, blockFromPos);
 			}
 		}
 
-		// TODO
 		// if b is loop header then
 		if (block.isLoopHeader)
 		{
+			// We need to find the loop block with the max position
+			// Use loop header as starting block in case it is in max position
+			uint maxPos = liveIntervals.linearIndicies[block.lastInstr];
+			IrIndex loopEnd = blockIndex;
+
 			//     loopEnd = last block of the loop starting at b
+			foreach(IrIndex pred; block.predecessors.range(ir)) {
+				uint blockEndPos = liveIntervals.linearIndicies[ir.getBlock(pred).lastInstr];
+				if (blockEndPos > maxPos) {
+					maxPos = blockEndPos;
+					loopEnd = pred;
+				}
+			}
+
+			version(LivePrint) writefln("[LIVE] loop %s end %s [%s; %s)", blockIndex, loopEnd, blockFromPos, maxPos);
 
 			//     for each opd in live do
 			//         intervals[opd].addRange(b.from, loopEnd.to)
-
+			foreach (size_t index; liveBitmap.live.bitsSet)
+			{
+				// intervals[opd].addRange(block.from, block.to)
+				IntervalIndex interval = liveIntervals.intervalIndex(VregIntervalIndex(cast(uint)index));
+				liveIntervals.addRange(interval, blockFromPos, maxPos);
+				version(LivePrint) writefln("[LIVE] addRange loop %s #%s [%s; %s)",
+					liveIntervals[interval].definition, index, blockFromPos, maxPos);
+			}
 		}
 
 		// b.liveIn = live
@@ -286,7 +343,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 	version(LivePrint)
 	{
 		TextSink sink;
-		liveIntervals.dump(sink);
+		liveIntervals.dump(sink, context);
 		writeln(sink.text);
 	}
 }
@@ -411,8 +468,8 @@ struct FunctionLiveIntervals
 	}
 
 	ref LiveInterval opIndex(NodeIndex rangeId) { return intervals[ranges[rangeId].intervalIndex]; }
-/*
 	ref LiveInterval opIndex(IntervalIndex intId) { return intervals[intId]; }
+/*
 	ref LiveInterval opIndex(IrOperandId opdId) { return intervals[numFixedIntervals + opdId]; }
 
 	IntervalIndex intervalIndex(NodeIndex rangeId) { return ranges[rangeId].intervalIndex; }
@@ -599,7 +656,7 @@ struct FunctionLiveIntervals
 		return nextIndex;
 	}
 
-	void dump(ref TextSink sink) {
+	void dump(ref TextSink sink, ref CompilationContext context) {
 		void dumpSub(LiveInterval[] intervals)
 		{
 			foreach (i, it; intervals) {
@@ -615,9 +672,9 @@ struct FunctionLiveIntervals
 				}
 
 				if (it.reg.isDefined)
-					sink.putf("% 3s [%2s]:", i, it.reg);
+					sink.putf("% 3s %s [%2s]:", i, it.definition, context.machineInfo.registers[it.reg.storageUintIndex].name);
 				else
-					sink.putf("% 3s [no reg]:", i);
+					sink.putf("% 3s %s [no reg]:", i, it.definition);
 
 				while (!cur.isNull)
 				{

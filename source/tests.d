@@ -17,27 +17,31 @@ void runAllTests()
 	scope(exit) driver.releaseMemory;
 
 	FuncDumpSettings dumpSettings;
+	dumpSettings.printBlockFlags = true;
 
-	writefln("Running tests");
-	Test[] testsThatPass = [test8, test8_1, test10, test9, test18, test19, test20];
+	Test[] testsThatPass = [test8, test8_1, test10, test9, test18, test19, test20, test21];
 	void runAll()
 	{
-		foreach(ref test; testsThatPass)
+		size_t numSuccessfulTests;
+		writefln("Running %s tests");
+		foreach(i, ref test; testsThatPass)
 		{
-			tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
+			TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
+			writefln("%s/%s %s %s", i+1, testsThatPass.length, test.testName, res);
+			if (res == TestResult.success) ++numSuccessfulTests;
 		}
+		writefln("Done %s/%s successful", numSuccessfulTests, testsThatPass.length);
 	}
 
 	//runAll();
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test21);
-
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test8);
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
-	writefln("Done");
 }
 
 enum DumpTest : bool { no = false, yes = true }
+enum TestResult { failure, success }
 
-void tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
+TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
 {
 	try
 	{
@@ -47,18 +51,18 @@ void tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, Dump
 		writeln(driver.context.sink.text);
 		if (e.isICE)
 			writeln(e);
+		return TestResult.failure;
 	}
 	catch(Throwable t) {
 		writeln(driver.context.sink.text);
 		writeln(t);
+		return TestResult.failure;
 	}
+	return TestResult.success;
 }
 
 void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
 {
-	scope(success) writefln("%s success", curTest.testName);
-	scope(failure) writefln("%s failed", curTest.testName);
-
 	enum NUM_ITERS = 1;
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
@@ -85,6 +89,11 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 		sink.putln("\n// LIR");
 		dumpSettings.handlers = &lirAmd64DumpHandlers;
 		mod.lirModule.dump(sink, driver.context, dumpSettings);
+
+		foreach(fun; mod.functions) {
+			if (!fun.isExternal)
+				fun.liveIntervals.dump(sink, driver.context);
+		}
 
 		writeln(sink.text);
 
@@ -339,9 +348,9 @@ void tester8(Func8 sign) {
 	int res1 = sign(10);
 	int res2 = sign(0);
 	int res3 = sign(-10);
-	//writefln("sign(10) -> %s", res1);
-	//writefln("sign(0) -> %s", res2);
-	//writefln("sign(-10) -> %s", res3);
+	writefln("sign(10) -> %s", res1);
+	writefln("sign(0) -> %s", res2);
+	writefln("sign(-10) -> %s", res3);
 	assert(res1 == 1);
 	assert(res2 == 0);
 	assert(res3 == -1);
@@ -498,6 +507,18 @@ void fibonacci() {
 		print(lo);
 	}
 }};
+immutable input21_2 =
+q{void print(i32); // external
+void fibonacci() {
+	i32 lo = 0;
+	i32 hi = 1;
+	while (hi < 10000) {
+		i32 tmp = hi;
+		hi = hi + lo;
+		lo = tmp;
+		print(lo);
+	}
+}};
 alias Func21 = extern(C) void function();
 void tester21(Func21 fibonacci) {
 	fibonacci();
@@ -506,7 +527,9 @@ void tester21(Func21 fibonacci) {
 extern(C) void test21_external_func(int par1) {
 	write(par1, " ");
 }
-auto test21 = Test("Test 21", input21, "test", cast(Test.Tester)&tester21,
+auto test21 = Test("Test 21", input21, "fibonacci", cast(Test.Tester)&tester21,
+	[ExternalSymbol("print", cast(void*)&test21_external_func)]);
+auto test21_2 = Test("Test 21", input21_2, "fibonacci", cast(Test.Tester)&tester21,
 	[ExternalSymbol("print", cast(void*)&test21_external_func)]);
 
 void testNativeFun()

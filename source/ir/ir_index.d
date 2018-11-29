@@ -40,8 +40,13 @@ struct IrIndex
 	bool isDefined() { return asUint != 0; }
 
 	void toString(scope void delegate(const(char)[]) sink) const {
-		final switch(kind) with(IrValueKind) {
-			case none: sink("<null>"); break;
+		if (asUint == 0) {
+			sink("<null>");
+			return;
+		}
+
+		switch(kind) with(IrValueKind) {
+			default: sink.formattedWrite("0x%X", asUint); break;
 			case listItem: sink.formattedWrite("l.%s", storageUintIndex); break;
 			case instruction: sink.formattedWrite("i.%s", storageUintIndex); break;
 			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
@@ -65,6 +70,7 @@ struct IrIndex
 	}
 
 	bool isInstruction() { return kind == IrValueKind.instruction; }
+	bool isBasicBlock() { return kind == IrValueKind.basicBlock; }
 	bool isPhi() { return kind == IrValueKind.phi; }
 	bool isConstant() { return kind == IrValueKind.constant; }
 	bool isVirtReg() { return kind == IrValueKind.virtualRegister; }
@@ -73,4 +79,5 @@ struct IrIndex
 		return kind == IrValueKind.virtualRegister ||
 			kind == IrValueKind.physicalRegister;
 	}
+	bool isStackSlot() { return kind == IrValueKind.stackSlot; }
 }

@@ -180,6 +180,7 @@ struct SemanticDeclarations
 	}
 	void visit(VariableDeclNode* v) {
 		v.resolveSymbol = scopeStack.insert(v.id, v.loc, SymbolClass.c_variable, cast(AstNode*)v);
+		if (v.initializer) _visit(v.initializer);
 	}
 	void visit(StructDeclNode* s) {
 		s.resolveSymbol = scopeStack.insert(s.id, s.loc, SymbolClass.c_struct, cast(AstNode*)s);
@@ -258,7 +259,10 @@ struct SemanticLookup
 		if (f.block_stmt) visit(f.block_stmt);
 		scopeStack.popScope2;
 	}
-	void visit(VariableDeclNode* v) { _visit(v.type); }
+	void visit(VariableDeclNode* v) {
+		_visit(v.type);
+		if (v.initializer) _visit(v.initializer);
+	}
 	void visit(StructDeclNode* s) {
 		scopeStack.pushCompleteScope(s._scope);
 		foreach (decl; s.declarations) _visit(decl);
@@ -541,6 +545,11 @@ struct SemanticStaticTypes
 	}
 	void visit(VariableDeclNode* v) {
 		_visit(v.type);
+		if (v.initializer) {
+			_visit(v.initializer);
+			autoconvTo(v.initializer, v.type);
+		}
+
 		switch (v.astType)
 		{
 			case AstType.type_static_array:

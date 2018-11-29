@@ -76,10 +76,13 @@ struct IrToLir
 		// dup basic blocks
 		foreach (IrIndex blockIndex, ref IrBasicBlock irBlock; ir.blocks)
 		{
-			IrIndex lirBlock = builder.append!IrBasicBlock;
 			++lir.numBasicBlocks;
+			IrIndex lirBlock = builder.append!IrBasicBlock;
 			recordIndex(blockIndex, lirBlock);
+
 			lir.getBlock(lirBlock).name = irBlock.name;
+			lir.getBlock(lirBlock).isLoopHeader = irBlock.isLoopHeader;
+
 			foreach(IrIndex pred; irBlock.predecessors.range(ir)) {
 				lir.getBlock(lirBlock).predecessors.append(&builder, pred);
 			}
@@ -156,57 +159,83 @@ struct IrToLir
 							"Only parameters passed through registers are implemented");
 
 						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(
-							lirBlockIndex,
-							lir.callingConvention.paramsInRegs[paramIndex]);
+							lirBlockIndex, lir.callingConvention.paramsInRegs[paramIndex]);
 						recordIndex(instrIndex, instr.instruction);
 						recordIndex(instrHeader.result, instr.result);
 						break;
 
 					// TODO. Win64 call conv is hardcoded here
 					case IrOpcode.call:
-						size_t numArgs = instrHeader.args.length;
 
-						if (numArgs > 4)
+						enum STACK_ITEM_SIZE = 8;
+						size_t numArgs = instrHeader.args.length;
+						size_t numParamsInRegs = lir.callingConvention.paramsInRegs.length;
+						// how many bytes are allocated on the stack before func call
+						size_t stackReserve = max(numArgs, numParamsInRegs) * STACK_ITEM_SIZE;
+						IrIndex stackPtrReg = lir.callingConvention.stackPointer;
+
+						if (numArgs > numParamsInRegs)
 						{
 							if (numArgs % 2 == 1)
-							{
-								IrIndex const_8 = context.addConstant(IrConstant(8));
-								IrIndex[2] args = [lir.callingConvention.stackPointer, const_8];
-								builder.emitInstr!LirAmd64Instr_sub(lirBlockIndex, args);
+							{	// align stack to 16 bytes
+								stackReserve += STACK_ITEM_SIZE;
+								IrIndex paddingSize = context.addConstant(IrConstant(STACK_ITEM_SIZE));
+								ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
+								builder.emitInstr!LirAmd64Instr_sub(
+									lirBlockIndex, extra, stackPtrReg, paddingSize);
 							}
 
-							foreach_reverse (IrIndex arg; instrHeader.args[4..$])
+							// push args to stack
+							foreach_reverse (IrIndex arg; instrHeader.args[numParamsInRegs..$])
 							{
 								ExtraInstrArgs extra = {addUsers : false};
 								builder.emitInstr!LirAmd64Instr_push(lirBlockIndex, extra, arg);
 							}
 						}
 
-						enum MAX_PHYS_ARGS = 255;
-						size_t numPhysRegs = min(4, numArgs);
+						// move args to registers
+						enum MAX_PHYS_ARGS = 256;
+						size_t numPhysRegs = min(numParamsInRegs, numArgs);
 						IrIndex[MAX_PHYS_ARGS] physArgs;
 						foreach_reverse (i, IrIndex arg; instrHeader.args[0..numPhysRegs])
 						{
 							physArgs[i] = lir.callingConvention.paramsInRegs[i];
-							ExtraInstrArgs extra = {addUsers : false, result : lir.callingConvention.paramsInRegs[i]};
+							IrIndex argRegister = lir.callingConvention.paramsInRegs[i];
+							ExtraInstrArgs extra = {addUsers : false, result : argRegister};
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, arg);
 						}
-
-						ExtraInstrArgs extra = {
-							addUsers : false,
-							hasResult : instrHeader.hasResult,
-							result : lir.callingConvention.returnReg};
-
-						InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
-							lirBlockIndex, extra, physArgs[0..numPhysRegs]);
-						builder.emitInstrTail(instrHeader.tail!IrInstrTail_call);
-
-						if (extra.hasResult) {
-							// mov to virt reg
-							InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, lir.callingConvention.returnReg);
-							recordIndex(instrHeader.result, movInstr.result);
+						{	// Allocate shadow space for 4 physical registers
+							IrIndex const_32 = context.addConstant(IrConstant(32));
+							ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
+							builder.emitInstr!LirAmd64Instr_sub(
+								lirBlockIndex, extra, stackPtrReg, const_32);
 						}
-						recordIndex(instrIndex, callInstr.instruction);
+
+						{	// call
+							ExtraInstrArgs extra = {
+								addUsers : false,
+								hasResult : instrHeader.hasResult,
+								result : lir.callingConvention.returnReg};
+
+							InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
+								lirBlockIndex, extra, physArgs[0..numPhysRegs]);
+							recordIndex(instrIndex, callInstr.instruction);
+							builder.emitInstrTail(instrHeader.tail!IrInstrTail_call);
+
+							if (extra.hasResult) {
+								// mov result to virt reg
+								InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
+									lirBlockIndex, lir.callingConvention.returnReg);
+								recordIndex(instrHeader.result, movInstr.result);
+							}
+						}
+
+						{	// Deallocate stack after call
+							IrIndex conReservedBytes = context.addConstant(IrConstant(stackReserve));
+							ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
+							builder.emitInstr!LirAmd64Instr_add(
+								lirBlockIndex, extra, stackPtrReg, conReservedBytes);
+						}
 						break;
 
 					case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;

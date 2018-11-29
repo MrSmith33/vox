@@ -48,6 +48,7 @@ struct CompilationContext
 	bool buildDebug = false;
 	/// If true, every pass that generates IR, performs validation
 	bool validateIr = false;
+	bool useFramePointer = false;
 
 	IrIndex addConstant(IrConstant con)
 	{

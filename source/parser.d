@@ -819,11 +819,12 @@ struct Parser {
 			}
 			Identifier declarationId = expectIdentifier();
 
+			ExpressionNode* initializer;
 			if (tok.type == TokenType.EQUAL) // "=" <expression>
 			{
 				// <var_decl> = <type> <identifier> ("=" <expression>)? ";"
 				nextToken(); // skip "="
-				ExpressionNode* initializer = expr();
+				initializer = expr();
 				if (!initializer.isExpression) {
 					string tokenString = lexer.getTokenString(initializer.loc);
 					context.unrecoverable_error(initializer.loc,
@@ -837,7 +838,7 @@ struct Parser {
 			{
 				version(print_parse) auto s3 = scop("<var_declaration> %s", start);
 				nextToken(); // skip ";"
-				return cast(AstNode*)make!VariableDeclNode(start, SymbolRef(declarationId), type);
+				return cast(AstNode*)make!VariableDeclNode(start, SymbolRef(declarationId), type, initializer);
 			}
 			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 			{
