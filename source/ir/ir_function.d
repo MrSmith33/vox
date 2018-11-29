@@ -90,19 +90,19 @@ struct IrFunction
 
 // instruction iterators are aware of this
 // only safe to delete current instruction while iterating
-void removeInstruction(ref IrFunction ir, IrIndex blockIndex, IrIndex instrIndex)
+void removeInstruction(ref IrFunction ir, IrIndex instrIndex)
 {
-	IrBasicBlock* block = &ir.getBlock(blockIndex);
 	IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instrIndex);
 
-	if (instrIndex == block.firstInstr)
-		block.firstInstr = instrHeader.nextInstr;
-	if (instrIndex == block.lastInstr)
-		block.lastInstr = instrHeader.prevInstr;
-	if (instrHeader.prevInstr.isDefined)
+	if (instrHeader.prevInstr.isInstruction)
 		ir.get!IrInstrHeader(instrHeader.prevInstr).nextInstr = instrHeader.nextInstr;
-	if (instrHeader.nextInstr.isDefined)
+	else if (instrHeader.prevInstr.isBasicBlock)
+		ir.getBlock(instrHeader.prevInstr).firstInstr = instrHeader.nextInstr;
+
+	if (instrHeader.nextInstr.isInstruction)
 		ir.get!IrInstrHeader(instrHeader.nextInstr).prevInstr = instrHeader.prevInstr;
+	else if (instrHeader.nextInstr.isBasicBlock)
+		ir.getBlock(instrHeader.nextInstr).lastInstr = instrHeader.prevInstr;
 }
 
 void removeUser(ref IrFunction ir, IrIndex user, IrIndex used) {

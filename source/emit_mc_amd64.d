@@ -233,12 +233,12 @@ struct CodeEmitter
 				assert(false);
 
 			case MoveType.const_to_reg:
-				uint con = context.getConstant(src).i32;
-				//writefln("move.%s reg:%s, con:%s", argType, dstReg, con);
+				int con = context.getConstant(src).i32;
+				version(emit_mc_print) writefln("  move.%s reg:%s, con:%s", argType, dstReg, con);
 				if (con == 0)
 				{
 					AsmArg argDst = {reg : dstReg};
-					AsmArg argSrc = {reg : srcReg};
+					AsmArg argSrc = {reg : dstReg};
 					AsmOpParam param = AsmOpParam(AsmArgKind.REG, AsmArgKind.REG, AMD64OpRegular.xor, argType);
 					gen.encodeRegular(argDst, argSrc, param);
 				}
@@ -247,7 +247,7 @@ struct CodeEmitter
 				break;
 
 			case MoveType.reg_to_reg:
-				//writefln("move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
+				version(emit_mc_print) writefln("  move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
 				gen.mov(dstReg, srcReg, argType);
 				break;
 		}

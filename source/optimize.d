@@ -87,7 +87,7 @@ void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction i
 			foreach(ref IrIndex arg; instrHeader.args) {
 				removeUser(ir, instrIndex, arg);
 			}
-			removeInstruction(ir, blockIndex, instrIndex);
+			removeInstruction(ir, instrIndex);
 			//writefln("remove dead %s", instrIndex);
 		}
 	}
@@ -139,7 +139,7 @@ void pass_optimize_lir_func(ref CompilationContext context, ref IrFunction ir)
 			// successor is the next instruction after current block
 			if (block.seqIndex + 1 == seqIndex0)
 			{
-				removeInstruction(ir, blockIndex, block.lastInstr);
+				removeInstruction(ir, block.lastInstr);
 			}
 		}
 	}

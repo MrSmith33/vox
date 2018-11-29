@@ -6,6 +6,7 @@ Authors: Andrey Penechko.
 import tests;
 
 import std.stdio;
+import std.format : formattedWrite;
 import all;
 
 void runAllTests()
@@ -23,7 +24,7 @@ void runAllTests()
 	void runAll()
 	{
 		size_t numSuccessfulTests;
-		writefln("Running %s tests");
+		writefln("Running %s tests", testsThatPass.length);
 		foreach(i, ref test; testsThatPass)
 		{
 			TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
@@ -33,8 +34,8 @@ void runAllTests()
 		writefln("Done %s/%s successful", numSuccessfulTests, testsThatPass.length);
 	}
 
-	//runAll();
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test8);
+	runAll();
+	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test9);
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 }
 
@@ -124,6 +125,8 @@ struct Test
 	void function(void* funcPtr) tester;
 	ExternalSymbol[] externalSymbols;
 }
+
+TextSink testSink;
 
 string input1 = q{
 	i32 a;
@@ -348,9 +351,9 @@ void tester8(Func8 sign) {
 	int res1 = sign(10);
 	int res2 = sign(0);
 	int res3 = sign(-10);
-	writefln("sign(10) -> %s", res1);
-	writefln("sign(0) -> %s", res2);
-	writefln("sign(-10) -> %s", res3);
+	//writefln("sign(10) -> %s", res1);
+	//writefln("sign(0) -> %s", res2);
+	//writefln("sign(-10) -> %s", res3);
 	assert(res1 == 1);
 	assert(res2 == 0);
 	assert(res3 == -1);
@@ -522,10 +525,11 @@ void fibonacci() {
 alias Func21 = extern(C) void function();
 void tester21(Func21 fibonacci) {
 	fibonacci();
-	writeln;
+	assert(testSink.text == "1 1 2 3 5 8 13 21 34 55 89 144 233 377 610 987 1597 2584 4181 6765");
+	testSink.clear;
 }
 extern(C) void test21_external_func(int par1) {
-	write(par1, " ");
+	formattedWrite(testSink, "%s ", par1);
 }
 auto test21 = Test("Test 21", input21, "fibonacci", cast(Test.Tester)&tester21,
 	[ExternalSymbol("print", cast(void*)&test21_external_func)]);
