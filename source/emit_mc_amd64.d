@@ -92,7 +92,7 @@ struct CodeEmitter
 						break;
 					case Amd64Opcode.call:
 						gen.call(Imm32(0));
-						FunctionIndex calleeIndex = instrHeader.tail!IrInstrTail_call.callee;
+						FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 						callFixups.put(CallFixup(gen.pc, calleeIndex));
 						break;
 					case Amd64Opcode.jmp:

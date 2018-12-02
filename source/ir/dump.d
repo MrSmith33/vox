@@ -209,7 +209,9 @@ void dumpIrInstr(ref InstrPrintInfo p)
 
 void dumpCall(ref InstrPrintInfo p)
 {
-	FunctionIndex calleeIndex = p.instrHeader.tail!IrInstrTail_call.callee;
+	FunctionIndex calleeIndex = p.instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
+	p.context.assertf(calleeIndex < p.context.mod.functions.length,
+		"Invalid callee index %s", calleeIndex);
 	FunctionDeclNode* callee = p.context.mod.functions[calleeIndex];
 	if (p.instrHeader.hasResult)
 		p.sink.putf("    %s = call %s", p.instrHeader.result, callee.strId(p.context));

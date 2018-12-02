@@ -217,10 +217,12 @@ struct IrToLir
 								hasResult : instrHeader.hasResult,
 								result : lir.callingConvention.returnReg};
 
+							FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
+							context.assertf(calleeIndex < context.mod.functions.length, "Invalid callee index %s", calleeIndex);
+							builder.emitInstrPreheader(IrInstrPreheader_call(calleeIndex));
 							InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
 								lirBlockIndex, extra, physArgs[0..numPhysRegs]);
 							recordIndex(instrIndex, callInstr.instruction);
-							builder.emitInstrTail(instrHeader.tail!IrInstrTail_call);
 
 							if (extra.hasResult) {
 								// mov result to virt reg

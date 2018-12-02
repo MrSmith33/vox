@@ -199,6 +199,17 @@ struct CompilationContext
 		assert(index.kind == getIrValueKind!T, format("%s != %s", index.kind, getIrValueKind!T));
 		return *cast(T*)(&tempBuffer.bufPtr[index.storageUintIndex]);
 	}
+
+	T[] allocateTempArray(T)(uint howMany)
+	{
+		static assert(T.sizeof % uint.sizeof == 0, "T.sizeof is not multiple of uint.sizeof");
+		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
+
+		size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof)*howMany;
+		T[] result = cast(T[])tempBuffer.voidPut(numAllocatedSlots);
+		result[] = T.init;
+		return result;
+	}
 }
 
 ///

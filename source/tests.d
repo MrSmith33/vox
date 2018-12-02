@@ -20,7 +20,7 @@ void runAllTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	Test[] testsThatPass = [test8, test8_1, test10, test9, test18, test19, test20, test21];
+	Test[] testsThatPass = [test8, test8_1, test10, test9, test18, test19, test20, test21, test21_2];
 	void runAll()
 	{
 		size_t numSuccessfulTests;
@@ -35,7 +35,6 @@ void runAllTests()
 	}
 
 	runAll();
-	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test9);
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 }
 
@@ -510,6 +509,9 @@ void fibonacci() {
 		print(lo);
 	}
 }};
+
+// Causes other order of phi functions, which requires correct move sequence to resolve
+// Tests phi resolution after register allocation
 immutable input21_2 =
 q{void print(i32); // external
 void fibonacci() {

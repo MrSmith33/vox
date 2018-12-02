@@ -6,19 +6,13 @@ Authors: Andrey Penechko.
 module bench;
 
 import all;
+import tests;
 
 void runBench()
 {
 	ModuleDeclNode* mod;
-	string input =
-	q{i32 sign(i32 number)
-	{
-		i32 result;
-		if (number < 0) result = 0-1;
-		else if (number > 0) result = 1;
-		else result = 0;
-		return result;
-	}};
+	Test curTest = test8;
+	//Test curTest = test21;
 
 	Driver driver;
 	driver.initialize(compilerPasses);
@@ -31,7 +25,7 @@ void runBench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(input, null);
+		mod = driver.compileModule(curTest.source, curTest.externalSymbols);
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);

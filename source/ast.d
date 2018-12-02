@@ -341,7 +341,7 @@ mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
 	Scope* _scope;
-	/// Linear list of all functions of a module (including nested and methods)
+	/// Linear list of all functions of a module (including nested and methods and externals)
 	FunctionDeclNode*[] functions;
 	IrModule irModule;
 	IrModule lirModule;

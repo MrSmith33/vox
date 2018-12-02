@@ -270,7 +270,7 @@ struct LinearScan
 		}
 
 		fixInstructionArgs();
-		resolve();
+		resolve(fun);
 		genSaveCalleeSavedRegs(fun.stackLayout);
 		if (context.validateIr) validateIrFunction(*context, *lir);
 
@@ -659,14 +659,19 @@ struct LinearScan
 				mapping.add(moveFrom, moveTo)
 		mapping.orderAndInsertMoves()
 	*/
-	void resolve()
+	void resolve(FunctionDeclNode* fun)
 	{
 		version(RAPrint) writefln("resolve");
+
+		MoveSolver moveSolver = MoveSolver(&builder, context, fun);
+		moveSolver.setup();
+		scope(exit) moveSolver.release();
 
 		void onEdge(
 			IrIndex predIndex, ref IrBasicBlock predBlock,
 			IrIndex succIndex, ref IrBasicBlock succBlock)
 		{
+			moveSolver.onEdge();
 			version(RAPrint) writefln("  edge %s -> %s", predIndex, succIndex);
 			foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(*lir))
 			{
@@ -678,17 +683,14 @@ struct LinearScan
 						IrIndex moveFrom = arg.value;
 						IrIndex moveTo = phi.result;
 
-						// TODO: proper ordering
 						version(RAPrint) writefln(" arg %s %s", arg.basicBlock, arg.value);
-						if (moveFrom != moveTo)
-						{
-							ExtraInstrArgs extra = {addUsers : false, result : moveTo};
-							InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, moveFrom);
-							builder.insertBeforeLastInstr(predIndex, instr.instruction);
-						}
+
+						moveSolver.addMove(moveFrom, moveTo);
 					}
 				}
 			}
+
+			moveSolver.placeMoves(predIndex);
 		}
 
 		foreach (IrIndex succIndex, ref IrBasicBlock succBlock; lir.blocks)
@@ -698,6 +700,8 @@ struct LinearScan
 			foreach (IrIndex predIndex; succBlock.predecessors.range(*lir))
 			{
 				IrBasicBlock* predBlock = &lir.getBlock(predIndex);
+				// TODO: select proper block to put moves in
+				// TODO: split critical edges
 				onEdge(predIndex, *predBlock, succIndex, succBlock);
 			}
 		}
@@ -726,5 +730,162 @@ struct LinearScan
 				builder.insertBeforeLastInstr(exitBlock, instrLoad.instruction);
 			}
 		}
+	}
+}
+
+//version = print_move_resolve;
+
+/// Reorders a set of moves, to produce correct behavior
+struct MoveSolver
+{
+	IrBuilder* builder;
+	CompilationContext* context;
+	FunctionDeclNode* fun;
+
+	ValueInfo[] stackSlots;
+	ValueInfo[] registers;
+	ValueInfo anyConstant;
+	FixedBuffer!IrIndex writtenNodesBuf;
+	uint savedBufLength;
+
+	// allocate buffers
+	// takes unique ownership of tempBuffer
+	void setup()
+	{
+		savedBufLength = context.tempBuffer.length;
+
+		size_t numRegs = context.machineInfo.registers.length;
+		registers = context.allocateTempArray!ValueInfo(cast(uint)numRegs);
+		size_t numStackSlots = fun.stackLayout.slots.length;
+		stackSlots = context.allocateTempArray!ValueInfo(cast(uint)numStackSlots);
+		writtenNodesBuf.setBuffer(context.tempBuffer.freePart);
+	}
+
+	void onEdge()
+	{
+		// we don't care about fields in constant
+		anyConstant = ValueInfo();
+		writtenNodesBuf.length = 0;
+	}
+
+	// releases unique ownership of tempBuffer
+	void release()
+	{
+		context.tempBuffer.length = savedBufLength;
+
+		savedBufLength = 0;
+		stackSlots = null;
+		registers = null;
+		writtenNodesBuf = FixedBuffer!IrIndex();
+	}
+
+	ref ValueInfo getInfo(IrIndex loc) {
+		switch(loc.kind) {
+			case IrValueKind.constant: return anyConstant;
+			case IrValueKind.stackSlot: return stackSlots[loc.storageUintIndex];
+			case IrValueKind.physicalRegister:  return registers[loc.storageUintIndex];
+			default: assert(false);
+		}
+	}
+
+	void addMove(IrIndex moveFrom, IrIndex moveTo)
+	{
+		if (moveFrom == moveTo) return;
+
+		getInfo(moveFrom).onRead(moveFrom);
+		context.assertf(moveTo.isPhysReg || moveTo.isStackSlot, "moveTo is %s", moveTo.kind);
+		context.assertf(!getInfo(moveTo).readFrom.isDefined, "Second write to %s detected", moveTo);
+		getInfo(moveTo).onWrite(moveFrom, moveTo);
+		writtenNodesBuf.put(moveTo);
+	}
+
+	void placeMoves(IrIndex blockIndex)
+	{
+		IrIndex[] writtenNodes = writtenNodesBuf.data;
+		size_t i;
+
+		while (writtenNodes.length)
+		{
+			IrIndex toIndex = writtenNodes[i];
+			ValueInfo* to = &getInfo(toIndex);
+			IrIndex fromIndex = to.readFrom;
+			ValueInfo* from = &getInfo(fromIndex);
+
+			void removeCurrent()
+			{
+				*to = ValueInfo();
+				if (i+1 != writtenNodes.length)
+				{
+					writtenNodes[i] = writtenNodes[$-1];
+				}
+				--writtenNodes.length;
+			}
+
+			if (!fromIndex.isDefined)
+			{
+				// marked as removed node, skip
+				removeCurrent();
+			}
+			else if (to.numReads == 0)
+			{
+				ExtraInstrArgs extra = {result : toIndex};
+				InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, fromIndex);
+				builder.insertBeforeLastInstr(blockIndex, instr.instruction);
+
+				--from.numReads;
+				removeCurrent();
+			}
+			else // to.numReads > 0
+			{
+				if (from.readFrom.isDefined && from.numReads == 1 && getInfo(from.readFrom).numReads == 1)
+				{	// from is non-constant in this scope
+
+					// to <-- from <-- from.readFrom
+					// mark from as removed and rewrite as:
+					// to <-- from.readFrom
+
+					InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(ExtraInstrArgs(), fromIndex, from.readFrom);
+					builder.insertBeforeLastInstr(blockIndex, instr.instruction);
+
+					if (from.readFrom == toIndex)
+					{
+						// handle case when from.readFrom == to
+						// to <-- from <-- to <-- from
+						// rewrite as
+						// from
+						removeCurrent();
+					}
+					else
+					{
+						to.readFrom = from.readFrom;
+						--from.numReads;
+						++i;
+					}
+
+					// remove node from processing (we can't use removeInPlace, because we have no index)
+					from.readFrom = IrIndex();
+				}
+				else
+					++i;
+			}
+
+			if (i >= writtenNodes.length) i = 0;
+		}
+	}
+}
+
+struct ValueInfo
+{
+	uint numReads;
+	IrIndex readFrom; // can be null
+
+	void onRead(IrIndex self)
+	{
+		++numReads;
+	}
+
+	void onWrite(IrIndex from, IrIndex self)
+	{
+		readFrom = from;
 	}
 }

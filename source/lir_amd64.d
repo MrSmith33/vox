@@ -147,6 +147,7 @@ enum Amd64Opcode : ushort {
 	@_ii(0,2,IFLG.isStore) store,
 	@_ii() movsx,
 	@_ii() movzx,
+	@_ii() xchg,
 
 	@_ii() not,
 	@_ii() neg,
@@ -195,6 +196,7 @@ alias LirAmd64Instr_return = IrGenericInstr!(Amd64Opcode.ret, 0);
 alias LirAmd64Instr_mov = IrGenericInstr!(Amd64Opcode.mov, 1, IFLG.hasResult); // mov rr/ri
 alias LirAmd64Instr_load = IrGenericInstr!(Amd64Opcode.load, 1, IFLG.hasResult); // mov rm
 alias LirAmd64Instr_store = IrGenericInstr!(Amd64Opcode.store, 2); // mov mr/mi
+alias LirAmd64Instr_xchg = IrGenericInstr!(Amd64Opcode.xchg, 2); // xchg mr/mr
 // call layout
 // - header
 // - result (if callee is non-void)

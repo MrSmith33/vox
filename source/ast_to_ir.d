@@ -654,6 +654,8 @@ struct AstToIr
 			"Callee index is out of bounds: index %s, num functions %s",
 			callee.index, context.mod.functions.length);
 
+		builder.emitInstrPreheader(IrInstrPreheader_call(callee.index));
+
 		if (callee.returnType.isVoid) {
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, args);
 			context.assertf(!res.result.isDefined, "Call has result");
@@ -662,8 +664,6 @@ struct AstToIr
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, extra, args);
 			c.irRef = res.result;
 		}
-
-		builder.emitInstrTail(IrInstrTail_call(callee.index));
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}

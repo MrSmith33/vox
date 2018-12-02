@@ -22,19 +22,18 @@ void main()
 struct Solver
 {
 	// We need full set of all locations, so we can store info there in O(1) time
-	Constant[] constants;
-	Register[] registers;
-	StackSlot[] stackSlots;
-	//MoveData[] moves;
+	ValueInfo[] constants;
+	ValueInfo[] registers;
+	ValueInfo[] stackSlots;
 	ValueInfo*[] writtenNodes;
 
 	Instruction[] instructions;
 
 	ref ValueInfo getInfo(ValueLocation loc) {
 		final switch(loc.kind) {
-			case ValueLocationKind.constant:  return  constants[loc.index].info;
-			case ValueLocationKind.register:  return  registers[loc.index].info;
-			case ValueLocationKind.stackSlot: return stackSlots[loc.index].info;
+			case ValueLocationKind.constant:  return  constants[loc.index];
+			case ValueLocationKind.register:  return  registers[loc.index];
+			case ValueLocationKind.stackSlot: return stackSlots[loc.index];
 		}
 	}
 
@@ -154,12 +153,6 @@ struct ValueInfo
 	}
 }
 
-struct MoveData
-{
-	ValueLocation from;
-	ValueLocation to;
-}
-
 ValueLocation regLoc(uint index) { return ValueLocation(index, ValueLocationKind.register); }
 ValueLocation conLoc(uint index) { return ValueLocation(index, ValueLocationKind.constant); }
 ValueLocation memLoc(uint index) { return ValueLocation(index, ValueLocationKind.stackSlot); }
@@ -173,10 +166,6 @@ struct ValueLocation
 		sink.formattedWrite("%s.%s", kind, index);
 	}
 }
-
-struct Constant  { ValueInfo info; }
-struct Register  { ValueInfo info; }
-struct StackSlot { ValueInfo info; }
 
 enum ValueLocationKind : ubyte
 {

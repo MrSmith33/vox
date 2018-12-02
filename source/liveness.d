@@ -60,6 +60,7 @@ void pass_live_intervals(ref CompilationContext context)
 	{
 		if (fun.isExternal) continue;
 		fun.liveIntervals = new FunctionLiveIntervals(fun.lirData);
+		//dumpFunction_lir_amd64(*fun.lirData, context);
 		pass_live_intervals_func(context, *fun.liveIntervals, *fun.lirData, liveBitmap);
 	}
 }
@@ -283,7 +284,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			// add fixed intervals fo function calls
 			if (instrInfo.isCall)
 			{
-				FunctionIndex calleeIndex = instrHeader.tail!IrInstrTail_call.callee;
+				FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 				FunctionDeclNode* callee = context.mod.functions[calleeIndex];
 				CallConv* callingConvention = callee.callingConvention;
 				IrIndex[] volatileRegs = callingConvention.volatileRegs;

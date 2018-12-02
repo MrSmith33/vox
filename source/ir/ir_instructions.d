@@ -133,10 +133,10 @@ struct IrInstrHeader
 		return _payload.ptr[cast(size_t)hasResult..cast(size_t)hasResult+numArgs];
 	}
 
-	/// Returns data past arguments for variadic instructions
-	ref T tail(T)() {
-
-		return *cast(T*)(_payload.ptr + cast(size_t)hasResult + numArgs);
+	/// Returns data before header (for variadic instructions)
+	ref T preheader(T)() {
+		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
+		return *cast(T*)(cast(uint*)(&this) - numAllocatedSlots);
 	}
 }
 
@@ -217,7 +217,7 @@ struct IrInstr_parameter
 	uint index;
 }
 
-struct IrInstrTail_call
+struct IrInstrPreheader_call
 {
-	FunctionIndex callee;
+	FunctionIndex calleeIndex;
 }

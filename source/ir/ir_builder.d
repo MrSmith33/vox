@@ -261,12 +261,12 @@ struct IrBuilder
 	}
 
 	/// Used to place data after variadic members.
-	/// Can be accessed via IrInstrHeader.tail!T.
-	void emitInstrTail(T)(T tailData)
+	/// Can be accessed via IrInstrHeader.preheader!T.
+	void emitInstrPreheader(T)(T preheaderData)
 	{
 		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
-		T* tail = cast(T*)(&ir.storage[ir.storageLength]);
-		*tail = tailData;
+		T* preheader = cast(T*)(&ir.storage[ir.storageLength]);
+		*preheader = preheaderData;
 		ir.storageLength += numAllocatedSlots;
 		context.irBuffer.length += numAllocatedSlots;
 	}

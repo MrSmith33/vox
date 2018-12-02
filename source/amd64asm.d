@@ -285,7 +285,7 @@ struct Encoder
 	void putInstrBinaryRegImm1(ArgType argType, I)(OP1 opcode, Register dst_rm, I src_imm) if (isAnyImm!I) {
 		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
 		putRexByte_regB!argType(dst_rm);                                        // REX
-		sink_put!ubyte(opcode.op0 | (dst_rm & 0b0111));                             // Opcode + reg
+		sink_put!ubyte(opcode.op0 | (dst_rm & 0b0111));                         // Opcode + reg
 		sink_put(src_imm);                                                      // Imm8/16/32/64
 	}
 	void putInstrBinaryRegImm2(ArgType argType, I)(OP1 opcode, ubyte regOpcode, Register dst_rm, I src_imm) if (isAnyImm!I) {

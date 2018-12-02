@@ -403,10 +403,12 @@ struct FixedBuffer(T)
 	T* bufPtr;
 	uint capacity;
 	void setBuffer(uint[] newBuffer) {
-		bufPtr = newBuffer.ptr;
+		bufPtr = cast(T*)newBuffer.ptr;
 		assert(bufPtr);
-		assert(newBuffer.length <= uint.max, "capacity overflow");
-		capacity = cast(uint)newBuffer.length;
+		static assert(T.sizeof % uint.sizeof == 0, "T.sizeof is not multiple of uint.sizeof");
+		size_t bufLen = newBuffer.length / divCeil(T.sizeof, uint.sizeof);
+		assert(bufLen <= uint.max, "capacity overflow");
+		capacity = cast(uint)bufLen;
 		length = 0;
 	}
 	T[] buf() { return bufPtr[0..capacity]; }
