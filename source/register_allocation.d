@@ -272,6 +272,10 @@ struct LinearScan
 		fixInstructionArgs();
 		resolve(fun);
 		genSaveCalleeSavedRegs(fun.stackLayout);
+		//FuncDumpSettings settings;
+		//settings.printBlockFlags = true;
+		//settings.handlers = &lirAmd64DumpHandlers;
+		//dumpFunction(*lir, *context, settings);
 		if (context.validateIr) validateIrFunction(*context, *lir);
 
 		unhandledStorage = unhandled.release;
@@ -671,6 +675,35 @@ struct LinearScan
 			IrIndex predIndex, ref IrBasicBlock predBlock,
 			IrIndex succIndex, ref IrBasicBlock succBlock)
 		{
+			/// Critical edge is edge between predecessor and successor
+			/// where predecessor has more that 1 successor and
+			/// successor has more than 1 predecessor
+			/// Splitting of this edge is done by inserting new basic block on the edge
+			/// This new block is then returned
+			/// successor list of predecessor is updated as well as predecessor list of successor
+			/// Phi functions are not updated
+			IrIndex splitCriticalEdge()
+			{
+				version(RAPrint) writefln("Split critical edge %s -> %s", predIndex, succIndex);
+				IrIndex newBlock = builder.addBasicBlock;
+				foreach (ref IrIndex succ; predBlock.successors.range(*lir)) {
+					if (succ == succIndex) {
+						succ = newBlock;
+						break;
+					}
+				}
+				foreach (ref IrIndex pred; succBlock.predecessors.range(*lir)) {
+					if (pred == predIndex) {
+						pred = newBlock;
+						break;
+					}
+				}
+				lir.getBlock(newBlock).predecessors.append(&builder, predIndex);
+				lir.getBlock(newBlock).successors.append(&builder, succIndex);
+				lir.getBlock(newBlock).isSealed = true;
+				return newBlock;
+			}
+
 			moveSolver.onEdge();
 			version(RAPrint) writefln("  edge %s -> %s", predIndex, succIndex);
 			foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(*lir))
@@ -690,7 +723,27 @@ struct LinearScan
 				}
 			}
 
-			moveSolver.placeMoves(predIndex);
+			IrIndex movesTarget = predIndex;
+			bool addToBack = true;
+
+			if (isCriticalEdge(predBlock, succBlock))
+			{
+				movesTarget = splitCriticalEdge();
+				builder.emitInstr!LirAmd64Instr_jmp(movesTarget);
+				lir.getBlock(movesTarget).isFinished = true;
+			}
+			else if (predBlock.successors.length > 1)
+			{
+				movesTarget = succIndex;
+				addToBack = false;
+			}
+			else
+			{
+				context.assertf(predBlock.successors.length == 1,
+					"predBlock.successors.length %s", predBlock.successors.length);
+			}
+
+			moveSolver.placeMoves(movesTarget);
 		}
 
 		foreach (IrIndex succIndex, ref IrBasicBlock succBlock; lir.blocks)
@@ -844,8 +897,8 @@ struct MoveSolver
 					// mark from as removed and rewrite as:
 					// to <-- from.readFrom
 
-					InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(ExtraInstrArgs(), fromIndex, from.readFrom);
-					builder.insertBeforeLastInstr(blockIndex, instr.instruction);
+					IrIndex instr = builder.emitInstr!LirAmd64Instr_xchg(ExtraInstrArgs(), fromIndex, from.readFrom);
+					builder.insertBeforeLastInstr(blockIndex, instr);
 
 					if (from.readFrom == toIndex)
 					{

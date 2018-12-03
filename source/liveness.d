@@ -60,8 +60,9 @@ void pass_live_intervals(ref CompilationContext context)
 	{
 		if (fun.isExternal) continue;
 		fun.liveIntervals = new FunctionLiveIntervals(fun.lirData);
-		//dumpFunction_lir_amd64(*fun.lirData, context);
 		pass_live_intervals_func(context, *fun.liveIntervals, *fun.lirData, liveBitmap);
+		//writefln("// LIR before RA");
+		//dumpFunction_lir_amd64(*fun.lirData, context);
 	}
 }
 

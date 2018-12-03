@@ -20,18 +20,23 @@ void runAllTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	Test[] testsThatPass = [test8, test8_1, test10, test9, test18, test19, test20, test21, test21_2];
+	Test[] testsThatPass = [test8, test8_1, test10, test9, test18, test19, test20, test21, test21_2, test22, test23];
 	void runAll()
 	{
 		size_t numSuccessfulTests;
 		writefln("Running %s tests", testsThatPass.length);
+		auto time1 = currTime;
 		foreach(i, ref test; testsThatPass)
 		{
 			TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
-			writefln("%s/%s %s %s", i+1, testsThatPass.length, test.testName, res);
-			if (res == TestResult.success) ++numSuccessfulTests;
+			if (res == TestResult.failure)
+				writefln("%s/%s %s %s", i+1, testsThatPass.length, test.testName, res);
+			if (res == TestResult.success)
+				++numSuccessfulTests;
 		}
-		writefln("Done %s/%s successful", numSuccessfulTests, testsThatPass.length);
+		auto time2 = currTime;
+		Duration duration = time2-time1;
+		writefln("Done %s/%s successful in %ss", numSuccessfulTests, testsThatPass.length, scaledNumberFmt(duration));
 	}
 
 	runAll();
@@ -86,7 +91,7 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 		dumpSettings.handlers = &irDumpHandlers;
 		mod.irModule.dump(sink, driver.context, dumpSettings);
 
-		sink.putln("\n// LIR");
+		sink.putln("\n// LIR after RA");
 		dumpSettings.handlers = &lirAmd64DumpHandlers;
 		mod.lirModule.dump(sink, driver.context, dumpSettings);
 
@@ -537,6 +542,39 @@ auto test21 = Test("Test 21", input21, "fibonacci", cast(Test.Tester)&tester21,
 	[ExternalSymbol("print", cast(void*)&test21_external_func)]);
 auto test21_2 = Test("Test 21", input21_2, "fibonacci", cast(Test.Tester)&tester21,
 	[ExternalSymbol("print", cast(void*)&test21_external_func)]);
+
+// test phi resolution with critical edge and test break;
+immutable input22 = q{
+i32 test() {
+	i32 counter = 10;
+	i32 counter2 = 0;
+	while (counter > 0)
+	{
+		counter = counter - 1;
+		counter2 = counter2 + 1;
+		if (counter2 == 5) break;
+	}
+	return counter;
+}};
+alias Func22 = extern(C) int function();
+void tester22(Func22 fun) { int res = fun(); assert(res == 5); }
+auto test22 = Test("Test 22", input22, "test", cast(Test.Tester)&tester22);
+
+// test continue
+immutable input23 = q{
+i32 test() {
+	i32 counter = 10;
+	i32 counter2 = 2;
+	while (counter > 0) {
+		counter = counter - 1;
+		if (counter < 5) continue;
+		counter2 = counter2 + 1;
+	}
+	return counter2;
+}};
+alias Func23 = extern(C) int function();
+void tester23(Func23 fun) { int res = fun(); assert(res == 7); }
+auto test23 = Test("Test 23", input23, "test", cast(Test.Tester)&tester23);
 
 void testNativeFun()
 {

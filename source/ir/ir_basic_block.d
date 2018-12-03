@@ -50,6 +50,11 @@ void removeAllPhis(ref IrBasicBlock block)
 	block.firstPhi = IrIndex();
 }
 
+bool isCriticalEdge(ref IrBasicBlock predBlock, ref IrBasicBlock succBlock)
+{
+	return predBlock.successors.length > 1 && succBlock.predecessors.length > 1;
+}
+
 struct PhiIterator
 {
 	IrFunction* ir;

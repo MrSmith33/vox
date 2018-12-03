@@ -110,6 +110,7 @@ struct IrBuilder
 			buf = ir.storage[0..ir.storageLength]; // copy
 			ir.storage = buf.ptr;
 		}
+		ir.lastBasicBlock = ir.getBlock(ir.exitBasicBlock).prevBlock;
 
 		blockVarDef.clear();
 	}
@@ -173,7 +174,7 @@ struct IrBuilder
 		ir.getBlock(toBasicBlockIndex).predecessors.append(&this, fromBasicBlockIndex);
 	}
 
-	/// Sets lastBasicBlock to this block
+	/// Creates new block and inserts it after lastBasicBlock and sets lastBasicBlock
 	IrIndex addBasicBlock() {
 		assert(ir.lastBasicBlock.isDefined);
 		++ir.numBasicBlocks;

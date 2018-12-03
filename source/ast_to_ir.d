@@ -114,6 +114,9 @@ struct AstToIr
 	enum MAX_ARGS = 255;
 	IrIndex[MAX_ARGS] argsBuf;
 
+	IrLabel* currentLoopHeader;
+	IrLabel* currentLoopEnd;
+
 	void visit(ModuleDeclNode* m)
 	{
 		version(IrGenPrint) writeln("[IR GEN] module begin");
@@ -406,6 +409,14 @@ struct AstToIr
 		//writefln("loop cur 1 %s", currentBlock);
 		// loop header
 		IrLabel loopHeaderLabel = IrLabel(currentBlock);
+
+		IrLabel* prevLoopHeader = currentLoopHeader; // save
+		currentLoopHeader = &loopHeaderLabel;
+		scope(exit) currentLoopHeader = prevLoopHeader; // restore
+		IrLabel* prevLoopEnd = currentLoopEnd; // save
+		currentLoopEnd = &nextStmt;
+		scope(exit) currentLoopEnd = prevLoopEnd; // restore
+
 		builder.addJumpToLabel(currentBlock, loopHeaderLabel);
 
 		// we need loop header in a separate block because it will
@@ -427,7 +438,6 @@ struct AstToIr
 		builder.sealBlock(currentBlock);
 
 		// body
-
 		IrBasicBlock* block = &ir.getBlock(currentBlock);
 		assert(!block.isFinished);
 		visitStmt(w.statement, currentBlock, loopHeaderLabel);
@@ -453,10 +463,12 @@ struct AstToIr
 		else builder.addReturn(currentBlock);
 	}
 	void visit(BreakStmtNode* b, IrIndex currentBlock, ref IrLabel nextStmt) {
-		context.unreachable;
+		if (currentLoopEnd is null) context.unrecoverable_error(b.loc, "break is not within the loop");
+		builder.addJumpToLabel(currentBlock, *currentLoopEnd);
 	}
 	void visit(ContinueStmtNode* c, IrIndex currentBlock, ref IrLabel nextStmt) {
-		context.unreachable;
+		if (currentLoopHeader is null) context.unrecoverable_error(c.loc, "continue is not within the loop");
+		builder.addJumpToLabel(currentBlock, *currentLoopHeader);
 	}
 	void visit(AssignStmtNode* a, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
