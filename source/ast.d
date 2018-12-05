@@ -747,3 +747,95 @@ struct AstPrinter {
 		pr_node(n);
 	}
 }
+
+struct AstDotPrinter {
+	mixin AstVisitorMixin;
+
+	CompilationContext* context;
+	int indentSize = 1;
+
+	private int indent;
+
+	void printLabel(N, Args...)(N* node, string format, Args args) {
+		writef(`  node_%s [label="`, cast(void*)node);
+		writef(format, args);
+		writeln(`"];`);
+	}
+
+	void pr_node_edge(N1, N2)(N1* parent, N2* node) { // print node
+		writeln(`  node_`, cast(void*)parent, ` -> node_`, cast(void*)node);
+		_visit(cast(AstNode*)node);
+	}
+
+	void visit(ModuleDeclNode* m) {
+		printLabel(m, "Module");
+		foreach (decl; m.declarations) pr_node_edge(m, decl);
+	}
+	void visit(FunctionDeclNode* f) {
+		printLabel(f, `FUNC\n%s %s`, f.returnType.printer(context), f.strId(context));
+		foreach (param; f.parameters) pr_node_edge(f, param);
+		if (f.block_stmt) pr_node_edge(f, f.block_stmt);
+	}
+	void visit(VariableDeclNode* v) {
+		printLabel(v, v.isParameter ? `PARAM\n%s %s` : `VAR\n%s %s`, v.type.printer(context), v.strId(context));
+		if (v.initializer) pr_node_edge(v, v.initializer);
+	}
+	void visit(StructDeclNode* s) {
+		printLabel(s, `STRUCT\n%s`, s.strId(context));
+		foreach (decl; s.declarations) pr_node_edge(s, decl); }
+	void visit(BlockStmtNode* b) {
+		printLabel(b, "BLOCK");
+		foreach(stmt; b.statements) pr_node_edge(b, stmt); }
+	void visit(IfStmtNode* i) {
+		printLabel(i, "IF"); pr_node_edge(i, i.condition);
+		pr_node_edge(i, i.thenStatement);
+		if (i.elseStatement) { pr_node_edge(i, i.elseStatement); }
+	}
+	void visit(WhileStmtNode* w) {
+		printLabel(w, "WHILE");
+		pr_node_edge(w, w.condition);
+		pr_node_edge(w, w.statement); }
+	void visit(DoWhileStmtNode* d) {
+		printLabel(d, "DO");
+		pr_node_edge(d, d.condition);
+		pr_node_edge(d, d.statement); }
+	void visit(ReturnStmtNode* r) {
+		printLabel(r, "RETURN");
+		if (r.expression) pr_node_edge(r, r.expression); }
+	void visit(BreakStmtNode* r) { printLabel(r, "BREAK"); }
+	void visit(ContinueStmtNode* r) { printLabel(r, "CONTINUE"); }
+	void visit(AssignStmtNode* a) { printLabel(a, "ASSIGN"); pr_node_edge(a, a.left); pr_node_edge(a, a.right); }
+	void visit(VariableExprNode* v) {
+		if (v.isSymResolved)
+			printLabel(v, `VAR_USE\n%s %s`, v.getSym.getType.printer(context), v.strId(context));
+		else
+			printLabel(v, `VAR_USE\n%s`, v.strId(context));
+	}
+	void visit(LiteralExprNode* c) { printLabel(c, `LITERAL\n%s %s`, c.type.printer(context), c.value); }
+	void visit(BinaryExprNode* b) {
+		if (b.type) printLabel(b, `BINOP\n%s %s`, b.type.printer(context), b.op);
+		else printLabel(b, `BINOP\n%s`, b.op);
+		pr_node_edge(b, b.left);
+		pr_node_edge(b, b.right); }
+	void visit(CallExprNode* c) {
+		if (c.isSymResolved)
+			printLabel(c, `CALL\n%s %s`, c.strId(context), c.getSym.getType.printer(context));
+		else printLabel(c, `CALL\n%s`, c.strId(context));
+		foreach (arg; c.args) pr_node_edge(c, arg); }
+	void visit(IndexExprNode* i) {
+		printLabel(i, `INDEX`); pr_node_edge(i, i.array); pr_node_edge(i, i.index); }
+	void visit(TypeConvExprNode* t) {
+		printLabel(t, `CAST\n%s`, t.type.printer(context));
+		pr_node_edge(t, t.expr); }
+	void visit(BasicTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
+	void visit(PtrTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
+	void visit(StaticArrayTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
+	void visit(UserTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
+
+	void printAst(AstNode* n)
+	{
+		writeln(`digraph AST {`);
+		if (n) _visit(n);
+		writeln(`}`);
+	}
+}

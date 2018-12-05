@@ -35,10 +35,12 @@ Target platforms:
 * Semantic lookup - Resolves symbol references
 * Semantic types - Type checking
 * IR gen - Conversion of AST into linear IR in SSA form
+* Optimization - optimizes machine independent IR
+* IR to LIR - Conversion of high level IR to machine code IR in SSA form (LIR)
 * Live intervals - Collects liveness info about values for use in register allocation
 * Linear Scan Register Allocation - Replaces virtual registers with physical ones
 * Stack layout - Calculates offsets for stack slots
-* Code gen - Converts IR into machine code
+* Code gen - Converts LIR into machine code
 
 
 ## Source code
@@ -53,6 +55,7 @@ Target platforms:
 * `phi_resolution.d` - SSA deconstruction algorithm.
 * `/lang` - old implementation of compiler. Lacks newer features, but has function calls and loops working.
 * `/asmtest` - tests for instruction encodings.
+* `/ir` - IR specific stuff.
 
 
 # What works
@@ -85,12 +88,12 @@ assert(val[1] == 10);
 
 # Roadmap
 
-1. Finish code gen for function calls.
-2. Add LIR (Lowlevel IR)
-2. Implement loops.
-3. Integrate code for executable generation in main code.
-4. Add a way for binding with DLLs in a language. DLL import tables are already implemented by `pecoff.d` file.
-5. Link with SDL library
-6. Make standalone compiler: read files from disk, write executable.
-7. Make a game with SDL
-8. Implement modding system
+[x] Finish code gen for function calls.
+[x] Add LIR (Lowlevel IR)
+[x] Implement loops.
+[ ] Integrate code for executable generation in main code.
+[ ] Add a way for binding with DLLs in a language. DLL import tables are already implemented by `pecoff.d` file.
+[ ] Link with SDL library
+[ ] Make standalone compiler: read files from disk, write executable.
+[ ] Make a game with SDL
+[ ] Implement modding system
