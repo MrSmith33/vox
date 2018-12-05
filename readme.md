@@ -88,12 +88,12 @@ assert(val[1] == 10);
 
 # Roadmap
 
-[x] Finish code gen for function calls.
-[x] Add LIR (Lowlevel IR)
-[x] Implement loops.
-[ ] Integrate code for executable generation in main code.
-[ ] Add a way for binding with DLLs in a language. DLL import tables are already implemented by `pecoff.d` file.
-[ ] Link with SDL library
-[ ] Make standalone compiler: read files from disk, write executable.
-[ ] Make a game with SDL
-[ ] Implement modding system
+- [x] Finish code gen for function calls.
+- [x] Add LIR (Lowlevel IR)
+- [x] Implement loops.
+- [ ] Integrate code for executable generation in main code.
+- [ ] Add a way for binding with DLLs in a language. DLL import tables are already implemented by `pecoff.d` file.
+- [ ] Link with SDL library
+- [ ] Make standalone compiler: read files from disk, write executable.
+- [ ] Make a game with SDL
+- [ ] Implement modding system
