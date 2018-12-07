@@ -8,6 +8,7 @@ Authors: Andrey Penechko.
 module ir.dump;
 
 import std.stdio;
+import std.format : formattedWrite;
 
 import all;
 
@@ -22,7 +23,6 @@ struct InstrPrintInfo
 	IrInstrHeader* instrHeader;
 	FuncDumpSettings* settings;
 	void dumpInstr() { settings.handlers.instrDumper(this); }
-	void dumpIndex(IrIndex i) { settings.handlers.indexDumper(this, i); }
 }
 
 struct IrDumpHandlers
@@ -31,8 +31,22 @@ struct IrDumpHandlers
 	IrIndexDumper indexDumper;
 }
 
+struct IrIndexDump
+{
+	this(IrIndex index, ref InstrPrintInfo printInfo) {
+		this.index = index;
+		this.printInfo = &printInfo;
+	}
+	IrIndex index;
+	InstrPrintInfo* printInfo;
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		printInfo.settings.handlers.indexDumper(sink, *printInfo, index);
+	}
+}
+
 alias InstructionDumper = void function(ref InstrPrintInfo p);
-alias IrIndexDumper = void function(ref InstrPrintInfo, IrIndex);
+alias IrIndexDumper = void function(scope void delegate(const(char)[]) sink, ref InstrPrintInfo, IrIndex);
 
 struct FuncDumpSettings
 {
@@ -44,9 +58,8 @@ struct FuncDumpSettings
 	bool printInstrIndexEnabled = true;
 	bool printUses = true;
 	bool printLive = true;
+	bool escapeForDot = false;
 	IrDumpHandlers* handlers;
-	void dumpInstr(ref InstrPrintInfo p) { handlers.instrDumper(p); }
-	void dumpIndex(ref InstrPrintInfo p, IrIndex i) { handlers.indexDumper(p, i); }
 }
 
 IrDumpHandlers irDumpHandlers = IrDumpHandlers(&dumpIrInstr, &dumpIrIndex);
@@ -171,9 +184,78 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 	sink.putln("}");
 }
 
-void dumpIrIndex(ref InstrPrintInfo p, IrIndex index)
+void dumpFunctionCFG(ref IrFunction ir, ref TextSink sink, ref CompilationContext ctx, ref FuncDumpSettings settings)
 {
-	p.sink.putf("%s", index);
+	settings.escapeForDot = true;
+	sink.put(`digraph "`);
+	sink.put("function ");
+	sink.put(ctx.idString(ir.name));
+	sink.putfln(`() %s bytes" {`, ir.storageLength * uint.sizeof);
+	int indexPadding = numDigitsInNumber(ir.storageLength);
+
+	InstrPrintInfo p;
+	p.context = &ctx;
+	p.sink = &sink;
+	p.ir = &ir;
+	p.settings = &settings;
+
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
+	{
+		foreach(i, succIndex; block.successors.range(ir)) {
+			sink.putfln("node_%s -> node_%s;",
+				blockIndex.storageUintIndex, succIndex.storageUintIndex);
+		}
+
+		sink.putf(`node_%s [shape=record,label="{`, blockIndex.storageUintIndex);
+
+		p.blockIndex = blockIndex;
+		p.block = &block;
+
+		sink.putf(`  %s`, IrIndexDump(blockIndex, p));
+		sink.put(`\l`);
+
+		// phis
+		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
+		{
+			sink.putf("    %s = %s(", IrIndexDump(phi.result, p), phiIndex);
+			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+			{
+				if (arg_i > 0) sink.put(", ");
+				sink.putf("%s %s", IrIndexDump(phiArg.value, p), IrIndexDump(phiArg.basicBlock, p));
+			}
+			sink.put(")");
+			sink.put(`\l`);
+		}
+
+		// instrs
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
+		{
+			// print instr
+			p.instrIndex = instrIndex;
+			p.instrHeader = &instrHeader;
+			p.dumpInstr();
+			sink.put(`\l`);
+		}
+		sink.putfln(`}"];`);
+	}
+
+	sink.putln("}");
+}
+
+void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, IrIndex index)
+{
+	switch(index.kind) with(IrValueKind) {
+		default: sink.formattedWrite("0x%X", index.asUint); break;
+		case listItem: sink.formattedWrite("l.%s", index.storageUintIndex); break;
+		case instruction: sink.formattedWrite("i.%s", index.storageUintIndex); break;
+		case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
+		case constant: sink.formattedWrite("%s", p.context.getConstant(index).i64); break;
+		case phi: sink.formattedWrite("phi.%s", index.storageUintIndex); break;
+		case memoryAddress: sink.formattedWrite("m.%s", index.storageUintIndex); break;
+		case stackSlot: sink.formattedWrite("s.%s", index.storageUintIndex); break;
+		case virtualRegister: sink.formattedWrite("v.%s", index.storageUintIndex); break;
+		case physicalRegister: sink.formattedWrite("p.%s", index.storageUintIndex); break;
+	}
 }
 
 void dumpIrInstr(ref InstrPrintInfo p)
@@ -187,7 +269,7 @@ void dumpIrInstr(ref InstrPrintInfo p)
 
 		case IrOpcode.parameter:
 			uint paramIndex = p.ir.get!IrInstr_parameter(p.instrIndex).index;
-			p.sink.putf("    %s = parameter%s", p.instrHeader.result, paramIndex);
+			p.sink.putf("    %s = parameter%s", IrIndexDump(p.instrHeader.result, p), paramIndex);
 			break;
 
 		case IrOpcode.block_exit_return_void:
@@ -195,12 +277,12 @@ void dumpIrInstr(ref InstrPrintInfo p)
 			break;
 
 		case IrOpcode.block_exit_return_value:
-			p.sink.putf("    return %s", p.instrHeader.args[0]);
+			p.sink.putf("    return %s", IrIndexDump(p.instrHeader.args[0], p));
 			break;
 
 		default:
 			if (p.instrHeader.hasResult)
-				p.sink.putf("    %s = %s", p.instrHeader.result, cast(IrOpcode)p.instrHeader.op);
+				p.sink.putf("    %s = %s", IrIndexDump(p.instrHeader.result, p), cast(IrOpcode)p.instrHeader.op);
 			else  p.sink.putf("    %s", cast(IrOpcode)p.instrHeader.op);
 			dumpArgs(p);
 			break;
@@ -225,8 +307,7 @@ void dumpArgs(ref InstrPrintInfo p)
 	foreach (i, IrIndex arg; p.instrHeader.args)
 	{
 		if (i > 0) p.sink.put(",");
-		p.sink.put(" ");
-		p.dumpIndex(arg);
+		p.sink.putf(" %s", IrIndexDump(arg, p));
 	}
 }
 
@@ -234,26 +315,27 @@ void dumpJmp(ref InstrPrintInfo p)
 {
 	p.sink.put("    jmp ");
 	if (p.block.successors.length > 0)
-		p.sink.putf("%s", p.block.successors[0, *p.ir]);
+		p.sink.putf("%s", IrIndexDump(p.block.successors[0, *p.ir], p));
 	else
-		p.sink.put("<null>");
+		p.sink.put(p.settings.escapeForDot ? `\<null\>` : "<null>");
 }
 
 void dumpUnBranch(ref InstrPrintInfo p)
 {
-	p.sink.putf("    if %s", unaryCondStrings[p.instrHeader.cond]);
-	p.sink.put(" then ");
-	p.dumpIndex(p.instrHeader.args[0]);
+	p.sink.putf("    if %s then %s",
+		unaryCondStrings[p.instrHeader.cond],
+		IrIndexDump(p.instrHeader.args[0], p));
 	dumpBranchTargets(p);
 }
 
 void dumpBinBranch(ref InstrPrintInfo p)
 {
-	p.sink.putf("    if ");
-	p.dumpIndex(p.instrHeader.args[0]);
-	p.sink.putf(" %s ", binaryCondStrings[p.instrHeader.cond]);
-	p.dumpIndex(p.instrHeader.args[1]);
-	p.sink.put(" then ");
+	string[] opStrings = p.settings.escapeForDot ? binaryCondStringsEscapedForDot : binaryCondStrings;
+	p.sink.putf("    if %s %s %s then ",
+		IrIndexDump(p.instrHeader.args[0], p),
+		opStrings[p.instrHeader.cond],
+		IrIndexDump(p.instrHeader.args[1], p));
+
 	dumpBranchTargets(p);
 }
 
@@ -261,16 +343,16 @@ void dumpBranchTargets(ref InstrPrintInfo p)
 {
 	switch (p.block.successors.length) {
 		case 0:
-			p.sink.put("<null> else <null>");
+			p.sink.put(p.settings.escapeForDot ? `\<null\> else \<null\>` : "<null> else <null>");
 			break;
 		case 1:
-			p.dumpIndex(p.block.successors[0, *p.ir]);
-			p.sink.put(" else <null>");
+			p.sink.putf(p.settings.escapeForDot ? `%s else \<null\>` : "%s else <null>",
+				IrIndexDump(p.block.successors[0, *p.ir], p));
 			break;
 		default:
-			p.dumpIndex(p.block.successors[0, *p.ir]);
-			p.sink.put(" else ");
-			p.dumpIndex(p.block.successors[1, *p.ir]);
+			p.sink.putf("%s else %s",
+				IrIndexDump(p.block.successors[0, *p.ir], p),
+				IrIndexDump(p.block.successors[1, *p.ir], p));
 			break;
 	}
 }

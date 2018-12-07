@@ -174,6 +174,7 @@ enum IrBinaryCondition : ubyte {
 }
 
 string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", ">", ">=", "<", "<="];
+string[] binaryCondStringsEscapedForDot = cast(string[IrBinaryCondition.max+1])[`==`, `!=`, `\>`, `\>=`, `\<`, `\<=`];
 
 IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
 {

@@ -245,15 +245,16 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 			break;
 		case Amd64Opcode.jmp: dumpJmp(p); break;
 		case Amd64Opcode.jcc:
-			p.sink.putf("    j%s ", cast(Condition)p.instrHeader.cond);
-			p.dumpIndex(p.instrHeader.args[0]);
+			p.sink.putf("    j%s %s",
+				cast(Condition)p.instrHeader.cond,
+				IrIndexDump(p.instrHeader.args[0], p));
 			break;
 		default:
 			if (p.instrHeader.hasResult)
 			{
-				p.sink.put("    ");
-				p.dumpIndex(p.instrHeader.result);
-				p.sink.putf(" = %s", cast(Amd64Opcode)p.instrHeader.op);
+				p.sink.putf("    %s = %s",
+					IrIndexDump(p.instrHeader.result, p),
+					cast(Amd64Opcode)p.instrHeader.op);
 			}
 			else  p.sink.putf("    %s", cast(Amd64Opcode)p.instrHeader.op);
 
@@ -261,26 +262,26 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 			foreach (i, IrIndex arg; p.instrHeader.args)
 			{
 				if (i > 0) p.sink.put(", ");
-				p.dumpIndex(arg);
+				p.sink.putf("%s", IrIndexDump(arg, p));
 			}
 			break;
 	}
 }
 
-void dumpLirAmd64Index(ref InstrPrintInfo p, IrIndex i)
+void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, IrIndex i)
 {
 	final switch(i.kind) with(IrValueKind) {
-		case none: p.sink.put("<null>"); break;
-		case listItem: p.sink.putf("l.%s", i.storageUintIndex); break;
-		case instruction: p.sink.putf("i.%s", i.storageUintIndex); break;
-		case basicBlock: p.sink.putf("@%s", i.storageUintIndex); break;
-		case constant: p.sink.putf("%s", p.context.getConstant(i).i64); break;
-		case phi: p.sink.putf("phi.%s", i.storageUintIndex); break;
-		case memoryAddress: p.sink.putf("m.%s", i.storageUintIndex); break;
-		case stackSlot: p.sink.putf("s.%s", i.storageUintIndex); break;
-		case virtualRegister: p.sink.putf("v.%s", i.storageUintIndex); break;
+		case none: sink("<null>"); break;
+		case listItem: sink.formattedWrite("l.%s", i.storageUintIndex); break;
+		case instruction: sink.formattedWrite("i.%s", i.storageUintIndex); break;
+		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
+		case constant: sink.formattedWrite("%s", p.context.getConstant(i).i64); break;
+		case phi: sink.formattedWrite("phi.%s", i.storageUintIndex); break;
+		case memoryAddress: sink.formattedWrite("m.%s", i.storageUintIndex); break;
+		case stackSlot: sink.formattedWrite("s.%s", i.storageUintIndex); break;
+		case virtualRegister: sink.formattedWrite("v.%s", i.storageUintIndex); break;
 		// TODO, HACK: 32-bit version of register is hardcoded here
-		case physicalRegister: p.sink.put("e"); p.sink.put(mach_info_amd64.registers[i.storageUintIndex].name); break;
+		case physicalRegister: sink("e"); sink(mach_info_amd64.registers[i.storageUintIndex].name); break;
 	}
 }
 
