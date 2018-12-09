@@ -52,7 +52,7 @@ void pass_stack_layout(ref CompilationContext ctx)
 		// XXU8 local3    L2   rsp +  0      /  <-- RSP
 		// --
 
-		int numParams = cast(int)func.parameters.length;
+		int numParams = layout.numParamSlots;
 		uint freeShadowSlots = 4 - min(numParams, 4); // 0 - 4 free shadow slots for locals
 		uint requiredLocalSlots = 0;
 		// allocate local slots for all locals not fitting into shadow slots
@@ -96,11 +96,11 @@ void pass_stack_layout(ref CompilationContext ctx)
 		}
 
 		int paramSlotDisplacement(uint paramIndex) {
-			return (layout.numLocalSlots + paramIndex + 1/*ret addr*/) * STACK_ITEM_SIZE;
+			return (requiredLocalSlots + paramIndex + 1/*ret addr*/) * STACK_ITEM_SIZE;
 		}
 
 		int nextLocalIndex = 0;
-		foreach (ref slot; layout.slots)
+		foreach (i, ref slot; layout.slots)
 		{
 			if (slot.isParameter)
 			{
