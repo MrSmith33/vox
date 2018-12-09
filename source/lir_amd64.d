@@ -221,15 +221,6 @@ Condition[] IrUnCondToAmd64Condition = [
 	Condition.NZ, // not_zero
 ];
 
-IrDumpHandlers lirAmd64DumpHandlers = IrDumpHandlers(&dumpAmd64Instr, &dumpLirAmd64Index);
-
-void dumpFunction_lir_amd64(ref IrFunction lir, ref CompilationContext ctx)
-{
-	FuncDumpSettings settings;
-	settings.handlers = &lirAmd64DumpHandlers;
-	dumpFunction(lir, ctx, settings);
-}
-
 void dumpAmd64Instr(ref InstrPrintInfo p)
 {
 	switch(p.instrHeader.op)

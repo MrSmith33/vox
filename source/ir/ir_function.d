@@ -33,6 +33,12 @@ struct IrMirror(T)
 	}
 }
 
+enum IrInstructionSet : ubyte
+{
+	ir,
+	lir_amd64
+}
+
 struct IrFunction
 {
 	uint* storage;
@@ -63,6 +69,7 @@ struct IrFunction
 	Identifier name;
 	///
 	CallConv* callingConvention;
+	IrInstructionSet instructionSet;
 
 	BlockIterator blocks() { return BlockIterator(&this); }
 	BlockReverseIterator blocksReverse() { return BlockReverseIterator(&this); }
@@ -173,6 +180,8 @@ struct BlockReverseIterator
 
 void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 {
+	scope(failure) dumpFunction(ir, context);
+
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		if (!block.isSealed)
@@ -226,12 +235,13 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 
 		void checkResult(IrIndex definition, IrIndex result)
 		{
+			if (!result.isVirtReg) return;
 			auto vreg = &ir.getVirtReg(result);
 
 			// Check that all users of virtual reg point to definition
 			context.assertf(vreg.definition == definition,
-				"Virtual register definition %s doesn't match instruction %s",
-				vreg.definition, definition);
+				"Virtual register %s definition %s doesn't match instruction %s",
+				result, vreg.definition, definition);
 
 			foreach (i, IrIndex user; vreg.users.range(ir))
 				checkArg(user, result);
@@ -270,10 +280,7 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 
 			if (instrHeader.hasResult)
 			{
-				if (instrHeader.result.isVirtReg)
-				{
-					checkResult(instrIndex, instrHeader.result);
-				}
+				checkResult(instrIndex, instrHeader.result);
 			}
 		}
 	}

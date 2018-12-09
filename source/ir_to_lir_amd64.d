@@ -38,6 +38,7 @@ struct IrToLir
 		//writefln("IR to LIR %s", context.idString(ir.name));
 		lir.returnType = ir.returnType;
 		lir.callingConvention = ir.callingConvention;
+		lir.instructionSet = IrInstructionSet.lir_amd64;
 
 		context.tempBuffer.clear;
 

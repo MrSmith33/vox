@@ -22,7 +22,8 @@ struct InstrPrintInfo
 	IrIndex instrIndex;
 	IrInstrHeader* instrHeader;
 	FuncDumpSettings* settings;
-	void dumpInstr() { settings.handlers.instrDumper(this); }
+	IrDumpHandlers* handlers;
+	void dumpInstr() { handlers.instrDumper(this); }
 }
 
 struct IrDumpHandlers
@@ -41,7 +42,7 @@ struct IrIndexDump
 	InstrPrintInfo* printInfo;
 
 	void toString(scope void delegate(const(char)[]) sink) {
-		printInfo.settings.handlers.indexDumper(sink, *printInfo, index);
+		printInfo.handlers.indexDumper(sink, *printInfo, index);
 	}
 }
 
@@ -59,15 +60,16 @@ struct FuncDumpSettings
 	bool printUses = true;
 	bool printLive = true;
 	bool escapeForDot = false;
-	IrDumpHandlers* handlers;
 }
 
-IrDumpHandlers irDumpHandlers = IrDumpHandlers(&dumpIrInstr, &dumpIrIndex);
+IrDumpHandlers[] instrSetDumpHandlers = [
+	IrDumpHandlers(&dumpIrInstr, &dumpIrIndex),
+	IrDumpHandlers(&dumpAmd64Instr, &dumpLirAmd64Index),
+];
 
-void dumpFunction_ir(ref IrFunction ir, ref CompilationContext ctx)
+void dumpFunction(ref IrFunction ir, ref CompilationContext ctx)
 {
 	FuncDumpSettings settings;
-	settings.handlers = &irDumpHandlers;
 	dumpFunction(ir, ctx, settings);
 }
 
@@ -85,6 +87,13 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 	sink.putfln("() %s bytes {", ir.storageLength * uint.sizeof);
 	int indexPadding = numDigitsInNumber(ir.storageLength);
 
+	InstrPrintInfo printer;
+	printer.context = &ctx;
+	printer.sink = &sink;
+	printer.ir = &ir;
+	printer.handlers = &instrSetDumpHandlers[ir.instructionSet];
+	printer.settings = &settings;
+
 	void printInstrIndex(IrIndex someIndex) {
 		if (!settings.printInstrIndexEnabled) return;
 		sink.putf("%*s|", indexPadding, someIndex.storageUintIndex);
@@ -99,16 +108,10 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		foreach (i, index; vreg.users.range(ir))
 		{
 			if (i > 0) sink.put(", ");
-			sink.putf("%s", index);
+			sink.putf("%s", IrIndexDump(index, printer));
 		}
 		sink.put("]");
 	}
-
-	InstrPrintInfo printer;
-	printer.context = &ctx;
-	printer.sink = &sink;
-	printer.ir = &ir;
-	printer.settings = &settings;
 
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
@@ -116,7 +119,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		printer.block = &block;
 
 		printInstrIndex(blockIndex);
-		sink.putf("  %s", blockIndex);
+		sink.putf("  %s", IrIndexDump(blockIndex, printer));
 
 		if (settings.printBlockFlags)
 		{
@@ -135,7 +138,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 			sink.putf(" in(");
 			foreach(i, predIndex; block.predecessors.range(ir)) {
 				if (i > 0) sink.put(", ");
-				sink.putf("%s", predIndex);
+				sink.putf("%s", IrIndexDump(predIndex, printer));
 			}
 			sink.put(")");
 		}
@@ -144,7 +147,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 			sink.putf(" out(");
 			foreach(i, succIndex; block.successors.range(ir)) {
 				if (i > 0) sink.put(", ");
-				sink.putf("%s", succIndex);
+				sink.putf("%s", IrIndexDump(succIndex, printer));
 			}
 			sink.put(")");
 		}
@@ -154,11 +157,11 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
 			printInstrIndex(phiIndex);
-			sink.putf("    %s = %s(", phi.result, phiIndex);
+			sink.putf("    %s = %s(", IrIndexDump(phi.result, printer), IrIndexDump(phiIndex, printer));
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
 				if (arg_i > 0) sink.put(", ");
-				sink.putf("%s %s", phiArg.value, phiArg.basicBlock);
+				sink.putf("%s %s", IrIndexDump(phiArg.value, printer), IrIndexDump(phiArg.basicBlock, printer));
 			}
 			sink.put(")");
 			if (settings.printUses) printRegUses(phi.result);

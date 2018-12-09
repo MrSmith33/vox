@@ -20,7 +20,8 @@ void runAllTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	Test[] testsThatPass = [test8, test8_1, test10, test9, test18, test19, test20, test21, test21_2, test22, test23];
+	Test[] testsThatPass = [test7, test8, test8_1, test10, test9, test18, test19,
+		test20, test21, test21_2, test22, test23];
 	void runAll()
 	{
 		size_t numSuccessfulTests;
@@ -88,11 +89,9 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 		TextSink sink;
 		sink.putln("\n// IR");
-		dumpSettings.handlers = &irDumpHandlers;
 		mod.irModule.dump(sink, driver.context, dumpSettings);
 
 		sink.putln("\n// LIR after RA");
-		dumpSettings.handlers = &lirAmd64DumpHandlers;
 		mod.lirModule.dump(sink, driver.context, dumpSettings);
 
 		foreach(fun; mod.functions) {
@@ -132,7 +131,7 @@ struct Test
 
 TextSink testSink;
 
-string input1 = q{
+immutable input1 = q{
 	i32 a;
 	struct structWIP {
 		i64 e;
@@ -146,7 +145,7 @@ string input1 = q{
 	i32 b;
 };
 
-string input2 = q{void e() {
+immutable input2 = q{void e() {
 	i32 a;
 	i32 b;
 	i32 c;
@@ -180,7 +179,7 @@ string input2 = q{void e() {
 	a = b + c;
 }};
 
-string input3 = q{
+immutable input3 = q{
 	A b;
 	struct A{
 		void fun(i32 param) {
@@ -192,9 +191,9 @@ string input3 = q{
 	A a;
 	i32 var;
 	i32 fun42() { return 42; }
-	};
+};
 
-	string input4 = q{
+immutable input4 = q{
 	struct A {
 		int x;
 		struct B { int y; }
@@ -214,7 +213,7 @@ string input3 = q{
 };
 
 // test implicit casting
-string input5 = q{void f() {
+immutable input5 = q{void f() {
 	//struct A{}
 	//A a;
 	//if (a){} // error
@@ -242,7 +241,7 @@ string input5 = q{void f() {
 	if (var_u64){}
 }};
 
-string input6 = q{void f() {
+immutable input6 = q{void f() {
 	f32 var_f32;
 	f64 var_f64;
 	var_f64 = var_f32;
@@ -317,11 +316,22 @@ string input6 = q{void f() {
 	var_f32 + var_f64;
 }};
 
-string input7 = q{i32 fib(i32 number) {
+immutable input7 = q{i32 fib(i32 number) {
 	if (number < 1) return 0;
 	if (number < 3) return 1;
 	return fib(number-1) + fib(number-2);
 }};
+alias Func7 = extern(C) int function(int);
+void tester7(Func7 fib) {
+	immutable int[] results = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233,
+	377, 610, 987, 1597, 2584, 4181, 6765];
+	foreach(int i, int expected; results)
+	{
+		int res = fib(i+1);
+		assert(res == expected);
+	}
+}
+auto test7 = Test("Test 7", input7, "fib", cast(Test.Tester)&tester7);
 
 immutable input9 = q{i32 test(i32 number) {
 	i32 result;

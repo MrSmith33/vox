@@ -753,8 +753,6 @@ struct LinearScan
 			foreach (IrIndex predIndex; succBlock.predecessors.range(*lir))
 			{
 				IrBasicBlock* predBlock = &lir.getBlock(predIndex);
-				// TODO: select proper block to put moves in
-				// TODO: split critical edges
 				onEdge(predIndex, *predBlock, succIndex, succBlock);
 			}
 		}
