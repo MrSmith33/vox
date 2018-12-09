@@ -326,10 +326,6 @@ struct IrBuilder
 		{
 			appendVoid!IrIndex;
 			instrHeader.hasResult = true;
-			if (extra.result.isDefined)
-				instrHeader.result = extra.result;
-			else
-				instrHeader.result = addVirtualRegister(instr);
 		}
 		else
 		{
@@ -366,8 +362,17 @@ struct IrBuilder
 		}
 
 		static if (getInstrInfo!I.mayHaveResult) {
+			// set result
+			// need to add virt reg after arguments, because virt reg allocation
+			// will interfere with argument slot allocation
 			if (instrHeader.hasResult)
+			{
+				if (extra.result.isDefined)
+					instrHeader.result = extra.result;
+				else
+					instrHeader.result = addVirtualRegister(instr);
 				return InstrWithResult(instr, instrHeader.result);
+			}
 			else
 				return InstrWithResult(instr, IrIndex());
 		} else {
