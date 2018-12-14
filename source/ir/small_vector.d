@@ -173,26 +173,31 @@ struct SmallVector
 unittest
 {
 	IrFunction ir;
-	ir.storage.setBuffer(new uint[1024]);
-	ir.temp.setBuffer(new uint[1024]);
+	CompilationContext context;
+	IrBuilder builder;
+	builder.context = &context;
+	builder.ir = &ir;
+	uint[1024] irBuf, tempBuf;
+	context.irBuffer.setBuffer(irBuf[]);
+	context.tempBuffer.setBuffer(tempBuf[]);
 	SmallVector vec;
 
 	assert(vec.length == 0);
 	assert(!vec.isBig);
 
-	vec.append(&ir, IrIndex(1, IrValueKind.instruction));
+	vec.append(&builder, IrIndex(1, IrValueKind.instruction));
 	assert(vec.length == 1);
 	assert(!vec.isBig);
 
-	vec.append(&ir, IrIndex(2, IrValueKind.instruction));
+	vec.append(&builder, IrIndex(2, IrValueKind.instruction));
 	assert(vec.length == 2);
 	assert(!vec.isBig);
 
-	vec.append(&ir, IrIndex(3, IrValueKind.instruction));
+	vec.append(&builder, IrIndex(3, IrValueKind.instruction));
 	assert(vec.length == 3);
 	assert(vec.isBig);
 
-	vec.append(&ir, IrIndex(4, IrValueKind.instruction));
+	vec.append(&builder, IrIndex(4, IrValueKind.instruction));
 	assert(vec.length == 4);
 	assert(vec.isBig);
 }

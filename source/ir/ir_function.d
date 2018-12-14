@@ -23,7 +23,7 @@ struct IrMirror(T)
 
 	void create(CompilationContext* context, IrFunction* ir)
 	{
-		irMirror = context.tempBuffer.voidPut(ir.storageLength);
+		irMirror = context.tempBuffer.voidPut(ir.storage.length);
 		irMirror[] = 0;
 	}
 
@@ -41,9 +41,8 @@ enum IrInstructionSet : ubyte
 
 struct IrFunction
 {
-	uint* storage;
-	/// number of uints allocated from storage
-	uint storageLength;
+	/// Slice of CompilationContext.irBuffer
+	uint[] storage;
 
 	/// Special block. Automatically created. Program start. Created first.
 	IrIndex entryBasicBlock;

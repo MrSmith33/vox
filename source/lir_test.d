@@ -73,7 +73,6 @@ void main()
 	lir.name = driver.context.idMap.getOrReg("sign");
 
 	lir.storage = driver.context.irBuffer.freePart;
-	lir.storageLength = 0;
 	builder.setupEntryExitBlocks;
 
 	IrIndex block1 = builder.addBasicBlock();

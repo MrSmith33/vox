@@ -84,8 +84,8 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 {
 	sink.put("function ");
 	sink.put(ctx.idString(ir.name));
-	sink.putfln("() %s bytes {", ir.storageLength * uint.sizeof);
-	int indexPadding = numDigitsInNumber(ir.storageLength);
+	sink.putfln("() %s bytes {", ir.storage.length * uint.sizeof);
+	int indexPadding = numDigitsInNumber(ir.storage.length);
 
 	InstrPrintInfo printer;
 	printer.context = &ctx;
@@ -193,8 +193,8 @@ void dumpFunctionCFG(ref IrFunction ir, ref TextSink sink, ref CompilationContex
 	sink.put(`digraph "`);
 	sink.put("function ");
 	sink.put(ctx.idString(ir.name));
-	sink.putfln(`() %s bytes" {`, ir.storageLength * uint.sizeof);
-	int indexPadding = numDigitsInNumber(ir.storageLength);
+	sink.putfln(`() %s bytes" {`, ir.storage.length * uint.sizeof);
+	int indexPadding = numDigitsInNumber(ir.storage.length);
 
 	InstrPrintInfo p;
 	p.context = &ctx;

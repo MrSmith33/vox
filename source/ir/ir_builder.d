@@ -63,8 +63,7 @@ struct IrBuilder
 		this.context = context;
 		this.ir = ir;
 
-		ir.storage = context.irBuffer.freePart.ptr;
-		ir.storageLength = 0;
+		ir.storage = context.irBuffer.freePart[0..0];
 
 		blockVarDef.clear();
 
@@ -88,8 +87,7 @@ struct IrBuilder
 		this.context = context;
 		this.ir = lir;
 
-		ir.storage = context.irBuffer.freePart.ptr;
-		ir.storageLength = 0;
+		ir.storage = context.irBuffer.freePart[0..0];
 
 		blockVarDef.clear();
 	}
@@ -100,15 +98,15 @@ struct IrBuilder
 		this.ir = ir;
 
 		// IR is already at the end of buffer
-		if (context.irBuffer.freePart.ptr == ir.storage + ir.storageLength)
+		if (context.irBuffer.freePart.ptr == ir.storage.ptr + ir.storage.length)
 		{
 			// noop
 		}
 		else
 		{
-			uint[] buf = context.irBuffer.voidPut(ir.storageLength);
-			buf = ir.storage[0..ir.storageLength]; // copy
-			ir.storage = buf.ptr;
+			uint[] buf = context.irBuffer.voidPut(ir.storage.length);
+			buf = ir.storage[0..ir.storage.length]; // copy
+			ir.storage = buf;
 		}
 		ir.lastBasicBlock = ir.getBlock(ir.exitBasicBlock).prevBlock;
 
@@ -149,11 +147,11 @@ struct IrBuilder
 	{
 		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
 
-		IrIndex resultIndex = IrIndex(ir.storageLength, getIrValueKind!T);
+		IrIndex resultIndex = IrIndex(cast(uint)ir.storage.length, getIrValueKind!T);
 
 		enum allocSize = divCeil(T.sizeof, uint.sizeof);
 		size_t numAllocatedSlots = allocSize * howMany;
-		ir.storageLength += numAllocatedSlots;
+		ir.storage = ir.storage.ptr[0..ir.storage.length + numAllocatedSlots]; // extend slice
 		context.irBuffer.length += numAllocatedSlots;
 
 		return resultIndex;
@@ -266,9 +264,9 @@ struct IrBuilder
 	void emitInstrPreheader(T)(T preheaderData)
 	{
 		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
-		T* preheader = cast(T*)(&ir.storage[ir.storageLength]);
+		T* preheader = cast(T*)(&ir.storage.ptr[ir.storage.length]);
 		*preheader = preheaderData;
-		ir.storageLength += numAllocatedSlots;
+		ir.storage = ir.storage.ptr[0..ir.storage.length + numAllocatedSlots]; // extend slice
 		context.irBuffer.length += numAllocatedSlots;
 	}
 
