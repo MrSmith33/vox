@@ -47,16 +47,26 @@ Target platforms:
 
 `source` directory content:
 
-* `compiler1.d` - current implementation/tests. Single file.
-* `amd64asm.d` - instruction encoding for amd64 architecture.
-* `pecoff.d` - loading of `.lib`, `.obj` files. Generation of `.exe` files. Linking utilities. Dumping utilities. Works with files in PE/COFF format.
-* `ir_test.d` - implementation of SSA IR construction algorithm.
-* `tinyc.d` - port of tinyc compiler/VM from C to D.
-* `phi_resolution.d` - SSA deconstruction algorithm.
-* `/lang` - old implementation of compiler. Lacks newer features, but has function calls and loops working.
 * `/asmtest` - tests for instruction encodings.
 * `/ir` - IR specific stuff.
-
+* `amd64asm.d` - instruction encoding for amd64 architecture.
+* `ast.d` - Abstract Syntax Tree nodes.
+* `ast_to_ir.d` - IR generation.
+* `bench.d` - compilation benchmark.
+* `driver.d` - compiler driver.
+* `emit_mc_amd64.d` - final machine code generation for amd64 arch.
+* `identifier.d` - Identifier type.
+* `ir_test.d` - implementation of SSA IR construction algorithm.
+* `ir_to_lir_amd64.d` - instruction selection for amd64 arch.
+* `lir_amd64.d` - LIR for amd64 arch.
+* `liveness.d` - liveness analysis.
+* `main.d` - compiler entry.
+* `optimize.d` - some optimizations for IR.
+* `pecoff.d` - loading of `.lib`, `.obj` files. Generation of `.exe` files. Linking utilities. Dumping utilities. Works with files in PE/COFF format.
+* `register_allocation.d` - Linear Scan Register Allocation algorithm.
+* `semantics.d` - semantic analysis passes.
+* `stack_layout.d` - layout of stack slots.
+* `tests.d` - compiler test suite.
 
 # What works
 
