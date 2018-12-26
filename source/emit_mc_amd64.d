@@ -40,6 +40,29 @@ struct CodeEmitter
 
 	void compileModule()
 	{
+		// copy static data into buffer and set offsets
+		foreach(ref IrGlobal global; context.globals)
+		{
+			if (global.isInBuffer) continue; // already in buffer
+			if (global.numUsers == 0) continue; // no users
+
+			// alignment
+			uint padding = paddingSize!uint(context.staticDataBuffer.length, global.alignment);
+			context.staticDataBuffer.voidPut(padding)[] = 0;
+
+			// offset
+			global.staticBufferOffset = context.staticDataBuffer.length;
+			context.staticDataBuffer.put(global.initializer);
+
+			// zero termination
+			if (global.needsZeroTermination)
+				context.staticDataBuffer.put(0);
+
+			global.flags |= IrGlobalFlags.isInBuffer;
+			//writefln("Global %s, size %s, zero %s, offset %s, buf size %s",
+			//	global.initializer, global.length, global.needsZeroTermination, global.staticBufferOffset, context.staticDataBuffer.length);
+		}
+
 		gen.encoder.setBuffer(context.codeBuffer);
 		//writefln("code buf %s", context.codeBuffer.ptr);
 		foreach(f; context.mod.functions) {
@@ -141,7 +164,7 @@ struct CodeEmitter
 		foreach (CallFixup fixup; callFixups.data) {
 			FunctionDeclNode* callee = context.mod.functions[fixup.calleeIndex];
 			//writefln("fix call to '%s' @%s", callee.strId(context), cast(void*)callee.funcPtr);
-			*cast(Imm32*)(fixup.address-4) = jumpOffset(fixup.address, cast(PC)callee.funcPtr);
+			fix_PC_REL_32(fixup.address, cast(PC)callee.funcPtr);
 		}
 		callFixups.clear();
 	}
@@ -149,7 +172,7 @@ struct CodeEmitter
 	void fixJump(PC fixup, lazy IrIndex targetBlock)
 	{
 		PC succPC = blockStarts[lir.getBlock(targetBlock).seqIndex];
-		*cast(Imm32*)(fixup-4) = jumpOffset(fixup, succPC);
+		fix_PC_REL_32(fixup, succPC);
 	}
 
 	void fixJumps()
@@ -183,6 +206,10 @@ struct CodeEmitter
 		param.argType = argType;
 
 		argDst.reg = indexToRegister(dst);
+
+		// HACK, TODO: ESP is generated instead of RSP. Need to store types in instructions / more instruction types
+		if (argDst.reg == Register.SP) param.argType = ArgType.QWORD;
+
 		param.dstKind = AsmArgKind.REG;
 
 		//writefln("%s.%s %s %s", op, argType, dst.type, src.type);
@@ -202,6 +229,9 @@ struct CodeEmitter
 				}
 				param.srcKind = AsmArgKind.IMM;
 				break;
+
+			case global:
+				assert(false); // TODO
 
 			case virtualRegister: context.unreachable; assert(false);
 			case memoryAddress: context.unreachable; assert(false);
@@ -235,7 +265,7 @@ struct CodeEmitter
 			case MoveType.const_to_reg:
 				int con = context.getConstant(src).i32;
 				version(emit_mc_print) writefln("  move.%s reg:%s, con:%s", argType, dstReg, con);
-				if (con == 0)
+				if (con == 0) // xor
 				{
 					AsmArg argDst = {reg : dstReg};
 					AsmArg argSrc = {reg : dstReg};
@@ -246,11 +276,28 @@ struct CodeEmitter
 					gen.mov(dstReg, Imm32(con), argType);
 				break;
 
+			case MoveType.global_to_reg:
+				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
+				IrGlobal* global = &context.getGlobal(src);
+				context.assertf(global.isInBuffer, "Global is not in static data buffer");
+
+				PC globalAddress = cast(PC)context.staticDataBuffer.bufPtr + global.staticBufferOffset;
+				MemAddress addr = memAddrRipDisp32(0);
+				gen.lea(dstReg, addr, ArgType.QWORD);
+				PC fixupAddr = gen.pc;
+				fix_PC_REL_32(fixupAddr, globalAddress);
+				break;
+
 			case MoveType.reg_to_reg:
 				version(emit_mc_print) writefln("  move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
 				gen.mov(dstReg, srcReg, argType);
 				break;
 		}
+	}
+
+	void fix_PC_REL_32(PC fixup, PC target)
+	{
+		*cast(Imm32*)(fixup-4) = jumpOffset(fixup, target);
 	}
 
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
@@ -322,6 +369,7 @@ MoveType calcMoveType(IrValueKind dst, IrValueKind src)
 		case physicalRegister:
 			switch(src) with(IrValueKind) {
 				case constant: return MoveType.const_to_reg;
+				case global: return MoveType.global_to_reg;
 				case physicalRegister: return MoveType.reg_to_reg;
 				case memoryAddress: return MoveType.mem_to_reg;
 				case stackSlot: return MoveType.stack_to_reg;
@@ -347,6 +395,7 @@ enum MoveType
 {
 	invalid,
 	const_to_reg,
+	global_to_reg,
 	const_to_stack,
 	reg_to_reg,
 	reg_to_stack,

@@ -37,7 +37,8 @@ struct AstToIr
 		switch(n.astType) with(AstType)
 		{
 			case expr_var: visitExprValue(cast(VariableExprNode*)n, currentBlock, nextStmt); break;
-			case expr_literal: visitExprValue(cast(LiteralExprNode*)n, currentBlock, nextStmt); break;
+			case literal_int: visitExprValue(cast(IntLiteralExprNode*)n, currentBlock, nextStmt); break;
+			case literal_string: visitExprValue(cast(StringLiteralExprNode*)n, currentBlock, nextStmt); break;
 			case expr_bin_op: visitExprValue(cast(BinaryExprNode*)n, currentBlock, nextStmt); break;
 			case expr_call: visitExprValue(cast(CallExprNode*)n, currentBlock, nextStmt); break;
 			case expr_index: visitExprValue(cast(IndexExprNode*)n, currentBlock, nextStmt); break;
@@ -50,7 +51,7 @@ struct AstToIr
 		context.assertf(n.isExpression, n.loc, "Expected expression, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case expr_var, expr_literal, expr_call, expr_index:
+			case expr_var, literal_int, literal_string, expr_call, expr_index:
 				context.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
 				break;
 
@@ -510,21 +511,24 @@ struct AstToIr
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
-	void visitExprValue(LiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
+	void visitExprValue(IntLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
-		version(CfgGenPrint) writefln("[CFG GEN] beg LITERAL VAL cur %s next %s", currentBlock, nextStmt);
-		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end LITERAL VAL cur %s next %s", currentBlock, nextStmt);
-		version(IrGenPrint) writefln("[IR GEN] literal value (%s) value %s", c.loc, c.value);
+		version(CfgGenPrint) writefln("[CFG GEN] beg INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
+		version(IrGenPrint) writefln("[IR GEN] int literal value (%s) value %s", c.loc, c.value);
 		c.irRef = context.addConstant(IrConstant(c.value));
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
-	void placeUnaryBranch(IrIndex value, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
+	void visitExprValue(StringLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
-		context.unreachable;
-	}
-	void placeBinaryBranch(BinOp op, IrIndex left, IrIndex right, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
-	{
-		context.unreachable;
+		version(CfgGenPrint) writefln("[CFG GEN] beg STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
+		version(IrGenPrint) writefln("[IR GEN] str literal value (%s) value %s", c.loc, c.value);
+		c.irRef = context.addGlobal();
+		IrGlobal* global = &context.getGlobal(c.irRef);
+		global.setInitializer(cast(ubyte[])c.value);
+		global.flags |= IrGlobalFlags.needsZeroTermination;
+		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
 	long calcBinOp(BinOp op, long a, long b)

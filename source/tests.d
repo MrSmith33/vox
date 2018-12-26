@@ -9,7 +9,7 @@ import std.stdio;
 import std.format : formattedWrite;
 import all;
 
-void runAllTests()
+void runDevTests()
 {
 	Driver driver;
 	driver.initialize(compilerPasses);
@@ -19,29 +19,48 @@ void runAllTests()
 
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
+	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
+}
+
+void runAllTests()
+{
+	auto startInitTime = currTime;
+	Driver driver;
+	driver.initialize(compilerPasses);
+	driver.context.validateIr = true;
+	driver.context.printTraceOnError = true;
+	auto endInitTime = currTime;
+
+	FuncDumpSettings dumpSettings;
+	dumpSettings.printBlockFlags = true;
 
 	Test[] testsThatPass = [test7, test8, test8_1, test10, test9, test18, test19,
-		test20, test21, test21_2, test22, test23];
-	void runAll()
-	{
-		size_t numSuccessfulTests;
-		writefln("Running %s tests", testsThatPass.length);
-		auto time1 = currTime;
-		foreach(i, ref test; testsThatPass)
-		{
-			TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
-			if (res == TestResult.failure)
-				writefln("%s/%s %s %s", i+1, testsThatPass.length, test.testName, res);
-			if (res == TestResult.success)
-				++numSuccessfulTests;
-		}
-		auto time2 = currTime;
-		Duration duration = time2-time1;
-		writefln("Done %s/%s successful in %ss", numSuccessfulTests, testsThatPass.length, scaledNumberFmt(duration));
-	}
+		test20, test21, test21_2, test22, test23, test24];
 
-	runAll();
-	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
+	size_t numSuccessfulTests;
+	writefln("Running %s tests", testsThatPass.length);
+	auto time1 = currTime;
+	foreach(i, ref test; testsThatPass)
+	{
+		TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
+		if (res == TestResult.failure)
+			writefln("%s/%s %s %s", i+1, testsThatPass.length, test.testName, res);
+		if (res == TestResult.success)
+			++numSuccessfulTests;
+	}
+	auto time2 = currTime;
+	Duration duration = time2-time1;
+
+	auto startReleaseTime = currTime;
+	driver.releaseMemory;
+	auto endReleaseTime = currTime;
+
+	writefln("Done %s/%s successful in %ss, init %ss, release %ss",
+		numSuccessfulTests,
+		testsThatPass.length,
+		scaledNumberFmt(duration),
+		scaledNumberFmt(endInitTime-startInitTime),
+		scaledNumberFmt(endReleaseTime-startReleaseTime));
 }
 
 enum DumpTest : bool { no = false, yes = true }
@@ -73,6 +92,7 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
 	ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.externalSymbols);
+	driver.markCodeAsExecutable();
 	auto time2 = currTime;
 	times.onIteration(0, time2-time1);
 
@@ -81,8 +101,8 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 	if (dumpTest)
 	{
 		// Text dump
-		//auto astPrinter = AstPrinter(&driver.context, 2);
-		//astPrinter.printAst(cast(AstNode*)mod);
+		auto astPrinter = AstPrinter(&driver.context, 2);
+		astPrinter.printAst(cast(AstNode*)mod);
 
 		writeln("// Source");
 		writeln(curTest.source);
@@ -101,7 +121,12 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 		writeln(sink.text);
 
-		writeln("\n// Amd64 code");
+		writefln("\n// Data: addr 0x%X, size %s",
+			driver.context.staticDataBuffer.bufPtr,
+			driver.context.staticDataBuffer.length);
+		printHex(driver.context.staticDataBuffer.data, 16);
+
+		writefln("\n// Amd64 code: addr 0x%X, size %s", mod.code.ptr, mod.code.length);
 		printHex(mod.code, 16);
 
 		writeln;
@@ -585,6 +610,23 @@ i32 test() {
 alias Func23 = extern(C) int function();
 void tester23(Func23 fun) { int res = fun(); assert(res == 7); }
 auto test23 = Test("Test 23", input23, "test", cast(Test.Tester)&tester23);
+
+// test string literal
+immutable input24 = q{
+	void print(u8*);
+	void test(){ print("Hello"); }
+};
+extern(C) static void test24_external_print(ubyte* param) {
+	testSink.put(cast(char[])param[0..5]); // Hello
+}
+alias Func24 = extern(C) void function();
+void tester24(Func24 fun) {
+	fun();
+	assert(testSink.text == "Hello");
+	testSink.clear;
+}
+auto test24 = Test("String literal", input24, "test", cast(Test.Tester)&tester24,
+	[ExternalSymbol("print", cast(void*)&test24_external_print)]);
 
 void testNativeFun()
 {

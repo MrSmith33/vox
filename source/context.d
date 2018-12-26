@@ -24,6 +24,10 @@ struct CompilationContext
 	FixedBuffer!uint irBuffer;
 	/// Buffer for intra-pass temporary data
 	FixedBuffer!uint tempBuffer;
+	/// Buffer for string/array/struct literals
+	/// String literals have \0 after last character
+	/// Must be allocated before or after code segment to allow relative addressing
+	FixedBuffer!ubyte staticDataBuffer;
 
 	/// Module declaration
 	ModuleDeclNode* mod;
@@ -34,6 +38,8 @@ struct CompilationContext
 
 	/// Global constant array
 	IrConstant[] constants;
+	/// Module global values and literals.
+	IrGlobal[] globals;
 	/// Identifier interning/deduplication
 	IdentifierMap idMap;
 	/// True if current/last pass had errors
@@ -48,8 +54,10 @@ struct CompilationContext
 	bool buildDebug = false;
 	/// If true, every pass that generates IR, performs validation
 	bool validateIr = false;
+	///
 	bool useFramePointer = false;
 
+	///
 	IrIndex addConstant(IrConstant con)
 	{
 		IrIndex conIndex = IrIndex(cast(uint)constants.length, IrValueKind.constant);
@@ -57,6 +65,7 @@ struct CompilationContext
 		return conIndex;
 	}
 
+	///
 	ref IrConstant getConstant(IrIndex index)
 	{
 		assert(index.kind == IrValueKind.constant);
@@ -64,6 +73,23 @@ struct CompilationContext
 		return constants[index.storageUintIndex];
 	}
 
+	///
+	IrIndex addGlobal()
+	{
+		IrIndex globalIndex = IrIndex(cast(uint)globals.length, IrValueKind.global);
+		globals ~= IrGlobal();
+		return globalIndex;
+	}
+
+	///
+	ref IrGlobal getGlobal(IrIndex index)
+	{
+		assert(index.kind == IrValueKind.global);
+		assert(index.storageUintIndex < globals.length);
+		return globals[index.storageUintIndex];
+	}
+
+	///
 	string idString(const Identifier id) { return idMap.get(id); }
 
 	static __gshared BasicTypeNode[] basicTypes = [

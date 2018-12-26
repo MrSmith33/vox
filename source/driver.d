@@ -35,6 +35,7 @@ struct Driver
 
 	Win32Allocator allocator;
 	ubyte[] codeBuffer;
+	ubyte[] staticBuffer;
 	ubyte[] irBuffer;
 	ubyte[] tempBuffer;
 
@@ -48,21 +49,23 @@ struct Driver
 		size_t thisAddr = cast(size_t)(&funWithAddress); // take address of function in memory
 		size_t step = 0x10_000_000;
 		size_t aligned = alignValue(thisAddr, step) + step*5;
-		codeBuffer = allocate(PAGE_SIZE * 8, cast(void*)aligned, MemType.RWX);
-		//writefln("thisAddr h%X, codeBuffer h%X..h%X", thisAddr, codeBuffer.ptr, codeBuffer.ptr+codeBuffer.length);
+
+		// Ideally we would allocate 4GB for code and data, split in 2 2-gig parts
+		ubyte[] codeAndData = allocate(PAGE_SIZE * 64, cast(void*)aligned, MemType.RW);
+		codeBuffer = codeAndData[0..PAGE_SIZE * 32];
+		staticBuffer = codeAndData[PAGE_SIZE * 32..$];
+		//writefln("thisAddr h%X, data h%X..h%X, code h%X..h%X", thisAddr,
+		//	staticBuffer.ptr, staticBuffer.ptr+staticBuffer.length,
+		//	codeBuffer.ptr, codeBuffer.ptr+codeBuffer.length);
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		size_t irMemSize = 1024UL*1024*1024*2;
-		size_t arrSizes = 1024UL*1024*1024;
+		enum GiB = 1024UL*1024*1024;
+		size_t irMemSize = GiB*2;
 		bool success = allocator.reserve(irMemSize);
 		context.assertf(success, "allocator failed");
 
-		irBuffer = cast(ubyte[])allocator.allocate(arrSizes);
-		tempBuffer = cast(ubyte[])allocator.allocate(arrSizes);
-
-		context.codeBuffer = codeBuffer;
-		context.irBuffer.setBuffer(cast(uint[])irBuffer);
-		context.tempBuffer.setBuffer(cast(uint[])tempBuffer);
+		irBuffer = cast(ubyte[])allocator.allocate(GiB);
+		tempBuffer = cast(ubyte[])allocator.allocate(GiB);
 	}
 
 	void releaseMemory()
@@ -72,6 +75,12 @@ struct Driver
 
 	ModuleDeclNode* compileModule(string moduleSource, ExternalSymbol[] externalSymbols)
 	{
+		markAsRW(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
+		context.codeBuffer = codeBuffer;
+		context.irBuffer.setBuffer(irBuffer);
+		context.tempBuffer.setBuffer(tempBuffer);
+		context.staticDataBuffer.setBuffer(staticBuffer);
+
 		context.input = moduleSource;
 		foreach (ref extSym; externalSymbols)
 			context.externalSymbols[context.idMap.getOrReg(extSym.name)] = extSym;
@@ -91,6 +100,12 @@ struct Driver
 		}
 
 		return context.mod;
+	}
+
+	/// Must be called after compilation is finished and before execution
+	void markCodeAsExecutable()
+	{
+		markAsExecutable(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
 	}
 }
 

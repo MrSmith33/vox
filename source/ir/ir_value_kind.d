@@ -15,6 +15,7 @@ enum IrValueKind : ubyte
 	instruction,
 	basicBlock,
 	constant,
+	global, /// Index of global var or const (or literal data)
 	phi,
 	memoryAddress,
 	stackSlot,

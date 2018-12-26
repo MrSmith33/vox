@@ -111,7 +111,7 @@ void removeInstruction(ref IrFunction ir, IrIndex instrIndex)
 		ir.getBlock(instrHeader.nextInstr).lastInstr = instrHeader.prevInstr;
 }
 
-void removeUser(ref IrFunction ir, IrIndex user, IrIndex used) {
+void removeUser(ref CompilationContext context, ref IrFunction ir, IrIndex user, IrIndex used) {
 	assert(used.isDefined, "used is undefined");
 	final switch (used.kind) with(IrValueKind) {
 		case none: assert(false, "removeUser none");
@@ -119,6 +119,9 @@ void removeUser(ref IrFunction ir, IrIndex user, IrIndex used) {
 		case instruction: assert(false, "removeUser instruction");
 		case basicBlock: break; // allowed. As argument of jmp jcc
 		case constant: break; // allowed, noop
+		case global:
+			context.getGlobal(used).removeUser(user);
+			break;
 		case phi: assert(false, "removeUser phi"); // must be virt reg instead
 		case memoryAddress: break; // allowed, noop
 		case stackSlot: break; // allowed, noop

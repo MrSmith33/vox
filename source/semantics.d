@@ -221,7 +221,8 @@ struct SemanticDeclarations
 	void visit(ContinueStmtNode* r) {}
 	void visit(AssignStmtNode* a) {}
 	void visit(VariableExprNode* v) {}
-	void visit(LiteralExprNode* c) {}
+	void visit(IntLiteralExprNode* c) {}
+	void visit(StringLiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {}
 	void visit(CallExprNode* c) {}
 	void visit(IndexExprNode* i) {}
@@ -303,7 +304,8 @@ struct SemanticLookup
 	void visit(ContinueStmtNode* r) {}
 	void visit(AssignStmtNode* a) { _visit(a.left); _visit(a.right); }
 	void visit(VariableExprNode* v) { v.resolveSymbol = scopeStack.lookup(v.id, v.loc); }
-	void visit(LiteralExprNode* c) {}
+	void visit(IntLiteralExprNode* c) {}
+	void visit(StringLiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) { _visit(b.left); _visit(b.right); }
 	void visit(CallExprNode* c) {
 		c.resolveSymbol = scopeStack.lookup(c.id, c.loc);
@@ -333,6 +335,7 @@ struct SemanticStaticTypes
 
 	CompilationContext* context;
 	FunctionDeclNode* curFunc;
+	PtrTypeNode* u8Ptr;
 
 	bool isBool(TypeNode* type)
 	{
@@ -529,6 +532,7 @@ struct SemanticStaticTypes
 	}
 
 	void visit(ModuleDeclNode* m) {
+		u8Ptr = new PtrTypeNode(SourceLocation(), context.basicTypeNodes(BasicType.t_u8));
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(FunctionDeclNode* f) {
@@ -635,8 +639,11 @@ struct SemanticStaticTypes
 		v.type = v.getSym.getType;
 		v.type.assertImplemented(v.loc, context);
 	}
-	void visit(LiteralExprNode* c) {
-		//v.type =
+	void visit(IntLiteralExprNode* c) {
+		c.type = context.basicTypeNodes(BasicType.t_i32);
+	}
+	void visit(StringLiteralExprNode* c) {
+		c.type = cast(TypeNode*) u8Ptr;
 	}
 	void visit(BinaryExprNode* b) {
 		_visit(b.left);
@@ -660,7 +667,7 @@ struct SemanticStaticTypes
 		foreach (i, ExpressionNode* arg; c.args)
 		{
 			_visit(arg);
-			if (arg.type != params[i].type)
+			if (!sameType(arg.type, params[i].type))
 				context.error(arg.loc,
 					"Parameter %s, must have type %s, not %s", i+1,
 						params[i].type.printer(context),

@@ -36,8 +36,8 @@ version(Posix)
 }
 else version(Windows)
 {
-	import core.sys.windows.windows : GetLastError, VirtualAlloc, VirtualFree, VirtualProtect, MEM_COMMIT,
-		PAGE_READWRITE, MEM_RELEASE, PAGE_EXECUTE_READWRITE, MEM_RESERVE;
+	import core.sys.windows.windows : FlushInstructionCache, GetLastError, GetCurrentProcess, VirtualAlloc, VirtualFree, VirtualProtect,
+		MEM_COMMIT, PAGE_READWRITE, MEM_RELEASE, PAGE_EXECUTE_READWRITE, MEM_RESERVE, PAGE_EXECUTE;
 
 	ubyte[] allocate(size_t bytes, void* location, MemType memoryType)
 	{
@@ -76,6 +76,13 @@ else version(Windows)
 	{
 		uint val;
 		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_READWRITE, &val);
+	}
+
+	void markAsExecutable(void* addr, size_t numPages)
+	{
+		uint val;
+		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_EXECUTE, &val);
+		FlushInstructionCache(GetCurrentProcess(), addr, numPages*PAGE_SIZE);
 	}
 
 	void testAdresses()
@@ -402,11 +409,10 @@ struct FixedBuffer(T)
 {
 	T* bufPtr;
 	uint capacity;
-	void setBuffer(uint[] newBuffer) {
+	void setBuffer(ubyte[] newBuffer) {
 		bufPtr = cast(T*)newBuffer.ptr;
 		assert(bufPtr);
-		static assert(T.sizeof % uint.sizeof == 0, "T.sizeof is not multiple of uint.sizeof");
-		size_t bufLen = newBuffer.length / divCeil(T.sizeof, uint.sizeof);
+		size_t bufLen = newBuffer.length / T.sizeof;
 		assert(bufLen <= uint.max, "capacity overflow");
 		capacity = cast(uint)bufLen;
 		length = 0;
@@ -493,11 +499,12 @@ struct Win32Allocator
 
 	void releaseMemory()
 	{
-		VirtualFree(bufferPtr, 0, MEM_RELEASE);
+		int result = VirtualFree(bufferPtr, 0, MEM_RELEASE);
 		bufferPtr = null;
 		reservedBytes = 0;
 		committedBytes = 0;
 		allocatedBytes = 0;
+		assert(result != 0, format("VirtualFree failed %s 0 MEM_RELEASE", bufferPtr));
 	}
 
 	void[] allocate(size_t numBytes)

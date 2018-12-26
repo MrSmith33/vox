@@ -85,7 +85,7 @@ void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction i
 
 			// we found some dead instruction, remove it
 			foreach(ref IrIndex arg; instrHeader.args) {
-				removeUser(ir, instrIndex, arg);
+				removeUser(context, ir, instrIndex, arg);
 			}
 			removeInstruction(ir, instrIndex);
 			//writefln("remove dead %s", instrIndex);

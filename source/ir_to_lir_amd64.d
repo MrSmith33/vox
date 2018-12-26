@@ -68,6 +68,7 @@ struct IrToLir
 			assert(index.isDefined);
 			if (index.kind == IrValueKind.constant) return;
 			if (index.kind == IrValueKind.physicalRegister) return;
+			if (index.kind == IrValueKind.global) return;
 
 			//writefln("%s -> %s", index, mirror[index.storageUintIndex]);
 			index = mirror[index];

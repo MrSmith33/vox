@@ -177,7 +177,7 @@ unittest
 	IrBuilder builder;
 	builder.context = &context;
 	builder.ir = &ir;
-	uint[1024] irBuf, tempBuf;
+	ubyte[1024] irBuf, tempBuf;
 	context.irBuffer.setBuffer(irBuf[]);
 	context.tempBuffer.setBuffer(tempBuf[]);
 	SmallVector vec;

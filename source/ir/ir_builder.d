@@ -160,7 +160,6 @@ struct IrBuilder
 	/// appendVoid + appendBlockInstr
 	IrIndex appendVoidToBlock(T)(IrIndex blockIndex, uint howMany = 1)
 	{
-		// TODO: check that T is instruction
 		IrIndex instr = appendVoid!T(howMany);
 		appendBlockInstr(blockIndex, instr);
 		return instr;
@@ -249,6 +248,9 @@ struct IrBuilder
 			case instruction: assert(false, "addUser instruction");
 			case basicBlock: break; // allowed. As argument of jmp jcc
 			case constant: break; // allowed, noop
+			case global:
+				context.getGlobal(used).addUser(user);
+				break;
 			case phi: assert(false, "addUser phi"); // must be virt reg instead
 			case memoryAddress: break; // allowed, noop
 			case stackSlot: break; // allowed, noop
@@ -802,6 +804,7 @@ struct IrBuilder
 			case instruction: return someIndex;
 			case basicBlock: assert(false);
 			case constant: assert(false);
+			case global: assert(false);
 			case phi: return someIndex;
 			case memoryAddress: assert(false); // TODO
 			case stackSlot: assert(false); // TODO
@@ -829,6 +832,7 @@ struct IrBuilder
 					break;
 				case basicBlock: assert(false);
 				case constant: assert(false);
+				case global: assert(false);
 				case phi:
 					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(*ir))
 						if (phiArg.value == what)
@@ -845,11 +849,13 @@ struct IrBuilder
 		}
 	}
 
+	// Replace a user 'what' that uses 'used' by 'byWhat' in a list of users inside 'what'
 	private void replaceUserWith(IrIndex used, IrIndex what, IrIndex byWhat) {
 		final switch (used.kind) with(IrValueKind) {
 			case none, listItem, basicBlock, physicalRegister: assert(false);
 			case instruction: return ir.getVirtReg(ir.get!IrInstrHeader(used).result).users.replaceAll(*ir, what, byWhat);
-			case constant: return; // constants dont track users
+			case constant: return; // constants dont track individual users
+			case global: return; // globals dont track individual users
 			case phi: return ir.getVirtReg(ir.get!IrPhi(used).result).users.replaceAll(*ir, what, byWhat);
 			case memoryAddress: assert(false); // TODO, has single user
 			case stackSlot: assert(false); // TODO

@@ -526,7 +526,7 @@ struct LinearScan
 			{
 				final switch (userIndex.kind) with(IrValueKind)
 				{
-					case none, listItem, virtualRegister, physicalRegister, constant, basicBlock, stackSlot: assert(false);
+					case none, listItem, virtualRegister, physicalRegister, constant, global, basicBlock, stackSlot: assert(false);
 					case instruction:
 						foreach (ref IrIndex arg; lir.get!IrInstrHeader(userIndex).args)
 							if (arg == vregIndex)
@@ -809,7 +809,7 @@ struct MoveSolver
 		registers = context.allocateTempArray!ValueInfo(cast(uint)numRegs);
 		size_t numStackSlots = fun.stackLayout.slots.length;
 		stackSlots = context.allocateTempArray!ValueInfo(cast(uint)numStackSlots);
-		writtenNodesBuf.setBuffer(context.tempBuffer.freePart);
+		writtenNodesBuf.setBuffer(cast(ubyte[])context.tempBuffer.freePart);
 	}
 
 	void onEdge()

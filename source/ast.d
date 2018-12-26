@@ -31,11 +31,13 @@ enum AstType : ubyte {
 	stmt_assign,
 
 	expr_var,
-	expr_literal,
 	expr_bin_op,
 	expr_call,
 	expr_index,
 	expr_type_conv,
+
+	literal_int,
+	literal_string,
 
 	type_basic,
 	type_ptr,
@@ -52,6 +54,7 @@ enum AstFlags {
 	isSymResolved = 1 << 5,
 	/// Is added to expression nodes that are being assigned to
 	isLvalue      = 1 << 6,
+	isLiteral     = 1 << 7,
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
@@ -82,6 +85,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isType() { return cast(bool)(flags & AstFlags.isType); }
 	bool isSymResolved() { return cast(bool)(flags & AstFlags.isSymResolved); }
 	bool isLvalue() { return cast(bool)(flags & AstFlags.isLvalue); }
+	bool isLiteral() { return cast(bool)(flags & AstFlags.isLiteral); }
 }
 
 mixin template SymRefNodeData() {
@@ -166,27 +170,6 @@ struct TypeNode {
 
 	TypePrinter printer(CompilationContext* context) {
 		return TypePrinter(&this, context);
-	}
-
-	bool sameType(TypeNode* t2) {
-		assert(isType, format("this is %s, not type", astType));
-		assert(t2.isType, format("t2 is %s, not type", t2.astType));
-		if (astType != t2.astType) return false;
-
-		switch(astType)
-		{
-			case AstType.type_basic:
-				return basicTypeNode.basicType == t2.basicTypeNode.basicType;
-			case AstType.type_ptr:
-				return ptrTypeNode.base == t2.ptrTypeNode.base;
-			case AstType.type_static_array:
-				return staticArrayTypeNode.base == t2.staticArrayTypeNode.base &&
-					staticArrayTypeNode.length == t2.staticArrayTypeNode.length;
-			case AstType.type_user:
-				return cast(void*)(&this) == cast(void*)(t2);
-			default:
-				assert(false, format("got %s %s", astType, t2.astType));
-		}
 	}
 
 	bool isVoid() {
@@ -277,6 +260,24 @@ struct TypeNode {
 	}
 }
 
+bool sameType(TypeNode* t1, TypeNode* t2) {
+	assert(t1.isType, format("this is %s, not type", t1.astType));
+	assert(t2.isType, format("t2 is %s, not type", t2.astType));
+
+	if (t1.astType != t2.astType) return false;
+
+	switch(t1.astType) with(AstType)
+	{
+		case type_basic:
+			return t1.basicTypeNode.basicType == t2.basicTypeNode.basicType;
+		case type_ptr: return sameType(t1.ptrTypeNode, t2.ptrTypeNode);
+		case type_static_array: return sameType(t1.staticArrayTypeNode, t2.staticArrayTypeNode);
+		case type_user: return cast(void*)(t1) == cast(void*)(t2);
+		default:
+			assert(false, format("got %s %s", t1.astType, t2.astType));
+	}
+}
+
 enum BasicTypeFlag : ubyte {
 	isFloat    = 1 << 0,
 	isInteger  = 1 << 1,
@@ -313,6 +314,11 @@ struct PtrTypeNode {
 	ulong alignment() { return POINTER_SIZE; }
 }
 
+bool sameType(PtrTypeNode* t1, PtrTypeNode* t2)
+{
+	return sameType(t1.base, t2.base);
+}
+
 struct StaticArrayTypeNode {
 	mixin TypeNodeData!(AstType.type_static_array);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
@@ -320,6 +326,11 @@ struct StaticArrayTypeNode {
 	ulong length;
 	ulong size() { return base.size * length; }
 	ulong alignment() { return base.alignment; }
+}
+
+bool sameType(StaticArrayTypeNode* t1, StaticArrayTypeNode* t2)
+{
+	return sameType(t1.base, t2.base) && (t1.length == t2.length);
 }
 
 struct UserTypeNode {
@@ -477,8 +488,8 @@ struct AssignStmtNode {
 
 // ------------------------------- Expressions ---------------------------------
 // -----------------------------------------------------------------------------
-mixin template ExpressionNodeData(AstType _astType) {
-	mixin AstNodeData!(_astType, AstFlags.isExpression);
+mixin template ExpressionNodeData(AstType _astType, int default_flags = 0) {
+	mixin AstNodeData!(_astType, default_flags | AstFlags.isExpression);
 	TypeNode* type;
 	IrIndex irRef;
 }
@@ -493,9 +504,14 @@ struct VariableExprNode {
 	mixin SymRefNodeData;
 }
 
-struct LiteralExprNode {
-	mixin ExpressionNodeData!(AstType.expr_literal);
+struct IntLiteralExprNode {
+	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral);
 	long value;
+}
+
+struct StringLiteralExprNode {
+	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral);
+	string value;
 }
 
 enum BinOp : ubyte {
@@ -587,10 +603,12 @@ mixin template AstVisitorMixin() {
 		{
 			case error: context.internal_error(n.loc, "Visiting error node"); break;
 			case abstract_node: context.internal_error(n.loc, "Visiting abstract node"); break;
+
 			case decl_module: auto m = cast(ModuleDeclNode*)n; visit(m); break;
 			case decl_function: auto f = cast(FunctionDeclNode*)n; visit(f); break;
 			case decl_var: auto v = cast(VariableDeclNode*)n; visit(v); break;
 			case decl_struct: auto s = cast(StructDeclNode*)n; visit(s); break;
+
 			case stmt_block: auto b = cast(BlockStmtNode*)n; visit(b); break;
 			case stmt_if: auto i = cast(IfStmtNode*)n; visit(i); break;
 			case stmt_while: auto w = cast(WhileStmtNode*)n; visit(w); break;
@@ -599,12 +617,16 @@ mixin template AstVisitorMixin() {
 			case stmt_break: auto b = cast(BreakStmtNode*)n; visit(b); break;
 			case stmt_continue: auto c = cast(ContinueStmtNode*)n; visit(c); break;
 			case stmt_assign: auto a = cast(AssignStmtNode*)n; visit(a); break;
+
 			case expr_var: auto v = cast(VariableExprNode*)n; visit(v); break;
-			case expr_literal: auto l = cast(LiteralExprNode*)n; visit(l); break;
 			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visit(b); break;
 			case expr_call: auto c = cast(CallExprNode*)n; visit(c); break;
 			case expr_index: auto i = cast(IndexExprNode*)n; visit(i); break;
 			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visit(t); break;
+
+			case literal_int: auto l = cast(IntLiteralExprNode*)n; visit(l); break;
+			case literal_string: auto l = cast(StringLiteralExprNode*)n; visit(l); break;
+
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
 			case type_static_array: auto t = cast(StaticArrayTypeNode*)n; visit(t); break;
@@ -719,7 +741,8 @@ struct AstPrinter {
 		else
 			print("VAR_USE ", v.strId(context));
 	}
-	void visit(LiteralExprNode* c) { print("LITERAL ", c.type.printer(context), " ", c.value); }
+	void visit(IntLiteralExprNode* lit) { print("Int LITERAL ", lit.type.printer(context), " ", lit.value); }
+	void visit(StringLiteralExprNode* lit) { print("String LITERAL ", lit.type.printer(context), " ", lit.value); }
 	void visit(BinaryExprNode* b) {
 		if (b.type) print("BINOP ", b.type.printer(context), " ", b.op);
 		else print("BINOP ", b.op);
@@ -811,7 +834,8 @@ struct AstDotPrinter {
 		else
 			printLabel(v, `VAR_USE\n%s`, v.strId(context));
 	}
-	void visit(LiteralExprNode* c) { printLabel(c, `LITERAL\n%s %s`, c.type.printer(context), c.value); }
+	void visit(IntLiteralExprNode* lit) { printLabel(lit, `Int LITERAL\n%s %s`, lit.type.printer(context), lit.value); }
+	void visit(StringLiteralExprNode* lit) { printLabel(lit, `String LITERAL\n%s %s`, lit.type.printer(context), lit.value); }
 	void visit(BinaryExprNode* b) {
 		if (b.type) printLabel(b, `BINOP\n%s %s`, b.type.printer(context), b.op);
 		else printLabel(b, `BINOP\n%s`, b.op);
