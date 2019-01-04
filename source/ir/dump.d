@@ -259,8 +259,37 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, 
 		case stackSlot: sink.formattedWrite("s.%s", index.storageUintIndex); break;
 		case virtualRegister: sink.formattedWrite("v.%s", index.storageUintIndex); break;
 		case physicalRegister: sink.formattedWrite("p.%s", index.storageUintIndex); break;
+		case type: dumpIrType(sink, p, index); break;
 	}
 }
+
+void dumpIrType(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, IrIndex type)
+{
+	final switch(type.typeKind) with(IrTypeKind) {
+		case basic: sink.formattedWrite("%s", cast(IrValueType)type.typeIndex); break;
+		case pointer:
+			dumpIrType(sink, p, p.context.getType!IrTypePointer(type).baseType);
+			sink("*");
+			break;
+		case array:
+			auto array = p.context.getType!IrTypeArray(type);
+			sink.formattedWrite("[%s x ", array.size);
+			dumpIrType(sink, p, array.elemType);
+			sink("]");
+			break;
+		case struct_t:
+			IrTypeStruct* struct_t = &p.context.getType!IrTypeStruct(type);
+			sink("}");
+			foreach(i, IrTypeStructMember member; struct_t.members)
+			{
+				if (i > 0) sink(", ");
+				dumpIrType(sink, p, member.type);
+			}
+			sink("}");
+			break;
+	}
+}
+
 
 void dumpIrInstr(ref InstrPrintInfo p)
 {

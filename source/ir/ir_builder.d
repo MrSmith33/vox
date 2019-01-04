@@ -258,6 +258,7 @@ struct IrBuilder
 				ir.getVirtReg(used).users.append(&this, user);
 				break;
 			case physicalRegister: break; // allowed, noop
+			case type: break; // allowed, noop (no user tracking)
 		}
 	}
 
@@ -810,6 +811,7 @@ struct IrBuilder
 			case stackSlot: assert(false); // TODO
 			case virtualRegister: return ir.getVirtReg(someIndex).definition;
 			case physicalRegister: assert(false);
+			case type: assert(false);
 		}
 	}
 
@@ -845,6 +847,7 @@ struct IrBuilder
 				case stackSlot: assert(false); // TODO
 				case virtualRegister: assert(false);
 				case physicalRegister: assert(false);
+				case type: assert(false);
 			}
 		}
 	}
@@ -860,6 +863,7 @@ struct IrBuilder
 			case memoryAddress: assert(false); // TODO, has single user
 			case stackSlot: assert(false); // TODO
 			case virtualRegister: return ir.getVirtReg(used).users.replaceAll(*ir, what, byWhat);
+			case type: return; // no user tracking
 		}
 	}
 }

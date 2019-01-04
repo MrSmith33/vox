@@ -18,6 +18,7 @@ public import ir.ir_index;
 public import ir.ir_instructions;
 public import ir.ir_module;
 public import ir.ir_phi;
+public import ir.ir_type;
 public import ir.ir_value_kind;
 public import ir.ir_virt_reg;
 public import ir.small_vector;
@@ -89,17 +90,6 @@ struct IrConstant
 
 struct IrVarId { uint id; alias id this; }
 struct IrVar { Identifier name; IrVarId id; IrValueType type; }
-
-enum IrValueType : ubyte
-{
-	void_t,
-	i32,
-	i64,
-	//f32,
-	//f64,
-
-	ptr,
-}
 
 struct BlockVarPair
 {

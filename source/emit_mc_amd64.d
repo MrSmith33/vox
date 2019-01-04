@@ -216,7 +216,7 @@ struct CodeEmitter
 
 		final switch (src.kind) with(IrValueKind)
 		{
-			case none, listItem, instruction, basicBlock, phi: assert(false);
+			case none, listItem, instruction, basicBlock, phi, type: assert(false);
 			case constant:
 				IrConstant con = context.getConstant(src);
 				if (con.numSignedBytes == 1) {

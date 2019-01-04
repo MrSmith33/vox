@@ -37,6 +37,7 @@ struct Driver
 	ubyte[] codeBuffer;
 	ubyte[] staticBuffer;
 	ubyte[] irBuffer;
+	ubyte[] modIrBuffer;
 	ubyte[] tempBuffer;
 
 	static void funWithAddress(){}
@@ -50,7 +51,7 @@ struct Driver
 		size_t step = 0x10_000_000;
 		size_t aligned = alignValue(thisAddr, step) + step*5;
 
-		// Ideally we would allocate 4GB for code and data, split in 2 2-gig parts
+		// Ideally we would allocate 2GB for code and data, split in 2 1-gig parts
 		ubyte[] codeAndData = allocate(PAGE_SIZE * 64, cast(void*)aligned, MemType.RW);
 		codeBuffer = codeAndData[0..PAGE_SIZE * 32];
 		staticBuffer = codeAndData[PAGE_SIZE * 32..$];
@@ -60,11 +61,12 @@ struct Driver
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
 		enum GiB = 1024UL*1024*1024;
-		size_t irMemSize = GiB*2;
+		size_t irMemSize = GiB*3;
 		bool success = allocator.reserve(irMemSize);
 		context.assertf(success, "allocator failed");
 
 		irBuffer = cast(ubyte[])allocator.allocate(GiB);
+		modIrBuffer = cast(ubyte[])allocator.allocate(GiB);
 		tempBuffer = cast(ubyte[])allocator.allocate(GiB);
 	}
 
@@ -78,6 +80,7 @@ struct Driver
 		markAsRW(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
 		context.codeBuffer = codeBuffer;
 		context.irBuffer.setBuffer(irBuffer);
+		context.moduleIrBuffer.setBuffer(modIrBuffer);
 		context.tempBuffer.setBuffer(tempBuffer);
 		context.staticDataBuffer.setBuffer(staticBuffer);
 

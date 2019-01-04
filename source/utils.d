@@ -409,6 +409,8 @@ struct FixedBuffer(T)
 {
 	T* bufPtr;
 	uint capacity;
+	uint length;
+
 	void setBuffer(ubyte[] newBuffer) {
 		bufPtr = cast(T*)newBuffer.ptr;
 		assert(bufPtr);
@@ -418,8 +420,6 @@ struct FixedBuffer(T)
 		length = 0;
 	}
 	T[] buf() { return bufPtr[0..capacity]; }
-
-	uint length;
 
 	bool empty() { return length == 0; }
 

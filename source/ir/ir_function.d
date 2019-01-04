@@ -129,6 +129,7 @@ void removeUser(ref CompilationContext context, ref IrFunction ir, IrIndex user,
 			ir.getVirtReg(used).users.remove(ir, user);
 			break;
 		case physicalRegister: break; // allowed, noop
+		case type: break; // no user tracking
 	}
 }
 

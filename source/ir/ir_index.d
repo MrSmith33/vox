@@ -34,6 +34,12 @@ struct IrIndex
 			uint,        "storageUintIndex", 28, // may be 0 for defined index
 			IrValueKind, "kind",              4  // is never 0 for defined index
 		));
+		mixin(bitfields!(
+			// if typeKind is basic, then typeIndex contains IrValueType
+			uint,        "typeIndex",        24, // may be 0 for defined index
+			IrTypeKind,  "typeKind",          4, // type kind
+			IrValueKind, "",                  4  // index kind
+		));
 		uint asUint; // is 0 for undefined index
 	}
 	static assert(IrValueKind.max <= 0b1111, "4 bits are reserved");

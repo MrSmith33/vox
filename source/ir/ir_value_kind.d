@@ -21,4 +21,5 @@ enum IrValueKind : ubyte
 	stackSlot,
 	virtualRegister,
 	physicalRegister,
+	type
 }

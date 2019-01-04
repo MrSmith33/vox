@@ -229,7 +229,7 @@ struct TypeNode {
 			}
 			break;
 
-			case AstType.type_ptr: return IrValueType.ptr;
+			//case AstType.type_ptr: return IrValueType.ptr;
 
 			default: break;
 		}
