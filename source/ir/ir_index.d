@@ -34,6 +34,7 @@ struct IrIndex
 			uint,        "storageUintIndex", 28, // may be 0 for defined index
 			IrValueKind, "kind",              4  // is never 0 for defined index
 		));
+		// types are stored in 8-byte chunked buffer
 		mixin(bitfields!(
 			// if typeKind is basic, then typeIndex contains IrValueType
 			uint,        "typeIndex",        24, // may be 0 for defined index
@@ -44,26 +45,6 @@ struct IrIndex
 	}
 	static assert(IrValueKind.max <= 0b1111, "4 bits are reserved");
 	bool isDefined() { return asUint != 0; }
-
-	void toString(scope void delegate(const(char)[]) sink) const {
-		if (asUint == 0) {
-			sink("<null>");
-			return;
-		}
-
-		switch(kind) with(IrValueKind) {
-			default: sink.formattedWrite("0x%X", asUint); break;
-			case listItem: sink.formattedWrite("l.%s", storageUintIndex); break;
-			case instruction: sink.formattedWrite("i.%s", storageUintIndex); break;
-			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
-			case constant: sink.formattedWrite("c.%s", storageUintIndex); break;
-			case phi: sink.formattedWrite("phi.%s", storageUintIndex); break;
-			case memoryAddress: sink.formattedWrite("m.%s", storageUintIndex); break;
-			case stackSlot: sink.formattedWrite("s.%s", storageUintIndex); break;
-			case virtualRegister: sink.formattedWrite("v.%s", storageUintIndex); break;
-			case physicalRegister: sink.formattedWrite("p.%s", storageUintIndex); break;
-		}
-	}
 
 	/// When this index represents index of 0's array item, produces
 	/// index of this array items. Calling with 0 returns itself.
@@ -86,4 +67,5 @@ struct IrIndex
 			kind == IrValueKind.physicalRegister;
 	}
 	bool isStackSlot() { return kind == IrValueKind.stackSlot; }
+	bool isType() { return kind == IrValueKind.type; }
 }

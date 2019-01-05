@@ -80,7 +80,7 @@ struct Driver
 		markAsRW(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
 		context.codeBuffer = codeBuffer;
 		context.irBuffer.setBuffer(irBuffer);
-		context.moduleIrBuffer.setBuffer(modIrBuffer);
+		context.types.buffer.setBuffer(modIrBuffer);
 		context.tempBuffer.setBuffer(tempBuffer);
 		context.staticDataBuffer.setBuffer(staticBuffer);
 

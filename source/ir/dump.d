@@ -67,6 +67,16 @@ IrDumpHandlers[] instrSetDumpHandlers = [
 	IrDumpHandlers(&dumpAmd64Instr, &dumpLirAmd64Index),
 ];
 
+void dumpTypes(ref TextSink sink, ref CompilationContext ctx)
+{
+	IrIndex type = ctx.types.firstType;
+	while (type.isDefined)
+	{
+		sink.putfln("%s", IrTypeDump(type, ctx));
+		type = ctx.types.get!IrTypeHeader(type).nextType;
+	}
+}
+
 void dumpFunction(ref IrFunction ir, ref CompilationContext ctx)
 {
 	FuncDumpSettings settings;
@@ -259,31 +269,45 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, 
 		case stackSlot: sink.formattedWrite("s.%s", index.storageUintIndex); break;
 		case virtualRegister: sink.formattedWrite("v.%s", index.storageUintIndex); break;
 		case physicalRegister: sink.formattedWrite("p.%s", index.storageUintIndex); break;
-		case type: dumpIrType(sink, p, index); break;
+		case type: dumpIrType(sink, *p.context, index); break;
 	}
 }
 
-void dumpIrType(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, IrIndex type)
+struct IrTypeDump
+{
+	this(IrIndex index, ref CompilationContext ctx) {
+		this.index = index;
+		this.ctx = &ctx;
+	}
+	IrIndex index;
+	CompilationContext* ctx;
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		dumpIrType(sink, *ctx, index);
+	}
+}
+
+void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext ctx, IrIndex type)
 {
 	final switch(type.typeKind) with(IrTypeKind) {
 		case basic: sink.formattedWrite("%s", cast(IrValueType)type.typeIndex); break;
 		case pointer:
-			dumpIrType(sink, p, p.context.getType!IrTypePointer(type).baseType);
+			dumpIrType(sink, ctx, ctx.types.get!IrTypePointer(type).baseType);
 			sink("*");
 			break;
 		case array:
-			auto array = p.context.getType!IrTypeArray(type);
+			auto array = ctx.types.get!IrTypeArray(type);
 			sink.formattedWrite("[%s x ", array.size);
-			dumpIrType(sink, p, array.elemType);
+			dumpIrType(sink, ctx, array.elemType);
 			sink("]");
 			break;
 		case struct_t:
-			IrTypeStruct* struct_t = &p.context.getType!IrTypeStruct(type);
+			IrTypeStruct* struct_t = &ctx.types.get!IrTypeStruct(type);
 			sink("}");
 			foreach(i, IrTypeStructMember member; struct_t.members)
 			{
 				if (i > 0) sink(", ");
-				dumpIrType(sink, p, member.type);
+				dumpIrType(sink, ctx, member.type);
 			}
 			sink("}");
 			break;

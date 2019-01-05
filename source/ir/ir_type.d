@@ -6,6 +6,7 @@ Authors: Andrey Penechko.
 /// IR Types
 module ir.ir_type;
 
+import std.format : format;
 import all;
 
 enum IrValueType : ubyte
@@ -28,9 +29,17 @@ enum IrTypeKind : ubyte
 }
 
 @(IrValueKind.type)
+struct IrTypeHeader
+{
+	IrIndex prevType; // null for first type
+	IrIndex nextType; // null for last type
+}
+
+@(IrValueKind.type)
 align(8)
 struct IrTypePointer
 {
+	IrTypeHeader header;
 	IrIndex baseType;
 }
 
@@ -38,6 +47,7 @@ struct IrTypePointer
 align(8)
 struct IrTypeArray
 {
+	IrTypeHeader header;
 	IrIndex elemType;
 	uint size;
 }
@@ -46,6 +56,7 @@ struct IrTypeArray
 align(8)
 struct IrTypeStruct
 {
+	IrTypeHeader header;
 	uint size;
 	uint numMembers;
 	IrTypeStructMember[0] members_payload;
@@ -58,4 +69,45 @@ struct IrTypeStructMember
 {
 	IrIndex type;
 	uint offset;
+}
+
+struct IrTypeStorage
+{
+	FixedBuffer!ulong buffer;
+	IrIndex firstType;
+	IrIndex lastType;
+
+	///
+	IrIndex append(T)()
+	{
+		static assert(T.alignof == 8, "Can only store types aligned to 8 bytes");
+		static assert(getIrValueKind!T == IrValueKind.type, "Can only add types");
+
+		IrIndex typeIndex = IrIndex(cast(uint)buffer.length, getIrValueKind!T);
+
+		enum allocSize = divCeil(T.sizeof, ulong.sizeof);
+		T* type = cast(T*)buffer.voidPut(allocSize).ptr;
+		*type = T.init;
+
+		if (lastType.isDefined)
+		{
+			get!IrTypeHeader(lastType).nextType = typeIndex;
+			type.header.prevType = lastType;
+		}
+		else
+		{
+			firstType = typeIndex;
+		}
+		lastType = typeIndex;
+
+		return typeIndex;
+	}
+
+	///
+	ref T get(T)(IrIndex index)
+	{
+		assert(index.kind != IrValueKind.none, "null index");
+		assert(index.kind == getIrValueKind!T, format("%s != %s", index.kind, getIrValueKind!T));
+		return *cast(T*)(&buffer.bufPtr[index.storageUintIndex]);
+	}
 }

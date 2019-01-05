@@ -22,7 +22,7 @@ struct CompilationContext
 	ExternalSymbol[Identifier] externalSymbols;
 	/// Buffer for function IR generation
 	FixedBuffer!uint irBuffer;
-	FixedBuffer!ulong moduleIrBuffer;
+	IrTypeStorage types;
 	/// Buffer for intra-pass temporary data
 	FixedBuffer!uint tempBuffer;
 	/// Buffer for string/array/struct literals
@@ -88,28 +88,6 @@ struct CompilationContext
 		assert(index.kind == IrValueKind.global);
 		assert(index.storageUintIndex < globals.length);
 		return globals[index.storageUintIndex];
-	}
-
-	///
-	IrIndex addType(T)()
-	{
-		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
-		static assert(getIrValueKind!T == IrValueKind.type, "Can only add types");
-
-		IrIndex resultIndex = IrIndex(cast(uint)moduleIrBuffer.length, getIrValueKind!T);
-
-		enum allocSize = divCeil(T.sizeof, uint.sizeof);
-		cast(T*)moduleIrBuffer.voidPut(allocSize).ptr = T.init;
-
-		return resultIndex;
-	}
-
-	///
-	ref T getType(T)(IrIndex index)
-	{
-		assert(index.kind != IrValueKind.none, "null index");
-		assert(index.kind == getIrValueKind!T, format("%s != %s", index.kind, getIrValueKind!T));
-		return *cast(T*)(&moduleIrBuffer.bufPtr[index.storageUintIndex]);
 	}
 
 	///
