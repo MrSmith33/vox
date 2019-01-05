@@ -262,7 +262,7 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, 
 		case listItem: sink.formattedWrite("l.%s", index.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i.%s", index.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
-		case constant: sink.formattedWrite("%s", p.context.getConstant(index).i64); break;
+		case constant: sink.formattedWrite("%s", p.context.constants.get(index).i64); break;
 		case global: sink.formattedWrite("g.%s", index.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi.%s", index.storageUintIndex); break;
 		case memoryAddress: sink.formattedWrite("m.%s", index.storageUintIndex); break;

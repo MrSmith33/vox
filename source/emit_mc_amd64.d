@@ -41,7 +41,7 @@ struct CodeEmitter
 	void compileModule()
 	{
 		// copy static data into buffer and set offsets
-		foreach(ref IrGlobal global; context.globals)
+		foreach(ref IrGlobal global; context.globals.array)
 		{
 			if (global.isInBuffer) continue; // already in buffer
 			if (global.numUsers == 0) continue; // no users
@@ -218,7 +218,7 @@ struct CodeEmitter
 		{
 			case none, listItem, instruction, basicBlock, phi, type: assert(false);
 			case constant:
-				IrConstant con = context.getConstant(src);
+				IrConstant con = context.constants.get(src);
 				if (con.numSignedBytes == 1) {
 					param.immType = ArgType.BYTE;
 					argSrc.imm8 = Imm8(con.i8);
@@ -263,7 +263,7 @@ struct CodeEmitter
 				assert(false);
 
 			case MoveType.const_to_reg:
-				int con = context.getConstant(src).i32;
+				int con = context.constants.get(src).i32;
 				version(emit_mc_print) writefln("  move.%s reg:%s, con:%s", argType, dstReg, con);
 				if (con == 0) // xor
 				{
@@ -278,7 +278,7 @@ struct CodeEmitter
 
 			case MoveType.global_to_reg:
 				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
-				IrGlobal* global = &context.getGlobal(src);
+				IrGlobal* global = &context.globals.get(src);
 				context.assertf(global.isInBuffer, "Global is not in static data buffer");
 
 				PC globalAddress = cast(PC)context.staticDataBuffer.bufPtr + global.staticBufferOffset;
@@ -347,7 +347,7 @@ struct CodeEmitter
 		switch (src.kind) with(IrValueKind)
 		{
 			case constant:
-				uint con = context.getConstant(src).i32;
+				uint con = context.constants.get(src).i32;
 				gen.mov(dstMem, Imm32(con), argType);
 				break;
 			case physicalRegister:

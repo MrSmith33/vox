@@ -3,7 +3,7 @@ Copyright: Copyright (c) 2017-2018 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
-/// IR Types
+/// IR type info
 module ir.ir_type;
 
 import std.format : format;
@@ -71,6 +71,7 @@ struct IrTypeStructMember
 	uint offset;
 }
 
+///
 struct IrTypeStorage
 {
 	FixedBuffer!ulong buffer;

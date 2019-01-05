@@ -249,7 +249,7 @@ struct IrBuilder
 			case basicBlock: break; // allowed. As argument of jmp jcc
 			case constant: break; // allowed, noop
 			case global:
-				context.getGlobal(used).addUser(user);
+				context.globals.get(used).addUser(user);
 				break;
 			case phi: assert(false, "addUser phi"); // must be virt reg instead
 			case memoryAddress: break; // allowed, noop

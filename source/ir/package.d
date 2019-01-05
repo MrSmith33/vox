@@ -12,6 +12,7 @@ module ir;
 public import ir.dump;
 public import ir.ir_basic_block;
 public import ir.ir_builder;
+public import ir.ir_constant;
 public import ir.ir_function;
 public import ir.ir_global;
 public import ir.ir_index;
@@ -47,45 +48,6 @@ struct IrLabel
 	bool isAllocated;
 	///
 	uint numPredecessors;
-}
-
-/// Stores numeric constant data
-@(IrValueKind.constant)
-struct IrConstant
-{
-	this(long value) {
-		this.i64 = value;
-	}
-
-	ubyte numSignedBytes() {
-		if (cast(byte)(i64 & 0xFF) == i64)
-			return 1;
-		else if (cast(short)(i64 & 0xFFFF) == i64)
-			return 2;
-		else if (cast(int)(i64 & 0xFFFF_FFFF) == i64)
-			return 4;
-		else
-			return 8;
-	}
-
-	ubyte numUnsignedBytes() {
-		if (cast(ubyte)(i64 & 0xFF) == i64)
-			return 1;
-		else if (cast(ushort)(i64 & 0xFFFF) == i64)
-			return 2;
-		else if (cast(uint)(i64 & 0xFFFF_FFFF) == i64)
-			return 4;
-		else
-			return 8;
-	}
-
-	union {
-		bool i1;
-		byte i8;
-		short i16;
-		int i32;
-		long i64;
-	}
 }
 
 struct IrVarId { uint id; alias id this; }

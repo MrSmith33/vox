@@ -55,7 +55,7 @@ void main()
 	builder.addBlockTarget(ir.entryBasicBlock, start_block);
 	builder.sealBlock(start_block);
 	//	i32 result;
-	IrIndex zeroVal = driver.context.addConstant(IrConstant(0));
+	IrIndex zeroVal = driver.context.constants.add(IrConstant(0));
 	IrVar resultVar = IrVar(Identifier(0), builder.newIrVarId());
 	builder.writeVariable(start_block, resultVar, zeroVal);
 	IrLabel scope1ExitLabel = IrLabel(start_block);
@@ -69,7 +69,7 @@ void main()
 	builder.addBlockTarget(start_block, else_1_block);
 	builder.sealBlock(else_1_block);
 	//		result = 0-1;
-	IrIndex minusOneVal = driver.context.addConstant(IrConstant(-1));
+	IrIndex minusOneVal = driver.context.constants.add(IrConstant(-1));
 	builder.writeVariable(then_1_block, resultVar, minusOneVal);
 	builder.addJumpToLabel(then_1_block, scope1ExitLabel);
 	//	else
@@ -84,7 +84,7 @@ void main()
 	builder.addBlockTarget(else_1_block, else_2_block);
 	builder.sealBlock(else_2_block);
 	//			result = 1;
-	IrIndex oneVal = driver.context.addConstant(IrConstant(1));
+	IrIndex oneVal = driver.context.constants.add(IrConstant(1));
 	builder.writeVariable(then_2_block, resultVar, oneVal);
 	builder.addJumpToLabel(then_2_block, scope1ExitLabel);
 	//		else

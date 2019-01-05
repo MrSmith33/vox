@@ -120,7 +120,7 @@ void removeUser(ref CompilationContext context, ref IrFunction ir, IrIndex user,
 		case basicBlock: break; // allowed. As argument of jmp jcc
 		case constant: break; // allowed, noop
 		case global:
-			context.getGlobal(used).removeUser(user);
+			context.globals.get(used).removeUser(user);
 			break;
 		case phi: assert(false, "removeUser phi"); // must be virt reg instead
 		case memoryAddress: break; // allowed, noop

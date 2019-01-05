@@ -266,7 +266,7 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref InstrPrintIn
 		case listItem: sink.formattedWrite("l.%s", i.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i.%s", i.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
-		case constant: sink.formattedWrite("%s", p.context.getConstant(i).i64); break;
+		case constant: sink.formattedWrite("%s", p.context.constants.get(i).i64); break;
 		case global: sink.formattedWrite("g.%s", i.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi.%s", i.storageUintIndex); break;
 		case memoryAddress: sink.formattedWrite("m.%s", i.storageUintIndex); break;

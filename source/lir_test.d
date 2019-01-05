@@ -92,9 +92,9 @@ void main()
 	builder.addBlockTarget(block5, block6);
 	builder.addBlockTarget(block6, lir.exitBasicBlock);
 
-	IrIndex const_0 = driver.context.addConstant(IrConstant(0));
-	IrIndex const_1 = driver.context.addConstant(IrConstant(1));
-	IrIndex const_m1 = driver.context.addConstant(IrConstant(-1));
+	IrIndex const_0 = driver.context.constants.add(IrConstant(0));
+	IrIndex const_1 = driver.context.constants.add(IrConstant(1));
+	IrIndex const_m1 = driver.context.constants.add(IrConstant(-1));
 
 	//     mov vreg.0, ecx
 	IrIndex param0Value = builder.emitInstr!LirAmd64Instr_mov(lir.entryBasicBlock, amd64_reg.ax).result;

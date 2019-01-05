@@ -37,10 +37,10 @@ struct CompilationContext
 	/// Passed between semantics passes
 	ScopeStack scopeStack;
 
-	/// Global constant array
-	IrConstant[] constants;
+	/// Global constant storage
+	IrConstantStorage constants;
 	/// Module global values and literals.
-	IrGlobal[] globals;
+	IrGlobalStorage globals;
 	/// Identifier interning/deduplication
 	IdentifierMap idMap;
 	/// True if current/last pass had errors
@@ -57,38 +57,6 @@ struct CompilationContext
 	bool validateIr = false;
 	///
 	bool useFramePointer = false;
-
-	///
-	IrIndex addConstant(IrConstant con)
-	{
-		IrIndex conIndex = IrIndex(cast(uint)constants.length, IrValueKind.constant);
-		constants ~= con;
-		return conIndex;
-	}
-
-	///
-	ref IrConstant getConstant(IrIndex index)
-	{
-		assert(index.kind == IrValueKind.constant);
-		assert(index.storageUintIndex < constants.length);
-		return constants[index.storageUintIndex];
-	}
-
-	///
-	IrIndex addGlobal()
-	{
-		IrIndex globalIndex = IrIndex(cast(uint)globals.length, IrValueKind.global);
-		globals ~= IrGlobal();
-		return globalIndex;
-	}
-
-	///
-	ref IrGlobal getGlobal(IrIndex index)
-	{
-		assert(index.kind == IrValueKind.global);
-		assert(index.storageUintIndex < globals.length);
-		return globals[index.storageUintIndex];
-	}
 
 	///
 	string idString(const Identifier id) { return idMap.get(id); }

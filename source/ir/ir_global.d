@@ -49,3 +49,25 @@ struct IrGlobal
 		length = cast(uint)data.length;
 	}
 }
+
+///
+struct IrGlobalStorage
+{
+	IrGlobal[] array;
+
+	///
+	IrIndex add()
+	{
+		IrIndex globalIndex = IrIndex(cast(uint)array.length, IrValueKind.global);
+		array ~= IrGlobal();
+		return globalIndex;
+	}
+
+	///
+	ref IrGlobal get(IrIndex index)
+	{
+		assert(index.kind == IrValueKind.global);
+		assert(index.storageUintIndex < array.length);
+		return array[index.storageUintIndex];
+	}
+}

@@ -292,7 +292,7 @@ struct AstToIr
 				currentBlock = afterExpr.blockIndex;
 			}
 			else
-				value = context.addConstant(IrConstant(0));
+				value = context.constants.add(IrConstant(0));
 			store(currentBlock, v, value);
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -516,7 +516,7 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] int literal value (%s) value %s", c.loc, c.value);
-		c.irRef = context.addConstant(IrConstant(c.value));
+		c.irRef = context.constants.add(IrConstant(c.value));
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprValue(StringLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -524,8 +524,8 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] str literal value (%s) value %s", c.loc, c.value);
-		c.irRef = context.addGlobal();
-		IrGlobal* global = &context.getGlobal(c.irRef);
+		c.irRef = context.globals.add();
+		IrGlobal* global = &context.globals.get(c.irRef);
 		global.setInitializer(cast(ubyte[])c.value);
 		global.flags |= IrGlobalFlags.needsZeroTermination;
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -570,12 +570,12 @@ struct AstToIr
 		// constant folding
 		if (b.left.irRef.isConstant && b.right.irRef.isConstant)
 		{
-			long arg0 = context.getConstant(cast(IrIndex)b.left.irRef).i64;
-			long arg1 = context.getConstant(cast(IrIndex)b.right.irRef).i64;
+			long arg0 = context.constants.get(cast(IrIndex)b.left.irRef).i64;
+			long arg1 = context.constants.get(cast(IrIndex)b.right.irRef).i64;
 			long value = calcBinOp(b.op, arg0, arg1);
 			static if (forValue)
 			{
-				b.irRef = context.addConstant(IrConstant(value));
+				b.irRef = context.constants.add(IrConstant(value));
 			}
 			else
 			{
@@ -701,17 +701,17 @@ struct AstToIr
 		if (i.index.irRef.isConstant)
 		{
 			ulong elemSize = i.type.size;
-			ulong index = context.getConstant(i.index.irRef).i64;
+			ulong index = context.constants.get(i.index.irRef).i64;
 			if (index == 0) {
 				address = i.array.irRef;
 			} else {
-				IrIndex offset = context.addConstant(IrConstant(index * elemSize));
+				IrIndex offset = context.constants.add(IrConstant(index * elemSize));
 				address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irRef, offset).result;
 			}
 		}
 		else
 		{
-			IrIndex scale = context.addConstant(IrConstant(i.type.size));
+			IrIndex scale = context.constants.add(IrConstant(i.type.size));
 			IrIndex offset = builder.emitInstr!IrInstr_mul(currentBlock, i.index.irRef, scale).result;
 			address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irRef, offset).result;
 		}
@@ -735,7 +735,7 @@ struct AstToIr
 		IrValueType from = t.expr.type.irType(context);
 		if (t.expr.irRef.isConstant)
 		{
-			long value = context.getConstant(cast(IrIndex)t.expr.irRef).i64;
+			long value = context.constants.get(cast(IrIndex)t.expr.irRef).i64;
 			if (value != 0)
 				builder.addJumpToLabel(currentBlock, trueExit);
 			else
