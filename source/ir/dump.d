@@ -270,6 +270,7 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, 
 		case virtualRegister: sink.formattedWrite("v.%s", index.storageUintIndex); break;
 		case physicalRegister: sink.formattedWrite("p.%s", index.storageUintIndex); break;
 		case type: dumpIrType(sink, *p.context, index); break;
+		case variable: assert(false);
 	}
 }
 

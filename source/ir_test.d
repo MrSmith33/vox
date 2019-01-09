@@ -56,7 +56,7 @@ void main()
 	builder.sealBlock(start_block);
 	//	i32 result;
 	IrIndex zeroVal = driver.context.constants.add(IrConstant(0));
-	IrVar resultVar = IrVar(Identifier(0), builder.newIrVarId());
+	IrIndex resultVar = builder.newIrVarIndex();
 	builder.writeVariable(start_block, resultVar, zeroVal);
 	IrLabel scope1ExitLabel = IrLabel(start_block);
 	IrIndex then_1_block = builder.addBasicBlock();

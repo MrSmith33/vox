@@ -130,6 +130,7 @@ void removeUser(ref CompilationContext context, ref IrFunction ir, IrIndex user,
 			break;
 		case physicalRegister: break; // allowed, noop
 		case type: break; // no user tracking
+		case variable: assert(false);
 	}
 }
 

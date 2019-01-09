@@ -3,6 +3,12 @@ Copyright: Copyright (c) 2017-2018 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
+/// Grammar
+/// Lexer
+/// Recursive descent parser
+/// For expressions pratt parser is used
+///   Copyright (c) 2017, Jean-Marc Bourguet
+///   https://github.com/bourguet/operator_precedence_parsing/blob/86c11baa737673da521c9cb488fdc3b25d73f0b6/pratt_tdop_parser.py
 module parser;
 
 import std.format : formattedWrite;
@@ -71,105 +77,117 @@ import all;
 // -----------------------------------------------------------------------------
 alias TT = TokenType;
 enum TokenType : ubyte {
-	EOI,
+	@("#eoi")  EOI,
+	@(null)   INVALID,
 
-	AND,                     // &
-	AND_AND,                 // &&
-	AND_EQUAL,               // &=
-	AT,                      // @
-	BACKSLASH,               // \
-	COLON,                   // :
-	COMMA,                   // ,
-	DOLLAR,                  // $
-	DOT,                     // .
-	DOT_DOT,                 // ..
-	DOT_DOT_DOT,             // ...
-	EQUAL,                   // =
-	EQUAL_EQUAL,             // ==
-	GREATER,                 // >
-	GREATER_EQUAL,           // >=
-	GREATER_GREATER,         // >>
-	GREATER_GREATER_EQUAL,   // >>=
-	GREATER_GREATER_GREATER, // >>>
-	GREATER_GREATER_GREATER_EQUAL, // >>>=
-	HASH,                    // #
-	LESS,                    // <
-	LESS_EQUAL,              // <=
-	LESS_LESS,               // <<
-	LESS_LESS_EQUAL,         // <<=
-	MINUS,                   // -
-	MINUS_EQUAL,             // -=
-	MINUS_MINUS,             // --
-	NOT,                     // !
-	NOT_EQUAL,               // !=
-	OR,                      // |
-	OR_EQUAL,                // |=
-	OR_OR,                   // ||
-	PERCENT,                 // %
-	PERCENT_EQUAL,           // %=
-	PLUS,                    // +
-	PLUS_EQUAL,              // +=
-	PLUS_PLUS,               // ++
-	QUESTION,                // ?
-	SEMICOLON,               // ;
-	SLASH,                   // /
-	SLASH_EQUAL,             // /=
-	STAR,                    // *
-	STAR_EQUAL,              // *=
-	TILDE,                   // ~
-	TILDE_EQUAL,             // ~=
-	XOR,                     // ^
-	XOR_EQUAL,               // ^=
+	@("&")    AND,
+	@("&&")   AND_AND,
+	@("&=")   AND_EQUAL,
+	@("@")    AT,
+	@("\\")   BACKSLASH,
+	@(":")    COLON,
+	@(",")    COMMA,
+	@("$")    DOLLAR,
+	@(".")    DOT,
+	@("..")   DOT_DOT,
+	@("...")  DOT_DOT_DOT,
+	@("=")    EQUAL,
+	@("==")   EQUAL_EQUAL,
+	@(">")    MORE,
+	@(">=")   MORE_EQUAL,
+	@(">>")   MORE_MORE,
+	@(">>=")  MORE_MORE_EQUAL,
+	@(">>>")  MORE_MORE_MORE,
+	@(">>>=") MORE_MORE_MORE_EQUAL,
+	//@("#")  HASH,
+	@("<")    LESS,
+	@("<=")   LESS_EQUAL,
+	@("<<")   LESS_LESS,
+	@("<<=")  LESS_LESS_EQUAL,
+	@("-")    MINUS,
+	@("-=")   MINUS_EQUAL,
+	@("--")   MINUS_MINUS,
+	@("!")    NOT,
+	@("!=")   NOT_EQUAL,
+	@("|")    OR,
+	@("|=")   OR_EQUAL,
+	@("||")   OR_OR,
+	@("%")    PERCENT,
+	@("%=")   PERCENT_EQUAL,
+	@("+")    PLUS,
+	@("+=")   PLUS_EQUAL,
+	@("++")   PLUS_PLUS,
+	//@("?")  QUESTION,
+	@(";")    SEMICOLON,
+	@("/")    SLASH,
+	@("/=")   SLASH_EQUAL,
+	@("*")    STAR,
+	@("*=")   STAR_EQUAL,
+	@("~")    TILDE,
+	@("~=")   TILDE_EQUAL,
+	@("^")    XOR,
+	@("^=")   XOR_EQUAL,
 
-	LPAREN,                  // (
-	RPAREN,                  // )
-	LBRACKET,                // [
-	RBRACKET,                // ]
-	LCURLY,                  // {
-	RCURLY,                  // }
+	@("(") LPAREN,
+	@(")") RPAREN,
+	@("[") LBRACKET,
+	@("]") RBRACKET,
+	@("{") LCURLY,
+	@("}") RCURLY,
 
-	INVALID,
 
-	BREAK_SYM,               // break
-	CONTINUE_SYM,            // continue
-	DO_SYM,                  // do
-	ELSE_SYM,                // else
-	IF_SYM,                  // if
-	RETURN_SYM,              // return
-	STRUCT_SYM,              // struct
-	WHILE_SYM,               // while
+	@("break")    BREAK_SYM,
+	@("continue") CONTINUE_SYM,
+	@("do")       DO_SYM,
+	@("else")     ELSE_SYM,
+	@("if")       IF_SYM,
+	@("return")   RETURN_SYM,
+	@("struct")   STRUCT_SYM,
+	@("while")    WHILE_SYM,
 
-	IDENTIFIER,              // [a-zA-Z_] [a-zA-Z_0-9]*
+	@("#id") IDENTIFIER,              // [a-zA-Z_] [a-zA-Z_0-9]*
 
 	// ----------------------------------------
 	// list of basic types. The order is the same as in `enum BasicType`
 
-	TYPE_VOID,               // void
-	TYPE_BOOL,               // bool
-	TYPE_I8,                 // i8
-	TYPE_I16,                // i16
-	TYPE_I32,                // i32
-	TYPE_I64,                // i64
+	@("void") TYPE_VOID,               // void
+	@("bool") TYPE_BOOL,               // bool
+	@("i8") TYPE_I8,                 // i8
+	@("i16") TYPE_I16,                // i16
+	@("i32") TYPE_I32,                // i32
+	@("i64") TYPE_I64,                // i64
 
-	TYPE_U8,                 // u8
-	TYPE_U16,                // u16
-	TYPE_U32,                // u32
-	TYPE_U64,                // u64
+	@("u8") TYPE_U8,                 // u8
+	@("u16") TYPE_U16,                // u16
+	@("u32") TYPE_U32,                // u32
+	@("u64") TYPE_U64,                // u64
 
-	TYPE_F32,                // f32
-	TYPE_F64,                // f64
+	@("f32") TYPE_F32,                // f32
+	@("f64") TYPE_F64,                // f64
 	// ----------------------------------------
 
-	TYPE_ISIZE,              // isize
-	TYPE_USIZE,              // usize
+	@("isize") TYPE_ISIZE,              // isize
+	@("usize") TYPE_USIZE,              // usize
 
-	INT_LITERAL,
-	STRING_LITERAL,
-	//DECIMAL_LITERAL,         // 0|[1-9][0-9_]*
-	//BINARY_LITERAL,          // ("0b"|"0B")[01_]+
-	//HEX_LITERAL,             // ("0x"|"0X")[0-9A-Fa-f_]+
+	@("#num_lit") INT_LITERAL,
+	@("#str_lit") STRING_LITERAL,
+	//@(null) DECIMAL_LITERAL,         // 0|[1-9][0-9_]*
+	//@(null) BINARY_LITERAL,          // ("0b"|"0B")[01_]+
+	//@(null) HEX_LITERAL,             // ("0x"|"0X")[0-9A-Fa-f_]+
 
-	COMMENT,                 // // /*
+	@("#comm") COMMENT,                 // // /*
+}
+
+immutable string[] tokStrings = gatherInfos();
+
+private string[] gatherInfos()
+{
+	string[] res = new string[__traits(allMembers, TokenType).length];
+	foreach (i, m; __traits(allMembers, TokenType))
+	{
+		res[i] = __traits(getAttributes, mixin("TokenType."~m))[0];
+	}
+	return res;
 }
 
 enum TokenType TYPE_TOKEN_FIRST = TokenType.TYPE_VOID;
@@ -294,7 +312,7 @@ struct Lexer {
 				case '\r': lex_EOLR(); continue;
 				case ' ' : nextChar;   continue;
 				case '!' : nextChar; return lex_multi_equal2(TT.NOT, TT.NOT_EQUAL);
-				case '#' : nextChar; return new_tok(TT.HASH);
+				//case '#' : nextChar; return new_tok(TT.HASH);
 				case '$' : nextChar; return new_tok(TT.DOLLAR);
 				case '%' : nextChar; return lex_multi_equal2(TT.PERCENT, TT.PERCENT_EQUAL);
 				case '&' : nextChar; return lex_multi_equal2_3('&', TT.AND, TT.AND_EQUAL, TT.AND_AND);
@@ -332,22 +350,22 @@ struct Lexer {
 				case '=' : nextChar; return lex_multi_equal2(TT.EQUAL, TT.EQUAL_EQUAL);
 				case '>' : nextChar;
 					if (c == '=') { nextChar;
-						return new_tok(TT.GREATER_EQUAL);
+						return new_tok(TT.MORE_EQUAL);
 					}
 					if (c == '>') { nextChar;
 						if (c == '>') { nextChar;
 							if (c == '=') { nextChar;
-								return new_tok(TT.GREATER_GREATER_GREATER_EQUAL);
+								return new_tok(TT.MORE_MORE_MORE_EQUAL);
 							}
-							return new_tok(TT.GREATER_GREATER_GREATER);
+							return new_tok(TT.MORE_MORE_MORE);
 						}
 						if (c == '=') { nextChar;
-							return new_tok(TT.GREATER_GREATER_EQUAL);
+							return new_tok(TT.MORE_MORE_EQUAL);
 						}
-						return new_tok(TT.GREATER_GREATER);
+						return new_tok(TT.MORE_MORE);
 					}
-					return new_tok(TT.GREATER);
-				case '?' : nextChar; return new_tok(TT.QUESTION);
+					return new_tok(TT.MORE);
+				//case '?' : nextChar; return new_tok(TT.QUESTION);
 				case '@' : nextChar; return new_tok(TT.AT);
 				case 'A' : ..case 'Z': return lex_LETTER();
 				case '[' : nextChar; return new_tok(TT.LBRACKET);
@@ -658,9 +676,9 @@ unittest
 			"/=","*","*=","~","~=","^","^=","(",")","[","]","{","}",];
 		TokenType[] tokens_ops = [TT.AND,TT.AND_AND,TT.AND_EQUAL,TT.AT,TT.BACKSLASH,
 			TT.COLON,TT.COMMA,TT.DOLLAR,TT.DOT,TT.DOT_DOT,TT.DOT_DOT_DOT,TT.EQUAL,
-			TT.EQUAL_EQUAL,TT.GREATER,TT.GREATER_EQUAL,TT.GREATER_GREATER,
-			TT.GREATER_GREATER_EQUAL,TT.GREATER_GREATER_GREATER,
-			TT.GREATER_GREATER_GREATER_EQUAL,TT.HASH,
+			TT.EQUAL_EQUAL,TT.MORE,TT.MORE_EQUAL,TT.MORE_MORE,
+			TT.MORE_MORE_EQUAL,TT.MORE_MORE_MORE,
+			TT.MORE_MORE_MORE_EQUAL,TT.HASH,
 			TT.LESS,TT.LESS_EQUAL,TT.LESS_LESS,TT.LESS_LESS_EQUAL,TT.MINUS,
 			TT.MINUS_EQUAL,TT.MINUS_MINUS,TT.NOT,TT.NOT_EQUAL,TT.OR,TT.OR_EQUAL,
 			TT.OR_OR,TT.PERCENT,TT.PERCENT_EQUAL,TT.PLUS,TT.PLUS_EQUAL,TT.PLUS_PLUS,
@@ -1086,6 +1104,7 @@ struct Parser {
 
 				// <expr> ";"
 				ExpressionNode* expression = expr();
+				expression.flags |= AstFlags.isStatement;
 				expectAndConsume(TokenType.SEMICOLON);
 				return cast(AstNode*)expression;
 			}
@@ -1100,124 +1119,303 @@ struct Parser {
 		return res;
 	}
 
-	ExpressionNode* expr() { /* <expr> ::= <test> | <id> "=" <expr> */
-		version(print_parse) auto s1 = scop("expr %s", tok.loc);
-		SourceLocation start = tok.loc;
-		ExpressionNode* node = test(); // left hand side
-		if (tok.type == TokenType.EQUAL)
-		{
-			AssignOp op;
-			if (node.astType == AstType.expr_var)
-				op = AssignOp.opAssign;
-			else if (node.astType == AstType.expr_index)
-				op = AssignOp.opIndexAssign;
-			else
-				context.error(node.loc, "cannot assign to %s", node.astType);
+	ExpressionNode* expr(int rbp = 0)
+	{
+		Token t = tok;
+		nextToken;
 
-			nextToken(); // skip '='
-			ExpressionNode* lhs = node;
-			ExpressionNode* rhs = expr();
-			lhs.flags |= AstFlags.isLvalue;
-			node = cast(ExpressionNode*)make!AssignStmtNode(start, op, lhs, rhs);
+		NullInfo null_info = g_tokenLookups.null_lookup[t.type];
+		ExpressionNode* node = null_info.parser_null(this, t, null_info.rbp);
+		int nbp = null_info.nbp; // next bp
+		int lbp = g_tokenLookups.left_lookup[tok.type].lbp;
+
+		while (rbp < lbp && lbp < nbp)
+		{
+			t = tok;
+			nextToken;
+			LeftInfo left_info = g_tokenLookups.left_lookup[t.type];
+			node = left_info.parser_left(this, t, left_info.rbp, node);
+			nbp = left_info.nbp; // next bp
+			lbp = g_tokenLookups.left_lookup[tok.type].lbp;
 		}
+
 		return node;
 	}
+}
 
-	ExpressionNode* test() { /* <test> ::= <sum> | <sum> "<" <sum> */
-		version(print_parse) auto s1 = scop("test %s", tok.loc);
-		SourceLocation start = tok.loc;
-		ExpressionNode* t, n = sum();
+/// min and max binding powers
+enum MIN_BP = 0;
+enum MAX_BP = 10000;
+enum COMMA_PREC = 10;
 
-		BinOp op;
-		switch(tok.type)
-		{
-			case TokenType.EQUAL_EQUAL: op = BinOp.EQUAL_EQUAL; break;
-			case TokenType.NOT_EQUAL: op = BinOp.NOT_EQUAL; break;
-			case TokenType.LESS: op = BinOp.LESS; break;
-			case TokenType.LESS_EQUAL: op = BinOp.LESS_EQUAL; break;
-			case TokenType.GREATER: op = BinOp.GREATER; break;
-			case TokenType.GREATER_EQUAL: op = BinOp.GREATER_EQUAL; break;
-			default: return n;
-		}
+alias LeftParser = ExpressionNode* function(ref Parser p, Token token, int rbp, ExpressionNode* left);
+alias NullParser = ExpressionNode* function(ref Parser p, Token token, int rbp);
 
-		nextToken(); // skip op
-		t = n;
-		n = makeExpr!BinaryExprNode(start, op, t, sum());
+ExpressionNode* left_error_parser(ref Parser p, Token token, int rbp, ExpressionNode* left)
+{
+	throw new Exception(format("%s can't be used in infix position", token));
+}
 
-		return n;
-	}
+ExpressionNode* null_error_parser(ref Parser p, Token token, int rbp)
+{
+	throw new Exception(format("%s can't be used in prefix position", token));
+}
 
-	ExpressionNode* sum() { /* <sum> ::= <term> | <sum> "+" <term> | <sum> "-" <term> */
-		version(print_parse) auto s1 = scop("sum %s", tok.loc);
-		SourceLocation start = tok.loc;
-		ExpressionNode* n = term();
-		ExpressionNode* t;
-		loop: while (true)
-		{
-			BinOp op;
-			switch(tok.type) {
-				case TokenType.PLUS : op = BinOp.PLUS; break;
-				case TokenType.MINUS: op = BinOp.MINUS; break;
-				default: break loop;
-			}
-			nextToken();
-			t = n;
-			n = makeExpr!BinaryExprNode(start, op, t, term());
-		}
-		return n;
-	}
+struct LeftInfo
+{
+	LeftParser parser_left = &left_error_parser;
+	int lbp = MIN_BP;
+	int rbp = MIN_BP;
+	int nbp = MIN_BP;
+}
 
-	ExpressionNode* term() /* <term> ::= <id> / <id> "(" <expr_list> ")" / <id> "[" <expr> "]" / <int_literal> / <string_literal> / <paren_expr> */
+struct NullInfo
+{
+	NullParser parser_null = &null_error_parser;
+	int lbp = MIN_BP;
+	int rbp = MIN_BP;
+	int nbp = MIN_BP;
+}
+
+struct TokenLookups
+{
+	LeftInfo[TokenType.max+1] left_lookup;
+	NullInfo[TokenType.max+1] null_lookup;
+}
+
+__gshared immutable TokenLookups g_tokenLookups = cexp_parser();
+
+private TokenLookups cexp_parser()
+{
+	TokenLookups res;
+
+	TokenType strToTok(string str)
 	{
-		version(print_parse) auto s1 = scop("term %s", tok.loc);
-		SourceLocation start = tok.loc;
-		if (tok.type == TokenType.IDENTIFIER) // <identifier>
-		{
-			Identifier id = expectIdentifier();
-			if (tok.type == TokenType.LPAREN) // <term> ::= <id> "(" <expr_list> ")"
-			{
-				expectAndConsume(TokenType.LPAREN);
-				ExpressionNode*[] args = expr_list();
-				expectAndConsume(TokenType.RPAREN);
-				return makeExpr!CallExprNode(start, SymbolRef(id), args);
-			}
-			if (tok.type == TokenType.LBRACKET) // <term> ::= <id> "[" <expr> "]"
-			{
-				expectAndConsume(TokenType.LBRACKET);
-				ExpressionNode* index = expr();
-				expectAndConsume(TokenType.RBRACKET);
-				ExpressionNode* array = makeExpr!VariableExprNode(start, SymbolRef(id));
-				return makeExpr!IndexExprNode(start, array, index);
-			}
-			return makeExpr!VariableExprNode(start, SymbolRef(id));
-		}
-		else if (tok.type == TokenType.INT_LITERAL) // <int_literal>
-		{
-			long value = lexer.getTokenNumber();
-			nextToken();
-			TypeNode* type = context.basicTypeNodes(BasicType.t_i32);
-			return cast(ExpressionNode*)make!IntLiteralExprNode(start, type, IrIndex(), value);
-		}
-		else if (tok.type == TokenType.STRING_LITERAL) // <string_literal>
-		{
-			string value = lexer.getTokenString(tok.loc)[1..$-1]; // omit " at the start and end of token
-			nextToken();
-			TypeNode* type = context.basicTypeNodes(BasicType.t_i32);
-			return cast(ExpressionNode*)make!StringLiteralExprNode(start, type, IrIndex(), value);
-		}
-		else return paren_expr();
+		import std.algorithm.searching : countUntil;
+		ptrdiff_t pos = countUntil(tokStrings, str);
+		assert(pos != -1, str);
+		return cast(TokenType)pos;
 	}
 
-	ExpressionNode*[] expr_list() // <expr_list> ::= (<expr> ",")*
-	{
-		version(print_parse) auto s1 = scop("expr_list %s", tok.loc);
-		ExpressionNode*[] expressions;
-		while (tok.type != TokenType.RPAREN)
-		{
-			expressions ~= expr();
-			if (tok.type == TokenType.COMMA) nextToken();
-			else break;
-		}
-		return expressions;
+	void _RegisterNull(int lbp, int rbp, int nbp, NullParser p, string[] tokens...) {
+		foreach (string token; tokens) res.null_lookup[strToTok(token)] = NullInfo(p, lbp, rbp, nbp);
 	}
+
+	void _RegisterLeft(int lbp, int rbp, int nbp, LeftParser p, string[] tokens...) {
+		foreach (string token; tokens) res.left_lookup[strToTok(token)] = LeftInfo(p, lbp, rbp, nbp);
+	}
+
+	void nilfix(int bp, NullParser nud, string[] tokens...) {
+		_RegisterNull(MIN_BP, MIN_BP, MAX_BP, nud, tokens);
+	}
+
+	void prefix(int bp, NullParser nud, string[] tokens...) {
+		_RegisterNull(MIN_BP, bp, MAX_BP, nud, tokens);
+	}
+
+	void suffix(int bp, LeftParser led, string[] tokens...) {
+		_RegisterLeft(bp, MIN_BP, MAX_BP, led, tokens);
+	}
+
+	void infixL(int bp, LeftParser led, string[] tokens...) {
+		_RegisterLeft(bp, bp, bp + 1, led, tokens);
+	}
+
+	void infixR(int bp, LeftParser led, string[] tokens...) {
+		_RegisterLeft(bp, bp - 1, bp + 1, led, tokens);
+	}
+
+	void infixN(int bp, LeftParser led, string[] tokens...) {
+		_RegisterLeft(bp, bp, bp, led, tokens);
+	}
+
+	// Compare the code below with this table of C operator precedence:
+	// http://en.cppreference.com/w/c/language/operator_precedence
+
+	suffix(310, &leftIncDec, ["++", "--"]);
+	infixL(310, &leftFuncCall, "(");
+	infixL(310, &leftIndex, "[");
+	infixL(310, &leftBinaryOp, ".");
+	//infixL(310, &leftBinaryOp, "->");
+
+	// 29 -- binds to everything except function call, indexing, postfix ops
+	prefix(290, &nullPrefixOp, ["+", "-", "!", "~", "*", "&", "++", "--"]);
+
+	infixL(250, &leftBinaryOp, ["*", "/", "%"]);
+
+	infixL(230, &leftBinaryOp, ["+", "-"]);
+	infixL(210, &leftBinaryOp, ["<<", ">>", ">>>"]);
+	infixL(190, &leftBinaryOp, ["<", ">", "<=", ">="]);
+	infixL(170, &leftBinaryOp, ["!=", "=="]);
+
+	infixL(150, &leftBinaryOp, "&");
+	infixL(130, &leftBinaryOp, "^");
+	infixL(110, &leftBinaryOp, "|");
+	infixL(90, &leftBinaryOp, "&&");
+	infixL(70, &leftBinaryOp, "||");
+
+	// Right associative: a = b = 2 is a = (b = 2)
+	infixR(30, &leftAssignOp, ["=", "+=", "-=", "*=", "/=", "%=", "<<=", ">>=", ">>>=", "&=", "^=", "|="]);
+
+	// 0 precedence -- doesn"t bind until )
+	prefix(0, &nullParen, "("); // for grouping
+
+	// 0 precedence -- never used
+	nilfix(0, &nullLiteral, ["#id", "#num_lit", "#str_lit"]);
+	nilfix(0, &null_error_parser, [")", "]", ":", "#eoi", ";"]);
+	return res;
+}
+
+// Null Denotations -- tokens that take nothing on the left
+
+// id, int_literal, string_literal
+ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
+	switch(token.type) with(TokenType)
+	{
+		case IDENTIFIER:
+			return p.makeExpr!VariableExprNode(token.loc, SymbolRef(token.id));
+		case STRING_LITERAL:
+			// omit " at the start and end of token
+			string value = p.lexer.getTokenString(token.loc)[1..$-1];
+			return p.makeExpr!StringLiteralExprNode(token.loc, value);
+		case INT_LITERAL:
+			long value = p.lexer.getTokenNumber();
+			return p.makeExpr!IntLiteralExprNode(token.loc, value);
+		default:
+			p.context.unreachable(); assert(false);
+	}
+}
+
+// Arithmetic grouping
+ExpressionNode* nullParen(ref Parser p, Token token, int rbp) {
+	ExpressionNode* r = p.expr(rbp);
+	p.expectAndConsume(TokenType.RPAREN);
+	//r.flags |= NFLG.parenthesis; // NOTE: needed if ternary operator is needed
+	return r;
+}
+
+// Prefix operator
+// ["+", "-", "!", "~", "*", "&", "++", "--"] <expr>
+ExpressionNode* nullPrefixOp(ref Parser p, Token token, int rbp) {
+	ExpressionNode* right = p.expr(rbp);
+	UnOp op;
+	switch(token.type) with(TokenType)
+	{
+		case PLUS: op = UnOp.plus; break;
+		case MINUS: op = UnOp.minus; break;
+		case NOT: op = UnOp.logicalNot; break;
+		case TILDE: op = UnOp.bitwiseNot; break;
+		case STAR: op = UnOp.deref; break;
+		case AND: op = UnOp.addrOf; break;
+		case PLUS_PLUS: op = UnOp.preIncrement; break;
+		case MINUS_MINUS: op = UnOp.preDecrement; break;
+		default:
+			p.context.unreachable(); assert(false);
+	}
+	return p.makeExpr!UnaryExprNode(token.loc, op, right);
+}
+
+// Left Denotations -- tokens that take an expression on the left
+
+// <expr> "++" / "--"
+ExpressionNode* leftIncDec(ref Parser p, Token token, int rbp, ExpressionNode* left) {
+	UnOp op;
+	switch(token.type) with(TokenType)
+	{
+		case PLUS_PLUS: op = UnOp.postIncrement; break;
+		case MINUS_MINUS: op = UnOp.postDecrement; break;
+		default:
+			p.context.unreachable(); assert(false);
+	}
+	return p.makeExpr!UnaryExprNode(token.loc, op, left);
+}
+
+// <expr> "[" <expr> "]"
+ExpressionNode* leftIndex(ref Parser p, Token token, int rbp, ExpressionNode* array) {
+	ExpressionNode* index = p.expr(0);
+	p.expectAndConsume(TokenType.RBRACKET);
+	return p.makeExpr!IndexExprNode(token.loc, array, index);
+}
+
+// Normal binary operator <expr> op <expr>
+ExpressionNode* leftBinaryOp(ref Parser p, Token token, int rbp, ExpressionNode* left) {
+	ExpressionNode* right = p.expr(rbp);
+	BinOp op;
+	switch(token.type) with(TokenType)
+	{
+		// logic ops
+		case AND_AND: op = BinOp.LOGIC_AND; break;                // &&
+		case OR_OR: op = BinOp.LOGIC_OR; break;                   // ||
+		case EQUAL_EQUAL: op = BinOp.EQUAL; break;                // ==
+		case NOT_EQUAL: op = BinOp.NOT_EQUAL; break;              // !=
+		case MORE: op = BinOp.GREATER; break;                     // >
+		case MORE_EQUAL: op = BinOp.GREATER_EQUAL; break;         // >=
+		case LESS: op = BinOp.LESS; break;                        // <
+		case LESS_EQUAL: op = BinOp.LESS_EQUAL; break;            // <=
+
+		// arithmetic ops
+		case AND: op = BinOp.BITWISE_AND; break;                  // &
+		case OR: op = BinOp.BITWISE_OR; break;                    // |
+		case PERCENT: op = BinOp.REMAINDER; break;                // %
+		case LESS_LESS: op = BinOp.SHL; break;                    // <<
+		case MORE_MORE: op = BinOp.SHR; break;                    // >>
+		case MORE_MORE_MORE: op = BinOp.ASHR; break;              // >>>
+		case MINUS: op = BinOp.MINUS; break;                      // -
+		case PLUS: op = BinOp.PLUS; break;                        // +
+		case SLASH: op = BinOp.DIV; break;                        // /
+		case STAR: op = BinOp.MULT; break;                        // *
+		case XOR: op = BinOp.XOR; break;                          // ^
+
+		// member access
+		case DOT: op = BinOp.DOT; break;                          // .
+		default:
+			p.context.internal_error(token.loc, "parse leftBinaryOp %s", token.type);
+			assert(false);
+	}
+	return p.makeExpr!BinaryExprNode(token.loc, op, left, right);
+}
+
+// Binary assignment operator <expr> op= <expr>
+ExpressionNode* leftAssignOp(ref Parser p, Token token, int rbp, ExpressionNode* left) {
+	ExpressionNode* right = p.expr(rbp);
+	BinOp op;
+	switch(token.type) with(TokenType)
+	{
+		// arithmetic opEquals
+		case EQUAL: op = BinOp.ASSIGN; break;                     // =
+		case AND_EQUAL: op = BinOp.BITWISE_AND_ASSIGN; break;     // &=
+		case OR_EQUAL: op = BinOp.BITWISE_OR_ASSIGN; break;       // |=
+		case PERCENT_EQUAL: op = BinOp.REMAINDER_ASSIGN; break;   // %=
+		case LESS_LESS_EQUAL: op = BinOp.SHL_ASSIGN; break;       // <<=
+		case MORE_MORE_EQUAL: op = BinOp.SHR_ASSIGN; break;       // >>=
+		case MORE_MORE_MORE_EQUAL: op = BinOp.ASHR_ASSIGN; break; // >>>=
+		case MINUS_EQUAL: op = BinOp.MINUS_ASSIGN; break;         // -=
+		case PLUS_EQUAL: op = BinOp.PLUS_ASSIGN; break;           // +=
+		case SLASH_EQUAL: op = BinOp.DIV_ASSIGN; break;           // /=
+		case STAR_EQUAL: op = BinOp.MULT_ASSIGN; break;           // *=
+		case XOR_EQUAL: op = BinOp.XOR_ASSIGN; break;             // ^=
+		default:
+			p.context.internal_error(token.loc, "parse leftAssignOp %s", token.type);
+			assert(false);
+	}
+	left.flags |= AstFlags.isLvalue;
+
+	auto e = p.makeExpr!BinaryExprNode(token.loc, op, left, right);
+	e.flags |= AstFlags.isAssignment;
+
+	return e;
+}
+
+// <id> "(" <expr_list> ")"
+ExpressionNode* leftFuncCall(ref Parser p, Token token, int unused_rbp, ExpressionNode* callee) {
+	ExpressionNode*[] args;
+	while (p.tok.type != TokenType.RPAREN) {
+		// We don't want to grab the comma, e.g. it is NOT a sequence operator.
+		args ~= p.expr(COMMA_PREC);
+		// allows trailing comma too
+		if (p.tok.type == TokenType.COMMA)
+			p.nextToken;
+	}
+	p.expectAndConsume(TokenType.RPAREN);
+	return p.makeExpr!CallExprNode(token.loc, callee, args);
 }

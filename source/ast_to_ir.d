@@ -95,7 +95,6 @@ struct AstToIr
 			case stmt_return: visit(cast(ReturnStmtNode*)n, currentBlock, nextStmt); break;
 			case stmt_break: visit(cast(BreakStmtNode*)n, currentBlock, nextStmt); break;
 			case stmt_continue: visit(cast(ContinueStmtNode*)n, currentBlock, nextStmt); break;
-			case stmt_assign: visit(cast(AssignStmtNode*)n, currentBlock, nextStmt); break;
 
 			default: context.unreachable(); assert(false);
 		}
@@ -222,34 +221,41 @@ struct AstToIr
 		builder.sealBlock(ir.exitBasicBlock);
 	}
 
-	void store(IrIndex currentBlock, VariableDeclNode* v, IrIndex value)
+	/// destination must be pointer or variable
+	void store(IrIndex currentBlock, IrIndex destination, IrIndex value)
 	{
-		//if (v.forceMemoryStorage)
-		//{
-		//	builder.addInstruction!IrInstr_store(currentBlock);
-		//	builder.emitInstr2(IrOpcode.o_store, v.type.irType(context), v.stackSlotId, value);
-		//}
-		//else
-		//{
-			version(IrGenPrint) writefln("[IR GEN] store %s to '%s'",
-				value, context.idString(v.irVar.name));
-			builder.writeVariable(currentBlock, v.irVar, value);
-		//}
+		version(IrGenPrint) writefln("[IR GEN] store %s to '%s'",
+			value, destination);
+
+		switch (destination.kind) with(IrValueKind)
+		{
+			case stackSlot, global, virtualRegister, constant:
+				// destination must store be pointer
+				builder.emitInstr!IrInstr_store(currentBlock, destination, value);
+				break;
+			case variable:
+				builder.writeVariable(currentBlock, destination, value);
+				break;
+			default:
+				context.internal_error("Cannot store into %s", destination.kind);
+				assert(false);
+		}
 	}
 
-	IrIndex load(IrIndex currentBlock, VariableDeclNode* v)
+	/// source must be pointer or variable
+	IrIndex load(IrIndex currentBlock, IrIndex source)
 	{
-		//if (v.forceMemoryStorage)
-		//{
-		//	return builder.emitInstr1(IrOpcode.o_load, v.type.irType(context), v.stackSlotId);
-		//}
-		//else
-		//{
-			auto result = builder.readVariable(currentBlock, v.irVar);
-			version(IrGenPrint) writefln("[IR GEN] load %s from '%s'",
-				result, context.idString(v.irVar.name));
-			return result;
-		//}
+		version(IrGenPrint) writefln("[IR GEN] load from '%s'", source);
+		switch (source.kind) with(IrValueKind)
+		{
+			case stackSlot, global, virtualRegister, constant:
+				return builder.emitInstr!IrInstr_load(currentBlock, source).result;
+			case variable:
+				return builder.readVariable(currentBlock, source);
+			default:
+				context.internal_error("Cannot load from %s", source.kind);
+				assert(false);
+		}
 	}
 
 	void visit(VariableDeclNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -258,7 +264,7 @@ struct AstToIr
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end VAR_DECL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] Var decl (%s) begin %s", v.loc, v.strId(context));
 		version(IrGenPrint) scope(success) writefln("[IR GEN] Var decl (%s) end %s", v.loc, v.strId(context));
-		v.irVar = IrVar(v.id, builder.newIrVarId());//, v.type.irType(context));
+		v.irValue = builder.newIrVarIndex();//, v.type.irType(context));
 
 		//if (context.buildDebug)
 		//	v.varFlags |= VariableFlags.forceMemoryStorage;
@@ -279,7 +285,7 @@ struct AstToIr
 			ir.get!IrInstr_parameter(param.instruction).index = v.paramIndex;
 			//instr.stackSlot = v.stackSlotId;
 
-			builder.writeVariable(currentBlock, v.irVar, param.result);
+			store(currentBlock, v.irValue, param.result);
 		}
 		else
 		{
@@ -288,12 +294,12 @@ struct AstToIr
 			{
 				IrLabel afterExpr = IrLabel(currentBlock);
 				visitExprValue(v.initializer, currentBlock, afterExpr);
-				value = v.initializer.irRef;
+				value = v.initializer.irValue;
 				currentBlock = afterExpr.blockIndex;
 			}
 			else
 				value = context.constants.add(IrConstant(0));
-			store(currentBlock, v, value);
+			store(currentBlock, v.irValue, value);
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
@@ -460,7 +466,7 @@ struct AstToIr
 			IrLabel afterExpr = IrLabel(currentBlock);
 			visitExprValue(r.expression, currentBlock, afterExpr);
 			currentBlock = afterExpr.blockIndex;
-			builder.addReturn(currentBlock, cast(IrIndex)r.expression.irRef);
+			builder.addReturn(currentBlock, r.expression.irValue);
 		}
 		else builder.addReturn(currentBlock);
 	}
@@ -472,32 +478,6 @@ struct AstToIr
 		if (currentLoopHeader is null) context.unrecoverable_error(c.loc, "continue is not within the loop");
 		builder.addJumpToLabel(currentBlock, *currentLoopHeader);
 	}
-	void visit(AssignStmtNode* a, IrIndex currentBlock, ref IrLabel nextStmt)
-	{
-		version(CfgGenPrint) writefln("[CFG GEN] beg ASSIGN cur %s next %s", currentBlock, nextStmt);
-		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end ASSIGN cur %s next %s", currentBlock, nextStmt);
-		version(IrGenPrint) writefln("[IR GEN] assign (%s) begin", a.loc);
-		version(IrGenPrint) scope(success) writefln("[IR GEN] assign (%s) end", a.loc);
-		IrLabel afterLeft = IrLabel(currentBlock);
-		visitExprValue(a.left, currentBlock, afterLeft);
-		currentBlock = afterLeft.blockIndex;
-		IrLabel afterRight = IrLabel(currentBlock);
-		visitExprValue(a.right, currentBlock, afterRight);
-		currentBlock = afterRight.blockIndex;
-
-		final switch (a.op)
-		{
-			case AssignOp.opAssign:
-				auto varExpr = cast(VariableExprNode*)a.left;
-				store(currentBlock, varExpr.getSym.varDecl, a.right.irRef);
-				break;
-			case AssignOp.opIndexAssign:
-				auto indexExpr = cast(IndexExprNode*)a.left;
-				builder.emitInstr!IrInstr_store(currentBlock, indexExpr.irRef, a.right.irRef);
-				break;
-		}
-		builder.addJumpToLabel(currentBlock, nextStmt);
-	}
 
 	void visitExprValue(VariableExprNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
@@ -505,10 +485,10 @@ struct AstToIr
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end VAR_USE VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] var expr value (%s) begin", v.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr value (%s) end", v.loc);
-		if (!v.isLvalue)
-		{
-			v.irRef = load(currentBlock, v.getSym.varDecl);
-		}
+
+		if (v.isLvalue) v.irValue = v.getSym.varDecl.irValue;
+		else v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprValue(IntLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -516,7 +496,7 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] int literal value (%s) value %s", c.loc, c.value);
-		c.irRef = context.constants.add(IrConstant(c.value));
+		c.irValue = context.constants.add(IrConstant(c.value));
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprValue(StringLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -524,8 +504,8 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] str literal value (%s) value %s", c.loc, c.value);
-		c.irRef = context.globals.add();
-		IrGlobal* global = &context.globals.get(c.irRef);
+		c.irValue = context.globals.add();
+		IrGlobal* global = &context.globals.get(c.irValue);
 		global.setInitializer(cast(ubyte[])c.value);
 		global.flags |= IrGlobalFlags.needsZeroTermination;
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -535,7 +515,7 @@ struct AstToIr
 	{
 		switch(op)
 		{
-			case BinOp.EQUAL_EQUAL:   return a == b;
+			case BinOp.EQUAL:         return a == b;
 			case BinOp.NOT_EQUAL:     return a != b;
 			case BinOp.GREATER:       return a >  b;
 			case BinOp.GREATER_EQUAL: return a >= b;
@@ -551,8 +531,8 @@ struct AstToIr
 
 	static IrBinaryCondition convertBinOpToIrCond(BinOp op)
 	{
-		assert(op >= BinOp.EQUAL_EQUAL && op <= BinOp.LESS_EQUAL);
-		return cast(IrBinaryCondition)(op - BinOp.EQUAL_EQUAL);
+		assert(op >= BinOp.EQUAL && op <= BinOp.LESS_EQUAL);
+		return cast(IrBinaryCondition)(op - BinOp.EQUAL);
 	}
 
 	// In value mode only uses trueExit as nextStmt
@@ -568,14 +548,14 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] after right cur %s true %s false %s", currentBlock, trueExit, falseExit);
 
 		// constant folding
-		if (b.left.irRef.isConstant && b.right.irRef.isConstant)
+		if (b.left.irValue.isConstant && b.right.irValue.isConstant)
 		{
-			long arg0 = context.constants.get(cast(IrIndex)b.left.irRef).i64;
-			long arg1 = context.constants.get(cast(IrIndex)b.right.irRef).i64;
+			long arg0 = context.constants.get(b.left.irValue).i64;
+			long arg1 = context.constants.get(b.right.irValue).i64;
 			long value = calcBinOp(b.op, arg0, arg1);
 			static if (forValue)
 			{
-				b.irRef = context.constants.add(IrConstant(value));
+				b.irValue = context.constants.add(IrConstant(value));
 			}
 			else
 			{
@@ -588,23 +568,23 @@ struct AstToIr
 			return;
 		}
 
-		auto lRef = b.left.irRef;
-		auto rRef = b.right.irRef;
+		auto leftValue = b.left.irValue;
+		auto rightValue = b.right.irValue;
 
 		static if (forValue)
 		{
 			switch(b.op) with(BinOp)
 			{
-				case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
+				case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op value %s", b.op);
 					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op)};
-					b.irRef = builder.emitInstr!IrInstr_set_binary_cond(
-						currentBlock, extra, lRef, rRef).result;
+					b.irValue = builder.emitInstr!IrInstr_set_binary_cond(
+						currentBlock, extra, leftValue, rightValue).result;
 					break;
 
 				// TODO
-				case PLUS: b.irRef = builder.emitInstr!IrInstr_add(currentBlock, lRef, rRef).result; break;
-				case MINUS: b.irRef = builder.emitInstr!IrInstr_sub(currentBlock, lRef, rRef).result; break;
+				case PLUS: b.irValue = builder.emitInstr!IrInstr_add(currentBlock, leftValue, rightValue).result; break;
+				case MINUS: b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, leftValue, rightValue).result; break;
 
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}
@@ -614,9 +594,11 @@ struct AstToIr
 		{
 			switch(b.op) with(BinOp)
 			{
-				case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
+				case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op branch %s", b.op);
-					auto branch = builder.addBinBranch(currentBlock, convertBinOpToIrCond(b.op), lRef, rRef, trueExit, falseExit);
+					auto branch = builder.addBinBranch(
+						currentBlock, convertBinOpToIrCond(b.op),
+						leftValue, rightValue, trueExit, falseExit);
 					break;
 
 				// TODO && || !
@@ -640,9 +622,25 @@ struct AstToIr
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end BINOP VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] bin expr value (%s) begin", b.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] bin expr value (%s) end", b.loc);
-		IrLabel fake;
-		visitBinOpImpl!true(b, currentBlock, nextStmt, fake);
-		assert(fake.numPredecessors == 0);
+
+		if (b.isAssignment)
+		{
+			IrLabel afterLeft = IrLabel(currentBlock);
+			visitExprValue(b.left, currentBlock, afterLeft);
+			currentBlock = afterLeft.blockIndex;
+			IrLabel afterRight = IrLabel(currentBlock);
+			visitExprValue(b.right, currentBlock, afterRight);
+			currentBlock = afterRight.blockIndex;
+
+			store(currentBlock, b.left.irValue, b.right.irValue);
+			builder.addJumpToLabel(currentBlock, nextStmt);
+		}
+		else
+		{
+			IrLabel fake;
+			visitBinOpImpl!true(b, currentBlock, nextStmt, fake);
+			assert(fake.numPredecessors == 0);
+		}
 	}
 
 	void visitExprValue(CallExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -660,11 +658,16 @@ struct AstToIr
 			IrLabel afterArg = IrLabel(currentBlock);
 			visitExprValue(arg, currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
-			argsBuf[i] = arg.irRef;
+			argsBuf[i] = arg.irValue;
 		}
 
+		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
+		context.assertf(c.callee.astType == AstType.expr_var,
+			c.loc, "Only direct function calls are supported right now");
+		Symbol* calleeSym = (cast(VariableExprNode*)c.callee).getSym;
+
 		IrIndex[] args = argsBuf[0..c.args.length];
-		FunctionDeclNode* callee = c.getSym.funcDecl;
+		FunctionDeclNode* callee = calleeSym.funcDecl;
 
 		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.index);
 		context.assertf(callee.index < context.mod.functions.length,
@@ -679,7 +682,7 @@ struct AstToIr
 		} else {
 			ExtraInstrArgs extra = {hasResult : true};
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, extra, args);
-			c.irRef = res.result;
+			c.irValue = res.result;
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -698,28 +701,28 @@ struct AstToIr
 		currentBlock = afterRight.blockIndex;
 
 		IrIndex address;
-		if (i.index.irRef.isConstant)
+		if (i.index.irValue.isConstant)
 		{
 			ulong elemSize = i.type.size;
-			ulong index = context.constants.get(i.index.irRef).i64;
+			ulong index = context.constants.get(i.index.irValue).i64;
 			if (index == 0) {
-				address = i.array.irRef;
+				address = i.array.irValue;
 			} else {
 				IrIndex offset = context.constants.add(IrConstant(index * elemSize));
-				address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irRef, offset).result;
+				address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irValue, offset).result;
 			}
 		}
 		else
 		{
 			IrIndex scale = context.constants.add(IrConstant(i.type.size));
-			IrIndex offset = builder.emitInstr!IrInstr_mul(currentBlock, i.index.irRef, scale).result;
-			address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irRef, offset).result;
+			IrIndex offset = builder.emitInstr!IrInstr_mul(currentBlock, i.index.irValue, scale).result;
+			address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irValue, offset).result;
 		}
 
 		if (i.isLvalue) {
-			i.irRef = address;
+			i.irValue = address;
 		} else {
-			i.irRef = builder.emitInstr!IrInstr_load(currentBlock, address).result;
+			i.irValue = load(currentBlock, address);
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
@@ -733,9 +736,9 @@ struct AstToIr
 
 		IrValueType to = t.type.irType(context);
 		IrValueType from = t.expr.type.irType(context);
-		if (t.expr.irRef.isConstant)
+		if (t.expr.irValue.isConstant)
 		{
-			long value = context.constants.get(cast(IrIndex)t.expr.irRef).i64;
+			long value = context.constants.get(t.expr.irValue).i64;
 			if (value != 0)
 				builder.addJumpToLabel(currentBlock, trueExit);
 			else
@@ -744,13 +747,13 @@ struct AstToIr
 		}
 		else if (from == IrValueType.i32 || from == IrValueType.i64)
 		{
-			t.irRef = t.expr.irRef;
-			builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, t.expr.irRef, trueExit, falseExit);
+			t.irValue = t.expr.irValue;
+			builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, t.expr.irValue, trueExit, falseExit);
 			return;
 		}
 		else
 		{
-			//t.irRef = builder.emitInstr1(IrOpcode.o_conv, to, t.expr.irRef);
+			//t.irValue = builder.emitInstr1(IrOpcode.o_conv, to, t.expr.irValue);
 			context.internal_error(t.loc, "%s to %s", t.expr.type.printer(context), t.type.printer(context));
 		}
 		context.unreachable;
@@ -764,13 +767,13 @@ struct AstToIr
 
 		IrValueType to = t.type.irType(context);
 		IrValueType from = t.expr.type.irType(context);
-		if (t.expr.irRef.isConstant || (from == IrValueType.i32 && to == IrValueType.i64))
+		if (t.expr.irValue.isConstant || (from == IrValueType.i32 && to == IrValueType.i64))
 		{
-			t.irRef = t.expr.irRef;
+			t.irValue = t.expr.irValue;
 		}
 		else
 		{
-			//t.irRef = builder.emitInstr1(IrOpcode.o_conv, to, t.expr.irRef);
+			//t.irValue = builder.emitInstr1(IrOpcode.o_conv, to, t.expr.irValue);
 			context.internal_error(t.loc, "%s to %s", t.expr.type.printer(context), t.type.printer(context));
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);

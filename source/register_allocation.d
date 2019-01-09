@@ -542,6 +542,7 @@ struct LinearScan
 							}
 						break;
 					case memoryAddress: assert(false); // TODO
+					case variable: assert(false);
 				}
 			}
 		}

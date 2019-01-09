@@ -25,9 +25,11 @@ struct IrGlobal
 	/// Points to source code for string literals, or
 	/// Points to static data buffer
 	ubyte[] initializer;
+	/// Type of global
+	IrIndex type;
 	/// set of IrGlobalFlags
 	uint flags;
-	/// Is zero until static data layout is finalized
+	/// Is zero until static data layout is finalized (isInBuffer will be set)
 	uint staticBufferOffset;
 	/// doesn't include zero terminator when needsZeroTermination is set
 	/// Must be equal to initializer.length if it is set
@@ -45,7 +47,7 @@ struct IrGlobal
 	void removeUser(IrIndex user) { --numUsers; }
 	void setInitializer(ubyte[] data) {
 		initializer = data;
-		assert(data.length <= 1024*1024*1024*2, "initializer is bigger than 2GB");
+		assert(data.length <= 1024*1024*1024*1, "initializer is bigger than 1GB");
 		length = cast(uint)data.length;
 	}
 }

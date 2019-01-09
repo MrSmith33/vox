@@ -70,7 +70,7 @@ struct Symbol
 		{
 			case decl_function: return (cast(FunctionDeclNode*)node).returnType;
 			case decl_var: return (cast(VariableDeclNode*)node).type;
-			case expr_var, literal_int, literal_string, expr_bin_op, expr_call, expr_index, expr_type_conv:
+			case expr_var, literal_int, literal_string, expr_bin_op, expr_un_op, expr_call, expr_index, expr_type_conv:
 				return (cast(ExpressionNode*)node).type;
 			case type_basic: return cast(TypeNode*)node;
 			case type_user: return cast(TypeNode*)node;

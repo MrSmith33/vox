@@ -241,6 +241,7 @@ struct CodeEmitter
 				break;
 
 			case stackSlot: context.unreachable; assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
+			case variable: assert(false);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}

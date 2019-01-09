@@ -28,10 +28,10 @@ enum AstType : ubyte {
 	stmt_return,
 	stmt_break,
 	stmt_continue,
-	stmt_assign,
 
 	expr_var,
 	expr_bin_op,
+	expr_un_op,
 	expr_call,
 	expr_index,
 	expr_type_conv,
@@ -49,12 +49,14 @@ enum AstFlags {
 	isDeclaration = 1 << 0,
 	isScope       = 1 << 1,
 	isExpression  = 1 << 2,
+	/// Can be applied to expression if it is in place of stmt
 	isStatement   = 1 << 3,
 	isType        = 1 << 4,
 	isSymResolved = 1 << 5,
 	/// Is added to expression nodes that are being assigned to
 	isLvalue      = 1 << 6,
 	isLiteral     = 1 << 7,
+	isAssignment  = 1 << 8,
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
@@ -86,6 +88,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isSymResolved() { return cast(bool)(flags & AstFlags.isSymResolved); }
 	bool isLvalue() { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool isLiteral() { return cast(bool)(flags & AstFlags.isLiteral); }
+	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
 }
 
 mixin template SymRefNodeData() {
@@ -193,6 +196,7 @@ struct TypeNode {
 			case AstType.type_basic:
 			switch (basicTypeNode.basicType)
 			{
+				case BasicType.t_void: return true;
 				case BasicType.t_bool: return true;
 				case BasicType.t_i32: return true;
 				case BasicType.t_i64: return true;
@@ -253,7 +257,6 @@ struct TypeNode {
 				break;
 			case AstType.type_user:
 				sink(userTypeNode.strId(ctx));
-				sink("*");
 				break;
 			default: assert(false, format("%s is not type", astType));
 		}
@@ -421,9 +424,7 @@ struct VariableDeclNode {
 	ExpressionNode* initializer; // may be null
 	ubyte varFlags;
 	ushort paramIndex; // 0 for non-params
-	IrIndex irRef;
-	IrVar irVar; // unique id of variable within a function
-	IrIndex stackSlotId;
+	IrIndex irValue; // kind is variable or stackSlot, unique id of variable within a function
 	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
 	bool forceMemoryStorage() { return cast(bool)(varFlags & VariableFlags.forceMemoryStorage); }
 }
@@ -474,24 +475,13 @@ struct BlockStmtNode {
 	Scope* _scope;
 }
 
-enum AssignOp : ubyte {
-	opAssign,
-	opIndexAssign
-}
-
-struct AssignStmtNode {
-	mixin AstNodeData!(AstType.stmt_assign, AstFlags.isStatement);
-	AssignOp op;
-	ExpressionNode* left;
-	ExpressionNode* right;
-}
-
 // ------------------------------- Expressions ---------------------------------
 // -----------------------------------------------------------------------------
 mixin template ExpressionNodeData(AstType _astType, int default_flags = 0) {
 	mixin AstNodeData!(_astType, default_flags | AstFlags.isExpression);
 	TypeNode* type;
-	IrIndex irRef;
+	// can be stack slot, global, variable, virtualRegister, constant
+	IrIndex irValue;
 }
 
 // Abstract node, must not be instantiated
@@ -516,47 +506,52 @@ struct StringLiteralExprNode {
 
 enum BinOp : ubyte {
 	// logic ops
-	//AND_AND,
-	//OR_OR,
+	LOGIC_AND,          // &&
+	LOGIC_OR,           // ||
 
-	EQUAL_EQUAL,
-	NOT_EQUAL,
-	GREATER,
-	GREATER_EQUAL,
-	LESS,
-	LESS_EQUAL,
+	// comparisons are converted into IrBinaryCondition, order is important
+	EQUAL,              // ==
+	NOT_EQUAL,          // !=
+	GREATER,            // >
+	GREATER_EQUAL,      // >=
+	LESS,               // <
+	LESS_EQUAL,         // <=
 
 	// arithmetic ops
-	//AND,
-	//ASHR,
-	MINUS,
-	//OR,
-	//PERCENT,
-	PLUS,
-	//SHL,
-	//SHR,
-	SLASH,
-	STAR,
-	//XOR,
-/*
+	BITWISE_AND,        // &
+	BITWISE_OR,         // |
+	REMAINDER,          // %
+	SHL,                // <<
+	SHR,                // >>
+	ASHR,               // >>>
+	MINUS,              // -
+	PLUS,               // +
+	DIV,                // /
+	MULT,               // *
+	XOR,                // ^
+
 	// arithmetic opEquals
-	AND_EQUAL,
-	ASHR_EQUAL,
-	MINUS_EQUAL,
-	OR_EQUAL,
-	PERCENT_EQUAL,
-	PLUS_EQUAL,
-	SHL_EQUAL,
-	SHR_EQUAL,
-	SLASH_EQUAL,
-	STAR_EQUAL,
-	XOR_EQUAL,*/
+	ASSIGN,             // =
+	BITWISE_AND_ASSIGN, // &=
+	BITWISE_OR_ASSIGN,  // |=
+	REMAINDER_ASSIGN,   // %=
+	SHL_ASSIGN,         // <<=
+	SHR_ASSIGN,         // >>=
+	ASHR_ASSIGN,        // >>>=
+	MINUS_ASSIGN,       // -=
+	PLUS_ASSIGN,        // +=
+	DIV_ASSIGN,         // /=
+	MULT_ASSIGN,        // *=
+	XOR_ASSIGN,         // ^=
+
+	// member access
+	DOT,                // .
 }
 
-enum BinOp BIN_OP_LOGIC_FIRST = BinOp.EQUAL_EQUAL;
+enum BinOp BIN_OP_LOGIC_FIRST = BinOp.EQUAL;
 enum BinOp BIN_OP_LOGIC_LAST = BinOp.LESS_EQUAL;
 enum BinOp BIN_OP_ARITH_FIRST = BinOp.MINUS;
-enum BinOp BIN_OP_ARITH_LAST = BinOp.STAR;
+enum BinOp BIN_OP_ARITH_LAST = BinOp.MULT;
 //enum BinOp BIN_OP_ARITH_EQUALS_FIRST = BinOp.AND_EQUAL;
 //enum BinOp BIN_OP_ARITH_EQUALS_LAST = BinOp.XOR_EQUAL;
 
@@ -567,6 +562,25 @@ struct BinaryExprNode {
 	ExpressionNode* right;
 }
 
+enum UnOp : ubyte {
+	plus, // +
+	minus, // -
+	logicalNot, // !
+	bitwiseNot, // ~
+	deref, // *
+	addrOf, // &
+	preIncrement, // ++x
+	preDecrement, // --x
+	postIncrement, // x++
+	postDecrement, // x--
+}
+
+struct UnaryExprNode {
+	mixin ExpressionNodeData!(AstType.expr_un_op);
+	UnOp op;
+	ExpressionNode* child;
+}
+
 struct TypeConvExprNode {
 	mixin ExpressionNodeData!(AstType.expr_type_conv);
 	ExpressionNode* expr;
@@ -574,7 +588,7 @@ struct TypeConvExprNode {
 
 struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
-	mixin SymRefNodeData; /// Callee
+	ExpressionNode* callee;
 	ExpressionNode*[] args;
 }
 
@@ -616,10 +630,10 @@ mixin template AstVisitorMixin() {
 			case stmt_return: auto r = cast(ReturnStmtNode*)n; visit(r); break;
 			case stmt_break: auto b = cast(BreakStmtNode*)n; visit(b); break;
 			case stmt_continue: auto c = cast(ContinueStmtNode*)n; visit(c); break;
-			case stmt_assign: auto a = cast(AssignStmtNode*)n; visit(a); break;
 
 			case expr_var: auto v = cast(VariableExprNode*)n; visit(v); break;
 			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visit(b); break;
+			case expr_un_op: auto u = cast(UnaryExprNode*)n; visit(u); break;
 			case expr_call: auto c = cast(CallExprNode*)n; visit(c); break;
 			case expr_index: auto i = cast(IndexExprNode*)n; visit(i); break;
 			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visit(t); break;
@@ -667,6 +681,8 @@ mixin template AstVisitorMixin() {
 	void visit(BinaryExprNode* b) {
 		_visit(cast(AstNode*)b.left);
 		_visit(cast(AstNode*)b.right); }
+	void visit(UnaryExprNode* u) {
+		_visit(cast(AstNode*)u.child); }
 	void visit(CallExprNode* c) {
 		foreach (arg; c.args) _visit(arg); }
 	void visit(IndexExprNode* i) {
@@ -734,7 +750,6 @@ struct AstPrinter {
 		if (r.expression) pr_node(cast(AstNode*)r.expression); }
 	void visit(BreakStmtNode* r) { print("BREAK"); }
 	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
-	void visit(AssignStmtNode* a) { print("ASSIGN"); pr_node(cast(AstNode*)a.left); pr_node(cast(AstNode*)a.right); }
 	void visit(VariableExprNode* v) {
 		if (v.isSymResolved)
 			print("VAR_USE ", v.getSym.getType.printer(context), " ", v.strId(context));
@@ -748,10 +763,13 @@ struct AstPrinter {
 		else print("BINOP ", b.op);
 		pr_node(cast(AstNode*)b.left);
 		pr_node(cast(AstNode*)b.right); }
+	void visit(UnaryExprNode* u) {
+		if (u.type) print("UNOP ", u.type.printer(context), " ", u.op);
+		else print("UNOP ", u.op);
+		_visit(cast(AstNode*)u.child); }
 	void visit(CallExprNode* c) {
-		if (c.isSymResolved)
-			print("CALL ", c.strId(context), " ", c.getSym.getType.printer(context));
-		else print("CALL ", c.strId(context));
+		print("CALL");
+		pr_node(cast(AstNode*)c.callee);
 		foreach (arg; c.args) pr_node(cast(AstNode*)arg); }
 	void visit(IndexExprNode* i) {
 		print("INDEX"); pr_node(cast(AstNode*)i.array); pr_node(cast(AstNode*)i.index); }
@@ -827,7 +845,6 @@ struct AstDotPrinter {
 		if (r.expression) pr_node_edge(r, r.expression); }
 	void visit(BreakStmtNode* r) { printLabel(r, "BREAK"); }
 	void visit(ContinueStmtNode* r) { printLabel(r, "CONTINUE"); }
-	void visit(AssignStmtNode* a) { printLabel(a, "ASSIGN"); pr_node_edge(a, a.left); pr_node_edge(a, a.right); }
 	void visit(VariableExprNode* v) {
 		if (v.isSymResolved)
 			printLabel(v, `VAR_USE\n%s %s`, v.getSym.getType.printer(context), v.strId(context));
@@ -841,10 +858,13 @@ struct AstDotPrinter {
 		else printLabel(b, `BINOP\n%s`, b.op);
 		pr_node_edge(b, b.left);
 		pr_node_edge(b, b.right); }
+	void visit(UnaryExprNode* u) {
+		if (u.type) printLabel(u, `UNOP\n%s %s`, u.type.printer(context), u.op);
+		else printLabel(u, `UNOP\n%s`, u.op);
+		pr_node_edge(u, u.child); }
 	void visit(CallExprNode* c) {
-		if (c.isSymResolved)
-			printLabel(c, `CALL\n%s %s`, c.strId(context), c.getSym.getType.printer(context));
-		else printLabel(c, `CALL\n%s`, c.strId(context));
+		printLabel(c, `CALL`);
+		pr_node_edge(c, c.callee);
 		foreach (arg; c.args) pr_node_edge(c, arg); }
 	void visit(IndexExprNode* i) {
 		printLabel(i, `INDEX`); pr_node_edge(i, i.array); pr_node_edge(i, i.index); }

@@ -13,10 +13,10 @@ version(standalone) void main()
 {
 	//runBench();
 	//runDevTests();
-	runAllTests();
+	runAllTests(StopOnFirstFail.yes);
 }
 
 unittest
 {
-	runAllTests();
+	runAllTests(StopOnFirstFail.no);
 }

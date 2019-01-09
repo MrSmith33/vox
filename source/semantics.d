@@ -219,11 +219,18 @@ struct SemanticDeclarations
 	void visit(ReturnStmtNode* r) {}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
-	void visit(AssignStmtNode* a) {}
 	void visit(VariableExprNode* v) {}
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
-	void visit(BinaryExprNode* b) {}
+	void visit(BinaryExprNode* b) {
+		if (b.isAssignment)
+		{
+			if (!b.isStatement)
+				context.error(b.loc,
+					"Cannot use assignment here. Only can use as statement.");
+		}
+	}
+	void visit(UnaryExprNode* u) {}
 	void visit(CallExprNode* c) {}
 	void visit(IndexExprNode* i) {}
 	void visit(TypeConvExprNode* c) {}
@@ -239,7 +246,7 @@ void pass_semantic_lookup(ref CompilationContext ctx)
 	sem2.visit(ctx.mod);
 }
 
-/// Resolves all symbol references (variable/type uses)
+/// Resolves all symbol references (variable/type/function uses)
 /// using information collected on previous pass
 struct SemanticLookup
 {
@@ -302,13 +309,13 @@ struct SemanticLookup
 	}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
-	void visit(AssignStmtNode* a) { _visit(a.left); _visit(a.right); }
 	void visit(VariableExprNode* v) { v.resolveSymbol = scopeStack.lookup(v.id, v.loc); }
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) { _visit(b.left); _visit(b.right); }
+	void visit(UnaryExprNode* u) { _visit(u.child); }
 	void visit(CallExprNode* c) {
-		c.resolveSymbol = scopeStack.lookup(c.id, c.loc);
+		_visit(c.callee);
 		foreach (arg; c.args) _visit(arg); }
 	void visit(IndexExprNode* i) {
 		_visit(i.array);
@@ -432,12 +439,11 @@ struct SemanticStaticTypes
 	void setResultType(BinaryExprNode* b)
 	{
 		TypeNode* resRype = context.basicTypeNodes(BasicType.t_error);
-		final switch(b.op) with(BinOp)
+		switch(b.op) with(BinOp)
 		{
 			/*
 			// logic ops. Requires both operands to be bool
-			case AND_AND: goto case;
-			case OR_OR:
+			case AND_AND, OR_OR:
 				bool successLeft = autoconvToBool(b.left);
 				bool successRight = autoconvToBool(b.right);
 				if (successLeft && successRight)
@@ -456,7 +462,7 @@ struct SemanticStaticTypes
 				break;
 		*/
 			// logic ops. Requires both operands to be of the same type
-			case EQUAL_EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
+			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 				if (b.left.type is b.right.type)
 					resRype = context.basicTypeNodes(BasicType.t_bool);
 				else
@@ -466,7 +472,7 @@ struct SemanticStaticTypes
 				break;
 
 			// arithmetic op int float
-			case MINUS, PLUS, SLASH, STAR:
+			case MINUS, PLUS, DIV, MULT:
 				if (autoconvToCommonType(b.left, b.right))
 					resRype = b.left.type;
 				else
@@ -475,6 +481,16 @@ struct SemanticStaticTypes
 						b.left.type.typeName(context), b.op,
 						b.right.type.typeName(context));
 				}
+				break;
+
+			case ASSIGN:
+				if (b.left.astType == AstType.expr_var || b.left.astType == AstType.expr_index)
+				{
+					autoconvTo(b.right, b.left.type);
+				}
+				else
+					context.error(b.left.loc, "Cannot perform assignment into %s", b.left.astType);
+				resRype = context.basicTypeNodes(BasicType.t_void);
 				break;
 		/*
 			// arithmetic op int
@@ -502,6 +518,9 @@ struct SemanticStaticTypes
 			case XOR_EQUAL:
 				resRype = context.basicTypeNodes(BasicType.t_i32);
 				break;*/
+			default:
+				context.internal_error(b.loc, "Unimplemented op %s", b.op);
+				assert(false);
 		}
 		b.type = resRype;
 		b.type.assertImplemented(b.loc, context);
@@ -620,19 +639,6 @@ struct SemanticStaticTypes
 	}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
-	void visit(AssignStmtNode* a) {
-		_visit(a.left);
-		_visit(a.right);
-		context.assertf(a.left.type !is null, "left(%s).type: is null", a.left.astType);
-		context.assertf(a.right.type !is null, "right(%s).type: is null", a.right.astType);
-
-		if (a.left.astType == AstType.expr_var || a.left.astType == AstType.expr_index)
-		{
-			autoconvTo(a.right, a.left.type);
-		}
-		else
-			context.error(a.left.loc, "Cannot perform assignment into %s", a.left.astType);
-	}
 
 	// Get type from variable declaration
 	void visit(VariableExprNode* v) {
@@ -643,7 +649,7 @@ struct SemanticStaticTypes
 		c.type = context.basicTypeNodes(BasicType.t_i32);
 	}
 	void visit(StringLiteralExprNode* c) {
-		c.type = cast(TypeNode*) u8Ptr;
+		c.type = cast(TypeNode*)u8Ptr;
 	}
 	void visit(BinaryExprNode* b) {
 		_visit(b.left);
@@ -651,29 +657,45 @@ struct SemanticStaticTypes
 		calcType(b);
 		b.type.assertImplemented(b.loc, context);
 	}
+	void visit(UnaryExprNode* u) {
+		_visit(u.child);
+		assert(u.child.type, format("child(%s).type: is null", u.child.astType));
+		u.type = u.child.type;
+	}
 	// Get type from function declaration
 	void visit(CallExprNode* c) {
-		auto params = c.getSym.funcDecl.parameters;
+		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
+		context.assertf(c.callee.astType == AstType.expr_var,
+			c.loc, "Only direct function calls are supported right now");
+		Symbol* calleeSym = (cast(VariableExprNode*)c.callee).getSym;
+
+		if (calleeSym.symClass != SymbolClass.c_function)
+		{
+			context.error(c.loc, "Cannot call %s", calleeSym.symClass);
+			return;
+		}
+
+		VariableDeclNode*[] params = calleeSym.funcDecl.parameters;
 		auto numParams = params.length;
 		auto numArgs = c.args.length;
 
 		if (numArgs < numParams)
 			context.error(c.loc, "Insufficient parameters to '%s', got %s, expected %s",
-				c.strId(context), numArgs, numParams);
+				context.idString(calleeSym.id), numArgs, numParams);
 		else if (numArgs > numParams)
 			context.error(c.loc, "Too much parameters to '%s', got %s, expected %s",
-				c.strId(context), numArgs, numParams);
+				context.idString(calleeSym.id), numArgs, numParams);
 
 		foreach (i, ExpressionNode* arg; c.args)
 		{
 			_visit(arg);
 			if (!sameType(arg.type, params[i].type))
 				context.error(arg.loc,
-					"Parameter %s, must have type %s, not %s", i+1,
+					"Argument %s, must have type %s, not %s", i+1,
 						params[i].type.printer(context),
 						arg.type.printer(context));
 		}
-		c.type = c.getSym.getType;
+		c.type = calleeSym.getType;
 	}
 	void visit(IndexExprNode* i) {
 		_visit(i.array);

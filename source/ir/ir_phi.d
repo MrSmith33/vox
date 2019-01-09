@@ -55,7 +55,7 @@ struct IrPhiArg
 @(IrValueKind.listItem)
 struct IrIncompletePhi
 {
-	IrVar var;
+	IrIndex var;
 	IrIndex phi;
 	IrIndex nextListItem;
 }

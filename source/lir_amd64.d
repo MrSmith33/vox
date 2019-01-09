@@ -275,6 +275,7 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref InstrPrintIn
 		// TODO, HACK: 32-bit version of register is hardcoded here
 		case physicalRegister: sink("e"); sink(mach_info_amd64.registers[i.storageUintIndex].name); break;
 		case type: dumpIrType(sink, *p.context, i); break;
+		case variable: assert(false);
 	}
 }
 

@@ -21,5 +21,6 @@ enum IrValueKind : ubyte
 	stackSlot,
 	virtualRegister,
 	physicalRegister,
-	type
+	type,
+	variable /// Represents variable index while converting into SSA-form
 }

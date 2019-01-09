@@ -19,10 +19,14 @@ void runDevTests()
 
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
+
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test25);
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 }
 
-void runAllTests()
+enum StopOnFirstFail : bool { no = false, yes = true }
+
+void runAllTests(StopOnFirstFail stopOnFirstFail)
 {
 	auto startInitTime = currTime;
 	Driver driver;
@@ -39,15 +43,26 @@ void runAllTests()
 
 	size_t numSuccessfulTests;
 	writefln("Running %s tests", testsThatPass.length);
+
 	auto time1 = currTime;
+
 	foreach(i, ref test; testsThatPass)
 	{
 		TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
+
 		if (res == TestResult.failure)
+		{
 			writefln("%s/%s %s %s", i+1, testsThatPass.length, test.testName, res);
-		if (res == TestResult.success)
+
+			if (stopOnFirstFail) {
+				writeln("Stopping on first fail");
+				break;
+			}
+		}
+		else
 			++numSuccessfulTests;
 	}
+
 	auto time2 = currTime;
 	Duration duration = time2-time1;
 
@@ -627,6 +642,29 @@ void tester24(Func24 fun) {
 }
 auto test24 = Test("String literal", input24, "test", cast(Test.Tester)&tester24,
 	[ExternalSymbol("print", cast(void*)&test24_external_print)]);
+
+// test string literal
+immutable input25 = q{
+	struct string { u64 length; u8* ptr; }
+	void print(string);
+	void test(){
+		string str;
+		str.ptr = "Hello";
+		str.length = 5;
+		print(str);
+	}
+};
+extern(C) static void test25_external_print(char[] param) {
+	testSink.put(param); // Hello
+}
+alias Func25 = extern(C) void function();
+void tester25(Func25 fun) {
+	fun();
+	assert(testSink.text == "Hello");
+	testSink.clear;
+}
+auto test25 = Test("String literal", input25, "test", cast(Test.Tester)&tester25,
+	[ExternalSymbol("print", cast(void*)&test25_external_print)]);
 
 void testNativeFun()
 {

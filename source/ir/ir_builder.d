@@ -53,9 +53,9 @@ struct IrBuilder
 	private IrIndex[BlockVarPair] blockVarDef;
 	private IrIndex[IrIndex] blockToIrIncompletePhi;
 
-	private IrVarId nextIrVarId;
+	private uint nextIrVarIndex;
 
-	private IrVar returnVar;
+	private IrIndex returnVar;
 
 	/// Must be called before compilation of each function. Allows reusing temp buffers.
 	/// Sets up entry and exit basic blocks.
@@ -71,7 +71,7 @@ struct IrBuilder
 
 		if (ir.returnType != IrValueType.void_t)
 		{
-			returnVar = IrVar(Identifier(0), newIrVarId());
+			returnVar = newIrVarIndex();
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
 			emitInstr!IrInstr_return_value(ir.exitBasicBlock, retValue);
 		}
@@ -214,28 +214,30 @@ struct IrBuilder
 
 	/// Allocates new variable id for this function. It should be bound to a variable
 	/// and used with writeVariable, readVariable functions
-	IrVarId newIrVarId() {
-		return IrVarId(nextIrVarId++);
+	IrIndex newIrVarIndex() {
+		return IrIndex(nextIrVarIndex++, IrValueKind.variable);
 	}
 
 	// Algorithm 1: Implementation of local value numbering
 	/// Redefines `variable` with `value`. Is used for assignment to variable
-	void writeVariable(IrIndex blockIndex, IrVar variable, IrIndex value) {
-		with(IrValueKind)
-		{
-			context.assertf(
-				value.kind == constant ||
-				value.kind == virtualRegister ||
-				value.kind == physicalRegister, "writeVariable(block %s, variable %s, value %s)", blockIndex, variable, value);
-		}
-		blockVarDef[BlockVarPair(blockIndex, variable.id)] = value;
+	void writeVariable(IrIndex blockIndex, IrIndex var, IrIndex value) {
+		context.assertf(var.kind == IrValueKind.variable, "Variable kind is %s", var.kind);
+		context.assertf(
+			value.kind == IrValueKind.constant ||
+			value.kind == IrValueKind.virtualRegister ||
+			value.kind == IrValueKind.physicalRegister,
+			"writeVariable(block %s, variable %s, value %s)",
+			blockIndex, var, value);
+
+		blockVarDef[BlockVarPair(blockIndex, var)] = value;
 	}
 
-	/// Returns the value that currently defines `variable` within `blockIndex`
-	IrIndex readVariable(IrIndex blockIndex, IrVar variable) {
-		if (auto irRef = BlockVarPair(blockIndex, variable.id) in blockVarDef)
+	/// Returns the value that currently defines `var` within `blockIndex`
+	IrIndex readVariable(IrIndex blockIndex, IrIndex var) {
+		context.assertf(var.kind == IrValueKind.variable, "Variable kind is %s", var.kind);
+		if (auto irRef = BlockVarPair(blockIndex, var) in blockVarDef)
 			return *irRef;
-		return readVariableRecursive(blockIndex, variable);
+		return readVariableRecursive(blockIndex, var);
 	}
 
 	/// Puts `user` into a list of users of `used` value
@@ -259,6 +261,7 @@ struct IrBuilder
 				break;
 			case physicalRegister: break; // allowed, noop
 			case type: break; // allowed, noop (no user tracking)
+			case variable: assert(false, "addUser variable");
 		}
 	}
 
@@ -688,7 +691,7 @@ struct IrBuilder
 
 	// Algorithm 2: Implementation of global value numbering
 	/// Returns the last value of the variable in basic block
-	private IrIndex readVariableRecursive(IrIndex blockIndex, IrVar variable) {
+	private IrIndex readVariableRecursive(IrIndex blockIndex, IrIndex variable) {
 		IrIndex value;
 		if (!ir.getBlock(blockIndex).isSealed) {
 			// Incomplete CFG
@@ -736,7 +739,7 @@ struct IrBuilder
 
 	// Adds all values of variable as arguments of phi. Values are gathered from block's predecessors.
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
-	private IrIndex addPhiOperands(IrIndex blockIndex, IrVar variable, IrIndex phi) {
+	private IrIndex addPhiOperands(IrIndex blockIndex, IrIndex variable, IrIndex phi) {
 		// Determine operands from predecessors
 		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(*ir))
 		{
@@ -812,6 +815,7 @@ struct IrBuilder
 			case virtualRegister: return ir.getVirtReg(someIndex).definition;
 			case physicalRegister: assert(false);
 			case type: assert(false);
+			case variable: assert(false);
 		}
 	}
 
@@ -848,6 +852,7 @@ struct IrBuilder
 				case virtualRegister: assert(false);
 				case physicalRegister: assert(false);
 				case type: assert(false);
+				case variable: assert(false);
 			}
 		}
 	}
@@ -864,6 +869,7 @@ struct IrBuilder
 			case stackSlot: assert(false); // TODO
 			case virtualRegister: return ir.getVirtReg(used).users.replaceAll(*ir, what, byWhat);
 			case type: return; // no user tracking
+			case variable: assert(false);
 		}
 	}
 }

@@ -50,11 +50,8 @@ struct IrLabel
 	uint numPredecessors;
 }
 
-struct IrVarId { uint id; alias id this; }
-struct IrVar { Identifier name; IrVarId id; IrValueType type; }
-
 struct BlockVarPair
 {
 	IrIndex blockId;
-	IrVarId varId;
+	IrIndex var;
 }
