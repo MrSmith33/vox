@@ -8,6 +8,7 @@ module all;
 public:
 import ast;
 import ast_to_ir;
+import basictype;
 import context;
 import driver;
 import emit_mc_amd64;
@@ -22,5 +23,4 @@ import register_allocation;
 import semantics;
 import stack_layout;
 import symbol;
-import type;
 import utils;
