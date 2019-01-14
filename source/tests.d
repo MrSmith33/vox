@@ -1,5 +1,5 @@
 /**
-Copyright: Copyright (c) 2017-2018 Andrey Penechko.
+Copyright: Copyright (c) 2017-2019 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
@@ -644,7 +644,7 @@ void tester24(Func24 fun) {
 auto test24 = Test("String literal", input24, "test", cast(Test.Tester)&tester24,
 	[ExternalSymbol("print", cast(void*)&test24_external_print)]);
 
-// test string literal
+// test struct creation, member set, struct as func arg
 immutable input25 = q{
 	struct string { u64 length; u8* ptr; }
 	void print(string);
