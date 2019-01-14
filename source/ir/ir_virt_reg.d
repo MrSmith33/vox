@@ -13,6 +13,8 @@ struct IrVirtualRegister
 {
 	/// Index of instruction that defines this register
 	IrIndex definition;
+	///
+	IrIndex type;
 	/// List of instruction indicies that use this register
 	SmallVector users;
 	IrIndex prevVirtReg; /// null only if this is firstVirtualReg

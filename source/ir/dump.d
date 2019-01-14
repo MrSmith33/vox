@@ -93,7 +93,7 @@ void dumpFunction(ref IrFunction ir, ref CompilationContext ctx, ref FuncDumpSet
 void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext ctx, ref FuncDumpSettings settings)
 {
 	sink.put("function ");
-	sink.put(ctx.idString(ir.name));
+	sink.put(ctx.idString(ir.backendData.name));
 	sink.putfln("() %s bytes {", ir.storage.length * uint.sizeof);
 	int indexPadding = numDigitsInNumber(ir.storage.length);
 
@@ -202,7 +202,7 @@ void dumpFunctionCFG(ref IrFunction ir, ref TextSink sink, ref CompilationContex
 	settings.escapeForDot = true;
 	sink.put(`digraph "`);
 	sink.put("function ");
-	sink.put(ctx.idString(ir.name));
+	sink.put(ctx.idString(ir.backendData.name));
 	sink.putfln(`() %s bytes" {`, ir.storage.length * uint.sizeof);
 	int indexPadding = numDigitsInNumber(ir.storage.length);
 

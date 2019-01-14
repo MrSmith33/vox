@@ -31,24 +31,6 @@ enum BasicType : ubyte {
 	t_f64,
 }
 
-bool isTypeImplemented(BasicType t) {
-	final switch(t) {
-		case BasicType.t_error: return false;
-		case BasicType.t_void: return false;
-		case BasicType.t_bool: return false;
-		case BasicType.t_i8: return false;
-		case BasicType.t_i16: return false;
-		case BasicType.t_i32: return false;
-		case BasicType.t_i64: return false;
-		case BasicType.t_u8: return false;
-		case BasicType.t_u16: return false;
-		case BasicType.t_u32: return false;
-		case BasicType.t_u64: return false;
-		case BasicType.t_f32: return false;
-		case BasicType.t_f64: return false;
-	}
-}
-
 // usage isAutoConvertibleFromToBasic[from][to]
 immutable bool[13][13] isAutoConvertibleFromToBasic = [
 	//err  void bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64  // to

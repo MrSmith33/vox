@@ -12,8 +12,8 @@ version = standalone;
 version(standalone) void main()
 {
 	//runBench();
-	//runDevTests();
 	runAllTests(StopOnFirstFail.yes);
+	//runDevTests();
 }
 
 unittest

@@ -46,8 +46,9 @@ enum IrInstrFlags : uint {
 	isLoad = 1 << 4,
 	isStore = 1 << 5,
 	modifiesMemory = 1 << 6,
-	/// If set InstrInfo.numArgs must be zero
+	/// If set InstrInfo.numArgs defines minimaly required number of args
 	/// and IrInstrHeader.numArgs is set at runtime
+	/// IrBuilder automatically allocates nesessary amount of argument slots after the result slot
 	hasVariadicArgs = 1 << 7,
 	/// If set IFLG.hasResult flag must not be set
 	/// and IrInstrHeader.hasResult is set at runtime
@@ -86,6 +87,7 @@ enum IrOpcode : ushort
 
 	store,
 	load,
+	get_element_ptr,
 
 	conv,
 
@@ -221,4 +223,12 @@ struct IrInstr_parameter
 struct IrInstrPreheader_call
 {
 	FunctionIndex calleeIndex;
+}
+
+/// args: aggregete pointer, 1 or more index
+@(IrValueKind.instruction) @InstrInfo(IrOpcode.get_element_ptr, 2, IFLG.hasVariadicArgs | IFLG.hasResult)
+struct IrInstr_get_element_ptr
+{
+	IrInstrHeader header;
+	IrIndex result;
 }

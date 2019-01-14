@@ -69,7 +69,7 @@ struct IrBuilder
 
 		setupEntryExitBlocks();
 
-		if (ir.returnType != IrValueType.void_t)
+		if (!context.types.isVoid(ir.backendData.returnType))
 		{
 			returnVar = newIrVarIndex();
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
@@ -319,8 +319,14 @@ struct IrBuilder
 			{
 				appendVoid!IrIndex;
 				instrHeader.hasResult = true;
-				if (extra.result.isDefined)
+				if (extra.result.isDefined) {
 					instrHeader.result = extra.result;
+					// fix definition
+					if (extra.result.isVirtReg) {
+						IrVirtualRegister* virtReg = &ir.getVirtReg(extra.result);
+						virtReg.definition = instr;
+					}
+				}
 				else
 					instrHeader.result = addVirtualRegister(instr);
 			}
@@ -344,7 +350,14 @@ struct IrBuilder
 		// arguments
 		static if (getInstrInfo!I.hasVariadicArgs) {
 			context.assertf(args.length <= IrInstrHeader.numArgs.max,
-				"Too many arguments (%s), max is %s", args.length, IrInstrHeader.numArgs.max);
+				"Too many arguments (%s), max is %s",
+				args.length,
+				IrInstrHeader.numArgs.max);
+			context.assertf(args.length >= getInstrInfo!I.numArgs,
+				"Instruction %s requires at least %s arguments, while passed %s",
+				I.stringof,
+				getInstrInfo!I.numArgs,
+				args.length);
 			instrHeader.numArgs = cast(typeof(instrHeader.numArgs))args.length;
 			// allocate argument slots after optional result
 			appendVoid!IrIndex(cast(uint)args.length);
@@ -517,7 +530,7 @@ struct IrBuilder
 	void addReturn(IrIndex blockIndex, IrIndex returnValue)
 	{
 		context.assertf(returnValue.isDefined, "addReturn %s", returnValue);
-		context.assertf(ir.returnType != IrValueType.void_t, "Trying to return value from void function");
+		context.assertf(!context.types.isVoid(ir.backendData.returnType), "Trying to return value from void function");
 		writeVariable(blockIndex, returnVar, returnValue);
 		addJump(blockIndex);
 		addBlockTarget(blockIndex, ir.exitBasicBlock);
@@ -525,8 +538,7 @@ struct IrBuilder
 
 	void addReturn(IrIndex blockIndex)
 	{
-		context.assertf(ir.returnType == IrValueType.void_t, "Trying to return void from non-void function");
-		assert(ir.returnType == IrValueType.void_t);
+		context.assertf(context.types.isVoid(ir.backendData.returnType), "Trying to return void from non-void function");
 		addJump(blockIndex);
 		addBlockTarget(blockIndex, ir.exitBasicBlock);
 	}
@@ -816,6 +828,33 @@ struct IrBuilder
 			case physicalRegister: assert(false);
 			case type: assert(false);
 			case variable: assert(false);
+		}
+	}
+
+	/// Replaces all 'vreg' uses with `byWhat`
+	void redirectVregUsersTo(IrIndex vreg, IrIndex byWhat) {
+		context.assertf(vreg.isVirtReg, "'vreg' must be virtual register, not %s", vreg.kind);
+
+		SmallVector users = ir.getVirtReg(vreg).users;
+		foreach (size_t i, IrIndex userIndex; users.range(*ir))
+		{
+			switch (userIndex.kind) with(IrValueKind) {
+				case instruction:
+					foreach (ref IrIndex arg; ir.get!IrInstrHeader(userIndex).args)
+						if (arg == vreg) {
+							arg = byWhat;
+							addUser(userIndex, byWhat);
+						}
+					break;
+				case phi:
+					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(*ir))
+						if (phiArg.value == vreg) {
+							phiArg.value = byWhat;
+							addUser(userIndex, byWhat);
+						}
+					break;
+				default: assert(false);
+			}
 		}
 	}
 

@@ -78,10 +78,13 @@ struct IrIndex
 		return result;
 	}
 
+	const:
+
 	bool isInstruction() { return kind == IrValueKind.instruction; }
 	bool isBasicBlock() { return kind == IrValueKind.basicBlock; }
 	bool isPhi() { return kind == IrValueKind.phi; }
 	bool isConstant() { return kind == IrValueKind.constant; }
+	bool isGlobal() { return kind == IrValueKind.global; }
 	bool isVirtReg() { return kind == IrValueKind.virtualRegister; }
 	bool isPhysReg() { return kind == IrValueKind.physicalRegister; }
 	bool isSomeReg() {
@@ -91,4 +94,9 @@ struct IrIndex
 	bool isStackSlot() { return kind == IrValueKind.stackSlot; }
 	bool isType() { return kind == IrValueKind.type; }
 	bool isVariable() { return kind == IrValueKind.variable; }
+
+	bool isTypeBasic() { return kind == IrValueKind.type && typeKind == IrTypeKind.basic; }
+	bool isTypePointer() { return kind == IrValueKind.type && typeKind == IrTypeKind.pointer; }
+	bool isTypeArray() { return kind == IrValueKind.type && typeKind == IrTypeKind.array; }
+	bool isTypeStruct() { return kind == IrValueKind.type && typeKind == IrTypeKind.struct_t; }
 }

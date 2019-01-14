@@ -57,6 +57,8 @@ struct CompilationContext
 	bool validateIr = false;
 	///
 	bool useFramePointer = false;
+	///
+	bool printTodos = false;
 
 	///
 	string idString(const Identifier id) { return idMap.get(id); }
@@ -152,6 +154,14 @@ struct CompilationContext
 		hasErrors = true;
 		handleICE;
 		throw new CompilationException(true);
+	}
+
+	void todo(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
+	{
+		if (printTodos) {
+			writef("TODO(%s:%s): ", file, line);
+			writefln(format, args);
+		}
 	}
 
 	private void handleICE()

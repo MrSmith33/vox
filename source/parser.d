@@ -53,12 +53,12 @@ import all;
 	<expression_list> = (<expression> ",")*
 	<identifier> = [_a-zA-Z] [_a-zA-Z0-9]*
 
-	<type> = (<type_basic> / <type_user>) <type_specializer>*
+	<type> = (<type_basic> / <type_struct>) <type_specializer>*
 	<type_specializer> = '*' / '[' <expression> ']'
 	<type_basic> = ("i8" | "i16" | "i32" | "i64" | "isize" |
 		"u8" | "u16" | "u32" | "u64" | "usize" | "void" | "f32" | "f64")
 
-	<type_user> = <identifier>
+	<type_struct> = <identifier>
 
 	<int_literal> = <literal_dec_int> / <literal_hex_int>
 	<literal_dec_int> = 0|[1-9][0-9_]*
@@ -855,9 +855,14 @@ struct Parser {
 
 	AstNode*[] parse_declarations(TokenType until) { // <declaration>*
 		AstNode*[] declarations;
+		ushort varIndex = 0;
 		while (tok.type != until)
 		{
-			declarations ~= enforceNode(parse_declaration);
+			AstNode* decl = enforceNode(parse_declaration);
+			if (decl.astType == AstType.decl_var) {
+				(cast(VariableDeclNode*)decl).scopeIndex = varIndex++;
+			}
+			declarations ~= decl;
 		}
 		return declarations;
 	}
@@ -930,7 +935,7 @@ struct Parser {
 
 					VariableDeclNode* param = make!VariableDeclNode(start, SymbolRef(paramId), paramType);
 					param.varFlags |= VariableFlags.isParameter;
-					param.paramIndex = cast(typeof(param.paramIndex))paramIndex;
+					param.scopeIndex = cast(typeof(param.scopeIndex))paramIndex;
 					params ~= param;
 					if (tok.type == TokenType.COMMA) nextToken(); // skip ","
 					else break;
@@ -963,14 +968,14 @@ struct Parser {
 		return type;
 	}
 
-	TypeNode* parse_type() // <type> = (<type_basic> / <type_user>) <type_specializer>*
+	TypeNode* parse_type() // <type> = (<type_basic> / <type_struct>) <type_specializer>*
 	{
 		version(print_parse) auto s1 = scop("parse_type %s", tok.loc);
 		SourceLocation start = tok.loc;
 		TypeNode* base;
 		if (tok.type == TokenType.IDENTIFIER) {
 			Identifier id = expectIdentifier();
-			base = cast(TypeNode*)make!UserTypeNode(start, SymbolRef(id));
+			base = cast(TypeNode*)make!StructTypeNode(start, SymbolRef(id));
 		} else if (isBasicTypeToken(tok.type)) {
 			base = context.basicTypeNodes(parse_type_basic());
 		}
@@ -989,7 +994,7 @@ struct Parser {
 						context.unrecoverable_error(e.loc, "Expected int constant, while got '%s'",
 							lexer.getTokenString(e.loc));
 					expectAndConsume(TokenType.RBRACKET);
-					ulong length = (cast(IntLiteralExprNode*)e).value;
+					uint length = cast(uint)(cast(IntLiteralExprNode*)e).value; // TODO check overflow
 					base = cast(TypeNode*)make!StaticArrayTypeNode(start, base, length);
 				}
 				else break;
@@ -1273,7 +1278,7 @@ ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
 	switch(token.type) with(TokenType)
 	{
 		case IDENTIFIER:
-			return p.makeExpr!VariableExprNode(token.loc, SymbolRef(token.id));
+			return p.makeExpr!NameUseExprNode(token.loc, SymbolRef(token.id));
 		case STRING_LITERAL:
 			// omit " at the start and end of token
 			string value = p.lexer.getTokenString(token.loc)[1..$-1];
@@ -1367,7 +1372,17 @@ ExpressionNode* leftBinaryOp(ref Parser p, Token token, int rbp, ExpressionNode*
 		case XOR: op = BinOp.XOR; break;                          // ^
 
 		// member access
-		case DOT: op = BinOp.DOT; break;                          // .
+		case DOT:                                                 // .
+			NameUseExprNode* name;
+			if (right.astType != AstType.expr_name_use) {
+				p.context.error(token.loc,
+					"Expected identifier after '.', while got '%s'",
+					p.lexer.getTokenString(token));
+			}
+			else
+				name = cast(NameUseExprNode*)right;
+			return p.makeExpr!MemberExprNode(token.loc, left, name);
+
 		default:
 			p.context.internal_error(token.loc, "parse leftBinaryOp %s", token.type);
 			assert(false);

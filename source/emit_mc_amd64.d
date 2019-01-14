@@ -77,8 +77,8 @@ struct CodeEmitter
 	void compileFunction(FunctionDeclNode* f)
 	{
 		fun = f;
-		lir = fun.lirData;
-		fun.funcPtr = gen.pc;
+		lir = fun.backendData.lirData;
+		fun.backendData.funcPtr = gen.pc;
 		blockStarts = cast(PC[])context.tempBuffer.voidPut(lir.numBasicBlocks * (PC.sizeof / uint.sizeof));
 		uint[] buf = context.tempBuffer.voidPut(lir.numBasicBlocks * 2 * (PC.sizeof / uint.sizeof));
 		buf[] = 0;
@@ -99,19 +99,19 @@ struct CodeEmitter
 				switch(cast(Amd64Opcode)instrHeader.op)
 				{
 					case Amd64Opcode.mov:
-						genMove(instrHeader.result, instrHeader.args[0], ArgType.DWORD);
+						genMove(instrHeader.result, instrHeader.args[0], ArgType.QWORD);
 						break;
 					case Amd64Opcode.load:
-						genLoad(instrHeader.result, instrHeader.args[0], ArgType.DWORD);
+						genLoad(instrHeader.result, instrHeader.args[0], ArgType.QWORD);
 						break;
 					case Amd64Opcode.store:
-						genStore(instrHeader.args[0], instrHeader.args[1], ArgType.DWORD);
+						genStore(instrHeader.args[0], instrHeader.args[1], ArgType.QWORD);
 						break;
 					case Amd64Opcode.add:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.add, ArgType.DWORD);
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.add, ArgType.QWORD);
 						break;
 					case Amd64Opcode.sub:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.sub, ArgType.DWORD);
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.sub, ArgType.QWORD);
 						break;
 					case Amd64Opcode.call:
 						gen.call(Imm32(0));
@@ -164,7 +164,7 @@ struct CodeEmitter
 		foreach (CallFixup fixup; callFixups.data) {
 			FunctionDeclNode* callee = context.mod.functions[fixup.calleeIndex];
 			//writefln("fix call to '%s' @%s", callee.strId(context), cast(void*)callee.funcPtr);
-			fix_PC_REL_32(fixup.address, cast(PC)callee.funcPtr);
+			fix_PC_REL_32(fixup.address, cast(PC)callee.backendData.funcPtr);
 		}
 		callFixups.clear();
 	}
@@ -187,7 +187,7 @@ struct CodeEmitter
 
 	MemAddress localVarMemAddress(IrIndex stackSlotIndex) {
 		context.assertf(stackSlotIndex.isStackSlot, "Index is not stack slot, but %s", stackSlotIndex.kind);
-		auto stackSlot = &fun.stackLayout[stackSlotIndex];
+		auto stackSlot = &fun.backendData.stackLayout[stackSlotIndex];
 		Register baseReg = indexToRegister(stackSlot.baseReg);
 		return minMemAddrBaseDisp(baseReg, stackSlot.displacement);
 	}
@@ -293,6 +293,10 @@ struct CodeEmitter
 				version(emit_mc_print) writefln("  move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
 				gen.mov(dstReg, srcReg, argType);
 				break;
+
+			case MoveType.stack_to_reg:
+				gen.lea(dstReg, localVarMemAddress(src), ArgType.QWORD);
+				break;
 		}
 	}
 
@@ -354,6 +358,9 @@ struct CodeEmitter
 			case physicalRegister:
 				Register srcReg = indexToRegister(src);
 				gen.mov(dstMem, srcReg, argType);
+				break;
+			case global:
+				context.internal_error("store %s <- %s, must go through intermediate register", dst.kind, src.kind);
 				break;
 			default:
 				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);

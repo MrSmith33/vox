@@ -59,8 +59,8 @@ void pass_live_intervals(ref CompilationContext context)
 	foreach (FunctionDeclNode* fun; context.mod.functions)
 	{
 		if (fun.isExternal) continue;
-		fun.liveIntervals = new FunctionLiveIntervals(fun.lirData);
-		pass_live_intervals_func(context, *fun.liveIntervals, *fun.lirData, liveBitmap);
+		fun.backendData.liveIntervals = new FunctionLiveIntervals(fun.backendData.lirData);
+		pass_live_intervals_func(context, *fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
 		//writefln("// LIR before RA");
 		//dumpFunction_lir_amd64(*fun.lirData, context);
 	}
@@ -68,7 +68,7 @@ void pass_live_intervals(ref CompilationContext context)
 
 void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIntervals liveIntervals, ref IrFunction ir, ref LiveBitmap liveBitmap)
 {
-	context.assertf(ir.callingConvention !is null, "Calling convention is null");
+	context.assertf(ir.backendData.callingConvention !is null, "Calling convention is null");
 
 	size_t numVregs = ir.numVirtualRegisters;
 	size_t numBucketsPerBlock = divCeil(numVregs, size_t.sizeof * 8);
@@ -287,8 +287,8 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			{
 				FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 				FunctionDeclNode* callee = context.mod.functions[calleeIndex];
-				CallConv* callingConvention = callee.callingConvention;
-				IrIndex[] volatileRegs = callingConvention.volatileRegs;
+				CallConv* cc = callee.backendData.callingConvention;
+				IrIndex[] volatileRegs = cc.volatileRegs;
 				foreach(IrIndex reg; volatileRegs) {
 					IntervalIndex interval = liveIntervals.intervalIndex(PregIntervalIndex(reg));
 					liveIntervals.addRange(interval, linearInstrIndex, linearInstrIndex+1);

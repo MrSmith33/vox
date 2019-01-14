@@ -25,7 +25,7 @@ struct IrGlobal
 	/// Points to source code for string literals, or
 	/// Points to static data buffer
 	ubyte[] initializer;
-	/// Type of global
+	/// Type of global. Must be a pointer type
 	IrIndex type;
 	/// set of IrGlobalFlags
 	uint flags;

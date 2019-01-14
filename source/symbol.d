@@ -64,16 +64,22 @@ struct Symbol
 		return cast(FunctionDeclNode*)node;
 	}
 
+	StructDeclNode* structDecl()
+	{
+		assert(node.astType == AstType.decl_struct, format("structDecl used on %s", node.astType));
+		return cast(StructDeclNode*)node;
+	}
+
 	TypeNode* getType()
 	{
 		switch(node.astType) with(AstType)
 		{
 			case decl_function: return (cast(FunctionDeclNode*)node).returnType;
 			case decl_var: return (cast(VariableDeclNode*)node).type;
-			case expr_var, literal_int, literal_string, expr_bin_op, expr_un_op, expr_call, expr_index, expr_type_conv:
+			case expr_name_use, literal_int, literal_string, expr_bin_op, expr_un_op, expr_call, expr_index, expr_type_conv:
 				return (cast(ExpressionNode*)node).type;
 			case type_basic: return cast(TypeNode*)node;
-			case type_user: return cast(TypeNode*)node;
+			case type_struct: return cast(TypeNode*)node;
 			default: assert(false, format("getType used on %s", node.astType));
 		}
 	}

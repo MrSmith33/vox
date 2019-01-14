@@ -26,23 +26,25 @@ struct IrToLir
 		{
 			if (fun.isExternal) continue;
 
-			fun.lirData = new IrFunction;
-			context.mod.lirModule.addFunction(fun.lirData);
-			processFunc(*fun.irData, *fun.lirData);
-			if (context.validateIr) validateIrFunction(*context, *fun.lirData);
+			fun.backendData.lirData = new IrFunction;
+			fun.backendData.lirData.backendData = &fun.backendData;
+
+			//dumpFunction(*fun.backendData.irData, *context);
+
+			context.mod.lirModule.addFunction(fun.backendData.lirData);
+			processFunc(*fun.backendData.irData, *fun.backendData.lirData);
+			if (context.validateIr) validateIrFunction(*context, *fun.backendData.lirData);
+			//dumpFunction(*fun.backendData.lirData, *context);
 		}
 	}
 
 	void processFunc(ref IrFunction ir, ref IrFunction lir)
 	{
 		//writefln("IR to LIR %s", context.idString(ir.name));
-		lir.returnType = ir.returnType;
-		lir.callingConvention = ir.callingConvention;
 		lir.instructionSet = IrInstructionSet.lir_amd64;
 
 		context.tempBuffer.clear;
 
-		lir.name = ir.name;
 		builder.beginLir(&lir, &ir, context);
 
 		// Mirror of original IR, we will put the new IrIndex of copied entities there
@@ -66,12 +68,10 @@ struct IrToLir
 		void fixIndex(ref IrIndex index)
 		{
 			assert(index.isDefined);
-			if (index.kind == IrValueKind.constant) return;
-			if (index.kind == IrValueKind.physicalRegister) return;
-			if (index.kind == IrValueKind.global) return;
-
-			//writefln("%s -> %s", index, mirror[index.storageUintIndex]);
-			index = mirror[index];
+			if (index.isBasicBlock || index.isVirtReg || index.isPhi || index.isInstruction) {
+				//writefln("%s -> %s", index, mirror[index]);
+				index = mirror[index];
+			}
 		}
 
 		IrIndex prevBlock;
@@ -157,11 +157,11 @@ struct IrToLir
 				{
 					case IrOpcode.parameter:
 						uint paramIndex = ir.get!IrInstr_parameter(instrIndex).index;
-						context.assertf(paramIndex < lir.callingConvention.paramsInRegs.length,
+						context.assertf(paramIndex < lir.backendData.callingConvention.paramsInRegs.length,
 							"Only parameters passed through registers are implemented");
 
 						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(
-							lirBlockIndex, lir.callingConvention.paramsInRegs[paramIndex]);
+							lirBlockIndex, lir.backendData.callingConvention.paramsInRegs[paramIndex]);
 						recordIndex(instrIndex, instr.instruction);
 						recordIndex(instrHeader.result, instr.result);
 						break;
@@ -171,10 +171,10 @@ struct IrToLir
 
 						enum STACK_ITEM_SIZE = 8;
 						size_t numArgs = instrHeader.args.length;
-						size_t numParamsInRegs = lir.callingConvention.paramsInRegs.length;
+						size_t numParamsInRegs = lir.backendData.callingConvention.paramsInRegs.length;
 						// how many bytes are allocated on the stack before func call
 						size_t stackReserve = max(numArgs, numParamsInRegs) * STACK_ITEM_SIZE;
-						IrIndex stackPtrReg = lir.callingConvention.stackPointer;
+						IrIndex stackPtrReg = lir.backendData.callingConvention.stackPointer;
 
 						if (numArgs > numParamsInRegs)
 						{
@@ -201,8 +201,8 @@ struct IrToLir
 						IrIndex[MAX_PHYS_ARGS] physArgs;
 						foreach_reverse (i, IrIndex arg; instrHeader.args[0..numPhysRegs])
 						{
-							physArgs[i] = lir.callingConvention.paramsInRegs[i];
-							IrIndex argRegister = lir.callingConvention.paramsInRegs[i];
+							physArgs[i] = lir.backendData.callingConvention.paramsInRegs[i];
+							IrIndex argRegister = lir.backendData.callingConvention.paramsInRegs[i];
 							ExtraInstrArgs extra = {addUsers : false, result : argRegister};
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, arg);
 						}
@@ -217,7 +217,7 @@ struct IrToLir
 							ExtraInstrArgs extra = {
 								addUsers : false,
 								hasResult : instrHeader.hasResult,
-								result : lir.callingConvention.returnReg};
+								result : lir.backendData.callingConvention.returnReg};
 
 							FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 							context.assertf(calleeIndex < context.mod.functions.length, "Invalid callee index %s", calleeIndex);
@@ -229,7 +229,7 @@ struct IrToLir
 							if (extra.hasResult) {
 								// mov result to virt reg
 								InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
-									lirBlockIndex, lir.callingConvention.returnReg);
+									lirBlockIndex, lir.backendData.callingConvention.returnReg);
 								recordIndex(instrHeader.result, movInstr.result);
 							}
 						}
@@ -271,15 +271,14 @@ struct IrToLir
 						break;
 
 					case IrOpcode.block_exit_return_value:
-						ExtraInstrArgs extra = {addUsers : false, result : lir.callingConvention.returnReg};
+						ExtraInstrArgs extra = {addUsers : false, result : lir.backendData.callingConvention.returnReg};
 						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, instrHeader.args);
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
 						recordIndex(instrIndex, instruction);
 						break;
 
 					default:
-						writefln("inst %s", cast(IrOpcode)instrHeader.op);
-						context.unreachable;
+						context.internal_error("IrToLir unimplemented IR instr %s", cast(IrOpcode)instrHeader.op);
 				}
 			}
 		}
@@ -298,6 +297,19 @@ struct IrToLir
 				foreach(ref IrIndex arg; instrHeader.args)
 				{
 					fixArg(instrIndex, arg);
+				}
+
+				/// Cannot obtain address and store it in another address in one step
+				if (instrHeader.op == Amd64Opcode.store && (instrHeader.args[1].isGlobal || instrHeader.args[1].isStackSlot))
+				{
+					// copy to temp register
+					InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
+						ExtraInstrArgs(), instrHeader.args[1]);
+					builder.insertBeforeInstr(instrIndex, movInstr.instruction);
+					// store temp to memory
+					removeUser(*context, lir, instrIndex, instrHeader.args[1]);
+					instrHeader.args[1] = movInstr.result;
+					builder.addUser(instrIndex, movInstr.result);
 				}
 			}
 		}

@@ -29,11 +29,12 @@ enum AstType : ubyte {
 	stmt_break,
 	stmt_continue,
 
-	expr_var,
-	expr_bin_op,
-	expr_un_op,
+	expr_name_use,
+	expr_member,
 	expr_call,
 	expr_index,
+	expr_bin_op,
+	expr_un_op,
 	expr_type_conv,
 
 	literal_int,
@@ -42,7 +43,7 @@ enum AstType : ubyte {
 	type_basic,
 	type_ptr,
 	type_static_array,
-	type_user,
+	type_struct,
 }
 
 enum AstFlags {
@@ -57,6 +58,9 @@ enum AstFlags {
 	isLvalue      = 1 << 6,
 	isLiteral     = 1 << 7,
 	isAssignment  = 1 << 8,
+	/// Marks expression that is used as func argument.
+	/// Needed to handle calling conventions properly.
+	isArgument    = 1 << 9,
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
@@ -89,6 +93,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isLvalue() { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool isLiteral() { return cast(bool)(flags & AstFlags.isLiteral); }
 	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
+	bool isArgument() { return cast(bool)(flags & AstFlags.isArgument); }
 }
 
 mixin template SymRefNodeData() {
@@ -129,28 +134,28 @@ struct TypeNode {
 	BasicTypeNode* basicTypeNode() { return cast(BasicTypeNode*)&this; }
 	PtrTypeNode* ptrTypeNode() { return cast(PtrTypeNode*)&this; }
 	StaticArrayTypeNode* staticArrayTypeNode() { return cast(StaticArrayTypeNode*)&this; }
-	UserTypeNode* userTypeNode() { return cast(UserTypeNode*)&this; }
+	StructTypeNode* structTypeNode() { return cast(StructTypeNode*)&this; }
 
-	ulong alignment()
+	uint alignment()
 	{
 		switch(astType)
 		{
 			case AstType.type_basic: return basicTypeNode.alignment;
 			case AstType.type_ptr: return ptrTypeNode.alignment;
 			case AstType.type_static_array: return staticArrayTypeNode.alignment;
-			case AstType.type_user: return userTypeNode.alignment;
+			case AstType.type_struct: return structTypeNode.alignment;
 			default: assert(false, format("got %s", astType));
 		}
 	}
 
-	ulong size()
+	uint size()
 	{
 		switch(astType)
 		{
 			case AstType.type_basic: return basicTypeNode.size;
 			case AstType.type_ptr: return ptrTypeNode.size;
 			case AstType.type_static_array: return staticArrayTypeNode.size;
-			case AstType.type_user: return userTypeNode.size;
+			case AstType.type_struct: return structTypeNode.size;
 			default: assert(false, format("got %s", astType));
 		}
 	}
@@ -165,8 +170,8 @@ struct TypeNode {
 			case AstType.type_ptr:
 				return "ptr";
 			case AstType.type_static_array: return "[num]";
-			case AstType.type_user:
-				return userTypeNode.strId(context);
+			case AstType.type_struct:
+				return structTypeNode.strId(context);
 			default: assert(false, format("got %s", astType));
 		}
 	}
@@ -198,13 +203,16 @@ struct TypeNode {
 			{
 				case BasicType.t_void: return true;
 				case BasicType.t_bool: return true;
+				case BasicType.t_i8: return true;
+				case BasicType.t_u8: return true;
 				case BasicType.t_i32: return true;
 				case BasicType.t_i64: return true;
+				case BasicType.t_u64: return true;
 				default: return false;
 			}
 
-			case AstType.type_ptr:
-				return ptrTypeNode.base.isImplemented;
+			case AstType.type_ptr: return true;
+			case AstType.type_struct: return true;
 
 			default: return false;
 		}
@@ -217,28 +225,6 @@ struct TypeNode {
 			case AstType.type_static_array: return staticArrayTypeNode.base;
 			default: context.internal_error(loc, "%s is not indexable", astType); assert(false);
 		}
-	}
-
-	IrValueType irType(CompilationContext* context) {
-		switch (astType)
-		{
-			case AstType.type_basic:
-			switch(basicTypeNode.basicType)
-			{
-				case BasicType.t_void: return IrValueType.void_t;
-				case BasicType.t_bool: return IrValueType.i32;
-				case BasicType.t_i32: return IrValueType.i32;
-				case BasicType.t_i64: return IrValueType.i64;
-				default: break;
-			}
-			break;
-
-			//case AstType.type_ptr: return IrValueType.ptr;
-
-			default: break;
-		}
-		context.internal_error(loc, "Cannot convert `%s` to IrValueType", astType);
-		assert(false);
 	}
 
 	void toString(scope void delegate(const(char)[]) sink, CompilationContext* ctx) {
@@ -255,19 +241,106 @@ struct TypeNode {
 				staticArrayTypeNode.base.toString(sink, ctx);
 				formattedWrite(sink, "[%s]", staticArrayTypeNode.length);
 				break;
-			case AstType.type_user:
-				sink(userTypeNode.strId(ctx));
+			case AstType.type_struct:
+				sink(structTypeNode.strId(ctx));
 				break;
 			default: assert(false, format("%s is not type", astType));
 		}
 	}
 }
 
+IrIndex genIrType(TypeNode* t, CompilationContext* context) {
+	switch (t.astType)
+	{
+		case AstType.type_basic: return genIrType(t.basicTypeNode, context);
+		case AstType.type_ptr: return genIrType(t.ptrTypeNode, context);
+		case AstType.type_static_array: return genIrType(t.staticArrayTypeNode, context);
+		case AstType.type_struct: return genIrType(t.structTypeNode, context);
+		default:
+			context.internal_error(t.loc, "Cannot convert `%s` to ir type", t.astType);
+			assert(false);
+	}
+}
+
+IrIndex genIrType(BasicTypeNode* t, CompilationContext* context)
+	out(res; res.isTypeBasic, "Not a basic type")
+{
+	switch(t.basicType)
+	{
+		case BasicType.t_void: return makeBasicTypeIndex(IrValueType.void_t);
+		case BasicType.t_bool: return makeBasicTypeIndex(IrValueType.i32);
+		case BasicType.t_u8: return makeBasicTypeIndex(IrValueType.i8);
+		case BasicType.t_i8: return makeBasicTypeIndex(IrValueType.i8);
+		case BasicType.t_i16: return makeBasicTypeIndex(IrValueType.i16);
+		case BasicType.t_u16: return makeBasicTypeIndex(IrValueType.i16);
+		case BasicType.t_i32: return makeBasicTypeIndex(IrValueType.i32);
+		case BasicType.t_u32: return makeBasicTypeIndex(IrValueType.i32);
+		case BasicType.t_i64: return makeBasicTypeIndex(IrValueType.i64);
+		case BasicType.t_u64: return makeBasicTypeIndex(IrValueType.i64);
+		default:
+			context.internal_error(t.loc, "Cannot convert %s to IrIndex", t.basicType);
+			assert(false);
+	}
+}
+
+IrIndex genIrType(PtrTypeNode* t, CompilationContext* context)
+	out(res; res.isTypePointer, "Not a pointer type")
+{
+	if (t.irType.isDefined) return t.irType;
+	t.irType = context.types.appendPtr(t.base.genIrType(context));
+	return t.irType;
+}
+
+IrIndex genIrType(StaticArrayTypeNode* t, CompilationContext* context)
+	out(res; res.isTypeArray, "Not a array type")
+{
+	if (t.irType.isDefined) return t.irType;
+	t.irType = context.types.appendArray(t.base.genIrType(context), t.length);
+	return t.irType;
+}
+
+IrIndex genIrType(StructTypeNode* t, CompilationContext* context)
+	out(res; res.isTypeStruct, "Not a struct type")
+{
+	StructDeclNode* s = t.getSym.structDecl;
+
+	if (s.irType.isDefined) return s.irType;
+
+	uint numFields = 0;
+	foreach(AstNode* member; s.declarations)
+		if (member.astType == AstType.decl_var)
+		{
+			++numFields;
+		}
+
+	s.irType = context.types.appendStruct(numFields);
+	IrTypeStruct* structType = &context.types.get!IrTypeStruct(s.irType);
+	IrTypeStructMember[] members = structType.members;
+
+	uint memberIndex;
+	uint memberOffset;
+	foreach(AstNode* member; s.declarations)
+		if (member.astType == AstType.decl_var)
+		{
+			IrIndex type = (cast(VariableDeclNode*)member).type.genIrType(context);
+			uint memberSize = context.types.typeSize(type);
+
+			members[memberIndex++] = IrTypeStructMember(type, memberOffset);
+			// TODO: alignment
+			memberOffset += memberSize;
+		}
+	structType.size = memberOffset;
+	context.todo("genIrType struct alignment/size");
+	return s.irType;
+}
+
 bool sameType(TypeNode* t1, TypeNode* t2) {
 	assert(t1.isType, format("this is %s, not type", t1.astType));
 	assert(t2.isType, format("t2 is %s, not type", t2.astType));
 
-	if (t1.astType != t2.astType) return false;
+	if (t1.astType != t2.astType) {
+		return false;
+	}
 
 	switch(t1.astType) with(AstType)
 	{
@@ -275,7 +348,8 @@ bool sameType(TypeNode* t1, TypeNode* t2) {
 			return t1.basicTypeNode.basicType == t2.basicTypeNode.basicType;
 		case type_ptr: return sameType(t1.ptrTypeNode, t2.ptrTypeNode);
 		case type_static_array: return sameType(t1.staticArrayTypeNode, t2.staticArrayTypeNode);
-		case type_user: return cast(void*)(t1) == cast(void*)(t2);
+		case type_struct:
+			return sameType(t1.structTypeNode, t2.structTypeNode);
 		default:
 			assert(false, format("got %s %s", t1.astType, t2.astType));
 	}
@@ -289,15 +363,15 @@ enum BasicTypeFlag : ubyte {
 }
 
 enum POINTER_SIZE = 8;
-BasicTypeNode basicTypeNode(ulong size, BasicType basicType, int typeFlags = 0)
+BasicTypeNode basicTypeNode(uint size, BasicType basicType, int typeFlags = 0)
 {
 	return BasicTypeNode(SourceLocation(), size, basicType, cast(ubyte)typeFlags);
 }
 
 struct BasicTypeNode {
 	mixin TypeNodeData!(AstType.type_basic);
-	ulong size; // -1 arch dependent
-	ulong alignment() { return size; }
+	uint size;
+	uint alignment() { return size; }
 	BasicType basicType;
 	ubyte typeFlags;
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
@@ -313,8 +387,9 @@ struct PtrTypeNode {
 	mixin TypeNodeData!(AstType.type_ptr);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	TypeNode* base;
-	ulong size() { return POINTER_SIZE; }
-	ulong alignment() { return POINTER_SIZE; }
+	IrIndex irType;
+	uint size() { return POINTER_SIZE; }
+	uint alignment() { return POINTER_SIZE; }
 }
 
 bool sameType(PtrTypeNode* t1, PtrTypeNode* t2)
@@ -326,9 +401,10 @@ struct StaticArrayTypeNode {
 	mixin TypeNodeData!(AstType.type_static_array);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	TypeNode* base;
-	ulong length;
-	ulong size() { return base.size * length; }
-	ulong alignment() { return base.alignment; }
+	uint length;
+	IrIndex irType;
+	uint size() { return cast(uint)(base.size * length); } // TODO check overflow
+	uint alignment() { return base.alignment; }
 }
 
 bool sameType(StaticArrayTypeNode* t1, StaticArrayTypeNode* t2)
@@ -336,12 +412,17 @@ bool sameType(StaticArrayTypeNode* t1, StaticArrayTypeNode* t2)
 	return sameType(t1.base, t2.base) && (t1.length == t2.length);
 }
 
-struct UserTypeNode {
-	mixin TypeNodeData!(AstType.type_user);
+struct StructTypeNode {
+	mixin TypeNodeData!(AstType.type_struct);
 	mixin SymRefNodeData;
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
-	ulong size = 1; // TODO, set in semantic
-	ulong alignment = 1; // TODO, set as max alignment of members
+	uint size = 1; // TODO, set in semantic
+	uint alignment = 1; // TODO, set as max alignment of members
+}
+
+bool sameType(StructTypeNode* t1, StructTypeNode* t2)
+{
+	return t1.getSym is t2.getSym;
 }
 
 // ------------------------------- Declarations --------------------------------
@@ -362,7 +443,7 @@ struct ModuleDeclNode {
 	ubyte[] code;
 
 	void addFunction(FunctionDeclNode* func) {
-		func.index = FunctionIndex(cast(uint)functions.length);
+		func.backendData.index = FunctionIndex(cast(uint)functions.length);
 		functions ~= func;
 	}
 
@@ -382,6 +463,7 @@ struct StructDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_struct);
 	mixin SymRefNodeData;
 	Scope* _scope;
+	IrIndex irType;
 }
 
 /// Points into ModuleDeclNode.functions
@@ -391,6 +473,26 @@ struct FunctionIndex
 	alias index this;
 }
 
+struct FunctionBackendData
+{
+	IrFunction* irData;
+	IrFunction* lirData;
+	FunctionLiveIntervals* liveIntervals;
+	ubyte[] code;
+	/// Position in buffer or in memory
+	void* funcPtr;
+	///
+	StackLayout stackLayout;
+	///
+	CallConv* callingConvention;
+	///
+	FunctionIndex index;
+	///
+	IrIndex returnType;
+	///
+	Identifier name;
+}
+
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
 	mixin SymRefNodeData;
@@ -398,15 +500,7 @@ struct FunctionDeclNode {
 	VariableDeclNode*[] parameters;
 	BlockStmtNode* block_stmt; // null if external
 	Scope* _scope;
-	IrFunction* irData;
-	IrFunction* lirData;
-	FunctionLiveIntervals* liveIntervals;
-	ubyte[] code;
-	/// Position in buffer or in memory
-	void* funcPtr;
-	CallConv* callingConvention;
-	StackLayout stackLayout;
-	FunctionIndex index;
+	FunctionBackendData backendData;
 
 	/// External functions have no body
 	bool isExternal() { return block_stmt is null; }
@@ -423,7 +517,7 @@ struct VariableDeclNode {
 	TypeNode* type;
 	ExpressionNode* initializer; // may be null
 	ubyte varFlags;
-	ushort paramIndex; // 0 for non-params
+	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
 	IrIndex irValue; // kind is variable or stackSlot, unique id of variable within a function
 	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
 	bool forceMemoryStorage() { return cast(bool)(varFlags & VariableFlags.forceMemoryStorage); }
@@ -489,8 +583,8 @@ struct ExpressionNode {
 	mixin ExpressionNodeData!(AstType.abstract_node);
 }
 
-struct VariableExprNode {
-	mixin ExpressionNodeData!(AstType.expr_var);
+struct NameUseExprNode {
+	mixin ExpressionNodeData!(AstType.expr_name_use);
 	mixin SymRefNodeData;
 }
 
@@ -581,6 +675,14 @@ struct UnaryExprNode {
 	ExpressionNode* child;
 }
 
+// member access of aggregate.member form
+struct MemberExprNode {
+	mixin ExpressionNodeData!(AstType.expr_member);
+	ExpressionNode* aggregate;
+	NameUseExprNode* member; // member name
+	uint memberIndex; // resolved index of member being accessed
+}
+
 struct TypeConvExprNode {
 	mixin ExpressionNodeData!(AstType.expr_type_conv);
 	ExpressionNode* expr;
@@ -631,7 +733,8 @@ mixin template AstVisitorMixin() {
 			case stmt_break: auto b = cast(BreakStmtNode*)n; visit(b); break;
 			case stmt_continue: auto c = cast(ContinueStmtNode*)n; visit(c); break;
 
-			case expr_var: auto v = cast(VariableExprNode*)n; visit(v); break;
+			case expr_name_use: auto v = cast(NameUseExprNode*)n; visit(v); break;
+			case expr_member: auto m = cast(MemberExprNode*)n; visit(m); break;
 			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visit(b); break;
 			case expr_un_op: auto u = cast(UnaryExprNode*)n; visit(u); break;
 			case expr_call: auto c = cast(CallExprNode*)n; visit(c); break;
@@ -644,7 +747,7 @@ mixin template AstVisitorMixin() {
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
 			case type_static_array: auto t = cast(StaticArrayTypeNode*)n; visit(t); break;
-			case type_user: auto t = cast(UserTypeNode*)n; visit(t); break;
+			case type_struct: auto t = cast(StructTypeNode*)n; visit(t); break;
 		}
 	}
 }
@@ -676,7 +779,7 @@ mixin template AstVisitorMixin() {
 	void visit(ContinueStmtNode* r) {}
 	void visit(AssignStmtNode* a) {
 		_visit(a.left); _visit(a.right); }
-	void visit(VariableExprNode* v) {}
+	void visit(NameUseExprNode* v) {}
 	void visit(LiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {
 		_visit(cast(AstNode*)b.left);
@@ -692,7 +795,7 @@ mixin template AstVisitorMixin() {
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
 	void visit(StaticArrayTypeNode* t) {}
-	void visit(UserTypeNode* t) {}
+	void visit(StructTypeNode* t) {}
 */
 
 struct AstPrinter {
@@ -750,11 +853,16 @@ struct AstPrinter {
 		if (r.expression) pr_node(cast(AstNode*)r.expression); }
 	void visit(BreakStmtNode* r) { print("BREAK"); }
 	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
-	void visit(VariableExprNode* v) {
+	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
 			print("VAR_USE ", v.getSym.getType.printer(context), " ", v.strId(context));
 		else
 			print("VAR_USE ", v.strId(context));
+	}
+	void visit(MemberExprNode* m) {
+		print("MEMBER");
+		pr_node(cast(AstNode*)m.aggregate);
+		pr_node(cast(AstNode*)m.member);
 	}
 	void visit(IntLiteralExprNode* lit) { print("Int LITERAL ", lit.type.printer(context), " ", lit.value); }
 	void visit(StringLiteralExprNode* lit) { print("String LITERAL ", lit.type.printer(context), " ", lit.value); }
@@ -779,7 +887,7 @@ struct AstPrinter {
 	void visit(BasicTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(PtrTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
-	void visit(UserTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
+	void visit(StructTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)
 	{
@@ -845,11 +953,15 @@ struct AstDotPrinter {
 		if (r.expression) pr_node_edge(r, r.expression); }
 	void visit(BreakStmtNode* r) { printLabel(r, "BREAK"); }
 	void visit(ContinueStmtNode* r) { printLabel(r, "CONTINUE"); }
-	void visit(VariableExprNode* v) {
+	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
 			printLabel(v, `VAR_USE\n%s %s`, v.getSym.getType.printer(context), v.strId(context));
 		else
 			printLabel(v, `VAR_USE\n%s`, v.strId(context));
+	}
+	void visit(MemberExprNode* m) {
+		printLabel(m, "MEMBER %s", m.member.strId(context));
+		pr_node_edge(m, m.aggregate);
 	}
 	void visit(IntLiteralExprNode* lit) { printLabel(lit, `Int LITERAL\n%s %s`, lit.type.printer(context), lit.value); }
 	void visit(StringLiteralExprNode* lit) { printLabel(lit, `String LITERAL\n%s %s`, lit.type.printer(context), lit.value); }
@@ -874,7 +986,7 @@ struct AstDotPrinter {
 	void visit(BasicTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(PtrTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
-	void visit(UserTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
+	void visit(StructTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)
 	{

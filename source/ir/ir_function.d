@@ -63,11 +63,8 @@ struct IrFunction
 	VregIterator virtualRegsiters() { return VregIterator(&this); }
 
 	///
-	IrValueType returnType;
+	FunctionBackendData* backendData;
 	///
-	Identifier name;
-	///
-	CallConv* callingConvention;
 	IrInstructionSet instructionSet;
 
 	BlockIterator blocks() { return BlockIterator(&this); }

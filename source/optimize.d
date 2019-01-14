@@ -9,16 +9,8 @@ module optimize;
 import std.stdio;
 import all;
 
+alias FuncPassIr = void function(ref CompilationContext, ref IrFunction, ref IrBuilder);
 alias FuncPass = void function(ref CompilationContext, ref IrFunction);
-
-void apply_ir_func_pass(ref CompilationContext context, FuncPass pass)
-{
-	foreach (IrFunction* ir; context.mod.irModule.functions) {
-		pass(context, *ir);
-		if (context.validateIr)
-			validateIrFunction(context, *ir);
-	}
-}
 
 void apply_lir_func_pass(ref CompilationContext context, FuncPass pass)
 {
@@ -31,11 +23,23 @@ void apply_lir_func_pass(ref CompilationContext context, FuncPass pass)
 
 void pass_optimize_ir(ref CompilationContext context)
 {
-	apply_ir_func_pass(context, &func_pass_invert_conditions);
-	apply_ir_func_pass(context, &func_pass_remove_dead_code);
+	FuncPassIr[] passes = [&func_pass_invert_conditions, &func_pass_remove_dead_code, &func_pass_lower_gep];
+	IrBuilder builder;
+
+
+	foreach (IrFunction* ir; context.mod.irModule.functions) {
+		//dumpFunction(*ir, context);
+		builder.beginDup(ir, &context);
+		foreach (FuncPassIr pass; passes) {
+			pass(context, *ir, builder);
+			//dumpFunction(*ir, context);
+			if (context.validateIr)
+				validateIrFunction(context, *ir);
+		}
+	}
 }
 
-void func_pass_invert_conditions(ref CompilationContext context, ref IrFunction ir)
+void func_pass_invert_conditions(ref CompilationContext context, ref IrFunction ir, ref IrBuilder builder)
 {
 	ir.assignSequentialBlockIndices();
 
@@ -71,7 +75,7 @@ void func_pass_invert_conditions(ref CompilationContext context, ref IrFunction 
 	}
 }
 
-void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction ir)
+void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction ir, ref IrBuilder builder)
 {
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
@@ -89,6 +93,116 @@ void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction i
 			}
 			removeInstruction(ir, instrIndex);
 			//writefln("remove dead %s", instrIndex);
+		}
+	}
+}
+
+// TODO some typecasts are needed for correct typing
+void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex instrIndex, ref IrInstrHeader instrHeader)
+{
+	IrIndex buildOffset(IrIndex basePtr, long offsetVal) {
+		if (offsetVal == 0) {
+			// same ptr (TODO typecast)
+			return basePtr;
+		} else {
+			IrIndex offset = context.constants.add(IrConstant(offsetVal));
+
+			InstrWithResult addressInstr = builder.emitInstr!IrInstr_add(ExtraInstrArgs(), basePtr, offset);
+			builder.insertBeforeInstr(instrIndex, addressInstr.instruction);
+
+			return addressInstr.result;
+		}
+	}
+
+	IrIndex buildIndex(IrIndex basePtr, IrIndex index, uint elemSize)
+	{
+		IrIndex scale = context.constants.add(IrConstant(elemSize));
+
+		InstrWithResult offsetInstr = builder.emitInstr!IrInstr_mul(ExtraInstrArgs(), index, scale);
+		builder.insertBeforeInstr(instrIndex, offsetInstr.instruction);
+
+		InstrWithResult addressInstr = builder.emitInstr!IrInstr_add(ExtraInstrArgs(), basePtr, offsetInstr.result);
+		builder.insertBeforeInstr(instrIndex, addressInstr.instruction);
+
+		return addressInstr.result;
+	}
+
+	IrIndex aggrPtr = instrHeader.args[0]; // aggregate ptr
+	IrIndex aggrPtrType = getValueType(aggrPtr, *builder.ir, context);
+
+	context.assertf(aggrPtrType.isTypePointer,
+		"First argument to GEP instruction must be pointer, not %s", aggrPtr.typeKind);
+
+	IrIndex aggrType = context.types.getPointerBaseType(aggrPtrType);
+	uint aggrSize = context.types.typeSize(aggrType);
+
+	IrIndex firstIndex = instrHeader.args[1];
+	if (firstIndex.isConstant) {
+		long indexVal = context.constants.get(firstIndex).i64;
+		long offset = indexVal * aggrSize;
+		aggrPtr = buildOffset(aggrPtr, offset);
+	} else {
+		aggrPtr = buildIndex(aggrPtr, firstIndex, aggrSize);
+	}
+
+	foreach(IrIndex memberIndex; instrHeader.args[2..$])
+	{
+		final switch(aggrType.typeKind)
+		{
+			case IrTypeKind.basic:
+				context.internal_error("Cannot index basic type %s", aggrType.typeKind);
+				break;
+
+			case IrTypeKind.pointer:
+				context.internal_error("Cannot index pointer with GEP instruction, use load first");
+				break;
+
+			case IrTypeKind.array:
+				IrIndex elemType = context.types.getArrayElementType(aggrType);
+				uint elemSize = context.types.typeSize(elemType);
+
+				if (memberIndex.isConstant) {
+					long indexVal = context.constants.get(memberIndex).i64;
+					long offset = indexVal * elemSize;
+					aggrPtr = buildOffset(aggrPtr, offset);
+				} else {
+					aggrPtr = buildIndex(aggrPtr, memberIndex, elemSize);
+				}
+
+				aggrType = elemType;
+				break;
+
+			case IrTypeKind.struct_t:
+				context.assertf(memberIndex.isConstant, "Structs can only be indexed with constants");
+
+				long memberIndexVal = context.constants.get(memberIndex).i64;
+				IrTypeStructMember[] members = context.types.get!IrTypeStruct(aggrType).members;
+
+				context.assertf(memberIndexVal < members.length,
+					"Indexing member %s of %s-member struct",
+					memberIndexVal, members.length);
+
+				IrTypeStructMember member = members[memberIndexVal];
+
+				aggrPtr = buildOffset(aggrPtr, member.offset);
+				aggrType = member.type;
+				break;
+		}
+	}
+
+	builder.redirectVregUsersTo(instrHeader.result, aggrPtr);
+	removeInstruction(*builder.ir, instrIndex);
+}
+
+void func_pass_lower_gep(ref CompilationContext context, ref IrFunction ir, ref IrBuilder builder)
+{
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
+	{
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
+		{
+			if (cast(IrOpcode)instrHeader.op == IrOpcode.get_element_ptr) {
+				lowerGEP(context, builder, instrIndex, instrHeader);
+			}
 		}
 	}
 }

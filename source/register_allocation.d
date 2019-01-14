@@ -52,7 +52,7 @@ struct PhysRegisters
 
 	void setup(FunctionDeclNode* fun, MachineInfo* machineInfo)
 	{
-		allocatableRegs = fun.callingConvention.allocatableRegs;
+		allocatableRegs = fun.backendData.callingConvention.allocatableRegs;
 		gpr.length = machineInfo.registers.length;
 
 		foreach(i, ref RegisterState reg; gpr)
@@ -65,7 +65,7 @@ struct PhysRegisters
 			opIndex(reg).isAllocatable = true;
 		}
 
-		foreach(i, reg; fun.callingConvention.calleeSaved)
+		foreach(i, reg; fun.backendData.callingConvention.calleeSaved)
 		{
 			opIndex(reg).isCalleeSaved = true;
 		}
@@ -148,9 +148,9 @@ struct LinearScan
 	{
 		import std.container.binaryheap;
 
-		lir = fun.lirData;
+		lir = fun.backendData.lirData;
 		builder.beginDup(lir, context);
-		livePtr = fun.liveIntervals;
+		livePtr = fun.backendData.liveIntervals;
 		physRegs.setup(fun, context.machineInfo);
 
 		scope(exit) {
@@ -271,7 +271,7 @@ struct LinearScan
 
 		fixInstructionArgs();
 		resolve(fun);
-		genSaveCalleeSavedRegs(fun.stackLayout);
+		genSaveCalleeSavedRegs(fun.backendData.stackLayout);
 		//FuncDumpSettings settings;
 		//settings.printBlockFlags = true;
 		//settings.handlers = &lirAmd64DumpHandlers;
@@ -770,7 +770,7 @@ struct LinearScan
 		{
 			if (reg.isCalleeSaved && reg.isUsed)
 			{
-				IrIndex slot = stackLayout.addStackItem(4, 4, false, 0);
+				IrIndex slot = stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), false, 0);
 
 				// save register
 				IrIndex instrStore = builder.emitInstr!LirAmd64Instr_store(ExtraInstrArgs(), slot, reg.index);
@@ -808,7 +808,7 @@ struct MoveSolver
 
 		size_t numRegs = context.machineInfo.registers.length;
 		registers = context.allocateTempArray!ValueInfo(cast(uint)numRegs);
-		size_t numStackSlots = fun.stackLayout.slots.length;
+		size_t numStackSlots = fun.backendData.stackLayout.slots.length;
 		stackSlots = context.allocateTempArray!ValueInfo(cast(uint)numStackSlots);
 		writtenNodesBuf.setBuffer(cast(ubyte[])context.tempBuffer.freePart);
 	}

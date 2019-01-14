@@ -17,7 +17,7 @@ void pass_stack_layout(ref CompilationContext ctx)
 		if (func.isExternal) continue;
 
 		enum STACK_ITEM_SIZE = 8; // x86_64
-		auto layout = &func.stackLayout;
+		auto layout = &func.backendData.stackLayout;
 		// TODO: Win64 calling convention hardcoded
 
 		// Stack Allocation
@@ -88,11 +88,11 @@ void pass_stack_layout(ref CompilationContext ctx)
 
 		// TODO: We are assuming all stots to require 8 bytes
 
-		IrIndex baseReg = func.callingConvention.stackPointer;
+		IrIndex baseReg = func.backendData.callingConvention.stackPointer;
 
 		if (ctx.useFramePointer)
 		{
-			baseReg = func.callingConvention.framePointer;
+			baseReg = func.backendData.callingConvention.framePointer;
 		}
 
 		int paramSlotDisplacement(uint paramIndex) {
@@ -142,13 +142,11 @@ struct StackLayout
 	}
 
 	/// paramIndex == -1 for non-params
-	IrIndex addStackItem(uint size, uint alignment, bool isParameter, ushort paramIndex)
+	IrIndex addStackItem(CompilationContext* context, IrIndex type, bool isParameter, ushort paramIndex)
 	{
-		assert(size > 0);
-		assert(alignment > 0);
-
 		uint id = cast(uint)(slots.length);
-		StackSlot slot = StackSlot(size, alignment, isParameter, paramIndex);
+		StackSlot slot = StackSlot(context.types.typeSize(type), context.types.typeAlignment(type), isParameter, paramIndex);
+		slot.type = context.types.appendPtr(type);
 
 		if (!isParameter) ++numLocalSlots;
 
@@ -168,5 +166,7 @@ struct StackSlot
 	int displacement;
 	/// Base register (stack or frame pointer)
 	IrIndex baseReg;
+	/// Must be a pointer type
+	IrIndex type;
 	void addUser() { ++numUses; }
 }

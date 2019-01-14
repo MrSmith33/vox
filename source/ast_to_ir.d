@@ -27,7 +27,7 @@ struct AstToIr
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
 			case type_static_array: auto t = cast(StaticArrayTypeNode*)n; visit(t); break;
-			case type_user: auto t = cast(UserTypeNode*)n; visit(t); break;
+			case type_struct: auto t = cast(StructTypeNode*)n; visit(t); break;
 
 			default: context.unreachable(); assert(false);
 		}
@@ -36,13 +36,15 @@ struct AstToIr
 		context.assertf(n.isExpression, n.loc, "Expected expression, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case expr_var: visitExprValue(cast(VariableExprNode*)n, currentBlock, nextStmt); break;
-			case literal_int: visitExprValue(cast(IntLiteralExprNode*)n, currentBlock, nextStmt); break;
-			case literal_string: visitExprValue(cast(StringLiteralExprNode*)n, currentBlock, nextStmt); break;
-			case expr_bin_op: visitExprValue(cast(BinaryExprNode*)n, currentBlock, nextStmt); break;
+			case expr_name_use: visitExprValue(cast(NameUseExprNode*)n, currentBlock, nextStmt); break;
+			case expr_member: visitExprValue(cast(MemberExprNode*)n, currentBlock, nextStmt); break;
 			case expr_call: visitExprValue(cast(CallExprNode*)n, currentBlock, nextStmt); break;
 			case expr_index: visitExprValue(cast(IndexExprNode*)n, currentBlock, nextStmt); break;
+			case expr_bin_op: visitExprValue(cast(BinaryExprNode*)n, currentBlock, nextStmt); break;
+			case expr_un_op: context.unreachable(); assert(false);
 			case expr_type_conv: visitExprValue(cast(TypeConvExprNode*)n, currentBlock, nextStmt); break;
+			case literal_int: visitExprValue(cast(IntLiteralExprNode*)n, currentBlock, nextStmt); break;
+			case literal_string: visitExprValue(cast(StringLiteralExprNode*)n, currentBlock, nextStmt); break;
 
 			default: context.unreachable(); assert(false);
 		}
@@ -51,7 +53,7 @@ struct AstToIr
 		context.assertf(n.isExpression, n.loc, "Expected expression, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case expr_var, literal_int, literal_string, expr_call, expr_index:
+			case expr_name_use, literal_int, literal_string, expr_call, expr_index:
 				context.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
 				break;
 
@@ -110,6 +112,7 @@ struct AstToIr
 
 	IrBuilder builder;
 	IrFunction* ir;
+	FunctionDeclNode* fun;
 
 	enum MAX_ARGS = 255;
 	IrIndex[MAX_ARGS] argsBuf;
@@ -129,10 +132,10 @@ struct AstToIr
 		foreach (decl; m.functions) {
 			visit(decl);
 			// can be null if function is external
-			if (decl.irData)
+			if (decl.backendData.irData)
 			{
-				m.irModule.addFunction(decl.irData);
-				if (context.validateIr) validateIrFunction(*context, *decl.irData);
+				m.irModule.addFunction(decl.backendData.irData);
+				if (context.validateIr) validateIrFunction(*context, *decl.backendData.irData);
 			}
 		}
 		version(IrGenPrint) writeln("[IR GEN] module end");
@@ -142,6 +145,9 @@ struct AstToIr
 	{
 		version(IrGenPrint) writefln("[IR GEN] function (%s) begin", f.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] function (%s) end", f.loc);
+
+		fun = f;
+
 		if (f.isExternal) // external function
 		{
 			ExternalSymbol* sym = f.id in context.externalSymbols;
@@ -151,17 +157,18 @@ struct AstToIr
 					"Unresolved external function %s", f.strId(context));
 				return;
 			}
-			f.funcPtr = sym.ptr;
+			f.backendData.funcPtr = sym.ptr;
 			// TODO: check that parameters match
 			return;
 		}
 
 		// create new function
 		ir = new IrFunction;
-		f.irData = ir;
-		ir.returnType = f.returnType.irType(context);
-		ir.name = f.id;
-		ir.callingConvention = f.callingConvention;
+		f.backendData.irData = ir;
+		ir.backendData = &f.backendData;
+
+		ir.backendData.returnType = f.returnType.genIrType(context);
+		ir.backendData.name = f.id;
 		ir.instructionSet = IrInstructionSet.ir;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
@@ -195,7 +202,7 @@ struct AstToIr
 		//writefln("end reached %s", bodyExitLabel.numPredecessors != 0);
 
 		version(IrGenPrint) writefln("[IR GEN] function return");
-		if (ir.returnType != IrValueType.void_t)
+		if (!context.types.isVoid(ir.backendData.returnType))
 		{
 			// currentBlock must be finished with retVal
 			if (!ir.getBlock(currentBlock).isFinished)
@@ -215,7 +222,7 @@ struct AstToIr
 		}
 
 		version(IrGenPrint) writefln("[IR GEN] function seal exit");
-		//dumpFunction_ir(*ir, *context);
+		//dumpFunction(*ir, *context);
 
 		// all blocks with return (exit's predecessors) already connected, seal exit block
 		builder.sealBlock(ir.exitBasicBlock);
@@ -264,49 +271,50 @@ struct AstToIr
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end VAR_DECL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] Var decl (%s) begin %s", v.loc, v.strId(context));
 		version(IrGenPrint) scope(success) writefln("[IR GEN] Var decl (%s) end %s", v.loc, v.strId(context));
-		v.irValue = builder.newIrVarIndex();//, v.type.irType(context));
 
-		//if (context.buildDebug)
-		//	v.varFlags |= VariableFlags.forceMemoryStorage;
+		if (context.buildDebug)
+			v.varFlags |= VariableFlags.forceMemoryStorage;
 
 		// Allocate stack slot for parameter that is passed via stack
-		//bool isParamWithSlot = v.isParameter && ir.callingConvention.isParamOnStack(v.paramIndex);
-		//bool needsStackSlot = v.forceMemoryStorage || isParamWithSlot;
+		bool isParamWithSlot = v.isParameter && ir.backendData.callingConvention.isParamOnStack(v.scopeIndex);
+		bool needsStackSlot = v.forceMemoryStorage || isParamWithSlot;
 
-		//if (needsStackSlot)
-		//{
-		//	v.stackSlotId = ir.stackLayout.addStackItem(v.type.size, v.type.alignment, v.isParameter, v.paramIndex);
-		//}
-
-		if (v.isParameter)
+		if (needsStackSlot)
 		{
-			//++ir.numParameters;
-			InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock);
-			ir.get!IrInstr_parameter(param.instruction).index = v.paramIndex;
-			//instr.stackSlot = v.stackSlotId;
-
-			store(currentBlock, v.irValue, param.result);
+			// allocate stack slot
+			v.irValue = fun.backendData.stackLayout.addStackItem(context, v.type.genIrType(context), v.isParameter, v.scopeIndex);
 		}
 		else
 		{
-			IrIndex value;
-			if (v.initializer)
+			// allocate new variable
+			v.irValue = builder.newIrVarIndex();
+			if (v.isParameter)
 			{
-				IrLabel afterExpr = IrLabel(currentBlock);
-				visitExprValue(v.initializer, currentBlock, afterExpr);
-				value = v.initializer.irValue;
-				currentBlock = afterExpr.blockIndex;
+				// parameter input
+				InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock);
+				ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
+
+				store(currentBlock, v.irValue, param.result);
 			}
 			else
-				value = context.constants.add(IrConstant(0));
-			store(currentBlock, v.irValue, value);
+			{
+				// initialize variable by default or with user-specified value
+				IrIndex value;
+				if (v.initializer)
+				{
+					IrLabel afterExpr = IrLabel(currentBlock);
+					visitExprValue(v.initializer, currentBlock, afterExpr);
+					value = v.initializer.irValue;
+					currentBlock = afterExpr.blockIndex;
+				}
+				else
+					value = context.constants.add(IrConstant(0));
+				store(currentBlock, v.irValue, value);
+			}
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
-	void visit(StructDeclNode* s)
-	{
-		// skip
-	}
+	void visit(StructDeclNode* s) {}
 	void visit(BlockStmtNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(CfgGenPrint) writefln("[CFG GEN] beg BLOCK cur %s next %s", currentBlock, nextStmt);
@@ -479,16 +487,55 @@ struct AstToIr
 		builder.addJumpToLabel(currentBlock, *currentLoopHeader);
 	}
 
-	void visitExprValue(VariableExprNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
+	void visitExprValue(NameUseExprNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(CfgGenPrint) writefln("[CFG GEN] beg VAR_USE VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end VAR_USE VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] var expr value (%s) begin", v.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr value (%s) end", v.loc);
 
-		if (v.isLvalue) v.irValue = v.getSym.varDecl.irValue;
-		else v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+		if (v.isLvalue)
+			v.irValue = v.getSym.varDecl.irValue;
+		else {
+			TypeNode* type = v.getSym.varDecl.type;
+			if (v.isArgument && type.astType == AstType.type_struct)
+			{
+				IrIndex irType = type.genIrType(context);
+				uint size = context.types.typeSize(irType);
+				if (size == 1 || size == 2 || size == 4 || size == 8)
+				{
+					// pass by value
+					v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+				}
+				else
+				{
+					// pass pointer
+					context.todo("need to pass pointer to copy");
+					v.irValue = v.getSym.varDecl.irValue;
+				}
+			}
+			else
+				v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+		}
 
+		builder.addJumpToLabel(currentBlock, nextStmt);
+	}
+	void visitExprValue(MemberExprNode* m, IrIndex currentBlock, ref IrLabel nextStmt) {
+		IrLabel afterExpr = IrLabel(currentBlock);
+		m.aggregate.flags |= AstFlags.isLvalue;
+		visitExprValue(m.aggregate, currentBlock, afterExpr);
+		currentBlock = afterExpr.blockIndex;
+
+		IrIndex ptrIndex = context.constants.add(IrConstant(0));
+		IrIndex memberIndex = context.constants.add(IrConstant(m.memberIndex));
+		m.irValue = builder.emitInstr!IrInstr_get_element_ptr(currentBlock, m.aggregate.irValue, ptrIndex, memberIndex).result;
+
+		if (m.isLvalue) {
+			// already stores l-value
+		}
+		else {
+			m.irValue = load(currentBlock, m.irValue);
+		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprValue(IntLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -656,25 +703,27 @@ struct AstToIr
 
 		foreach (i, ExpressionNode* arg; c.args) {
 			IrLabel afterArg = IrLabel(currentBlock);
+			arg.flags |= AstFlags.isArgument;
 			visitExprValue(arg, currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
 			argsBuf[i] = arg.irValue;
 		}
 
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-		context.assertf(c.callee.astType == AstType.expr_var,
+		// need handling of function pointers, need function types in IR for that
+		context.assertf(c.callee.astType == AstType.expr_name_use,
 			c.loc, "Only direct function calls are supported right now");
-		Symbol* calleeSym = (cast(VariableExprNode*)c.callee).getSym;
+		Symbol* calleeSym = (cast(NameUseExprNode*)c.callee).getSym;
 
 		IrIndex[] args = argsBuf[0..c.args.length];
 		FunctionDeclNode* callee = calleeSym.funcDecl;
 
 		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.index);
-		context.assertf(callee.index < context.mod.functions.length,
+		context.assertf(callee.backendData.index < context.mod.functions.length,
 			"Callee index is out of bounds: index %s, num functions %s",
-			callee.index, context.mod.functions.length);
+			callee.backendData.index, context.mod.functions.length);
 
-		builder.emitInstrPreheader(IrInstrPreheader_call(callee.index));
+		builder.emitInstrPreheader(IrInstrPreheader_call(callee.backendData.index));
 
 		if (callee.returnType.isVoid) {
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, args);
@@ -683,6 +732,10 @@ struct AstToIr
 			ExtraInstrArgs extra = {hasResult : true};
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, extra, args);
 			c.irValue = res.result;
+		}
+
+		if (c.isLvalue) {
+			context.internal_error(c.loc, "Call cannot be an l-value");
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -703,11 +756,11 @@ struct AstToIr
 		IrIndex address;
 		if (i.index.irValue.isConstant)
 		{
-			ulong elemSize = i.type.size;
 			ulong index = context.constants.get(i.index.irValue).i64;
 			if (index == 0) {
 				address = i.array.irValue;
 			} else {
+				ulong elemSize = i.type.size;
 				IrIndex offset = context.constants.add(IrConstant(index * elemSize));
 				address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irValue, offset).result;
 			}
@@ -734,8 +787,8 @@ struct AstToIr
 		visitExprValue(t.expr, currentBlock, afterExpr);
 		currentBlock = afterExpr.blockIndex;
 
-		IrValueType to = t.type.irType(context);
-		IrValueType from = t.expr.type.irType(context);
+		IrIndex to = t.type.genIrType(context);
+		IrIndex from = t.expr.type.genIrType(context);
 		if (t.expr.irValue.isConstant)
 		{
 			long value = context.constants.get(t.expr.irValue).i64;
@@ -745,7 +798,7 @@ struct AstToIr
 				builder.addJumpToLabel(currentBlock, falseExit);
 			return;
 		}
-		else if (from == IrValueType.i32 || from == IrValueType.i64)
+		else if (from == makeBasicTypeIndex(IrValueType.i32) || from == makeBasicTypeIndex(IrValueType.i64))
 		{
 			t.irValue = t.expr.irValue;
 			builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, t.expr.irValue, trueExit, falseExit);
@@ -765,9 +818,9 @@ struct AstToIr
 		visitExprValue(t.expr, currentBlock, afterExpr);
 		currentBlock = afterExpr.blockIndex;
 
-		IrValueType to = t.type.irType(context);
-		IrValueType from = t.expr.type.irType(context);
-		if (t.expr.irValue.isConstant || (from == IrValueType.i32 && to == IrValueType.i64))
+		IrIndex to = t.type.genIrType(context);
+		IrIndex from = t.expr.type.genIrType(context);
+		if (t.expr.irValue.isConstant || (from == makeBasicTypeIndex(IrValueType.i32) && to == makeBasicTypeIndex(IrValueType.i64)))
 		{
 			t.irValue = t.expr.irValue;
 		}
@@ -781,5 +834,5 @@ struct AstToIr
 	void visit(BasicTypeNode* t) { context.unreachable; }
 	void visit(PtrTypeNode* t) { context.unreachable; }
 	void visit(StaticArrayTypeNode* t) { context.unreachable; }
-	void visit(UserTypeNode* t) { context.unreachable; }
+	void visit(StructTypeNode* t) { context.unreachable; }
 }

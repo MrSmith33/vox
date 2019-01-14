@@ -40,6 +40,7 @@ struct ScopeStack
 	{
 		//print("push scope %s", name); // debug
 		//indent += indentSize;
+
 		Scope* newScope = new Scope;
 		newScope.isOrdered = isOrdered;
 		newScope.debugName = name;
@@ -65,8 +66,15 @@ struct ScopeStack
 	/// Used in 1 semantic pass
 	void popScope1()
 	{
+		//indent -= indentSize; // debug
+		//if (currentScope.debugName) print("pop scope %s", currentScope.debugName);
+		//else print("pop scope");
+
 		if (currentScope.parentScope) currentScope = currentScope.parentScope;
-		else currentScope = null;
+		else {
+			currentScope = null;
+			symbols.clear;
+		}
 	}
 
 	/// Used in 2 semantic pass
@@ -99,7 +107,7 @@ struct ScopeStack
 		auto sym = symbols.get(id, null);
 		while (sym)
 		{
-			// print("try lookup %s @ %s", context.idString(sym.id), sym.loc);
+			//print("try lookup %s from (%s, %s) @ %s", context.idString(sym.id), from.line+1, from.col+1, sym.loc);
 			// forward reference allowed for unordered scope
 			if (!sym.isInOrderedScope) break;
 			// not a forward reference
@@ -116,6 +124,61 @@ struct ScopeStack
 			context.error(from, "undefined identifier `%s`", context.idString(id));
 		}
 		return sym;
+	}
+
+	/// Used in 2 semantic pass
+	/// Look up member by Identifier. Searches aggregate scope for identifier.
+	void lookupMember(MemberExprNode* expr)
+	{
+		Identifier id = expr.member.id;
+		string idStr = context.idString(id);
+		//print("try lookup member `%s` from (%s, %s) in %s", idStr, expr.loc.line+1, expr.loc.col+1, expr.aggregate.astType);
+		if (expr.aggregate.astType != AstType.expr_name_use) {
+			context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, expr.aggregate.astType);
+			return;
+		}
+
+		Symbol* aggSym = (cast(NameUseExprNode*)expr.aggregate).getSym;
+
+		if (aggSym.symClass != SymbolClass.c_variable) {
+			context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, aggSym.symClass);
+			return;
+		}
+
+		VariableDeclNode* varDecl = aggSym.varDecl;
+
+		if (varDecl.type.astType != AstType.type_struct) {
+			context.error(expr.loc, "`%s` of type `%s` is not a struct. Cannot access its member `%s`",
+				varDecl.strId(context), varDecl.type.printer(context), idStr);
+			return;
+		}
+
+		StructTypeNode* structType = varDecl.type.structTypeNode;
+		StructDeclNode* structDecl = structType.getSym.structDecl;
+		Symbol* memberSym = structDecl._scope.symbols.get(id, null);
+		expr.member.resolveSymbol(memberSym);
+		//print("`%s` in struct `%s`", idStr, context.idString(aggSym.id));
+		if (memberSym) {
+			//print("lookup %s @ %s in struct %s", idStr, memberSym.loc, context.idString(aggSym.id));
+			final switch(memberSym.symClass)
+			{
+				case SymbolClass.c_function:
+					context.internal_error("member functions/UFCS calls are not implemented");
+					assert(false);
+				case SymbolClass.c_variable:
+					VariableDeclNode* memberVar = expr.member.getSym.varDecl;
+					expr.type = memberVar.type;
+					expr.memberIndex = memberVar.scopeIndex;
+					break;
+				case SymbolClass.c_struct:
+					context.internal_error("member structs are not implemented");
+					assert(false);
+			}
+		}
+		else
+		{
+			context.error(expr.loc, "Cannot find `%s` in struct ", idStr, context.idString(aggSym.id));
+		}
 	}
 
 	/// Used in 1 semantic pass
@@ -145,8 +208,15 @@ struct ScopeStack
 	int indentSize = 2;
 	int indent;
 	void print(Args...)(Args args) {
+		import std.range;
 		write(' '.repeat(indent));
 		writefln(args);
+	}
+	void printSymbols() {
+		import std.range;
+		write(' '.repeat(indent), "symbols");
+		foreach(k; symbols.byKey) writef(" %s", context.idString(k));
+		writeln;
 	}
 }
 
@@ -219,7 +289,8 @@ struct SemanticDeclarations
 	void visit(ReturnStmtNode* r) {}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
-	void visit(VariableExprNode* v) {}
+	void visit(NameUseExprNode* v) {}
+	void visit(MemberExprNode* m) {}
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {
@@ -237,7 +308,7 @@ struct SemanticDeclarations
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
 	void visit(StaticArrayTypeNode* t) {}
-	void visit(UserTypeNode* t) {}
+	void visit(StructTypeNode* t) {}
 }
 
 void pass_semantic_lookup(ref CompilationContext ctx)
@@ -309,10 +380,19 @@ struct SemanticLookup
 	}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
-	void visit(VariableExprNode* v) { v.resolveSymbol = scopeStack.lookup(v.id, v.loc); }
+	void visit(NameUseExprNode* v) {
+		v.resolveSymbol = scopeStack.lookup(v.id, v.loc);
+	}
+	void visit(MemberExprNode* m) {
+		_visit(m.aggregate);
+		scopeStack.lookupMember(m);
+	}
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
-	void visit(BinaryExprNode* b) { _visit(b.left); _visit(b.right); }
+	void visit(BinaryExprNode* b) {
+		_visit(b.left);
+		_visit(b.right);
+	}
 	void visit(UnaryExprNode* u) { _visit(u.child); }
 	void visit(CallExprNode* c) {
 		_visit(c.callee);
@@ -325,7 +405,7 @@ struct SemanticLookup
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) { _visit(t.base); }
 	void visit(StaticArrayTypeNode* t) { _visit(t.base); }
-	void visit(UserTypeNode* t) { t.resolveSymbol = scopeStack.lookup(t.id, t.loc); }
+	void visit(StructTypeNode* t) { t.resolveSymbol = scopeStack.lookup(t.id, t.loc); }
 }
 
 void pass_semantic_type(ref CompilationContext ctx)
@@ -386,9 +466,9 @@ struct SemanticStaticTypes
 	/// Returns true if conversion was successful. False otherwise
 	bool autoconvTo(ref ExpressionNode* expr, BasicType toType, Flag!"force" force)
 	{
-		auto type = context.basicTypeNodes(toType);
+		TypeNode* type = context.basicTypeNodes(toType);
 		// Skip if already the same type
-		if (expr.type is type) return true;
+		if (sameType(expr.type, type)) return true;
 
 		if (expr.type.astType == AstType.type_basic)
 		{
@@ -402,14 +482,14 @@ struct SemanticStaticTypes
 		}
 
 		context.error(expr.loc, "Cannot auto-convert expression of type `%s` to `%s`",
-			expr.type.typeName(context),
-			basicTypeNames[toType]);
+			expr.type.printer(context),
+			type.printer(context));
 		return false;
 	}
 
 	bool autoconvTo(ref ExpressionNode* expr, TypeNode* type)
 	{
-		if (expr.type is type) return true;
+		if (sameType(expr.type, type)) return true;
 
 		string extraError;
 
@@ -430,8 +510,8 @@ struct SemanticStaticTypes
 		}
 
 		context.error(expr.loc, "Cannot auto-convert expression of type `%s` to `%s`%s",
-			expr.type.typeName(context),
-			type.typeName(context),
+			expr.type.printer(context),
+			type.printer(context),
 			extraError);
 		return false;
 	}
@@ -463,7 +543,7 @@ struct SemanticStaticTypes
 		*/
 			// logic ops. Requires both operands to be of the same type
 			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
-				if (b.left.type is b.right.type)
+				if (autoconvToCommonType(b.left, b.right))
 					resRype = context.basicTypeNodes(BasicType.t_bool);
 				else
 					context.error(b.left.loc, "Cannot compare `%s` and `%s`",
@@ -484,7 +564,9 @@ struct SemanticStaticTypes
 				break;
 
 			case ASSIGN:
-				if (b.left.astType == AstType.expr_var || b.left.astType == AstType.expr_index)
+				if (b.left.astType == AstType.expr_name_use ||
+					b.left.astType == AstType.expr_index ||
+					b.left.astType == AstType.expr_member)
 				{
 					autoconvTo(b.right, b.left.type);
 				}
@@ -557,7 +639,7 @@ struct SemanticStaticTypes
 	void visit(FunctionDeclNode* f) {
 		auto prevFunc = curFunc;
 		curFunc = f;
-		f.callingConvention = &win64_call_conv;
+		f.backendData.callingConvention = &win64_call_conv;
 		foreach (param; f.parameters) visit(param);
 		if (f.block_stmt)
 		{
@@ -573,9 +655,9 @@ struct SemanticStaticTypes
 			autoconvTo(v.initializer, v.type);
 		}
 
-		switch (v.astType)
+		switch (v.type.astType) with(AstType)
 		{
-			case AstType.type_static_array:
+			case type_static_array, type_struct:
 				v.varFlags |= VariableFlags.forceMemoryStorage;
 				break;
 
@@ -641,12 +723,38 @@ struct SemanticStaticTypes
 	void visit(ContinueStmtNode* r) {}
 
 	// Get type from variable declaration
-	void visit(VariableExprNode* v) {
+	void visit(NameUseExprNode* v) {
 		v.type = v.getSym.getType;
 		v.type.assertImplemented(v.loc, context);
 	}
+	void visit(MemberExprNode* m) {
+		_visit(m.aggregate);
+		m.type = m.member.getSym.getType;
+		m.type.assertImplemented(m.loc, context);
+	}
 	void visit(IntLiteralExprNode* c) {
-		c.type = context.basicTypeNodes(BasicType.t_i32);
+		if (c.value < 0)
+		{
+			if (cast(byte)(c.value & 0xFF) == c.value)
+				c.type = context.basicTypeNodes(BasicType.t_i8);
+			else if (cast(short)(c.value & 0xFFFF) == c.value)
+				c.type = context.basicTypeNodes(BasicType.t_i16);
+			else if (cast(int)(c.value & 0xFFFF_FFFF) == c.value)
+				c.type = context.basicTypeNodes(BasicType.t_i32);
+			else
+				c.type = context.basicTypeNodes(BasicType.t_i64);
+		}
+		else
+		{
+			if (cast(ubyte)(c.value & 0xFF) == c.value)
+				c.type = context.basicTypeNodes(BasicType.t_u8);
+			else if (cast(ushort)(c.value & 0xFFFF) == c.value)
+				c.type = context.basicTypeNodes(BasicType.t_u16);
+			else if (cast(uint)(c.value & 0xFFFF_FFFF) == c.value)
+				c.type = context.basicTypeNodes(BasicType.t_u32);
+			else
+				c.type = context.basicTypeNodes(BasicType.t_u64);
+		}
 	}
 	void visit(StringLiteralExprNode* c) {
 		c.type = cast(TypeNode*)u8Ptr;
@@ -665,9 +773,9 @@ struct SemanticStaticTypes
 	// Get type from function declaration
 	void visit(CallExprNode* c) {
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-		context.assertf(c.callee.astType == AstType.expr_var,
+		context.assertf(c.callee.astType == AstType.expr_name_use,
 			c.loc, "Only direct function calls are supported right now");
-		Symbol* calleeSym = (cast(VariableExprNode*)c.callee).getSym;
+		Symbol* calleeSym = (cast(NameUseExprNode*)c.callee).getSym;
 
 		if (calleeSym.symClass != SymbolClass.c_function)
 		{
@@ -710,5 +818,5 @@ struct SemanticStaticTypes
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
 	void visit(StaticArrayTypeNode* t) {}
-	void visit(UserTypeNode* t) {}
+	void visit(StructTypeNode* t) {}
 }

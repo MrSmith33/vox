@@ -31,6 +31,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	auto startInitTime = currTime;
 	Driver driver;
 	driver.initialize(compilerPasses);
+	driver.context.buildDebug = false;
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
 	auto endInitTime = currTime;
@@ -39,7 +40,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	dumpSettings.printBlockFlags = true;
 
 	Test[] testsThatPass = [test7, test8, test8_1, test10, test9, test18, test19,
-		test20, test21, test21_2, test22, test23, test24];
+		test20, test21, test21_2, test22, test23, test24, test25];
 
 	size_t numSuccessfulTests;
 	writefln("Running %s tests", testsThatPass.length);
@@ -131,7 +132,7 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 		foreach(fun; mod.functions) {
 			if (!fun.isExternal)
-				fun.liveIntervals.dump(sink, driver.context);
+				fun.backendData.liveIntervals.dump(sink, driver.context);
 		}
 
 		writeln(sink.text);
@@ -152,10 +153,10 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 	FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
 
-	if (funDecl != null && funDecl.funcPtr != null)
+	if (funDecl != null && funDecl.backendData.funcPtr != null)
 	{
 		if(dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
-		curTest.tester(funDecl.funcPtr);
+		curTest.tester(funDecl.backendData.funcPtr);
 	}
 }
 

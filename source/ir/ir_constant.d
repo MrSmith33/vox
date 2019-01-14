@@ -9,6 +9,7 @@ module ir.ir_constant;
 import all;
 
 /// Stores numeric constant data
+/// Type is implicitly the smallest signed int type. TODO more types of constants
 @(IrValueKind.constant)
 struct IrConstant
 {
