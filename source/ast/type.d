@@ -202,11 +202,10 @@ IrIndex genIrType(StructTypeNode* t, CompilationContext* context)
 	if (s.irType.isDefined) return s.irType;
 
 	uint numFields = 0;
-	foreach(AstNode* member; s.declarations)
+	foreach(AstNode* member; s.declarations) {
 		if (member.astType == AstType.decl_var)
-		{
 			++numFields;
-		}
+	}
 
 	s.irType = context.types.appendStruct(numFields);
 	IrTypeStruct* structType = &context.types.get!IrTypeStruct(s.irType);
@@ -214,23 +213,28 @@ IrIndex genIrType(StructTypeNode* t, CompilationContext* context)
 
 	uint memberIndex;
 	uint memberOffset;
+	uint maxAlignment = 1;
 	foreach(AstNode* member; s.declarations)
+	{
 		if (member.astType == AstType.decl_var)
 		{
 			IrIndex type = (cast(VariableDeclNode*)member).type.genIrType(context);
 			uint memberSize = context.types.typeSize(type);
-
+			uint memberAlignment = context.types.typeAlignment(type);
+			maxAlignment = max(maxAlignment, memberAlignment);
+			memberOffset = alignValue!uint(memberOffset, memberAlignment);
 			members[memberIndex++] = IrTypeStructMember(type, memberOffset);
-			// TODO: alignment
 			memberOffset += memberSize;
 		}
+	}
+
+	memberOffset = alignValue!uint(memberOffset, maxAlignment);
 	structType.size = memberOffset;
-	context.todo("genIrType struct alignment/size");
 	return s.irType;
 }
 
 bool sameType(TypeNode* t1, TypeNode* t2) {
-	assert(t1.isType, format("this is %s, not type", t1.astType));
+	assert(t1.isType, format("t1 is %s, not type", t1.astType));
 	assert(t2.isType, format("t2 is %s, not type", t2.astType));
 
 	if (t1.astType != t2.astType) {
