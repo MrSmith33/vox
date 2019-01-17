@@ -49,7 +49,8 @@ void pass_stack_layout(ref CompilationContext ctx)
 		// XXW0 local0    L0   rsp + 24      \
 		// XXV8 local1    L1   rsp + 16       \ numLocals = 4 (example)
 		// XXV0 local2    L2   rsp +  8       /
-		// XXU8 local3    L2   rsp +  0      /  <-- RSP
+		// XXU8 local3    L3   rsp +  0      /  <-- RSP
+		// optional padding                     <-- RSP
 		// --
 
 		int numParams = layout.numParamSlots;
@@ -59,8 +60,16 @@ void pass_stack_layout(ref CompilationContext ctx)
 		if (layout.numLocalSlots > freeShadowSlots)
 			requiredLocalSlots = layout.numLocalSlots - freeShadowSlots;
 		layout.reservedBytes = requiredLocalSlots * STACK_ITEM_SIZE;
+
+		int extraDisplacement = 0;
 		// Align to 16 bytes
-		if (layout.reservedBytes % 16 != 0) layout.reservedBytes += STACK_ITEM_SIZE;
+		// Before we are called, the stack is aligned to 16 bytes, after call return address is pushed
+		// We take into account the return address (extra 8 bytes)
+		if ((layout.reservedBytes + STACK_ITEM_SIZE) % 16 != 0) {
+			layout.reservedBytes += STACK_ITEM_SIZE;
+			// because of padding all slots are shifted up by one slot
+			extraDisplacement = STACK_ITEM_SIZE;
+		}
 
 		/*
 		if (ctx.useFramePointer)
@@ -105,20 +114,20 @@ void pass_stack_layout(ref CompilationContext ctx)
 			if (slot.isParameter)
 			{
 				// alloc shadow slot
-				slot.displacement = paramSlotDisplacement(slot.paramIndex);
+				slot.displacement = paramSlotDisplacement(slot.paramIndex) + extraDisplacement;
 			}
 			else
 			{
 				if (freeShadowSlots > 0)
 				{
 					// alloc shadow slot
-					slot.displacement = paramSlotDisplacement(4 - freeShadowSlots);
+					slot.displacement = paramSlotDisplacement(4 - freeShadowSlots) + extraDisplacement;
 					--freeShadowSlots;
 				}
 				else
 				{
 					// alloc local slot
-					slot.displacement = (layout.numLocalSlots - nextLocalIndex - 1) * STACK_ITEM_SIZE;
+					slot.displacement = (layout.numLocalSlots - nextLocalIndex - 1) * STACK_ITEM_SIZE + extraDisplacement;
 					++nextLocalIndex;
 				}
 			}

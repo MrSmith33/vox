@@ -83,8 +83,44 @@ struct CodeEmitter
 		uint[] buf = context.tempBuffer.voidPut(lir.numBasicBlocks * 2 * (PC.sizeof / uint.sizeof));
 		buf[] = 0;
 		jumpFixups = cast(PC[2][])buf;
+		compileFuncProlog();
 		compileBody();
 		fixJumps();
+	}
+
+	void compileFuncProlog()
+	{
+		// Establish frame pointer
+		if (context.useFramePointer)
+		{
+			gen.pushq(Register.BP);
+			gen.movq(Register.BP, Register.SP);
+		}
+
+		uint reservedBytes = fun.backendData.stackLayout.reservedBytes;
+		if (reservedBytes) // Reserve space for locals
+		{
+			if (reservedBytes > byte.max) gen.subq(Register.SP, Imm32(reservedBytes));
+			else gen.subq(Register.SP, Imm8(cast(byte)reservedBytes));
+		}
+	}
+
+	void compileFuncEpilog()
+	{
+		uint reservedBytes = fun.backendData.stackLayout.reservedBytes;
+		if (reservedBytes)
+		{
+			if (reservedBytes > byte.max) gen.addq(Register.SP, Imm32(reservedBytes));
+			else gen.addq(Register.SP, Imm8(cast(byte)reservedBytes));
+		}
+
+		if (context.useFramePointer)
+		{
+			// Restore frame pointer
+			gen.popq(Register.BP);
+		}
+
+		gen.ret();
 	}
 
 	void compileBody()
@@ -149,7 +185,7 @@ struct CodeEmitter
 						}
 						break;
 					case Amd64Opcode.ret:
-						gen.ret();
+						compileFuncEpilog();
 						break;
 					default:
 						context.internal_error("Unimplemented instruction %s", cast(Amd64Opcode)instrHeader.op);
@@ -323,7 +359,7 @@ struct CodeEmitter
 				break;
 
 			case stackSlot:
-				gen.movd(dstReg, localVarMemAddress(src));
+				gen.mov(dstReg, localVarMemAddress(src), argType);
 				break;
 
 			default:

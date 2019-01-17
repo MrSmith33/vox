@@ -198,8 +198,24 @@ struct IrTypeStorage
 	}
 
 	uint typeAlignment(IrIndex type) {
-		//writefln("TODO: type alignment");
-		return 4;
+		final switch (type.typeKind) {
+			case IrTypeKind.basic:
+			final switch (cast(IrValueType)type.typeIndex) {
+				case IrValueType.void_t: return 1;
+				case IrValueType.i8: return 1;
+				case IrValueType.i16: return 2;
+				case IrValueType.i32: return 4;
+				case IrValueType.i64: return 8;
+			}
+			case IrTypeKind.pointer:
+				return 8;
+			case IrTypeKind.array:
+				IrTypeArray* array = &get!IrTypeArray(type);
+				uint elemSize = typeAlignment(array.elemType);
+				return elemSize * array.size;
+			case IrTypeKind.struct_t:
+				return get!IrTypeStruct(type).alignment;
+		}
 	}
 
 	IrIndex getPointerBaseType(IrIndex ptrType)

@@ -632,7 +632,7 @@ immutable input24 = q{
 	void print(u8*);
 	void test(){ print("Hello"); }
 };
-extern(C) static void test24_external_print(ubyte* param) {
+extern(C) void test24_external_print(ubyte* param) {
 	testSink.put(cast(char[])param[0..5]); // Hello
 }
 alias Func24 = extern(C) void function();
@@ -655,8 +655,13 @@ immutable input25 = q{
 		print(str);
 	}
 };
-extern(C) static void test25_external_print(char[] param) {
-	testSink.put(param); // Hello
+struct Slice(T) {
+	ulong length;
+	T* ptr;
+}
+extern(C) void test25_external_print(Slice!char param) {
+	char[] slice = *cast(char[]*)&param;
+	testSink.put(slice); // Hello
 }
 alias Func25 = extern(C) void function();
 void tester25(Func25 fun) {
