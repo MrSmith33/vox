@@ -34,8 +34,6 @@ struct CompilationContext
 	ModuleDeclNode* mod;
 	/// Target machine info
 	MachineInfo* machineInfo = &mach_info_amd64;
-	/// Passed between semantics passes
-	ScopeStack scopeStack;
 
 	/// Global constant storage
 	IrConstantStorage constants;

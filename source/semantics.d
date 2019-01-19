@@ -25,7 +25,53 @@ struct Scope
 }
 
 /// Used for semantic analysis
-struct ScopeStack
+struct ScopeStack1
+{
+	CompilationContext* context;
+	Scope* currentScope;
+
+	Scope* pushScope(string name, Flag!"ordered" isOrdered)
+	{
+		Scope* newScope = new Scope;
+		newScope.isOrdered = isOrdered;
+		newScope.debugName = name;
+		if (currentScope)
+			newScope.parentScope = currentScope;
+		return currentScope = newScope;
+	}
+
+	void popScope()
+	{
+		if (currentScope.parentScope) currentScope = currentScope.parentScope;
+		else {
+			currentScope = null;
+		}
+	}
+
+	/// Used in 1 semantic pass
+	/// Constructs and inserts symbol with id
+	Symbol* insert(Identifier id, SourceLocation loc, SymbolClass symClass, AstNode* node)
+	{
+		typeof(Symbol.flags) flags = currentScope.isOrdered ? SymbolFlags.isInOrderedScope : 0;
+		auto sym = new Symbol(id, loc, symClass, flags, node);
+		insert(sym);
+		return sym;
+	}
+
+	/// Used in 1 semantic pass
+	/// Inserts symbol `sym`
+	void insert(Symbol* sym)
+	{
+		if (auto s = currentScope.symbols.get(sym.id, null))
+		{
+			context.error(sym.loc,
+				"declaration `%s` is already defined at %s", context.idString(sym.id), s.loc);
+		}
+		currentScope.symbols[sym.id] = sym;
+	}
+}
+
+struct ScopeStack2
 {
 	CompilationContext* context;
 	// TODO: do not maintain all visible symbols for current scope
@@ -35,25 +81,9 @@ struct ScopeStack
 	Symbol*[Identifier] symbols;
 	Scope* currentScope;
 
-	/// Used in 1 semantic pass
-	Scope* pushScope(string name, Flag!"ordered" isOrdered)
-	{
-		//print("push scope %s", name); // debug
-		//indent += indentSize;
-
-		Scope* newScope = new Scope;
-		newScope.isOrdered = isOrdered;
-		newScope.debugName = name;
-		if (currentScope)
-			newScope.parentScope = currentScope;
-		return currentScope = newScope;
-	}
-
 	/// Used in 2 semantic pass
 	void pushCompleteScope(Scope* newScope)
 	{
-		//print("push scope %s", newScope.debugName); // debug
-		//indent += indentSize;
 		currentScope = newScope;
 		foreach (id, sym; newScope.symbols)
 		{
@@ -63,27 +93,10 @@ struct ScopeStack
 		}
 	}
 
-	/// Used in 1 semantic pass
-	void popScope1()
-	{
-		//indent -= indentSize; // debug
-		//if (currentScope.debugName) print("pop scope %s", currentScope.debugName);
-		//else print("pop scope");
-
-		if (currentScope.parentScope) currentScope = currentScope.parentScope;
-		else {
-			currentScope = null;
-			symbols.clear;
-		}
-	}
-
 	/// Used in 2 semantic pass
-	void popScope2()
+	void popScope()
 	{
 		assert(currentScope);
-		//indent -= indentSize; // debug
-		//if (currentScope.debugName) print("pop scope %s", currentScope.debugName);
-		//else print("pop scope");
 
 		// Pop all symbols of the scope we are leaving from symbols
 		foreach(id, sym; currentScope.symbols)
@@ -100,14 +113,12 @@ struct ScopeStack
 			currentScope = null;
 	}
 
-	/// Used in 2 semantic pass
 	/// Look up symbol by Identifier. Searches the whole stack of scopes.
 	Symbol* lookup(const Identifier id, SourceLocation from)
 	{
 		auto sym = symbols.get(id, null);
 		while (sym)
 		{
-			//print("try lookup %s from (%s, %s) @ %s", context.idString(sym.id), from.line+1, from.col+1, sym.loc);
 			// forward reference allowed for unordered scope
 			if (!sym.isInOrderedScope) break;
 			// not a forward reference
@@ -117,7 +128,7 @@ struct ScopeStack
 		}
 
 		if (sym) {
-			//print("lookup %s @ %s", context.idString(sym.id), sym.loc);
+			// exists
 		}
 		else
 		{
@@ -126,13 +137,12 @@ struct ScopeStack
 		return sym;
 	}
 
-	/// Used in 2 semantic pass
 	/// Look up member by Identifier. Searches aggregate scope for identifier.
 	void lookupMember(MemberExprNode* expr)
 	{
 		Identifier id = expr.member.id;
 		string idStr = context.idString(id);
-		//print("try lookup member `%s` from (%s, %s) in %s", idStr, expr.loc.line+1, expr.loc.col+1, expr.aggregate.astType);
+
 		if (expr.aggregate.astType != AstType.expr_name_use) {
 			context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, expr.aggregate.astType);
 			return;
@@ -157,9 +167,8 @@ struct ScopeStack
 		StructDeclNode* structDecl = structType.getSym.structDecl;
 		Symbol* memberSym = structDecl._scope.symbols.get(id, null);
 		expr.member.resolveSymbol(memberSym);
-		//print("`%s` in struct `%s`", idStr, context.idString(aggSym.id));
+
 		if (memberSym) {
-			//print("lookup %s @ %s in struct %s", idStr, memberSym.loc, context.idString(aggSym.id));
 			final switch(memberSym.symClass)
 			{
 				case SymbolClass.c_function:
@@ -180,50 +189,11 @@ struct ScopeStack
 			context.error(expr.loc, "Cannot find `%s` in struct ", idStr, context.idString(aggSym.id));
 		}
 	}
-
-	/// Used in 1 semantic pass
-	/// Constructs and inserts symbol with id
-	Symbol* insert(Identifier id, SourceLocation loc, SymbolClass symClass, AstNode* node)
-	{
-		typeof(Symbol.flags) flags = currentScope.isOrdered ? SymbolFlags.isInOrderedScope : 0;
-		auto sym = new Symbol(id, loc, symClass, flags, node);
-		insert(sym);
-		return sym;
-	}
-
-	/// Used in 1 semantic pass
-	/// Inserts symbol `sym`
-	void insert(Symbol* sym)
-	{
-		//print("insert %s @ %s", context.idString(sym.id), sym.loc);
-		symbols[sym.id] = sym;
-		if (auto s = currentScope.symbols.get(sym.id, null))
-		{
-			context.error(sym.loc,
-				"declaration `%s` is already defined at %s", context.idString(sym.id), s.loc);
-		}
-		currentScope.symbols[sym.id] = sym;
-	}
-
-	int indentSize = 2;
-	int indent;
-	void print(Args...)(Args args) {
-		import std.range;
-		write(' '.repeat(indent));
-		writefln(args);
-	}
-	void printSymbols() {
-		import std.range;
-		write(' '.repeat(indent), "symbols");
-		foreach(k; symbols.byKey) writef(" %s", context.idString(k));
-		writeln;
-	}
 }
 
 void pass_semantic_decl(ref CompilationContext ctx)
 {
-	ctx.scopeStack = ScopeStack(&ctx);
-	auto sem1 = SemanticDeclarations(&ctx, &ctx.scopeStack);
+	auto sem1 = SemanticDeclarations(&ctx, ScopeStack1(&ctx));
 	sem1.visit(ctx.mod);
 }
 
@@ -233,12 +203,12 @@ struct SemanticDeclarations
 	mixin AstVisitorMixin;
 
 	CompilationContext* context;
-	ScopeStack* scopeStack;
+	ScopeStack1 scopeStack;
 
 	void visit(ModuleDeclNode* m) {
 		context.mod._scope = scopeStack.pushScope("Module", No.ordered);
 		foreach (decl; context.mod.declarations) _visit(decl);
-		scopeStack.popScope1;
+		scopeStack.popScope;
 	}
 	void visit(FunctionDeclNode* f) {
 		context.mod.addFunction(f);
@@ -246,7 +216,7 @@ struct SemanticDeclarations
 		f._scope = scopeStack.pushScope(context.idString(f.id), Yes.ordered);
 		foreach (param; f.parameters) visit(param);
 		if (f.block_stmt) visit(f.block_stmt);
-		scopeStack.popScope1;
+		scopeStack.popScope;
 	}
 	void visit(VariableDeclNode* v) {
 		v.resolveSymbol = scopeStack.insert(v.id, v.loc, SymbolClass.c_variable, cast(AstNode*)v);
@@ -256,34 +226,34 @@ struct SemanticDeclarations
 		s.resolveSymbol = scopeStack.insert(s.id, s.loc, SymbolClass.c_struct, cast(AstNode*)s);
 		s._scope = scopeStack.pushScope(context.idString(s.id), No.ordered);
 		foreach (decl; s.declarations) _visit(decl);
-		scopeStack.popScope1;
+		scopeStack.popScope;
 	}
 	void visit(BlockStmtNode* b) {
 		b._scope = scopeStack.pushScope("Block", Yes.ordered);
 		foreach(stmt; b.statements) _visit(stmt);
-		scopeStack.popScope1;
+		scopeStack.popScope;
 	}
 	void visit(IfStmtNode* i) {
 		_visit(i.condition);
 		i.then_scope = scopeStack.pushScope("Then", Yes.ordered);
 		_visit(i.thenStatement);
-		scopeStack.popScope1;
+		scopeStack.popScope;
 		if (i.elseStatement) {
 			i.else_scope = scopeStack.pushScope("Else", Yes.ordered);
 			_visit(i.elseStatement);
-			scopeStack.popScope1;
+			scopeStack.popScope;
 		}
 	}
 	void visit(WhileStmtNode* w) {
 		_visit(w.condition);
 		w._scope = scopeStack.pushScope("While", Yes.ordered);
 		_visit(w.statement);
-		scopeStack.popScope1;
+		scopeStack.popScope;
 	}
 	void visit(DoWhileStmtNode* d) {
 		d._scope = scopeStack.pushScope("While", Yes.ordered);
 		_visit(d.statement);
-		scopeStack.popScope1;
+		scopeStack.popScope;
 		_visit(d.condition);
 	}
 	void visit(ReturnStmtNode* r) {}
@@ -313,7 +283,7 @@ struct SemanticDeclarations
 
 void pass_semantic_lookup(ref CompilationContext ctx)
 {
-	auto sem2 = SemanticLookup(&ctx, &ctx.scopeStack);
+	auto sem2 = SemanticLookup(&ctx, ScopeStack2(&ctx));
 	sem2.visit(ctx.mod);
 }
 
@@ -324,19 +294,19 @@ struct SemanticLookup
 	mixin AstVisitorMixin;
 
 	CompilationContext* context;
-	ScopeStack* scopeStack;
+	ScopeStack2 scopeStack;
 
 	void visit(ModuleDeclNode* m) {
 		scopeStack.pushCompleteScope(m._scope);
 		foreach (decl; m.declarations) _visit(decl);
-		scopeStack.popScope2;
+		scopeStack.popScope;
 	}
 	void visit(FunctionDeclNode* f) {
 		scopeStack.pushCompleteScope(f._scope);
 		_visit(f.returnType);
 		foreach (param; f.parameters) visit(param);
 		if (f.block_stmt) visit(f.block_stmt);
-		scopeStack.popScope2;
+		scopeStack.popScope;
 	}
 	void visit(VariableDeclNode* v) {
 		_visit(v.type);
@@ -345,34 +315,34 @@ struct SemanticLookup
 	void visit(StructDeclNode* s) {
 		scopeStack.pushCompleteScope(s._scope);
 		foreach (decl; s.declarations) _visit(decl);
-		scopeStack.popScope2;
+		scopeStack.popScope;
 	}
 	void visit(BlockStmtNode* b) {
 		scopeStack.pushCompleteScope(b._scope);
 		foreach(stmt; b.statements) _visit(stmt);
-		scopeStack.popScope2;
+		scopeStack.popScope;
 	}
 	void visit(IfStmtNode* i) {
 		_visit(i.condition);
 		scopeStack.pushCompleteScope(i.then_scope);
 		_visit(i.thenStatement);
-		scopeStack.popScope2;
+		scopeStack.popScope;
 		if (i.elseStatement) {
 			scopeStack.pushCompleteScope(i.else_scope);
 			_visit(i.elseStatement);
-			scopeStack.popScope2;
+			scopeStack.popScope;
 		}
 	}
 	void visit(WhileStmtNode* w) {
 		_visit(w.condition);
 		scopeStack.pushCompleteScope(w._scope);
 		_visit(w.statement);
-		scopeStack.popScope2;
+		scopeStack.popScope;
 	}
 	void visit(DoWhileStmtNode* d) {
 		scopeStack.pushCompleteScope(d._scope);
 		_visit(d.statement);
-		scopeStack.popScope2;
+		scopeStack.popScope;
 		_visit(d.condition);
 	}
 	void visit(ReturnStmtNode* r) {
