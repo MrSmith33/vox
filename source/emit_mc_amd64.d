@@ -41,10 +41,13 @@ struct CodeEmitter
 	void compileModule()
 	{
 		// copy static data into buffer and set offsets
-		foreach(ref IrGlobal global; context.globals.array)
+		foreach(uint i, ref IrGlobal global; context.globals.array)
 		{
 			if (global.isInBuffer) continue; // already in buffer
 			if (global.numUsers == 0) continue; // no users
+
+			IrIndex globalIndex = IrIndex(i, IrValueKind.global);
+			global.validate(globalIndex, context);
 
 			// alignment
 			uint padding = paddingSize!uint(context.staticDataBuffer.length, global.alignment);
@@ -52,7 +55,13 @@ struct CodeEmitter
 
 			// offset
 			global.staticBufferOffset = context.staticDataBuffer.length;
-			context.staticDataBuffer.put(global.initializer);
+			if (global.initializer.length)
+			{
+				context.staticDataBuffer.put(global.initializer);
+			}
+			else {
+				context.staticDataBuffer.voidPut(global.length)[] = 0;
+			}
 
 			// zero termination
 			if (global.needsZeroTermination)
@@ -313,6 +322,7 @@ struct CodeEmitter
 					gen.mov(dstReg, Imm32(con), argType);
 				break;
 
+			// copy address of global into register
 			case MoveType.global_to_reg:
 				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
 				IrGlobal* global = &context.globals.get(src);
@@ -330,6 +340,7 @@ struct CodeEmitter
 				gen.mov(dstReg, srcReg, argType);
 				break;
 
+			// copy address of stack slot into register
 			case MoveType.stack_to_reg:
 				gen.lea(dstReg, localVarMemAddress(src), ArgType.QWORD);
 				break;
@@ -339,6 +350,12 @@ struct CodeEmitter
 	void fix_PC_REL_32(PC fixup, PC target)
 	{
 		*cast(Imm32*)(fixup-4) = jumpOffset(fixup, target);
+	}
+
+	// nextInstr is address
+	void fix_PC_REL_CUSTOM(Imm32* offset, PC nextInstr, PC target)
+	{
+		*offset = jumpOffset(nextInstr, target);
 	}
 
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
@@ -370,33 +387,58 @@ struct CodeEmitter
 
 	void genStore(IrIndex dst, IrIndex src, ArgType argType)
 	{
-		MemAddress dstMem;
-		switch (dst.kind) with(IrValueKind)
-		{
-			case physicalRegister: // store address is in register
-				Register dstReg = indexToRegister(dst);
-				dstMem = memAddrBase(dstReg);
-				break;
-			case stackSlot:
-				dstMem = localVarMemAddress(dst);
-				break;
-			default:
-				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);
-				break;
-		}
+		context.assertf(!src.isGlobal,
+			"store %s <- %s, must go through intermediate register",
+			dst.kind, src.kind);
 
-		switch (src.kind) with(IrValueKind)
+		MoveType moveType = calcMoveType(dst.kind, src.kind);
+		switch (moveType) with(MoveType)
 		{
-			case constant:
+			case const_to_stack:
+				uint con = context.constants.get(src).i32;
+				MemAddress dstMem = localVarMemAddress(dst);
+				gen.mov(dstMem, Imm32(con), argType);
+				break;
+			case const_to_reg:
+				Register dstReg = indexToRegister(dst);
+				MemAddress dstMem = memAddrBase(dstReg);
 				uint con = context.constants.get(src).i32;
 				gen.mov(dstMem, Imm32(con), argType);
 				break;
-			case physicalRegister:
+			case reg_to_stack:
+				Register srcReg = indexToRegister(src);
+				MemAddress dstMem = localVarMemAddress(dst);
+				gen.mov(dstMem, srcReg, argType);
+				break;
+			case reg_to_reg:
+				Register dstReg = indexToRegister(dst);
+				MemAddress dstMem = memAddrBase(dstReg);
 				Register srcReg = indexToRegister(src);
 				gen.mov(dstMem, srcReg, argType);
 				break;
-			case global:
-				context.internal_error("store %s <- %s, must go through intermediate register", dst.kind, src.kind);
+			case const_to_global:
+				uint con = context.constants.get(src).i32;
+				IrGlobal* global = &context.globals.get(dst);
+				context.assertf(global.isInBuffer, "Global is not in static data buffer");
+
+				MemAddress addr = memAddrRipDisp32(0);
+				gen.mov(addr, Imm32(con), argType);
+
+				PC globalAddress = cast(PC)context.staticDataBuffer.bufPtr + global.staticBufferOffset;
+				PC nextInstrAddr = gen.pc;
+				Imm32* fixupAddr = cast(Imm32*)(nextInstrAddr-8); // address of imm32 in instruction
+				*fixupAddr = jumpOffset(nextInstrAddr, globalAddress);
+				break;
+			case reg_to_global:
+				Register srcReg = indexToRegister(src);
+				IrGlobal* global = &context.globals.get(dst);
+				context.assertf(global.isInBuffer, "Global is not in static data buffer");
+
+				MemAddress addr = memAddrRipDisp32(0);
+				gen.mov(addr, srcReg, argType);
+
+				PC globalAddress = cast(PC)context.staticDataBuffer.bufPtr + global.staticBufferOffset;
+				fix_PC_REL_32(gen.pc, globalAddress);
 				break;
 			default:
 				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);
@@ -431,6 +473,12 @@ MoveType calcMoveType(IrValueKind dst, IrValueKind src)
 				case physicalRegister: return MoveType.reg_to_stack;
 				default: return MoveType.invalid;
 			}
+		case global:
+			switch(src) with(IrValueKind) {
+				case constant: return MoveType.const_to_global;
+				case physicalRegister: return MoveType.reg_to_global;
+				default: return MoveType.invalid;
+			}
 		default: return MoveType.invalid;
 	}
 }
@@ -439,10 +487,12 @@ enum MoveType
 {
 	invalid,
 	const_to_reg,
+	const_to_global,
 	global_to_reg,
 	const_to_stack,
 	reg_to_reg,
 	reg_to_stack,
+	reg_to_global,
 	stack_to_reg,
 	const_to_mem,
 	reg_to_mem,

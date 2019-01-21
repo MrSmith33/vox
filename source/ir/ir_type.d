@@ -239,8 +239,9 @@ IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext co
 			context.todo("getValueType %s", value.kind);
 			assert(false);
 		case global:
-			context.todo("getValueType %s", value.kind);
-			assert(false);
+			IrGlobal* global = &context.globals.get(value);
+			context.assertf(global.type.isDefined, "Global has no type");
+			return global.type;
 		case stackSlot:
 			return ir.backendData.stackLayout[value].type;
 		case virtualRegister:

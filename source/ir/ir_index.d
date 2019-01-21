@@ -58,6 +58,7 @@ struct IrIndex
 			case instruction: sink.formattedWrite("i.%s", storageUintIndex); break;
 			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
 			case constant: sink.formattedWrite("c.%s", storageUintIndex); break;
+			case global: sink.formattedWrite("g.%s", storageUintIndex); break;
 			case phi: sink.formattedWrite("phi.%s", storageUintIndex); break;
 			case memoryAddress: sink.formattedWrite("m.%s", storageUintIndex); break;
 			case stackSlot: sink.formattedWrite("s.%s", storageUintIndex); break;

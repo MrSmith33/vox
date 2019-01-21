@@ -163,11 +163,11 @@ struct MemAddress {
 }
 
 // variant 1  [disp32]
-MemAddress memAddrDisp32(uint disp32) {
+MemAddress memAddrDisp32(int disp32) {
 	return MemAddress(sibAddrType(MemAddrType.disp32), Register.SP, Register.BP, SibScale(), disp32); // with SIB
 }
 // variant 2  [(index * s) + disp32]
-MemAddress memAddrIndexDisp32(Register indexReg, SibScale scale, uint disp32) {
+MemAddress memAddrIndexDisp32(Register indexReg, SibScale scale, int disp32) {
 	assert(indexReg != Register.SP, "Cannot encode [RSP * scale + disp32]");
 	return MemAddress(sibAddrType(MemAddrType.indexDisp32), indexReg, Register.BP, scale, disp32); // with SIB
 }
@@ -181,7 +181,7 @@ MemAddress memAddrBase(Register baseReg) {
 		return MemAddress(MemAddrType.base, Register.SP, baseReg); // no SIB
 }
 // variant 4  [base + disp32]
-MemAddress memAddrBaseDisp32(Register baseReg, uint disp32) {
+MemAddress memAddrBaseDisp32(Register baseReg, int disp32) {
 	if (is_SP_or_R12(baseReg))
 		return MemAddress(sibAddrType(MemAddrType.baseDisp32), Register.SP, baseReg, SibScale(), disp32); // with SIB
 	else
@@ -196,25 +196,25 @@ MemAddress memAddrBaseIndex(Register baseReg, Register indexReg, SibScale scale)
 		return MemAddress(sibAddrType(MemAddrType.baseIndex), indexReg, baseReg, scale); // with SIB
 }
 // variant 6  [base + index * s + disp32]
-MemAddress memAddrBaseIndexDisp32(Register baseReg, Register indexReg, SibScale scale, uint disp32) {
+MemAddress memAddrBaseIndexDisp32(Register baseReg, Register indexReg, SibScale scale, int disp32) {
 	assert(indexReg != Register.SP, "Cannot encode [base + RSP * scale + disp32]");
 	return MemAddress(sibAddrType(MemAddrType.baseIndexDisp32), indexReg, baseReg, scale, disp32); // with SIB
 }
 // variant 7  [base + disp8]
-MemAddress memAddrBaseDisp8(Register baseReg, ubyte disp8) {
+MemAddress memAddrBaseDisp8(Register baseReg, byte disp8) {
 	if (is_SP_or_R12(baseReg)) // cannot encode SP,R12 without SIB
 		return MemAddress(sibAddrType(MemAddrType.baseDisp8), Register.SP, baseReg, SibScale(), disp8); // with SIB
 	else
 		return MemAddress(MemAddrType.baseDisp8, Register.SP, baseReg, SibScale(), disp8); // no SIB
 }
 // variant 8  [base + (index * s) + disp8]
-MemAddress memAddrBaseIndexDisp8(Register baseReg, Register indexReg, SibScale scale, ubyte disp8) {
+MemAddress memAddrBaseIndexDisp8(Register baseReg, Register indexReg, SibScale scale, byte disp8) {
 	assert(indexReg != Register.SP, "Cannot encode [base + RSP * scale + disp8]");
 	return MemAddress(sibAddrType(MemAddrType.baseIndexDisp8), indexReg, baseReg, scale, disp8); // with SIB
 }
 
 // variant 9  [RIP + disp32]
-MemAddress memAddrRipDisp32(uint disp32) {
+MemAddress memAddrRipDisp32(int disp32) {
 	return MemAddress(MemAddrType.ripDisp32, Register.SP, Register.BP, SibScale(), disp32); // with SIB
 }
 

@@ -40,6 +40,7 @@ struct IrGlobal
 	uint numUsers;
 
 	bool isMutable() { return (flags & IrGlobalFlags.isMutable) != 0; }
+	bool isAllZero() { return (flags & IrGlobalFlags.isAllZero) != 0; }
 	bool needsZeroTermination() { return (flags & IrGlobalFlags.needsZeroTermination) != 0; }
 	bool isInBuffer() { return (flags & IrGlobalFlags.isInBuffer) != 0; }
 
@@ -49,6 +50,19 @@ struct IrGlobal
 		initializer = data;
 		assert(data.length <= 1024*1024*1024*1, "initializer is bigger than 1GB");
 		length = cast(uint)data.length;
+	}
+
+	void validate(IrIndex globalIndex, CompilationContext* context)
+	{
+		context.assertf(type.isDefined, "Global %s has no type", globalIndex);
+		context.assertf(length != 0, "Global %s has 0 length", globalIndex);
+		if (initializer.length != 0)
+		{
+			context.assertf(initializer.length == length,
+				"Global %s initializer.length is %s, while data length is %s",
+				globalIndex, initializer.length, length);
+			context.assertf(!isAllZero, "Global %s has both isAllZero and initializer");
+		}
 	}
 }
 

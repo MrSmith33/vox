@@ -24,7 +24,7 @@ struct Scope
 	bool isOrdered;
 }
 
-/// Used for semantic analysis
+/// For first semantics pass
 struct ScopeStack1
 {
 	CompilationContext* context;
@@ -35,20 +35,22 @@ struct ScopeStack1
 		Scope* newScope = new Scope;
 		newScope.isOrdered = isOrdered;
 		newScope.debugName = name;
+
 		if (currentScope)
 			newScope.parentScope = currentScope;
-		return currentScope = newScope;
+		currentScope = newScope;
+
+		return currentScope;
 	}
 
 	void popScope()
 	{
-		if (currentScope.parentScope) currentScope = currentScope.parentScope;
-		else {
+		if (currentScope.parentScope)
+			currentScope = currentScope.parentScope;
+		else
 			currentScope = null;
-		}
 	}
 
-	/// Used in 1 semantic pass
 	/// Constructs and inserts symbol with id
 	Symbol* insert(Identifier id, SourceLocation loc, SymbolClass symClass, AstNode* node)
 	{
@@ -58,7 +60,6 @@ struct ScopeStack1
 		return sym;
 	}
 
-	/// Used in 1 semantic pass
 	/// Inserts symbol `sym`
 	void insert(Symbol* sym)
 	{
@@ -71,6 +72,7 @@ struct ScopeStack1
 	}
 }
 
+// For second semantics pass
 struct ScopeStack2
 {
 	CompilationContext* context;
@@ -470,7 +472,11 @@ struct SemanticStaticTypes
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert)
 			{
-				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
+				if (expr.astType == AstType.literal_int) {
+					(cast(IntLiteralExprNode*)expr).type = type;
+				} else {
+					expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
+				}
 				return true;
 			}
 		}

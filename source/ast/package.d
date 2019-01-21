@@ -51,20 +51,22 @@ enum AstType : ubyte {
 }
 
 enum AstFlags {
-	isDeclaration = 1 << 0,
-	isScope       = 1 << 1,
-	isExpression  = 1 << 2,
+	isDeclaration = 1 <<  0,
+	isScope       = 1 <<  1,
+	isExpression  = 1 <<  2,
 	/// Can be applied to expression if it is in place of stmt
-	isStatement   = 1 << 3,
-	isType        = 1 << 4,
-	isSymResolved = 1 << 5,
+	isStatement   = 1 <<  3,
+	isType        = 1 <<  4,
+	isSymResolved = 1 <<  5,
 	/// Is added to expression nodes that are being assigned to
-	isLvalue      = 1 << 6,
-	isLiteral     = 1 << 7,
-	isAssignment  = 1 << 8,
+	isLvalue      = 1 <<  6,
+	isLiteral     = 1 <<  7,
+	isAssignment  = 1 <<  8,
 	/// Marks expression that is used as func argument.
 	/// Needed to handle calling conventions properly.
-	isArgument    = 1 << 9,
+	isArgument    = 1 <<  9,
+	/// Declaration at module level
+	isGlobal      = 1 << 10,
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
@@ -98,6 +100,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isLiteral() { return cast(bool)(flags & AstFlags.isLiteral); }
 	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
 	bool isArgument() { return cast(bool)(flags & AstFlags.isArgument); }
+	bool isGlobal() { return cast(bool)(flags & AstFlags.isGlobal); }
 }
 
 mixin template SymRefNodeData() {

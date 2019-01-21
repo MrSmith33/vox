@@ -15,12 +15,13 @@ void runDevTests()
 	driver.initialize(compilerPasses);
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
+	driver.context.printTodos = true;
 	scope(exit) driver.releaseMemory;
 
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test25);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test26);
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 }
 
@@ -40,7 +41,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	dumpSettings.printBlockFlags = true;
 
 	Test[] testsThatPass = [test7, test8, test8_1, test10, test9, test18, test19,
-		test20, test21, test21_2, test22, test23, test24, test25];
+		test20, test21, test21_2, test22, test23, test24, test25, test26];
 
 	size_t numSuccessfulTests;
 	writefln("Running %s tests", testsThatPass.length);
@@ -641,7 +642,7 @@ void tester24(Func24 fun) {
 	assert(testSink.text == "Hello");
 	testSink.clear;
 }
-auto test24 = Test("String literal", input24, "test", cast(Test.Tester)&tester24,
+auto test24 = Test("String literal as u8* param", input24, "test", cast(Test.Tester)&tester24,
 	[ExternalSymbol("print", cast(void*)&test24_external_print)]);
 
 // test struct creation, member set, struct as func arg
@@ -666,10 +667,25 @@ extern(C) void test25_external_print(Slice!char param) {
 alias Func25 = extern(C) void function();
 void tester25(Func25 fun) {
 	fun();
+	//writefln("fun() == '%s'", testSink.text);
 	assert(testSink.text == "Hello");
 	testSink.clear;
 }
-auto test25 = Test("String literal", input25, "test", cast(Test.Tester)&tester25,
+auto test25 = Test("Stack struct as parameter", input25, "test", cast(Test.Tester)&tester25,
+	[ExternalSymbol("print", cast(void*)&test25_external_print)]);
+
+// test global parameter, assignment
+immutable input26 = q{
+	struct string { u64 length; u8* ptr; }
+	void print(string);
+	string str;
+	void test(){
+		str.ptr = "Hello";
+		str.length = 5;
+		print(str);
+	}
+};
+auto test26 = Test("Global struct", input26, "test", cast(Test.Tester)&tester25,
 	[ExternalSymbol("print", cast(void*)&test25_external_print)]);
 
 void testNativeFun()

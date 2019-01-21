@@ -129,15 +129,32 @@ struct AstToIr
 		thenId = context.idMap.getOrRegNoDup("then");
 		elseId = context.idMap.getOrRegNoDup("else");
 		blkId = context.idMap.getOrRegNoDup("blk");
-		foreach (decl; m.functions) {
+
+		foreach (decl; m.declarations)
+		{
+			decl.flags |= AstFlags.isGlobal;
+
+			if (decl.astType == AstType.decl_var)
+			{
+				IrLabel label;
+				visitDecl(decl, IrIndex(), label);
+				context.assertf(label.numPredecessors == 0, "Global var must not gen code");
+			}
+		}
+
+		foreach (decl; m.functions)
+		{
 			visit(decl);
+
 			// can be null if function is external
 			if (decl.backendData.irData)
 			{
 				m.irModule.addFunction(decl.backendData.irData);
 				if (context.validateIr) validateIrFunction(*context, *decl.backendData.irData);
+				//dumpFunction(*decl.backendData.irData, *context);
 			}
 		}
+
 		version(IrGenPrint) writeln("[IR GEN] module end");
 	}
 
@@ -147,6 +164,7 @@ struct AstToIr
 		version(IrGenPrint) scope(success) writefln("[IR GEN] function (%s) end", f.loc);
 
 		fun = f;
+		scope(exit) fun = null;
 
 		if (f.isExternal) // external function
 		{
@@ -272,6 +290,18 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] Var decl (%s) begin %s", v.loc, v.strId(context));
 		version(IrGenPrint) scope(success) writefln("[IR GEN] Var decl (%s) end %s", v.loc, v.strId(context));
 
+		if (v.isGlobal)
+		{
+			v.irValue = context.globals.add();
+			IrGlobal* global = &context.globals.get(v.irValue);
+			global.flags |= IrGlobalFlags.isAllZero | IrGlobalFlags.isMutable;
+			IrIndex valueType = v.type.genIrType(context);
+			global.type = context.types.appendPtr(valueType);
+			uint valueSize = context.types.typeSize(valueType);
+			global.length = valueSize;
+			return;
+		}
+
 		if (context.buildDebug)
 			v.varFlags |= VariableFlags.forceMemoryStorage;
 
@@ -309,6 +339,7 @@ struct AstToIr
 				}
 				else
 					value = context.constants.add(IrConstant(0));
+
 				store(currentBlock, v.irValue, value);
 			}
 		}
@@ -494,8 +525,9 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] var expr value (%s) begin", v.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr value (%s) end", v.loc);
 
-		if (v.isLvalue)
+		if (v.isLvalue) {
 			v.irValue = v.getSym.varDecl.irValue;
+		}
 		else {
 			TypeNode* type = v.getSym.varDecl.type;
 			if (v.isArgument && type.astType == AstType.type_struct)
@@ -555,6 +587,7 @@ struct AstToIr
 		IrGlobal* global = &context.globals.get(c.irValue);
 		global.setInitializer(cast(ubyte[])c.value);
 		global.flags |= IrGlobalFlags.needsZeroTermination;
+		global.type = c.type.genIrType(context);
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
