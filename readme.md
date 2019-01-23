@@ -68,6 +68,17 @@ Target platforms:
 * `stack_layout.d` - layout of stack slots.
 * `tests.d` - compiler test suite.
 
+# Running & testing
+
+In `main.d` uncomment one of the following lines:
+```D
+runBench(); // Runs benchmark
+runAllTests(StopOnFirstFail.yes); // Runs test suite
+runDevTests(); // Run single test with fine-tuned logging. Useful for development.
+```
+
+Run with: `source> dmd -m64 -i main.d`
+
 # What works
 
 - You can use code in `compiler1.d` as JIT compiler for amd64:

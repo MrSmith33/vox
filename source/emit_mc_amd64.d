@@ -43,11 +43,11 @@ struct CodeEmitter
 		// copy static data into buffer and set offsets
 		foreach(uint i, ref IrGlobal global; context.globals.array)
 		{
-			if (global.isInBuffer) continue; // already in buffer
-			if (global.numUsers == 0) continue; // no users
-
 			IrIndex globalIndex = IrIndex(i, IrValueKind.global);
 			global.validate(globalIndex, context);
+
+			if (global.isInBuffer) continue; // already in buffer
+			if (global.numUsers == 0) continue; // no users
 
 			// alignment
 			uint padding = paddingSize!uint(context.staticDataBuffer.length, global.alignment);
@@ -55,11 +55,9 @@ struct CodeEmitter
 
 			// offset
 			global.staticBufferOffset = context.staticDataBuffer.length;
-			if (global.initializer.length)
-			{
+			if (global.initializer.length) {
 				context.staticDataBuffer.put(global.initializer);
-			}
-			else {
+			} else {
 				context.staticDataBuffer.voidPut(global.length)[] = 0;
 			}
 

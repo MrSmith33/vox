@@ -167,7 +167,10 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
 			printInstrIndex(phiIndex);
-			sink.putf("    %s = %s(", IrIndexDump(phi.result, printer), IrIndexDump(phiIndex, printer));
+			sink.putf("    %s %s = %s(",
+				IrIndexDump(phi.result, printer),
+				IrIndexDump(ir.getVirtReg(phi.result).type, printer),
+				IrIndexDump(phiIndex, printer));
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
 				if (arg_i > 0) sink.put(", ");
@@ -230,7 +233,10 @@ void dumpFunctionCFG(ref IrFunction ir, ref TextSink sink, ref CompilationContex
 		// phis
 		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
-			sink.putf("    %s = %s(", IrIndexDump(phi.result, p), phiIndex);
+			sink.putf("    %s %s = %s(",
+				IrIndexDump(phi.result, p),
+				IrIndexDump(ir.getVirtReg(phi.result).type, p),
+				IrIndexDump(phiIndex, p));
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
 				if (arg_i > 0) sink.put(", ");
@@ -257,6 +263,11 @@ void dumpFunctionCFG(ref IrFunction ir, ref TextSink sink, ref CompilationContex
 
 void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, IrIndex index)
 {
+	if (!index.isDefined) {
+		sink("<null>");
+		return;
+	}
+
 	final switch(index.kind) with(IrValueKind) {
 		case none: sink.formattedWrite("0x%X", index.asUint); break;
 		case listItem: sink.formattedWrite("l.%s", index.storageUintIndex); break;
@@ -327,7 +338,8 @@ void dumpIrInstr(ref InstrPrintInfo p)
 
 		case IrOpcode.parameter:
 			uint paramIndex = p.ir.get!IrInstr_parameter(p.instrIndex).index;
-			p.sink.putf("    %s = parameter%s", IrIndexDump(p.instrHeader.result, p), paramIndex);
+			dumpOptionalResult(p);
+			p.sink.putf("parameter%s", paramIndex);
 			break;
 
 		case IrOpcode.block_exit_return_void:
@@ -339,11 +351,31 @@ void dumpIrInstr(ref InstrPrintInfo p)
 			break;
 
 		default:
-			if (p.instrHeader.hasResult)
-				p.sink.putf("    %s = %s", IrIndexDump(p.instrHeader.result, p), cast(IrOpcode)p.instrHeader.op);
-			else  p.sink.putf("    %s", cast(IrOpcode)p.instrHeader.op);
+			dumpOptionalResult(p);
+			p.sink.putf("%s", cast(IrOpcode)p.instrHeader.op);
 			dumpArgs(p);
 			break;
+	}
+}
+
+void dumpOptionalResult(ref InstrPrintInfo p)
+{
+	if (p.instrHeader.hasResult)
+	{
+		if (p.instrHeader.result.isVirtReg)
+		{
+			p.sink.putf("    %s %s = ",
+				IrIndexDump(p.instrHeader.result, p),
+				IrIndexDump(p.ir.getVirtReg(p.instrHeader.result).type, p));
+		}
+		else
+		{
+			p.sink.putf("    %s = ", IrIndexDump(p.instrHeader.result, p));
+		}
+	}
+	else
+	{
+		p.sink.put("    ");
 	}
 }
 
@@ -353,10 +385,8 @@ void dumpCall(ref InstrPrintInfo p)
 	p.context.assertf(calleeIndex < p.context.mod.functions.length,
 		"Invalid callee index %s", calleeIndex);
 	FunctionDeclNode* callee = p.context.mod.functions[calleeIndex];
-	if (p.instrHeader.hasResult)
-		p.sink.putf("    %s = call %s", p.instrHeader.result, callee.strId(p.context));
-	else
-		p.sink.putf("    call %s", callee.strId(p.context));
+	dumpOptionalResult(p);
+	p.sink.putf("call %s", callee.strId(p.context));
 	dumpArgs(p);
 }
 

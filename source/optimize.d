@@ -100,28 +100,31 @@ void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction i
 // TODO some typecasts are needed for correct typing
 void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex instrIndex, ref IrInstrHeader instrHeader)
 {
-	IrIndex buildOffset(IrIndex basePtr, long offsetVal) {
+	IrIndex buildOffset(IrIndex basePtr, long offsetVal, IrIndex resultType) {
 		if (offsetVal == 0) {
 			// same ptr (TODO typecast)
 			return basePtr;
 		} else {
 			IrIndex offset = context.constants.add(IrConstant(offsetVal));
 
-			InstrWithResult addressInstr = builder.emitInstr!IrInstr_add(ExtraInstrArgs(), basePtr, offset);
+			ExtraInstrArgs extra = { type : resultType };
+			InstrWithResult addressInstr = builder.emitInstr!IrInstr_add(extra, basePtr, offset);
 			builder.insertBeforeInstr(instrIndex, addressInstr.instruction);
 
 			return addressInstr.result;
 		}
 	}
 
-	IrIndex buildIndex(IrIndex basePtr, IrIndex index, uint elemSize)
+	IrIndex buildIndex(IrIndex basePtr, IrIndex index, uint elemSize, IrIndex resultType)
 	{
 		IrIndex scale = context.constants.add(IrConstant(elemSize));
 
-		InstrWithResult offsetInstr = builder.emitInstr!IrInstr_mul(ExtraInstrArgs(), index, scale);
+		ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
+		InstrWithResult offsetInstr = builder.emitInstr!IrInstr_mul(extra1, index, scale);
 		builder.insertBeforeInstr(instrIndex, offsetInstr.instruction);
 
-		InstrWithResult addressInstr = builder.emitInstr!IrInstr_add(ExtraInstrArgs(), basePtr, offsetInstr.result);
+		ExtraInstrArgs extra2 = { type : resultType };
+		InstrWithResult addressInstr = builder.emitInstr!IrInstr_add(extra2, basePtr, offsetInstr.result);
 		builder.insertBeforeInstr(instrIndex, addressInstr.instruction);
 
 		return addressInstr.result;
@@ -137,12 +140,13 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 	uint aggrSize = context.types.typeSize(aggrType);
 
 	IrIndex firstIndex = instrHeader.args[1];
+
 	if (firstIndex.isConstant) {
 		long indexVal = context.constants.get(firstIndex).i64;
 		long offset = indexVal * aggrSize;
-		aggrPtr = buildOffset(aggrPtr, offset);
+		aggrPtr = buildOffset(aggrPtr, offset, aggrPtrType);
 	} else {
-		aggrPtr = buildIndex(aggrPtr, firstIndex, aggrSize);
+		aggrPtr = buildIndex(aggrPtr, firstIndex, aggrSize, aggrPtrType);
 	}
 
 	foreach(IrIndex memberIndex; instrHeader.args[2..$])
@@ -159,21 +163,22 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 
 			case IrTypeKind.array:
 				IrIndex elemType = context.types.getArrayElementType(aggrType);
+				IrIndex elemPtrType = context.types.appendPtr(elemType);
 				uint elemSize = context.types.typeSize(elemType);
 
 				if (memberIndex.isConstant) {
 					long indexVal = context.constants.get(memberIndex).i64;
 					long offset = indexVal * elemSize;
-					aggrPtr = buildOffset(aggrPtr, offset);
+					aggrPtr = buildOffset(aggrPtr, offset, elemPtrType);
 				} else {
-					aggrPtr = buildIndex(aggrPtr, memberIndex, elemSize);
+					aggrPtr = buildIndex(aggrPtr, memberIndex, elemSize, elemPtrType);
 				}
 
 				aggrType = elemType;
 				break;
 
 			case IrTypeKind.struct_t:
-				context.assertf(memberIndex.isConstant, "Structs can only be indexed with constants");
+				context.assertf(memberIndex.isConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
 
 				long memberIndexVal = context.constants.get(memberIndex).i64;
 				IrTypeStructMember[] members = context.types.get!IrTypeStruct(aggrType).members;
@@ -183,8 +188,9 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 					memberIndexVal, members.length);
 
 				IrTypeStructMember member = members[memberIndexVal];
+				IrIndex memberPtrType = context.types.appendPtr(member.type);
 
-				aggrPtr = buildOffset(aggrPtr, member.offset);
+				aggrPtr = buildOffset(aggrPtr, member.offset, memberPtrType);
 				aggrType = member.type;
 				break;
 		}

@@ -40,6 +40,9 @@ struct ExtraInstrArgs
 	///    when not defined, new virtual register is created
 	/// If instruction always has no result, 'result' value is ignored
 	IrIndex result;
+
+	/// When instruction has virtual regiter as result, result.type is set to 'type'
+	IrIndex type;
 }
 
 // papers:
@@ -319,18 +322,11 @@ struct IrBuilder
 			{
 				appendVoid!IrIndex;
 				instrHeader.hasResult = true;
-				if (extra.result.isDefined) {
-					instrHeader.result = extra.result;
-					// fix definition
-					if (extra.result.isVirtReg) {
-						IrVirtualRegister* virtReg = &ir.getVirtReg(extra.result);
-						virtReg.definition = instr;
-					}
-				}
-				else
-					instrHeader.result = addVirtualRegister(instr);
 			}
-			else instrHeader.hasResult = false;
+			else
+			{
+				instrHeader.hasResult = false;
+			}
 		}
 		else static if (getInstrInfo!I.hasResult)
 		{
@@ -348,23 +344,30 @@ struct IrBuilder
 		}
 
 		// arguments
-		static if (getInstrInfo!I.hasVariadicArgs) {
+		static if (getInstrInfo!I.hasVariadicArgs)
+		{
 			context.assertf(args.length <= IrInstrHeader.numArgs.max,
 				"Too many arguments (%s), max is %s",
 				args.length,
 				IrInstrHeader.numArgs.max);
+
 			context.assertf(args.length >= getInstrInfo!I.numArgs,
 				"Instruction %s requires at least %s arguments, while passed %s",
 				I.stringof,
 				getInstrInfo!I.numArgs,
 				args.length);
+
 			instrHeader.numArgs = cast(typeof(instrHeader.numArgs))args.length;
+
 			// allocate argument slots after optional result
 			appendVoid!IrIndex(cast(uint)args.length);
-		} else {
+		}
+		else
+		{
 			context.assertf(getInstrInfo!I.numArgs == args.length,
 				"Instruction %s requires %s args, while passed %s",
 				I.stringof, getInstrInfo!I.numArgs, args.length);
+
 			instrHeader.numArgs = getInstrInfo!I.numArgs;
 		}
 
@@ -378,21 +381,40 @@ struct IrBuilder
 			}
 		}
 
-		static if (getInstrInfo!I.mayHaveResult) {
+		static if (getInstrInfo!I.mayHaveResult)
+		{
 			// set result
 			// need to add virt reg after arguments, because virt reg allocation
 			// will interfere with argument slot allocation
 			if (instrHeader.hasResult)
 			{
-				if (extra.result.isDefined)
+				if (extra.result.isDefined) {
 					instrHeader.result = extra.result;
+					// fix definition
+					if (extra.result.isVirtReg) {
+						IrVirtualRegister* virtReg = &ir.getVirtReg(extra.result);
+						virtReg.definition = instr;
+						assert(extra.type.isType, format("Invalid extra.type (%s)", extra.type));
+						virtReg.type = extra.type;
+					}
+				}
 				else
+				{
 					instrHeader.result = addVirtualRegister(instr);
+					IrVirtualRegister* virtReg = &ir.getVirtReg(instrHeader.result);
+					assert(extra.type.isType, format("Invalid extra.type (%s)", extra.type));
+					virtReg.type = extra.type;
+				}
+
 				return InstrWithResult(instr, instrHeader.result);
 			}
 			else
+			{
 				return InstrWithResult(instr, IrIndex());
-		} else {
+			}
+		}
+		else
+		{
 			return instr;
 		}
 	}
@@ -751,7 +773,8 @@ struct IrBuilder
 
 	// Adds all values of variable as arguments of phi. Values are gathered from block's predecessors.
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
-	private IrIndex addPhiOperands(IrIndex blockIndex, IrIndex variable, IrIndex phi) {
+	private IrIndex addPhiOperands(IrIndex blockIndex, IrIndex variable, IrIndex phi)
+	{
 		// Determine operands from predecessors
 		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(*ir))
 		{
@@ -767,7 +790,27 @@ struct IrBuilder
 	void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
 	{
 		IrIndex phiArg = append!IrPhiArg;
-		auto phi = &ir.get!IrPhi(phiIndex);
+		IrPhi* phi = &ir.get!IrPhi(phiIndex);
+		// try to set phi's type if parameter is not a self reference
+		if (value != phi.result)
+		{
+			IrVirtualRegister* resReg = &ir.getVirtReg(phi.result);
+			// type is already set. Check if types match
+			if (resReg.type.isDefined)
+			{
+				// do not test here, because ir to lir pass will produce invalid values at first
+				//context.assertf(resReg.type == argType,
+				//	"Types of phi arguments must match %s %s != %s",
+				//	value, blockIndex, resReg.type);
+			}
+			else
+			{
+				IrIndex argType = ir.getValueType(*context, value);
+				context.assertf(argType.isType, "Invalid type (%s) of %s", argType, value);
+				resReg.type = argType;
+			}
+		}
+
 		ir.get!IrPhiArg(phiArg) = IrPhiArg(value, blockIndex, phi.firstArgListItem);
 		phi.firstArgListItem = phiArg;
 	}

@@ -12,6 +12,37 @@ import std.format;
 import all;
 import amd64asm;
 
+// usage reg_names[physRegClass][physRegSize][physRegIndex]
+enum string[][][] reg_names = [[
+	["al", "cl", "dl", "bl", "spl","bpl","sil","dil","r8b","r9b","r10b","r11b","r12b","r13b","r14b","r15b"],
+	["ax", "cx", "dx", "bx", "sp", "bp", "si", "di", "r8w","r9w","r10w","r11w","r12w","r13w","r14w","r15w"],
+	["eax","ecx","edx","ebx","esp","ebp","esi","edi","r8d","r9d","r10d","r11d","r12d","r13d","r14d","r15d"],
+	["rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi","r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15" ],
+]];
+
+/// Creates physicalRegister index
+IrIndex amd64Reg(uint index, uint regSize)
+{
+	IrIndex result;
+	result.storageUintIndex = regSize << 12 | (index & ((1 << 12) - 1));
+	result.kind = IrValueKind.physicalRegister;
+	return result;
+}
+
+uint typeToRegSize(IrIndex type, CompilationContext* context) {
+	uint typeSize = context.types.typeSize(type);
+	switch (typeSize) {
+		case 1: return ArgType.BYTE;
+		case 2: return ArgType.WORD;
+		case 4: return ArgType.DWORD;
+		case 8: return ArgType.QWORD;
+		default:
+			context.internal_error("Type %s of size %s cannot be stored in a register",
+				IrTypeDump(type, *context), typeSize);
+			assert(false);
+	}
+}
+
 struct PhysicalRegister
 {
 	string name;
@@ -20,11 +51,17 @@ struct PhysicalRegister
 
 struct MachineInfo
 {
+	string[][][] reg_names;
 	PhysicalRegister[] registers;
 	InstrInfo[] instrInfo;
+
+	string regName(IrIndex reg) {
+		return reg_names[reg.physRegClass][reg.physRegSize][reg.physRegIndex];
+	}
 }
 
 __gshared MachineInfo mach_info_amd64 = MachineInfo(
+	reg_names,
 	[
 		PhysicalRegister("ax", amd64_reg.ax),
 		PhysicalRegister("cx", amd64_reg.cx),
@@ -47,22 +84,22 @@ __gshared MachineInfo mach_info_amd64 = MachineInfo(
 );
 
 enum amd64_reg : IrIndex {
-	ax = IrIndex(0, IrValueKind.physicalRegister),
-	cx = IrIndex(1, IrValueKind.physicalRegister),
-	dx = IrIndex(2, IrValueKind.physicalRegister),
-	bx = IrIndex(3, IrValueKind.physicalRegister),
-	sp = IrIndex(4, IrValueKind.physicalRegister),
-	bp = IrIndex(5, IrValueKind.physicalRegister),
-	si = IrIndex(6, IrValueKind.physicalRegister),
-	di = IrIndex(7, IrValueKind.physicalRegister),
-	r8 = IrIndex(8, IrValueKind.physicalRegister),
-	r9 = IrIndex(9, IrValueKind.physicalRegister),
-	r10 = IrIndex(10, IrValueKind.physicalRegister),
-	r11 = IrIndex(11, IrValueKind.physicalRegister),
-	r12 = IrIndex(12, IrValueKind.physicalRegister),
-	r13 = IrIndex(13, IrValueKind.physicalRegister),
-	r14 = IrIndex(14, IrValueKind.physicalRegister),
-	r15 = IrIndex(15, IrValueKind.physicalRegister),
+	ax = amd64Reg(0, ArgType.QWORD),
+	cx = amd64Reg(1, ArgType.QWORD),
+	dx = amd64Reg(2, ArgType.QWORD),
+	bx = amd64Reg(3, ArgType.QWORD),
+	sp = amd64Reg(4, ArgType.QWORD),
+	bp = amd64Reg(5, ArgType.QWORD),
+	si = amd64Reg(6, ArgType.QWORD),
+	di = amd64Reg(7, ArgType.QWORD),
+	r8 = amd64Reg(8, ArgType.QWORD),
+	r9 = amd64Reg(9, ArgType.QWORD),
+	r10 = amd64Reg(10, ArgType.QWORD),
+	r11 = amd64Reg(11, ArgType.QWORD),
+	r12 = amd64Reg(12, ArgType.QWORD),
+	r13 = amd64Reg(13, ArgType.QWORD),
+	r14 = amd64Reg(14, ArgType.QWORD),
+	r15 = amd64Reg(15, ArgType.QWORD),
 }
 
 struct CallConv
@@ -241,28 +278,22 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 				IrIndexDump(p.instrHeader.args[0], p));
 			break;
 		default:
-			if (p.instrHeader.hasResult)
-			{
-				p.sink.putf("    %s = %s",
-					IrIndexDump(p.instrHeader.result, p),
-					cast(Amd64Opcode)p.instrHeader.op);
-			}
-			else  p.sink.putf("    %s", cast(Amd64Opcode)p.instrHeader.op);
-
-			if (p.instrHeader.args.length > 0) p.sink.put(" ");
-			foreach (i, IrIndex arg; p.instrHeader.args)
-			{
-				if (i > 0) p.sink.put(", ");
-				p.sink.putf("%s", IrIndexDump(arg, p));
-			}
+			dumpOptionalResult(p);
+			p.sink.putf("%s", cast(Amd64Opcode)p.instrHeader.op);
+			dumpArgs(p);
 			break;
 	}
 }
 
 void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, IrIndex i)
 {
+	if (!i.isDefined) {
+		sink("<null>");
+		return;
+	}
+
 	final switch(i.kind) with(IrValueKind) {
-		case none: sink("<null>"); break;
+		case none: sink.formattedWrite("0x%X", i.asUint); break;
 		case listItem: sink.formattedWrite("l.%s", i.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i.%s", i.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
@@ -272,8 +303,7 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref InstrPrintIn
 		case memoryAddress: sink.formattedWrite("m.%s", i.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s.%s", i.storageUintIndex); break;
 		case virtualRegister: sink.formattedWrite("v.%s", i.storageUintIndex); break;
-		// TODO, HACK: 32-bit version of register is hardcoded here
-		case physicalRegister: sink("e"); sink(mach_info_amd64.registers[i.storageUintIndex].name); break;
+		case physicalRegister: sink(reg_names[i.physRegClass][i.physRegSize][i.physRegIndex]); break;
 		case type: dumpIrType(sink, *p.context, i); break;
 		case variable: assert(false);
 	}

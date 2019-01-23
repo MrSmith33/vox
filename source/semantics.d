@@ -473,7 +473,8 @@ struct SemanticStaticTypes
 			if (canConvert)
 			{
 				if (expr.astType == AstType.literal_int) {
-					(cast(IntLiteralExprNode*)expr).type = type;
+					auto lit = cast(IntLiteralExprNode*)expr;
+					lit.type = type;
 				} else {
 					expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
 				}

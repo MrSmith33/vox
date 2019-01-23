@@ -143,6 +143,10 @@ struct StackLayout
 	int numParamSlots() { return cast(uint)slots.length - numLocalSlots; }
 	int numLocalSlots;
 	uint maxAlignment = 1;
+	// number of calls in the function
+	// TODO: if 0 or 1, we can merge stack allocation with function's stack
+	// TODO: if 0, we can omit stack alignment
+	uint numCalls;
 	StackSlot[] slots;
 
 	ref StackSlot opIndex(IrIndex slotIndex) {

@@ -273,8 +273,10 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] load from '%s'", source);
 		switch (source.kind) with(IrValueKind)
 		{
-			case stackSlot, global, virtualRegister, constant:
-				return builder.emitInstr!IrInstr_load(currentBlock, source).result;
+			case stackSlot, global, virtualRegister:
+				IrIndex resultType = context.types.getPointerBaseType(ir.getValueType(*context, source));
+				ExtraInstrArgs extra = {type : resultType};
+				return builder.emitInstr!IrInstr_load(currentBlock, extra, source).result;
 			case variable:
 				return builder.readVariable(currentBlock, source);
 			default:
@@ -321,7 +323,8 @@ struct AstToIr
 			if (v.isParameter)
 			{
 				// parameter input
-				InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock);
+				ExtraInstrArgs extra = {type : v.type.genIrType(context)};
+				InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
 				ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
 
 				store(currentBlock, v.irValue, param.result);
@@ -560,7 +563,8 @@ struct AstToIr
 
 		IrIndex ptrIndex = context.constants.add(IrConstant(0));
 		IrIndex memberIndex = context.constants.add(IrConstant(m.memberIndex));
-		m.irValue = builder.emitInstr!IrInstr_get_element_ptr(currentBlock, m.aggregate.irValue, ptrIndex, memberIndex).result;
+		ExtraInstrArgs extra = { type : m.type.genIrType(context) };
+		m.irValue = builder.emitInstr!IrInstr_get_element_ptr(currentBlock, extra, m.aggregate.irValue, ptrIndex, memberIndex).result;
 
 		if (m.isLvalue) {
 			// already stores l-value
@@ -575,7 +579,7 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] int literal value (%s) value %s", c.loc, c.value);
-		c.irValue = context.constants.add(IrConstant(c.value));
+		c.irValue = context.constants.add(IrConstant(c.value, c.type.genIrType(context)));
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprValue(StringLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -657,14 +661,18 @@ struct AstToIr
 			{
 				case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op value %s", b.op);
-					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op)};
+					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op), type : b.type.genIrType(context)};
 					b.irValue = builder.emitInstr!IrInstr_set_binary_cond(
 						currentBlock, extra, leftValue, rightValue).result;
 					break;
 
 				// TODO
-				case PLUS: b.irValue = builder.emitInstr!IrInstr_add(currentBlock, leftValue, rightValue).result; break;
-				case MINUS: b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, leftValue, rightValue).result; break;
+				case PLUS:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					b.irValue = builder.emitInstr!IrInstr_add(currentBlock, extra, leftValue, rightValue).result; break;
+				case MINUS:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result; break;
 
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}
@@ -758,11 +766,16 @@ struct AstToIr
 
 		builder.emitInstrPreheader(IrInstrPreheader_call(callee.backendData.index));
 
-		if (callee.returnType.isVoid) {
+		if (callee.returnType.isVoid)
+		{
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, args);
 			context.assertf(!res.result.isDefined, "Call has result");
-		} else {
-			ExtraInstrArgs extra = {hasResult : true};
+		}
+		else
+		{
+			callee.backendData.returnType = callee.returnType.genIrType(context);
+
+			ExtraInstrArgs extra = {hasResult : true, type : callee.backendData.returnType};
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, extra, args);
 			c.irValue = res.result;
 		}

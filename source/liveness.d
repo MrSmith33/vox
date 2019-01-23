@@ -495,7 +495,7 @@ struct FunctionLiveIntervals
 			auto vii = VregIntervalIndex(ir.getVirtReg(someReg).seqIndex);
 			return IntervalIndex(numFixedIntervals + vii);
 		} else if (someReg.isPhysReg) {
-			return IntervalIndex(someReg.storageUintIndex);
+			return IntervalIndex(someReg.physRegIndex);
 		}
 		assert(false);
 	}*/
@@ -674,7 +674,8 @@ struct FunctionLiveIntervals
 				}
 
 				if (it.reg.isDefined)
-					sink.putf("% 3s %s [%2s]:", i, it.definition, context.machineInfo.registers[it.reg.storageUintIndex].name);
+					sink.putf("% 3s %s [%2s]:", i, it.definition,
+						context.machineInfo.regName(it.reg));
 				else
 					sink.putf("% 3s %s [no reg]:", i, it.definition);
 
@@ -726,7 +727,7 @@ struct PregIntervalIndex
 {
 	this(IrIndex physReg) {
 		assert(physReg.isPhysReg);
-		index = physReg.storageUintIndex;
+		index = physReg.physRegIndex;
 	}
 	uint index = uint.max;
 	alias index this;

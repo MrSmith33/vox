@@ -21,7 +21,7 @@ void runDevTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test26);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test7);
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 }
 

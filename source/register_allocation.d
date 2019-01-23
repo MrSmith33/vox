@@ -47,7 +47,7 @@ struct PhysRegisters
 	const(IrIndex)[] allocatableRegs;
 
 	ref RegisterState opIndex(IrIndex reg) {
-		return gpr[reg.storageUintIndex];
+		return gpr[reg.physRegIndex];
 	}
 
 	void setup(FunctionDeclNode* fun, MachineInfo* machineInfo)
@@ -93,8 +93,8 @@ struct PhysRegisters
 
 	void markAsUsed(IrIndex reg)
 	{
-		assert(gpr[reg.storageUintIndex].isAllocatable);
-		gpr[reg.storageUintIndex].isUsed = true;
+		assert(gpr[reg.physRegIndex].isAllocatable);
+		gpr[reg.physRegIndex].isUsed = true;
 	}
 }
 
@@ -831,11 +831,11 @@ struct MoveSolver
 		writtenNodesBuf = FixedBuffer!IrIndex();
 	}
 
-	ref ValueInfo getInfo(IrIndex loc) {
-		switch(loc.kind) {
+	ref ValueInfo getInfo(IrIndex index) {
+		switch(index.kind) {
 			case IrValueKind.constant: return anyConstant;
-			case IrValueKind.stackSlot: return stackSlots[loc.storageUintIndex];
-			case IrValueKind.physicalRegister:  return registers[loc.storageUintIndex];
+			case IrValueKind.stackSlot: return stackSlots[index.storageUintIndex];
+			case IrValueKind.physicalRegister:  return registers[index.physRegIndex];
 			default: assert(false);
 		}
 	}

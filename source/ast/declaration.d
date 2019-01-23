@@ -55,9 +55,13 @@ struct FunctionIndex
 
 struct FunctionBackendData
 {
+	/// Machine-independent IR
 	IrFunction* irData;
+	/// Machine-level IR
 	IrFunction* lirData;
+	///
 	FunctionLiveIntervals* liveIntervals;
+	/// Executable machine-code bytes
 	ubyte[] code;
 	/// Position in buffer or in memory
 	void* funcPtr;
@@ -65,9 +69,9 @@ struct FunctionBackendData
 	StackLayout stackLayout;
 	///
 	CallConv* callingConvention;
-	///
+	/// Callers will use this index to call this function.
 	FunctionIndex index;
-	///
+	/// Index of IrValueKind.type kind
 	IrIndex returnType;
 	///
 	Identifier name;

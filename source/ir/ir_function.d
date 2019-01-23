@@ -89,6 +89,19 @@ struct IrFunction
 			block.seqIndex = index++;
 		}
 	}
+
+	IrIndex getValueType(ref CompilationContext context, IrIndex someIndex)
+	{
+		final switch (someIndex.kind) with(IrValueKind) {
+			case none, listItem, instruction, basicBlock, phi, memoryAddress, physicalRegister, type, variable:
+				context.internal_error("Cannot get type for non-value %s %s", someIndex.kind, someIndex);
+				assert(false);
+			case constant: return context.constants.get(someIndex).type;
+			case global: return context.globals.get(someIndex).type;
+			case stackSlot: return backendData.stackLayout[someIndex].type;
+			case virtualRegister: return getVirtReg(someIndex).type;
+		}
+	}
 }
 
 // instruction iterators are aware of this
@@ -200,7 +213,13 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 		{
 			if (!arg.isVirtReg) return;
 
-			auto vreg = &ir.getVirtReg(arg);
+			IrVirtualRegister* vreg = &ir.getVirtReg(arg);
+
+			// Check case when virtual register is in use,
+			// but it's definition point is not set
+			context.assertf(vreg.definition.isDefined,
+				"Virtual register %s, invalid definition (%s)",
+				arg, vreg.definition);
 
 			// How many times 'argUser' is found in vreg.users
 			uint numVregUses = 0;
@@ -237,7 +256,13 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 		void checkResult(IrIndex definition, IrIndex result)
 		{
 			if (!result.isVirtReg) return;
-			auto vreg = &ir.getVirtReg(result);
+
+			IrVirtualRegister* vreg = &ir.getVirtReg(result);
+
+			// Type must be set for every virtual register
+			context.assertf(vreg.type.isType,
+				"Virtual register %s, invalid type (%s)",
+				result, vreg.type);
 
 			// Check that all users of virtual reg point to definition
 			context.assertf(vreg.definition == definition,
@@ -256,6 +281,8 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 				++numPhiArgs;
 				checkArg(phiIndex, phiArg.value);
 			}
+
+			// TODO: check that all types of args match type of result
 
 			// check that phi-function receives values from all predecessors
 			size_t numPredecessors = 0;

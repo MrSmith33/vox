@@ -6,6 +6,7 @@ Authors: Andrey Penechko.
 /// IR constant
 module ir.ir_constant;
 
+import std.string : format;
 import all;
 
 /// Stores numeric constant data
@@ -13,8 +14,19 @@ import all;
 @(IrValueKind.constant)
 struct IrConstant
 {
+	this(long value, IrIndex type) {
+		this.i64 = value;
+		this.type = type;
+	}
 	this(long value) {
 		this.i64 = value;
+		switch(numSignedBytes) {
+			case 1: type = makeBasicTypeIndex(IrValueType.i8); break;
+			case 2: type = makeBasicTypeIndex(IrValueType.i16); break;
+			case 4: type = makeBasicTypeIndex(IrValueType.i32); break;
+			case 8: type = makeBasicTypeIndex(IrValueType.i64); break;
+			default: assert(false);
+		}
 	}
 
 	ubyte numSignedBytes() {
@@ -46,6 +58,7 @@ struct IrConstant
 		int i32;
 		long i64;
 	}
+	IrIndex type;
 }
 
 ///
@@ -64,8 +77,8 @@ struct IrConstantStorage
 	///
 	ref IrConstant get(IrIndex index)
 	{
-		assert(index.kind == IrValueKind.constant);
-		assert(index.storageUintIndex < array.length);
+		assert(index.kind == IrValueKind.constant, format("Not a constant (%s)", index));
+		assert(index.storageUintIndex < array.length, "Not in bounds");
 		return array[index.storageUintIndex];
 	}
 }

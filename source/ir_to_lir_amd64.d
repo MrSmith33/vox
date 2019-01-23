@@ -111,6 +111,11 @@ struct IrToLir
 			{
 				IrIndex newPhi = builder.addPhi(lirBlock);
 				recordIndex(phiIndex, newPhi);
+				IrIndex newResult = lir.getPhi(newPhi).result;
+				IrVirtualRegister* newReg = &lir.getVirtReg(newResult);
+				IrVirtualRegister* oldReg = &ir.getVirtReg(phi.result);
+				newReg.type = oldReg.type;
+
 				recordIndex(phi.result, lir.getPhi(newPhi).result);
 				foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 				{
@@ -139,15 +144,17 @@ struct IrToLir
 			{
 				auto emitLirInstr(I)()
 				{
-					ExtraInstrArgs extra = {addUsers : false};
 					static if (getInstrInfo!I.hasResult)
 					{
+						IrIndex type = ir.getVirtReg(instrHeader.result).type;
+						ExtraInstrArgs extra = {addUsers : false, type : type};
 						InstrWithResult res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, res.instruction);
 						recordIndex(instrHeader.result, res.result);
 					}
 					else
 					{
+						ExtraInstrArgs extra = {addUsers : false};
 						IrIndex res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, res);
 					}
@@ -160,8 +167,11 @@ struct IrToLir
 						context.assertf(paramIndex < lir.backendData.callingConvention.paramsInRegs.length,
 							"Only parameters passed through registers are implemented");
 
-						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(
-							lirBlockIndex, lir.backendData.callingConvention.paramsInRegs[paramIndex]);
+						IrIndex paramReg = lir.backendData.callingConvention.paramsInRegs[paramIndex];
+						IrIndex type = ir.getVirtReg(instrHeader.result).type;
+						paramReg.physRegSize = typeToRegSize(type, context);
+						ExtraInstrArgs extra = {type : type};
+						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, paramReg);
 						recordIndex(instrIndex, instr.instruction);
 						recordIndex(instrHeader.result, instr.result);
 						break;
@@ -214,22 +224,24 @@ struct IrToLir
 						}
 
 						{	// call
-							ExtraInstrArgs extra = {
+							ExtraInstrArgs callExtra = {
 								addUsers : false,
 								hasResult : instrHeader.hasResult,
-								result : lir.backendData.callingConvention.returnReg};
+								result : lir.backendData.callingConvention.returnReg // will be used if function has result
+							};
 
 							FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 							context.assertf(calleeIndex < context.mod.functions.length, "Invalid callee index %s", calleeIndex);
 							builder.emitInstrPreheader(IrInstrPreheader_call(calleeIndex));
 							InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
-								lirBlockIndex, extra, physArgs[0..numPhysRegs]);
+								lirBlockIndex, callExtra, physArgs[0..numPhysRegs]);
 							recordIndex(instrIndex, callInstr.instruction);
 
-							if (extra.hasResult) {
+							if (callExtra.hasResult) {
 								// mov result to virt reg
+								ExtraInstrArgs extra = { type : ir.getVirtReg(instrHeader.result).type };
 								InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
-									lirBlockIndex, lir.backendData.callingConvention.returnReg);
+									lirBlockIndex, extra, lir.backendData.callingConvention.returnReg);
 								recordIndex(instrHeader.result, movInstr.result);
 							}
 						}
@@ -303,8 +315,9 @@ struct IrToLir
 				if (instrHeader.op == Amd64Opcode.store && (instrHeader.args[1].isGlobal || instrHeader.args[1].isStackSlot))
 				{
 					// copy to temp register
+					ExtraInstrArgs extra = { type : lir.getValueType(*context, instrHeader.args[1]) };
 					InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
-						ExtraInstrArgs(), instrHeader.args[1]);
+						extra, instrHeader.args[1]);
 					builder.insertBeforeInstr(instrIndex, movInstr.instruction);
 					// store temp to memory
 					removeUser(*context, lir, instrIndex, instrHeader.args[1]);

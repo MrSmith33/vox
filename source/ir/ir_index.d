@@ -15,10 +15,20 @@ import all;
 @(IrValueKind.none)
 struct IrIndex
 {
+	///
 	this(uint _storageUintIndex, IrValueKind _kind)
 	{
 		storageUintIndex = _storageUintIndex;
 		kind = _kind;
+	}
+
+	/// Constructor for physicalRegister
+	this(uint index, uint regSize, uint regClass)
+	{
+		physRegIndex = index;
+		physRegSize = regSize;
+		physRegClass = regClass;
+		kind = IrValueKind.physicalRegister;
 	}
 
 	static IrIndex fromUint(uint data)
@@ -34,6 +44,8 @@ struct IrIndex
 			uint,        "storageUintIndex", 28, // may be 0 for defined index
 			IrValueKind, "kind",              4  // is never 0 for defined index
 		));
+
+		// used when kind == IrValueKind.type
 		// types are stored in 8-byte chunked buffer
 		mixin(bitfields!(
 			// if typeKind is basic, then typeIndex contains IrValueType
@@ -41,7 +53,21 @@ struct IrIndex
 			IrTypeKind,  "typeKind",          4, // type kind
 			IrValueKind, "",                  4  // index kind
 		));
-		uint asUint; // is 0 for undefined index
+
+		// used when kind == IrValueKind.physicalRegister
+		mixin(bitfields!(
+			// machine-specific index
+			uint,        "physRegIndex",     12,
+			// physical register size
+			// Not in bytes, but a machine-specific enum value
+			uint,        "physRegSize",       8,
+			// physical register class
+			uint,        "physRegClass",      8,
+			IrValueKind, "",                  4  // index kind
+		));
+
+		// is 0 for undefined index
+		uint asUint;
 	}
 	static assert(IrValueKind.max <= 0b1111, "4 bits are reserved");
 	bool isDefined() { return asUint != 0; }

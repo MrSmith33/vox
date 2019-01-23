@@ -177,6 +177,7 @@ struct IrTypeStorage
 	}
 
 	uint typeSize(IrIndex type) {
+		assert(type.isType, "not a type");
 		final switch (type.typeKind) {
 			case IrTypeKind.basic:
 			final switch (cast(IrValueType)type.typeIndex) {
@@ -198,6 +199,7 @@ struct IrTypeStorage
 	}
 
 	uint typeAlignment(IrIndex type) {
+		assert(type.isType, "not a type");
 		final switch (type.typeKind) {
 			case IrTypeKind.basic:
 			final switch (cast(IrValueType)type.typeIndex) {
