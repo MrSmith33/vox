@@ -390,6 +390,8 @@ struct LinearScan
 				{
 					// register available for the whole interval
 					currentIt.reg = hintReg;
+					currentIt.reg.physRegSize = typeToRegSize(
+						lir.getValueType(*context, currentIt.definition), context);
 					physRegs.markAsUsed(hintReg);
 					version(RAPrint) writefln("    alloc hint %s", hintReg);
 					return true;
@@ -403,6 +405,8 @@ struct LinearScan
 			if (currentEnd < maxPos)
 			{
 				currentIt.reg = reg;
+				currentIt.reg.physRegSize = typeToRegSize(
+						lir.getValueType(*context, currentIt.definition), context);
 				physRegs.markAsUsed(reg);
 				version(RAPrint) writefln("    alloc %s", reg);
 				return true;

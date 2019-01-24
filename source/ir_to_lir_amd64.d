@@ -213,6 +213,8 @@ struct IrToLir
 						{
 							physArgs[i] = lir.backendData.callingConvention.paramsInRegs[i];
 							IrIndex argRegister = lir.backendData.callingConvention.paramsInRegs[i];
+							IrIndex type = ir.getValueType(*context, arg);
+							argRegister.physRegSize = typeToRegSize(type, context);
 							ExtraInstrArgs extra = {addUsers : false, result : argRegister};
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, arg);
 						}
@@ -283,7 +285,10 @@ struct IrToLir
 						break;
 
 					case IrOpcode.block_exit_return_value:
-						ExtraInstrArgs extra = {addUsers : false, result : lir.backendData.callingConvention.returnReg};
+						IrIndex result = lir.backendData.callingConvention.returnReg;
+						IrIndex type = lir.backendData.returnType;
+						result.physRegSize = typeToRegSize(type, context);
+						ExtraInstrArgs extra = { addUsers : false, result : result };
 						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, instrHeader.args);
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
 						recordIndex(instrIndex, instruction);

@@ -198,7 +198,7 @@ enum IrUnaryCondition : ubyte {
 	zero,
 	not_zero
 }
-string[] unaryCondStrings = cast(string[IrUnaryCondition.max+1])["", "!"];
+string[] unaryCondStrings = cast(string[IrUnaryCondition.max+1])["", "not"];
 
 IrUnaryCondition invertUnaryCond(IrUnaryCondition cond)
 {

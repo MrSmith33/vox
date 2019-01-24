@@ -174,7 +174,8 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
 				if (arg_i > 0) sink.put(", ");
-				sink.putf("%s %s", IrIndexDump(phiArg.value, printer), IrIndexDump(phiArg.basicBlock, printer));
+				sink.putf("%s", IrIndexDump(phiArg.basicBlock, printer));
+				dumpArg(phiArg.value, printer);
 			}
 			sink.put(")");
 			if (settings.printUses) printRegUses(phi.result);
@@ -315,7 +316,7 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 			break;
 		case struct_t:
 			IrTypeStruct* struct_t = &ctx.types.get!IrTypeStruct(type);
-			sink("}");
+			sink("{");
 			foreach(i, IrTypeStructMember member; struct_t.members)
 			{
 				if (i > 0) sink(", ");
@@ -347,7 +348,8 @@ void dumpIrInstr(ref InstrPrintInfo p)
 			break;
 
 		case IrOpcode.block_exit_return_value:
-			p.sink.putf("    return %s", IrIndexDump(p.instrHeader.args[0], p));
+			p.sink.put("    return");
+			dumpArg(p.instrHeader.args[0], p);
 			break;
 
 		default:
@@ -395,7 +397,22 @@ void dumpArgs(ref InstrPrintInfo p)
 	foreach (i, IrIndex arg; p.instrHeader.args)
 	{
 		if (i > 0) p.sink.put(",");
+		dumpArg(arg, p);
+	}
+}
+
+void dumpArg(IrIndex arg, ref InstrPrintInfo p)
+{
+	if (arg.isPhysReg)
+	{
 		p.sink.putf(" %s", IrIndexDump(arg, p));
+
+	}
+	else
+	{
+		p.sink.putf(" %s %s",
+			IrIndexDump(p.ir.getValueType(*p.context, arg), p),
+			IrIndexDump(arg, p));
 	}
 }
 
@@ -410,19 +427,20 @@ void dumpJmp(ref InstrPrintInfo p)
 
 void dumpUnBranch(ref InstrPrintInfo p)
 {
-	p.sink.putf("    if %s then %s",
-		unaryCondStrings[p.instrHeader.cond],
-		IrIndexDump(p.instrHeader.args[0], p));
+	p.sink.putf("    if %s", unaryCondStrings[p.instrHeader.cond]);
+	dumpArg(p.instrHeader.args[0], p);
+	p.sink.put(" then ");
 	dumpBranchTargets(p);
 }
 
 void dumpBinBranch(ref InstrPrintInfo p)
 {
 	string[] opStrings = p.settings.escapeForDot ? binaryCondStringsEscapedForDot : binaryCondStrings;
-	p.sink.putf("    if %s %s %s then ",
-		IrIndexDump(p.instrHeader.args[0], p),
-		opStrings[p.instrHeader.cond],
-		IrIndexDump(p.instrHeader.args[1], p));
+	p.sink.put("    if");
+	dumpArg(p.instrHeader.args[0], p);
+	p.sink.putf(" %s", opStrings[p.instrHeader.cond]);
+	dumpArg(p.instrHeader.args[1], p);
+	p.sink.put(" then ");
 
 	dumpBranchTargets(p);
 }
