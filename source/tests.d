@@ -21,7 +21,7 @@ void runDevTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test7);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test27);
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 }
 
@@ -41,7 +41,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	dumpSettings.printBlockFlags = true;
 
 	Test[] testsThatPass = [test7, test8, test8_1, test10, test9, test18, test19,
-		test20, test21, test21_2, test22, test23, test24, test25, test26];
+		test20, test21, test21_2, test22, test23, test24, test25, test26, test27];
 
 	size_t numSuccessfulTests;
 	writefln("Running %s tests", testsThatPass.length);
@@ -105,6 +105,19 @@ TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings
 
 void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
 {
+	if (dumpTest)
+	{
+		// dump settings
+		driver.context.printSource = true;
+		//driver.context.printAst = true;
+		driver.context.printIr = true;
+		//driver.context.printLir = true;
+		//driver.context.printLiveIntervals = true;
+		//driver.context.printStaticData = true;
+		driver.context.printCodeHex = true;
+		//driver.context.printTimings = true;
+	}
+
 	enum NUM_ITERS = 1;
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
@@ -117,37 +130,20 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 	if (dumpTest)
 	{
-		// Text dump
-		auto astPrinter = AstPrinter(&driver.context, 2);
-		astPrinter.printAst(cast(AstNode*)mod);
-
-		writeln("// Source");
-		writeln(curTest.source);
-
-		TextSink sink;
-		sink.putln("\n// IR");
-		mod.irModule.dump(sink, driver.context, dumpSettings);
-
-		sink.putln("\n// LIR after RA");
-		mod.lirModule.dump(sink, driver.context, dumpSettings);
-
-		foreach(fun; mod.functions) {
-			if (!fun.isExternal)
-				fun.backendData.liveIntervals.dump(sink, driver.context);
+		if (driver.context.printStaticData) {
+			writefln("\n// Data: addr 0x%X, %s bytes",
+				driver.context.staticDataBuffer.bufPtr,
+				driver.context.staticDataBuffer.length);
+			printHex(driver.context.staticDataBuffer.data, 16);
 		}
 
-		writeln(sink.text);
+		if (driver.context.printCodeHex) {
+			writefln("\n// Amd64 code: addr 0x%X, %s bytes", mod.code.ptr, mod.code.length);
+			printHex(mod.code, 16);
+			writeln;
+		}
 
-		writefln("\n// Data: addr 0x%X, size %s",
-			driver.context.staticDataBuffer.bufPtr,
-			driver.context.staticDataBuffer.length);
-		printHex(driver.context.staticDataBuffer.data, 16);
-
-		writefln("\n// Amd64 code: addr 0x%X, size %s", mod.code.ptr, mod.code.length);
-		printHex(mod.code, 16);
-
-		writeln;
-		times.print;
+		if (driver.context.printTimings) times.print;
 	}
 
 	if (curTest.funcName is null) return;
@@ -686,6 +682,28 @@ immutable input26 = q{
 	}
 };
 auto test26 = Test("Global struct", input26, "test", cast(Test.Tester)&tester25,
+	[ExternalSymbol("print", cast(void*)&test25_external_print)]);
+
+// test slices
+immutable input27 = q{
+	void print(u8[]);
+	void test() {
+		u8[] array;
+		array.length = 9;
+		array.ptr = "AssignPtr";
+		print(array);
+
+		array = "AssignSlice";
+		print(array);
+	}
+};
+void tester27(Func25 fun) {
+	fun();
+	//writefln("fun() == '%s'", testSink.text);
+	assert(testSink.text == "AssignPtrAssignSlice");
+	testSink.clear;
+}
+auto test27 = Test("Assign string literal to slice/ptr", input27, "test", cast(Test.Tester)&tester27,
 	[ExternalSymbol("print", cast(void*)&test25_external_print)]);
 
 void testNativeFun()

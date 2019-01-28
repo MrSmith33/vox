@@ -229,6 +229,18 @@ struct IrTypeStorage
 	{
 		return get!IrTypeArray(arrayType).elemType;
 	}
+
+	IrIndex getStructMemberType(IrIndex structType, uint memberIndex, ref CompilationContext context)
+	{
+		IrTypeStructMember[] members = get!IrTypeStruct(structType).members;
+
+		context.assertf(memberIndex < members.length,
+			"Indexing member %s of %s-member struct",
+			memberIndex, members.length);
+
+		IrTypeStructMember member = members[memberIndex];
+		return member.type;
+	}
 }
 
 /// Returns type of value
@@ -247,8 +259,7 @@ IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext co
 		case stackSlot:
 			return ir.backendData.stackLayout[value].type;
 		case virtualRegister:
-			context.todo("getValueType %s", value.kind);
-			assert(false);
+			return ir.getVirtReg(value).type;
 		default:
 			context.internal_error("Cannot get type of %s", value.kind);
 			assert(false);

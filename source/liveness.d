@@ -59,10 +59,18 @@ void pass_live_intervals(ref CompilationContext context)
 	foreach (FunctionDeclNode* fun; context.mod.functions)
 	{
 		if (fun.isExternal) continue;
+
 		fun.backendData.liveIntervals = new FunctionLiveIntervals(fun.backendData.lirData);
 		pass_live_intervals_func(context, *fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
 		//writefln("// LIR before RA");
 		//dumpFunction_lir_amd64(*fun.lirData, context);
+
+		if (context.printLiveIntervals)
+		{
+			TextSink sink;
+			fun.backendData.liveIntervals.dump(sink, context);
+			writeln(sink.text);
+		}
 	}
 }
 
@@ -340,13 +348,6 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 
 		// b.liveIn = live
 		blockLiveIn(blockIndex)[] = liveBitmap.liveBuckets;
-	}
-
-	version(LivePrint)
-	{
-		TextSink sink;
-		liveIntervals.dump(sink, context);
-		writeln(sink.text);
 	}
 }
 

@@ -44,6 +44,7 @@ mixin template AstVisitorMixin() {
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
 			case type_static_array: auto t = cast(StaticArrayTypeNode*)n; visit(t); break;
+			case type_slice: auto t = cast(SliceTypeNode*)n; visit(t); break;
 			case type_struct: auto t = cast(StructTypeNode*)n; visit(t); break;
 		}
 	}
@@ -92,5 +93,6 @@ mixin template AstVisitorMixin() {
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
 	void visit(StaticArrayTypeNode* t) {}
+	void visit(SliceTypeNode* t) {}
 	void visit(StructTypeNode* t) {}
 */

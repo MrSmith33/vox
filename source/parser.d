@@ -54,7 +54,7 @@ import all;
 	<identifier> = [_a-zA-Z] [_a-zA-Z0-9]*
 
 	<type> = (<type_basic> / <type_struct>) <type_specializer>*
-	<type_specializer> = '*' / '[' <expression> ']'
+	<type_specializer> = '*' / '[' <expression> ']' / '[' ']'
 	<type_basic> = ("i8" | "i16" | "i32" | "i64" | "isize" |
 		"u8" | "u16" | "u32" | "u64" | "usize" | "void" | "f32" | "f64")
 
@@ -744,7 +744,20 @@ unittest
 void pass_parser(ref CompilationContext ctx) {
 	Lexer lexer = Lexer(ctx.input, &ctx);
 	Parser parser = Parser(&lexer, &ctx);
+
+	if (ctx.printSource) {
+		writeln("// Source");
+		writeln(ctx.input);
+	}
+
 	ctx.mod = parser.parseModule();
+
+	if (ctx.printAst) {
+		if (ctx.mod !is null) {
+			auto astPrinter = AstPrinter(&ctx, 2);
+			astPrinter.printAst(cast(AstNode*)ctx.mod);
+		}
+	}
 }
 
 //version = print_parse;
@@ -987,15 +1000,23 @@ struct Parser {
 				if (tok.type == TokenType.STAR) { // '*' pointer
 					nextToken();
 					base = cast(TypeNode*)make!PtrTypeNode(start, base);
-				} else if (tok.type == TokenType.LBRACKET) { // '[' <expression> ']' static array
+				} else if (tok.type == TokenType.LBRACKET) {
 					nextToken();
-					ExpressionNode* e = expr();
-					if (e.astType != AstType.literal_int)
-						context.unrecoverable_error(e.loc, "Expected int constant, while got '%s'",
-							lexer.getTokenString(e.loc));
-					expectAndConsume(TokenType.RBRACKET);
-					uint length = cast(uint)(cast(IntLiteralExprNode*)e).value; // TODO check overflow
-					base = cast(TypeNode*)make!StaticArrayTypeNode(start, base, length);
+					if (tok.type == TokenType.RBRACKET) // '[' ']' slice
+					{
+						nextToken(); // skip ']'
+						base = cast(TypeNode*)make!SliceTypeNode(start, base);
+					}
+					else // '[' <expression> ']' static array
+					{
+						ExpressionNode* e = expr();
+						if (e.astType != AstType.literal_int)
+							context.unrecoverable_error(e.loc, "Expected int constant, while got '%s'",
+								lexer.getTokenString(e.loc));
+						expectAndConsume(TokenType.RBRACKET);
+						uint length = cast(uint)(cast(IntLiteralExprNode*)e).value; // TODO check overflow
+						base = cast(TypeNode*)make!StaticArrayTypeNode(start, base, length);
+					}
 				}
 				else break;
 			}

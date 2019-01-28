@@ -24,9 +24,17 @@ struct Scope
 	bool isOrdered;
 }
 
-/// For first semantics pass
-struct ScopeStack1
+void pass_semantic_decl(ref CompilationContext ctx)
 {
+	auto sem1 = SemanticDeclarations(&ctx);
+	sem1.visit(ctx.mod);
+}
+
+/// Register identifiers in scope tree
+struct SemanticDeclarations
+{
+	mixin AstVisitorMixin;
+
 	CompilationContext* context;
 	Scope* currentScope;
 
@@ -70,18 +78,108 @@ struct ScopeStack1
 		}
 		currentScope.symbols[sym.id] = sym;
 	}
+
+	void visit(ModuleDeclNode* m) {
+		context.mod._scope = pushScope("Module", No.ordered);
+		foreach (decl; context.mod.declarations) _visit(decl);
+		popScope;
+	}
+	void visit(FunctionDeclNode* f) {
+		context.mod.addFunction(f);
+		f.resolveSymbol = insert(f.id, f.loc, SymbolClass.c_function, cast(AstNode*)f);
+		f._scope = pushScope(context.idString(f.id), Yes.ordered);
+		foreach (param; f.parameters) visit(param);
+		if (f.block_stmt) visit(f.block_stmt);
+		popScope;
+	}
+	void visit(VariableDeclNode* v) {
+		v.resolveSymbol = insert(v.id, v.loc, SymbolClass.c_variable, cast(AstNode*)v);
+		if (v.initializer) _visit(v.initializer);
+	}
+	void visit(StructDeclNode* s) {
+		s.resolveSymbol = insert(s.id, s.loc, SymbolClass.c_struct, cast(AstNode*)s);
+		s._scope = pushScope(context.idString(s.id), No.ordered);
+		foreach (decl; s.declarations) _visit(decl);
+		popScope;
+	}
+	void visit(BlockStmtNode* b) {
+		b._scope = pushScope("Block", Yes.ordered);
+		foreach(stmt; b.statements) _visit(stmt);
+		popScope;
+	}
+	void visit(IfStmtNode* i) {
+		_visit(i.condition);
+		i.then_scope = pushScope("Then", Yes.ordered);
+		_visit(i.thenStatement);
+		popScope;
+		if (i.elseStatement) {
+			i.else_scope = pushScope("Else", Yes.ordered);
+			_visit(i.elseStatement);
+			popScope;
+		}
+	}
+	void visit(WhileStmtNode* w) {
+		_visit(w.condition);
+		w._scope = pushScope("While", Yes.ordered);
+		_visit(w.statement);
+		popScope;
+	}
+	void visit(DoWhileStmtNode* d) {
+		d._scope = pushScope("While", Yes.ordered);
+		_visit(d.statement);
+		popScope;
+		_visit(d.condition);
+	}
+	void visit(ReturnStmtNode* r) {}
+	void visit(BreakStmtNode* r) {}
+	void visit(ContinueStmtNode* r) {}
+	void visit(NameUseExprNode* v) {}
+	void visit(MemberExprNode* m) {}
+	void visit(IntLiteralExprNode* c) {}
+	void visit(StringLiteralExprNode* c) {}
+	void visit(BinaryExprNode* b) {
+		if (b.isAssignment)
+		{
+			if (!b.isStatement)
+				context.error(b.loc,
+					"Cannot use assignment here. Only can use as statement.");
+		}
+	}
+	void visit(UnaryExprNode* u) {}
+	void visit(CallExprNode* c) {}
+	void visit(IndexExprNode* i) {}
+	void visit(TypeConvExprNode* c) {}
+	void visit(BasicTypeNode* t) {}
+	void visit(PtrTypeNode* t) {}
+	void visit(StaticArrayTypeNode* t) {}
+	void visit(SliceTypeNode* t) {}
+	void visit(StructTypeNode* t) {}
 }
 
-// For second semantics pass
-struct ScopeStack2
+void pass_semantic_lookup(ref CompilationContext ctx)
 {
+	auto sem2 = SemanticLookup(&ctx);
+	sem2.visit(ctx.mod);
+}
+
+/// Resolves all symbol references (variable/type/function uses)
+/// using information collected on previous pass
+struct SemanticLookup
+{
+	mixin AstVisitorMixin;
+
 	CompilationContext* context;
+
 	// TODO: do not maintain all visible symbols for current scope
 	// We will only use a small portion of visible symbols in each scope,
 	// so maintaining this is most probably wasted effort, and
 	// it is faster to walk up the scope stack. Need to benchmark.
 	Symbol*[Identifier] symbols;
+
 	Scope* currentScope;
+
+	Identifier id_ptr;
+	Identifier id_length;
 
 	/// Used in 2 semantic pass
 	void pushCompleteScope(Scope* newScope)
@@ -159,192 +257,121 @@ struct ScopeStack2
 
 		VariableDeclNode* varDecl = aggSym.varDecl;
 
-		if (varDecl.type.astType != AstType.type_struct) {
-			context.error(expr.loc, "`%s` of type `%s` is not a struct. Cannot access its member `%s`",
+		bool success;
+		switch (varDecl.type.astType)
+		{
+			case AstType.type_slice:
+				success = lookupSliceMember(expr, varDecl.type.sliceTypeNode, id);
+				break;
+
+			case AstType.type_struct:
+				success = lookupStructMember(expr, varDecl.type.structTypeNode, id);
+				break;
+
+			default: break;
+		}
+		if (!success)
+			context.error(expr.loc, "`%s` of type `%s` has no member `%s`",
 				varDecl.strId(context), varDecl.type.printer(context), idStr);
-			return;
+	}
+
+	bool lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id)
+	{
+		if (id == id_ptr)
+		{
+			expr.memberIndex = 1;
+			expr.type = cast(TypeNode*) new PtrTypeNode(sliceType.loc, sliceType.base);
+			return true;
+		}
+		else if (id == id_length)
+		{
+			expr.memberIndex = 0;
+			expr.type = context.basicTypeNodes(BasicType.t_u64);
+			return true;
 		}
 
-		StructTypeNode* structType = varDecl.type.structTypeNode;
+		return false;
+	}
+
+	bool lookupStructMember(MemberExprNode* expr, StructTypeNode* structType, Identifier id)
+	{
 		StructDeclNode* structDecl = structType.getSym.structDecl;
 		Symbol* memberSym = structDecl._scope.symbols.get(id, null);
 		expr.member.resolveSymbol(memberSym);
 
-		if (memberSym) {
+		if (memberSym)
+		{
 			final switch(memberSym.symClass)
 			{
 				case SymbolClass.c_function:
 					context.internal_error("member functions/UFCS calls are not implemented");
 					assert(false);
+
 				case SymbolClass.c_variable:
 					VariableDeclNode* memberVar = expr.member.getSym.varDecl;
 					expr.type = memberVar.type;
 					expr.memberIndex = memberVar.scopeIndex;
-					break;
+					return true;
+
 				case SymbolClass.c_struct:
 					context.internal_error("member structs are not implemented");
 					assert(false);
 			}
 		}
-		else
-		{
-			context.error(expr.loc, "Cannot find `%s` in struct ", idStr, context.idString(aggSym.id));
-		}
+
+		return false;
 	}
-}
-
-void pass_semantic_decl(ref CompilationContext ctx)
-{
-	auto sem1 = SemanticDeclarations(&ctx, ScopeStack1(&ctx));
-	sem1.visit(ctx.mod);
-}
-
-/// Register identifiers in scope tree
-struct SemanticDeclarations
-{
-	mixin AstVisitorMixin;
-
-	CompilationContext* context;
-	ScopeStack1 scopeStack;
 
 	void visit(ModuleDeclNode* m) {
-		context.mod._scope = scopeStack.pushScope("Module", No.ordered);
-		foreach (decl; context.mod.declarations) _visit(decl);
-		scopeStack.popScope;
-	}
-	void visit(FunctionDeclNode* f) {
-		context.mod.addFunction(f);
-		f.resolveSymbol = scopeStack.insert(f.id, f.loc, SymbolClass.c_function, cast(AstNode*)f);
-		f._scope = scopeStack.pushScope(context.idString(f.id), Yes.ordered);
-		foreach (param; f.parameters) visit(param);
-		if (f.block_stmt) visit(f.block_stmt);
-		scopeStack.popScope;
-	}
-	void visit(VariableDeclNode* v) {
-		v.resolveSymbol = scopeStack.insert(v.id, v.loc, SymbolClass.c_variable, cast(AstNode*)v);
-		if (v.initializer) _visit(v.initializer);
-	}
-	void visit(StructDeclNode* s) {
-		s.resolveSymbol = scopeStack.insert(s.id, s.loc, SymbolClass.c_struct, cast(AstNode*)s);
-		s._scope = scopeStack.pushScope(context.idString(s.id), No.ordered);
-		foreach (decl; s.declarations) _visit(decl);
-		scopeStack.popScope;
-	}
-	void visit(BlockStmtNode* b) {
-		b._scope = scopeStack.pushScope("Block", Yes.ordered);
-		foreach(stmt; b.statements) _visit(stmt);
-		scopeStack.popScope;
-	}
-	void visit(IfStmtNode* i) {
-		_visit(i.condition);
-		i.then_scope = scopeStack.pushScope("Then", Yes.ordered);
-		_visit(i.thenStatement);
-		scopeStack.popScope;
-		if (i.elseStatement) {
-			i.else_scope = scopeStack.pushScope("Else", Yes.ordered);
-			_visit(i.elseStatement);
-			scopeStack.popScope;
-		}
-	}
-	void visit(WhileStmtNode* w) {
-		_visit(w.condition);
-		w._scope = scopeStack.pushScope("While", Yes.ordered);
-		_visit(w.statement);
-		scopeStack.popScope;
-	}
-	void visit(DoWhileStmtNode* d) {
-		d._scope = scopeStack.pushScope("While", Yes.ordered);
-		_visit(d.statement);
-		scopeStack.popScope;
-		_visit(d.condition);
-	}
-	void visit(ReturnStmtNode* r) {}
-	void visit(BreakStmtNode* r) {}
-	void visit(ContinueStmtNode* r) {}
-	void visit(NameUseExprNode* v) {}
-	void visit(MemberExprNode* m) {}
-	void visit(IntLiteralExprNode* c) {}
-	void visit(StringLiteralExprNode* c) {}
-	void visit(BinaryExprNode* b) {
-		if (b.isAssignment)
-		{
-			if (!b.isStatement)
-				context.error(b.loc,
-					"Cannot use assignment here. Only can use as statement.");
-		}
-	}
-	void visit(UnaryExprNode* u) {}
-	void visit(CallExprNode* c) {}
-	void visit(IndexExprNode* i) {}
-	void visit(TypeConvExprNode* c) {}
-	void visit(BasicTypeNode* t) {}
-	void visit(PtrTypeNode* t) {}
-	void visit(StaticArrayTypeNode* t) {}
-	void visit(StructTypeNode* t) {}
-}
+		id_ptr = context.idMap.getOrRegNoDup("ptr");
+		id_length = context.idMap.getOrRegNoDup("length");
 
-void pass_semantic_lookup(ref CompilationContext ctx)
-{
-	auto sem2 = SemanticLookup(&ctx, ScopeStack2(&ctx));
-	sem2.visit(ctx.mod);
-}
-
-/// Resolves all symbol references (variable/type/function uses)
-/// using information collected on previous pass
-struct SemanticLookup
-{
-	mixin AstVisitorMixin;
-
-	CompilationContext* context;
-	ScopeStack2 scopeStack;
-
-	void visit(ModuleDeclNode* m) {
-		scopeStack.pushCompleteScope(m._scope);
+		pushCompleteScope(m._scope);
 		foreach (decl; m.declarations) _visit(decl);
-		scopeStack.popScope;
+		popScope;
 	}
 	void visit(FunctionDeclNode* f) {
-		scopeStack.pushCompleteScope(f._scope);
+		pushCompleteScope(f._scope);
 		_visit(f.returnType);
 		foreach (param; f.parameters) visit(param);
 		if (f.block_stmt) visit(f.block_stmt);
-		scopeStack.popScope;
+		popScope;
 	}
 	void visit(VariableDeclNode* v) {
 		_visit(v.type);
 		if (v.initializer) _visit(v.initializer);
 	}
 	void visit(StructDeclNode* s) {
-		scopeStack.pushCompleteScope(s._scope);
+		pushCompleteScope(s._scope);
 		foreach (decl; s.declarations) _visit(decl);
-		scopeStack.popScope;
+		popScope;
 	}
 	void visit(BlockStmtNode* b) {
-		scopeStack.pushCompleteScope(b._scope);
+		pushCompleteScope(b._scope);
 		foreach(stmt; b.statements) _visit(stmt);
-		scopeStack.popScope;
+		popScope;
 	}
 	void visit(IfStmtNode* i) {
 		_visit(i.condition);
-		scopeStack.pushCompleteScope(i.then_scope);
+		pushCompleteScope(i.then_scope);
 		_visit(i.thenStatement);
-		scopeStack.popScope;
+		popScope;
 		if (i.elseStatement) {
-			scopeStack.pushCompleteScope(i.else_scope);
+			pushCompleteScope(i.else_scope);
 			_visit(i.elseStatement);
-			scopeStack.popScope;
+			popScope;
 		}
 	}
 	void visit(WhileStmtNode* w) {
 		_visit(w.condition);
-		scopeStack.pushCompleteScope(w._scope);
+		pushCompleteScope(w._scope);
 		_visit(w.statement);
-		scopeStack.popScope;
+		popScope;
 	}
 	void visit(DoWhileStmtNode* d) {
-		scopeStack.pushCompleteScope(d._scope);
+		pushCompleteScope(d._scope);
 		_visit(d.statement);
-		scopeStack.popScope;
+		popScope;
 		_visit(d.condition);
 	}
 	void visit(ReturnStmtNode* r) {
@@ -353,11 +380,11 @@ struct SemanticLookup
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
 	void visit(NameUseExprNode* v) {
-		v.resolveSymbol = scopeStack.lookup(v.id, v.loc);
+		v.resolveSymbol = lookup(v.id, v.loc);
 	}
 	void visit(MemberExprNode* m) {
 		_visit(m.aggregate);
-		scopeStack.lookupMember(m);
+		lookupMember(m);
 	}
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
@@ -377,7 +404,8 @@ struct SemanticLookup
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) { _visit(t.base); }
 	void visit(StaticArrayTypeNode* t) { _visit(t.base); }
-	void visit(StructTypeNode* t) { t.resolveSymbol = scopeStack.lookup(t.id, t.loc); }
+	void visit(SliceTypeNode* t) { _visit(t.base); }
+	void visit(StructTypeNode* t) { t.resolveSymbol = lookup(t.id, t.loc); }
 }
 
 void pass_semantic_type(ref CompilationContext ctx)
@@ -395,6 +423,7 @@ struct SemanticStaticTypes
 	CompilationContext* context;
 	FunctionDeclNode* curFunc;
 	PtrTypeNode* u8Ptr;
+	SliceTypeNode* u8Slice;
 
 	bool isBool(TypeNode* type)
 	{
@@ -473,11 +502,20 @@ struct SemanticStaticTypes
 			if (canConvert)
 			{
 				if (expr.astType == AstType.literal_int) {
-					auto lit = cast(IntLiteralExprNode*)expr;
-					lit.type = type;
+					expr.type = type;
 				} else {
 					expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
 				}
+				return true;
+			}
+		}
+		// auto cast from string literal to c_char*
+		else if (expr.astType == AstType.literal_string)
+		{
+			if (type.astType == AstType.type_slice &&
+				type.ptrTypeNode.base.astType == AstType.type_basic &&
+				type.ptrTypeNode.base.basicTypeNode.basicType == BasicType.t_u8)
+			{
 				return true;
 			}
 		}
@@ -611,6 +649,7 @@ struct SemanticStaticTypes
 
 	void visit(ModuleDeclNode* m) {
 		u8Ptr = new PtrTypeNode(SourceLocation(), context.basicTypeNodes(BasicType.t_u8));
+		u8Slice = new SliceTypeNode(SourceLocation(), context.basicTypeNodes(BasicType.t_u8));
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(FunctionDeclNode* f) {
@@ -634,7 +673,7 @@ struct SemanticStaticTypes
 
 		switch (v.type.astType) with(AstType)
 		{
-			case type_static_array, type_struct:
+			case type_static_array, type_struct, type_slice:
 				v.varFlags |= VariableFlags.forceMemoryStorage;
 				break;
 
@@ -706,7 +745,6 @@ struct SemanticStaticTypes
 	}
 	void visit(MemberExprNode* m) {
 		_visit(m.aggregate);
-		m.type = m.member.getSym.getType;
 		m.type.assertImplemented(m.loc, context);
 	}
 	void visit(IntLiteralExprNode* c) {
@@ -795,5 +833,6 @@ struct SemanticStaticTypes
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
 	void visit(StaticArrayTypeNode* t) {}
+	void visit(SliceTypeNode* t) {}
 	void visit(StructTypeNode* t) {}
 }

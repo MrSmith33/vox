@@ -99,6 +99,7 @@ struct AstPrinter {
 	void visit(BasicTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(PtrTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
+	void visit(SliceTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(StructTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)
@@ -198,6 +199,7 @@ struct AstDotPrinter {
 	void visit(BasicTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(PtrTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
+	void visit(SliceTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(StructTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)

@@ -38,6 +38,8 @@ enum IrInstructionSet : ubyte
 	ir,
 	lir_amd64
 }
+immutable string[] instr_set_names = ["IR", "LIR Amd64"];
+static assert(instr_set_names.length == IrInstructionSet.max+1);
 
 struct IrFunction
 {

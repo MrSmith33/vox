@@ -57,6 +57,14 @@ struct CompilationContext
 	bool useFramePointer = false;
 	///
 	bool printTodos = false;
+	bool printSource = false;
+	bool printAst = false;
+	bool printIr = false;
+	bool printLir = false;
+	bool printLiveIntervals = false;
+	bool printStaticData = false;
+	bool printCodeHex = false;
+	bool printTimings = false;
 
 	///
 	string idString(const Identifier id) { return idMap.get(id); }

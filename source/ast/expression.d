@@ -17,6 +17,11 @@ mixin template ExpressionNodeData(AstType _astType, int default_flags = 0) {
 // Abstract node, must not be instantiated
 struct ExpressionNode {
 	mixin ExpressionNodeData!(AstType.abstract_node);
+
+	StringLiteralExprNode* isStringLiteral() {
+		if (astType == AstType.literal_string) return cast(StringLiteralExprNode*)&this;
+		return null;
+	}
 }
 
 struct NameUseExprNode {
@@ -32,6 +37,7 @@ struct IntLiteralExprNode {
 struct StringLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral);
 	string value;
+	IrIndex irValueLength; // irValue stores ptr
 }
 
 enum BinOp : ubyte {

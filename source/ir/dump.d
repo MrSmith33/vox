@@ -94,7 +94,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 {
 	sink.put("function ");
 	sink.put(ctx.idString(ir.backendData.name));
-	sink.putfln("() %s bytes {", ir.storage.length * uint.sizeof);
+	sink.putfln(`() %s bytes ir:"%s" {`, ir.storage.length * uint.sizeof, instr_set_names[ir.instructionSet]);
 	int indexPadding = numDigitsInNumber(ir.storage.length);
 
 	InstrPrintInfo printer;

@@ -47,6 +47,7 @@ enum AstType : ubyte {
 	type_basic,
 	type_ptr,
 	type_static_array,
+	type_slice,
 	type_struct,
 }
 

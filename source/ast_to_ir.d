@@ -27,6 +27,7 @@ struct AstToIr
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
 			case type_static_array: auto t = cast(StaticArrayTypeNode*)n; visit(t); break;
+			case type_slice: auto t = cast(SliceTypeNode*)n; visit(t); break;
 			case type_struct: auto t = cast(StructTypeNode*)n; visit(t); break;
 
 			default: context.unreachable(); assert(false);
@@ -115,7 +116,9 @@ struct AstToIr
 	FunctionDeclNode* fun;
 
 	enum MAX_ARGS = 255;
-	IrIndex[MAX_ARGS] argsBuf;
+	IrIndex[MAX_ARGS] argsBuf = void;
+	enum MAX_GEP_INDICIES = 255;
+	IrIndex[MAX_GEP_INDICIES+2] gepBuf = void; // 2 is extra parameters to GEP instruction
 
 	IrLabel* currentLoopHeader;
 	IrLabel* currentLoopEnd;
@@ -151,7 +154,7 @@ struct AstToIr
 			{
 				m.irModule.addFunction(decl.backendData.irData);
 				if (context.validateIr) validateIrFunction(*context, *decl.backendData.irData);
-				//dumpFunction(*decl.backendData.irData, *context);
+				if (context.printIr) dumpFunction(*decl.backendData.irData, *context);
 			}
 		}
 
@@ -254,7 +257,7 @@ struct AstToIr
 
 		switch (destination.kind) with(IrValueKind)
 		{
-			case stackSlot, global, virtualRegister, constant:
+			case stackSlot, global, virtualRegister:
 				// destination must store be pointer
 				builder.emitInstr!IrInstr_store(currentBlock, destination, value);
 				break;
@@ -279,10 +282,53 @@ struct AstToIr
 				return builder.emitInstr!IrInstr_load(currentBlock, extra, source).result;
 			case variable:
 				return builder.readVariable(currentBlock, source);
+			case constant:
+				return source;
 			default:
 				context.internal_error("Cannot load from %s", source.kind);
 				assert(false);
 		}
+	}
+
+	IrIndex buildGEP(IrIndex currentBlock, IrIndex aggrPtr, IrIndex ptrIndex, IrIndex[] indicies...)
+	{
+		context.assertf(!aggrPtr.isVariable, "Aggregate must not be variable (%s)", aggrPtr);
+		context.assertf(indicies.length < MAX_GEP_INDICIES, "too much indicies for GEP instruction (%s) > %s", indicies.length, MAX_GEP_INDICIES);
+
+		IrIndex aggrPtrType = getValueType(aggrPtr, *builder.ir, *context);
+		IrIndex aggrType = context.types.getPointerBaseType(aggrPtrType);
+
+		foreach (i, IrIndex memberIndex; indicies)
+		{
+			gepBuf[i+2] = memberIndex;
+			final switch(aggrType.typeKind)
+			{
+				case IrTypeKind.basic:
+					context.internal_error("Cannot index basic type %s", aggrType.typeKind);
+					break;
+
+				case IrTypeKind.pointer:
+					context.internal_error("Cannot index pointer with GEP instruction, use load first");
+					break;
+
+				case IrTypeKind.array:
+					aggrType = context.types.getArrayElementType(aggrType);
+					break;
+
+				case IrTypeKind.struct_t:
+					context.assertf(memberIndex.isConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
+					uint memberIndexVal = context.constants.get(memberIndex).i32;
+					aggrType = context.types.getStructMemberType(aggrType, memberIndexVal, *context);
+					break;
+			}
+		}
+
+		ExtraInstrArgs extra = { type : context.types.appendPtr(aggrType) };
+		IrIndex[] args = gepBuf[0..indicies.length+2];
+		args[0] = aggrPtr;
+		args[1] = ptrIndex;
+		IrIndex result = builder.emitInstr!IrInstr_get_element_ptr(currentBlock, extra, args).result;
+		return result;
 	}
 
 	void visit(VariableDeclNode* v, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -533,7 +579,8 @@ struct AstToIr
 		}
 		else {
 			TypeNode* type = v.getSym.varDecl.type;
-			if (v.isArgument && type.astType == AstType.type_struct)
+			bool passByPtr = type.astType == AstType.type_struct || type.astType == AstType.type_slice;
+			if (v.isArgument && passByPtr)
 			{
 				IrIndex irType = type.genIrType(context);
 				uint size = context.types.typeSize(irType);
@@ -563,9 +610,7 @@ struct AstToIr
 
 		IrIndex ptrIndex = context.constants.add(IrConstant(0));
 		IrIndex memberIndex = context.constants.add(IrConstant(m.memberIndex));
-		ExtraInstrArgs extra = { type : m.type.genIrType(context) };
-		m.irValue = builder.emitInstr!IrInstr_get_element_ptr(currentBlock, extra, m.aggregate.irValue, ptrIndex, memberIndex).result;
-
+		m.irValue = buildGEP(currentBlock, m.aggregate.irValue, ptrIndex, memberIndex);
 		if (m.isLvalue) {
 			// already stores l-value
 		}
@@ -588,6 +633,7 @@ struct AstToIr
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] str literal value (%s) value %s", c.loc, c.value);
 		c.irValue = context.globals.add();
+		c.irValueLength = context.constants.add(IrConstant(c.value.length, makeBasicTypeIndex(IrValueType.i64)));
 		IrGlobal* global = &context.globals.get(c.irValue);
 		global.setInitializer(cast(ubyte[])c.value);
 		global.flags |= IrGlobalFlags.needsZeroTermination;
@@ -678,7 +724,7 @@ struct AstToIr
 			}
 			builder.addJumpToLabel(currentBlock, trueExit);
 		}
-		else
+		else // branch
 		{
 			switch(b.op) with(BinOp)
 			{
@@ -701,6 +747,10 @@ struct AstToIr
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end BINOP BR cur %s true %s false %s", currentBlock, trueExit, falseExit);
 		version(IrGenPrint) writefln("[IR GEN] bin expr branch (%s) begin", b.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] bin expr branch (%s) end", b.loc);
+		if (b.isAssignment)
+		{
+			context.error(b.loc, "Cannot assign inside condition");
+		}
 		visitBinOpImpl!false(b, currentBlock, trueExit, falseExit);
 	}
 
@@ -716,11 +766,39 @@ struct AstToIr
 			IrLabel afterLeft = IrLabel(currentBlock);
 			visitExprValue(b.left, currentBlock, afterLeft);
 			currentBlock = afterLeft.blockIndex;
+
 			IrLabel afterRight = IrLabel(currentBlock);
 			visitExprValue(b.right, currentBlock, afterRight);
 			currentBlock = afterRight.blockIndex;
 
-			store(currentBlock, b.left.irValue, b.right.irValue);
+			switch (b.right.astType)
+			{
+				case AstType.literal_string:
+					if (b.left.type.astType == AstType.type_ptr)
+					{
+						// u8* = "string";
+						store(currentBlock, b.left.irValue, b.right.irValue); // store pointer into pointer
+					}
+					else if (b.left.type.astType == AstType.type_slice)
+					{
+						// u8[] = "string";
+						IrIndex baseIndex = context.constants.add(IrConstant(0));
+
+						IrIndex lengthIndex = baseIndex; // 0
+						IrIndex lengthAddress = buildGEP(currentBlock, b.left.irValue, baseIndex, lengthIndex);
+						store(currentBlock, lengthAddress, b.right.isStringLiteral.irValueLength);
+
+						IrIndex ptrIndex = context.constants.add(IrConstant(1));
+						IrIndex ptrAddress = buildGEP(currentBlock, b.left.irValue, baseIndex, ptrIndex);
+						store(currentBlock, ptrAddress, b.right.irValue);
+					}
+					else context.unreachable;
+					break;
+				default:
+					store(currentBlock, b.left.irValue, b.right.irValue);
+					break;
+			}
+
 			builder.addJumpToLabel(currentBlock, nextStmt);
 		}
 		else
@@ -742,7 +820,8 @@ struct AstToIr
 			"Cannot generate a call with %s arguments, max args is %s",
 			c.args.length, MAX_ARGS);
 
-		foreach (i, ExpressionNode* arg; c.args) {
+		foreach (i, ExpressionNode* arg; c.args)
+		{
 			IrLabel afterArg = IrLabel(currentBlock);
 			arg.flags |= AstFlags.isArgument;
 			visitExprValue(arg, currentBlock, afterArg);
@@ -880,5 +959,6 @@ struct AstToIr
 	void visit(BasicTypeNode* t) { context.unreachable; }
 	void visit(PtrTypeNode* t) { context.unreachable; }
 	void visit(StaticArrayTypeNode* t) { context.unreachable; }
+	void visit(SliceTypeNode* t) { context.unreachable; }
 	void visit(StructTypeNode* t) { context.unreachable; }
 }
