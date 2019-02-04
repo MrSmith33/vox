@@ -9,6 +9,20 @@ module ir.ir_constant;
 import std.string : format;
 import all;
 
+///
+enum IrConstantKind : ubyte {
+	/// Unsigned integer constant. Up to 24 bits. Stored directly in IrIndex.
+	intUnsignedSmall,
+	/// Signed integer constant. Up to 24 bits. Stored directly in IrIndex.
+	intSignedSmall,
+	/// Unsigned integer constant. Stored in constants buffer.
+	intUnsignedBig,
+	/// Signed integer constant. Stored in constants buffer.
+	intSignedBig,
+	/// Complex type initializer. Stored as IrIndex[].
+	aggregate
+}
+
 /// Stores numeric constant data
 /// Type is implicitly the smallest signed int type. TODO more types of constants
 @(IrValueKind.constant)

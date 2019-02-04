@@ -106,6 +106,7 @@ struct TypeNode {
 				case BasicType.t_u8: return true;
 				case BasicType.t_i32: return true;
 				case BasicType.t_i64: return true;
+				case BasicType.t_u32: return true;
 				case BasicType.t_u64: return true;
 				default: return false;
 			}

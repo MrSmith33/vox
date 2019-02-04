@@ -12,17 +12,22 @@ import all;
 void runDevTests()
 {
 	Driver driver;
-	driver.initialize(compilerPasses);
+	driver.initialize(jitPasses);
+	driver.context.buildType = BuildType.jit;
 	driver.context.validateIr = true;
-	driver.context.printTraceOnError = true;
+	driver.context.printTraceOnError = false;
 	driver.context.printTodos = true;
 	scope(exit) driver.releaseMemory;
 
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test27);
+	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test27);
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
+
+	driver.context.buildType = BuildType.exe;
+	driver.context.printAst = true;
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test29);
 }
 
 enum StopOnFirstFail : bool { no = false, yes = true }
@@ -31,7 +36,8 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 {
 	auto startInitTime = currTime;
 	Driver driver;
-	driver.initialize(compilerPasses);
+	driver.initialize(jitPasses);
+	driver.context.buildType = BuildType.jit;
 	driver.context.buildDebug = false;
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
@@ -121,7 +127,7 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 	enum NUM_ITERS = 1;
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
-	ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.externalSymbols);
+	ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.externalSymbols, curTest.dllSymbols);
 	driver.markCodeAsExecutable();
 	auto time2 = currTime;
 	times.onIteration(0, time2-time1);
@@ -146,14 +152,26 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 		if (driver.context.printTimings) times.print;
 	}
 
-	if (curTest.funcName is null) return;
-
-	FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
-
-	if (funDecl != null && funDecl.backendData.funcPtr != null)
+	final switch (driver.context.buildType)
 	{
-		if(dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
-		curTest.tester(funDecl.backendData.funcPtr);
+		case BuildType.jit:
+			if (curTest.funcName is null) return;
+
+			FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
+
+			if (funDecl != null && funDecl.backendData.funcPtr != null)
+			{
+				if(dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
+				curTest.tester(funDecl.backendData.funcPtr);
+			}
+			break;
+
+		case BuildType.exe:
+			import std.process;
+			if(dumpTest) writef("Running: %s", driver.context.outputFilename);
+			auto result = execute(driver.context.outputFilename);
+			if(dumpTest) writefln(", status %s, output '%s'", result.status, result.output);
+			break;
 	}
 }
 
@@ -164,7 +182,8 @@ struct Test
 	string funcName;
 	alias Tester = void function(void* funcPtr);
 	void function(void* funcPtr) tester;
-	ExternalSymbol[] externalSymbols;
+	HostSymbol[] externalSymbols;
+	DllSymbols[] dllSymbols;
 }
 
 TextSink testSink;
@@ -493,7 +512,7 @@ void tester15(Func15 funcPtr) {
 	assert(result == 40);
 }
 auto test15 = Test("Test 15", input15, "test", cast(Test.Tester)&tester15,
-	[ExternalSymbol("external", cast(void*)&test15_external_func)]);
+	[HostSymbol("external", cast(void*)&test15_external_func)]);
 
 
 // Test more than 4 inputs (5-th parameter pushed to the stack, extra alignment needed)
@@ -512,7 +531,7 @@ void tester16(Func16 funcPtr) {
 	assert(result == 110);
 }
 auto test16 = Test("Test 16", input16, "test", cast(Test.Tester)&tester16,
-	[ExternalSymbol("external", cast(void*)&test16_external_func)]);
+	[HostSymbol("external", cast(void*)&test16_external_func)]);
 
 // Test 6 inputs (5-th and 6-th parameters pushed to the stack, no extra alignment needed)
 immutable input17 = q{i32 test(i32 par) {
@@ -530,7 +549,7 @@ void tester17(Func17 funcPtr) {
 	assert(result == 160);
 }
 auto test17 = Test("Test 17", input17, "test", cast(Test.Tester)&tester17,
-	[ExternalSymbol("external", cast(void*)&test17_external_func)]);
+	[HostSymbol("external", cast(void*)&test17_external_func)]);
 
 // test empty void function
 immutable input18 = q{void test() {}};
@@ -587,9 +606,9 @@ extern(C) void test21_external_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
 auto test21 = Test("Test 21", input21, "fibonacci", cast(Test.Tester)&tester21,
-	[ExternalSymbol("print", cast(void*)&test21_external_func)]);
+	[HostSymbol("print", cast(void*)&test21_external_func)]);
 auto test21_2 = Test("Test 21", input21_2, "fibonacci", cast(Test.Tester)&tester21,
-	[ExternalSymbol("print", cast(void*)&test21_external_func)]);
+	[HostSymbol("print", cast(void*)&test21_external_func)]);
 
 // test phi resolution with critical edge and test break;
 immutable input22 = q{
@@ -639,7 +658,7 @@ void tester24(Func24 fun) {
 	testSink.clear;
 }
 auto test24 = Test("String literal as u8* param", input24, "test", cast(Test.Tester)&tester24,
-	[ExternalSymbol("print", cast(void*)&test24_external_print)]);
+	[HostSymbol("print", cast(void*)&test24_external_print)]);
 
 // test struct creation, member set, struct as func arg
 immutable input25 = q{
@@ -668,7 +687,7 @@ void tester25(Func25 fun) {
 	testSink.clear;
 }
 auto test25 = Test("Stack struct as parameter", input25, "test", cast(Test.Tester)&tester25,
-	[ExternalSymbol("print", cast(void*)&test25_external_print)]);
+	[HostSymbol("print", cast(void*)&test25_external_print)]);
 
 // test global parameter, assignment
 immutable input26 = q{
@@ -682,7 +701,7 @@ immutable input26 = q{
 	}
 };
 auto test26 = Test("Global struct", input26, "test", cast(Test.Tester)&tester25,
-	[ExternalSymbol("print", cast(void*)&test25_external_print)]);
+	[HostSymbol("print", cast(void*)&test25_external_print)]);
 
 // test slices
 immutable input27 = q{
@@ -704,7 +723,7 @@ void tester27(Func25 fun) {
 	testSink.clear;
 }
 auto test27 = Test("Assign string literal to slice/ptr", input27, "test", cast(Test.Tester)&tester27,
-	[ExternalSymbol("print", cast(void*)&test25_external_print)]);
+	[HostSymbol("print", cast(void*)&test25_external_print)]);
 
 void testNativeFun()
 {
@@ -736,3 +755,46 @@ int sign(int number)
 	else result = 0;
 	return result;
 }
+
+immutable input28 = q{
+	#pragma(lib, "kernel32")
+	u8 WriteConsole(
+		void* hConsoleOutput,
+		void* lpBuffer,
+		u32 nNumberOfCharsToWrite,
+		u32* lpNumberOfCharsWritten,
+		void* lpReserved
+	);
+	#pragma(lib, "kernel32")
+	void* GetStdHandle(u32 nStdHandle);
+	enum : uint {
+		STD_INPUT_HANDLE  = 0xFFFFFFF6,
+		STD_OUTPUT_HANDLE = 0xFFFFFFF5,
+		STD_ERROR_HANDLE  = 0xFFFFFFF4
+	}
+	void main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
+		u8[] array = "Hello world";
+		u32 numWritten;
+		void* handle = GetStdHandle(STD_OUTPUT_HANDLE);
+		WriteConsole(handle, array.ptr, array.length, &numWritten, null);
+	}
+};
+
+immutable input29 = q{
+	u8 WriteConsole(
+		void* hConsoleOutput,
+		u8* lpBuffer,
+		u32 nNumberOfCharsToWrite,
+		u32* lpNumberOfCharsWritten,
+		u64 lpReserved
+	);
+	void* GetStdHandle(u32 nStdHandle);
+	void main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
+		u8[] array = "Hello world";
+		u32 numWritten;
+		void* handle = GetStdHandle(0xFFFFFFF5); // STD_OUTPUT_HANDLE
+		WriteConsole(handle, array.ptr, array.length, &numWritten, 0);
+	}
+};
+auto test29 = Test("exe", input29, null, null, null,
+	[DllSymbols("kernel32", ["WriteConsole", "GetStdHandle"])]);

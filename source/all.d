@@ -17,6 +17,7 @@ import ir;
 import ir_to_lir_amd64;
 import lir_amd64;
 import liveness;
+import make_exe;
 import optimize;
 import parser;
 import register_allocation;

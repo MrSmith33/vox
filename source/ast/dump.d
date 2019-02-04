@@ -86,7 +86,7 @@ struct AstPrinter {
 	void visit(UnaryExprNode* u) {
 		if (u.type) print("UNOP ", u.type.printer(context), " ", u.op);
 		else print("UNOP ", u.op);
-		_visit(cast(AstNode*)u.child); }
+		pr_node(cast(AstNode*)u.child); }
 	void visit(CallExprNode* c) {
 		print("CALL");
 		pr_node(cast(AstNode*)c.callee);

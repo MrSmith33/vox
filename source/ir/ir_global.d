@@ -24,7 +24,11 @@ struct IrGlobal
 	/// Is null, or
 	/// Points to source code for string literals, or
 	/// Points to static data buffer
-	ubyte[] initializer;
+	ubyte* initializerPtr;
+	ubyte[] initializer() {
+		if (initializerPtr is null) return null;
+		return initializerPtr[0..length];
+	}
 	/// Type of global. Must be a pointer type
 	IrIndex type;
 	/// set of IrGlobalFlags
@@ -47,7 +51,7 @@ struct IrGlobal
 	void addUser(IrIndex user) { ++numUsers; }
 	void removeUser(IrIndex user) { --numUsers; }
 	void setInitializer(ubyte[] data) {
-		initializer = data;
+		initializerPtr = data.ptr;
 		assert(data.length <= 1024*1024*1024*1, "initializer is bigger than 1GB");
 		length = cast(uint)data.length;
 	}
@@ -56,13 +60,6 @@ struct IrGlobal
 	{
 		context.assertf(type.isDefined, "Global %s has no type", globalIndex);
 		context.assertf(length != 0, "Global %s has 0 length", globalIndex);
-		if (initializer.length != 0)
-		{
-			context.assertf(initializer.length == length,
-				"Global %s initializer.length is %s, while data length is %s",
-				globalIndex, initializer.length, length);
-			context.assertf(!isAllZero, "Global %s has both isAllZero and initializer");
-		}
 	}
 }
 

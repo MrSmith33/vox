@@ -15,7 +15,7 @@ void runBench()
 	//Test curTest = test21;
 
 	Driver driver;
-	driver.initialize(compilerPasses);
+	driver.initialize(jitPasses);
 	//driver.context.validateIr = true;
 	scope(exit) driver.releaseMemory;
 
@@ -25,7 +25,7 @@ void runBench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(curTest.source, curTest.externalSymbols);
+		mod = driver.compileModule(curTest.source, curTest.externalSymbols, curTest.dllSymbols);
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);

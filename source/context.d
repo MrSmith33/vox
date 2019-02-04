@@ -10,19 +10,110 @@ import std.stdio;
 import std.string : format;
 import all;
 
+enum BuildType : ubyte {
+	jit,
+	exe,
+	//dll
+}
+
+///
+struct ExternalSymbols
+{
+	ExternalSymbol[Identifier] symbols;
+	string[] dllNames;
+}
+
+enum ExternalSymbolKind : ubyte {
+	dllSym,
+	hostSymbol
+}
+
+///
+struct ExternalSymbol
+{
+	///
+	ExternalSymbolKind kind;
+
+	union
+	{
+		/// Index into ExternalSymbols.dllNames
+		/// Used when kind is dllSym
+		uint dllIndex;
+		/// When doing JIT-compilation ptr points to the function or data in the host process
+		/// When compiling object file (exe, dll, lib, obj),
+		/// Used when kind is hostSymbol
+		void* ptr;
+	}
+}
+
+struct HostSymbol
+{
+	string name;
+	void* ptr;
+}
+
+struct DllSymbols
+{
+	string libName;
+	string[] importedSymbols;
+}
+
+///
+class CompilationException : Exception
+{
+	this(bool isICE = false)
+	{
+		super(null);
+		this.isICE = isICE;
+	}
+	/// True if Internal Compiler Error and not regular compilation error
+	bool isICE;
+}
+
+///
+enum IceBehavior : ubyte {
+	error,
+	breakpoint
+}
 
 ///
 struct CompilationContext
 {
 	/// Module source
 	string input;
+	///
+	string outputFilename = "out.exe";
+
+	/// Module declaration
+	ModuleDeclNode* mod;
+
+	// build settings
+
+	/// Target machine info
+	MachineInfo* machineInfo = &mach_info_amd64;
+	///
+	BuildType buildType;
+	/// If true attempt to maximize debuggability
+	bool buildDebug = false;
+	///
+	bool useFramePointer = false;
+
+	// storage
+
 	/// Buffer for resulting machine code
 	ubyte[] codeBuffer;
 	/// Symbols provided by environment
-	ExternalSymbol[Identifier] externalSymbols;
+	ExternalSymbols externalSymbols;
+	/// Identifier interning/deduplication
+	IdentifierMap idMap;
 	/// Buffer for function IR generation
 	FixedBuffer!uint irBuffer;
+	///
 	IrTypeStorage types;
+	/// Global constant storage
+	IrConstantStorage constants;
+	/// Module global values and literals.
+	IrGlobalStorage globals;
 	/// Buffer for intra-pass temporary data
 	FixedBuffer!uint tempBuffer;
 	/// Buffer for string/array/struct literals
@@ -30,32 +121,19 @@ struct CompilationContext
 	/// Must be allocated before or after code segment to allow relative addressing
 	FixedBuffer!ubyte staticDataBuffer;
 
-	/// Module declaration
-	ModuleDeclNode* mod;
-	/// Target machine info
-	MachineInfo* machineInfo = &mach_info_amd64;
+	// errors and debug
 
-	/// Global constant storage
-	IrConstantStorage constants;
-	/// Module global values and literals.
-	IrGlobalStorage globals;
-	/// Identifier interning/deduplication
-	IdentifierMap idMap;
 	/// True if current/last pass had errors
 	bool hasErrors;
-	/// If true, stack traces are added to output
-	bool printTraceOnError;
 	/// Text output for errors
 	TextSink sink;
+	/// If true, stack traces are added to output
+	bool printTraceOnError;
 	/// What happens on Internal Compiler Error
 	IceBehavior iceBehavior = IceBehavior.breakpoint;
-	/// If true attempt to maximize debuggability
-	bool buildDebug = false;
-	/// If true, every pass that generates IR, performs validation
+	/// If true, every pass that generates/changes IR, performs validation
 	bool validateIr = false;
-	///
-	bool useFramePointer = false;
-	///
+
 	bool printTodos = false;
 	bool printSource = false;
 	bool printAst = false;
@@ -221,29 +299,4 @@ struct CompilationContext
 		result[] = T.init;
 		return result;
 	}
-}
-
-///
-struct ExternalSymbol
-{
-	string name;
-	void* ptr;
-}
-
-///
-class CompilationException : Exception
-{
-	this(bool isICE = false)
-	{
-		super(null);
-		this.isICE = isICE;
-	}
-	/// True if Internal Compiler Error and not regular compilation error
-	bool isICE;
-}
-
-///
-enum IceBehavior : ubyte {
-	error,
-	breakpoint
 }

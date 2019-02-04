@@ -17,10 +17,10 @@ enum IrValueKind : ubyte
 	constant,
 	global, /// Index of global var or const (or literal data)
 	phi,
-	memoryAddress,
 	stackSlot,
 	virtualRegister,
 	physicalRegister,
 	type,
-	variable /// Represents variable index while converting into SSA-form
+	variable, /// Represents variable index while converting into SSA-form
+	func
 }

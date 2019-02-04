@@ -45,6 +45,16 @@ struct IrIndex
 			IrValueKind, "kind",              4  // is never 0 for defined index
 		));
 
+		// used when kind == IrValueKind.constant
+		mixin(bitfields!(
+			// Big constants use constantIndex as index into IrConstantStorage
+			// Small constants store data directly in constantIndex.
+			uint,            "constantIndex", 24,
+			// kind of constant
+			IrConstantKind,  "constantKind",   4,
+			IrValueKind,     "",               4  // index kind
+		));
+
 		// used when kind == IrValueKind.type
 		// types are stored in 8-byte chunked buffer
 		mixin(bitfields!(
@@ -86,12 +96,12 @@ struct IrIndex
 			case constant: sink.formattedWrite("c.%s", storageUintIndex); break;
 			case global: sink.formattedWrite("g.%s", storageUintIndex); break;
 			case phi: sink.formattedWrite("phi.%s", storageUintIndex); break;
-			case memoryAddress: sink.formattedWrite("m.%s", storageUintIndex); break;
 			case stackSlot: sink.formattedWrite("s.%s", storageUintIndex); break;
 			case virtualRegister: sink.formattedWrite("v.%s", storageUintIndex); break;
 			case physicalRegister: sink.formattedWrite("p<c:%s i:%s s:%s>", physRegClass, physRegIndex, physRegSize); break;
 			case type: sink.formattedWrite("type.%s", storageUintIndex); break;
 			case variable: sink.formattedWrite("var.%s", storageUintIndex); break;
+			case func: sink.formattedWrite("f.%s", storageUintIndex); break;
 		}
 	}
 

@@ -166,22 +166,11 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] function (%s) begin", f.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] function (%s) end", f.loc);
 
+		// skip external functions, they don't have a body
+		if (f.isExternal) return;
+
 		fun = f;
 		scope(exit) fun = null;
-
-		if (f.isExternal) // external function
-		{
-			ExternalSymbol* sym = f.id in context.externalSymbols;
-			if (sym is null)
-			{
-				context.error(f.loc,
-					"Unresolved external function %s", f.strId(context));
-				return;
-			}
-			f.backendData.funcPtr = sym.ptr;
-			// TODO: check that parameters match
-			return;
-		}
 
 		// create new function
 		ir = new IrFunction;

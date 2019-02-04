@@ -9,7 +9,7 @@ import std.stdio : writeln, write, writef, writefln, stdout;
 import all;
 
 
-CompilePass[] compilerPasses = [
+immutable CompilePass[] commonPasses = [
 	CompilePass("Parse", &pass_parser),
 	CompilePass("Semantic insert", &pass_semantic_decl),
 	CompilePass("Semantic lookup", &pass_semantic_lookup),
@@ -27,6 +27,9 @@ CompilePass[] compilerPasses = [
 	// LIR -> machine code
 	CompilePass("Code gen", &pass_emit_mc_amd64),
 ];
+
+CompilePass[] jitPasses = commonPasses;
+CompilePass[] exePasses = commonPasses ~ CompilePass("Exe", &pass_create_executable);
 
 struct Driver
 {
@@ -75,7 +78,7 @@ struct Driver
 		allocator.releaseMemory();
 	}
 
-	ModuleDeclNode* compileModule(string moduleSource, ExternalSymbol[] externalSymbols)
+	ModuleDeclNode* compileModule(string moduleSource, HostSymbol[] externalSymbols, DllSymbols[] dllSymbols)
 	{
 		markAsRW(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
 		context.codeBuffer = codeBuffer;
@@ -85,8 +88,31 @@ struct Driver
 		context.staticDataBuffer.setBuffer(staticBuffer);
 
 		context.input = moduleSource;
-		foreach (ref extSym; externalSymbols)
-			context.externalSymbols[context.idMap.getOrReg(extSym.name)] = extSym;
+
+		foreach (HostSymbol hostSym; externalSymbols)
+		{
+			ExternalSymbol sym;
+			sym.kind = ExternalSymbolKind.hostSymbol;
+			sym.ptr = hostSym.ptr;
+			Identifier symId = context.idMap.getOrReg(hostSym.name);
+			context.externalSymbols.symbols[symId] = sym;
+		}
+
+		context.externalSymbols.dllNames = new string[dllSymbols.length];
+		uint dllIndex = 0;
+		foreach (ref DllSymbols dllSyms; dllSymbols)
+		{
+			context.externalSymbols.dllNames[dllIndex] = dllSyms.libName;
+			foreach (string symName; dllSyms.importedSymbols)
+			{
+				ExternalSymbol sym;
+				sym.kind = ExternalSymbolKind.dllSym;
+				sym.dllIndex = dllIndex;
+				Identifier symId = context.idMap.getOrReg(symName);
+				context.externalSymbols.symbols[symId] = sym;
+			}
+			++dllIndex;
+		}
 
 		foreach (ref pass; passes)
 		{

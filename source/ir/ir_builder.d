@@ -257,7 +257,6 @@ struct IrBuilder
 				context.globals.get(used).addUser(user);
 				break;
 			case phi: assert(false, "addUser phi"); // must be virt reg instead
-			case memoryAddress: break; // allowed, noop
 			case stackSlot: break; // allowed, noop
 			case virtualRegister:
 				ir.getVirtReg(used).users.append(&this, user);
@@ -265,6 +264,7 @@ struct IrBuilder
 			case physicalRegister: break; // allowed, noop
 			case type: break; // allowed, noop (no user tracking)
 			case variable: assert(false, "addUser variable");
+			case func: break; // allowed, noop (no user tracking)
 		}
 	}
 
@@ -865,7 +865,7 @@ struct IrBuilder
 			case constant: assert(false);
 			case global: assert(false);
 			case phi: return someIndex;
-			case memoryAddress: assert(false); // TODO
+			case func: assert(false); // TODO
 			case stackSlot: assert(false); // TODO
 			case virtualRegister: return ir.getVirtReg(someIndex).definition;
 			case physicalRegister: assert(false);
@@ -929,12 +929,12 @@ struct IrBuilder
 							replaceUserWith(byWhat.value, definitionOf(what), userIndex);
 						}
 					break;
-				case memoryAddress: assert(false); // TODO
 				case stackSlot: assert(false); // TODO
 				case virtualRegister: assert(false);
 				case physicalRegister: assert(false);
 				case type: assert(false);
 				case variable: assert(false);
+				case func: assert(false);
 			}
 		}
 	}
@@ -947,11 +947,11 @@ struct IrBuilder
 			case constant: return; // constants dont track individual users
 			case global: return; // globals dont track individual users
 			case phi: return ir.getVirtReg(ir.get!IrPhi(used).result).users.replaceAll(*ir, what, byWhat);
-			case memoryAddress: assert(false); // TODO, has single user
 			case stackSlot: assert(false); // TODO
 			case virtualRegister: return ir.getVirtReg(used).users.replaceAll(*ir, what, byWhat);
 			case type: return; // no user tracking
 			case variable: assert(false);
+			case func: assert(false);
 		}
 	}
 }

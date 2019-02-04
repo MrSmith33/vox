@@ -530,7 +530,7 @@ struct LinearScan
 			{
 				final switch (userIndex.kind) with(IrValueKind)
 				{
-					case none, listItem, virtualRegister, physicalRegister, constant, global, basicBlock, stackSlot, type: assert(false);
+					case none, listItem, virtualRegister, physicalRegister, constant, global, basicBlock, stackSlot, type, func: assert(false);
 					case instruction:
 						foreach (ref IrIndex arg; lir.get!IrInstrHeader(userIndex).args)
 							if (arg == vregIndex)
@@ -545,7 +545,6 @@ struct LinearScan
 								phiArg.value = reg;
 							}
 						break;
-					case memoryAddress: assert(false); // TODO
 					case variable: assert(false);
 				}
 			}

@@ -20,7 +20,9 @@ import utils;
 
 //version = print_info;
 version = use_mmap;
+//version = standalone;
 
+version (standalone)
 void main()
 {
 	testExeCompilation();
@@ -143,7 +145,6 @@ struct LinkingContext
 {
 	SymbolName entryPointName;
 	SymbolNameTable symNameTable;
-	SymbolTable symTable;
 
 	void setEntryPoint(string symName)
 	{

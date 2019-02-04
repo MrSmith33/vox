@@ -38,7 +38,7 @@ struct CodeEmitter
 
 	private Buffer!CallFixup callFixups;
 
-	void compileModule()
+	void finalizeStaticData()
 	{
 		// copy static data into buffer and set offsets
 		foreach(uint i, ref IrGlobal global; context.globals.array)
@@ -55,7 +55,9 @@ struct CodeEmitter
 
 			// offset
 			global.staticBufferOffset = context.staticDataBuffer.length;
-			if (global.initializer.length) {
+
+			// copy
+			if (global.initializerPtr !is null) {
 				context.staticDataBuffer.put(global.initializer);
 			} else {
 				context.staticDataBuffer.voidPut(global.length)[] = 0;
@@ -69,6 +71,50 @@ struct CodeEmitter
 			//writefln("Global %s, size %s, zero %s, offset %s, buf size %s",
 			//	global.initializer, global.length, global.needsZeroTermination, global.staticBufferOffset, context.staticDataBuffer.length);
 		}
+
+		//context.staticDataBuffer
+	}
+
+	void finalizeExternals()
+	{
+		foreach(f; context.mod.functions)
+		if (f.isExternal)
+		{
+			// When JIT-compiling, host can provide a set of external functions
+			// we will use provided function pointer
+			ExternalSymbol* extSym = f.id in context.externalSymbols.symbols;
+
+			if (extSym is null)
+			{
+				context.error(f.loc,
+					"Unresolved external function %s", f.strId(context));
+				continue;
+			}
+
+			Symbol* sym = f.getSym;
+
+			final switch(extSym.kind)
+			{
+				case ExternalSymbolKind.dllSym:
+					context.assertf(context.buildType == BuildType.exe, "Cannot use symbols from dll in JIT mode");
+					sym.flags |= SymbolFlags.isDllExternal;
+					break;
+
+				case ExternalSymbolKind.hostSymbol:
+					context.assertf(context.buildType == BuildType.jit, "Cannot use symbols from host in exe mode");
+					f.backendData.funcPtr = extSym.ptr;
+					sym.flags |= SymbolFlags.isHostExternal;
+					break;
+			}
+
+			// TODO: check that parameters match
+		}
+	}
+
+	void compileModule()
+	{
+		finalizeStaticData();
+		finalizeExternals();
 
 		gen.encoder.setBuffer(context.codeBuffer);
 		//writefln("code buf %s", context.codeBuffer.ptr);
@@ -157,9 +203,19 @@ struct CodeEmitter
 						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.sub, ArgType.QWORD);
 						break;
 					case Amd64Opcode.call:
-						gen.call(Imm32(0));
 						FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
-						callFixups.put(CallFixup(gen.pc, calleeIndex));
+						FunctionDeclNode* callee = context.mod.functions[calleeIndex];
+						Symbol* sym = callee.getSym;
+						if (sym.isDllExternal)
+						{
+							gen.call(memAddrDisp32(0));
+							callFixups.put(CallFixup(gen.pc, calleeIndex));
+						}
+						else
+						{
+							gen.call(Imm32(0));
+							callFixups.put(CallFixup(gen.pc, calleeIndex));
+						}
 						break;
 					case Amd64Opcode.jmp:
 						if (lirBlock.seqIndex + 1 != lir.getBlock(lirBlock.successors[0, *lir]).seqIndex)
@@ -277,7 +333,6 @@ struct CodeEmitter
 				assert(false); // TODO
 
 			case virtualRegister: context.unreachable; assert(false);
-			case memoryAddress: context.unreachable; assert(false);
 			case physicalRegister:
 				argSrc.reg = indexToRegister(src);
 				param.srcKind = AsmArgKind.REG;
@@ -285,6 +340,7 @@ struct CodeEmitter
 
 			case stackSlot: context.unreachable; assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
 			case variable: assert(false);
+			case func: context.unreachable; assert(false);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}
@@ -455,14 +511,7 @@ MoveType calcMoveType(IrValueKind dst, IrValueKind src)
 				case constant: return MoveType.const_to_reg;
 				case global: return MoveType.global_to_reg;
 				case physicalRegister: return MoveType.reg_to_reg;
-				case memoryAddress: return MoveType.mem_to_reg;
 				case stackSlot: return MoveType.stack_to_reg;
-				default: return MoveType.invalid;
-			}
-		case memoryAddress:
-			switch(src) with(IrValueKind) {
-				case constant: return MoveType.const_to_mem;
-				case physicalRegister: return MoveType.reg_to_mem;
 				default: return MoveType.invalid;
 			}
 		case stackSlot:

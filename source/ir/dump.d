@@ -277,12 +277,12 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, 
 		case constant: sink.formattedWrite("%s", p.context.constants.get(index).i64); break;
 		case global: sink.formattedWrite("g.%s", index.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi.%s", index.storageUintIndex); break;
-		case memoryAddress: sink.formattedWrite("m.%s", index.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s.%s", index.storageUintIndex); break;
 		case virtualRegister: sink.formattedWrite("v.%s", index.storageUintIndex); break;
 		case physicalRegister: sink.formattedWrite("p.%s", index.storageUintIndex); break;
 		case type: dumpIrType(sink, *p.context, index); break;
 		case variable: assert(false);
+		case func: sink.formattedWrite("m.%s", index.storageUintIndex); break;
 	}
 }
 

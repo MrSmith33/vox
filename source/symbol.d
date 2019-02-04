@@ -20,6 +20,8 @@ enum SymbolClass : ubyte
 enum SymbolFlags : ubyte
 {
 	isInOrderedScope = 1 << 0,
+	isHostExternal   = 1 << 1,
+	isDllExternal    = 1 << 2,
 }
 
 ///
@@ -51,6 +53,8 @@ struct Symbol
 	Symbol* outerSymbol;
 
 	bool isInOrderedScope() { return cast(bool)(flags & SymbolFlags.isInOrderedScope); }
+	bool isHostExternal() { return cast(bool)(flags & SymbolFlags.isHostExternal); }
+	bool isDllExternal() { return cast(bool)(flags & SymbolFlags.isDllExternal); }
 
 	VariableDeclNode* varDecl()
 	{

@@ -95,7 +95,7 @@ struct IrFunction
 	IrIndex getValueType(ref CompilationContext context, IrIndex someIndex)
 	{
 		final switch (someIndex.kind) with(IrValueKind) {
-			case none, listItem, instruction, basicBlock, phi, memoryAddress, physicalRegister, type, variable:
+			case none, listItem, instruction, basicBlock, phi, physicalRegister, type, variable, func:
 				context.internal_error("Cannot get type for non-value %s %s", someIndex.kind, someIndex);
 				assert(false);
 			case constant: return context.constants.get(someIndex).type;
@@ -105,6 +105,7 @@ struct IrFunction
 		}
 	}
 }
+pragma(msg, IrFunction.sizeof);
 
 // instruction iterators are aware of this
 // only safe to delete current instruction while iterating
@@ -135,7 +136,6 @@ void removeUser(ref CompilationContext context, ref IrFunction ir, IrIndex user,
 			context.globals.get(used).removeUser(user);
 			break;
 		case phi: assert(false, "removeUser phi"); // must be virt reg instead
-		case memoryAddress: break; // allowed, noop
 		case stackSlot: break; // allowed, noop
 		case virtualRegister:
 			ir.getVirtReg(used).users.remove(ir, user);
@@ -143,6 +143,7 @@ void removeUser(ref CompilationContext context, ref IrFunction ir, IrIndex user,
 		case physicalRegister: break; // allowed, noop
 		case type: break; // no user tracking
 		case variable: assert(false);
+		case func: break; // allowed, noop
 	}
 }
 

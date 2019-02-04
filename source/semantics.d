@@ -502,6 +502,7 @@ struct SemanticStaticTypes
 			if (canConvert)
 			{
 				if (expr.astType == AstType.literal_int) {
+					//writefln("int %s %s -> %s", expr.loc, expr.type.printer(context), type.printer(context));
 					expr.type = type;
 				} else {
 					expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
@@ -812,11 +813,12 @@ struct SemanticStaticTypes
 		foreach (i, ExpressionNode* arg; c.args)
 		{
 			_visit(arg);
-			if (!sameType(arg.type, params[i].type))
-				context.error(arg.loc,
-					"Argument %s, must have type %s, not %s", i+1,
-						params[i].type.printer(context),
-						arg.type.printer(context));
+			autoconvTo(arg, params[i].type);
+			//if (!sameType(arg.type, params[i].type))
+			//	context.error(arg.loc,
+			//		"Argument %s, must have type %s, not %s", i+1,
+			//			params[i].type.printer(context),
+			//			arg.type.printer(context));
 		}
 		c.type = calleeSym.getType;
 	}

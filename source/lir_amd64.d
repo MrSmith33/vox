@@ -300,12 +300,12 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref InstrPrintIn
 		case constant: sink.formattedWrite("%s", p.context.constants.get(i).i64); break;
 		case global: sink.formattedWrite("g.%s", i.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi.%s", i.storageUintIndex); break;
-		case memoryAddress: sink.formattedWrite("m.%s", i.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s.%s", i.storageUintIndex); break;
 		case virtualRegister: sink.formattedWrite("v.%s", i.storageUintIndex); break;
 		case physicalRegister: sink(reg_names[i.physRegClass][i.physRegSize][i.physRegIndex]); break;
 		case type: dumpIrType(sink, *p.context, i); break;
 		case variable: assert(false);
+		case func: sink.formattedWrite("f.%s", i.storageUintIndex); break;
 	}
 }
 
