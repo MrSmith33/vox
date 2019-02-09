@@ -104,6 +104,7 @@ struct Driver
 		context.objSymTab.buffer.setBuffer(linkBuffer);
 		context.objSymTab.firstModule = LinkIndex();
 		context.globals.array.length = 0;
+		context.entryPoint = null;
 
 		context.input = moduleSource;
 		context.externalSymbols.clear();

@@ -8,6 +8,7 @@ module backend.make_exe;
 import std.file;
 import std.path;
 import std.stdio;
+import std.conv;
 
 import all;
 import pecoff;
@@ -53,16 +54,25 @@ void pass_create_executable(ref CompilationContext context)
 	// ---------------------------------------------------------
 
 	// Exe gen
-	Section*[3] sections;
-	sections[SectionType.text] = &textSection;
-	sections[SectionType.idata] = &idataSection;
-	sections[SectionType.data] = &dataSection;
+	Section*[3] sectionsBuf;
+	FixedBuffer!(Section*) sections = fixedBuffer!(Section*)(sectionsBuf);
 
-	auto fileParams = FileParameters(DEFAULT_SECTION_ALIGNMENT, DEFAULT_FILE_ALIGNMENT);///*file alignment*/16);
+	void addSection(Section* section)
+	{
+		if (section.dataSize == 0) return;
+		sections.put(section);
+	}
+
+	addSection(&textSection);
+	addSection(&idataSection);
+	addSection(&dataSection);
+
+	auto fileParams = FileParameters(DEFAULT_SECTION_ALIGNMENT, DEFAULT_FILE_ALIGNMENT);
 	CoffExecutable executable = CoffExecutable(fileParams, &context);
-	executable.sections = sections[];
+	executable.sections = sections.data;
 
 	// fills header.VirtualAddress
+	executable.windowsSubsystem = context.windowsSubsystem;
 	executable.fixup();
 
 	// fill sectionAddress, uses VirtualAddress
@@ -74,6 +84,16 @@ void pass_create_executable(ref CompilationContext context)
 	fillImports(importMapping, &context);
 
 	linkModule(context);
+
+	if (context.entryPoint is null)
+	{
+		context.unrecoverable_error(SourceLocation(), "No entry point set. Need 'main' function");
+	}
+
+	ObjectSymbol* entryPoint = &context.objSymTab.getSymbol(context.entryPoint.backendData.objectSymIndex);
+	ObjectSection* entryPointSection = &context.objSymTab.getSection(entryPoint.sectionIndex);
+	executable.entryPointAddress = to!uint(entryPointSection.sectionAddress + entryPoint.sectionOffset);
+
 /*
 	writeln("Code");
 	printHex(textSection.data, 16);
@@ -258,6 +278,8 @@ struct CoffExecutable
 {
 	FileParameters params;
 	CompilationContext* context;
+	uint entryPointAddress;
+	WindowsSubsystem windowsSubsystem;
 
 	DosHeader dosHeader;
 	DosStub dosStub;
@@ -292,11 +314,17 @@ struct CoffExecutable
 
 		foreach (Section* section; sections)
 		{
-			// position in a file
-			section.header.PointerToRawData = imageFileSize;
-			uint sectionFileSize = alignValue(section.dataSize, params.fileAlignment);
 			// size in a file
+			uint sectionFileSize = alignValue(section.dataSize, params.fileAlignment);
 			section.header.SizeOfRawData = sectionFileSize;
+
+			// position in a file
+			if (section.header.SizeOfRawData == 0)
+				// "When a section contains only uninitialized data, this field should be zero."
+				section.header.PointerToRawData = 0;
+			else
+				section.header.PointerToRawData = imageFileSize;
+
 			imageFileSize += sectionFileSize;
 		}
 		version(print_info) writefln("Image file size is %s bytes", imageFileSize);
@@ -333,7 +361,6 @@ struct CoffExecutable
 				{
 					codeSectionDetected = true;
 					optionalHeader.BaseOfCode = section.header.VirtualAddress;
-					optionalHeader.AddressOfEntryPoint = section.header.VirtualAddress;
 					version(print_info) writefln("First code section. BaseOfCode is %s", optionalHeader.BaseOfCode);
 				}
 				optionalHeader.SizeOfCode += section.header.SizeOfRawData;
@@ -365,6 +392,7 @@ struct CoffExecutable
 			CoffFlags.EXECUTABLE_IMAGE |
 			CoffFlags.LARGE_ADDRESS_AWARE;
 
+
 		// Optional Header (Image Only)
 		optionalHeader.MajorLinkerVersion = 1;
 		optionalHeader.SizeOfUninitializedData = 0; // FIXUP
@@ -377,7 +405,7 @@ struct CoffExecutable
 		optionalHeader.MajorSubsystemVersion = 6;
 		optionalHeader.MinorSubsystemVersion = 0;
 		optionalHeader.CheckSum = 0;
-		optionalHeader.Subsystem = 3; // CUI
+		optionalHeader.Subsystem = windowsSubsystem;
 		optionalHeader.DllCharacteristics = 0;
 		optionalHeader.SizeOfStackReserve = 0x100000;
 		optionalHeader.SizeOfStackCommit = 0x1000;
@@ -394,6 +422,8 @@ struct CoffExecutable
 
 	void write(ref ArraySink sink)
 	{
+		optionalHeader.AddressOfEntryPoint = entryPointAddress;
+
 		// DOS Header
 		dosHeader.write(sink);
 		// DOS Stub

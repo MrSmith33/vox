@@ -20,6 +20,7 @@ import lir_amd64;
 import liveness;
 import optimize;
 import parser;
+import pecoff : WindowsSubsystem;
 import register_allocation;
 import semantics;
 import stack_layout;

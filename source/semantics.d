@@ -536,6 +536,20 @@ struct SemanticStaticTypes
 				}
 				return true;
 			}
+			else if (expr.astType == AstType.literal_int && toType.isInteger) {
+				auto lit = cast(IntLiteralExprNode*) expr;
+				if (numUnsignedBytesForInt(lit.value) == integerSize(toType))
+				{
+					expr.type = type;
+					return true;
+				}
+
+				context.error(expr.loc, "Cannot auto-convert integer `0x%X` of type %s to `%s`",
+					lit.value,
+					expr.type.printer(context),
+					type.printer(context));
+				return false;
+			}
 		}
 		// auto cast from string literal to c_char*
 		else if (expr.astType == AstType.literal_string)

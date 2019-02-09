@@ -15,28 +15,28 @@ void runDevTests()
 	driver.initialize(jitPasses);
 	driver.context.buildType = BuildType.jit;
 	driver.context.validateIr = true;
-	driver.context.printTraceOnError = false;
+	driver.context.printTraceOnError = true;
 	driver.context.printTodos = true;
 	scope(exit) driver.releaseMemory;
 
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
+	//driver.context.printSource = true;
+	//driver.context.printAst = true;
+	//driver.context.printIr = true;
+	//driver.context.printLir = true;
+	//driver.context.printLiveIntervals = true;
+	//driver.context.printStaticData = true;
 	//driver.context.printCodeHex = true;
-	driver.context.printSource = true;
-	driver.context.printSymbols = false;
-	driver.context.printIr = true;
+	//driver.context.printTimings = true;
 
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 
 	driver.context.buildType = BuildType.exe;
 	driver.passes = exePasses;
-	//driver.context.printSource = true;
-	driver.context.printIr = true;
-	driver.context.printLir = true;
-	//driver.context.printCodeHex = true;
-	//driver.context.runTesters = false;
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test29);
+	driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test30);
 }
 
 enum StopOnFirstFail : bool { no = false, yes = true }
@@ -58,7 +58,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	Test[] jitTests = [test7, test8, test8_1, test10, test9, test18, test19,
 		test20, test21, test21_2, test22, test23, test24, test25, test26, test27];
 
-	Test[] exeTests = [test29];
+	Test[] exeTests = [test28, test29];
 
 	size_t numTests = jitTests.length + exeTests.length;
 	size_t numSuccessfulTests;
@@ -773,7 +773,7 @@ int sign(int number)
 	return result;
 }
 
-immutable input28 = q{
+immutable input31 = q{
 	#pragma(lib, "kernel32")
 	u8 WriteConsoleA(
 		void* hConsoleOutput,
@@ -784,7 +784,7 @@ immutable input28 = q{
 	);
 	#pragma(lib, "kernel32")
 	void* GetStdHandle(u32 nStdHandle);
-	enum : uint {
+	enum : u32 {
 		STD_INPUT_HANDLE  = 0xFFFFFFF6,
 		STD_OUTPUT_HANDLE = 0xFFFFFFF5,
 		STD_ERROR_HANDLE  = 0xFFFFFFF4
@@ -796,6 +796,13 @@ immutable input28 = q{
 		WriteConsoleA(handle, array.ptr, array.length, &numWritten, null);
 	}
 };
+
+immutable input28 = q{
+	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
+		return 0;
+	}
+};
+auto test28 = Test("exe no static data, no imports", input28);
 
 immutable input29 = q{
 	u8 WriteConsoleA(
@@ -816,3 +823,45 @@ immutable input29 = q{
 };
 auto test29 = Test("exe", input29, null, null, null,
 	[DllModule("kernel32", ["WriteConsoleA", "GetStdHandle"])]);
+
+immutable input30 = q{
+	void SDL_SetMainReady();
+	i32 SDL_Init(u32);
+	void SDL_Quit();
+	void* SDL_CreateWindow(u8* title, i32 x, i32 y, i32 w, i32 h, u32 flags);
+	void* SDL_CreateRenderer(void* window, i32 index, u32 flags);
+	void SDL_DestroyRenderer(void* renderer);
+	void SDL_DestroyWindow(void* renderer);
+	i32 SDL_PollEvent(SDL_Event* event);
+	struct SDL_Event
+	{
+		u32 type;
+	    u8[52] padding;
+	}
+	void ExitProcess(u32 uExitCode);
+
+	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
+		SDL_SetMainReady();
+		if(SDL_Init(0x00000020) < 0) return 1;
+		void* window = SDL_CreateWindow("SDL test via tiny_jit", 0x1FFF0000, 0x1FFF0000, 300, 100, 4);
+		void* renderer = SDL_CreateRenderer(window, 0xFFFF_FFFF, 2);
+		SDL_Event e;
+		while (1)
+		{
+			SDL_PollEvent(&e);
+			if (e.type == 0x100) // SDL_QUIT
+				break;
+		}
+		SDL_DestroyRenderer(renderer);
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		ExitProcess(0);
+		return 0;
+	}
+};
+auto test30 = Test("exe SDL", input30, null, null, null, [
+	DllModule("SDL2", ["SDL_SetMainReady", "SDL_Init", "SDL_Quit",
+		"SDL_CreateWindow", "SDL_CreateRenderer", "SDL_PollEvent",
+		"SDL_DestroyRenderer", "SDL_DestroyWindow"]),
+	DllModule("kernel32", ["ExitProcess"])]
+);

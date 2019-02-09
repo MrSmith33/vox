@@ -31,6 +31,25 @@ enum BasicType : ubyte {
 	t_f64,
 }
 
+bool isInteger(BasicType b) {
+	return b >= BasicType.t_i8 && b <= BasicType.t_u64;
+}
+ubyte integerSize(BasicType b) {
+	switch(b) with(BasicType) {
+		case t_i8, t_u8: return 1;
+		case t_i16, t_u16: return 2;
+		case t_i32, t_u32: return 4;
+		case t_i64, t_u64: return 8;
+		default: return 0;
+	}
+}
+bool isSignedInteger(BasicType b) {
+	return b >= BasicType.t_i8 && b <= BasicType.t_i64;
+}
+bool isUnsignedInteger(BasicType b) {
+	return b >= BasicType.t_u8 && b <= BasicType.t_u64;
+}
+
 // usage isAutoConvertibleFromToBasic[from][to]
 immutable bool[13][13] isAutoConvertibleFromToBasic = [
 	//err  void bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64  // to
@@ -76,4 +95,48 @@ bool isBasicTypeToken(TokenType tt) {
 
 BasicType tokenTypeToBasicType(TokenType tt) {
 	return cast(BasicType)(tt - TYPE_TOKEN_FIRST + BasicType.t_void);
+}
+
+ubyte numSignedBytesForInt(long value) {
+	if (cast(byte)(value & 0xFF) == value)
+		return 1;
+	else if (cast(short)(value & 0xFFFF) == value)
+		return 2;
+	else if (cast(int)(value & 0xFFFF_FFFF) == value)
+		return 4;
+	else
+		return 8;
+}
+
+ubyte numUnsignedBytesForInt(ulong value) {
+	if (cast(ubyte)(value & 0xFF) == value)
+		return 1;
+	else if (cast(ushort)(value & 0xFFFF) == value)
+		return 2;
+	else if (cast(uint)(value & 0xFFFF_FFFF) == value)
+		return 4;
+	else
+		return 8;
+}
+
+BasicType minUnsignedIntType(ulong value) {
+	if (cast(ubyte)(value & 0xFF) == value)
+		return BasicType.t_u8;
+	else if (cast(ushort)(value & 0xFFFF) == value)
+		return BasicType.t_u16;
+	else if (cast(uint)(value & 0xFFFF_FFFF) == value)
+		return BasicType.t_u32;
+	else
+		return BasicType.t_u64;
+}
+
+BasicType minSignedIntType(long value) {
+	if (cast(long)cast(byte)(value & 0xFF) == value)
+		return BasicType.t_i8;
+	else if (cast(long)cast(short)(value & 0xFFFF) == value)
+		return BasicType.t_i16;
+	else if (cast(int)(value & 0xFFFF_FFFF) == value)
+		return BasicType.t_i32;
+	else
+		return BasicType.t_i64;
 }

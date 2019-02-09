@@ -410,6 +410,13 @@ struct TextSink
 	void putln(const(char)[] str = null) { put(str); put("\n"); }
 }
 
+FixedBuffer!T fixedBuffer(T)(T[] buffer)
+{
+	FixedBuffer!T res;
+	res.setBuffer(cast(ubyte[])buffer);
+	return res;
+}
+
 struct FixedBuffer(T)
 {
 	T* bufPtr;

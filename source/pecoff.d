@@ -1627,6 +1627,24 @@ struct CoffFileHeader
 }
 static assert(CoffFileHeader.sizeof == 20);
 
+///
+enum WindowsSubsystem : ushort {
+	UNKNOWN = 0,                   // An unknown subsystem
+	NATIVE = 1,                    // Device drivers and native Windows processes
+	WINDOWS_GUI = 2,               // The Windows graphical user interface (GUI) subsystem
+	WINDOWS_CUI = 3,               // The Windows character subsystem
+	OS2_CUI = 5,                   // The OS/2 character subsystem
+	POSIX_CUI = 7,                 // The Posix character subsystem
+	NATIVE_WINDOWS = 8,            // Native Win9x driver
+	WINDOWS_CE_GUI = 9,            // Windows CE
+	EFI_APPLICATION = 10,          // An Extensible Firmware Interface (EFI) application
+	EFI_BOOT_SERVICE_DRIVER = 11,  // An EFI driver with boot services
+	EFI_RUNTIME_DRIVER = 12,       // An EFI driver with runtime services
+	EFI_ROM = 13,                  // An EFI ROM image
+	XBOX = 14,                     // XBOX
+	WINDOWS_BOOT_APPLICATION = 16, // Windows boot application.
+}
+
 
 /// Optional Header (Image Only)
 ///

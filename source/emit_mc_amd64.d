@@ -206,6 +206,7 @@ struct CodeEmitter
 		addStaticDataSymbols();
 		finalizeStaticData();
 		addFunctionSymbols();
+		if (context.hasErrors) return;
 
 		gen.encoder.setBuffer(context.codeBuffer);
 
@@ -239,6 +240,17 @@ struct CodeEmitter
 		ObjectSymbol* funcSym = &context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
 		funcSym.dataPtr = gen.pc;
 		funcSym.sectionOffset = cast(ulong)(gen.pc - context.codeBuffer.ptr);
+
+		Identifier mainId = context.idMap.getOrRegNoDup("main");
+		if (fun.backendData.name == mainId)
+		{
+			if (context.entryPoint !is null)
+			{
+				context.unrecoverable_error(fun.loc, "Multiple entry points: %s, %s", fun.loc, context.entryPoint.loc);
+			}
+
+			context.entryPoint = fun;
+		}
 
 		stackPointer = fun.backendData.callingConvention.stackPointer;
 

@@ -158,6 +158,7 @@ struct ObjectModule
 struct ObjectSection
 {
 	/// Offset from the executable start, or absolute address when in jit mode
+	/// Offset from executable start to the section start after loading (in exe mode)
 	ulong sectionAddress;
 	/// In JIT mode is equal to sectionAddress
 	/// Points to the data of this section. Used to perform fixups

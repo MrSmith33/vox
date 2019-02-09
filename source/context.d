@@ -44,6 +44,8 @@ struct CompilationContext
 
 	/// Module declaration
 	ModuleDeclNode* mod;
+	/// Set when BuildType.exe is used
+	FunctionDeclNode* entryPoint;
 
 	// build settings
 
@@ -51,6 +53,8 @@ struct CompilationContext
 	MachineInfo* machineInfo = &mach_info_amd64;
 	///
 	BuildType buildType;
+	/// Build executable
+	WindowsSubsystem windowsSubsystem = WindowsSubsystem.WINDOWS_CUI;
 	/// If true attempt to maximize debuggability
 	bool buildDebug = false;
 	///
