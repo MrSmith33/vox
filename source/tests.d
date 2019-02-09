@@ -22,11 +22,20 @@ void runDevTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test27);
+	//driver.context.printCodeHex = true;
+	driver.context.printSource = true;
+	driver.context.printSymbols = false;
+	driver.context.printIr = true;
+
 	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 
 	driver.context.buildType = BuildType.exe;
-	driver.context.printAst = true;
+	driver.passes = exePasses;
+	//driver.context.printSource = true;
+	driver.context.printIr = true;
+	driver.context.printLir = true;
+	//driver.context.printCodeHex = true;
+	//driver.context.runTesters = false;
 	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test29);
 }
 
@@ -46,30 +55,42 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	Test[] testsThatPass = [test7, test8, test8_1, test10, test9, test18, test19,
+	Test[] jitTests = [test7, test8, test8_1, test10, test9, test18, test19,
 		test20, test21, test21_2, test22, test23, test24, test25, test26, test27];
 
+	Test[] exeTests = [test29];
+
+	size_t numTests = jitTests.length + exeTests.length;
 	size_t numSuccessfulTests;
-	writefln("Running %s tests", testsThatPass.length);
+	writefln("Running %s tests", numTests);
+
+	void runTests(size_t indexOffset, Test[] tests)
+	{
+		foreach(size_t i, ref Test test; tests)
+		{
+			TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
+
+			if (res == TestResult.failure)
+			{
+				writefln("%s/%s %s %s", indexOffset+i+1, numTests, test.testName, res);
+
+				if (stopOnFirstFail) {
+					writeln("Stopping on first fail");
+					break;
+				}
+			}
+			else
+				++numSuccessfulTests;
+		}
+	}
 
 	auto time1 = currTime;
 
-	foreach(i, ref test; testsThatPass)
-	{
-		TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
+	runTests(0, jitTests);
 
-		if (res == TestResult.failure)
-		{
-			writefln("%s/%s %s %s", i+1, testsThatPass.length, test.testName, res);
-
-			if (stopOnFirstFail) {
-				writeln("Stopping on first fail");
-				break;
-			}
-		}
-		else
-			++numSuccessfulTests;
-	}
+	driver.context.buildType = BuildType.exe;
+	driver.passes = exePasses;
+	runTests(jitTests.length, exeTests);
 
 	auto time2 = currTime;
 	Duration duration = time2-time1;
@@ -80,7 +101,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	writefln("Done %s/%s successful in %ss, init %ss, release %ss",
 		numSuccessfulTests,
-		testsThatPass.length,
+		numTests,
 		scaledNumberFmt(duration),
 		scaledNumberFmt(endInitTime-startInitTime),
 		scaledNumberFmt(endReleaseTime-startReleaseTime));
@@ -114,43 +135,27 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 	if (dumpTest)
 	{
 		// dump settings
-		driver.context.printSource = true;
+		//driver.context.printSource = true;
 		//driver.context.printAst = true;
-		driver.context.printIr = true;
+		//driver.context.printIr = true;
 		//driver.context.printLir = true;
 		//driver.context.printLiveIntervals = true;
 		//driver.context.printStaticData = true;
-		driver.context.printCodeHex = true;
+		//driver.context.printCodeHex = true;
 		//driver.context.printTimings = true;
 	}
 
 	enum NUM_ITERS = 1;
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
-	ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.externalSymbols, curTest.dllSymbols);
+	ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.hostSymbols, curTest.dllModules);
 	driver.markCodeAsExecutable();
 	auto time2 = currTime;
 	times.onIteration(0, time2-time1);
 
+	if (dumpTest && driver.context.printTimings) times.print;
+
 	if (mod is null) return;
-
-	if (dumpTest)
-	{
-		if (driver.context.printStaticData) {
-			writefln("\n// Data: addr 0x%X, %s bytes",
-				driver.context.staticDataBuffer.bufPtr,
-				driver.context.staticDataBuffer.length);
-			printHex(driver.context.staticDataBuffer.data, 16);
-		}
-
-		if (driver.context.printCodeHex) {
-			writefln("\n// Amd64 code: addr 0x%X, %s bytes", mod.code.ptr, mod.code.length);
-			printHex(mod.code, 16);
-			writeln;
-		}
-
-		if (driver.context.printTimings) times.print;
-	}
 
 	final switch (driver.context.buildType)
 	{
@@ -159,18 +164,30 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 			FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
 
-			if (funDecl != null && funDecl.backendData.funcPtr != null)
+			if (funDecl != null && funDecl.backendData.funcPtr != null && driver.context.runTesters)
 			{
-				if(dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
+				if (dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
 				curTest.tester(funDecl.backendData.funcPtr);
 			}
 			break;
 
 		case BuildType.exe:
 			import std.process;
-			if(dumpTest) writef("Running: %s", driver.context.outputFilename);
-			auto result = execute(driver.context.outputFilename);
-			if(dumpTest) writefln(", status %s, output '%s'", result.status, result.output);
+			import std.file : exists;
+			import std.path;
+			if(exists(driver.context.outputFilename))
+			{
+				if (driver.context.runTesters)
+				{
+					if (dumpTest) writef("Running: %s", driver.context.outputFilename.absolutePath);
+					auto result = execute(driver.context.outputFilename);
+					if (dumpTest) writefln(", status %s, output '%s'", result.status, result.output);
+				}
+			}
+			else
+			{
+				writefln("No executable produced '%s'", driver.context.outputFilename);
+			}
 			break;
 	}
 }
@@ -182,8 +199,8 @@ struct Test
 	string funcName;
 	alias Tester = void function(void* funcPtr);
 	void function(void* funcPtr) tester;
-	HostSymbol[] externalSymbols;
-	DllSymbols[] dllSymbols;
+	HostSymbol[] hostSymbols;
+	DllModule[] dllModules;
 }
 
 TextSink testSink;
@@ -758,7 +775,7 @@ int sign(int number)
 
 immutable input28 = q{
 	#pragma(lib, "kernel32")
-	u8 WriteConsole(
+	u8 WriteConsoleA(
 		void* hConsoleOutput,
 		void* lpBuffer,
 		u32 nNumberOfCharsToWrite,
@@ -776,12 +793,12 @@ immutable input28 = q{
 		u8[] array = "Hello world";
 		u32 numWritten;
 		void* handle = GetStdHandle(STD_OUTPUT_HANDLE);
-		WriteConsole(handle, array.ptr, array.length, &numWritten, null);
+		WriteConsoleA(handle, array.ptr, array.length, &numWritten, null);
 	}
 };
 
 immutable input29 = q{
-	u8 WriteConsole(
+	u8 WriteConsoleA(
 		void* hConsoleOutput,
 		u8* lpBuffer,
 		u32 nNumberOfCharsToWrite,
@@ -789,12 +806,13 @@ immutable input29 = q{
 		u64 lpReserved
 	);
 	void* GetStdHandle(u32 nStdHandle);
-	void main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
+	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
 		u8[] array = "Hello world";
 		u32 numWritten;
 		void* handle = GetStdHandle(0xFFFFFFF5); // STD_OUTPUT_HANDLE
-		WriteConsole(handle, array.ptr, array.length, &numWritten, 0);
+		WriteConsoleA(handle, array.ptr, cast(u32)array.length, &numWritten, 0);
+		return 0;
 	}
 };
 auto test29 = Test("exe", input29, null, null, null,
-	[DllSymbols("kernel32", ["WriteConsole", "GetStdHandle"])]);
+	[DllModule("kernel32", ["WriteConsoleA", "GetStdHandle"])]);

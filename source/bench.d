@@ -25,7 +25,7 @@ void runBench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(curTest.source, curTest.externalSymbols, curTest.dllSymbols);
+		mod = driver.compileModule(curTest.source, curTest.hostSymbols, curTest.dllModules);
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);

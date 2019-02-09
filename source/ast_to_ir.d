@@ -42,7 +42,7 @@ struct AstToIr
 			case expr_call: visitExprValue(cast(CallExprNode*)n, currentBlock, nextStmt); break;
 			case expr_index: visitExprValue(cast(IndexExprNode*)n, currentBlock, nextStmt); break;
 			case expr_bin_op: visitExprValue(cast(BinaryExprNode*)n, currentBlock, nextStmt); break;
-			case expr_un_op: context.unreachable(); assert(false);
+			case expr_un_op: visitExprValue(cast(UnaryExprNode*)n, currentBlock, nextStmt); break;
 			case expr_type_conv: visitExprValue(cast(TypeConvExprNode*)n, currentBlock, nextStmt); break;
 			case literal_int: visitExprValue(cast(IntLiteralExprNode*)n, currentBlock, nextStmt); break;
 			case literal_string: visitExprValue(cast(StringLiteralExprNode*)n, currentBlock, nextStmt); break;
@@ -344,8 +344,9 @@ struct AstToIr
 
 		// Allocate stack slot for parameter that is passed via stack
 		bool isParamWithSlot = v.isParameter && ir.backendData.callingConvention.isParamOnStack(v.scopeIndex);
-		bool needsStackSlot = v.forceMemoryStorage || isParamWithSlot;
+		bool needsStackSlot = v.forceMemoryStorage || isParamWithSlot || v.isAddressTaken;
 
+		IrIndex initializer;
 		if (needsStackSlot)
 		{
 			// allocate stack slot
@@ -357,30 +358,32 @@ struct AstToIr
 			v.irValue = builder.newIrVarIndex();
 			if (v.isParameter)
 			{
-				// parameter input
+				// register parameter input
 				ExtraInstrArgs extra = {type : v.type.genIrType(context)};
 				InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
 				ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
 
 				store(currentBlock, v.irValue, param.result);
 			}
+		}
+
+		if (!v.isParameter)
+		{
+			// initialize variable by default or with user-specified value
+			if (v.initializer)
+			{
+				IrLabel afterExpr = IrLabel(currentBlock);
+				visitExprValue(v.initializer, currentBlock, afterExpr);
+				currentBlock = afterExpr.blockIndex;
+				assign(v.type, v.irValue, v.initializer, currentBlock);
+			}
 			else
 			{
-				// initialize variable by default or with user-specified value
-				IrIndex value;
-				if (v.initializer)
-				{
-					IrLabel afterExpr = IrLabel(currentBlock);
-					visitExprValue(v.initializer, currentBlock, afterExpr);
-					value = v.initializer.irValue;
-					currentBlock = afterExpr.blockIndex;
-				}
-				else
-					value = context.constants.add(IrConstant(0));
-
+				IrIndex value = context.constants.add(IrConstant(0));
 				store(currentBlock, v.irValue, value);
 			}
 		}
+
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visit(StructDeclNode* s) {}
@@ -592,6 +595,8 @@ struct AstToIr
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprValue(MemberExprNode* m, IrIndex currentBlock, ref IrLabel nextStmt) {
+		version(CfgGenPrint) writefln("[CFG GEN] beg MEMBER cur %s next %s", currentBlock, nextStmt);
+		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end MEMBER cur %s next %s", currentBlock, nextStmt);
 		IrLabel afterExpr = IrLabel(currentBlock);
 		m.aggregate.flags |= AstFlags.isLvalue;
 		visitExprValue(m.aggregate, currentBlock, afterExpr);
@@ -625,7 +630,7 @@ struct AstToIr
 		c.irValueLength = context.constants.add(IrConstant(c.value.length, makeBasicTypeIndex(IrValueType.i64)));
 		IrGlobal* global = &context.globals.get(c.irValue);
 		global.setInitializer(cast(ubyte[])c.value);
-		global.flags |= IrGlobalFlags.needsZeroTermination;
+		global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
 		global.type = c.type.genIrType(context);
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
@@ -743,6 +748,37 @@ struct AstToIr
 		visitBinOpImpl!false(b, currentBlock, trueExit, falseExit);
 	}
 
+	void assign(TypeNode* leftType, IrIndex leftValue, ExpressionNode* right, IrIndex currentBlock)
+	{
+		switch (right.astType)
+		{
+			case AstType.literal_string:
+				if (leftType.astType == AstType.type_ptr)
+				{
+					// u8* = "string";
+					store(currentBlock, leftValue, right.irValue); // store pointer into pointer
+				}
+				else if (leftType.astType == AstType.type_slice)
+				{
+					// u8[] = "string";
+					IrIndex baseIndex = context.constants.add(IrConstant(0));
+
+					IrIndex lengthIndex = baseIndex; // 0
+					IrIndex lengthAddress = buildGEP(currentBlock, leftValue, baseIndex, lengthIndex);
+					store(currentBlock, lengthAddress, right.isStringLiteral.irValueLength);
+
+					IrIndex ptrIndex = context.constants.add(IrConstant(1));
+					IrIndex ptrAddress = buildGEP(currentBlock, leftValue, baseIndex, ptrIndex);
+					store(currentBlock, ptrAddress, right.irValue);
+				}
+				else context.unreachable;
+				break;
+			default:
+				store(currentBlock, leftValue, right.irValue);
+				break;
+		}
+	}
+
 	void visitExprValue(BinaryExprNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(CfgGenPrint) writefln("[CFG GEN] beg BINOP VAL cur %s next %s", currentBlock, nextStmt);
@@ -760,33 +796,7 @@ struct AstToIr
 			visitExprValue(b.right, currentBlock, afterRight);
 			currentBlock = afterRight.blockIndex;
 
-			switch (b.right.astType)
-			{
-				case AstType.literal_string:
-					if (b.left.type.astType == AstType.type_ptr)
-					{
-						// u8* = "string";
-						store(currentBlock, b.left.irValue, b.right.irValue); // store pointer into pointer
-					}
-					else if (b.left.type.astType == AstType.type_slice)
-					{
-						// u8[] = "string";
-						IrIndex baseIndex = context.constants.add(IrConstant(0));
-
-						IrIndex lengthIndex = baseIndex; // 0
-						IrIndex lengthAddress = buildGEP(currentBlock, b.left.irValue, baseIndex, lengthIndex);
-						store(currentBlock, lengthAddress, b.right.isStringLiteral.irValueLength);
-
-						IrIndex ptrIndex = context.constants.add(IrConstant(1));
-						IrIndex ptrAddress = buildGEP(currentBlock, b.left.irValue, baseIndex, ptrIndex);
-						store(currentBlock, ptrAddress, b.right.irValue);
-					}
-					else context.unreachable;
-					break;
-				default:
-					store(currentBlock, b.left.irValue, b.right.irValue);
-					break;
-			}
+			assign(b.left.type, b.left.irValue, b.right, currentBlock);
 
 			builder.addJumpToLabel(currentBlock, nextStmt);
 		}
@@ -795,6 +805,22 @@ struct AstToIr
 			IrLabel fake;
 			visitBinOpImpl!true(b, currentBlock, nextStmt, fake);
 			assert(fake.numPredecessors == 0);
+		}
+	}
+
+	void visitExprValue(UnaryExprNode* u, IrIndex currentBlock, ref IrLabel nextStmt)
+	{
+		switch(u.op) with(UnOp)
+		{
+			case addrOf:
+				u.child.flags |= AstFlags.isLvalue;
+				visitExprValue(u.child, currentBlock, nextStmt);
+				u.irValue = u.child.irValue;
+				break;
+			default:
+				context.internal_error(u.loc, "un op %s not implemented", u.op);
+				builder.addJumpToLabel(currentBlock, nextStmt);
+				break;
 		}
 	}
 
@@ -816,6 +842,7 @@ struct AstToIr
 			visitExprValue(arg, currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
 			argsBuf[i] = arg.irValue;
+			debug context.assertf(arg.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, arg.astType, arg.loc);
 		}
 
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
@@ -940,8 +967,8 @@ struct AstToIr
 		}
 		else
 		{
-			//t.irValue = builder.emitInstr1(IrOpcode.o_conv, to, t.expr.irValue);
-			context.internal_error(t.loc, "%s to %s", t.expr.type.printer(context), t.type.printer(context));
+			ExtraInstrArgs extra = {type : to};
+			t.irValue = builder.emitInstr!IrInstr_conv(currentBlock, extra, t.expr.irValue).result;
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}

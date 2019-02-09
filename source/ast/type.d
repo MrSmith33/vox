@@ -220,6 +220,7 @@ IrIndex genIrType(SliceTypeNode* t, CompilationContext* context)
 	// ptr
 	structType.members[1] = IrTypeStructMember(context.types.appendPtr(baseType), POINTER_SIZE);
 	structType.size = t.size;
+	structType.alignment = POINTER_SIZE;
 	return t.irType;
 }
 
@@ -259,6 +260,7 @@ IrIndex genIrType(StructTypeNode* t, CompilationContext* context)
 
 	memberOffset = alignValue!uint(memberOffset, maxAlignment);
 	structType.size = memberOffset;
+	structType.alignment = maxAlignment;
 	return s.irType;
 }
 

@@ -128,12 +128,12 @@ enum TokenType : ubyte {
 	@("^")    XOR,
 	@("^=")   XOR_EQUAL,
 
-	@("(") LPAREN,
-	@(")") RPAREN,
-	@("[") LBRACKET,
-	@("]") RBRACKET,
-	@("{") LCURLY,
-	@("}") RCURLY,
+	@("(")    LPAREN,
+	@(")")    RPAREN,
+	@("[")    LBRACKET,
+	@("]")    RBRACKET,
+	@("{")    LCURLY,
+	@("}")    RCURLY,
 
 
 	@("break")    BREAK_SYM,
@@ -144,26 +144,27 @@ enum TokenType : ubyte {
 	@("return")   RETURN_SYM,
 	@("struct")   STRUCT_SYM,
 	@("while")    WHILE_SYM,
+	@("cast")     CAST,                 // cast(T)
 
-	@("#id") IDENTIFIER,              // [a-zA-Z_] [a-zA-Z_0-9]*
+	@("#id")      IDENTIFIER,           // [a-zA-Z_] [a-zA-Z_0-9]*
 
 	// ----------------------------------------
 	// list of basic types. The order is the same as in `enum BasicType`
 
-	@("void") TYPE_VOID,               // void
-	@("bool") TYPE_BOOL,               // bool
-	@("i8") TYPE_I8,                 // i8
-	@("i16") TYPE_I16,                // i16
-	@("i32") TYPE_I32,                // i32
-	@("i64") TYPE_I64,                // i64
+	@("void") TYPE_VOID,                // void
+	@("bool") TYPE_BOOL,                // bool
+	@("i8")   TYPE_I8,                  // i8
+	@("i16")  TYPE_I16,                 // i16
+	@("i32")  TYPE_I32,                 // i32
+	@("i64")  TYPE_I64,                 // i64
 
-	@("u8") TYPE_U8,                 // u8
-	@("u16") TYPE_U16,                // u16
-	@("u32") TYPE_U32,                // u32
-	@("u64") TYPE_U64,                // u64
+	@("u8")   TYPE_U8,                  // u8
+	@("u16")  TYPE_U16,                 // u16
+	@("u32")  TYPE_U32,                 // u32
+	@("u64")  TYPE_U64,                 // u64
 
-	@("f32") TYPE_F32,                // f32
-	@("f64") TYPE_F64,                // f64
+	@("f32")  TYPE_F32,                 // f32
+	@("f64")  TYPE_F64,                 // f64
 	// ----------------------------------------
 
 	@("isize") TYPE_ISIZE,              // isize
@@ -171,9 +172,9 @@ enum TokenType : ubyte {
 
 	@("#num_lit") INT_LITERAL,
 	@("#str_lit") STRING_LITERAL,
-	//@(null) DECIMAL_LITERAL,         // 0|[1-9][0-9_]*
-	//@(null) BINARY_LITERAL,          // ("0b"|"0B")[01_]+
-	//@(null) HEX_LITERAL,             // ("0x"|"0X")[0-9A-Fa-f_]+
+	//@(null) DECIMAL_LITERAL,          // 0|[1-9][0-9_]*
+	//@(null) BINARY_LITERAL,           // ("0b"|"0B")[01_]+
+	//@(null) HEX_LITERAL,              // ("0x"|"0X")[0-9A-Fa-f_]+
 
 	@("#comm") COMMENT,                 // // /*
 }
@@ -214,13 +215,13 @@ enum char EOI_CHAR = '\3';
 
 immutable string[] keyword_strings = ["bool","break","continue","do","else","f32","f64",
 	"i16","i32","i64","i8","if","isize","return","struct","u16","u32","u64",
-	"u8","usize","void","while"];
+	"u8","usize","void","while","cast"];
 enum NUM_KEYWORDS = keyword_strings.length;
-immutable TokenType[] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,
+immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,
 	TT.ELSE_SYM,TT.TYPE_F32,TT.TYPE_F64,TT.TYPE_I16,TT.TYPE_I32,TT.TYPE_I64,
 	TT.TYPE_I8,TT.IF_SYM,TT.TYPE_ISIZE,TT.RETURN_SYM,TT.STRUCT_SYM,
 	TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
-	TT.TYPE_VOID,TT.WHILE_SYM];
+	TT.TYPE_VOID,TT.WHILE_SYM,TT.CAST];
 
 //                          #        #######  #     #
 //                          #        #         #   #
@@ -521,7 +522,11 @@ struct Lexer {
 				if (c == 'o' && match("ool")) return new_tok(TT.TYPE_BOOL);
 				else if (c == 'r' && match("reak")) return new_tok(TT.BREAK_SYM);
 				break;
-			case 'c': if (match("continue")) return new_tok(TT.CONTINUE_SYM); break;
+			case 'c':
+				nextChar;
+				if (c == 'o' && match("ontinue")) return new_tok(TT.CONTINUE_SYM);
+				else if (c == 'a' && match("ast")) return new_tok(TT.CAST);
+				break;
 			case 'd': if (match("do")) return new_tok(TT.DO_SYM); break;
 			case 'e': if (match("else")) return new_tok(TT.ELSE_SYM); break;
 			case 'f':
@@ -752,11 +757,9 @@ void pass_parser(ref CompilationContext ctx) {
 
 	ctx.mod = parser.parseModule();
 
-	if (ctx.printAst) {
-		if (ctx.mod !is null) {
-			auto astPrinter = AstPrinter(&ctx, 2);
-			astPrinter.printAst(cast(AstNode*)ctx.mod);
-		}
+	if (ctx.printAstFresh && ctx.mod !is null) {
+		auto astPrinter = AstPrinter(&ctx, 2);
+		astPrinter.printAst(cast(AstNode*)ctx.mod);
 	}
 }
 
@@ -1266,6 +1269,7 @@ private TokenLookups cexp_parser()
 
 	// 29 -- binds to everything except function call, indexing, postfix ops
 	prefix(290, &nullPrefixOp, ["+", "-", "!", "~", "*", "&", "++", "--"]);
+	prefix(290, &nullCast, "cast");
 
 	infixL(250, &leftBinaryOp, ["*", "/", "%"]);
 
@@ -1339,6 +1343,15 @@ ExpressionNode* nullPrefixOp(ref Parser p, Token token, int rbp) {
 			p.context.unreachable(); assert(false);
 	}
 	return p.makeExpr!UnaryExprNode(token.loc, op, right);
+}
+
+// "cast" "(" <expr> ")" <expr>
+ExpressionNode* nullCast(ref Parser p, Token token, int rbp) {
+	p.expectAndConsume(TokenType.LPAREN);
+	TypeNode* type = p.parse_type_expected();
+	p.expectAndConsume(TokenType.RPAREN);
+	ExpressionNode* right = p.expr(rbp);
+	return cast(ExpressionNode*) p.make!TypeConvExprNode(token.loc, type, IrIndex(), right);
 }
 
 // Left Denotations -- tokens that take an expression on the left

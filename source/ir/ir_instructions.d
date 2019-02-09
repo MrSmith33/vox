@@ -163,6 +163,7 @@ alias IrInstr_set_binary_cond = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFL
 alias IrInstr_add = IrGenericInstr!(IrOpcode.add, 2, IFLG.hasResult);
 alias IrInstr_sub = IrGenericInstr!(IrOpcode.sub, 2, IFLG.hasResult);
 alias IrInstr_mul = IrGenericInstr!(IrOpcode.mul, 2, IFLG.hasResult);
+alias IrInstr_conv = IrGenericInstr!(IrOpcode.conv, 1, IFLG.hasResult);
 alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
 alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);
 

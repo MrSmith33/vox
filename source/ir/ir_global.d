@@ -15,6 +15,7 @@ enum IrGlobalFlags : uint {
 	/// Global data is copied into static data buffer (or zeroes are reserved for isAllZero)
 	/// If (and only if) set, then staticBufferOffset must be valid
 	isInBuffer = 1 << 3,
+	isString   = 1 << 4,
 }
 
 ///
@@ -42,11 +43,14 @@ struct IrGlobal
 	uint alignment = 1;
 	///
 	uint numUsers;
+	///
+	LinkIndex objectSymIndex;
 
 	bool isMutable() { return (flags & IrGlobalFlags.isMutable) != 0; }
 	bool isAllZero() { return (flags & IrGlobalFlags.isAllZero) != 0; }
 	bool needsZeroTermination() { return (flags & IrGlobalFlags.needsZeroTermination) != 0; }
 	bool isInBuffer() { return (flags & IrGlobalFlags.isInBuffer) != 0; }
+	bool isString() { return (flags & IrGlobalFlags.isString) != 0; }
 
 	void addUser(IrIndex user) { ++numUsers; }
 	void removeUser(IrIndex user) { --numUsers; }

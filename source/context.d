@@ -17,48 +17,6 @@ enum BuildType : ubyte {
 }
 
 ///
-struct ExternalSymbols
-{
-	ExternalSymbol[Identifier] symbols;
-	string[] dllNames;
-}
-
-enum ExternalSymbolKind : ubyte {
-	dllSym,
-	hostSymbol
-}
-
-///
-struct ExternalSymbol
-{
-	///
-	ExternalSymbolKind kind;
-
-	union
-	{
-		/// Index into ExternalSymbols.dllNames
-		/// Used when kind is dllSym
-		uint dllIndex;
-		/// When doing JIT-compilation ptr points to the function or data in the host process
-		/// When compiling object file (exe, dll, lib, obj),
-		/// Used when kind is hostSymbol
-		void* ptr;
-	}
-}
-
-struct HostSymbol
-{
-	string name;
-	void* ptr;
-}
-
-struct DllSymbols
-{
-	string libName;
-	string[] importedSymbols;
-}
-
-///
 class CompilationException : Exception
 {
 	this(bool isICE = false)
@@ -102,8 +60,8 @@ struct CompilationContext
 
 	/// Buffer for resulting machine code
 	ubyte[] codeBuffer;
-	/// Symbols provided by environment
-	ExternalSymbols externalSymbols;
+	ubyte[] importBuffer;
+	ubyte[] binaryBuffer;
 	/// Identifier interning/deduplication
 	IdentifierMap idMap;
 	/// Buffer for function IR generation
@@ -120,6 +78,16 @@ struct CompilationContext
 	/// String literals have \0 after last character
 	/// Must be allocated before or after code segment to allow relative addressing
 	FixedBuffer!ubyte staticDataBuffer;
+	/// Symbols sections and references
+	ObjectSymbolTable objSymTab;
+	/// Symbols provided by the environment
+	LinkIndex[Identifier] externalSymbols;
+
+	// sections
+	LinkIndex hostSectionIndex;
+	LinkIndex importSectionIndex;
+	LinkIndex dataSectionIndex;
+	LinkIndex textSectionIndex;
 
 	// errors and debug
 
@@ -133,14 +101,23 @@ struct CompilationContext
 	IceBehavior iceBehavior = IceBehavior.breakpoint;
 	/// If true, every pass that generates/changes IR, performs validation
 	bool validateIr = false;
+	bool runTesters = true;
 
 	bool printTodos = false;
+	/// Print source before parsing
 	bool printSource = false;
-	bool printAst = false;
+	/// Print AST right after parsing
+	bool printAstFresh = false;
+	/// Print AST after semantic analysis
+	bool printAstSema = false;
+	/// Print IR after AST to IR pass
 	bool printIr = false;
+	/// Print LIR after IR to LIR pass
 	bool printLir = false;
 	bool printLiveIntervals = false;
 	bool printStaticData = false;
+	bool printStackLayout = false;
+	bool printSymbols = false;
 	bool printCodeHex = false;
 	bool printTimings = false;
 

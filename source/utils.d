@@ -169,6 +169,11 @@ T nextPOT(T)(T x)
 	return x;
 }
 
+T isPowerOfTwo(T)(T x)
+{
+	return (x != 0) && ((x & (~x + 1)) == x);
+}
+
 T alignValue(T)(T value, T alignment) pure
 {
 	return cast(T)((value + (alignment-1)) & ~(alignment-1));

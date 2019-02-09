@@ -72,7 +72,7 @@ struct AstPrinter {
 			print("VAR_USE ", v.strId(context));
 	}
 	void visit(MemberExprNode* m) {
-		print("MEMBER");
+		print("MEMBER ", m.type.printer(context));
 		pr_node(cast(AstNode*)m.aggregate);
 		pr_node(cast(AstNode*)m.member);
 	}

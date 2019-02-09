@@ -1116,6 +1116,7 @@ struct ImportSection
 
 enum IAT_ILT_ENTRY_BYTES = 8;
 
+/// Calculates the size of import section from DllImports
 struct ImportedDlls
 {
 	this(DllImports[] dlls)
@@ -1154,6 +1155,7 @@ struct DllImports
 	size_t totalTableBytes() { return numTableEntries * IAT_ILT_ENTRY_BYTES; }
 }
 
+/// A set of slices on top of single memory buffer
 struct ImportSectionMapping
 {
 	this(ubyte[] _sectionBuffer, ImportedDlls _importedLibs)
@@ -1213,6 +1215,9 @@ void createImports(ref ImportSectionMapping mapping, Section* importSection)
 		mapping.directories[i].importLookupTableRVA = cast(uint)(ilt_rva + tableIndex * IAT_ILT_ENTRY_BYTES);
 		mapping.directories[i].importAddressTableRVA = cast(uint)(iat_rva + tableIndex * IAT_ILT_ENTRY_BYTES);
 		mapping.directories[i].nameRVA = cast(uint)(str_rva + strSink.length);
+		//writefln("importLookupTableRVA %X", mapping.directories[i].importLookupTableRVA);
+		//writefln("importAddressTableRVA %X", mapping.directories[i].importAddressTableRVA);
+		//writefln("nameRVA %X", mapping.directories[i].nameRVA);
 
 		auto pre1 = strSink.length;
 		strSink.writeStringAligned2(dll.libName);
@@ -1284,7 +1289,7 @@ struct Executable
 		optionalHeader.SizeOfHeaders = alignValue(unalignedHeadersSize, params.fileAlignment);
 		uint imageFileSize = optionalHeader.SizeOfHeaders;
 
-		foreach (section; sections)
+		foreach (Section* section; sections)
 		{
 			section.header.PointerToRawData = imageFileSize;
 			uint sectionFileSize = alignValue(section.dataSize, params.fileAlignment);
@@ -1397,6 +1402,8 @@ struct Executable
 		// Section Headers
 		foreach (section; sections)
 		{
+			section.header.Name[0..section.name.length] = section.name;
+			section.header.Name[section.name.length..$] = '\0';
 			section.header.write(sink);
 		}
 		uint headersPadding = paddingSize(unalignedHeadersSize, params.fileAlignment);

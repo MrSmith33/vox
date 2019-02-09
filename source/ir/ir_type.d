@@ -213,8 +213,7 @@ struct IrTypeStorage
 				return 8;
 			case IrTypeKind.array:
 				IrTypeArray* array = &get!IrTypeArray(type);
-				uint elemSize = typeAlignment(array.elemType);
-				return elemSize * array.size;
+				return typeAlignment(array.elemType);
 			case IrTypeKind.struct_t:
 				return get!IrTypeStruct(type).alignment;
 		}

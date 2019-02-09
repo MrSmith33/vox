@@ -412,6 +412,11 @@ void pass_semantic_type(ref CompilationContext ctx)
 {
 	auto sem3 = SemanticStaticTypes(&ctx);
 	sem3.visit(ctx.mod);
+
+	if (ctx.printAstSema && ctx.mod !is null) {
+		auto astPrinter = AstPrinter(&ctx, 2);
+		astPrinter.printAst(cast(AstNode*)ctx.mod);
+	}
 }
 
 /// Annotates all expression nodes with their type
@@ -485,6 +490,28 @@ struct SemanticStaticTypes
 		context.error(expr.loc, "Cannot auto-convert expression of type `%s` to `%s`",
 			expr.type.printer(context),
 			type.printer(context));
+		return false;
+	}
+
+	bool isConvertibleTo(TypeNode* fromType, TypeNode* toType)
+	{
+		if (sameType(fromType, toType)) return true;
+
+		if (fromType.astType == AstType.type_basic && toType.astType == AstType.type_basic)
+		{
+			BasicType fromTypeBasic = fromType.basicTypeNode.basicType;
+			BasicType toTypeBasic = toType.basicTypeNode.basicType;
+			bool isRegisterTypeFrom =
+				(fromTypeBasic >= BasicType.t_bool &&
+				fromTypeBasic <= BasicType.t_u64) ||
+				fromType.astType == AstType.type_ptr;
+			bool isRegisterTypeTo =
+				(toTypeBasic >= BasicType.t_bool &&
+				toTypeBasic <= BasicType.t_u64) ||
+				toType.astType == AstType.type_ptr;
+			// all integer types, pointers and bool can be converted between
+			return isRegisterTypeFrom && isRegisterTypeTo;
+		}
 		return false;
 	}
 
@@ -784,7 +811,24 @@ struct SemanticStaticTypes
 	void visit(UnaryExprNode* u) {
 		_visit(u.child);
 		assert(u.child.type, format("child(%s).type: is null", u.child.astType));
-		u.type = u.child.type;
+		switch(u.op) with(UnOp)
+		{
+			case addrOf:
+				// make sure that variable gets stored in memory
+				switch(u.child.astType)
+				{
+					case AstType.expr_name_use:
+						(cast(NameUseExprNode*)u.child).getSym.varDecl.varFlags |= VariableFlags.isAddressTaken;
+						break;
+					default:
+						context.internal_error("Cannot take address of %s", u.child.astType);
+				}
+				u.type = cast(TypeNode*) new PtrTypeNode(u.child.loc, u.child.type);
+				break;
+			default:
+				context.internal_error("un op %s not implemented", u.op);
+				u.type = u.child.type;
+		}
 	}
 	// Get type from function declaration
 	void visit(CallExprNode* c) {
@@ -830,6 +874,13 @@ struct SemanticStaticTypes
 	}
 	void visit(TypeConvExprNode* t) {
 		_visit(t.expr);
+		if (!isConvertibleTo(t.expr.type, t.type))
+		{
+			context.error(t.loc,
+				"Cannot auto-convert expression of type `%s` to `%s`",
+				t.expr.type.printer(context),
+				t.type.printer(context));
+		}
 		t.type.assertImplemented(t.loc, context);
 	}
 	void visit(BasicTypeNode* t) {}

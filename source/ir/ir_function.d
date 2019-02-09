@@ -105,7 +105,6 @@ struct IrFunction
 		}
 	}
 }
-pragma(msg, IrFunction.sizeof);
 
 // instruction iterators are aware of this
 // only safe to delete current instruction while iterating

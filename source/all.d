@@ -8,6 +8,7 @@ module all;
 public:
 import ast;
 import ast_to_ir;
+import backend;
 import basictype;
 import context;
 import driver;
@@ -17,7 +18,6 @@ import ir;
 import ir_to_lir_amd64;
 import lir_amd64;
 import liveness;
-import make_exe;
 import optimize;
 import parser;
 import register_allocation;

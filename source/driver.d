@@ -28,7 +28,7 @@ immutable CompilePass[] commonPasses = [
 	CompilePass("Code gen", &pass_emit_mc_amd64),
 ];
 
-CompilePass[] jitPasses = commonPasses;
+CompilePass[] jitPasses = commonPasses ~ CompilePass("Link JIT", &pass_link_jit);
 CompilePass[] exePasses = commonPasses ~ CompilePass("Exe", &pass_create_executable);
 
 struct Driver
@@ -39,6 +39,9 @@ struct Driver
 	Win32Allocator allocator;
 	ubyte[] codeBuffer;
 	ubyte[] staticBuffer;
+	ubyte[] linkBuffer;
+	ubyte[] importBuffer;
+	ubyte[] binaryBuffer;
 	ubyte[] irBuffer;
 	ubyte[] modIrBuffer;
 	ubyte[] tempBuffer;
@@ -55,9 +58,19 @@ struct Driver
 		size_t aligned = alignValue(thisAddr, step) + step*5;
 
 		// Ideally we would allocate 2GB for code and data, split in 2 1-gig parts
-		ubyte[] codeAndData = allocate(PAGE_SIZE * 64, cast(void*)aligned, MemType.RW);
-		codeBuffer = codeAndData[0..PAGE_SIZE * 32];
-		staticBuffer = codeAndData[PAGE_SIZE * 32..$];
+		enum bufSize = PAGE_SIZE * 32;
+		enum numBufs = 5;
+		ubyte[] codeAndData = allocate(bufSize * numBufs, cast(void*)aligned, MemType.RW);
+		ubyte[] take() {
+			ubyte[] temp = codeAndData[0..bufSize];
+			codeAndData = codeAndData[bufSize..$];
+			return temp;
+		}
+		codeBuffer = take();
+		staticBuffer = take();
+		linkBuffer = take();
+		importBuffer = take();
+		binaryBuffer = take();
 		//writefln("thisAddr h%X, data h%X..h%X, code h%X..h%X", thisAddr,
 		//	staticBuffer.ptr, staticBuffer.ptr+staticBuffer.length,
 		//	codeBuffer.ptr, codeBuffer.ptr+codeBuffer.length);
@@ -78,40 +91,67 @@ struct Driver
 		allocator.releaseMemory();
 	}
 
-	ModuleDeclNode* compileModule(string moduleSource, HostSymbol[] externalSymbols, DllSymbols[] dllSymbols)
+	ModuleDeclNode* compileModule(string moduleSource, HostSymbol[] hostSymbols, DllModule[] dllModules)
 	{
 		markAsRW(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
 		context.codeBuffer = codeBuffer;
+		context.importBuffer = importBuffer;
+		context.binaryBuffer = binaryBuffer;
 		context.irBuffer.setBuffer(irBuffer);
 		context.types.buffer.setBuffer(modIrBuffer);
 		context.tempBuffer.setBuffer(tempBuffer);
 		context.staticDataBuffer.setBuffer(staticBuffer);
+		context.objSymTab.buffer.setBuffer(linkBuffer);
+		context.objSymTab.firstModule = LinkIndex();
+		context.globals.array.length = 0;
 
 		context.input = moduleSource;
+		context.externalSymbols.clear();
 
-		foreach (HostSymbol hostSym; externalSymbols)
+		ObjectModule hostModule = {
+			kind : ObjectModuleKind.isHost,
+			id : context.idMap.getOrRegNoDup(":host")
+		};
+		LinkIndex hostModuleIndex = context.objSymTab.addModule(hostModule);
+
+		foreach (HostSymbol hostSym; hostSymbols)
 		{
-			ExternalSymbol sym;
-			sym.kind = ExternalSymbolKind.hostSymbol;
-			sym.ptr = hostSym.ptr;
-			Identifier symId = context.idMap.getOrReg(hostSym.name);
-			context.externalSymbols.symbols[symId] = sym;
+			Identifier symId = context.idMap.getOrRegNoDup(hostSym.name);
+			ushort symFlags;
+			if (!canReferenceFromCode(hostSym.ptr)) symFlags |= ObjectSymbolFlags.isIndirect;
+			ObjectSymbol importedSymbol = {
+				kind : ObjectSymbolKind.isHost,
+				flags : symFlags,
+				id : symId,
+				dataPtr : cast(ubyte*)hostSym.ptr,
+				moduleIndex : hostModuleIndex,
+			};
+			LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
+
+			context.externalSymbols[symId] = importedSymbolIndex;
 		}
 
-		context.externalSymbols.dllNames = new string[dllSymbols.length];
-		uint dllIndex = 0;
-		foreach (ref DllSymbols dllSyms; dllSymbols)
+		foreach (ref DllModule dllModule; dllModules)
 		{
-			context.externalSymbols.dllNames[dllIndex] = dllSyms.libName;
-			foreach (string symName; dllSyms.importedSymbols)
+			ObjectModule importedModule = {
+				kind : ObjectModuleKind.isImported,
+				id : context.idMap.getOrRegNoDup(dllModule.libName)
+			};
+			LinkIndex importedModuleIndex = context.objSymTab.addModule(importedModule);
+
+			foreach (string symName; dllModule.importedSymbols)
 			{
-				ExternalSymbol sym;
-				sym.kind = ExternalSymbolKind.dllSym;
-				sym.dllIndex = dllIndex;
-				Identifier symId = context.idMap.getOrReg(symName);
-				context.externalSymbols.symbols[symId] = sym;
+				Identifier symId = context.idMap.getOrRegNoDup(symName);
+				ObjectSymbol importedSymbol = {
+					kind : ObjectSymbolKind.isImported,
+					flags : ObjectSymbolFlags.isIndirect,
+					id : symId,
+					alignment : 8, // pointer size
+					moduleIndex : importedModuleIndex,
+				};
+				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
+				context.externalSymbols[symId] = importedSymbolIndex;
 			}
-			++dllIndex;
 		}
 
 		foreach (ref pass; passes)
@@ -129,6 +169,12 @@ struct Driver
 		}
 
 		return context.mod;
+	}
+
+	bool canReferenceFromCode(void* hostSym)
+	{
+		// TODO
+		return true;
 	}
 
 	/// Must be called after compilation is finished and before execution

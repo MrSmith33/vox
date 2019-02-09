@@ -30,13 +30,82 @@ struct CodeEmitter
 	CodeGen_x86_64 gen;
 	PC[] blockStarts;
 	PC[2][] jumpFixups;
+	int stackPointerExtraOffset;
+	IrIndex stackPointer;
 
-	static struct CallFixup {
-		PC address; // address after call instruction
-		FunctionIndex calleeIndex;
+	void addSections()
+	{
+		ObjectModule localModule = {
+			kind : ObjectModuleKind.isLocal,
+			id : context.idMap.getOrRegNoDup(":local")
+		};
+		context.mod.moduleIndex = context.objSymTab.addModule(localModule);
+
+		ObjectSection hostSection = {
+			sectionAddress : 0,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(":host")
+		};
+		context.hostSectionIndex = context.objSymTab.addSection(hostSection);
+
+		ObjectSection importSection = {
+			sectionAddress : 0,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(".idata")
+		};
+		context.importSectionIndex = context.objSymTab.addSection(importSection);
+
+		ObjectSection dataSection = {
+			sectionAddress : 0,
+			sectionData : context.staticDataBuffer.bufPtr,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(".data")
+		};
+		context.dataSectionIndex = context.objSymTab.addSection(dataSection);
+
+		ObjectSection textSection = {
+			sectionAddress : 0,
+			sectionData : context.codeBuffer.ptr,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(".text")
+		};
+		context.textSectionIndex = context.objSymTab.addSection(textSection);
 	}
 
-	private Buffer!CallFixup callFixups;
+	void addStaticDataSymbols()
+	{
+		Identifier dataId = context.idMap.getOrRegNoDup(":data");
+		foreach(uint i, ref IrGlobal global; context.globals.array)
+		{
+			IrIndex globalIndex = IrIndex(i, IrValueKind.global);
+			global.validate(globalIndex, context);
+
+			ushort symFlags;
+
+			if (global.isMutable) symFlags |= ObjectSymbolFlags.isMutable;
+			if (global.isAllZero) symFlags |= ObjectSymbolFlags.isAllZero;
+			if (global.needsZeroTermination) symFlags |= ObjectSymbolFlags.needsZeroTermination;
+			if (global.isString) symFlags |= ObjectSymbolFlags.isString;
+
+			ObjectSymbol sym = {
+				kind : ObjectSymbolKind.isLocal,
+				flags : symFlags,
+				sectionOffset : global.staticBufferOffset,
+				dataPtr : global.initializerPtr,
+				sectionIndex : context.dataSectionIndex,
+				moduleIndex : context.mod.moduleIndex,
+				length : global.length,
+				alignment : global.alignment,
+				id : dataId,
+			};
+
+			global.objectSymIndex = context.objSymTab.addSymbol(sym);
+		}
+	}
 
 	void finalizeStaticData()
 	{
@@ -56,6 +125,9 @@ struct CodeEmitter
 			// offset
 			global.staticBufferOffset = context.staticDataBuffer.length;
 
+			ObjectSymbol* globalSym = &context.objSymTab.getSymbol(global.objectSymIndex);
+			globalSym.sectionOffset = global.staticBufferOffset;
+
 			// copy
 			if (global.initializerPtr !is null) {
 				context.staticDataBuffer.put(global.initializer);
@@ -71,60 +143,91 @@ struct CodeEmitter
 			//writefln("Global %s, size %s, zero %s, offset %s, buf size %s",
 			//	global.initializer, global.length, global.needsZeroTermination, global.staticBufferOffset, context.staticDataBuffer.length);
 		}
-
-		//context.staticDataBuffer
 	}
 
-	void finalizeExternals()
+	void addFunctionSymbols()
 	{
-		foreach(f; context.mod.functions)
-		if (f.isExternal)
+		foreach(FunctionDeclNode* f; context.mod.functions)
 		{
-			// When JIT-compiling, host can provide a set of external functions
-			// we will use provided function pointer
-			ExternalSymbol* extSym = f.id in context.externalSymbols.symbols;
+			LinkIndex symbolIndex;
 
-			if (extSym is null)
+			if (f.isExternal)
 			{
-				context.error(f.loc,
-					"Unresolved external function %s", f.strId(context));
-				continue;
+				// When JIT-compiling, host can provide a set of external functions
+				// we will use provided function pointer
+				symbolIndex = context.externalSymbols.get(f.id, LinkIndex());
+
+				if (!symbolIndex.isDefined)
+				{
+					context.error(f.loc, "Unresolved external function %s", f.strId(context));
+					continue;
+				}
+
+				ObjectSymbol* objSym = &context.objSymTab.getSymbol(symbolIndex);
+
+				final switch(objSym.kind)
+				{
+					case ObjectSymbolKind.isImported:
+						objSym.sectionIndex = context.importSectionIndex;
+						context.assertf(context.buildType == BuildType.exe, "Cannot use symbols from dll in JIT mode");
+						break;
+
+					case ObjectSymbolKind.isHost:
+						objSym.sectionIndex = context.hostSectionIndex;
+						objSym.sectionOffset = cast(ulong)objSym.dataPtr,
+						context.assertf(context.buildType == BuildType.jit, "Cannot use symbols from host in exe mode");
+						break;
+					case ObjectSymbolKind.isLocal:
+						// TODO: remove limit
+						context.error(f.loc, "Cannot use local symbol to resolve external");
+						break;
+				}
 			}
-
-			Symbol* sym = f.getSym;
-
-			final switch(extSym.kind)
+			else
 			{
-				case ExternalSymbolKind.dllSym:
-					context.assertf(context.buildType == BuildType.exe, "Cannot use symbols from dll in JIT mode");
-					sym.flags |= SymbolFlags.isDllExternal;
-					break;
-
-				case ExternalSymbolKind.hostSymbol:
-					context.assertf(context.buildType == BuildType.jit, "Cannot use symbols from host in exe mode");
-					f.backendData.funcPtr = extSym.ptr;
-					sym.flags |= SymbolFlags.isHostExternal;
-					break;
+				ObjectSymbol sym = {
+					kind : ObjectSymbolKind.isLocal,
+					sectionIndex : context.textSectionIndex,
+					moduleIndex : context.mod.moduleIndex,
+					alignment : 1,
+					id : f.id,
+				};
+				symbolIndex = context.objSymTab.addSymbol(sym);
 			}
 
 			// TODO: check that parameters match
+			f.backendData.objectSymIndex = symbolIndex;
 		}
 	}
 
 	void compileModule()
 	{
+		addSections();
+		addStaticDataSymbols();
 		finalizeStaticData();
-		finalizeExternals();
+		addFunctionSymbols();
 
 		gen.encoder.setBuffer(context.codeBuffer);
-		//writefln("code buf %s", context.codeBuffer.ptr);
+
 		foreach(f; context.mod.functions) {
 			if (f.isExternal) continue;
 			compileFunction(f);
 		}
 
-		fixCalls();
 		context.mod.code = gen.encoder.code;
+
+		if (context.printStaticData) {
+			writefln("// Data: addr 0x%X, %s bytes",
+				context.staticDataBuffer.bufPtr,
+				context.staticDataBuffer.length);
+			printHex(context.staticDataBuffer.data, 16);
+		}
+
+		if (context.printCodeHex) {
+			writefln("// Amd64 code: addr 0x%X, %s bytes", context.mod.code.ptr, context.mod.code.length);
+			printHex(context.mod.code, 16);
+			writeln;
+		}
 	}
 
 	void compileFunction(FunctionDeclNode* f)
@@ -132,10 +235,19 @@ struct CodeEmitter
 		fun = f;
 		lir = fun.backendData.lirData;
 		fun.backendData.funcPtr = gen.pc;
+
+		ObjectSymbol* funcSym = &context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
+		funcSym.dataPtr = gen.pc;
+		funcSym.sectionOffset = cast(ulong)(gen.pc - context.codeBuffer.ptr);
+
+		stackPointer = fun.backendData.callingConvention.stackPointer;
+
 		blockStarts = cast(PC[])context.tempBuffer.voidPut(lir.numBasicBlocks * (PC.sizeof / uint.sizeof));
+
 		uint[] buf = context.tempBuffer.voidPut(lir.numBasicBlocks * 2 * (PC.sizeof / uint.sizeof));
 		buf[] = 0;
 		jumpFixups = cast(PC[2][])buf;
+
 		compileFuncProlog();
 		compileBody();
 		fixJumps();
@@ -176,6 +288,14 @@ struct CodeEmitter
 		gen.ret();
 	}
 
+	uint referenceOffset()
+	{
+		ptrdiff_t diff = cast(void*)gen.pc - fun.backendData.funcPtr;
+		assert(diff >= 0, "Negative buffer position");
+		assert(diff <= uint.max, "Function is bigger than uint.max");
+		return cast(uint)diff;
+	}
+
 	void compileBody()
 	{
 		lir.assignSequentialBlockIndices();
@@ -198,25 +318,38 @@ struct CodeEmitter
 						break;
 					case Amd64Opcode.add:
 						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.add, ArgType.QWORD);
+						if (instrHeader.args[0] == stackPointer && instrHeader.args[1].isConstant)
+						{
+							stackPointerExtraOffset -= context.constants.get(instrHeader.args[1]).i64;
+						}
 						break;
 					case Amd64Opcode.sub:
 						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.sub, ArgType.QWORD);
+						if (instrHeader.args[0] == stackPointer && instrHeader.args[1].isConstant)
+						{
+							stackPointerExtraOffset += context.constants.get(instrHeader.args[1]).i64;
+						}
 						break;
 					case Amd64Opcode.call:
 						FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 						FunctionDeclNode* callee = context.mod.functions[calleeIndex];
-						Symbol* sym = callee.getSym;
-						if (sym.isDllExternal)
-						{
-							gen.call(memAddrDisp32(0));
-							callFixups.put(CallFixup(gen.pc, calleeIndex));
-						}
+						ObjectSymbol* sym = &context.objSymTab.getSymbol(callee.backendData.objectSymIndex);
+
+						if (sym.isIndirect)
+							gen.call(memAddrRipDisp32(0));
 						else
-						{
 							gen.call(Imm32(0));
-							callFixups.put(CallFixup(gen.pc, calleeIndex));
-						}
+
+						ObjectSymbolReference r = {
+							fromSymbol : fun.backendData.objectSymIndex,
+							referencedSymbol : callee.backendData.objectSymIndex,
+							refOffset : referenceOffset() - 4,
+							4,
+							ObjectSymbolRefKind.relative32,
+						};
+						context.objSymTab.addReference(r);
 						break;
+
 					case Amd64Opcode.jmp:
 						if (lirBlock.seqIndex + 1 != lir.getBlock(lirBlock.successors[0, *lir]).seqIndex)
 						{
@@ -236,7 +369,7 @@ struct CodeEmitter
 						}
 						break;
 					case Amd64Opcode.un_branch:
-						Register reg = cast(Register)instrHeader.args[0].storageUintIndex;
+						Register reg = cast(Register)instrHeader.args[0].physRegIndex;
 						gen.testd(reg, reg);
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
@@ -250,22 +383,31 @@ struct CodeEmitter
 					case Amd64Opcode.ret:
 						compileFuncEpilog();
 						break;
+					case Amd64Opcode.push:
+						IrIndex src = instrHeader.args[0];
+						switch (src.kind) with(IrValueKind)
+						{
+							case constant:
+								IrConstant con = context.constants.get(src);
+								gen.pushd(Imm32(con.i32));
+								break;
+
+							case physicalRegister:
+								Register reg = indexToRegister(src);
+								gen.pushq(reg);
+								break;
+							default: context.unreachable; assert(false);
+						}
+						stackPointerExtraOffset += STACK_ITEM_SIZE;
+						break;
 					default:
 						context.internal_error("Unimplemented instruction %s", cast(Amd64Opcode)instrHeader.op);
 						break;
 				}
 			}
-		}
-	}
 
-	void fixCalls()
-	{
-		foreach (CallFixup fixup; callFixups.data) {
-			FunctionDeclNode* callee = context.mod.functions[fixup.calleeIndex];
-			//writefln("fix call to '%s' @%s", callee.strId(context), cast(void*)callee.funcPtr);
-			fix_PC_REL_32(fixup.address, cast(PC)callee.backendData.funcPtr);
+			context.assertf(stackPointerExtraOffset == 0, "Unmatched stack size modification");
 		}
-		callFixups.clear();
 	}
 
 	void fixJump(PC fixup, lazy IrIndex targetBlock)
@@ -288,12 +430,12 @@ struct CodeEmitter
 		context.assertf(stackSlotIndex.isStackSlot, "Index is not stack slot, but %s", stackSlotIndex.kind);
 		auto stackSlot = &fun.backendData.stackLayout[stackSlotIndex];
 		Register baseReg = indexToRegister(stackSlot.baseReg);
-		return minMemAddrBaseDisp(baseReg, stackSlot.displacement);
+		return minMemAddrBaseDisp(baseReg, stackSlot.displacement + stackPointerExtraOffset);
 	}
 
 	Register indexToRegister(IrIndex regIndex) {
 		context.assertf(regIndex.isPhysReg, "Index is not register, but %s", regIndex.kind);
-		return cast(Register)regIndex.storageUintIndex;
+		return cast(Register)regIndex.physRegIndex;
 	}
 
 	void genRegular(IrIndex dst, IrIndex src, AMD64OpRegular op, ArgType argType)
@@ -353,8 +495,8 @@ struct CodeEmitter
 
 		if (moveType != MoveType.invalid && dst == src) return;
 
-		Register srcReg = cast(Register)src.storageUintIndex;
-		Register dstReg = cast(Register)dst.storageUintIndex;
+		Register srcReg = cast(Register)src.physRegIndex;
+		Register dstReg = cast(Register)dst.physRegIndex;
 
 		switch(moveType)
 		{
@@ -379,14 +521,18 @@ struct CodeEmitter
 			// copy address of global into register
 			case MoveType.global_to_reg:
 				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
-				IrGlobal* global = &context.globals.get(src);
-				context.assertf(global.isInBuffer, "Global is not in static data buffer");
-
-				PC globalAddress = cast(PC)context.staticDataBuffer.bufPtr + global.staticBufferOffset;
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.lea(dstReg, addr, ArgType.QWORD);
-				PC fixupAddr = gen.pc;
-				fix_PC_REL_32(fixupAddr, globalAddress);
+
+				IrGlobal* global = &context.globals.get(src);
+				ObjectSymbolReference r = {
+					fromSymbol : fun.backendData.objectSymIndex,
+					referencedSymbol : global.objectSymIndex,
+					refOffset : referenceOffset() - 4,
+					4,
+					ObjectSymbolRefKind.relative32,
+				};
+				context.objSymTab.addReference(r);
 				break;
 
 			case MoveType.reg_to_reg:
@@ -478,10 +624,14 @@ struct CodeEmitter
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.mov(addr, Imm32(con), argType);
 
-				PC globalAddress = cast(PC)context.staticDataBuffer.bufPtr + global.staticBufferOffset;
-				PC nextInstrAddr = gen.pc;
-				Imm32* fixupAddr = cast(Imm32*)(nextInstrAddr-8); // address of imm32 in instruction
-				*fixupAddr = jumpOffset(nextInstrAddr, globalAddress);
+				ObjectSymbolReference r = {
+					fromSymbol : fun.backendData.objectSymIndex,
+					referencedSymbol : global.objectSymIndex,
+					refOffset : referenceOffset() - 8,
+					8,
+					ObjectSymbolRefKind.relative32,
+				};
+				context.objSymTab.addReference(r);
 				break;
 			case reg_to_global:
 				Register srcReg = indexToRegister(src);
@@ -491,8 +641,14 @@ struct CodeEmitter
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.mov(addr, srcReg, argType);
 
-				PC globalAddress = cast(PC)context.staticDataBuffer.bufPtr + global.staticBufferOffset;
-				fix_PC_REL_32(gen.pc, globalAddress);
+				ObjectSymbolReference r = {
+					fromSymbol : fun.backendData.objectSymIndex,
+					referencedSymbol : global.objectSymIndex,
+					refOffset : referenceOffset() - 4,
+					4,
+					ObjectSymbolRefKind.relative32,
+				};
+				context.objSymTab.addReference(r);
 				break;
 			default:
 				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);

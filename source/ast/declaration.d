@@ -21,6 +21,7 @@ struct ModuleDeclNode {
 	IrModule irModule;
 	IrModule lirModule;
 	ubyte[] code;
+	LinkIndex moduleIndex;
 
 	void addFunction(FunctionDeclNode* func) {
 		func.backendData.index = FunctionIndex(cast(uint)functions.length);
@@ -75,6 +76,8 @@ struct FunctionBackendData
 	IrIndex returnType;
 	///
 	Identifier name;
+	///
+	LinkIndex objectSymIndex;
 }
 
 struct FunctionDeclNode {
@@ -91,8 +94,9 @@ struct FunctionDeclNode {
 }
 
 enum VariableFlags : ubyte {
-	isParameter        = 1 << 1,
 	forceMemoryStorage = 1 << 0,
+	isParameter        = 1 << 1,
+	isAddressTaken     = 1 << 2,
 }
 
 struct VariableDeclNode {
@@ -103,6 +107,7 @@ struct VariableDeclNode {
 	ubyte varFlags;
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
 	IrIndex irValue; // kind is variable or stackSlot, unique id of variable within a function
-	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
 	bool forceMemoryStorage() { return cast(bool)(varFlags & VariableFlags.forceMemoryStorage); }
+	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
+	bool isAddressTaken() { return cast(bool)(varFlags & VariableFlags.isAddressTaken); }
 }

@@ -237,6 +237,13 @@ struct IrToLir
 								lirBlockIndex, callExtra, physArgs[0..numPhysRegs]);
 							recordIndex(instrIndex, callInstr.instruction);
 
+							{	// Deallocate stack after call
+								IrIndex conReservedBytes = context.constants.add(IrConstant(stackReserve));
+								ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
+								builder.emitInstr!LirAmd64Instr_add(
+									lirBlockIndex, extra, stackPtrReg, conReservedBytes);
+							}
+
 							if (callExtra.hasResult) {
 								// mov result to virt reg
 								ExtraInstrArgs extra = { type : ir.getVirtReg(instrHeader.result).type };
@@ -246,12 +253,6 @@ struct IrToLir
 							}
 						}
 
-						{	// Deallocate stack after call
-							IrIndex conReservedBytes = context.constants.add(IrConstant(stackReserve));
-							ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
-							builder.emitInstr!LirAmd64Instr_add(
-								lirBlockIndex, extra, stackPtrReg, conReservedBytes);
-						}
 						break;
 
 					case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;
@@ -259,6 +260,15 @@ struct IrToLir
 					case IrOpcode.mul: emitLirInstr!LirAmd64Instr_imul; break;
 					case IrOpcode.load: emitLirInstr!LirAmd64Instr_load; break;
 					case IrOpcode.store: emitLirInstr!LirAmd64Instr_store; break;
+					case IrOpcode.conv:
+						IrIndex typeFrom = getValueType(instrHeader.args[0], ir, *context);
+						IrIndex typeTo = ir.getVirtReg(instrHeader.result).type;
+						uint typeSizeFrom = context.types.typeSize(typeFrom);
+						uint typeSizeTo = context.types.typeSize(typeTo);
+						context.assertf(typeSizeTo <= typeSizeFrom,
+							"Can't cast from %s bytes to %s bytes", typeSizeFrom, typeSizeTo);
+						emitLirInstr!LirAmd64Instr_mov;
+						break;
 
 					case IrOpcode.block_exit_jump:
 						builder.emitInstr!LirAmd64Instr_jmp(lirBlockIndex);
