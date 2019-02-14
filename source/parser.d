@@ -387,6 +387,8 @@ struct Lexer
 					}
 					return TT.LESS;
 				case '=' : nextChar; return lex_multi_equal2(TT.EQUAL, TT.EQUAL_EQUAL);
+				case '#' : nextChar; return TT.HASH;
+				case '?' : nextChar; return TT.QUESTION;
 				case '>' : nextChar;
 					if (c == '=') { nextChar;
 						return TT.MORE_EQUAL;
@@ -690,13 +692,16 @@ private bool isIdSecond(dchar chr) pure nothrow {
 unittest
 {
 	CompilationContext ctx;
-	TokenType[1] tokenBuffer;
-	SourceLocation[1] locs;
+	TokenType[4] tokenBuffer;
+	SourceLocation[4] locs;
 
+	Lexer makeLexer(string input) {
+		return Lexer(&ctx, input~EOI_CHAR, tokenBuffer, locs);
+	}
 
 	foreach(i, string keyword; keyword_strings)
 	{
-		Lexer lexer = Lexer(&ctx, keyword, tokenBuffer, locs);
+		Lexer lexer = makeLexer(keyword);
 		TokenType token = lexer.nextToken;
 		assert(token == keyword_tokens[i],
 			format("For %s expected %s got %s", keyword, keyword_tokens[i], token));
@@ -704,7 +709,7 @@ unittest
 
 	foreach(i, string keyword; keyword_strings)
 	{
-		Lexer lexer = Lexer(&ctx, keyword~"A", tokenBuffer, locs);
+		Lexer lexer = makeLexer(keyword~"A");
 		TokenType token = lexer.nextToken;
 		assert(token == TT.IDENTIFIER);
 	}
@@ -727,7 +732,7 @@ unittest
 			TT.LBRACKET,TT.RBRACKET, TT.LCURLY,TT.RCURLY,];
 		foreach(i, string op; ops)
 		{
-			Lexer lexer = Lexer(&ctx, op, tokenBuffer, locs);
+			Lexer lexer = makeLexer(op);
 			TokenType token = lexer.nextToken;
 			assert(token == tokens_ops[i],
 				format("For %s expected %s got %s", op, tokens_ops[i], token));
@@ -736,11 +741,11 @@ unittest
 
 	void testNumeric(string input, TokenType tokType)
 	{
-		Lexer lexer = Lexer(&ctx, input, tokenBuffer, locs);
+		Lexer lexer = makeLexer(input);
 		assert(lexer.nextToken == tokType);
 	}
 
-	assert(Lexer(&ctx, "_10", tokenBuffer, locs).nextToken == TT.IDENTIFIER);
+	assert(makeLexer("_10").nextToken == TT.IDENTIFIER);
 	testNumeric("10", TT.INT_DEC_LITERAL);
 	testNumeric("1_0", TT.INT_DEC_LITERAL);
 	testNumeric("10_", TT.INT_DEC_LITERAL);
@@ -753,30 +758,28 @@ unittest
 
 	{
 		string source = "/*\n*/test";
-		Lexer lexer = Lexer(&ctx, source, tokenBuffer, locs);
-		TokenType tok = lexer.nextToken;
-		assert(tok == TT.COMMENT);
-		assert(locs[0].getTokenString(source) == "/*\n*/");
-		tok = lexer.nextToken;
-		assert(tok == TT.IDENTIFIER);
-		assert(locs[0].getTokenString(source) == "test");
+		Lexer lexer = makeLexer(source);
+		lexer.lex;
+		assert(tokenBuffer[0] == TT.COMMENT);
+		assert(locs[0].getTokenString(source) == "/*\n*/", format("%s", locs[0]));
+		assert(tokenBuffer[1] == TT.IDENTIFIER);
+		assert(locs[1].getTokenString(source) == "test");
 	}
 	{
 		string source = "//test\nhello";
-		Lexer lexer = Lexer(&ctx, source, tokenBuffer, locs);
-		TokenType tok = lexer.nextToken;
-		assert(tok == TT.COMMENT);
+		Lexer lexer = makeLexer(source);
+		lexer.lex;
+		assert(tokenBuffer[0] == TT.COMMENT);
 		assert(locs[0].getTokenString(source) == "//test\n");
-		tok = lexer.nextToken;
-		assert(tok == TT.IDENTIFIER);
-		assert(locs[0].getTokenString(source) == "hello");
+		assert(tokenBuffer[1] == TT.IDENTIFIER);
+		assert(locs[1].getTokenString(source) == "hello");
 	}
 	{
 		string source = `"literal"`;
-		Lexer lexer = Lexer(&ctx, source, tokenBuffer, locs);
-		TokenType tok = lexer.nextToken;
-		assert(tok == TT.STRING_LITERAL);
-		assert(locs[0].getTokenString(source) == `"literal"`, format("%s", tok));
+		Lexer lexer = makeLexer(source);
+		lexer.lex;
+		assert(tokenBuffer[0] == TT.STRING_LITERAL);
+		assert(locs[0].getTokenString(source) == `"literal"`, format("%s", tokenBuffer[0]));
 	}
 }
 

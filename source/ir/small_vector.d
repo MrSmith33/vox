@@ -172,14 +172,19 @@ struct SmallVector
 
 unittest
 {
+	import std.stdio;
+	ubyte[1024] irBuf, tempBuf;
 	IrFunction ir;
 	CompilationContext context;
 	IrBuilder builder;
-	builder.context = &context;
-	builder.ir = &ir;
-	ubyte[1024] irBuf, tempBuf;
+
 	context.irBuffer.setBuffer(irBuf[]);
 	context.tempBuffer.setBuffer(tempBuf[]);
+
+	builder.context = &context;
+	builder.ir = &ir;
+	ir.storage = context.irBuffer.freePart[0..0];
+
 	SmallVector vec;
 
 	assert(vec.length == 0);
