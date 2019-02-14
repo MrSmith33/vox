@@ -16,6 +16,7 @@ import emit_mc_amd64;
 import identifier;
 import ir;
 import ir_to_lir_amd64;
+import lexer;
 import lir_amd64;
 import liveness;
 import optimize;
