@@ -19,14 +19,14 @@ struct IdentifierMap {
 		return strings[id];
 	}
 
-	Identifier find(string str) {
-		return map.get(str, uint.max);
+	Identifier find(const(char)[] str) {
+		return map.get(cast(string)str, uint.max);
 	}
 
-	Identifier getOrRegWithSuffix(string str, size_t suffix) {
+	Identifier getOrRegWithSuffix(const(char)[] str, size_t suffix) {
 		import std.format : formattedWrite;
 		tempBuf.clear;
-		tempBuf.put(str);
+		tempBuf.put(cast(string)str);
 		formattedWrite(tempBuf, "%s", suffix);
 		const(char)[] idString = tempBuf.data;
 		return getOrReg(idString);
@@ -43,12 +43,12 @@ struct IdentifierMap {
 		return id;
 	}
 
-	Identifier getOrRegNoDup(string str) {
-		uint id = map.get(str, uint.max);
+	Identifier getOrRegNoDup(const(char)[] str) {
+		uint id = map.get(cast(string)str, uint.max);
 		if (id == uint.max) {
 			id = cast(uint)strings.length;
 			map[str] = id;
-			strings ~= str;
+			strings ~= cast(string)str;
 		}
 		return id;
 	}

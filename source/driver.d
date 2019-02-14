@@ -8,8 +8,21 @@ module driver;
 import std.stdio : writeln, write, writef, writefln, stdout;
 import all;
 
+void pass_source(ref CompilationContext ctx)
+{
+	ctx.sourceBuffer[0] = SOI_CHAR;
+	ctx.sourceBuffer[1..1+ctx.input.length] = ctx.input;
+	ctx.sourceBuffer[1+ctx.input.length] = EOI_CHAR;
+
+	if (ctx.printSource) {
+		writeln("// Source");
+		writeln(ctx.input);
+	}
+}
 
 immutable CompilePass[] commonPasses = [
+	CompilePass("Copy source", &pass_source),
+	CompilePass("Lex", &pass_lexer),
 	CompilePass("Parse", &pass_parser),
 	CompilePass("Semantic insert", &pass_semantic_decl),
 	CompilePass("Semantic lookup", &pass_semantic_lookup),
@@ -37,8 +50,11 @@ struct Driver
 	CompilePass[] passes;
 
 	Win32Allocator allocator;
+	ubyte[] sourceBuffer;
 	ubyte[] codeBuffer;
 	ubyte[] staticBuffer;
+	ubyte[] tokenBuffer;
+	ubyte[] tokenLocationBuffer;
 	ubyte[] linkBuffer;
 	ubyte[] importBuffer;
 	ubyte[] binaryBuffer;
@@ -59,15 +75,18 @@ struct Driver
 
 		// Ideally we would allocate 2GB for code and data, split in 2 1-gig parts
 		enum bufSize = PAGE_SIZE * 32;
-		enum numBufs = 5;
+		enum numBufs = 8;
 		ubyte[] codeAndData = allocate(bufSize * numBufs, cast(void*)aligned, MemType.RW);
 		ubyte[] take() {
 			ubyte[] temp = codeAndData[0..bufSize];
 			codeAndData = codeAndData[bufSize..$];
 			return temp;
 		}
+		sourceBuffer = take();
 		codeBuffer = take();
 		staticBuffer = take();
+		tokenBuffer = take();
+		tokenLocationBuffer = take();
 		linkBuffer = take();
 		importBuffer = take();
 		binaryBuffer = take();
@@ -94,8 +113,11 @@ struct Driver
 	ModuleDeclNode* compileModule(string moduleSource, HostSymbol[] hostSymbols, DllModule[] dllModules)
 	{
 		markAsRW(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
+		context.sourceBuffer = cast(char[])sourceBuffer;
 		context.codeBuffer = codeBuffer;
 		context.importBuffer = importBuffer;
+		context.tokenBuffer = cast(TokenType[])tokenBuffer;
+		context.tokenLocationBuffer = cast(SourceLocation[])tokenLocationBuffer;
 		context.binaryBuffer = binaryBuffer;
 		context.irBuffer.setBuffer(irBuffer);
 		context.types.buffer.setBuffer(modIrBuffer);

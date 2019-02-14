@@ -15,6 +15,7 @@ import std.format : formattedWrite;
 import std.string : format;
 import std.range : repeat;
 import std.stdio;
+import std.conv : to;
 
 import all;
 
@@ -22,7 +23,7 @@ import all;
 // Grammar
 /**
 	<module> = <declaration>* EOF
-	<declaration> = <func_decl> / <var_decl> / <struct_decl>
+	<declaration> = <func_decl> / <var_decl> / <struct_decl> / <enum_decl>
 
 	<func_decl> = <type> <identifier> "(" <param_list> ")" (<block_statement> / ';')
 	<param_list> = <parameter> "," <parameter_list> / <parameter>?
@@ -30,6 +31,9 @@ import all;
 
 	<var_decl> = <type> <identifier> ("=" <expression>)? ";"
 	<struct_decl> = "struct" <identifier> "{" <declaration>* "}"
+	<enum_decl> = <enum_decl_single> / <enum_decl_multi>
+	<enum_decl_multi> = "enum" [<identifier>] [":" <type>] {" <identifier> ["=" <expr>] ,* "}"
+	<enum_decl_single> = "enum" <identifier> [ "=" <expr> ] ";"
 
 	<statement> = "if" <paren_expression> <statement> ("else" <statement>)?
 				  "while" <paren_expression> <statement> /
@@ -77,6 +81,7 @@ import all;
 // -----------------------------------------------------------------------------
 alias TT = TokenType;
 enum TokenType : ubyte {
+	@("#soi")  SOI,
 	@("#eoi")  EOI,
 	@(null)   INVALID,
 
@@ -99,7 +104,7 @@ enum TokenType : ubyte {
 	@(">>=")  MORE_MORE_EQUAL,
 	@(">>>")  MORE_MORE_MORE,
 	@(">>>=") MORE_MORE_MORE_EQUAL,
-	//@("#")  HASH,
+	@("#")    HASH,
 	@("<")    LESS,
 	@("<=")   LESS_EQUAL,
 	@("<<")   LESS_LESS,
@@ -117,7 +122,7 @@ enum TokenType : ubyte {
 	@("+")    PLUS,
 	@("+=")   PLUS_EQUAL,
 	@("++")   PLUS_PLUS,
-	//@("?")  QUESTION,
+	@("?")    QUESTION,
 	@(";")    SEMICOLON,
 	@("/")    SLASH,
 	@("/=")   SLASH_EQUAL,
@@ -145,6 +150,7 @@ enum TokenType : ubyte {
 	@("struct")   STRUCT_SYM,
 	@("while")    WHILE_SYM,
 	@("cast")     CAST,                 // cast(T)
+	@("enum")     ENUM,
 
 	@("#id")      IDENTIFIER,           // [a-zA-Z_] [a-zA-Z_0-9]*
 
@@ -170,7 +176,9 @@ enum TokenType : ubyte {
 	@("isize") TYPE_ISIZE,              // isize
 	@("usize") TYPE_USIZE,              // usize
 
-	@("#num_lit") INT_LITERAL,
+	@("#num_dec_lit") INT_DEC_LITERAL,
+	@("#num_hex_lit") INT_HEX_LITERAL,
+	@("#num_bin_lit") INT_BIN_LITERAL,
 	@("#str_lit") STRING_LITERAL,
 	//@(null) DECIMAL_LITERAL,          // 0|[1-9][0-9_]*
 	//@(null) BINARY_LITERAL,           // ("0b"|"0B")[01_]+
@@ -194,34 +202,51 @@ private string[] gatherInfos()
 enum TokenType TYPE_TOKEN_FIRST = TokenType.TYPE_VOID;
 enum TokenType TYPE_TOKEN_LAST = TokenType.TYPE_F64;
 
+
 struct Token {
 	TokenType type;
-	SourceLocation loc;
-	Identifier id; // when type is IDENTIFIER
+	TokenIndex index;
+}
+
+struct TokenIndex
+{
+	uint index;
+	alias index this;
+}
+
+struct SourceFileInfo
+{
+	/// Start of file source code in CompilationContext.sourceBuffer
+	uint start;
+	/// Length of source code
+	uint length;
 }
 
 struct SourceLocation {
 	uint start;
+	uint end;
 	uint line;
 	uint col;
-	uint size;
-	string getTokenString(string input) const { return input[start..start+size]; }
+	const(char)[] getTokenString(const(char)[] input) pure const { return input[start..end]; }
 	void toString(scope void delegate(const(char)[]) sink) const {
-		sink.formattedWrite("line %s col %s", line+1, col+1);
+		sink.formattedWrite("line %s col %s start %s end %s", line+1, col+1, start, end);
 	}
 }
 
+/// Start of input
+enum char SOI_CHAR = '\2';
+/// End of input
 enum char EOI_CHAR = '\3';
 
 immutable string[] keyword_strings = ["bool","break","continue","do","else","f32","f64",
 	"i16","i32","i64","i8","if","isize","return","struct","u16","u32","u64",
-	"u8","usize","void","while","cast"];
+	"u8","usize","void","while","cast","enum"];
 enum NUM_KEYWORDS = keyword_strings.length;
 immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,
 	TT.ELSE_SYM,TT.TYPE_F32,TT.TYPE_F64,TT.TYPE_I16,TT.TYPE_I32,TT.TYPE_I64,
 	TT.TYPE_I8,TT.IF_SYM,TT.TYPE_ISIZE,TT.RETURN_SYM,TT.STRUCT_SYM,
 	TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
-	TT.TYPE_VOID,TT.WHILE_SYM,TT.CAST];
+	TT.TYPE_VOID,TT.WHILE_SYM,TT.CAST,TT.ENUM];
 
 //                          #        #######  #     #
 //                          #        #         #   #
@@ -231,9 +256,36 @@ immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT
 //                          #        #         #   #
 //                          ######   #######  #     #
 // -----------------------------------------------------------------------------
-struct Lexer {
-	string input;
+
+void pass_lexer(ref CompilationContext ctx)
+{
+	Lexer lexer = Lexer(&ctx, ctx.sourceBuffer, ctx.tokenBuffer, ctx.tokenLocationBuffer);
+	// TODO: when compiling multiple modules, continue buffers instead of overwriting them
+
+	lexer.lex();
+
+	if (ctx.printLexemes) {
+		writeln("// Lexemes");
+		Token tok;
+		do
+		{
+			tok.type = ctx.tokenBuffer[tok.index];
+			auto loc = ctx.tokenLocationBuffer[tok.index];
+			writefln("%s %s, `%s`", tok, loc, loc.getTokenString(ctx.sourceBuffer));
+			++tok.index;
+		}
+		while(tok.type != TokenType.EOI);
+	}
+}
+
+struct Lexer
+{
 	CompilationContext* context;
+	const(char)[] inputChars;
+	TokenType[] outputTokens;
+	SourceLocation[] outputTokenLocations;
+
+	TokenIndex tokenIndex;
 
 	private dchar c; // current symbol
 
@@ -245,59 +297,44 @@ struct Lexer {
 	private uint startLine; // line of first token byte
 	private uint startCol; // column of first token byte
 
-	long numberRep; // output of integer literal parsing
-
-	this(string input, CompilationContext* context)
+	void lex()
 	{
-		this.input = input;
-		this.context = context;
-	}
+		while (true)
+		{
+			TokenType tokType = nextToken();
 
-	private void restartToken()
-	{
-		position = startPos;
-		line = startLine;
-		column = startCol;
-		if (position >= input.length) c = EOI_CHAR;
-		else c = input[position];
+			outputTokens[tokenIndex] = tokType;
+			set_loc();
+			++tokenIndex;
+
+			if (tokType == TokenType.EOI) return;
+		}
 	}
 
 	private void nextChar()
 	{
 		++position;
 		++column;
-		if (position >= input.length) c = EOI_CHAR;
-		else c = input[position];
+		c = inputChars[position];
 	}
 
-	private SourceLocation new_loc() pure
+	private void set_loc()
 	{
-		uint tokSize = position - startPos;
-		return SourceLocation(startPos, startLine, startCol, tokSize);
+		outputTokenLocations[tokenIndex] = SourceLocation(startPos, position, startLine, startCol);
 	}
 
-	private Token new_tok(TokenType type) pure
+	int opApply(scope int delegate(TokenType) dg)
 	{
-		return Token(type, new_loc());
-	}
-
-	string getTokenString(Token tok) pure { return input[tok.loc.start..tok.loc.start+tok.loc.size]; }
-	string getTokenString(SourceLocation loc) pure { return input[loc.start..loc.start+loc.size]; }
-	long getTokenNumber() { return numberRep; }
-
-	int opApply(scope int delegate(Token) dg)
-	{
-		Token tok;
-		while ((tok = nextToken()).type != TokenType.EOI)
+		TokenType tok;
+		while ((tok = nextToken()) != TokenType.EOI)
 			if (int res = dg(tok))
 				return res;
 		return 0;
 	}
 
-	Token nextToken()
+	TokenType nextToken()
 	{
-		if (position >= input.length) c = EOI_CHAR;
-		else c = input[position];
+		c = inputChars[position];
 
 		while (true)
 		{
@@ -307,79 +344,80 @@ struct Lexer {
 
 			switch(c)
 			{
-				case EOI_CHAR:         return new_tok(TT.EOI);
+				case SOI_CHAR:         nextChar; return TT.SOI;
+				case EOI_CHAR:         return TT.EOI;
 				case '\t': nextChar;   continue;
 				case '\n': lex_EOLN(); continue;
 				case '\r': lex_EOLR(); continue;
 				case ' ' : nextChar;   continue;
 				case '!' : nextChar; return lex_multi_equal2(TT.NOT, TT.NOT_EQUAL);
-				//case '#' : nextChar; return new_tok(TT.HASH);
-				case '$' : nextChar; return new_tok(TT.DOLLAR);
+				//case '#' : nextChar; return TT.HASH;
+				case '$' : nextChar; return TT.DOLLAR;
 				case '%' : nextChar; return lex_multi_equal2(TT.PERCENT, TT.PERCENT_EQUAL);
 				case '&' : nextChar; return lex_multi_equal2_3('&', TT.AND, TT.AND_EQUAL, TT.AND_AND);
-				case '(' : nextChar; return new_tok(TT.LPAREN);
-				case ')' : nextChar; return new_tok(TT.RPAREN);
+				case '(' : nextChar; return TT.LPAREN;
+				case ')' : nextChar; return TT.RPAREN;
 				case '*' : nextChar; return lex_multi_equal2(TT.STAR, TT.STAR_EQUAL);
 				case '+' : nextChar; return lex_multi_equal2_3('+', TT.PLUS, TT.PLUS_EQUAL, TT.PLUS_PLUS);
-				case ',' : nextChar; return new_tok(TT.COMMA);
+				case ',' : nextChar; return TT.COMMA;
 				case '-' : nextChar; return lex_multi_equal2_3('-', TT.MINUS, TT.MINUS_EQUAL, TT.MINUS_MINUS);
 				case '.' : nextChar;
 					if (c == '.') { nextChar;
 						if (c == '.') { nextChar;
-							return new_tok(TT.DOT_DOT_DOT);
+							return TT.DOT_DOT_DOT;
 						}
-						return new_tok(TT.DOT_DOT);
+						return TT.DOT_DOT;
 					}
-					return new_tok(TT.DOT);
+					return TT.DOT;
 				case '\"': nextChar; return lex_QUOTE_QUOTE();
 				case '/' :           return lex_SLASH();
 				case '0' :           return lex_ZERO();
 				case '1' : ..case '9': return lex_DIGIT();
-				case ':' : nextChar; return new_tok(TT.COLON);
-				case ';' : nextChar; return new_tok(TT.SEMICOLON);
+				case ':' : nextChar; return TT.COLON;
+				case ';' : nextChar; return TT.SEMICOLON;
 				case '<' : nextChar;
 					if (c == '<') { nextChar;
 						if (c == '=') { nextChar;
-							return new_tok(TT.LESS_LESS_EQUAL);
+							return TT.LESS_LESS_EQUAL;
 						}
-						return new_tok(TT.LESS_LESS);
+						return TT.LESS_LESS;
 					}
 					if (c == '=') { nextChar;
-						return new_tok(TT.LESS_EQUAL);
+						return TT.LESS_EQUAL;
 					}
-					return new_tok(TT.LESS);
+					return TT.LESS;
 				case '=' : nextChar; return lex_multi_equal2(TT.EQUAL, TT.EQUAL_EQUAL);
 				case '>' : nextChar;
 					if (c == '=') { nextChar;
-						return new_tok(TT.MORE_EQUAL);
+						return TT.MORE_EQUAL;
 					}
 					if (c == '>') { nextChar;
 						if (c == '>') { nextChar;
 							if (c == '=') { nextChar;
-								return new_tok(TT.MORE_MORE_MORE_EQUAL);
+								return TT.MORE_MORE_MORE_EQUAL;
 							}
-							return new_tok(TT.MORE_MORE_MORE);
+							return TT.MORE_MORE_MORE;
 						}
 						if (c == '=') { nextChar;
-							return new_tok(TT.MORE_MORE_EQUAL);
+							return TT.MORE_MORE_EQUAL;
 						}
-						return new_tok(TT.MORE_MORE);
+						return TT.MORE_MORE;
 					}
-					return new_tok(TT.MORE);
-				//case '?' : nextChar; return new_tok(TT.QUESTION);
-				case '@' : nextChar; return new_tok(TT.AT);
+					return TT.MORE;
+				//case '?' : nextChar; return TT.QUESTION;
+				case '@' : nextChar; return TT.AT;
 				case 'A' : ..case 'Z': return lex_LETTER();
-				case '[' : nextChar; return new_tok(TT.LBRACKET);
-				case '\\': nextChar; return new_tok(TT.BACKSLASH);
-				case ']' : nextChar; return new_tok(TT.RBRACKET);
+				case '[' : nextChar; return TT.LBRACKET;
+				case '\\': nextChar; return TT.BACKSLASH;
+				case ']' : nextChar; return TT.RBRACKET;
 				case '^' : nextChar; return lex_multi_equal2(TT.XOR, TT.XOR_EQUAL);
 				case '_' : nextChar; return lex_LETTER();
 				case 'a' : ..case 'z': return lex_LETTER();
-				case '{' : nextChar; return new_tok(TT.LCURLY);
+				case '{' : nextChar; return TT.LCURLY;
 				case '|' : nextChar; return lex_multi_equal2_3('|', TT.OR, TT.OR_EQUAL, TT.OR_OR);
-				case '}' : nextChar; return new_tok(TT.RCURLY);
+				case '}' : nextChar; return TT.RCURLY;
 				case '~' : nextChar; return lex_multi_equal2(TT.TILDE, TT.TILDE_EQUAL);
-				default  : nextChar; return new_tok(TT.INVALID);
+				default  : nextChar; return TT.INVALID;
 			}
 		}
 	}
@@ -400,33 +438,33 @@ struct Lexer {
 	}
 
 	// Lex X= tokens
-	private Token lex_multi_equal2(TokenType single_tok, TokenType eq_tok)
+	private TokenType lex_multi_equal2(TokenType single_tok, TokenType eq_tok)
 	{
 		if (c == '=') {
 			nextChar;
-			return new_tok(eq_tok);
+			return eq_tok;
 		}
-		return new_tok(single_tok);
+		return single_tok;
 	}
 
-	private Token lex_multi_equal2_3(dchar chr, TokenType single_tok, TokenType eq_tok, TokenType double_tok)
+	private TokenType lex_multi_equal2_3(dchar chr, TokenType single_tok, TokenType eq_tok, TokenType double_tok)
 	{
 		if (c == chr) { nextChar;
-			return new_tok(double_tok);
+			return double_tok;
 		}
 		if (c == '=') { nextChar;
-			return new_tok(eq_tok);
+			return eq_tok;
 		}
-		return new_tok(single_tok);
+		return single_tok;
 	}
 
-	private Token lex_SLASH() // /
+	private TokenType lex_SLASH() // /
 	{
 		nextChar;
 		if (c == '/')
 		{
 			consumeLine();
-			return new_tok(TT.COMMENT);
+			return TT.COMMENT;
 		}
 		if (c == '*')
 		{
@@ -435,9 +473,9 @@ struct Lexer {
 				switch(c)
 				{
 					case EOI_CHAR:
-						auto loc = new_loc();
-						context.unrecoverable_error(loc, "Unterminated comment");
-						return new_tok(TT.INVALID);
+						set_loc();
+						context.unrecoverable_error(tokenIndex, "Unterminated comment");
+						return TT.INVALID;
 
 					case '\n': lex_EOLN(); continue;
 					case '\r': lex_EOLR(); continue;
@@ -445,130 +483,129 @@ struct Lexer {
 						nextChar;
 						if (c == '/') {
 							nextChar;
-							return new_tok(TT.COMMENT);
+							return TT.COMMENT;
 						}
 						break;
 					default: break;
 				}
 				nextChar;
 			}
-			return new_tok(TT.COMMENT);
+			return TT.COMMENT;
 		}
 		if (c == '=') { nextChar;
-			return new_tok(TT.SLASH_EQUAL);
+			return TT.SLASH_EQUAL;
 		}
-		return new_tok(TT.SLASH);
+		return TT.SLASH;
 	}
 
-	private Token lex_QUOTE_QUOTE() // "
+	private TokenType lex_QUOTE_QUOTE() // "
 	{
 		while (true)
 		{
 			switch(c)
 			{
 				case EOI_CHAR:
-					auto loc = new_loc();
-					context.unrecoverable_error(loc, "Unterminated string literal");
-					return new_tok(TT.INVALID);
+					set_loc();
+					context.unrecoverable_error(tokenIndex, "Unterminated string literal");
+					return TT.INVALID;
 				case '\n': lex_EOLN(); continue;
 				case '\r': lex_EOLR(); continue;
 				case '\"':
 					nextChar; // skip "
-					return new_tok(TT.STRING_LITERAL);
+					return TT.STRING_LITERAL;
 				default: break;
 			}
 			nextChar;
 		}
 	}
 
-	private Token lex_ZERO() // 0
+	private TokenType lex_ZERO() // 0
 	{
-		numberRep = 0;
 		nextChar;
 
 		if (c == 'x' || c == 'X')
 		{
 			nextChar;
 			consumeHexadecimal();
-			return new_tok(TT.INT_LITERAL);
+			return TT.INT_HEX_LITERAL;
 		}
 		else if (c == 'b' || c == 'B')
 		{
 			nextChar;
 			consumeBinary();
-			return new_tok(TT.INT_LITERAL);
+			return TT.INT_BIN_LITERAL;
 		}
 		else
 		{
 			consumeDecimal();
-			return new_tok(TT.INT_LITERAL);
+			return TT.INT_DEC_LITERAL;
 		}
 	}
 
-	private Token lex_DIGIT() // 1-9
+	private TokenType lex_DIGIT() // 1-9
 	{
-		numberRep = c - '0';
 		nextChar;
 		consumeDecimal();
-		return new_tok(TT.INT_LITERAL);
+		return TT.INT_DEC_LITERAL;
 	}
 
-	private Token lex_LETTER() // a-zA-Z_
+	private TokenType lex_LETTER() // a-zA-Z_
 	{
 		switch (c)
 		{
 			case 'b':
 				nextChar;
-				if (c == 'o' && match("ool")) return new_tok(TT.TYPE_BOOL);
-				else if (c == 'r' && match("reak")) return new_tok(TT.BREAK_SYM);
+				if (c == 'o' && match("ool")) return TT.TYPE_BOOL;
+				else if (c == 'r' && match("reak")) return TT.BREAK_SYM;
 				break;
 			case 'c':
 				nextChar;
-				if (c == 'o' && match("ontinue")) return new_tok(TT.CONTINUE_SYM);
-				else if (c == 'a' && match("ast")) return new_tok(TT.CAST);
+				if (c == 'o' && match("ontinue")) return TT.CONTINUE_SYM;
+				else if (c == 'a' && match("ast")) return TT.CAST;
 				break;
-			case 'd': if (match("do")) return new_tok(TT.DO_SYM); break;
-			case 'e': if (match("else")) return new_tok(TT.ELSE_SYM); break;
+			case 'd': if (match("do")) return TT.DO_SYM; break;
+			case 'e':
+				nextChar;
+				if (c == 'l' && match("lse")) return TT.ELSE_SYM;
+				else if (c == 'n' && match("num")) return TT.ENUM;
+				break;
 			case 'f':
 				nextChar;
-				if (c == '3' && match("32")) return new_tok(TT.TYPE_F32);
-				if (c == '6' && match("64")) return new_tok(TT.TYPE_F64);
+				if (c == '3' && match("32")) return TT.TYPE_F32;
+				if (c == '6' && match("64")) return TT.TYPE_F64;
 				break;
 			case 'i':
 				nextChar;
 				switch(c) {
-					case '1': if (match("16")) return new_tok(TT.TYPE_I16); break;
-					case '3': if (match("32")) return new_tok(TT.TYPE_I32); break;
-					case '6': if (match("64")) return new_tok(TT.TYPE_I64); break;
-					case '8': if (match("8"))  return new_tok(TT.TYPE_I8);  break;
-					case 's': if (match("size")) return new_tok(TT.TYPE_ISIZE); break;
-					case 'f': if (match("f")) return new_tok(TT.IF_SYM); break;
+					case '1': if (match("16")) return TT.TYPE_I16; break;
+					case '3': if (match("32")) return TT.TYPE_I32; break;
+					case '6': if (match("64")) return TT.TYPE_I64; break;
+					case '8': if (match("8"))  return TT.TYPE_I8;  break;
+					case 's': if (match("size")) return TT.TYPE_ISIZE; break;
+					case 'f': if (match("f")) return TT.IF_SYM; break;
 					default: break;
 				}
 				break;
-			case 'r': if (match("return")) return new_tok(TT.RETURN_SYM); break;
-			case 's': if (match("struct")) return new_tok(TT.STRUCT_SYM); break;
+			case 'r': if (match("return")) return TT.RETURN_SYM; break;
+			case 's': if (match("struct")) return TT.STRUCT_SYM; break;
 			case 'u':
 				nextChar;
 				switch(c) {
-					case '1': if (match("16")) return new_tok(TT.TYPE_U16); break;
-					case '3': if (match("32")) return new_tok(TT.TYPE_U32); break;
-					case '6': if (match("64")) return new_tok(TT.TYPE_U64); break;
-					case '8': if (match("8"))  return new_tok(TT.TYPE_U8);  break;
-					case 's': if (match("size")) return new_tok(TT.TYPE_USIZE); break;
+					case '1': if (match("16")) return TT.TYPE_U16; break;
+					case '3': if (match("32")) return TT.TYPE_U32; break;
+					case '6': if (match("64")) return TT.TYPE_U64; break;
+					case '8': if (match("8"))  return TT.TYPE_U8;  break;
+					case 's': if (match("size")) return TT.TYPE_USIZE; break;
 					default: break;
 				}
 				break;
-			case 'v': if (match("void")) return new_tok(TT.TYPE_VOID); break;
-			case 'w': if (match("while")) return new_tok(TT.WHILE_SYM); break;
+			case 'v': if (match("void")) return TT.TYPE_VOID; break;
+			case 'w': if (match("while")) return TT.WHILE_SYM; break;
 			default: break;
 		}
 
 		consumeId();
-		Token t = new_tok(TT.IDENTIFIER);
-		string str = getTokenString(t);
-		t.id = context.idMap.getOrRegNoDup(str);
-		return t;
+		return TT.IDENTIFIER;
 	}
 
 	private bool match(string identifier)
@@ -598,7 +635,6 @@ struct Lexer {
 		while (true)
 		{
 			if ('0' <= c && c <= '9') {
-				numberRep = numberRep * 10 + c - '0';
 			} else if (c != '_') return;
 			nextChar;
 		}
@@ -609,11 +645,8 @@ struct Lexer {
 		while (true)
 		{
 			if ('0' <= c && c <= '9') {
-				numberRep = numberRep * 16 + c - '0';
 			} else if ('a' <= c && c <= 'f') {
-				numberRep = numberRep * 16 + c - 'a' + 10;
 			} else if ('A' <= c && c <= 'F') {
-				numberRep = numberRep * 16 + c - 'A' + 10;
 			} else if (c != '_') return;
 			nextChar;
 		}
@@ -624,7 +657,6 @@ struct Lexer {
 		while (true)
 		{
 			if (c == '0' || c == '1') {
-				numberRep = numberRep * 2 + c - '0';
 			} else if (c != '_') return;
 			nextChar;
 		}
@@ -658,20 +690,23 @@ private bool isIdSecond(dchar chr) pure nothrow {
 unittest
 {
 	CompilationContext ctx;
+	TokenType[1] tokenBuffer;
+	SourceLocation[1] locs;
 
-	foreach(i, keyword; keyword_strings)
+
+	foreach(i, string keyword; keyword_strings)
 	{
-		Lexer lexer = Lexer(keyword, &ctx);
-		Token token = lexer.nextToken;
-		assert(token.type == keyword_tokens[i],
-			format("For %s expected %s got %s", keyword, keyword_tokens[i], token.type));
+		Lexer lexer = Lexer(&ctx, keyword, tokenBuffer, locs);
+		TokenType token = lexer.nextToken;
+		assert(token == keyword_tokens[i],
+			format("For %s expected %s got %s", keyword, keyword_tokens[i], token));
 	}
 
-	foreach(i, keyword; keyword_strings)
+	foreach(i, string keyword; keyword_strings)
 	{
-		Lexer lexer = Lexer(keyword~"A", &ctx);
-		Token token = lexer.nextToken;
-		assert(token.type == TT.IDENTIFIER);
+		Lexer lexer = Lexer(&ctx, keyword~"A", tokenBuffer, locs);
+		TokenType token = lexer.nextToken;
+		assert(token == TT.IDENTIFIER);
 	}
 
 	{
@@ -690,161 +725,115 @@ unittest
 			TT.QUESTION,TT.SEMICOLON,TT.SLASH,TT.SLASH_EQUAL,TT.STAR,TT.STAR_EQUAL,
 			TT.TILDE,TT.TILDE_EQUAL,TT.XOR,TT.XOR_EQUAL,TT.LPAREN,TT.RPAREN,
 			TT.LBRACKET,TT.RBRACKET, TT.LCURLY,TT.RCURLY,];
-		foreach(i, op; ops)
+		foreach(i, string op; ops)
 		{
-			Lexer lexer = Lexer(op, &ctx);
-			Token token = lexer.nextToken;
-			assert(token.type == tokens_ops[i],
-				format("For %s expected %s got %s", op, tokens_ops[i], token.type));
+			Lexer lexer = Lexer(&ctx, op, tokenBuffer, locs);
+			TokenType token = lexer.nextToken;
+			assert(token == tokens_ops[i],
+				format("For %s expected %s got %s", op, tokens_ops[i], token));
 		}
 	}
 
-	void testNumeric(string input, TokenType tokType, long expectedValue)
+	void testNumeric(string input, TokenType tokType)
 	{
-		Lexer lexer = Lexer(input, &ctx);
-		assert(lexer.nextToken.type == tokType);
-		assert(lexer.numberRep == expectedValue);
+		Lexer lexer = Lexer(&ctx, input, tokenBuffer, locs);
+		assert(lexer.nextToken == tokType);
 	}
 
-	assert(Lexer("_10", &ctx).nextToken.type == TT.IDENTIFIER);
-	testNumeric("10", TT.INT_LITERAL, 10);
-	testNumeric("1_0", TT.INT_LITERAL, 1_0);
-	testNumeric("10_", TT.INT_LITERAL, 10_);
-	testNumeric("0xFF", TT.INT_LITERAL, 0xFF);
-	testNumeric("0XABCDEF0123456789", TT.INT_LITERAL, 0XABCDEF0123456789);
-	testNumeric("0x1_0", TT.INT_LITERAL, 0x1_0);
-	testNumeric("0b10", TT.INT_LITERAL, 0b10);
-	testNumeric("0B10", TT.INT_LITERAL, 0B10);
-	testNumeric("0b1_0", TT.INT_LITERAL, 0b1_0);
+	assert(Lexer(&ctx, "_10", tokenBuffer, locs).nextToken == TT.IDENTIFIER);
+	testNumeric("10", TT.INT_DEC_LITERAL);
+	testNumeric("1_0", TT.INT_DEC_LITERAL);
+	testNumeric("10_", TT.INT_DEC_LITERAL);
+	testNumeric("0xFF", TT.INT_HEX_LITERAL);
+	testNumeric("0XABCDEF0123456789", TT.INT_HEX_LITERAL);
+	testNumeric("0x1_0", TT.INT_HEX_LITERAL);
+	testNumeric("0b10", TT.INT_BIN_LITERAL);
+	testNumeric("0B10", TT.INT_BIN_LITERAL);
+	testNumeric("0b1_0", TT.INT_BIN_LITERAL);
 
 	{
 		string source = "/*\n*/test";
-		Lexer lexer = Lexer(source, &ctx);
-		Token tok = lexer.nextToken;
-		assert(tok.type == TT.COMMENT);
-		assert(tok.loc.getTokenString(source) == "/*\n*/");
+		Lexer lexer = Lexer(&ctx, source, tokenBuffer, locs);
+		TokenType tok = lexer.nextToken;
+		assert(tok == TT.COMMENT);
+		assert(locs[0].getTokenString(source) == "/*\n*/");
 		tok = lexer.nextToken;
-		assert(tok.type == TT.IDENTIFIER);
-		assert(tok.loc.getTokenString(source) == "test");
+		assert(tok == TT.IDENTIFIER);
+		assert(locs[0].getTokenString(source) == "test");
 	}
 	{
 		string source = "//test\nhello";
-		Lexer lexer = Lexer(source, &ctx);
-		Token tok = lexer.nextToken;
-		assert(tok.type == TT.COMMENT);
-		assert(tok.loc.getTokenString(source) == "//test\n");
+		Lexer lexer = Lexer(&ctx, source, tokenBuffer, locs);
+		TokenType tok = lexer.nextToken;
+		assert(tok == TT.COMMENT);
+		assert(locs[0].getTokenString(source) == "//test\n");
 		tok = lexer.nextToken;
-		assert(tok.type == TT.IDENTIFIER);
-		assert(tok.loc.getTokenString(source) == "hello");
+		assert(tok == TT.IDENTIFIER);
+		assert(locs[0].getTokenString(source) == "hello");
 	}
 	{
 		string source = `"literal"`;
-		Lexer lexer = Lexer(source, &ctx);
-		Token tok = lexer.nextToken;
-		assert(tok.type == TT.STRING_LITERAL);
-		assert(tok.loc.getTokenString(source) == `"literal"`, format("%s", tok));
+		Lexer lexer = Lexer(&ctx, source, tokenBuffer, locs);
+		TokenType tok = lexer.nextToken;
+		assert(tok == TT.STRING_LITERAL);
+		assert(locs[0].getTokenString(source) == `"literal"`, format("%s", tok));
 	}
 }
 
 void pass_parser(ref CompilationContext ctx) {
-	Lexer lexer = Lexer(ctx.input, &ctx);
-	Parser parser = Parser(&lexer, &ctx);
-
-	if (ctx.printSource) {
-		writeln("// Source");
-		writeln(ctx.input);
-	}
+	Parser parser = Parser(&ctx);
 
 	ctx.mod = parser.parseModule();
 
 	if (ctx.printAstFresh && ctx.mod !is null) {
 		auto astPrinter = AstPrinter(&ctx, 2);
+		writeln("// AST fresh");
 		astPrinter.printAst(cast(AstNode*)ctx.mod);
 	}
 }
 
 //version = print_parse;
-struct Parser {
-	Lexer* lexer;
+struct Parser
+{
 	CompilationContext* context;
-
 	Token tok;
+	SourceLocation loc() {
+		return context.tokenLocationBuffer[tok.index];
+	}
 
 	int nesting;
 	auto indent() { return ' '.repeat(nesting*2); }
 	struct Scope { Parser* p; ~this(){--p.nesting;}}
 	Scope scop(Args...)(string name, Args args) { write(indent); writefln(name, args); ++nesting; return Scope(&this); }
 
-	enum tokenStashSize = 4;
-	enum STASH_MASK = tokenStashSize - 1;
-	Token[tokenStashSize] stashedTokens;
-	size_t stashedIndex;
-	size_t numStashedTokens;
-
-	void printChange(Token start) {
-		writef("tok %s -> %s stash ", start, tok);
-		foreach(i; 0..numStashedTokens)
-		{
-			writef("%s ", stashedTokens[(stashedIndex+i) & STASH_MASK]);
-		}
-		writeln;
-	}
-
-	void lexToken()
-	{
-		Token start = tok;
-		do {
-			tok = lexer.nextToken();
-		}
-		while (tok.type == TokenType.COMMENT);
-		//printChange(start);
-	}
-
 	void nextToken()
 	{
-		if (numStashedTokens == 0)
-		{
-			lexToken();
+		do {
+			++tok.index;
+			tok.type = context.tokenBuffer[tok.index];
 		}
-		else
-		{
-			Token start = tok;
-			tok = stashedTokens[stashedIndex & STASH_MASK];
-			--numStashedTokens;
-			++stashedIndex;
-			//printChange(start);
-		}
+		while (tok.type == TokenType.COMMENT);
 	}
 
-	void stashToken()
-	{
-		Token start = tok;
-		stashedTokens[(stashedIndex+numStashedTokens) & STASH_MASK] = tok;
-		++numStashedTokens;
-		//lexToken();
-		//printChange(start);
-	}
-
-	void setup() {}
-	T* make(T, Args...)(SourceLocation start, Args args) { return new T(start, args); }
-	ExpressionNode* makeExpr(T, Args...)(SourceLocation start, Args args) { return cast(ExpressionNode*)new T(start, null, IrIndex(), args); }
+	T* make(T, Args...)(TokenIndex start, Args args) { return new T(start, args); }
+	ExpressionNode* makeExpr(T, Args...)(TokenIndex start, Args args) { return cast(ExpressionNode*)new T(start, null, IrIndex(), args); }
 
 	T* enforceNode(T)(T* t)
 	{
 		if (t is null)
 		{
-			string tokenString = lexer.getTokenString(tok);
-			context.unrecoverable_error(tok.loc, "Expected `%s` while got `%s` token '%s'",
-				T.stringof, tok.type, tokenString);
+			const(char)[] tokenString = context.getTokenString(tok.index);
+			context.unrecoverable_error(tok.index, "Expected `%s` while got `%s` tok '%s'",
+				T.stringof, tok, tokenString);
 		}
 		return t;
 	}
 
 	void expect(TokenType type) {
 		if (tok.type != type) {
-			string tokenString = lexer.getTokenString(tok);
-			context.unrecoverable_error(tok.loc, "Expected `%s` token, while got `%s` token '%s'",
-				type, tok.type, tokenString);
+			const(char)[] tokenString = context.getTokenString(tok.index);
+			context.unrecoverable_error(tok.index, "Expected `%s` token, while got `%s` token '%s'",
+				type, tok, tokenString);
 		}
 	}
 
@@ -853,9 +842,15 @@ struct Parser {
 		nextToken();
 	}
 
+	Identifier makeIdentifier(TokenIndex index)
+	{
+		const(char)[] str = context.getTokenString(index);
+		return context.idMap.getOrRegNoDup(str);
+	}
+
 	Identifier expectIdentifier()
 	{
-		Identifier id = tok.id;
+		Identifier id = makeIdentifier(tok.index);
 		expectAndConsume(TokenType.IDENTIFIER);
 		return id;
 	}
@@ -864,9 +859,10 @@ struct Parser {
 
 	ModuleDeclNode* parseModule() { // <module> ::= <declaration>*
 		version(print_parse) auto s1 = scop("parseModule");
-		SourceLocation start = tok.loc;
-		nextToken();
-		return make!ModuleDeclNode(start, parse_declarations(TokenType.EOI));
+		tok.index = TokenIndex(0);
+		tok.type = context.tokenBuffer[tok.index];
+		expectAndConsume(TokenType.SOI);
+		return make!ModuleDeclNode(tok.index, parse_declarations(TokenType.EOI));
 	}
 
 	AstNode*[] parse_declarations(TokenType until) { // <declaration>*
@@ -886,8 +882,8 @@ struct Parser {
 	/// Can return null
 	AstNode* parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
-		version(print_parse) auto s1 = scop("parse_declaration %s", tok.loc);
-		SourceLocation start = tok.loc;
+		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
+		TokenIndex start = tok.index;
 		if (tok.type == TokenType.STRUCT_SYM) // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
 		{
 			version(print_parse) auto s2 = scop("struct %s", start);
@@ -898,13 +894,20 @@ struct Parser {
 			expectAndConsume(TokenType.RCURLY);
 			return cast(AstNode*)make!StructDeclNode(start, declarations, SymbolRef(structId));
 		}
+		// <enum_decl> = <enum_decl_single> / <enum_decl_multi>
+		// <enum_decl_multi> = "enum" [<identifier>] [":" <type>] {" <identifier> ["=" <expr>] ,* "}"
+		// <enum_decl_single> = "enum" <identifier> [ "=" <expr> ] ";"
+		//else if (tok == TokenType.ENUM)
+		//{
+
+		//}
 		else // <func_declaration> / <var_declaration>
 		{
 			version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
 			TypeNode* type = parse_type();
 			if (type is null)
 			{
-				version(print_parse) auto s3 = scop("<type> is null %s", tok.loc);
+				version(print_parse) auto s3 = scop("<type> is null %s", loc);
 				return null;
 			}
 			Identifier declarationId = expectIdentifier();
@@ -916,7 +919,7 @@ struct Parser {
 				nextToken(); // skip "="
 				initializer = expr();
 				if (!initializer.isExpression) {
-					string tokenString = lexer.getTokenString(initializer.loc);
+					const(char)[] tokenString = context.getTokenString(initializer.loc);
 					context.unrecoverable_error(initializer.loc,
 						"Variable declaration can be only initialized with expressions, not with %s, '%s'",
 						initializer.astType, tokenString);
@@ -969,7 +972,7 @@ struct Parser {
 			}
 			else
 			{
-				context.unrecoverable_error(tok.loc, "Expected '(' or ';', while got '%s'", lexer.getTokenString(tok));
+				context.unrecoverable_error(tok.index, "Expected '(' or ';', while got '%s'", context.getTokenString(tok.index));
 				assert(false);
 			}
 		}
@@ -978,16 +981,16 @@ struct Parser {
 	/// Can return null
 	TypeNode* parse_type_expected()
 	{
-		version(print_parse) auto s1 = scop("parse_type_expected %s", tok.loc);
+		version(print_parse) auto s1 = scop("parse_type_expected %s", tok.index);
 		auto type = parse_type();
-		if (type is null) context.unrecoverable_error(tok.loc, "Expected basic type, while got '%s'", lexer.getTokenString(tok));
+		if (type is null) context.unrecoverable_error(tok.index, "Expected basic type, while got '%s'", context.getTokenString(tok.index));
 		return type;
 	}
 
 	TypeNode* parse_type() // <type> = (<type_basic> / <type_struct>) <type_specializer>*
 	{
-		version(print_parse) auto s1 = scop("parse_type %s", tok.loc);
-		SourceLocation start = tok.loc;
+		version(print_parse) auto s1 = scop("parse_type %s", loc);
+		TokenIndex start = tok.index;
 		TypeNode* base;
 		if (tok.type == TokenType.IDENTIFIER) {
 			Identifier id = expectIdentifier();
@@ -1015,7 +1018,7 @@ struct Parser {
 						ExpressionNode* e = expr();
 						if (e.astType != AstType.literal_int)
 							context.unrecoverable_error(e.loc, "Expected int constant, while got '%s'",
-								lexer.getTokenString(e.loc));
+								context.getTokenString(e.loc));
 						expectAndConsume(TokenType.RBRACKET);
 						uint length = cast(uint)(cast(IntLiteralExprNode*)e).value; // TODO check overflow
 						base = cast(TypeNode*)make!StaticArrayTypeNode(start, base, length);
@@ -1030,22 +1033,22 @@ struct Parser {
 
 	BasicType parse_type_basic()
 	{
-		version(print_parse) auto s1 = scop("parse_type_basic %s", tok.loc);
+		version(print_parse) auto s1 = scop("parse_type_basic %s", loc);
 		if (isBasicTypeToken(tok.type))
 		{
 			auto res = tokenTypeToBasicType(tok.type);
 			nextToken();
 			return res;
 		}
-		context.unrecoverable_error(tok.loc, lexer.input, "Expected basic type, while got '%s'", lexer.getTokenString(tok));
+		context.unrecoverable_error(tok.index, "Expected basic type, while got '%s'", context.getTokenString(tok.index));
 		assert(false);
 	}
 
 	BlockStmtNode* block_stmt() // <block_statement> ::= "{" <statement>* "}"
 	{
-		version(print_parse) auto s1 = scop("block_stmt %s", tok.loc);
+		version(print_parse) auto s1 = scop("block_stmt %s", loc);
 		AstNode*[] statements;
-		SourceLocation start = tok.loc;
+		TokenIndex start = tok.index;
 		expectAndConsume(TokenType.LCURLY);
 		while (tok.type != TokenType.RCURLY)
 		{
@@ -1057,8 +1060,8 @@ struct Parser {
 
 	AstNode* statement()
 	{
-		version(print_parse) auto s1 = scop("statement %s", tok.loc);
-		SourceLocation start = tok.loc;
+		version(print_parse) auto s1 = scop("statement %s", loc);
+		TokenIndex start = tok.index;
 		switch (tok.type)
 		{
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
@@ -1103,31 +1106,31 @@ struct Parser {
 				return cast(AstNode*)block_stmt();
 			default:
 			{
-				version(print_parse) auto s2 = scop("default %s", tok.loc);
-				if (isBasicTypeToken(tok.type) || tok.type == TokenType.STRUCT_SYM) // declaration
+				version(print_parse) auto s2 = scop("default %s", loc);
+				if (isBasicTypeToken(tok.type) ||
+					tok.type == TokenType.STRUCT_SYM ||
+					tok.type == TokenType.ENUM) // declaration
 				{
 					AstNode* decl = parse_declaration;
 					return decl;
 				}
 				else if (tok.type == TokenType.IDENTIFIER)
 				{
-					version(print_parse) auto s3 = scop("<id> %s", tok.loc);
-					stashToken(); // copy to stash
-					lexToken(); // lex into tok
+					Token copy = tok; // save
+					version(print_parse) auto s3 = scop("<id> %s", loc);
+					nextToken();
 
 					if (tok.type == TokenType.IDENTIFIER) // declaration
 					{
-						version(print_parse) auto s4 = scop("<id> declaration %s", tok.loc);
-						stashToken();
-						nextToken(); // move from stash to tok
+						version(print_parse) auto s4 = scop("<id> declaration %s", loc);
+						tok = copy; // restore
 						AstNode* decl = parse_declaration;
 						return decl;
 					}
 					else // expression
 					{
-						version(print_parse) auto s4 = scop("<id> expression %s", tok.loc);
-						stashToken();
-						nextToken(); // move from stash to tok
+						version(print_parse) auto s4 = scop("<id> expression %s", loc);
+						tok = copy; // restore
 					}
 				}
 
@@ -1141,7 +1144,7 @@ struct Parser {
 	}
 
 	ExpressionNode* paren_expr() { /* <paren_expr> ::= "(" <expr> ")" */
-		version(print_parse) auto s1 = scop("paren_expr %s", tok.loc);
+		version(print_parse) auto s1 = scop("paren_expr %s", loc);
 		expectAndConsume(TokenType.LPAREN);
 		auto res = expr();
 		expectAndConsume(TokenType.RPAREN);
@@ -1222,7 +1225,7 @@ private TokenLookups cexp_parser()
 	{
 		import std.algorithm.searching : countUntil;
 		ptrdiff_t pos = countUntil(tokStrings, str);
-		assert(pos != -1, str);
+		assert(pos != -1, str ~ " not found");
 		return cast(TokenType)pos;
 	}
 
@@ -1291,7 +1294,7 @@ private TokenLookups cexp_parser()
 	prefix(0, &nullParen, "("); // for grouping
 
 	// 0 precedence -- never used
-	nilfix(0, &nullLiteral, ["#id", "#num_lit", "#str_lit"]);
+	nilfix(0, &nullLiteral, ["#id", "#num_dec_lit", "#num_bin_lit", "#num_hex_lit", "#str_lit"]);
 	nilfix(0, &null_error_parser, [")", "]", ":", "#eoi", ";"]);
 	return res;
 }
@@ -1303,14 +1306,24 @@ ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
 	switch(token.type) with(TokenType)
 	{
 		case IDENTIFIER:
-			return p.makeExpr!NameUseExprNode(token.loc, SymbolRef(token.id));
+			Identifier id = p.makeIdentifier(token.index);
+			return p.makeExpr!NameUseExprNode(token.index, SymbolRef(id));
 		case STRING_LITERAL:
 			// omit " at the start and end of token
-			string value = p.lexer.getTokenString(token.loc)[1..$-1];
-			return p.makeExpr!StringLiteralExprNode(token.loc, value);
-		case INT_LITERAL:
-			long value = p.lexer.getTokenNumber();
-			return p.makeExpr!IntLiteralExprNode(token.loc, value);
+			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
+			return p.makeExpr!StringLiteralExprNode(token.index, value);
+		case INT_DEC_LITERAL:
+			string value = cast(string)p.context.getTokenString(token.index);
+			long intValue = to!ulong(value);
+			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
+		case INT_HEX_LITERAL:
+			string value = cast(string)p.context.getTokenString(token.index);
+			long intValue = to!ulong(value[2..$], 16); // skip 0x, 0X
+			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
+		case INT_BIN_LITERAL:
+			string value = cast(string)p.context.getTokenString(token.index);
+			long intValue = to!ulong(value[2..$], 2); // skip 0b, 0B
+			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
 		default:
 			p.context.unreachable(); assert(false);
 	}
@@ -1342,7 +1355,7 @@ ExpressionNode* nullPrefixOp(ref Parser p, Token token, int rbp) {
 		default:
 			p.context.unreachable(); assert(false);
 	}
-	return p.makeExpr!UnaryExprNode(token.loc, op, right);
+	return p.makeExpr!UnaryExprNode(token.index, op, right);
 }
 
 // "cast" "(" <expr> ")" <expr>
@@ -1351,7 +1364,7 @@ ExpressionNode* nullCast(ref Parser p, Token token, int rbp) {
 	TypeNode* type = p.parse_type_expected();
 	p.expectAndConsume(TokenType.RPAREN);
 	ExpressionNode* right = p.expr(rbp);
-	return cast(ExpressionNode*) p.make!TypeConvExprNode(token.loc, type, IrIndex(), right);
+	return cast(ExpressionNode*) p.make!TypeConvExprNode(token.index, type, IrIndex(), right);
 }
 
 // Left Denotations -- tokens that take an expression on the left
@@ -1366,14 +1379,14 @@ ExpressionNode* leftIncDec(ref Parser p, Token token, int rbp, ExpressionNode* l
 		default:
 			p.context.unreachable(); assert(false);
 	}
-	return p.makeExpr!UnaryExprNode(token.loc, op, left);
+	return p.makeExpr!UnaryExprNode(token.index, op, left);
 }
 
 // <expr> "[" <expr> "]"
 ExpressionNode* leftIndex(ref Parser p, Token token, int rbp, ExpressionNode* array) {
 	ExpressionNode* index = p.expr(0);
 	p.expectAndConsume(TokenType.RBRACKET);
-	return p.makeExpr!IndexExprNode(token.loc, array, index);
+	return p.makeExpr!IndexExprNode(token.index, array, index);
 }
 
 // Normal binary operator <expr> op <expr>
@@ -1409,19 +1422,19 @@ ExpressionNode* leftBinaryOp(ref Parser p, Token token, int rbp, ExpressionNode*
 		case DOT:                                                 // .
 			NameUseExprNode* name;
 			if (right.astType != AstType.expr_name_use) {
-				p.context.error(token.loc,
+				p.context.error(token.index,
 					"Expected identifier after '.', while got '%s'",
-					p.lexer.getTokenString(token));
+					p.context.getTokenString(token.index));
 			}
 			else
 				name = cast(NameUseExprNode*)right;
-			return p.makeExpr!MemberExprNode(token.loc, left, name);
+			return p.makeExpr!MemberExprNode(token.index, left, name);
 
 		default:
-			p.context.internal_error(token.loc, "parse leftBinaryOp %s", token.type);
+			p.context.internal_error(token.index, "parse leftBinaryOp %s", token.type);
 			assert(false);
 	}
-	return p.makeExpr!BinaryExprNode(token.loc, op, left, right);
+	return p.makeExpr!BinaryExprNode(token.index, op, left, right);
 }
 
 // Binary assignment operator <expr> op= <expr>
@@ -1444,12 +1457,12 @@ ExpressionNode* leftAssignOp(ref Parser p, Token token, int rbp, ExpressionNode*
 		case STAR_EQUAL: op = BinOp.MULT_ASSIGN; break;           // *=
 		case XOR_EQUAL: op = BinOp.XOR_ASSIGN; break;             // ^=
 		default:
-			p.context.internal_error(token.loc, "parse leftAssignOp %s", token.type);
+			p.context.internal_error(token.index, "parse leftAssignOp %s", token.type);
 			assert(false);
 	}
 	left.flags |= AstFlags.isLvalue;
 
-	auto e = p.makeExpr!BinaryExprNode(token.loc, op, left, right);
+	auto e = p.makeExpr!BinaryExprNode(token.index, op, left, right);
 	e.flags |= AstFlags.isAssignment;
 
 	return e;
@@ -1466,5 +1479,5 @@ ExpressionNode* leftFuncCall(ref Parser p, Token token, int unused_rbp, Expressi
 			p.nextToken;
 	}
 	p.expectAndConsume(TokenType.RPAREN);
-	return p.makeExpr!CallExprNode(token.loc, callee, args);
+	return p.makeExpr!CallExprNode(token.index, callee, args);
 }

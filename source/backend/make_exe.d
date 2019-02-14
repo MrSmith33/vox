@@ -67,7 +67,9 @@ void pass_create_executable(ref CompilationContext context)
 	addSection(&idataSection);
 	addSection(&dataSection);
 
-	auto fileParams = FileParameters(DEFAULT_SECTION_ALIGNMENT, DEFAULT_FILE_ALIGNMENT);
+	auto fileParams = FileParameters(DEFAULT_SECTION_ALIGNMENT, context.sectionAlignemnt);
+	if (fileParams.fileAlignment < 512) fileParams.sectionAlignment = fileParams.fileAlignment;
+
 	CoffExecutable executable = CoffExecutable(fileParams, &context);
 	executable.sections = sections.data;
 
@@ -87,7 +89,7 @@ void pass_create_executable(ref CompilationContext context)
 
 	if (context.entryPoint is null)
 	{
-		context.unrecoverable_error(SourceLocation(), "No entry point set. Need 'main' function");
+		context.unrecoverable_error(TokenIndex(), "No entry point set. Need 'main' function");
 	}
 
 	ObjectSymbol* entryPoint = &context.objSymTab.getSymbol(context.entryPoint.backendData.objectSymIndex);

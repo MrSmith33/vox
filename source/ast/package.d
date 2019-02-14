@@ -71,7 +71,7 @@ enum AstFlags {
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
-	this(Args...)(SourceLocation loc, Args args) {
+	this(Args...)(TokenIndex loc, Args args) {
 		this(loc);
 		enum len = this.tupleof.length - 3;
 		enum numDefault = len - args.length;
@@ -79,15 +79,15 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		this.tupleof[3..$-numDefault] = args;
 	}
 
-	this(SourceLocation loc) {
+	this(TokenIndex loc) {
 		this.loc = loc; this.astType = _astType; this.flags = cast(ushort)default_flags; }
-	/*this(SourceLocation loc, int flags) {
+	/*this(TokenIndex loc, int flags) {
 		this.loc = loc; this.astType = _astType; this.flags = cast(ushort)(default_flags|flags); }
-	this(SourceLocation loc, AstType astType) {
+	this(TokenIndex loc, AstType astType) {
 		this.loc = loc; this.astType = astType; this.flags = cast(ushort)default_flags; }
-	this(SourceLocation loc, AstType astType, int flags) {
+	this(TokenIndex loc, AstType astType, int flags) {
 		this.loc = loc; this.astType = astType; this.flags = cast(ushort)(default_flags|flags); }*/
-	SourceLocation loc;
+	TokenIndex loc;
 	AstType astType = _astType;
 	ushort flags;
 

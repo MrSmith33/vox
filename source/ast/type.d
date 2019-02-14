@@ -88,9 +88,9 @@ struct TypeNode {
 			basicTypeNode.basicType == BasicType.t_error;
 	}
 
-	void assertImplemented(SourceLocation loc, CompilationContext* context) {
+	void assertImplemented(TokenIndex tokIdx, CompilationContext* context) {
 		if (!isImplemented)
-			context.error(loc, "Type is not implemented `%s`",
+			context.error(tokIdx, "Type is not implemented `%s`",
 				typeName(context));
 	}
 
@@ -297,7 +297,7 @@ enum BasicTypeFlag : ubyte {
 enum POINTER_SIZE = 8;
 BasicTypeNode basicTypeNode(uint size, BasicType basicType, int typeFlags = 0)
 {
-	return BasicTypeNode(SourceLocation(), size, basicType, cast(ubyte)typeFlags);
+	return BasicTypeNode(TokenIndex(), size, basicType, cast(ubyte)typeFlags);
 }
 
 struct BasicTypeNode {

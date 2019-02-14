@@ -45,7 +45,7 @@ struct SymbolRef
 struct Symbol
 {
 	Identifier id;
-	SourceLocation loc;
+	TokenIndex loc;
 	SymbolClass symClass;
 	ubyte flags;
 	AstNode* node;

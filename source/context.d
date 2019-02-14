@@ -55,6 +55,8 @@ struct CompilationContext
 	BuildType buildType;
 	/// Build executable
 	WindowsSubsystem windowsSubsystem = WindowsSubsystem.WINDOWS_CUI;
+	///
+	uint sectionAlignemnt = 512;
 	/// If true attempt to maximize debuggability
 	bool buildDebug = false;
 	///
@@ -62,12 +64,19 @@ struct CompilationContext
 
 	// storage
 
+	/// Buffer for sources of all modules
+	char[] sourceBuffer;
+	FixedBuffer!SourceFileInfo files;
 	/// Buffer for resulting machine code
 	ubyte[] codeBuffer;
 	ubyte[] importBuffer;
 	ubyte[] binaryBuffer;
 	/// Identifier interning/deduplication
 	IdentifierMap idMap;
+	/// Token buffer
+	TokenType[] tokenBuffer;
+	/// Token locations in source code
+	SourceLocation[] tokenLocationBuffer;
 	/// Buffer for function IR generation
 	FixedBuffer!uint irBuffer;
 	///
@@ -108,8 +117,10 @@ struct CompilationContext
 	bool runTesters = true;
 
 	bool printTodos = false;
-	/// Print source before parsing
+	/// Print source before lexing
 	bool printSource = false;
+	/// Print lexemes after lexing
+	bool printLexemes = false;
 	/// Print AST right after parsing
 	bool printAstFresh = false;
 	/// Print AST after semantic analysis
@@ -124,6 +135,11 @@ struct CompilationContext
 	bool printSymbols = false;
 	bool printCodeHex = false;
 	bool printTimings = false;
+
+	const(char)[] getTokenString(TokenIndex tokenIndex) pure
+	{
+		return tokenLocationBuffer[tokenIndex].getTokenString(sourceBuffer);
+	}
 
 	///
 	string idString(const Identifier id) { return idMap.get(id); }
@@ -151,8 +167,9 @@ struct CompilationContext
 
 	TypeNode* basicTypeNodes(BasicType basicType) { return cast(TypeNode*)&basicTypes[basicType]; }
 
-	void error(Args...)(SourceLocation loc, string format, Args args)
+	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
+		SourceLocation loc = tokenLocationBuffer[tokIdx];
 		sink.putf("file(%s, %s): Error: ", loc.line+1, loc.col+1);
 		sink.putfln(format, args);
 		if (printTraceOnError)
@@ -163,8 +180,9 @@ struct CompilationContext
 		hasErrors = true;
 	}
 
-	void unrecoverable_error(Args...)(SourceLocation loc, string format, Args args)
+	void unrecoverable_error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
+		SourceLocation loc = tokenLocationBuffer[tokIdx];
 		sink.putf("file(%s, %s): Error: ", loc.line+1, loc.col+1);
 		sink.putfln(format, args);
 		if (printTraceOnError)
@@ -186,9 +204,10 @@ struct CompilationContext
 		throw new CompilationException(true);
 	}
 
-	void assertf(Args...)(bool cond, SourceLocation loc, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
+	void assertf(Args...)(bool cond, TokenIndex tokIdx, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
+		SourceLocation loc = tokenLocationBuffer[tokIdx];
 		sink.putf("%s(%s): file(%s, %s): ICE: ", file, line, loc.line+1, loc.col+1);
 		sink.putfln(fmt, args);
 		hasErrors = true;
@@ -201,8 +220,9 @@ struct CompilationContext
 		internal_error_impl("Unreachable", file, line);
 	}
 
-	void internal_error(Args...)(SourceLocation loc, string format, Args args, string file = __MODULE__, int line = __LINE__)
+	void internal_error(Args...)(TokenIndex tokIdx, string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
+		SourceLocation loc = tokenLocationBuffer[tokIdx];
 		sink.putf("source(%s, %s): ", loc.line+1, loc.col+1);
 		internal_error_impl(format, file, line, args);
 	}

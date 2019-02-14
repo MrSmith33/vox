@@ -60,7 +60,7 @@ struct SemanticDeclarations
 	}
 
 	/// Constructs and inserts symbol with id
-	Symbol* insert(Identifier id, SourceLocation loc, SymbolClass symClass, AstNode* node)
+	Symbol* insert(Identifier id, TokenIndex loc, SymbolClass symClass, AstNode* node)
 	{
 		typeof(Symbol.flags) flags = currentScope.isOrdered ? SymbolFlags.isInOrderedScope : 0;
 		auto sym = new Symbol(id, loc, symClass, flags, node);
@@ -181,7 +181,6 @@ struct SemanticLookup
 	Identifier id_ptr;
 	Identifier id_length;
 
-	/// Used in 2 semantic pass
 	void pushCompleteScope(Scope* newScope)
 	{
 		currentScope = newScope;
@@ -193,7 +192,6 @@ struct SemanticLookup
 		}
 	}
 
-	/// Used in 2 semantic pass
 	void popScope()
 	{
 		assert(currentScope);
@@ -214,15 +212,20 @@ struct SemanticLookup
 	}
 
 	/// Look up symbol by Identifier. Searches the whole stack of scopes.
-	Symbol* lookup(const Identifier id, SourceLocation from)
+	Symbol* lookup(const Identifier id, TokenIndex from)
 	{
 		auto sym = symbols.get(id, null);
 		while (sym)
 		{
 			// forward reference allowed for unordered scope
-			if (!sym.isInOrderedScope) break;
-			// not a forward reference
-			else if (from.start > sym.loc.start) break;
+			if (!sym.isInOrderedScope) { break; }
+			// ordered scope
+			else
+			{
+				uint fromStart = context.tokenLocationBuffer[from].start;
+				uint toStart = context.tokenLocationBuffer[sym.loc].start;
+				if (fromStart > toStart) { break; }
+			}
 
 			sym = sym.outerSymbol;
 		}
@@ -690,8 +693,8 @@ struct SemanticStaticTypes
 	}
 
 	void visit(ModuleDeclNode* m) {
-		u8Ptr = new PtrTypeNode(SourceLocation(), context.basicTypeNodes(BasicType.t_u8));
-		u8Slice = new SliceTypeNode(SourceLocation(), context.basicTypeNodes(BasicType.t_u8));
+		u8Ptr = new PtrTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
+		u8Slice = new SliceTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(FunctionDeclNode* f) {

@@ -22,8 +22,11 @@ void runDevTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	//driver.context.printSource = true;
-	//driver.context.printAst = true;
+	driver.context.printSource = false;
+	driver.context.printLexemes = false;
+	driver.context.printAstFresh = false;
+	driver.context.runTesters = true;
+
 	//driver.context.printIr = true;
 	//driver.context.printLir = true;
 	//driver.context.printLiveIntervals = true;
@@ -31,12 +34,12 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
 
-	driver.context.buildType = BuildType.exe;
-	driver.passes = exePasses;
-	driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test30);
+	//driver.context.buildType = BuildType.exe;
+	//driver.passes = exePasses;
+	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
+	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test30);
 }
 
 enum StopOnFirstFail : bool { no = false, yes = true }
@@ -155,6 +158,7 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 	if (dumpTest && driver.context.printTimings) times.print;
 
+	if (!driver.context.runTesters) return;
 	if (mod is null) return;
 
 	final switch (driver.context.buildType)
@@ -164,7 +168,7 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 
 			FunctionDeclNode* funDecl = mod.findFunction(curTest.funcName, &driver.context);
 
-			if (funDecl != null && funDecl.backendData.funcPtr != null && driver.context.runTesters)
+			if (funDecl != null && funDecl.backendData.funcPtr != null)
 			{
 				if (dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
 				curTest.tester(funDecl.backendData.funcPtr);
@@ -177,12 +181,9 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 			import std.path;
 			if(exists(driver.context.outputFilename))
 			{
-				if (driver.context.runTesters)
-				{
-					if (dumpTest) writef("Running: %s", driver.context.outputFilename.absolutePath);
-					auto result = execute(driver.context.outputFilename);
-					if (dumpTest) writefln(", status %s, output '%s'", result.status, result.output);
-				}
+				if (dumpTest) writef("Running: %s", driver.context.outputFilename.absolutePath);
+				auto result = execute(driver.context.outputFilename);
+				if (dumpTest) writefln(", status %s, output '%s'", result.status, result.output);
 			}
 			else
 			{
@@ -773,7 +774,7 @@ int sign(int number)
 	return result;
 }
 
-immutable input31 = q{
+immutable inputX = q{
 	#pragma(lib, "kernel32")
 	u8 WriteConsoleA(
 		void* hConsoleOutput,
@@ -865,3 +866,16 @@ auto test30 = Test("exe SDL", input30, null, null, null, [
 		"SDL_DestroyRenderer", "SDL_DestroyWindow"]),
 	DllModule("kernel32", ["ExitProcess"])]
 );
+
+immutable input31 = q{
+	enum e1;
+	enum i32 e2;
+	enum e3 = 3;
+	enum i32 e4 = 4;
+
+	enum { e5 }
+	enum : i32 { e6 }
+	enum e7 : i32 { e7 }
+	enum e8 { e8 }
+};
+auto test31 = Test("enum", input31);
