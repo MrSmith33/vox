@@ -342,6 +342,23 @@ struct CodeEmitter
 							stackPointerExtraOffset += context.constants.get(instrHeader.args[1]).i64;
 						}
 						break;
+					case Amd64Opcode.imul:
+						context.assertf(instrHeader.args[0].isPhysReg, "%s is not phys reg", instrHeader.args[0]);
+						Register dst = indexToRegister(instrHeader.args[0]);
+						switch(instrHeader.args[1].kind) with(IrValueKind) {
+							case constant:
+								IrConstant con = context.constants.get(instrHeader.args[1]);
+								gen.imulq(dst, dst, Imm32(con.i32));
+								break;
+							case physicalRegister:
+								Register src = indexToRegister(instrHeader.args[1]);
+								gen.imul(dst, src, cast(ArgType)instrHeader.args[0].physRegSize);
+								break;
+							default:
+								context.internal_error("imul %s not implemented", instrHeader.args);
+								assert(false);
+						}
+						break;
 					case Amd64Opcode.call:
 						FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 						FunctionDeclNode* callee = context.mod.functions[calleeIndex];
@@ -381,7 +398,7 @@ struct CodeEmitter
 						}
 						break;
 					case Amd64Opcode.un_branch:
-						Register reg = cast(Register)instrHeader.args[0].physRegIndex;
+						Register reg = indexToRegister(instrHeader.args[0]);
 						gen.testd(reg, reg);
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
@@ -413,7 +430,7 @@ struct CodeEmitter
 						stackPointerExtraOffset += STACK_ITEM_SIZE;
 						break;
 					default:
-						context.internal_error("Unimplemented instruction %s", cast(Amd64Opcode)instrHeader.op);
+						context.internal_error("Unimplemented instruction `%s`", cast(Amd64Opcode)instrHeader.op);
 						break;
 				}
 			}
@@ -469,7 +486,7 @@ struct CodeEmitter
 
 		final switch (src.kind) with(IrValueKind)
 		{
-			case none, listItem, instruction, basicBlock, phi, type: assert(false);
+			case none, listItem, instruction, basicBlock, phi, type, virtualRegister, variable, func: assert(false);
 			case constant:
 				IrConstant con = context.constants.get(src);
 				if (con.numSignedBytes == 1) {
@@ -486,15 +503,12 @@ struct CodeEmitter
 			case global:
 				assert(false); // TODO
 
-			case virtualRegister: context.unreachable; assert(false);
 			case physicalRegister:
 				argSrc.reg = indexToRegister(src);
 				param.srcKind = AsmArgKind.REG;
 				break;
 
 			case stackSlot: context.unreachable; assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
-			case variable: assert(false);
-			case func: context.unreachable; assert(false);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}

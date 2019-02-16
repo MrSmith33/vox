@@ -284,7 +284,7 @@ struct AstToIr
 		context.assertf(!aggrPtr.isVariable, "Aggregate must not be variable (%s)", aggrPtr);
 		context.assertf(indicies.length < MAX_GEP_INDICIES, "too much indicies for GEP instruction (%s) > %s", indicies.length, MAX_GEP_INDICIES);
 
-		IrIndex aggrPtrType = getValueType(aggrPtr, *builder.ir, *context);
+		IrIndex aggrPtrType = ir.getValueType(*context, aggrPtr);
 		IrIndex aggrType = context.types.getPointerBaseType(aggrPtrType);
 
 		foreach (i, IrIndex memberIndex; indicies)
@@ -895,6 +895,7 @@ struct AstToIr
 		currentBlock = afterRight.blockIndex;
 
 		IrIndex address;
+		ExtraInstrArgs extra = { type : makeBasicTypeIndex(IrValueType.i64) };
 		if (i.index.irValue.isConstant)
 		{
 			ulong index = context.constants.get(i.index.irValue).i64;
@@ -903,14 +904,14 @@ struct AstToIr
 			} else {
 				ulong elemSize = i.type.size;
 				IrIndex offset = context.constants.add(IrConstant(index * elemSize));
-				address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irValue, offset).result;
+				address = builder.emitInstr!IrInstr_add(currentBlock, extra, i.array.irValue, offset).result;
 			}
 		}
 		else
 		{
 			IrIndex scale = context.constants.add(IrConstant(i.type.size));
-			IrIndex offset = builder.emitInstr!IrInstr_mul(currentBlock, i.index.irValue, scale).result;
-			address = builder.emitInstr!IrInstr_add(currentBlock, i.array.irValue, offset).result;
+			IrIndex offset = builder.emitInstr!IrInstr_mul(currentBlock, extra, i.index.irValue, scale).result;
+			address = builder.emitInstr!IrInstr_add(currentBlock, extra, i.array.irValue, offset).result;
 		}
 
 		if (i.isLvalue) {
