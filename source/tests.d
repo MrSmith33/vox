@@ -22,10 +22,10 @@ void runDevTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	driver.context.printSource = false;
-	driver.context.printLexemes = false;
-	driver.context.printAstFresh = false;
-	driver.context.runTesters = true;
+	//driver.context.printSource = true;
+	//driver.context.printAstFresh = true;
+	//driver.context.printAstSema = true;
+	//driver.context.runTesters = false;
 
 	//driver.context.printIr = true;
 	//driver.context.printLir = true;
@@ -34,7 +34,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test13);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test31);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -58,8 +58,8 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	Test[] jitTests = [test7, test8, test8_1, test10, test9, test18, test19,
-		test20, test21, test21_2, test22, test23, test24, test25, test26, test27];
+	Test[] jitTests = [test7, test8, test8_1, test10, test9, test13, test18, test19,
+		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31];
 
 	Test[] exeTests = [test28, test29];
 
@@ -867,15 +867,38 @@ auto test30 = Test("exe SDL", input30, null, null, null, [
 	DllModule("kernel32", ["ExitProcess"])]
 );
 
-immutable input31 = q{
-	enum e1;
-	enum i32 e2;
-	enum e3 = 3;
-	enum i32 e4 = 4;
+extern(C) void test31_external_print_num(long param) {
+	testSink.putf("%s", param);
+}
 
-	enum { e5 }
-	enum : i32 { e6 }
-	enum e7 : i32 { e7 }
-	enum e8 { e8 }
+immutable input31 = q{
+	//enum i32 e2; // manifest constant, invalid, need initializer
+	enum e3 = 3; // manifest constant
+	enum i32 e4 = 4; // manifest constant
+
+	enum { e5 = 5 } // anon type
+	enum : i32 { e6 = 6 } // anon type
+
+	enum e1; // type
+	enum e7 : i32 { e7 = 7 } // type
+	enum e8 : i32; // type, body omitted
+	enum e9 { e9 = 9 } // type
+
+	void print_num(i64 val);
+	void test() {
+		print_num(e3);
+		print_num(e4);
+		print_num(e5);
+		print_num(e6);
+		print_num(e7.e7);
+		print_num(e9.e9);
+	}
 };
-auto test31 = Test("enum", input31);
+void tester31(Func25 fun) {
+	fun();
+	//writefln("fun() == '%s'", testSink.text);
+	assert(testSink.text == "345679");
+	testSink.clear;
+}
+auto test31 = Test("enum", input31, "test", cast(Test.Tester)&tester31,
+	[HostSymbol("print_num", cast(void*)&test31_external_print_num)]);

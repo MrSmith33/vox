@@ -21,6 +21,8 @@ mixin template AstVisitorMixin() {
 			case decl_function: auto f = cast(FunctionDeclNode*)n; visit(f); break;
 			case decl_var: auto v = cast(VariableDeclNode*)n; visit(v); break;
 			case decl_struct: auto s = cast(StructDeclNode*)n; visit(s); break;
+			case decl_enum: auto e = cast(EnumDeclaration*)n; visit(e); break;
+			case decl_enum_member: auto e = cast(EnumMemberDecl*)n; visit(e); break;
 
 			case stmt_block: auto b = cast(BlockStmtNode*)n; visit(b); break;
 			case stmt_if: auto i = cast(IfStmtNode*)n; visit(i); break;
@@ -59,6 +61,9 @@ mixin template AstVisitorMixin() {
 	void visit(VariableDeclNode* v) {}
 	void visit(StructDeclNode* s) {
 		foreach (decl; s.declarations) _visit(decl); }
+	void visit(EnumDeclaration* e) {
+		foreach (decl; e.declarations) _visit(decl); }
+	void visit(EnumMemberDecl* m) {}
 	void visit(BlockStmtNode* b) {
 		foreach (stmt; b.statements) _visit(stmt); }
 	void visit(IfStmtNode* i) {

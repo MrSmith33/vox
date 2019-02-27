@@ -16,7 +16,8 @@ public import ast.statement;
 public import ast.type;
 public import ast.visitor;
 
-enum AstType : ubyte {
+enum AstType : ubyte
+{
 	error,
 	abstract_node,
 
@@ -24,6 +25,8 @@ enum AstType : ubyte {
 	decl_function,
 	decl_var,
 	decl_struct,
+	decl_enum,
+	decl_enum_member,
 
 	stmt_block,
 	stmt_if,
@@ -51,7 +54,8 @@ enum AstType : ubyte {
 	type_struct,
 }
 
-enum AstFlags {
+enum AstFlags
+{
 	isDeclaration = 1 <<  0,
 	isScope       = 1 <<  1,
 	isExpression  = 1 <<  2,
@@ -68,9 +72,12 @@ enum AstFlags {
 	isArgument    = 1 <<  9,
 	/// Declaration at module level
 	isGlobal      = 1 << 10,
+	user1         = 1 << 11,
+	user2         = 1 << 12,
 }
 
-mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0) {
+mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0)
+{
 	this(Args...)(TokenIndex loc, Args args) {
 		this(loc);
 		enum len = this.tupleof.length - 3;
@@ -104,8 +111,10 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isGlobal() { return cast(bool)(flags & AstFlags.isGlobal); }
 }
 
-mixin template SymRefNodeData() {
+mixin template SymRefNodeData()
+{
 	SymbolRef symRef;
+
 	string strId(CompilationContext* context) { return context.idString(symRef.id(isSymResolved)); }
 	Identifier id() { return symRef.id(isSymResolved); }
 	void resolveSymbol(Symbol* symbol) {
@@ -115,6 +124,7 @@ mixin template SymRefNodeData() {
 	Symbol* getSym() { assert(isSymResolved, "Unresolved symbol"); return symRef._symbol; }
 }
 
-struct AstNode {
+struct AstNode
+{
 	mixin AstNodeData;
 }

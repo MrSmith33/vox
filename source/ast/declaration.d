@@ -99,15 +99,55 @@ enum VariableFlags : ubyte {
 	isAddressTaken     = 1 << 2,
 }
 
-struct VariableDeclNode {
+struct VariableDeclNode
+{
 	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);
 	mixin SymRefNodeData;
 	TypeNode* type;
 	ExpressionNode* initializer; // may be null
-	ubyte varFlags;
+	ubyte varFlags; // VariableFlags
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
 	IrIndex irValue; // kind is variable or stackSlot, unique id of variable within a function
 	bool forceMemoryStorage() { return cast(bool)(varFlags & VariableFlags.forceMemoryStorage); }
 	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
 	bool isAddressTaken() { return cast(bool)(varFlags & VariableFlags.isAddressTaken); }
+}
+
+struct EnumDeclaration
+{
+	mixin ScopeDeclNodeData!(AstType.decl_enum);
+	mixin SymRefNodeData;
+	TypeNode* memberType;
+	Scope* _scope;
+
+	this(TokenIndex loc, AstNode*[] members, TypeNode* memberType, Identifier id)
+	{
+		this.loc = loc;
+		this.astType = AstType.decl_enum;
+		this.flags = AstFlags.isScope | AstFlags.isDeclaration;
+		this.declarations = members;
+		this.memberType = memberType;
+		this.symRef = SymbolRef(id);
+	}
+
+	/// Anonymous
+	this(TokenIndex loc, AstNode*[] members, TypeNode* memberType)
+	{
+		this.loc = loc;
+		this.astType = AstType.decl_enum;
+		this.flags = AstFlags.isScope | AstFlags.isDeclaration | AstFlags.user1;
+		this.declarations = members;
+		this.memberType = memberType;
+	}
+
+	bool isAnonymous() { return cast(bool)(flags & AstFlags.user1); }
+}
+
+struct EnumMemberDecl
+{
+	mixin AstNodeData!(AstType.decl_enum_member, AstFlags.isDeclaration | AstFlags.isStatement);
+	mixin SymRefNodeData;
+	TypeNode* type;
+	ExpressionNode* initializer;
+	ushort scopeIndex;
 }

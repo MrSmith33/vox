@@ -566,30 +566,54 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] var expr value (%s) begin", v.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr value (%s) end", v.loc);
 
-		if (v.isLvalue) {
-			v.irValue = v.getSym.varDecl.irValue;
-		}
-		else {
-			TypeNode* type = v.getSym.varDecl.type;
-			bool passByPtr = type.astType == AstType.type_struct || type.astType == AstType.type_slice;
-			if (v.isArgument && passByPtr)
+		switch (v.getSym.symClass) with(SymbolClass)
+		{
+			case c_enum:
 			{
-				IrIndex irType = type.genIrType(context);
-				uint size = context.types.typeSize(irType);
-				if (size == 1 || size == 2 || size == 4 || size == 8)
-				{
-					// pass by value
-					v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
-				}
-				else
-				{
-					// pass pointer
-					context.todo("need to pass pointer to copy");
+				break;
+			}
+			case c_enum_member:
+			{
+				EnumMemberDecl* member = v.getSym.enumMember;
+				context.assertf(member.type !is null, member.loc, "%s type is null", member.strId(context));
+				IrLabel afterExpr = IrLabel(currentBlock);
+				visitExprValue(member.initializer, currentBlock, afterExpr);
+				currentBlock = afterExpr.blockIndex;
+				v.irValue = member.initializer.irValue;
+				break;
+			}
+			case c_variable:
+			{
+				if (v.isLvalue) {
 					v.irValue = v.getSym.varDecl.irValue;
 				}
+				else {
+					TypeNode* type = v.getSym.varDecl.type;
+					bool passByPtr = type.astType == AstType.type_struct || type.astType == AstType.type_slice;
+					if (v.isArgument && passByPtr)
+					{
+						IrIndex irType = type.genIrType(context);
+						uint size = context.types.typeSize(irType);
+						if (size == 1 || size == 2 || size == 4 || size == 8)
+						{
+							// pass by value
+							v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+						}
+						else
+						{
+							// pass pointer
+							context.todo("need to pass pointer to copy");
+							v.irValue = v.getSym.varDecl.irValue;
+						}
+					}
+					else
+					{
+						v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+					}
+				}
+				break;
 			}
-			else
-				v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+			default: context.unreachable; assert(false);
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -597,20 +621,42 @@ struct AstToIr
 	void visitExprValue(MemberExprNode* m, IrIndex currentBlock, ref IrLabel nextStmt) {
 		version(CfgGenPrint) writefln("[CFG GEN] beg MEMBER cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end MEMBER cur %s next %s", currentBlock, nextStmt);
-		IrLabel afterExpr = IrLabel(currentBlock);
-		m.aggregate.flags |= AstFlags.isLvalue;
-		visitExprValue(m.aggregate, currentBlock, afterExpr);
-		currentBlock = afterExpr.blockIndex;
 
-		IrIndex ptrIndex = context.constants.add(IrConstant(0));
-		IrIndex memberIndex = context.constants.add(IrConstant(m.memberIndex));
-		m.irValue = buildGEP(currentBlock, m.aggregate.irValue, ptrIndex, memberIndex);
-		if (m.isLvalue) {
-			// already stores l-value
+		IrLabel afterAggr = IrLabel(currentBlock);
+		m.aggregate.flags |= AstFlags.isLvalue;
+		visitExprValue(m.aggregate, currentBlock, afterAggr);
+		currentBlock = afterAggr.blockIndex;
+
+		if (m.aggregate.astType == AstType.expr_name_use)
+		{
+			auto name = (cast(NameUseExprNode*)m.aggregate);
+			switch (name.getSym.symClass) with(SymbolClass)
+			{
+				case c_enum:
+				{
+					IrLabel afterMember = IrLabel(currentBlock);
+					visitExprValue(m.member, currentBlock, afterMember);
+					currentBlock = afterMember.blockIndex;
+					m.irValue = m.member.irValue;
+					break;
+				}
+				case c_variable:
+				{
+					IrIndex ptrIndex = context.constants.add(IrConstant(0));
+					IrIndex memberIndex = context.constants.add(IrConstant(m.memberIndex));
+					m.irValue = buildGEP(currentBlock, m.aggregate.irValue, ptrIndex, memberIndex);
+					if (m.isLvalue) {
+						// already stores l-value
+					}
+					else {
+						m.irValue = load(currentBlock, m.irValue);
+					}
+					break;
+				}
+				default: assert(false);
+			}
 		}
-		else {
-			m.irValue = load(currentBlock, m.irValue);
-		}
+
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprValue(IntLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -618,7 +664,11 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end INT LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] int literal value (%s) value %s", c.loc, c.value);
-		c.irValue = context.constants.add(IrConstant(c.value, c.type.genIrType(context)));
+
+		if (!c.irValue.isDefined) {
+			c.irValue = context.constants.add(IrConstant(c.value, c.type.genIrType(context)));
+		}
+
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	void visitExprValue(StringLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -626,12 +676,16 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end STR LITERAL VAL cur %s next %s", currentBlock, nextStmt);
 		version(IrGenPrint) writefln("[IR GEN] str literal value (%s) value %s", c.loc, c.value);
-		c.irValue = context.globals.add();
-		c.irValueLength = context.constants.add(IrConstant(c.value.length, makeBasicTypeIndex(IrValueType.i64)));
-		IrGlobal* global = &context.globals.get(c.irValue);
-		global.setInitializer(cast(ubyte[])c.value);
-		global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
-		global.type = c.type.genIrType(context);
+
+		if (!c.irValue.isDefined) {
+			c.irValue = context.globals.add();
+			c.irValueLength = context.constants.add(IrConstant(c.value.length, makeBasicTypeIndex(IrValueType.i64)));
+			IrGlobal* global = &context.globals.get(c.irValue);
+			global.setInitializer(cast(ubyte[])c.value);
+			global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
+			global.type = c.type.genIrType(context);
+		}
+
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
@@ -842,7 +896,7 @@ struct AstToIr
 			visitExprValue(arg, currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
 			argsBuf[i] = arg.irValue;
-			debug context.assertf(arg.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, arg.astType, arg.loc);
+			debug context.assertf(arg.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, arg.astType, context.tokenLoc(arg.loc));
 		}
 
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc

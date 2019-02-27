@@ -102,6 +102,23 @@ struct SemanticDeclarations
 		foreach (decl; s.declarations) _visit(decl);
 		popScope;
 	}
+	void visit(EnumDeclaration* e) {
+		if (e.isAnonymous)
+		{
+			foreach (decl; e.declarations) _visit(decl);
+		}
+		else
+		{
+			e.resolveSymbol = insert(e.id, e.loc, SymbolClass.c_enum, cast(AstNode*)e);
+			e._scope = pushScope(context.idString(e.id), No.ordered);
+			foreach (decl; e.declarations) _visit(decl);
+			popScope;
+		}
+	}
+	void visit(EnumMemberDecl* m) {
+		m.resolveSymbol = insert(m.id, m.loc, SymbolClass.c_enum_member, cast(AstNode*)m);
+		if (m.initializer) _visit(m.initializer);
+	}
 	void visit(BlockStmtNode* b) {
 		b._scope = pushScope("Block", Yes.ordered);
 		foreach(stmt; b.statements) _visit(stmt);
@@ -253,29 +270,57 @@ struct SemanticLookup
 
 		Symbol* aggSym = (cast(NameUseExprNode*)expr.aggregate).getSym;
 
-		if (aggSym.symClass != SymbolClass.c_variable) {
-			context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, aggSym.symClass);
-			return;
-		}
-
-		VariableDeclNode* varDecl = aggSym.varDecl;
-
-		bool success;
-		switch (varDecl.type.astType)
+		switch(aggSym.symClass)
 		{
-			case AstType.type_slice:
-				success = lookupSliceMember(expr, varDecl.type.sliceTypeNode, id);
+			case SymbolClass.c_variable:
+				bool success;
+				VariableDeclNode* varDecl = aggSym.varDecl;
+
+				switch (varDecl.type.astType)
+				{
+					case AstType.type_slice:
+						success = lookupSliceMember(expr, varDecl.type.sliceTypeNode, id);
+						break;
+
+					case AstType.type_struct:
+						success = lookupStructMember(expr, varDecl.type.structTypeNode, id);
+						break;
+
+					default: break;
+				}
+				if (!success)
+					context.error(expr.loc, "`%s` of type `%s` has no member `%s`",
+						varDecl.strId(context), varDecl.type.printer(context), idStr);
 				break;
 
-			case AstType.type_struct:
-				success = lookupStructMember(expr, varDecl.type.structTypeNode, id);
+			case SymbolClass.c_enum:
+				EnumDeclaration* enumDecl = aggSym.enumDecl;
+				context.assertf(!enumDecl.isAnonymous, expr.loc,
+					"Trying to get member from anonymous enum defined at %s",
+					context.tokenLoc(enumDecl.loc));
+
+				Symbol* memberSym = enumDecl._scope.symbols.get(id, null);
+				if (memberSym is null)
+				{
+					context.error(expr.loc, "Enum `%s` has no member `%s`",
+						enumDecl.strId(context), idStr);
+					break;
+				}
+
+				context.assertf(memberSym.symClass == SymbolClass.c_enum_member, expr.loc,
+					"Unexpected enum member %s", memberSym.symClass);
+
+				expr.member.resolveSymbol(memberSym);
+
+				EnumMemberDecl* enumMember = memberSym.enumMember;
+				expr.type = enumMember.type;
+				expr.memberIndex = enumMember.scopeIndex;
 				break;
 
-			default: break;
+			default:
+				context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, aggSym.symClass);
+				return;
 		}
-		if (!success)
-			context.error(expr.loc, "`%s` of type `%s` has no member `%s`",
-				varDecl.strId(context), varDecl.type.printer(context), idStr);
 	}
 
 	bool lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id)
@@ -319,6 +364,14 @@ struct SemanticLookup
 				case SymbolClass.c_struct:
 					context.internal_error("member structs are not implemented");
 					assert(false);
+
+				case SymbolClass.c_enum:
+					context.internal_error("member enums are not implemented");
+					assert(false);
+
+				case SymbolClass.c_enum_member:
+					context.internal_error("enums member are not implemented");
+					assert(false);
 			}
 		}
 
@@ -348,6 +401,22 @@ struct SemanticLookup
 		pushCompleteScope(s._scope);
 		foreach (decl; s.declarations) _visit(decl);
 		popScope;
+	}
+	void visit(EnumDeclaration* e) {
+		if (e.isAnonymous)
+		{
+			foreach (decl; e.declarations) _visit(decl);
+		}
+		else
+		{
+			pushCompleteScope(e._scope);
+			foreach (decl; e.declarations) _visit(decl);
+			popScope;
+		}
+	}
+	void visit(EnumMemberDecl* m) {
+		_visit(m.type);
+		if (m.initializer) _visit(m.initializer);
 	}
 	void visit(BlockStmtNode* b) {
 		pushCompleteScope(b._scope);
@@ -711,6 +780,7 @@ struct SemanticStaticTypes
 	}
 	void visit(VariableDeclNode* v) {
 		_visit(v.type);
+
 		if (v.initializer) {
 			_visit(v.initializer);
 			autoconvTo(v.initializer, v.type);
@@ -727,6 +797,22 @@ struct SemanticStaticTypes
 	}
 	void visit(StructDeclNode* s) {
 		foreach (decl; s.declarations) _visit(decl);
+	}
+	void visit(EnumDeclaration* e) {
+		foreach (decl; e.declarations) _visit(decl);
+	}
+	void visit(EnumMemberDecl* m) {
+		_visit(m.type);
+
+		if (m.initializer !is null) {
+			if (!m.initializer.isLiteral) {
+				context.error(m.initializer.loc, "enum members must be initialized with literals");
+				return;
+			}
+
+			_visit(m.initializer);
+			autoconvTo(m.initializer, m.type);
+		}
 	}
 	void visit(BlockStmtNode* b) {
 		foreach(stmt; b.statements) _visit(stmt);

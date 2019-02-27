@@ -141,6 +141,11 @@ struct CompilationContext
 		return tokenLocationBuffer[tokenIndex].getTokenString(sourceBuffer);
 	}
 
+	SourceLocation tokenLoc(TokenIndex tokenIndex)
+	{
+		return tokenLocationBuffer[tokenIndex];
+	}
+
 	///
 	string idString(const Identifier id) { return idMap.get(id); }
 

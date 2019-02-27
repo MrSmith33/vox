@@ -43,6 +43,17 @@ struct AstPrinter {
 	void visit(StructDeclNode* s) {
 		print("STRUCT ", s.strId(context));
 		foreach (decl; s.declarations) pr_node(decl); }
+	void visit(EnumDeclaration* e) {
+		if (e.isAnonymous)
+			print("ENUM ", e.memberType.printer(context));
+		else
+			print("ENUM ", e.memberType.printer(context), " ", e.strId(context));
+		foreach (decl; e.declarations) pr_node(decl);
+	}
+	void visit(EnumMemberDecl* m) {
+		print("ENUM MEMBER ", m.type.printer(context), " ", m.strId(context));
+		if (m.initializer) pr_node(cast(AstNode*)m.initializer);
+	}
 	void visit(BlockStmtNode* b) {
 		print("BLOCK");
 		foreach(stmt; b.statements) pr_node(stmt); }
@@ -145,6 +156,17 @@ struct AstDotPrinter {
 	void visit(StructDeclNode* s) {
 		printLabel(s, `STRUCT\n%s`, s.strId(context));
 		foreach (decl; s.declarations) pr_node_edge(s, decl); }
+	void visit(EnumDeclaration* e) {
+		if (e.isAnonymous)
+			printLabel(e, `ENUM\n%s`, e.memberType.printer(context));
+		else
+			printLabel(e, `ENUM\n%s %s`, e.memberType.printer(context), e.strId(context));
+		foreach (decl; e.declarations) pr_node_edge(e, decl);
+	}
+	void visit(EnumMemberDecl* m) {
+		printLabel(m, `ENUM MEMBER\n%s %s`, m.type.printer(context), m.strId(context));
+		if (m.initializer) pr_node_edge(m, m.initializer);
+	}
 	void visit(BlockStmtNode* b) {
 		printLabel(b, "BLOCK");
 		foreach(stmt; b.statements) pr_node_edge(b, stmt); }

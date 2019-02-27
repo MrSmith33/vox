@@ -130,7 +130,7 @@ struct Parser
 
 	void expectAndConsume(TokenType type) {
 		expect(type);
-		nextToken();
+		nextToken;
 	}
 
 	Identifier makeIdentifier(TokenIndex index)
@@ -174,26 +174,17 @@ struct Parser
 	AstNode* parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
-		TokenIndex start = tok.index;
 		if (tok.type == TokenType.STRUCT_SYM) // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
 		{
-			version(print_parse) auto s2 = scop("struct %s", start);
-			nextToken(); // skip "struct"
-			Identifier structId = expectIdentifier();
-			expectAndConsume(TokenType.LCURLY);
-			AstNode*[] declarations = parse_declarations(TokenType.RCURLY);
-			expectAndConsume(TokenType.RCURLY);
-			return cast(AstNode*)make!StructDeclNode(start, declarations, SymbolRef(structId));
+			return parse_struct();
 		}
-		// <enum_decl> = <enum_decl_single> / <enum_decl_multi>
-		// <enum_decl_multi> = "enum" [<identifier>] [":" <type>] {" <identifier> ["=" <expr>] ,* "}"
-		// <enum_decl_single> = "enum" <identifier> [ "=" <expr> ] ";"
-		//else if (tok == TokenType.ENUM)
-		//{
-
-		//}
+		else if (tok.type == TokenType.ENUM)
+		{
+			return parse_enum();
+		}
 		else // <func_declaration> / <var_declaration>
 		{
+			TokenIndex start = tok.index;
 			version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
 			TypeNode* type = parse_type();
 			if (type is null)
@@ -207,7 +198,7 @@ struct Parser
 			if (tok.type == TokenType.EQUAL) // "=" <expression>
 			{
 				// <var_decl> = <type> <identifier> ("=" <expression>)? ";"
-				nextToken(); // skip "="
+				nextToken; // skip "="
 				initializer = expr();
 				if (!initializer.isExpression) {
 					const(char)[] tokenString = context.getTokenString(initializer.loc);
@@ -221,7 +212,7 @@ struct Parser
 			if (tok.type == TokenType.SEMICOLON) // <var_declaration> ::= <type> <id> ";"
 			{
 				version(print_parse) auto s3 = scop("<var_declaration> %s", start);
-				nextToken(); // skip ";"
+				nextToken; // skip ";"
 				return cast(AstNode*)make!VariableDeclNode(start, SymbolRef(declarationId), type, initializer);
 			}
 			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
@@ -247,7 +238,7 @@ struct Parser
 					param.varFlags |= VariableFlags.isParameter;
 					param.scopeIndex = cast(typeof(param.scopeIndex))paramIndex;
 					params ~= param;
-					if (tok.type == TokenType.COMMA) nextToken(); // skip ","
+					if (tok.type == TokenType.COMMA) nextToken; // skip ","
 					else break;
 				}
 				expectAndConsume(TokenType.RPAREN);
@@ -269,7 +260,198 @@ struct Parser
 		}
 	}
 
-	/// Can return null
+	// <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
+	AstNode* parse_struct()
+	{
+		TokenIndex start = tok.index;
+		version(print_parse) auto s2 = scop("struct %s", start);
+		nextToken; // skip "struct"
+		Identifier structId = expectIdentifier();
+		expectAndConsume(TokenType.LCURLY);
+		AstNode*[] declarations = parse_declarations(TokenType.RCURLY);
+		expectAndConsume(TokenType.RCURLY);
+		return cast(AstNode*)make!StructDeclNode(start, declarations, SymbolRef(structId));
+	}
+
+	// <enum_decl> = <enum_decl_single> / <enum_decl_multi>
+	// <enum_decl_multi> = "enum" [<identifier>] [":" <type>] {" <identifier> ["=" <expr>] ,* "}"
+	// <enum_decl_single> = "enum" <identifier> [ "=" <expr> ] ";"
+
+	// enum i32 e2; // manifest constant, invalid, need initializer
+	// enum e3 = 3; // manifest constant
+	// enum i32 e4 = 4; // manifest constant
+
+	// enum { e5 } // anon type
+	// enum : i32 { e6 } // anon type
+
+	// enum e1; // type
+	// enum e7 : i32 { e7 } // type
+	// enum e8 : i32; // type, body omitted
+	// enum e9 { e9 } // type
+	AstNode* parse_enum()
+	{
+		TokenIndex start = tok.index;
+		nextToken; // slip `enum`
+
+		TypeNode* intType = context.basicTypeNodes(BasicType.t_i32);
+
+		TypeNode* parseColonType()
+		{
+			nextToken; // skip ":"
+			TypeNode* type = parse_type();
+			if (type is null)
+				context.unrecoverable_error(tok.index,
+					"Expected type after `enum :`, while got `%s`", context.getTokenString(tok.index));
+
+			return type;
+		}
+
+		AstNode*[] tryParseEnumBody(TypeNode* type)
+		{
+			if (tok.type == TokenType.SEMICOLON) {
+				nextToken; // skip ";"
+				return null;
+			} else if (tok.type == TokenType.LCURLY) {
+				return parse_enum_body(type);
+			} else {
+				context.unrecoverable_error(tok.index,
+					"Expected `;` or `{` at the end of enum declaration, while got `%s`",
+					context.getTokenString(tok.index));
+				return null;
+			}
+		}
+
+		// enum T e4 = initializer;
+		AstNode* parseTypeEnum()
+		{
+			TypeNode* type = parse_type();
+			if (type is null)
+				context.unrecoverable_error(tok.index,
+					"Expected type after `enum`, while got `%s`",
+					context.getTokenString(tok.index));
+
+			Identifier enumId = expectIdentifier;
+			expectAndConsume(TokenType.EQUAL); // "="
+			ExpressionNode* value = expr; // initializer
+			auto member = make!EnumMemberDecl(start, SymbolRef(enumId), type, value);
+
+			expectAndConsume(TokenType.SEMICOLON); // ";"
+
+			// enum i32 e4 = 4;
+			return cast(AstNode*)member;
+		}
+
+		// can be both enum identifier and type identifier
+		if (tok.type == TokenType.IDENTIFIER)
+		{
+			Token copy = tok; // save
+			TokenIndex id = tok.index;
+			nextToken; // skip identifier
+
+			// enum type with no type or body
+			// enum e1;
+			if (tok.type == TokenType.SEMICOLON)
+			{
+				nextToken; // skip ";"
+				Identifier enumId = makeIdentifier(id);
+
+				return cast(AstNode*)make!EnumDeclaration(start, null, intType, enumId);
+			}
+			else if (tok.type == TokenType.EQUAL)
+			{
+				nextToken; // skip "="
+				Identifier enumId = makeIdentifier(id);
+				ExpressionNode* value = expr;
+				auto member = make!EnumMemberDecl(start, SymbolRef(enumId), intType, value);
+
+				expectAndConsume(TokenType.SEMICOLON); // ";"
+
+				// enum e3 = 3;
+				return cast(AstNode*)member;
+			}
+			// enum e7 : i32 ...
+			else if (tok.type == TokenType.COLON)
+			{
+				Identifier enumId = makeIdentifier(id);
+				TypeNode* type = parseColonType;
+				AstNode*[] members = tryParseEnumBody(type);
+
+				// enum e7 : i32 { e7 }
+				// enum e8 : i32;
+				return cast(AstNode*)make!EnumDeclaration(start, members, type, enumId);
+			}
+			else if (tok.type == TokenType.LCURLY)
+			{
+				Identifier enumId = makeIdentifier(id);
+				TypeNode* type = intType;
+				AstNode*[] members = parse_enum_body(type);
+
+				// enum e9 { e9 }
+				return cast(AstNode*)make!EnumDeclaration(start, members, type, enumId);
+			}
+			else
+			{
+				tok = copy; // restore
+				return parseTypeEnum;
+			}
+		}
+		else if (tok.type == TokenType.COLON)
+		{
+			TypeNode* type = parseColonType;
+			AstNode*[] members = parse_enum_body(type);
+
+			// enum : i32 { e6 }
+			return cast(AstNode*)make!EnumDeclaration(start, members, type);
+		}
+		else if (tok.type == TokenType.LCURLY)
+		{
+			TypeNode* type = intType;
+			AstNode*[] members = parse_enum_body(type);
+
+			// enum { e5 }
+			return cast(AstNode*)make!EnumDeclaration(start, members, type);
+		}
+		else if (isBasicTypeToken(tok.type))
+		{
+			return parseTypeEnum;
+		}
+		else
+		{
+			context.unrecoverable_error(tok.index,
+				"Invalid enum declaration, got %s after `enum`",
+				context.getTokenString(tok.index));
+			assert(false);
+		}
+	}
+
+	AstNode*[] parse_enum_body(TypeNode* type) { // { id [= val], ... }
+		expectAndConsume(TokenType.LCURLY);
+		AstNode*[] members;
+		ushort varIndex = 0;
+		while (tok.type != TokenType.RCURLY)
+		{
+			TokenIndex start = tok.index;
+			Identifier id = expectIdentifier;
+			ExpressionNode* value;
+
+			if (tok.type == TokenType.EQUAL)
+			{
+				nextToken; // skip "="
+				value = expr;
+			}
+
+			auto member = make!EnumMemberDecl(start, SymbolRef(id), type, value);
+			member.scopeIndex = varIndex++;
+			members ~= cast(AstNode*)member;
+
+			if (tok.type == TokenType.COMMA) {
+				nextToken; // skip ","
+			} else break;
+		}
+		expectAndConsume(TokenType.RCURLY);
+		return members;
+	}
+
 	TypeNode* parse_type_expected()
 	{
 		version(print_parse) auto s1 = scop("parse_type_expected %s", tok.index);
@@ -278,6 +460,7 @@ struct Parser
 		return type;
 	}
 
+	/// Can return null
 	TypeNode* parse_type() // <type> = (<type_basic> / <type_struct>) <type_specializer>*
 	{
 		version(print_parse) auto s1 = scop("parse_type %s", loc);
@@ -295,13 +478,13 @@ struct Parser
 			while (true)
 			{
 				if (tok.type == TokenType.STAR) { // '*' pointer
-					nextToken();
+					nextToken;
 					base = cast(TypeNode*)make!PtrTypeNode(start, base);
 				} else if (tok.type == TokenType.LBRACKET) {
-					nextToken();
+					nextToken;
 					if (tok.type == TokenType.RBRACKET) // '[' ']' slice
 					{
-						nextToken(); // skip ']'
+						nextToken; // skip ']'
 						base = cast(TypeNode*)make!SliceTypeNode(start, base);
 					}
 					else // '[' <expression> ']' static array
@@ -328,7 +511,7 @@ struct Parser
 		if (isBasicTypeToken(tok.type))
 		{
 			auto res = tokenTypeToBasicType(tok.type);
-			nextToken();
+			nextToken;
 			return res;
 		}
 		context.unrecoverable_error(tok.index, "Expected basic type, while got '%s'", context.getTokenString(tok.index));
@@ -356,42 +539,42 @@ struct Parser
 		switch (tok.type)
 		{
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
-				nextToken();
+				nextToken;
 				ExpressionNode* condition = paren_expr();
 				AstNode* thenStatement = statement();
 				AstNode* elseStatement;
 				if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
-					nextToken();
+					nextToken;
 					elseStatement = statement();
 				}
 				return cast(AstNode*)make!IfStmtNode(start, condition, thenStatement, elseStatement);
 			case TokenType.WHILE_SYM:  /* "while" <paren_expr> <statement> */
-				nextToken();
+				nextToken;
 				ExpressionNode* condition = paren_expr();
 				AstNode* statement = statement();
 				return cast(AstNode*)make!WhileStmtNode(start, condition, statement);
 			case TokenType.DO_SYM:  /* "do" <statement> "while" <paren_expr> ";" */
-				nextToken();
+				nextToken;
 				AstNode* statement = statement();
 				expectAndConsume(TokenType.WHILE_SYM);
 				ExpressionNode* condition = paren_expr();
 				expectAndConsume(TokenType.SEMICOLON);
 				return cast(AstNode*)make!DoWhileStmtNode(start, condition, statement);
 			case TokenType.RETURN_SYM:  /* return <expr> */
-				nextToken();
+				nextToken;
 				ExpressionNode* expression = tok.type != TokenType.SEMICOLON ? expr() : null;
 				expectAndConsume(TokenType.SEMICOLON);
 				return cast(AstNode*)make!ReturnStmtNode(start, expression);
 			case TokenType.BREAK_SYM:  /* break; */
-				nextToken();
+				nextToken;
 				expectAndConsume(TokenType.SEMICOLON);
 				return cast(AstNode*)make!BreakStmtNode(start);
 			case TokenType.CONTINUE_SYM:  /* continue; */
-				nextToken();
+				nextToken;
 				expectAndConsume(TokenType.SEMICOLON);
 				return cast(AstNode*)make!ContinueStmtNode(start);
 			case TokenType.SEMICOLON:  /* ";" */
-				nextToken();
+				nextToken;
 				return cast(AstNode*)make!BlockStmtNode(start, null); // TODO: make this an error
 			case TokenType.LCURLY:  /* "{" { <statement> } "}" */
 				return cast(AstNode*)block_stmt();
@@ -409,7 +592,7 @@ struct Parser
 				{
 					Token copy = tok; // save
 					version(print_parse) auto s3 = scop("<id> %s", loc);
-					nextToken();
+					nextToken;
 
 					if (tok.type == TokenType.IDENTIFIER) // declaration
 					{
