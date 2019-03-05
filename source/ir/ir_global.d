@@ -56,7 +56,7 @@ struct IrGlobal
 	void removeUser(IrIndex user) { --numUsers; }
 	void setInitializer(ubyte[] data) {
 		initializerPtr = data.ptr;
-		assert(data.length <= 1024*1024*1024*1, "initializer is bigger than 1GB");
+		assert(data.length <= 1024UL*1024*1024*1, "initializer is bigger than 1GB");
 		length = cast(uint)data.length;
 	}
 

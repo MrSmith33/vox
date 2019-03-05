@@ -37,8 +37,6 @@ enum IceBehavior : ubyte {
 ///
 struct CompilationContext
 {
-	/// Module source
-	string input;
 	///
 	string outputFilename = "out.exe";
 
@@ -69,8 +67,10 @@ struct CompilationContext
 	FixedBuffer!SourceFileInfo files;
 	/// Buffer for resulting machine code
 	ubyte[] codeBuffer;
+	/// Buffer for indirect addresses when in JIT mode
+	/// Buffer for import section when in exe mode
 	ubyte[] importBuffer;
-	ubyte[] binaryBuffer;
+	FixedBuffer!ubyte binaryBuffer;
 	/// Identifier interning/deduplication
 	IdentifierMap idMap;
 	/// Token buffer
@@ -91,7 +91,7 @@ struct CompilationContext
 	/// String literals have \0 after last character
 	/// Must be allocated before or after code segment to allow relative addressing
 	FixedBuffer!ubyte staticDataBuffer;
-	/// Symbols sections and references
+	/// Symbols, sections and references
 	ObjectSymbolTable objSymTab;
 	/// Symbols provided by the environment
 	LinkIndex[Identifier] externalSymbols;
@@ -176,6 +176,18 @@ struct CompilationContext
 	{
 		SourceLocation loc = tokenLocationBuffer[tokIdx];
 		sink.putf("file(%s, %s): Error: ", loc.line+1, loc.col+1);
+		sink.putfln(format, args);
+		if (printTraceOnError)
+			try
+				throw new Exception(null);
+			catch (Exception e)
+				sink.putf("%s", e.info);
+		hasErrors = true;
+	}
+
+	void error(Args...)(string format, Args args)
+	{
+		sink.put("Error: ");
 		sink.putfln(format, args);
 		if (printTraceOnError)
 			try

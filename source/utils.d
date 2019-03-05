@@ -210,12 +210,16 @@ auto scaledNumberFmt(T)(T value)
 
 auto scaledNumberFmt(Duration value, double scale = 1)
 {
-	double seconds = value.total!"hnsecs" / 10_000_000.0;
+	double seconds = value.total!"nsecs" / 1_000_000_000.0;
 	return ScaledNumberFmt!double(seconds * scale);
 }
 
-// -24 .. 24, with step of 3. Or -8 to 8 with step of 1
-immutable string[] scaleSuffixes = ["y","z","a","f","p","n","u","m","","K","M","G","T","P","E","Z","Y"];
+// -30 .. 30, with step of 3. Or -10 to 10 with step of 1
+immutable string[] scaleSuffixes = ["q","r","y","z","a","f","p","n","u","m","","K","M","G","T","P","E","Z","Y","R","Q"];
+enum NUM_SCALE_SUFFIXES = 10;
+enum MIN_SCALE_SUFFIX = -30;
+enum MAX_SCALE_SUFFIX = 30;
+
 
 int numDigitsInNumber(Num)(const Num val)
 {
@@ -238,7 +242,7 @@ int calcScale(Num)(Num val)
 	import std.math: abs, floor, ceil, log10;
 	static int signum(T)(const T x) pure nothrow
 	{
-	    return (x > 0) - (x < 0);
+		return (x > 0) - (x < 0);
 	}
 
 	auto lg = log10(abs(val));
@@ -252,17 +256,17 @@ int calcScale(Num)(Num val)
 		scale = cast(int)(floor(absLog/3.0))*3;
 
 	int clampedScale = scale * logSign;
-	if (clampedScale < -24)
-		clampedScale = 0; // prevent zero, or values smaller that yotta- to display as yotta
-	else if (clampedScale > 24)
-		clampedScale = 24;
+	if (clampedScale < MIN_SCALE_SUFFIX)
+		clampedScale = 0; // prevent zero, or values smaller that min scale to display with min scale
+	else if (clampedScale > MAX_SCALE_SUFFIX)
+		clampedScale = MAX_SCALE_SUFFIX;
 
 	return clampedScale;
 }
 
 int scaleToScaleIndex(int scale)
 {
-	return scale / 3 + 8; // -24..24 -> -8..8 -> 0..16
+	return scale / 3 + NUM_SCALE_SUFFIXES; // -30...30 -> -10...10 -> 0...20
 }
 
 double scaled(Num)(Num num, int scale)
@@ -422,13 +426,17 @@ struct FixedBuffer(T)
 	T* bufPtr;
 	uint capacity;
 	uint length;
+	//uint committedBytes;
 
-	void setBuffer(ubyte[] newBuffer) {
+	ulong byteLength() { return cast(ulong)length * T.sizeof; }
+
+	void setBuffer(ubyte[] newBuffer){//, uint committedBytes) {
 		bufPtr = cast(T*)newBuffer.ptr;
 		assert(bufPtr);
 		size_t bufLen = newBuffer.length / T.sizeof;
-		assert(bufLen <= uint.max, "capacity overflow");
+		assert(bufLen <= uint.max, format("capacity overflow buf size %s", newBuffer.length));
 		capacity = cast(uint)bufLen;
+		//this.committedBytes = committedBytes;
 		length = 0;
 	}
 	T[] buf() { return bufPtr[0..capacity]; }
@@ -495,7 +503,7 @@ struct Win32Allocator
 {
 	import core.sys.windows.windows;
 
-	enum PAGE_SIZE = 4096;
+	enum PAGE_SIZE = ushort.max;
 	void* bufferPtr;
 	size_t reservedBytes;
 	size_t committedBytes;

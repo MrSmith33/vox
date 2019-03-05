@@ -166,7 +166,7 @@ struct IrTypeStorage
 		assert(index.kind == getIrValueKind!T, format("%s != %s", index.kind, getIrValueKind!T));
 		static if (!is(T == IrTypeHeader))
 			assert(index.typeKind == getIrTypeKind!T, format("%s != %s", index.typeKind, getIrTypeKind!T));
-		return *cast(T*)(&buffer.bufPtr[index.storageUintIndex]);
+		return *cast(T*)(&buffer.bufPtr[index.typeIndex]);
 	}
 
 	bool isVoid(IrIndex type)

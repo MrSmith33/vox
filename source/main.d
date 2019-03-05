@@ -9,8 +9,10 @@ import bench;
 import tests;
 
 version = standalone;
-version(standalone) void main()
+version(standalone) void main(string[] args)
 {
+	import std.stdio;
+	//tryRunCmd(args[1..$]);
 	//runBench();
 	runAllTests(StopOnFirstFail.yes);
 	//runDevTests();

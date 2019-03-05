@@ -33,49 +33,6 @@ struct CodeEmitter
 	int stackPointerExtraOffset;
 	IrIndex stackPointer;
 
-	void addSections()
-	{
-		ObjectModule localModule = {
-			kind : ObjectModuleKind.isLocal,
-			id : context.idMap.getOrRegNoDup(":local")
-		};
-		context.mod.moduleIndex = context.objSymTab.addModule(localModule);
-
-		ObjectSection hostSection = {
-			sectionAddress : 0,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(":host")
-		};
-		context.hostSectionIndex = context.objSymTab.addSection(hostSection);
-
-		ObjectSection importSection = {
-			sectionAddress : 0,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".idata")
-		};
-		context.importSectionIndex = context.objSymTab.addSection(importSection);
-
-		ObjectSection dataSection = {
-			sectionAddress : 0,
-			sectionData : context.staticDataBuffer.bufPtr,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".data")
-		};
-		context.dataSectionIndex = context.objSymTab.addSection(dataSection);
-
-		ObjectSection textSection = {
-			sectionAddress : 0,
-			sectionData : context.codeBuffer.ptr,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".text")
-		};
-		context.textSectionIndex = context.objSymTab.addSection(textSection);
-	}
-
 	void addStaticDataSymbols()
 	{
 		Identifier dataId = context.idMap.getOrRegNoDup(":data");
@@ -162,26 +119,6 @@ struct CodeEmitter
 					context.error(f.loc, "Unresolved external function %s", f.strId(context));
 					continue;
 				}
-
-				ObjectSymbol* objSym = &context.objSymTab.getSymbol(symbolIndex);
-
-				final switch(objSym.kind)
-				{
-					case ObjectSymbolKind.isImported:
-						objSym.sectionIndex = context.importSectionIndex;
-						context.assertf(context.buildType == BuildType.exe, "Cannot use symbols from dll in JIT mode");
-						break;
-
-					case ObjectSymbolKind.isHost:
-						objSym.sectionIndex = context.hostSectionIndex;
-						objSym.sectionOffset = cast(ulong)objSym.dataPtr,
-						context.assertf(context.buildType == BuildType.jit, "Cannot use symbols from host in exe mode");
-						break;
-					case ObjectSymbolKind.isLocal:
-						// TODO: remove limit
-						context.error(f.loc, "Cannot use local symbol to resolve external");
-						break;
-				}
 			}
 			else
 			{
@@ -202,7 +139,12 @@ struct CodeEmitter
 
 	void compileModule()
 	{
-		addSections();
+		ObjectModule localModule = {
+			kind : ObjectModuleKind.isLocal,
+			id : context.idMap.getOrRegNoDup(":local")
+		};
+		context.mod.moduleIndex = context.objSymTab.addModule(localModule);
+
 		addStaticDataSymbols();
 		finalizeStaticData();
 		addFunctionSymbols();

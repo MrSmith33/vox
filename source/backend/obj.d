@@ -157,8 +157,8 @@ struct ObjectModule
 @(LinkIndexKind.section)
 struct ObjectSection
 {
-	/// Offset from the executable start, or absolute address when in jit mode
-	/// Offset from executable start to the section start after loading (in exe mode)
+	/// In JIT mode: absolute address
+	/// In exe mode: offset from executable start to the section start after loading
 	ulong sectionAddress;
 	/// In JIT mode is equal to sectionAddress
 	/// Points to the data of this section. Used to perform fixups

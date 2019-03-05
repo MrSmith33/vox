@@ -5,7 +5,6 @@ Authors: Andrey Penechko.
 */
 module backend.make_exe;
 
-import std.file;
 import std.path;
 import std.stdio;
 import std.conv;
@@ -96,7 +95,7 @@ void pass_create_executable(ref CompilationContext context)
 	ObjectSection* entryPointSection = &context.objSymTab.getSection(entryPoint.sectionIndex);
 	executable.entryPointAddress = to!uint(entryPointSection.sectionAddress + entryPoint.sectionOffset);
 
-/*
+	/*
 	writeln("Code");
 	printHex(textSection.data, 16);
 	writeln("Imports");
@@ -106,14 +105,15 @@ void pass_create_executable(ref CompilationContext context)
 	writeln;*/
 
 	ArraySink sink;
-	sink.setBuffer(context.binaryBuffer);
+	sink.setBuffer(context.binaryBuffer.buf);
 	executable.write(sink);
+	context.binaryBuffer.length = cast(uint)sink.length;
 	//writeln(textSection.header);
 	//writeln(idataSection.header);
 	//writeln(dataSection.header);
 	//printHex(sink.data, 16);
 	//writefln("Writing to '%s'", context.outputFilename.absolutePath);
-	std.file.write(context.outputFilename, sink.data);
+	//std.file.write(context.outputFilename, sink.data);
 }
 
 CoffImportSectionSize calcImportSize(CompilationContext* context)

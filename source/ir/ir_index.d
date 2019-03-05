@@ -99,7 +99,7 @@ struct IrIndex
 			case stackSlot: sink.formattedWrite("s.%s", storageUintIndex); break;
 			case virtualRegister: sink.formattedWrite("v.%s", storageUintIndex); break;
 			case physicalRegister: sink.formattedWrite("p<c:%s i:%s s:%s>", physRegClass, physRegIndex, physRegSize); break;
-			case type: sink.formattedWrite("type.%s", storageUintIndex); break;
+			case type: sink.formattedWrite("type.%s.%s", typeKind, typeIndex); break;
 			case variable: sink.formattedWrite("var.%s", storageUintIndex); break;
 			case func: sink.formattedWrite("f.%s", storageUintIndex); break;
 		}

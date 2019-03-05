@@ -9,6 +9,70 @@ import std.stdio;
 import std.format : formattedWrite;
 import all;
 
+/// exe path is stripped from args
+void tryRunCmd(string[] args)
+{
+	try {
+		runCmd(args);
+	} catch(Throwable t) {
+		writeln(t);
+	}
+}
+
+void runCmd(string[] args)
+{
+	import std.path;
+
+	if (args.length < 1)
+	{
+		writefln("Usage: tiny_jit [options...] infile(s)...", args);
+		return;
+	}
+	string filename = args[0];
+
+	auto time1 = currTime;
+	auto startInitTime = currTime;
+		Driver driver;
+		driver.initialize(exePasses);
+		driver.context.buildType = BuildType.exe;
+		driver.context.outputFilename = setExtension(filename, ".exe");
+		auto times = PerPassTimeMeasurements(1, driver.passes);
+	auto endInitTime = currTime;
+
+	try
+	{
+		driver.compileModule(SourceFileInfo(filename), null, null);
+	}
+	catch(CompilationException e) {
+		writeln(driver.context.sink.text);
+		if (e.isICE)
+			writeln(e);
+		return;
+	}
+	catch(Throwable t) {
+		writeln(driver.context.sink.text);
+		writeln(t);
+		return;
+	}
+
+	auto startReleaseTime = currTime;
+		// releasing memory is not necessary when in runningstandalone mode
+		//driver.releaseMemory;
+	auto endReleaseTime = currTime;
+
+	auto time2 = currTime;
+	Duration duration = time2-time1;
+
+	times.onIteration(0, duration);
+
+	//times.print;
+
+	//writefln("Finished in %ss, init %ss, release %ss",
+	//	scaledNumberFmt(duration),
+	//	scaledNumberFmt(endInitTime-startInitTime),
+	//	scaledNumberFmt(endReleaseTime-startReleaseTime));
+}
+
 void runDevTests()
 {
 	Driver driver;
@@ -34,7 +98,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test31);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test7);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -83,7 +147,10 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 				}
 			}
 			else
+			{
+				//writefln("%s `%s` success", indexOffset+i+1, test.testName);
 				++numSuccessfulTests;
+			}
 		}
 	}
 
@@ -151,7 +218,7 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 	enum NUM_ITERS = 1;
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
-	ModuleDeclNode* mod = driver.compileModule(curTest.source, curTest.hostSymbols, curTest.dllModules);
+	ModuleDeclNode* mod = driver.compileModule(SourceFileInfo("test", curTest.source), curTest.hostSymbols, curTest.dllModules);
 	driver.markCodeAsExecutable();
 	auto time2 = currTime;
 	times.onIteration(0, time2-time1);
@@ -625,7 +692,7 @@ extern(C) void test21_external_func(int par1) {
 }
 auto test21 = Test("Test 21", input21, "fibonacci", cast(Test.Tester)&tester21,
 	[HostSymbol("print", cast(void*)&test21_external_func)]);
-auto test21_2 = Test("Test 21", input21_2, "fibonacci", cast(Test.Tester)&tester21,
+auto test21_2 = Test("Test 21.2", input21_2, "fibonacci", cast(Test.Tester)&tester21,
 	[HostSymbol("print", cast(void*)&test21_external_func)]);
 
 // test phi resolution with critical edge and test break;

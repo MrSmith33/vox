@@ -10,18 +10,57 @@ import all;
 
 void pass_source(ref CompilationContext ctx)
 {
-	ctx.sourceBuffer[0] = SOI_CHAR;
-	ctx.sourceBuffer[1..1+ctx.input.length] = ctx.input;
-	ctx.sourceBuffer[1+ctx.input.length] = EOI_CHAR;
+	size_t start = 0;
+	foreach(ref file; ctx.files.data)
+	{
+		if (file.content)
+		{
+			ctx.sourceBuffer[start] = SOI_CHAR;
+			ctx.sourceBuffer[start+1..start+1+file.content.length] = file.content;
+			ctx.sourceBuffer[start+1+file.content.length] = EOI_CHAR;
 
-	if (ctx.printSource) {
-		writeln("// Source");
-		writeln(ctx.input);
+			file.length = cast(uint)(file.content.length + 2);
+			file.start = cast(uint)start;
+			start += file.length;
+		}
+		else
+		{
+			import std.file : exists;
+			import std.path : absolutePath;
+			import std.stdio : File;
+
+			if (!exists(file.name))
+			{
+				ctx.error("File `%s` not found", absolutePath(file.name));
+				return;
+			}
+
+			ctx.sourceBuffer[start] = SOI_CHAR;
+			auto f = File(file.name, "r");
+			char[] result = f.rawRead(ctx.sourceBuffer[start+1..$]);
+			f.close();
+			ctx.sourceBuffer[start+1+result.length] = EOI_CHAR;
+
+			file.length = cast(uint)(result.length + 2);
+			file.start = cast(uint)start;
+			start += file.length;
+		}
 	}
+
+	//if (ctx.printSource) {
+	//	writeln("// Source");
+	//	writeln(ctx.input);
+	//}
+}
+
+void pass_write_exe(ref CompilationContext ctx)
+{
+	import std.file : write;
+	write(ctx.outputFilename, ctx.binaryBuffer.data);
 }
 
 immutable CompilePass[] commonPasses = [
-	CompilePass("Copy source", &pass_source),
+	CompilePass("Read source", &pass_source),
 	CompilePass("Lex", &pass_lexer),
 	CompilePass("Parse", &pass_parser),
 	CompilePass("Semantic insert", &pass_semantic_decl),
@@ -41,8 +80,17 @@ immutable CompilePass[] commonPasses = [
 	CompilePass("Code gen", &pass_emit_mc_amd64),
 ];
 
-CompilePass[] jitPasses = commonPasses ~ CompilePass("Link JIT", &pass_link_jit);
-CompilePass[] exePasses = commonPasses ~ CompilePass("Exe", &pass_create_executable);
+immutable CompilePass[] extraJitPasses = [
+	CompilePass("Link JIT", &pass_link_jit),
+];
+
+immutable CompilePass[] extraExePasses = [
+	CompilePass("Exe", &pass_create_executable),
+	CompilePass("Write exe", &pass_write_exe),
+];
+
+CompilePass[] jitPasses = commonPasses ~ extraJitPasses;
+CompilePass[] exePasses = commonPasses ~ extraExePasses;
 
 struct Driver
 {
@@ -50,7 +98,10 @@ struct Driver
 	CompilePass[] passes;
 
 	Win32Allocator allocator;
+	ubyte[] codeAndDataBuffer;
+
 	ubyte[] sourceBuffer;
+	ubyte[] fileBuffer;
 	ubyte[] codeBuffer;
 	ubyte[] staticBuffer;
 	ubyte[] tokenBuffer;
@@ -58,6 +109,7 @@ struct Driver
 	ubyte[] linkBuffer;
 	ubyte[] importBuffer;
 	ubyte[] binaryBuffer;
+
 	ubyte[] irBuffer;
 	ubyte[] modIrBuffer;
 	ubyte[] tempBuffer;
@@ -74,51 +126,60 @@ struct Driver
 		size_t aligned = alignValue(thisAddr, step) + step*5;
 
 		// Ideally we would allocate 2GB for code and data, split in 2 1-gig parts
-		enum bufSize = PAGE_SIZE * 32;
-		enum numBufs = 8;
-		ubyte[] codeAndData = allocate(bufSize * numBufs, cast(void*)aligned, MemType.RW);
-		ubyte[] take() {
-			ubyte[] temp = codeAndData[0..bufSize];
-			codeAndData = codeAndData[bufSize..$];
+		enum BUF_SIZE = PAGE_SIZE * 32;
+		enum NUM_BUFS = 2;
+		///codeAndDataBuffer = allocate(BUF_SIZE * NUM_BUFS, cast(void*)aligned, MemType.RW);
+		ubyte[] take(size_t size) {
+			ubyte[] temp = codeAndDataBuffer[0..size];
+			codeAndDataBuffer = codeAndDataBuffer[size..$];
 			return temp;
 		}
-		sourceBuffer = take();
-		codeBuffer = take();
-		staticBuffer = take();
-		tokenBuffer = take();
-		tokenLocationBuffer = take();
-		linkBuffer = take();
-		importBuffer = take();
-		binaryBuffer = take();
+
 		//writefln("thisAddr h%X, data h%X..h%X, code h%X..h%X", thisAddr,
 		//	staticBuffer.ptr, staticBuffer.ptr+staticBuffer.length,
 		//	codeBuffer.ptr, codeBuffer.ptr+codeBuffer.length);
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
 		enum GiB = 1024UL*1024*1024;
-		size_t irMemSize = GiB*3;
+		enum MiB = 1024UL*1024;
+		enum BIG_BUF_SIZE = MiB*20;
+		enum SMALL_BUF_SIZE = MiB*1;
+		//enum BIG_BUF_SIZE = MiB;
+		size_t irMemSize = MiB*300;
 		bool success = allocator.reserve(irMemSize);
 		context.assertf(success, "allocator failed");
 
-		irBuffer = cast(ubyte[])allocator.allocate(GiB);
-		modIrBuffer = cast(ubyte[])allocator.allocate(GiB);
-		tempBuffer = cast(ubyte[])allocator.allocate(GiB);
+		codeBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		staticBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		sourceBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		fileBuffer = cast(ubyte[])allocator.allocate(1024);
+		tokenBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		tokenLocationBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		linkBuffer = cast(ubyte[])allocator.allocate(SMALL_BUF_SIZE);
+		importBuffer = cast(ubyte[])allocator.allocate(SMALL_BUF_SIZE);
+		binaryBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+
+		irBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		modIrBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		tempBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
 	}
 
 	void releaseMemory()
 	{
 		allocator.releaseMemory();
+		deallocate(codeAndDataBuffer);
 	}
 
-	ModuleDeclNode* compileModule(string moduleSource, HostSymbol[] hostSymbols, DllModule[] dllModules)
+	ModuleDeclNode* compileModule(SourceFileInfo moduleFile, HostSymbol[] hostSymbols, DllModule[] dllModules)
 	{
 		markAsRW(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
 		context.sourceBuffer = cast(char[])sourceBuffer;
+		context.files.setBuffer(fileBuffer);
 		context.codeBuffer = codeBuffer;
 		context.importBuffer = importBuffer;
 		context.tokenBuffer = cast(TokenType[])tokenBuffer;
 		context.tokenLocationBuffer = cast(SourceLocation[])tokenLocationBuffer;
-		context.binaryBuffer = binaryBuffer;
+		context.binaryBuffer.setBuffer(binaryBuffer);
 		context.irBuffer.setBuffer(irBuffer);
 		context.types.buffer.setBuffer(modIrBuffer);
 		context.tempBuffer.setBuffer(tempBuffer);
@@ -128,54 +189,12 @@ struct Driver
 		context.globals.array.length = 0;
 		context.entryPoint = null;
 
-		context.input = moduleSource;
+		context.files.put(moduleFile);
 		context.externalSymbols.clear();
 
-		ObjectModule hostModule = {
-			kind : ObjectModuleKind.isHost,
-			id : context.idMap.getOrRegNoDup(":host")
-		};
-		LinkIndex hostModuleIndex = context.objSymTab.addModule(hostModule);
-
-		foreach (HostSymbol hostSym; hostSymbols)
-		{
-			Identifier symId = context.idMap.getOrRegNoDup(hostSym.name);
-			ushort symFlags;
-			if (!canReferenceFromCode(hostSym.ptr)) symFlags |= ObjectSymbolFlags.isIndirect;
-			ObjectSymbol importedSymbol = {
-				kind : ObjectSymbolKind.isHost,
-				flags : symFlags,
-				id : symId,
-				dataPtr : cast(ubyte*)hostSym.ptr,
-				moduleIndex : hostModuleIndex,
-			};
-			LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
-
-			context.externalSymbols[symId] = importedSymbolIndex;
-		}
-
-		foreach (ref DllModule dllModule; dllModules)
-		{
-			ObjectModule importedModule = {
-				kind : ObjectModuleKind.isImported,
-				id : context.idMap.getOrRegNoDup(dllModule.libName)
-			};
-			LinkIndex importedModuleIndex = context.objSymTab.addModule(importedModule);
-
-			foreach (string symName; dllModule.importedSymbols)
-			{
-				Identifier symId = context.idMap.getOrRegNoDup(symName);
-				ObjectSymbol importedSymbol = {
-					kind : ObjectSymbolKind.isImported,
-					flags : ObjectSymbolFlags.isIndirect,
-					id : symId,
-					alignment : 8, // pointer size
-					moduleIndex : importedModuleIndex,
-				};
-				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
-				context.externalSymbols[symId] = importedSymbolIndex;
-			}
-		}
+		addSections();
+		addHostSymbols(hostSymbols);
+		addDllModules(dllModules);
 
 		foreach (ref pass; passes)
 		{
@@ -194,16 +213,136 @@ struct Driver
 		return context.mod;
 	}
 
-	bool canReferenceFromCode(void* hostSym)
-	{
-		// TODO
-		return true;
-	}
-
 	/// Must be called after compilation is finished and before execution
 	void markCodeAsExecutable()
 	{
 		markAsExecutable(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
+	}
+
+	private bool canReferenceFromCode(void* hostSym)
+	{
+		void* start = context.codeBuffer.ptr;
+		void* end = context.codeBuffer.ptr + context.codeBuffer.length;
+		bool reachesFromStart = (hostSym - start) == cast(int)(hostSym - start);
+		bool reachesFromEnd = (hostSym - end) == cast(int)(hostSym - end);
+		return reachesFromStart && reachesFromEnd;
+	}
+
+	void addSections()
+	{
+		ObjectSection hostSection = {
+			sectionAddress : 0,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(":host")
+		};
+		context.hostSectionIndex = context.objSymTab.addSection(hostSection);
+
+		ObjectSection importSection = {
+			sectionAddress : 0,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(".idata")
+		};
+		context.importSectionIndex = context.objSymTab.addSection(importSection);
+
+		ObjectSection dataSection = {
+			sectionAddress : 0,
+			sectionData : context.staticDataBuffer.bufPtr,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(".data")
+		};
+		context.dataSectionIndex = context.objSymTab.addSection(dataSection);
+
+		ObjectSection textSection = {
+			sectionAddress : 0,
+			sectionData : context.codeBuffer.ptr,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(".text")
+		};
+		context.textSectionIndex = context.objSymTab.addSection(textSection);
+	}
+
+	void addHostSymbols(HostSymbol[] hostSymbols)
+	{
+		if (hostSymbols.length > 0)
+			context.assertf(context.buildType == BuildType.jit, "Can only add host symbols in JIT mode");
+
+		FixedBuffer!ulong jitImports;
+		jitImports.setBuffer(context.importBuffer);
+
+		ObjectModule hostModule = {
+			kind : ObjectModuleKind.isHost,
+			id : context.idMap.getOrRegNoDup(":host")
+		};
+		LinkIndex hostModuleIndex = context.objSymTab.addModule(hostModule);
+
+		foreach (HostSymbol hostSym; hostSymbols)
+		{
+			Identifier symId = context.idMap.getOrRegNoDup(hostSym.name);
+
+			if (canReferenceFromCode(hostSym.ptr))
+			{
+				ObjectSymbol importedSymbol = {
+					kind : ObjectSymbolKind.isHost,
+					id : symId,
+					dataPtr : cast(ubyte*)hostSym.ptr,
+					sectionOffset : cast(ulong)hostSym.ptr,
+					sectionIndex : context.hostSectionIndex,
+					moduleIndex : hostModuleIndex,
+				};
+				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
+				context.externalSymbols[symId] = importedSymbolIndex;
+			}
+			else
+			{
+				ulong sectionOffset = jitImports.byteLength;
+				jitImports.put(cast(ulong)hostSym.ptr);
+
+				ObjectSymbol importedSymbol = {
+					kind : ObjectSymbolKind.isHost,
+					flags : ObjectSymbolFlags.isIndirect,
+					id : symId,
+					sectionOffset : sectionOffset,
+					sectionIndex : context.importSectionIndex,
+					moduleIndex : hostModuleIndex,
+				};
+				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
+				context.externalSymbols[symId] = importedSymbolIndex;
+			}
+		}
+	}
+
+	void addDllModules(DllModule[] dllModules)
+	{
+		if (dllModules.length > 0)
+			context.assertf(context.buildType == BuildType.exe, "Can only use dll symbols in exe mode");
+
+		foreach (ref DllModule dllModule; dllModules)
+		{
+			ObjectModule importedModule = {
+				kind : ObjectModuleKind.isImported,
+				id : context.idMap.getOrRegNoDup(dllModule.libName)
+			};
+			LinkIndex importedModuleIndex = context.objSymTab.addModule(importedModule);
+
+			foreach (string symName; dllModule.importedSymbols)
+			{
+				Identifier symId = context.idMap.getOrRegNoDup(symName);
+				ObjectSymbol importedSymbol = {
+					kind : ObjectSymbolKind.isImported,
+					flags : ObjectSymbolFlags.isIndirect,
+					id : symId,
+					alignment : 8, // pointer size
+					sectionIndex : context.importSectionIndex,
+					moduleIndex : importedModuleIndex,
+				};
+				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
+				context.externalSymbols[symId] = importedSymbolIndex;
+			}
+		}
 	}
 }
 

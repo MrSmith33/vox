@@ -12,7 +12,7 @@ void runBench()
 {
 	ModuleDeclNode* mod;
 	Test curTest = test8;
-	//Test curTest = test21;
+	//Test curTest = test31;
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -25,7 +25,7 @@ void runBench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(curTest.source, curTest.hostSymbols, curTest.dllModules);
+		mod = driver.compileModule(SourceFileInfo("test", curTest.source), curTest.hostSymbols, curTest.dllModules);
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);

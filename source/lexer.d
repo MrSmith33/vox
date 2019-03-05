@@ -158,6 +158,9 @@ struct TokenIndex
 
 struct SourceFileInfo
 {
+	string name;
+	/// Is set when in JIT mode
+	string content;
 	/// Start of file source code in CompilationContext.sourceBuffer
 	uint start;
 	/// Length of source code
