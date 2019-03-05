@@ -6,13 +6,14 @@ Authors: Andrey Penechko.
 module main;
 
 import bench;
+import cli;
 import tests;
 
 version = standalone;
 version(standalone) void main(string[] args)
 {
 	import std.stdio;
-	//tryRunCmd(args[1..$]);
+	//tryRunCli(args[1..$]);
 	//runBench();
 	runAllTests(StopOnFirstFail.yes);
 	//runDevTests();
