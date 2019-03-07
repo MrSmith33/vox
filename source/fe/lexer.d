@@ -204,7 +204,7 @@ immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT
 
 void pass_lexer(ref CompilationContext ctx)
 {
-	Lexer lexer = Lexer(&ctx, ctx.sourceBuffer, ctx.tokenBuffer, ctx.tokenLocationBuffer);
+	Lexer lexer = Lexer(&ctx, ctx.sourceBuffer.data, &ctx.tokenBuffer, &ctx.tokenLocationBuffer);
 	// TODO: when compiling multiple modules, continue buffers instead of overwriting them
 
 	lexer.lex();
@@ -216,7 +216,7 @@ void pass_lexer(ref CompilationContext ctx)
 		{
 			tok.type = ctx.tokenBuffer[tok.index];
 			auto loc = ctx.tokenLocationBuffer[tok.index];
-			writefln("%s %s, `%s`", tok, loc, loc.getTokenString(ctx.sourceBuffer));
+			writefln("%s %s, `%s`", tok, loc, loc.getTokenString(ctx.sourceBuffer.data));
 			++tok.index;
 		}
 		while(tok.type != TokenType.EOI);
@@ -227,8 +227,8 @@ struct Lexer
 {
 	CompilationContext* context;
 	const(char)[] inputChars;
-	TokenType[] outputTokens;
-	SourceLocation[] outputTokenLocations;
+	Arena!TokenType* outputTokens;
+	Arena!SourceLocation* outputTokenLocations;
 
 	TokenIndex tokenIndex;
 
@@ -248,7 +248,7 @@ struct Lexer
 		{
 			TokenType tokType = nextToken();
 
-			outputTokens[tokenIndex] = tokType;
+			outputTokens.put(tokType);
 			set_loc();
 			++tokenIndex;
 
@@ -265,7 +265,7 @@ struct Lexer
 
 	private void set_loc()
 	{
-		outputTokenLocations[tokenIndex] = SourceLocation(startPos, position, startLine, startCol);
+		outputTokenLocations.put(SourceLocation(startPos, position, startLine, startCol));
 	}
 
 	int opApply(scope int delegate(TokenType) dg)

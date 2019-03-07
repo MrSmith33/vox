@@ -8,6 +8,8 @@ module utils;
 import std.traits : isIntegral;
 public import std.algorithm : min, max;
 import std.stdio;
+import std.conv : to;
+import std.range : isInputRange;
 import std.string : format;
 
 enum size_t PAGE_SIZE = 4096;
@@ -81,7 +83,8 @@ else version(Windows)
 	void markAsExecutable(void* addr, size_t numPages)
 	{
 		uint val;
-		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_EXECUTE, &val);
+		int res = VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_EXECUTE, &val);
+		assert(res != 0, format("VirtualProtect(%X, %s, PAGE_EXECUTE, %s) failed", addr, numPages*PAGE_SIZE, val));
 		FlushInstructionCache(GetCurrentProcess(), addr, numPages*PAGE_SIZE);
 	}
 
@@ -174,11 +177,21 @@ T isPowerOfTwo(T)(T x)
 	return (x != 0) && ((x & (~x + 1)) == x);
 }
 
+/// alignment is POT
 T alignValue(T)(T value, T alignment) pure
 {
+	assert(isPowerOfTwo(alignment), format("alignment is not power of two (%s)", alignment));
 	return cast(T)((value + (alignment-1)) & ~(alignment-1));
 }
 
+/// multiple can be NPOT
+T roundUp(T)(T value, T multiple) pure
+{
+	assert(multiple != 0, "multiple must not be zero");
+	return cast(T)(((value + multiple - 1) / multiple) * multiple);
+}
+
+/// alignment is POT
 T paddingSize(T)(T address, T alignment)
 {
 	return cast(T)(alignValue(address, alignment) - address);
@@ -421,6 +434,139 @@ FixedBuffer!T fixedBuffer(T)(T[] buffer)
 	return res;
 }
 
+///
+struct Arena(T)
+{
+	enum COMMIT_PAGE_SIZE = 4096;
+	enum MIN_COMMIT_SIZE = COMMIT_PAGE_SIZE;
+
+	T* bufPtr;
+	/// How many items can be added without commiting more memory
+	/// Memory is committed in multiples of 4K
+	size_t committedItems;
+	/// Number of items in the buffer. length <= (capacity / T.sizeof)
+	size_t length;
+	/// Total reserved bytes
+	size_t reservedBytes;
+
+	size_t committedBytes() { return alignValue((length + committedItems) * T.sizeof, COMMIT_PAGE_SIZE); }
+
+	uint uintLength() { return length.to!uint; }
+	size_t byteLength() { return length * T.sizeof; }
+	ref T opIndex(size_t at) { return bufPtr[at]; }
+	ref T back() { return bufPtr[length-1]; }
+	inout(T[]) data() inout { return bufPtr[0..length]; }
+	bool empty() { return length == 0; }
+	T* nextPtr() { return bufPtr + length; }
+
+	void setBuffer(ubyte[] reservedBuffer) {
+		setBuffer(reservedBuffer, reservedBuffer.length);
+	}
+	void setBuffer(ubyte[] reservedBuffer, size_t committedBytes) {
+		bufPtr = cast(T*)reservedBuffer.ptr;
+		assert(bufPtr, "reservedBuffer is null");
+		reservedBytes = reservedBuffer.length;
+		// we can lose [0; T.sizeof-1] bytes here, need to round up to multiple of 4K when committing
+		committedItems = committedBytes / T.sizeof;
+		length = 0;
+	}
+	void clear() { length = 0; }
+
+	void put(T[] items ...) {
+		if (committedItems < items.length) makeSpace(items.length);
+		bufPtr[length..length+items.length] = items;
+		length += items.length;
+		committedItems -= items.length;
+	}
+
+	void put(R)(R itemRange) if (isInputRange!R) {
+		foreach(item; itemRange)
+			put(item);
+	}
+
+	void stealthPut(T item) {
+		if (committedItems == 0) makeSpace(1);
+		bufPtr[length] = item;
+	}
+
+	/// Increases length and returns void-initialized slice to be filled by user
+	T[] voidPut(size_t howMany) {
+		if (committedItems < howMany) makeSpace(howMany);
+		length += howMany;
+		committedItems -= howMany;
+		return bufPtr[length-howMany..length];
+	}
+
+	static if (is(T == ubyte))
+	{
+		void put(V)(V value) {
+			ubyte[V.sizeof] buf = *cast(ubyte[V.sizeof]*)&value;
+			put(buf);
+		}
+
+		void pad(size_t bytes) {
+			voidPut(bytes)[] = 0;
+		}
+	}
+
+	void makeSpace(size_t items) {
+		size_t _committedBytes = committedBytes;
+		size_t itemsToCommit = items - committedItems;
+		size_t bytesToCommit = alignValue((items - committedItems) * T.sizeof, COMMIT_PAGE_SIZE);
+		bytesToCommit = max(bytesToCommit, MIN_COMMIT_SIZE);
+		//writefln("make space %s %s %s", committedItems, bytesToCommit, itemsToCommit);
+		//writefln("  1 bufPtr %s\n  committedItems %s\n  length %s\n  reservedBytes %s", bufPtr, committedItems, length, reservedBytes);
+
+		version(Windows)
+		{
+			if (_committedBytes + bytesToCommit > reservedBytes)
+			{
+				assert(false, format("out of memory: reserved %s, committed bytes %s, requested %s",
+					reservedBytes, _committedBytes, bytesToCommit));
+			}
+
+			import core.sys.windows.windows;
+			void* result = VirtualAlloc(bufPtr + _committedBytes, bytesToCommit, MEM_COMMIT, PAGE_READWRITE);
+			if (result is null) assert(false, "Cannot commit more bytes");
+		}
+		else version(Posix)
+		{
+			static assert(false, "Not implemented for Posix");
+		}
+
+		committedItems = (_committedBytes + bytesToCommit) / T.sizeof;
+		//writefln("  2 bufPtr %s\n  committedItems %s\n  length %s\n  reservedBytes %s", bufPtr, committedItems, length, reservedBytes);
+	}
+}
+
+struct ArenaPool
+{
+	import core.sys.windows.windows;
+
+	enum PAGE_SIZE = 65536;
+	ubyte[] buffer;
+	size_t takenBytes;
+
+	void reserve(size_t size) {
+		size_t reservedBytes = alignValue(size, PAGE_SIZE); // round up to page size
+		ubyte* ptr = cast(ubyte*)VirtualAlloc(null, reservedBytes, MEM_RESERVE, PAGE_NOACCESS);
+		assert(ptr !is null, "VirtualAlloc failed");
+		buffer = ptr[0..reservedBytes];
+	}
+
+	ubyte[] take(size_t numBytes) {
+		if (numBytes == 0) return null;
+		ubyte[] result = buffer[takenBytes..takenBytes+numBytes];
+		takenBytes += numBytes;
+		return result;
+	}
+
+	void decommitAll() {
+		int res = VirtualFree(buffer.ptr, buffer.length, MEM_DECOMMIT);
+		assert(res != 0, "VirtualFree failed");
+	}
+}
+
 struct FixedBuffer(T)
 {
 	T* bufPtr;
@@ -503,7 +649,7 @@ struct Win32Allocator
 {
 	import core.sys.windows.windows;
 
-	enum PAGE_SIZE = ushort.max;
+	enum PAGE_SIZE = 65536;
 	void* bufferPtr;
 	size_t reservedBytes;
 	size_t committedBytes;

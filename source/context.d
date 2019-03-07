@@ -63,22 +63,22 @@ struct CompilationContext
 	// storage
 
 	/// Buffer for sources of all modules
-	char[] sourceBuffer;
-	FixedBuffer!SourceFileInfo files;
+	Arena!char sourceBuffer;
+	Arena!SourceFileInfo files;
 	/// Buffer for resulting machine code
-	ubyte[] codeBuffer;
+	Arena!ubyte codeBuffer;
 	/// Buffer for indirect addresses when in JIT mode
 	/// Buffer for import section when in exe mode
-	ubyte[] importBuffer;
-	FixedBuffer!ubyte binaryBuffer;
+	Arena!ubyte importBuffer;
+	Arena!ubyte binaryBuffer;
 	/// Identifier interning/deduplication
 	IdentifierMap idMap;
 	/// Token buffer
-	TokenType[] tokenBuffer;
+	Arena!TokenType tokenBuffer;
 	/// Token locations in source code
-	SourceLocation[] tokenLocationBuffer;
+	Arena!SourceLocation tokenLocationBuffer;
 	/// Buffer for function IR generation
-	FixedBuffer!uint irBuffer;
+	Arena!uint irBuffer;
 	///
 	IrTypeStorage types;
 	/// Global constant storage
@@ -86,11 +86,11 @@ struct CompilationContext
 	/// Module global values and literals.
 	IrGlobalStorage globals;
 	/// Buffer for intra-pass temporary data
-	FixedBuffer!uint tempBuffer;
+	Arena!uint tempBuffer;
 	/// Buffer for string/array/struct literals
 	/// String literals have \0 after last character
 	/// Must be allocated before or after code segment to allow relative addressing
-	FixedBuffer!ubyte staticDataBuffer;
+	Arena!ubyte staticDataBuffer;
 	/// Symbols, sections and references
 	ObjectSymbolTable objSymTab;
 	/// Symbols provided by the environment
@@ -138,7 +138,7 @@ struct CompilationContext
 
 	const(char)[] getTokenString(TokenIndex tokenIndex) pure
 	{
-		return tokenLocationBuffer[tokenIndex].getTokenString(sourceBuffer);
+		return tokenLocationBuffer[tokenIndex].getTokenString(sourceBuffer.data);
 	}
 
 	SourceLocation tokenLoc(TokenIndex tokenIndex)
@@ -290,7 +290,7 @@ struct CompilationContext
 		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
 
 		IrIndex result;
-		result.storageUintIndex = tempBuffer.length;
+		result.storageUintIndex = tempBuffer.uintLength;
 		result.kind = getIrValueKind!T;
 
 		size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof)*howMany;

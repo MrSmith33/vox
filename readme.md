@@ -19,7 +19,7 @@ Strong focus on application extensions
 - Maximize application performance
     - Static typing
 
-Target platforms:
+Target platforms (Only win64 is supported now):
 - amd64 (Windows, Linux, MacOS)
 - WebAssembly (browsers)
 - ARM (Android, Linux)
@@ -115,6 +115,6 @@ assert(val[1] == 10);
 - [x] Integrate code for executable generation in main code.
 - [x] Add a way for binding with DLLs in a language. DLL import tables are already implemented by `pecoff.d` file.
 - [x] Link with SDL library
-- [ ] Make standalone compiler: read files from disk, write executable.
+- [x] Make standalone compiler: read files from disk, write executable.
 - [ ] Make a game with SDL
 - [ ] Implement modding system

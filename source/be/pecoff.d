@@ -268,7 +268,8 @@ void testExeCompilation()
 	ubyte[] importMem = buf[2*0x1000..4*0x1000];
 	ubyte[] dataMem = buf[4*0x1000..6*0x1000];
 
-	ubyte[] codeMem = buf[6*0x1000..$];
+	Arena!ubyte codeMem;
+	codeMem.setBuffer(buf[6*0x1000..$]);
 
 	// ---------------------------------------------------------
 
@@ -302,7 +303,7 @@ void testExeCompilation()
 
 	// ---------------------------------------------------------
 
-	ArraySink sink;
+	Arena!ubyte sink;
 	sink.setBuffer(binaryMem);
 
 	DataSection dataSectionSymbols;
@@ -319,7 +320,7 @@ void testExeCompilation()
 
 	// Code gen
 	CodeGen_x86_64 codeGen;
-	codeGen.encoder.setBuffer(codeMem);
+	codeGen.encoder.setBuffer(&codeMem);
 
 	void putFixup(SymbolRef symRef)
 	{
@@ -1207,7 +1208,7 @@ void createImports(ref ImportSectionMapping mapping, Section* importSection)
 	immutable uint ilt_rva = sectionRVA + mapping.ilt_rva;
 	immutable uint iat_rva = sectionRVA + mapping.iat_rva;
 
-	ArraySink strSink;
+	Arena!ubyte strSink;
 	strSink.setBuffer(mapping.stringData);
 
 	foreach(i, ref DllImports dll; mapping.importedLibs.libs)
@@ -1387,7 +1388,7 @@ struct Executable
 		}
 	}
 
-	void write(ref ArraySink sink)
+	void write(ref Arena!ubyte sink)
 	{
 		// DOS Header
 		dosHeader.write(sink);
@@ -1429,7 +1430,7 @@ struct DosHeader
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA8, 0x00, 0x00, 0x00
 	];
 
-	void write(ref ArraySink sink) {
+	void write(ref Arena!ubyte sink) {
 		sink.put(hexData);
 	}
 }
@@ -1455,7 +1456,7 @@ struct DosStub
 		0x52, 0x69, 0x63, 0x68, 0x7D, 0xAE, 0x5C, 0x8C
 	];
 
-	void write(ref ArraySink sink) {
+	void write(ref Arena!ubyte sink) {
 		sink.put(hexData);
 	}
 }
@@ -1463,7 +1464,7 @@ struct DosStub
 struct PeSignature
 {
 	immutable char[4] signature = "PE\0\0";
-	void write(ref ArraySink sink) {
+	void write(ref Arena!ubyte sink) {
 		sink.put(cast(ubyte[])signature);
 	}
 }
@@ -1581,7 +1582,7 @@ struct CoffFileHeader
 	/// See CoffFlags.
 	ushort Characteristics;
 
-	size_t write(ref ArraySink sink) {
+	size_t write(ref Arena!ubyte sink) {
 		auto offset = sink.length;
 		sink.put(Machine);
 		sink.put(NumberOfSections);
@@ -1907,7 +1908,7 @@ struct OptionalHeader
 
 	ulong _reserved; /// Reserved, must be zero
 
-	size_t write(ref ArraySink sink) {
+	size_t write(ref Arena!ubyte sink) {
 		auto offset = sink.length;
 		sink.put(Magic);
 		sink.put(MajorLinkerVersion);
@@ -2109,7 +2110,7 @@ struct SectionHeader
 		return nameFromSlashName(Name, stringTable);
 	}
 
-	size_t write(ref ArraySink sink) {
+	size_t write(ref Arena!ubyte sink) {
 		auto offset = sink.length;
 		sink.put(cast(ubyte[])Name);
 		sink.put(VirtualSize);
@@ -2353,7 +2354,7 @@ struct ImportDirectoryTableEntry
 	/// lookup table until the image is bound.
 	uint importAddressTableRVA;
 
-	size_t write(ref ArraySink sink) {
+	size_t write(ref Arena!ubyte sink) {
 		auto offset = sink.length;
 		sink.put(this);
 		return offset;
@@ -2363,7 +2364,7 @@ struct ImportDirectoryTableEntry
 struct ImportLookupTable
 {
 	ImportLookupEntry[] entries;
-	size_t write(ref ArraySink sink) {
+	size_t write(ref Arena!ubyte sink) {
 		auto offset = sink.length;
 		foreach(ref entry; entries) entry.write(sink);
 		sink.pad(ImportLookupEntry.sizeof); // Null Import Lookup Entry
@@ -2381,7 +2382,7 @@ struct ImportLookupEntry
 		return ImportLookupEntry(hintRVA & 0x7FFF_FFFF);
 	}
 	ulong value;
-	size_t write(ref ArraySink sink) {
+	size_t write(ref Arena!ubyte sink) {
 		auto offset = sink.length;
 		sink.put(this);
 		return offset;
@@ -2392,7 +2393,7 @@ struct HintNameTable
 {
 	HintNameEntry[] entries;
 
-	size_t write(ref ArraySink sink) {
+	size_t write(ref Arena!ubyte sink) {
 		auto offset = sink.length;
 		foreach(ref entry; entries) entry.write(sink);
 		return offset;
@@ -2411,7 +2412,7 @@ struct HintNameEntry
 	/// This string is case sensitive and terminated by a null byte.
 	string Name;
 
-	size_t write(ref ArraySink sink) {
+	size_t write(ref Arena!ubyte sink) {
 		auto offset = sink.length;
 
 		sink.put(Hint);
@@ -2421,7 +2422,7 @@ struct HintNameEntry
 	}
 }
 
-void writeStringAligned2(ref ArraySink sink, string str)
+void writeStringAligned2(ref Arena!ubyte sink, string str)
 {
 	sink.put(cast(ubyte[])str);
 

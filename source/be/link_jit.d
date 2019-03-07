@@ -15,8 +15,8 @@ void pass_link_jit(ref CompilationContext context)
 	if (context.printSymbols) context.objSymTab.dump(&context);
 
 	context.objSymTab.getSection(context.dataSectionIndex).sectionAddress = cast(ulong)context.staticDataBuffer.bufPtr;
-	context.objSymTab.getSection(context.importSectionIndex).sectionAddress = cast(ulong)context.importBuffer.ptr;
-	context.objSymTab.getSection(context.textSectionIndex).sectionAddress = cast(ulong)context.codeBuffer.ptr;
+	context.objSymTab.getSection(context.importSectionIndex).sectionAddress = cast(ulong)context.importBuffer.bufPtr;
+	context.objSymTab.getSection(context.textSectionIndex).sectionAddress = cast(ulong)context.codeBuffer.bufPtr;
 
 	linkModule(context);
 }

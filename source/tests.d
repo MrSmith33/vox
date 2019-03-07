@@ -154,8 +154,11 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 	enum NUM_ITERS = 1;
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
-	ModuleDeclNode* mod = driver.compileModule(SourceFileInfo("test", curTest.source), curTest.hostSymbols, curTest.dllModules);
-	driver.markCodeAsExecutable();
+		ModuleDeclNode* mod = driver.compileModule(
+			SourceFileInfo("test", curTest.source),
+			curTest.hostSymbols,
+			curTest.dllModules);
+		driver.markCodeAsExecutable();
 	auto time2 = currTime;
 	times.onIteration(0, time2-time1);
 

@@ -66,7 +66,7 @@ struct IrBuilder
 		this.context = context;
 		this.ir = ir;
 
-		ir.storage = context.irBuffer.freePart[0..0];
+		ir.storage = context.irBuffer.nextPtr[0..0];
 
 		blockVarDef.clear();
 
@@ -90,7 +90,7 @@ struct IrBuilder
 		this.context = context;
 		this.ir = lir;
 
-		ir.storage = context.irBuffer.freePart[0..0];
+		ir.storage = context.irBuffer.nextPtr[0..0];
 
 		blockVarDef.clear();
 	}
@@ -101,7 +101,7 @@ struct IrBuilder
 		this.ir = ir;
 
 		// IR is already at the end of buffer
-		if (context.irBuffer.freePart.ptr == ir.storage.ptr + ir.storage.length)
+		if (context.irBuffer.nextPtr == ir.storage.ptr + ir.storage.length)
 		{
 			// noop
 		}
@@ -155,7 +155,7 @@ struct IrBuilder
 		enum allocSize = divCeil(T.sizeof, uint.sizeof);
 		size_t numAllocatedSlots = allocSize * howMany;
 		ir.storage = ir.storage.ptr[0..ir.storage.length + numAllocatedSlots]; // extend slice
-		context.irBuffer.length += numAllocatedSlots;
+		context.irBuffer.voidPut(numAllocatedSlots);
 
 		return resultIndex;
 	}

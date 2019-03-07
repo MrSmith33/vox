@@ -5,6 +5,8 @@ Authors: Andrey Penechko.
 */
 module be.amd64asm;
 
+import utils : Arena;
+
 enum Register : ubyte {AX, CX, DX, BX, SP, BP, SI, DI, R8, R9, R10, R11, R12, R13, R14, R15}
 enum RegisterMax  = cast(Register)(Register.max+1);
 
@@ -236,19 +238,16 @@ alias PC = ubyte*;
 
 struct Encoder
 {
-	private ubyte[] mem;
-	private PC pc;
+	private Arena!ubyte* arena;
+	private PC pc() { return arena.nextPtr; }
 
-	uint pcOffset() { return cast(uint)(pc - mem.ptr); }
-	void setBuffer(ubyte[] buf) { mem = buf; pc = mem.ptr; }
-	ubyte[] freeBuffer() { scope(exit) { mem = null; resetPC; } return mem; }
-	void resetPC() { pc = mem.ptr; }
-	ubyte[] code() { return mem[0..pc - mem.ptr]; }
+	uint pcOffset() { return cast(uint)arena.length; }
+	void setBuffer(Arena!ubyte* arena) { this.arena = arena; }
+	ubyte[] code() { return arena.data; }
 
 	void sink_put(T)(T value)
 	{
-		*(cast(T*)pc) = value;
-		pc += value.sizeof;
+		arena.put(value);
 	}
 
 	void putRexByteChecked(ArgType argType)(ubyte bits, bool forceRex = false) {

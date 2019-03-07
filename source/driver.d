@@ -15,9 +15,9 @@ void pass_source(ref CompilationContext ctx)
 	{
 		if (file.content)
 		{
-			ctx.sourceBuffer[start] = SOI_CHAR;
-			ctx.sourceBuffer[start+1..start+1+file.content.length] = file.content;
-			ctx.sourceBuffer[start+1+file.content.length] = EOI_CHAR;
+			ctx.sourceBuffer.put(SOI_CHAR);
+			ctx.sourceBuffer.put(file.content);
+			ctx.sourceBuffer.put(EOI_CHAR);
 
 			file.length = cast(uint)(file.content.length + 2);
 			file.start = cast(uint)start;
@@ -35,11 +35,12 @@ void pass_source(ref CompilationContext ctx)
 				return;
 			}
 
-			ctx.sourceBuffer[start] = SOI_CHAR;
+			ctx.sourceBuffer.put(SOI_CHAR);
 			auto f = File(file.name, "r");
-			char[] result = f.rawRead(ctx.sourceBuffer[start+1..$]);
+			char[] sourceBuffer = ctx.sourceBuffer.voidPut(f.size);
+			char[] result = f.rawRead(sourceBuffer);
 			f.close();
-			ctx.sourceBuffer[start+1+result.length] = EOI_CHAR;
+			ctx.sourceBuffer.put(EOI_CHAR);
 
 			file.length = cast(uint)(result.length + 2);
 			file.start = cast(uint)start;
@@ -97,94 +98,56 @@ struct Driver
 	CompilationContext context;
 	CompilePass[] passes;
 
-	Win32Allocator allocator;
-	ubyte[] codeAndDataBuffer;
-
-	ubyte[] sourceBuffer;
-	ubyte[] fileBuffer;
-	ubyte[] codeBuffer;
-	ubyte[] staticBuffer;
-	ubyte[] tokenBuffer;
-	ubyte[] tokenLocationBuffer;
-	ubyte[] linkBuffer;
-	ubyte[] importBuffer;
-	ubyte[] binaryBuffer;
-
-	ubyte[] irBuffer;
-	ubyte[] modIrBuffer;
-	ubyte[] tempBuffer;
+	ArenaPool arenaPool;
 
 	static void funWithAddress(){}
 	void initialize(CompilePass[] passes_)
 	{
 		passes = passes_;
 
-		// Try to allocate code buffer closer to host code pages,
-		// so that 32-bit offset can be used for calls
-		size_t thisAddr = cast(size_t)(&funWithAddress); // take address of function in memory
-		size_t step = 0x10_000_000;
-		size_t aligned = alignValue(thisAddr, step) + step*5;
-
-		// Ideally we would allocate 2GB for code and data, split in 2 1-gig parts
-		enum BUF_SIZE = PAGE_SIZE * 32;
-		enum NUM_BUFS = 2;
-		///codeAndDataBuffer = allocate(BUF_SIZE * NUM_BUFS, cast(void*)aligned, MemType.RW);
-		ubyte[] take(size_t size) {
-			ubyte[] temp = codeAndDataBuffer[0..size];
-			codeAndDataBuffer = codeAndDataBuffer[size..$];
-			return temp;
-		}
-
-		//writefln("thisAddr h%X, data h%X..h%X, code h%X..h%X", thisAddr,
-		//	staticBuffer.ptr, staticBuffer.ptr+staticBuffer.length,
-		//	codeBuffer.ptr, codeBuffer.ptr+codeBuffer.length);
-
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		enum GiB = 1024UL*1024*1024;
-		enum MiB = 1024UL*1024;
-		enum BIG_BUF_SIZE = MiB*20;
-		enum SMALL_BUF_SIZE = MiB*1;
-		//enum BIG_BUF_SIZE = MiB;
-		size_t irMemSize = MiB*300;
-		bool success = allocator.reserve(irMemSize);
-		context.assertf(success, "allocator failed");
+		enum ulong GiB = 1024UL*1024*1024;
 
-		codeBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
-		staticBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
-		sourceBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
-		fileBuffer = cast(ubyte[])allocator.allocate(1024);
-		tokenBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
-		tokenLocationBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
-		linkBuffer = cast(ubyte[])allocator.allocate(SMALL_BUF_SIZE);
-		importBuffer = cast(ubyte[])allocator.allocate(SMALL_BUF_SIZE);
-		binaryBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		size_t irMemSize = GiB*12;
+		arenaPool.reserve(irMemSize);
 
-		irBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
-		modIrBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
-		tempBuffer = cast(ubyte[])allocator.allocate(BIG_BUF_SIZE);
+		/// Those 3 must be allocated in this order (or in inverse order)
+		/// Code must be able to use RIP-relative addressing into static data (and into import data when in JIT mode)
+		context.importBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.codeBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.staticDataBuffer.setBuffer(arenaPool.take(GiB), 0);
+
+		context.sourceBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.files.setBuffer(arenaPool.take(GiB), 0);
+		context.tokenBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.tokenLocationBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.binaryBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.irBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.types.buffer.setBuffer(arenaPool.take(GiB), 0);
+		context.tempBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.objSymTab.buffer.setBuffer(arenaPool.take(GiB), 0);
 	}
 
 	void releaseMemory()
 	{
-		allocator.releaseMemory();
-		deallocate(codeAndDataBuffer);
+		arenaPool.decommitAll;
 	}
 
 	ModuleDeclNode* compileModule(SourceFileInfo moduleFile, HostSymbol[] hostSymbols, DllModule[] dllModules)
 	{
-		markAsRW(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
-		context.sourceBuffer = cast(char[])sourceBuffer;
-		context.files.setBuffer(fileBuffer);
-		context.codeBuffer = codeBuffer;
-		context.importBuffer = importBuffer;
-		context.tokenBuffer = cast(TokenType[])tokenBuffer;
-		context.tokenLocationBuffer = cast(SourceLocation[])tokenLocationBuffer;
-		context.binaryBuffer.setBuffer(binaryBuffer);
-		context.irBuffer.setBuffer(irBuffer);
-		context.types.buffer.setBuffer(modIrBuffer);
-		context.tempBuffer.setBuffer(tempBuffer);
-		context.staticDataBuffer.setBuffer(staticBuffer);
-		context.objSymTab.buffer.setBuffer(linkBuffer);
+		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
+		context.sourceBuffer.clear;
+		context.files.clear;
+		context.codeBuffer.clear;
+		context.importBuffer.clear;
+		context.tokenBuffer.clear;
+		context.tokenLocationBuffer.clear;
+		context.binaryBuffer.clear;
+		context.irBuffer.clear;
+		context.types.buffer.clear;
+		context.tempBuffer.clear;
+		context.staticDataBuffer.clear;
+		context.objSymTab.buffer.clear;
 		context.objSymTab.firstModule = LinkIndex();
 		context.globals.array.length = 0;
 		context.entryPoint = null;
@@ -216,13 +179,13 @@ struct Driver
 	/// Must be called after compilation is finished and before execution
 	void markCodeAsExecutable()
 	{
-		markAsExecutable(codeBuffer.ptr, codeBuffer.length / PAGE_SIZE);
+		markAsExecutable(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
 	}
 
 	private bool canReferenceFromCode(void* hostSym)
 	{
-		void* start = context.codeBuffer.ptr;
-		void* end = context.codeBuffer.ptr + context.codeBuffer.length;
+		void* start = context.codeBuffer.bufPtr;
+		void* end = context.codeBuffer.bufPtr + context.codeBuffer.length;
 		bool reachesFromStart = (hostSym - start) == cast(int)(hostSym - start);
 		bool reachesFromEnd = (hostSym - end) == cast(int)(hostSym - end);
 		return reachesFromStart && reachesFromEnd;
@@ -257,7 +220,7 @@ struct Driver
 
 		ObjectSection textSection = {
 			sectionAddress : 0,
-			sectionData : context.codeBuffer.ptr,
+			sectionData : context.codeBuffer.bufPtr,
 			length : 0,
 			alignment : 1,
 			id : context.idMap.getOrRegNoDup(".text")
@@ -269,9 +232,6 @@ struct Driver
 	{
 		if (hostSymbols.length > 0)
 			context.assertf(context.buildType == BuildType.jit, "Can only add host symbols in JIT mode");
-
-		FixedBuffer!ulong jitImports;
-		jitImports.setBuffer(context.importBuffer);
 
 		ObjectModule hostModule = {
 			kind : ObjectModuleKind.isHost,
@@ -298,8 +258,9 @@ struct Driver
 			}
 			else
 			{
-				ulong sectionOffset = jitImports.byteLength;
-				jitImports.put(cast(ulong)hostSym.ptr);
+				ulong sectionOffset = context.importBuffer.length;
+				ulong ptr = cast(ulong)hostSym.ptr;
+				context.importBuffer.put(*cast(ubyte[8]*)&ptr);
 
 				ObjectSymbol importedSymbol = {
 					kind : ObjectSymbolKind.isHost,

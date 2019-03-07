@@ -205,7 +205,7 @@ struct ObjectSymbolReference
 
 struct ObjectSymbolTable
 {
-	FixedBuffer!uint buffer;
+	Arena!uint buffer;
 	LinkIndex firstModule;
 
 	alias addSymbol = append!ObjectSymbol;
@@ -216,7 +216,7 @@ struct ObjectSymbolTable
 	LinkIndex append(T)(ref T value)
 	{
 		LinkIndex result;
-		result.bufferIndex = buffer.length;
+		result.bufferIndex = cast(uint)buffer.length;
 		result.kind = getLinkIndexKind!T;
 
 		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);

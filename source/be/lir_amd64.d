@@ -322,6 +322,6 @@ struct LirBuilder
 		this.lir = lir;
 		this.ir = ir;
 
-		lir.storage = context.irBuffer.freePart;
+		lir.storage = context.irBuffer.nextPtr[0..0];
 	}
 }

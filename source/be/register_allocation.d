@@ -800,8 +800,8 @@ struct MoveSolver
 	ValueInfo[] stackSlots;
 	ValueInfo[] registers;
 	ValueInfo anyConstant;
-	FixedBuffer!IrIndex writtenNodesBuf;
-	uint savedBufLength;
+	size_t numWrittenNodes;
+	size_t savedBufLength;
 
 	// allocate buffers
 	// takes unique ownership of tempBuffer
@@ -813,14 +813,13 @@ struct MoveSolver
 		registers = context.allocateTempArray!ValueInfo(cast(uint)numRegs);
 		size_t numStackSlots = fun.backendData.stackLayout.slots.length;
 		stackSlots = context.allocateTempArray!ValueInfo(cast(uint)numStackSlots);
-		writtenNodesBuf.setBuffer(cast(ubyte[])context.tempBuffer.freePart);
 	}
 
 	void onEdge()
 	{
 		// we don't care about fields in constant
 		anyConstant = ValueInfo();
-		writtenNodesBuf.length = 0;
+		numWrittenNodes = 0;
 	}
 
 	// releases unique ownership of tempBuffer
@@ -831,7 +830,7 @@ struct MoveSolver
 		savedBufLength = 0;
 		stackSlots = null;
 		registers = null;
-		writtenNodesBuf = FixedBuffer!IrIndex();
+		numWrittenNodes = 0;
 	}
 
 	ref ValueInfo getInfo(IrIndex index) {
@@ -851,12 +850,13 @@ struct MoveSolver
 		context.assertf(moveTo.isPhysReg || moveTo.isStackSlot, "moveTo is %s", moveTo.kind);
 		context.assertf(!getInfo(moveTo).readFrom.isDefined, "Second write to %s detected", moveTo);
 		getInfo(moveTo).onWrite(moveFrom, moveTo);
-		writtenNodesBuf.put(moveTo);
+		context.tempBuffer.put(moveTo.asUint);
+		++numWrittenNodes;
 	}
 
 	void placeMoves(IrIndex blockIndex)
 	{
-		IrIndex[] writtenNodes = writtenNodesBuf.data;
+		IrIndex[] writtenNodes = cast(IrIndex[])context.tempBuffer.data[$-numWrittenNodes..$];
 		size_t i;
 
 		while (writtenNodes.length)

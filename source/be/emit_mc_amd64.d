@@ -14,7 +14,6 @@ import be.amd64asm;
 /// Emits machine code for amd64 architecture
 void pass_emit_mc_amd64(ref CompilationContext context)
 {
-	context.assertf(context.codeBuffer.length > 0, "Code buffer is empty");
 	auto emitter = CodeEmitter(&context);
 	emitter.compileModule;
 }
@@ -76,11 +75,11 @@ struct CodeEmitter
 			if (global.numUsers == 0) continue; // no users
 
 			// alignment
-			uint padding = paddingSize!uint(context.staticDataBuffer.length, global.alignment);
-			context.staticDataBuffer.voidPut(padding)[] = 0;
+			uint padding = paddingSize!uint(cast(uint)context.staticDataBuffer.length, global.alignment);
+			context.staticDataBuffer.pad(padding);
 
 			// offset
-			global.staticBufferOffset = context.staticDataBuffer.length;
+			global.staticBufferOffset = cast(uint)context.staticDataBuffer.length;
 
 			ObjectSymbol* globalSym = &context.objSymTab.getSymbol(global.objectSymIndex);
 			globalSym.sectionOffset = global.staticBufferOffset;
@@ -150,7 +149,7 @@ struct CodeEmitter
 		addFunctionSymbols();
 		if (context.hasErrors) return;
 
-		gen.encoder.setBuffer(context.codeBuffer);
+		gen.encoder.setBuffer(&context.codeBuffer);
 
 		foreach(f; context.mod.functions) {
 			if (f.isExternal) continue;
@@ -181,7 +180,7 @@ struct CodeEmitter
 
 		ObjectSymbol* funcSym = &context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
 		funcSym.dataPtr = gen.pc;
-		funcSym.sectionOffset = cast(ulong)(gen.pc - context.codeBuffer.ptr);
+		funcSym.sectionOffset = cast(ulong)(gen.pc - context.codeBuffer.bufPtr);
 
 		Identifier mainId = context.idMap.getOrRegNoDup("main");
 		if (fun.backendData.name == mainId)

@@ -93,7 +93,7 @@ struct IrTypeStructMember
 ///
 struct IrTypeStorage
 {
-	FixedBuffer!ulong buffer;
+	Arena!ulong buffer;
 	IrIndex firstType;
 	IrIndex lastType;
 

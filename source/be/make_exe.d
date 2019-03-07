@@ -42,7 +42,8 @@ void pass_create_executable(ref CompilationContext context)
 	importSection.section = &idataSection;
 
 	CoffImportSectionSize impSize = calcImportSize(&context);
-	auto importMapping = CoffImportSectionMapping(context.importBuffer, impSize);
+	ubyte[] importBuffer = context.importBuffer.voidPut(impSize.totalSectionBytes);
+	auto importMapping = CoffImportSectionMapping(importBuffer, impSize);
 
 	textSection.data = context.mod.code;
 	idataSection.data = importMapping.sectionData;
@@ -104,10 +105,7 @@ void pass_create_executable(ref CompilationContext context)
 	printHex(dataSection.data, 16);
 	writeln;*/
 
-	ArraySink sink;
-	sink.setBuffer(context.binaryBuffer.buf);
-	executable.write(sink);
-	context.binaryBuffer.length = cast(uint)sink.length;
+	executable.write(context.binaryBuffer);
 	//writeln(textSection.header);
 	//writeln(idataSection.header);
 	//writeln(dataSection.header);
@@ -221,7 +219,7 @@ void fillImports(ref CoffImportSectionMapping mapping, CompilationContext* conte
 	immutable uint ilt_rva = sectionRVA + mapping.ilt_rva;
 	immutable uint iat_rva = sectionRVA + mapping.iat_rva;
 
-	ArraySink strSink;
+	Arena!ubyte strSink;
 	strSink.setBuffer(mapping.stringData);
 
 	LinkIndex modIndex = context.objSymTab.firstModule;
@@ -422,7 +420,7 @@ struct CoffExecutable
 		}
 	}
 
-	void write(ref ArraySink sink)
+	void write(ref Arena!ubyte sink)
 	{
 		optionalHeader.AddressOfEntryPoint = entryPointAddress;
 
