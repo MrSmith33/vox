@@ -130,6 +130,8 @@ struct CompilationContext
 	/// Print LIR after IR to LIR pass
 	bool printLir = false;
 	bool printLiveIntervals = false;
+	/// Print LIR after Register Allocation
+	bool printLirRA = false;
 	bool printStaticData = false;
 	bool printStackLayout = false;
 	bool printSymbols = false;

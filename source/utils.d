@@ -441,15 +441,14 @@ struct Arena(T)
 	enum MIN_COMMIT_SIZE = COMMIT_PAGE_SIZE;
 
 	T* bufPtr;
-	/// How many items can be added without commiting more memory
-	/// Memory is committed in multiples of 4K
-	size_t committedItems;
-	/// Number of items in the buffer. length <= (capacity / T.sizeof)
+	/// How many items can be stored without commiting more memory
+	size_t capacity;
+	/// Number of items in the buffer. length <= capacity
 	size_t length;
 	/// Total reserved bytes
 	size_t reservedBytes;
 
-	size_t committedBytes() { return alignValue((length + committedItems) * T.sizeof, COMMIT_PAGE_SIZE); }
+	size_t committedBytes() { return alignValue(capacity * T.sizeof, COMMIT_PAGE_SIZE); }
 
 	uint uintLength() { return length.to!uint; }
 	size_t byteLength() { return length * T.sizeof; }
@@ -466,17 +465,17 @@ struct Arena(T)
 		bufPtr = cast(T*)reservedBuffer.ptr;
 		assert(bufPtr, "reservedBuffer is null");
 		reservedBytes = reservedBuffer.length;
-		// we can lose [0; T.sizeof-1] bytes here, need to round up to multiple of 4K when committing
-		committedItems = committedBytes / T.sizeof;
+		// we can lose [0; T.sizeof-1] bytes here, need to round up to multiple of allocation size when committing
+		capacity = committedBytes / T.sizeof;
 		length = 0;
 	}
 	void clear() { length = 0; }
 
 	void put(T[] items ...) {
-		if (committedItems < items.length) makeSpace(items.length);
+		if (capacity - length < items.length) makeSpace(items.length);
+		//writefln("assign %X.%s @ %s..%s+%s = %s", bufPtr, T.sizeof, length, length, items.length, items);
 		bufPtr[length..length+items.length] = items;
 		length += items.length;
-		committedItems -= items.length;
 	}
 
 	void put(R)(R itemRange) if (isInputRange!R) {
@@ -485,15 +484,14 @@ struct Arena(T)
 	}
 
 	void stealthPut(T item) {
-		if (committedItems == 0) makeSpace(1);
+		if (capacity == length) makeSpace(1);
 		bufPtr[length] = item;
 	}
 
 	/// Increases length and returns void-initialized slice to be filled by user
 	T[] voidPut(size_t howMany) {
-		if (committedItems < howMany) makeSpace(howMany);
+		if (capacity - length < howMany) makeSpace(howMany);
 		length += howMany;
-		committedItems -= howMany;
 		return bufPtr[length-howMany..length];
 	}
 
@@ -510,12 +508,11 @@ struct Arena(T)
 	}
 
 	void makeSpace(size_t items) {
+		assert(items > (capacity - length));
 		size_t _committedBytes = committedBytes;
-		size_t itemsToCommit = items - committedItems;
-		size_t bytesToCommit = alignValue((items - committedItems) * T.sizeof, COMMIT_PAGE_SIZE);
+		size_t itemsToCommit = items - (capacity - length);
+		size_t bytesToCommit = alignValue((items - (capacity - length)) * T.sizeof, COMMIT_PAGE_SIZE);
 		bytesToCommit = max(bytesToCommit, MIN_COMMIT_SIZE);
-		//writefln("make space %s %s %s", committedItems, bytesToCommit, itemsToCommit);
-		//writefln("  1 bufPtr %s\n  committedItems %s\n  length %s\n  reservedBytes %s", bufPtr, committedItems, length, reservedBytes);
 
 		version(Windows)
 		{
@@ -526,7 +523,7 @@ struct Arena(T)
 			}
 
 			import core.sys.windows.windows;
-			void* result = VirtualAlloc(bufPtr + _committedBytes, bytesToCommit, MEM_COMMIT, PAGE_READWRITE);
+			void* result = VirtualAlloc(cast(ubyte*)bufPtr + _committedBytes, bytesToCommit, MEM_COMMIT, PAGE_READWRITE);
 			if (result is null) assert(false, "Cannot commit more bytes");
 		}
 		else version(Posix)
@@ -534,8 +531,8 @@ struct Arena(T)
 			static assert(false, "Not implemented for Posix");
 		}
 
-		committedItems = (_committedBytes + bytesToCommit) / T.sizeof;
-		//writefln("  2 bufPtr %s\n  committedItems %s\n  length %s\n  reservedBytes %s", bufPtr, committedItems, length, reservedBytes);
+		capacity = (_committedBytes + bytesToCommit) / T.sizeof;
+		stdout.flush;
 	}
 }
 

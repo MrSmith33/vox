@@ -22,6 +22,8 @@ void runCli(string[] args)
 {
 	import std.path;
 
+	bool printTime = true;
+
 	if (args.length < 1)
 	{
 		writefln("Usage: tiny_jit [options...] infile(s)...", args);
@@ -64,10 +66,13 @@ void runCli(string[] args)
 
 	times.onIteration(0, duration);
 
-	//times.print;
+	if (printTime)
+	{
+		times.print;
 
-	//writefln("Finished in %ss, init %ss, release %ss",
-	//	scaledNumberFmt(duration),
-	//	scaledNumberFmt(endInitTime-startInitTime),
-	//	scaledNumberFmt(endReleaseTime-startReleaseTime));
+		writefln("Finished in %ss, init %ss, release %ss",
+			scaledNumberFmt(duration),
+			scaledNumberFmt(endInitTime-startInitTime),
+			scaledNumberFmt(endReleaseTime-startReleaseTime));
+	}
 }

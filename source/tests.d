@@ -59,7 +59,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	dumpSettings.printBlockFlags = true;
 
 	Test[] jitTests = [test7, test8, test8_1, test10, test9, test13, test18, test19,
-		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31];
+		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31, test32];
 
 	Test[] exeTests = [test28, test29];
 
@@ -908,3 +908,46 @@ void tester31(Func25 fun) {
 }
 auto test31 = Test("enum", input31, "test", cast(Test.Tester)&tester31,
 	[HostSymbol("print_num", cast(void*)&test31_external_print_num)]);
+
+// Test reg alloc xchg generation
+immutable input32 =
+q{void print(i32); // external
+void main() {
+	i32 lo = 0;
+	i32 hi = 1;
+	while (hi < 10000) {
+		i32 tmp = hi;
+		hi = hi + lo;
+		lo = tmp;
+		print(lo);
+	}
+	while (hi < 10000) {
+		i32 tmp = hi;
+		hi = hi + lo;
+		lo = tmp;
+		print(lo);
+	}
+	while (hi < 10000) {
+		i32 tmp = hi;
+		hi = hi + lo;
+		lo = tmp;
+		print(lo);
+	}
+	while (hi < 10000) {
+		i32 tmp = hi;
+		hi = hi + lo;
+		lo = tmp;
+		print(lo);
+	}
+}};
+alias Func32 = extern(C) void function();
+void tester32(Func32 fibonacci) {
+	fibonacci();
+	assert(testSink.text == "1 1 2 3 5 8 13 32 34 55 89 144 233 377 610 987 1597 2584 4181 6765");
+	testSink.clear;
+}
+extern(C) void test32_external_func(int par1) {
+	formattedWrite(testSink, "%s ", par1);
+}
+auto test32 = Test("Test 32", input32, "fibonacci 4 times", cast(Test.Tester)&tester32,
+	[HostSymbol("print", cast(void*)&test32_external_func)]);

@@ -486,6 +486,8 @@ struct CodeGen_x86_64
 	mixin binaryInstr_RMtoR_RtoRM!("cmp", [0x38, 0x39], [0x3A, 0x3B]);
 	mixin binaryInstr_RM_Imm!("cmp", 7);
 
+	mixin binaryInstr_RMtoR_RtoRM!("xchg", [0x86, 0x87], [0x86, 0x87]);
+
 	void leaw(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP1(0x8D), dst, src); }
 	void lead(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP1(0x8D), dst, src); }
 	void leaq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x8D), dst, src); }

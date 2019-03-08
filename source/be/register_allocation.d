@@ -19,6 +19,7 @@ import std.algorithm : min, max, sort, swap;
 import all;
 
 //version = RAPrint;
+//version = RAPrint_resolve;
 
 /// Does linear scan register allocation.
 /// Uses live intervals produced by pass_live_intervals
@@ -154,10 +155,6 @@ struct LinearScan
 		physRegs.setup(fun, context.machineInfo);
 
 		scope(exit) {
-			//TextSink sink;
-			//live.dump(sink);
-			//writeln(sink.text);
-
 			lir = null;
 			livePtr = null;
 		}
@@ -272,10 +269,14 @@ struct LinearScan
 		fixInstructionArgs();
 		resolve(fun);
 		genSaveCalleeSavedRegs(fun.backendData.stackLayout);
-		//FuncDumpSettings settings;
-		//settings.printBlockFlags = true;
-		//settings.handlers = &lirAmd64DumpHandlers;
-		//dumpFunction(*lir, *context, settings);
+
+		if (context.printLirRA)
+		{
+			FuncDumpSettings settings;
+			settings.printBlockFlags = true;
+			dumpFunction(*lir, *context, settings);
+		}
+
 		if (context.validateIr) validateIrFunction(*context, *lir);
 
 		unhandledStorage = unhandled.release;
@@ -669,7 +670,7 @@ struct LinearScan
 	*/
 	void resolve(FunctionDeclNode* fun)
 	{
-		version(RAPrint) writefln("resolve");
+		version(RAPrint_resolve) writefln("resolve");
 
 		MoveSolver moveSolver = MoveSolver(&builder, context, fun);
 		moveSolver.setup();
@@ -688,7 +689,7 @@ struct LinearScan
 			/// Phi functions are not updated
 			IrIndex splitCriticalEdge()
 			{
-				version(RAPrint) writefln("Split critical edge %s -> %s", predIndex, succIndex);
+				version(RAPrint_resolve) writefln("Split critical edge %s -> %s", predIndex, succIndex);
 				IrIndex newBlock = builder.addBasicBlock;
 				foreach (ref IrIndex succ; predBlock.successors.range(*lir)) {
 					if (succ == succIndex) {
@@ -709,10 +710,10 @@ struct LinearScan
 			}
 
 			moveSolver.onEdge();
-			version(RAPrint) writefln("  edge %s -> %s", predIndex, succIndex);
+			version(RAPrint_resolve) writefln("  edge %s -> %s", predIndex, succIndex);
 			foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(*lir))
 			{
-				version(RAPrint) writef("    phi %s res %s", phiIndex, phi.result);
+				version(RAPrint_resolve) writef("    phi %s res %s", phiIndex, phi.result);
 				foreach (size_t arg_i, ref IrPhiArg arg; phi.args(*lir))
 				{
 					if (arg.basicBlock == predIndex)
@@ -720,7 +721,7 @@ struct LinearScan
 						IrIndex moveFrom = arg.value;
 						IrIndex moveTo = phi.result;
 
-						version(RAPrint) writefln(" arg %s %s", arg.basicBlock, arg.value);
+						version(RAPrint_resolve) writefln(" arg %s %s", arg.basicBlock, arg.value);
 
 						moveSolver.addMove(moveFrom, moveTo);
 					}
@@ -838,12 +839,14 @@ struct MoveSolver
 			case IrValueKind.constant: return anyConstant;
 			case IrValueKind.stackSlot: return stackSlots[index.storageUintIndex];
 			case IrValueKind.physicalRegister:  return registers[index.physRegIndex];
-			default: assert(false);
+			default: context.internal_error("getInfo(%s)", index); assert(false);
 		}
 	}
 
 	void addMove(IrIndex moveFrom, IrIndex moveTo)
 	{
+		assert(moveFrom.isDefined);
+		assert(moveTo.isDefined);
 		if (moveFrom == moveTo) return;
 
 		getInfo(moveFrom).onRead(moveFrom);
@@ -863,25 +866,27 @@ struct MoveSolver
 		{
 			IrIndex toIndex = writtenNodes[i];
 			ValueInfo* to = &getInfo(toIndex);
-			IrIndex fromIndex = to.readFrom;
-			ValueInfo* from = &getInfo(fromIndex);
 
 			void removeCurrent()
 			{
 				*to = ValueInfo();
-				if (i+1 != writtenNodes.length)
-				{
-					writtenNodes[i] = writtenNodes[$-1];
-				}
+				writtenNodes[i] = writtenNodes[$-1];
 				--writtenNodes.length;
 			}
+
+			IrIndex fromIndex = to.readFrom;
 
 			if (!fromIndex.isDefined)
 			{
 				// marked as removed node, skip
 				removeCurrent();
+				if (i >= writtenNodes.length) i = 0;
+				continue;
 			}
-			else if (to.numReads == 0)
+
+			ValueInfo* from = &getInfo(fromIndex);
+
+			if (to.numReads == 0)
 			{
 				ExtraInstrArgs extra = {result : toIndex};
 				InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, fromIndex);
@@ -921,7 +926,9 @@ struct MoveSolver
 					from.readFrom = IrIndex();
 				}
 				else
+				{
 					++i;
+				}
 			}
 
 			if (i >= writtenNodes.length) i = 0;

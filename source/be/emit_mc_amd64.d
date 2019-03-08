@@ -263,6 +263,17 @@ struct CodeEmitter
 					case Amd64Opcode.mov:
 						genMove(instrHeader.result, instrHeader.args[0], ArgType.QWORD);
 						break;
+					case Amd64Opcode.xchg:
+						context.assertf(instrHeader.args[0].isPhysReg, "%s is not phys reg", instrHeader.args[0]);
+						context.assertf(instrHeader.args[1].isPhysReg, "%s is not phys reg", instrHeader.args[1]);
+						context.assertf(instrHeader.args[0].physRegSize == instrHeader.args[1].physRegSize,
+							"reg size mismatch %s != %s",
+							instrHeader.args[0].physRegSize,
+							instrHeader.args[1].physRegSize);
+						Register dst = indexToRegister(instrHeader.args[0]);
+						Register src = indexToRegister(instrHeader.args[1]);
+						gen.xchg(dst, src, cast(ArgType)instrHeader.args[0].physRegSize);
+						break;
 					case Amd64Opcode.load:
 						genLoad(instrHeader.result, instrHeader.args[0], ArgType.QWORD);
 						break;

@@ -62,8 +62,6 @@ void pass_live_intervals(ref CompilationContext context)
 
 		fun.backendData.liveIntervals = new FunctionLiveIntervals(fun.backendData.lirData);
 		pass_live_intervals_func(context, *fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
-		//writefln("// LIR before RA");
-		//dumpFunction_lir_amd64(*fun.lirData, context);
 
 		if (context.printLiveIntervals)
 		{
