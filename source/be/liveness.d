@@ -63,7 +63,7 @@ void pass_live_intervals(ref CompilationContext context)
 		fun.backendData.liveIntervals = new FunctionLiveIntervals(fun.backendData.lirData);
 		pass_live_intervals_func(context, *fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
 
-		if (context.printLiveIntervals)
+		if (context.printLiveIntervals && context.printDumpOf(fun))
 		{
 			TextSink sink;
 			fun.backendData.liveIntervals.dump(sink, context);

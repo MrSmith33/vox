@@ -32,7 +32,7 @@ struct IrToLir
 			context.mod.lirModule.addFunction(fun.backendData.lirData);
 			processFunc(*fun.backendData.irData, *fun.backendData.lirData);
 			if (context.validateIr) validateIrFunction(*context, *fun.backendData.lirData);
-			if (context.printLir) dumpFunction(*fun.backendData.lirData, *context);
+			if (context.printLir && context.printDumpOf(fun)) dumpFunction(*fun.backendData.lirData, *context);
 		}
 	}
 

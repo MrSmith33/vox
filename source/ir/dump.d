@@ -123,10 +123,21 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		sink.put("]");
 	}
 
-	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
+	IrIndex blockIndex = ir.entryBasicBlock;
+	IrBasicBlock* block;
+	while (blockIndex.isDefined)
 	{
+		if (!blockIndex.isBasicBlock)
+		{
+			sink.putfln("  invalid block %s", IrIndexDump(blockIndex, printer));
+			break;
+		}
+
+		block = &ir.getBlock(blockIndex);
+		scope(exit) blockIndex = block.nextBlock;
+
 		printer.blockIndex = blockIndex;
-		printer.block = &block;
+		printer.block = block;
 
 		printInstrIndex(blockIndex);
 		sink.putf("  %s", IrIndexDump(blockIndex, printer));
@@ -164,8 +175,19 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		sink.putln;
 
 		// phis
-		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
+		IrIndex phiIndex = block.firstPhi;
+		IrPhi* phi;
+		while (phiIndex.isDefined)
 		{
+			if (!phiIndex.isPhi)
+			{
+				sink.putfln("  invalid phi %s", IrIndexDump(phiIndex, printer));
+				break;
+			}
+
+			phi = &ir.getPhi(phiIndex);
+			scope(exit) phiIndex = phi.nextPhi;
+
 			printInstrIndex(phiIndex);
 			sink.putf("    %s %s = %s(",
 				IrIndexDump(phi.result, printer),

@@ -108,7 +108,7 @@ struct IrBuilder
 		else
 		{
 			uint[] buf = context.irBuffer.voidPut(ir.storage.length);
-			buf = ir.storage[0..ir.storage.length]; // copy
+			buf[] = ir.storage[0..ir.storage.length]; // copy
 			ir.storage = buf;
 		}
 		ir.lastBasicBlock = ir.getBlock(ir.exitBasicBlock).prevBlock;

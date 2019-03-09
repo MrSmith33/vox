@@ -29,6 +29,7 @@ void pass_linear_scan(ref CompilationContext context) {
 	foreach (FunctionDeclNode* fun; context.mod.functions) {
 		if (fun.isExternal) continue;
 		linearScan.scanFun(fun);
+		if (context.printLirRA && context.printDumpOf(fun)) dumpFunction(*fun.backendData.lirData, context);
 	}
 }
 
@@ -270,13 +271,6 @@ struct LinearScan
 		resolve(fun);
 		genSaveCalleeSavedRegs(fun.backendData.stackLayout);
 
-		if (context.printLirRA)
-		{
-			FuncDumpSettings settings;
-			settings.printBlockFlags = true;
-			dumpFunction(*lir, *context, settings);
-		}
-
 		if (context.validateIr) validateIrFunction(*context, *lir);
 
 		unhandledStorage = unhandled.release;
@@ -406,8 +400,7 @@ struct LinearScan
 			if (currentEnd < maxPos)
 			{
 				currentIt.reg = reg;
-				currentIt.reg.physRegSize = typeToRegSize(
-						lir.getValueType(*context, currentIt.definition), context);
+				currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(*context, currentIt.definition), context);
 				physRegs.markAsUsed(reg);
 				version(RAPrint) writefln("    alloc %s", reg);
 				return true;

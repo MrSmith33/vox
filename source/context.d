@@ -137,6 +137,13 @@ struct CompilationContext
 	bool printSymbols = false;
 	bool printCodeHex = false;
 	bool printTimings = false;
+	Identifier printOnlyFun = Identifier.max;
+
+	bool printDumpOf(FunctionDeclNode* fun) {
+		if (printOnlyFun == Identifier.max) return true;
+		if (printOnlyFun == fun.backendData.name) return true;
+		return false;
+	}
 
 	const(char)[] getTokenString(TokenIndex tokenIndex) pure
 	{
