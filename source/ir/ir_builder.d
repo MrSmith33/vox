@@ -274,9 +274,9 @@ struct IrBuilder
 	{
 		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
 		T* preheader = cast(T*)(&ir.storage.ptr[ir.storage.length]);
-		*preheader = preheaderData;
 		ir.storage = ir.storage.ptr[0..ir.storage.length + numAllocatedSlots]; // extend slice
-		context.irBuffer.length += numAllocatedSlots;
+		context.irBuffer.voidPut(numAllocatedSlots);
+		*preheader = preheaderData;
 	}
 
 	/// Returns InstrWithResult (if instr has result) or IrIndex instruction otherwise
