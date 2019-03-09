@@ -70,13 +70,13 @@ struct IrGlobal
 ///
 struct IrGlobalStorage
 {
-	IrGlobal[] array;
+	Arena!IrGlobal buffer;
 
 	///
 	IrIndex add()
 	{
-		IrIndex globalIndex = IrIndex(cast(uint)array.length, IrValueKind.global);
-		array ~= IrGlobal();
+		IrIndex globalIndex = IrIndex(cast(uint)buffer.length, IrValueKind.global);
+		buffer.put(IrGlobal());
 		return globalIndex;
 	}
 
@@ -84,7 +84,7 @@ struct IrGlobalStorage
 	ref IrGlobal get(IrIndex index)
 	{
 		assert(index.kind == IrValueKind.global);
-		assert(index.storageUintIndex < array.length);
-		return array[index.storageUintIndex];
+		assert(index.storageUintIndex < buffer.length);
+		return buffer.data[index.storageUintIndex];
 	}
 }

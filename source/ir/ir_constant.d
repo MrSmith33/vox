@@ -78,13 +78,13 @@ struct IrConstant
 ///
 struct IrConstantStorage
 {
-	IrConstant[] array;
+	Arena!IrConstant buffer;
 
 	///
 	IrIndex add(IrConstant con)
 	{
-		IrIndex conIndex = IrIndex(cast(uint)array.length, IrValueKind.constant);
-		array ~= con;
+		IrIndex conIndex = IrIndex(cast(uint)buffer.length, IrValueKind.constant);
+		buffer.put(con);
 		return conIndex;
 	}
 
@@ -92,7 +92,7 @@ struct IrConstantStorage
 	ref IrConstant get(IrIndex index)
 	{
 		assert(index.kind == IrValueKind.constant, format("Not a constant (%s)", index));
-		assert(index.storageUintIndex < array.length, "Not in bounds");
-		return array[index.storageUintIndex];
+		assert(index.storageUintIndex < buffer.length, "Not in bounds");
+		return buffer[index.storageUintIndex];
 	}
 }

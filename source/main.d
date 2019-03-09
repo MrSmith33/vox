@@ -12,10 +12,9 @@ import tests;
 version = standalone;
 version(standalone) void main(string[] args)
 {
-	import std.stdio;
-	//tryRunCli(args[1..$]);
+	runCli(args);
 	//runBench();
-	runAllTests(StopOnFirstFail.yes);
+	//runAllTests(StopOnFirstFail.yes);
 	//runDevTests();
 }
 

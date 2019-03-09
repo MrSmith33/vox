@@ -108,7 +108,7 @@ struct Driver
 		// IrIndex can address 2^28 * 4 bytes = 1GB
 		enum ulong GiB = 1024UL*1024*1024;
 
-		size_t irMemSize = GiB*12;
+		size_t irMemSize = GiB*37;
 		arenaPool.reserve(irMemSize);
 
 		/// Those 3 must be allocated in this order (or in inverse order)
@@ -122,10 +122,12 @@ struct Driver
 		context.tokenBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.tokenLocationBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.binaryBuffer.setBuffer(arenaPool.take(GiB), 0);
-		context.irBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.irBuffer.setBuffer(arenaPool.take(16*GiB), 0);
 		context.types.buffer.setBuffer(arenaPool.take(GiB), 0);
-		context.tempBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.tempBuffer.setBuffer(arenaPool.take(8*GiB), 0);
 		context.objSymTab.buffer.setBuffer(arenaPool.take(GiB), 0);
+		context.globals.buffer.setBuffer(arenaPool.take(GiB), 0);
+		context.constants.buffer.setBuffer(arenaPool.take(GiB), 0);
 	}
 
 	void releaseMemory()
@@ -149,7 +151,8 @@ struct Driver
 		context.staticDataBuffer.clear;
 		context.objSymTab.buffer.clear;
 		context.objSymTab.firstModule = LinkIndex();
-		context.globals.array.length = 0;
+		context.globals.buffer.clear;
+		context.constants.buffer.clear;
 		context.entryPoint = null;
 
 		context.files.put(moduleFile);

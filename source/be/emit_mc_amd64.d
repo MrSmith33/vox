@@ -35,7 +35,7 @@ struct CodeEmitter
 	void addStaticDataSymbols()
 	{
 		Identifier dataId = context.idMap.getOrRegNoDup(":data");
-		foreach(uint i, ref IrGlobal global; context.globals.array)
+		foreach(uint i, ref IrGlobal global; context.globals.buffer.data)
 		{
 			IrIndex globalIndex = IrIndex(i, IrValueKind.global);
 			global.validate(globalIndex, context);
@@ -66,7 +66,7 @@ struct CodeEmitter
 	void finalizeStaticData()
 	{
 		// copy static data into buffer and set offsets
-		foreach(uint i, ref IrGlobal global; context.globals.array)
+		foreach(uint i, ref IrGlobal global; context.globals.buffer.data)
 		{
 			IrIndex globalIndex = IrIndex(i, IrValueKind.global);
 			global.validate(globalIndex, context);

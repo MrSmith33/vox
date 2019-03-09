@@ -129,6 +129,7 @@ struct CompilationContext
 	bool printIr = false;
 	/// Print LIR after IR to LIR pass
 	bool printLir = false;
+	/// Print liveness analisys info
 	bool printLiveIntervals = false;
 	/// Print LIR after Register Allocation
 	bool printLirRA = false;
@@ -325,5 +326,24 @@ struct CompilationContext
 		T[] result = cast(T[])tempBuffer.voidPut(numAllocatedSlots);
 		result[] = T.init;
 		return result;
+	}
+
+	void printMemSize()
+	{
+		writefln("Arena sizes:");
+		writefln("  source:       %sB", scaledNumberFmt(sourceBuffer.byteLength));
+		writefln("  files:        %sB", scaledNumberFmt(files.byteLength));
+		writefln("  tokens:       %sB", scaledNumberFmt(tokenBuffer.byteLength));
+		writefln("  token loc:    %sB", scaledNumberFmt(tokenLocationBuffer.byteLength));
+		writefln("  IR:           %sB", scaledNumberFmt(irBuffer.byteLength));
+		writefln("  temp:         %sB", scaledNumberFmt(tempBuffer.byteLength));
+		writefln("  types:        %sB", scaledNumberFmt(types.buffer.byteLength));
+		writefln("  static data:  %sB", scaledNumberFmt(staticDataBuffer.byteLength));
+		writefln("  globals:      %sB", scaledNumberFmt(globals.buffer.byteLength));
+		writefln("  constants:    %sB", scaledNumberFmt(constants.buffer.byteLength));
+		writefln("  imports:      %sB", scaledNumberFmt(importBuffer.byteLength));
+		writefln("  symbols:      %sB", scaledNumberFmt(objSymTab.buffer.byteLength));
+		writefln("  machine code: %sB", scaledNumberFmt(codeBuffer.byteLength));
+		writefln("  binary:       %sB", scaledNumberFmt(binaryBuffer.byteLength));
 	}
 }
