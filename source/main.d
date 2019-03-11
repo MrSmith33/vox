@@ -5,16 +5,21 @@ Authors: Andrey Penechko.
 */
 module main;
 
+import std.stdio;
 import bench;
 import cli;
 import tests;
 
 version = standalone;
+//version = cli;
+//version = bench;
+//version = test;
 version(standalone) void main(string[] args)
 {
-	runCli(args);
-	//runBench();
-	//runAllTests(StopOnFirstFail.yes);
+	scope(exit) stdout.flush;
+	version(cli) runCli(args);
+	version(bench) runBench();
+	version(test) runAllTests(StopOnFirstFail.yes);
 	//runDevTests();
 }
 
