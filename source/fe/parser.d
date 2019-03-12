@@ -106,8 +106,12 @@ struct Parser
 		while (tok.type == TokenType.COMMENT);
 	}
 
-	T* make(T, Args...)(TokenIndex start, Args args) { return new T(start, args); }
-	ExpressionNode* makeExpr(T, Args...)(TokenIndex start, Args args) { return cast(ExpressionNode*)new T(start, null, IrIndex(), args); }
+	T* make(T, Args...)(TokenIndex start, Args args) {
+		return context.appendAst!T(start, args);
+	}
+	ExpressionNode* makeExpr(T, Args...)(TokenIndex start, Args args) {
+		return cast(ExpressionNode*) context.appendAst!T(start, null, IrIndex(), args);
+	}
 
 	T* enforceNode(T)(T* t)
 	{

@@ -42,16 +42,17 @@ void pass_source(ref CompilationContext ctx)
 			f.close();
 			ctx.sourceBuffer.put(EOI_CHAR);
 
+			file.content = cast(string)sourceBuffer;
 			file.length = cast(uint)(result.length + 2);
 			file.start = cast(uint)start;
 			start += file.length;
 		}
-	}
 
-	//if (ctx.printSource) {
-	//	writeln("// Source");
-	//	writeln(ctx.input);
-	//}
+		if (ctx.printSource) {
+			writefln(`// "%s"`, file.name);
+			writeln(file.content);
+		}
+	}
 }
 
 void pass_write_exe(ref CompilationContext ctx)
@@ -108,7 +109,7 @@ struct Driver
 		// IrIndex can address 2^28 * 4 bytes = 1GB
 		enum ulong GiB = 1024UL*1024*1024;
 
-		size_t irMemSize = GiB*37;
+		size_t irMemSize = GiB*53;
 		arenaPool.reserve(irMemSize);
 
 		/// Those 3 must be allocated in this order (or in inverse order)
@@ -128,6 +129,7 @@ struct Driver
 		context.objSymTab.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.globals.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.constants.buffer.setBuffer(arenaPool.take(GiB), 0);
+		context.astBuffer.setBuffer(arenaPool.take(16*GiB), 0);
 	}
 
 	void releaseMemory()
@@ -153,6 +155,7 @@ struct Driver
 		context.objSymTab.firstModule = LinkIndex();
 		context.globals.buffer.clear;
 		context.constants.buffer.clear;
+		context.astBuffer.clear;
 		context.entryPoint = null;
 
 		context.files.put(moduleFile);

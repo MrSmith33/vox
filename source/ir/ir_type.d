@@ -249,8 +249,7 @@ IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext co
 	switch(value.kind) with(IrValueKind)
 	{
 		case constant:
-			context.todo("getValueType %s", value.kind);
-			assert(false);
+			return context.constants.get(value).type;
 		case global:
 			IrGlobal* global = &context.globals.get(value);
 			context.assertf(global.type.isDefined, "Global has no type");

@@ -173,7 +173,7 @@ struct AstToIr
 		scope(exit) fun = null;
 
 		// create new function
-		ir = new IrFunction;
+		ir = context.appendAst!IrFunction;
 		f.backendData.irData = ir;
 		ir.backendData = &f.backendData;
 
@@ -239,7 +239,7 @@ struct AstToIr
 	}
 
 	/// destination must be pointer or variable
-	void store(IrIndex currentBlock, IrIndex destination, IrIndex value)
+	void store(IrIndex currentBlock, IrIndex destination, IrIndex value, IrArgSize argSize)
 	{
 		version(IrGenPrint) writefln("[IR GEN] store %s to '%s'",
 			value, destination);
@@ -247,8 +247,9 @@ struct AstToIr
 		switch (destination.kind) with(IrValueKind)
 		{
 			case stackSlot, global, virtualRegister:
-				// destination must store be pointer
-				builder.emitInstr!IrInstr_store(currentBlock, destination, value);
+				ExtraInstrArgs extra = { argSize : argSize };
+				// destination must be a pointer
+				builder.emitInstr!IrInstr_store(currentBlock, extra, destination, value);
 				break;
 			case variable:
 				builder.writeVariable(currentBlock, destination, value);
@@ -363,7 +364,7 @@ struct AstToIr
 				InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
 				ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
 
-				store(currentBlock, v.irValue, param.result);
+				store(currentBlock, v.irValue, param.result, v.type.argSize(context));
 			}
 		}
 
@@ -379,8 +380,12 @@ struct AstToIr
 			}
 			else
 			{
-				IrIndex value = context.constants.add(IrConstant(0));
-				store(currentBlock, v.irValue, value);
+				// TODO: default init structs, arrays, slices
+				if (v.type.basicTypeNode || v.type.ptrTypeNode)
+				{
+					IrIndex value = context.constants.add(IrConstant(0));
+					store(currentBlock, v.irValue, value, v.type.argSize(context));
+				}
 			}
 		}
 
@@ -613,7 +618,9 @@ struct AstToIr
 				}
 				break;
 			}
-			default: context.unreachable; assert(false);
+			default:
+				writefln("visitExprValue %s", v.getSym.symClass);
+				context.unreachable; assert(false);
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -810,7 +817,7 @@ struct AstToIr
 				if (leftType.astType == AstType.type_ptr)
 				{
 					// u8* = "string";
-					store(currentBlock, leftValue, right.irValue); // store pointer into pointer
+					store(currentBlock, leftValue, right.irValue, IrArgSize.size64); // store pointer into pointer
 				}
 				else if (leftType.astType == AstType.type_slice)
 				{
@@ -819,16 +826,16 @@ struct AstToIr
 
 					IrIndex lengthIndex = baseIndex; // 0
 					IrIndex lengthAddress = buildGEP(currentBlock, leftValue, baseIndex, lengthIndex);
-					store(currentBlock, lengthAddress, right.isStringLiteral.irValueLength);
+					store(currentBlock, lengthAddress, right.isStringLiteral.irValueLength, IrArgSize.size64);
 
 					IrIndex ptrIndex = context.constants.add(IrConstant(1));
 					IrIndex ptrAddress = buildGEP(currentBlock, leftValue, baseIndex, ptrIndex);
-					store(currentBlock, ptrAddress, right.irValue);
+					store(currentBlock, ptrAddress, right.irValue, IrArgSize.size64);
 				}
 				else context.unreachable;
 				break;
 			default:
-				store(currentBlock, leftValue, right.irValue);
+				store(currentBlock, leftValue, right.irValue, leftType.argSize(context));
 				break;
 		}
 	}

@@ -60,8 +60,7 @@ void pass_live_intervals(ref CompilationContext context)
 	{
 		if (fun.isExternal) continue;
 
-		fun.backendData.liveIntervals = new FunctionLiveIntervals(fun.backendData.lirData);
-		pass_live_intervals_func(context, *fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
+		pass_live_intervals_func(context, fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
 
 		if (context.printLiveIntervals && context.printDumpOf(fun))
 		{
@@ -80,7 +79,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 	size_t numBucketsPerBlock = divCeil(numVregs, size_t.sizeof * 8);
 	liveBitmap.allocSets(numBucketsPerBlock, ir.numBasicBlocks);
 
-	liveIntervals.initIntervals(&context);
+	liveIntervals.initIntervals(&context, &ir);
 	liveIntervals.linearIndicies.create(&context, &ir);
 
 	// enumerate all basic blocks, instructions
@@ -388,7 +387,6 @@ struct LiveBitmap
 ///
 struct FunctionLiveIntervals
 {
-	IrFunction* ir;
 	// invariant: all ranges of one interval are sorted by `from` and do not intersect
 	Buffer!LiveRange ranges;
 	Buffer!LiveInterval intervals;
@@ -400,7 +398,7 @@ struct FunctionLiveIntervals
 	LiveInterval[] virtualIntervals() { return intervals.data[numFixedIntervals..intervals.length]; }
 	LiveInterval[] physicalIntervals() { return intervals.data[0..numFixedIntervals]; }
 
-	void initIntervals(CompilationContext* context) {
+	void initIntervals(CompilationContext* context, IrFunction* ir) {
 		numFixedIntervals = context.machineInfo.registers.length;
 		intervals.voidPut(numFixedIntervals + ir.numVirtualRegisters);
 		foreach (i, ref it; physicalIntervals)
@@ -414,7 +412,7 @@ struct FunctionLiveIntervals
 		ranges.reserve(ir.numVirtualRegisters);
 	}
 
-	IrIndex getRegFor(IrIndex index)
+	IrIndex getRegFor(IrIndex index, IrFunction* ir)
 	{
 		if (index.isVirtReg)
 		{

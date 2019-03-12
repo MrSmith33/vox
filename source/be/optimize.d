@@ -35,6 +35,7 @@ void pass_optimize_ir(ref CompilationContext context)
 			//dumpFunction(*ir, context);
 			if (context.validateIr)
 				validateIrFunction(context, *ir);
+			if (context.printIrOpt) dumpFunction(*ir, context);
 		}
 	}
 }
@@ -102,8 +103,10 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 {
 	IrIndex buildOffset(IrIndex basePtr, long offsetVal, IrIndex resultType) {
 		if (offsetVal == 0) {
-			// same ptr (TODO typecast)
-			return basePtr;
+			ExtraInstrArgs extra = { type : resultType };
+			InstrWithResult instr = builder.emitInstr!IrInstr_conv(extra, basePtr);
+			builder.insertBeforeInstr(instrIndex, instr.instruction);
+			return instr.result;
 		} else {
 			IrIndex offset = context.constants.add(IrConstant(offsetVal));
 

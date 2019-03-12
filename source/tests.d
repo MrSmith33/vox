@@ -6,7 +6,7 @@ Authors: Andrey Penechko.
 module tests;
 
 import std.stdio;
-import std.format : formattedWrite;
+import std.format : formattedWrite, format;
 import all;
 
 void runDevTests()
@@ -22,13 +22,15 @@ void runDevTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	//driver.context.printSource = true;
+	driver.context.printSource = true;
 	//driver.context.printAstFresh = true;
 	//driver.context.printAstSema = true;
 	//driver.context.runTesters = false;
 
-	//driver.context.printIr = true;
+	driver.context.printIr = true;
+	//driver.context.printIrOpt = true;
 	//driver.context.printLir = true;
+	//driver.context.printLirRA = true;
 	//driver.context.printLiveIntervals = true;
 	//driver.context.printStaticData = true;
 	//driver.context.printCodeHex = true;
@@ -406,10 +408,10 @@ alias Func7 = extern(C) int function(int);
 void tester7(Func7 fib) {
 	immutable int[] results = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233,
 	377, 610, 987, 1597, 2584, 4181, 6765];
-	foreach(int i, int expected; results)
+	foreach(size_t i, int expected; results)
 	{
-		int res = fib(i+1);
-		assert(res == expected);
+		int res = fib(cast(int)i+1);
+		assert(res == expected, format("%s != %s", res, expected));
 	}
 }
 auto test7 = Test("Test 7", input7, "fib", cast(Test.Tester)&tester7);
@@ -499,10 +501,11 @@ immutable input13 = q{void test(i32* array, i32 index, i32 value) {
 }};
 alias Func13 = extern(C) void function(int*, int, int);
 void tester13(Func13 fun) {
-	int[2] val = [42, 56];
+	int[4] val = [42, 56, 96, 102];
+	int[4] expected = [42, 20, 96, 102];
 	fun(val.ptr, 1, 20);
 	//writefln("test([42, 56].ptr, 1, 20) -> %s", val);
-	assert(val[1] == 20);
+	assert(val == expected, format("%s != %s", val, expected));
 }
 auto test13 = Test("Test 13", input13, "test", cast(Test.Tester)&tester13);
 

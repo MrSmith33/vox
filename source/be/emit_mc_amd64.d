@@ -35,9 +35,9 @@ struct CodeEmitter
 	void addStaticDataSymbols()
 	{
 		Identifier dataId = context.idMap.getOrRegNoDup(":data");
-		foreach(uint i, ref IrGlobal global; context.globals.buffer.data)
+		foreach(size_t i, ref IrGlobal global; context.globals.buffer.data)
 		{
-			IrIndex globalIndex = IrIndex(i, IrValueKind.global);
+			IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
 			global.validate(globalIndex, context);
 
 			ushort symFlags;
@@ -66,9 +66,9 @@ struct CodeEmitter
 	void finalizeStaticData()
 	{
 		// copy static data into buffer and set offsets
-		foreach(uint i, ref IrGlobal global; context.globals.buffer.data)
+		foreach(size_t i, ref IrGlobal global; context.globals.buffer.data)
 		{
-			IrIndex globalIndex = IrIndex(i, IrValueKind.global);
+			IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
 			global.validate(globalIndex, context);
 
 			if (global.isInBuffer) continue; // already in buffer
@@ -275,20 +275,20 @@ struct CodeEmitter
 						gen.xchg(dst, src, cast(ArgType)instrHeader.args[0].physRegSize);
 						break;
 					case Amd64Opcode.load:
-						genLoad(instrHeader.result, instrHeader.args[0], ArgType.QWORD);
+						genLoad(instrHeader.result, instrHeader.args[0]);
 						break;
 					case Amd64Opcode.store:
-						genStore(instrHeader.args[0], instrHeader.args[1], ArgType.QWORD);
+						genStore(instrHeader.args[0], instrHeader.args[1], cast(ArgType)instrHeader.argSize);
 						break;
 					case Amd64Opcode.add:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.add, ArgType.QWORD);
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.add, cast(ArgType)instrHeader.args[0].physRegSize);
 						if (instrHeader.args[0] == stackPointer && instrHeader.args[1].isConstant)
 						{
 							stackPointerExtraOffset -= context.constants.get(instrHeader.args[1]).i64;
 						}
 						break;
 					case Amd64Opcode.sub:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.sub, ArgType.QWORD);
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.sub, cast(ArgType)instrHeader.args[0].physRegSize);
 						if (instrHeader.args[0] == stackPointer && instrHeader.args[1].isConstant)
 						{
 							stackPointerExtraOffset += context.constants.get(instrHeader.args[1]).i64;
@@ -537,13 +537,14 @@ struct CodeEmitter
 	}
 
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
-	// If src is phys reg the it is used as address base.
+	// If src is phys reg then it is used as address base.
 	// dst must be phys reg
-	void genLoad(IrIndex dst, IrIndex src, ArgType argType)
+	void genLoad(IrIndex dst, IrIndex src)
 	{
 		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot);
 		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
 
+		ArgType argType = cast(ArgType)dst.physRegSize;
 		Register dstReg = indexToRegister(dst);
 
 		switch(src.kind) with(IrValueKind)
@@ -563,6 +564,7 @@ struct CodeEmitter
 		}
 	}
 
+	// dst must be of pointer type
 	void genStore(IrIndex dst, IrIndex src, ArgType argType)
 	{
 		context.assertf(!src.isGlobal,

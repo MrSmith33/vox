@@ -26,11 +26,11 @@ struct TypePrinter
 struct TypeNode {
 	mixin AstNodeData!(AstType.abstract_node, AstFlags.isType);
 
-	BasicTypeNode* basicTypeNode() { return cast(BasicTypeNode*)&this; }
-	PtrTypeNode* ptrTypeNode() { return cast(PtrTypeNode*)&this; }
-	SliceTypeNode* sliceTypeNode() { return cast(SliceTypeNode*)&this; }
-	StaticArrayTypeNode* staticArrayTypeNode() { return cast(StaticArrayTypeNode*)&this; }
-	StructTypeNode* structTypeNode() { return cast(StructTypeNode*)&this; }
+	BasicTypeNode* basicTypeNode() { if (astType == AstType.type_basic) return cast(BasicTypeNode*)&this; return null; }
+	PtrTypeNode* ptrTypeNode() { if (astType == AstType.type_ptr) return cast(PtrTypeNode*)&this; return null; }
+	SliceTypeNode* sliceTypeNode() { if (astType == AstType.type_slice) return cast(SliceTypeNode*)&this; return null; }
+	StaticArrayTypeNode* staticArrayTypeNode() { if (astType == AstType.type_static_array) return cast(StaticArrayTypeNode*)&this; return null; }
+	StructTypeNode* structTypeNode() { if (astType == AstType.type_struct) return cast(StructTypeNode*)&this; return null; }
 
 	uint alignment()
 	{
@@ -56,6 +56,11 @@ struct TypeNode {
 			case AstType.type_struct: return structTypeNode.size;
 			default: assert(false, format("got %s", astType));
 		}
+	}
+
+	IrArgSize argSize(CompilationContext* context)
+	{
+		return sizeToIrArgSize(size, context);
 	}
 
 	string typeName(CompilationContext* context) {

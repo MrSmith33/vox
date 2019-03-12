@@ -26,7 +26,7 @@ struct IrToLir
 		{
 			if (fun.isExternal) continue;
 
-			fun.backendData.lirData = new IrFunction;
+			fun.backendData.lirData = context.appendAst!IrFunction;
 			fun.backendData.lirData.backendData = &fun.backendData;
 
 			context.mod.lirModule.addFunction(fun.backendData.lirData);
@@ -145,14 +145,14 @@ struct IrToLir
 					static if (getInstrInfo!I.hasResult)
 					{
 						IrIndex type = ir.getVirtReg(instrHeader.result).type;
-						ExtraInstrArgs extra = {addUsers : false, type : type};
+						ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
 						InstrWithResult res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, res.instruction);
 						recordIndex(instrHeader.result, res.result);
 					}
 					else
 					{
-						ExtraInstrArgs extra = {addUsers : false};
+						ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize };
 						IrIndex res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, res);
 					}

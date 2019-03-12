@@ -40,7 +40,7 @@ struct SemanticDeclarations
 
 	Scope* pushScope(string name, Flag!"ordered" isOrdered)
 	{
-		Scope* newScope = new Scope;
+		Scope* newScope = context.appendAst!Scope;
 		newScope.isOrdered = isOrdered;
 		newScope.debugName = name;
 
@@ -63,7 +63,7 @@ struct SemanticDeclarations
 	Symbol* insert(Identifier id, TokenIndex loc, SymbolClass symClass, AstNode* node)
 	{
 		typeof(Symbol.flags) flags = currentScope.isOrdered ? SymbolFlags.isInOrderedScope : 0;
-		auto sym = new Symbol(id, loc, symClass, flags, node);
+		Symbol* sym = context.appendAst!Symbol(id, loc, symClass, flags, node);
 		insert(sym);
 		return sym;
 	}
@@ -328,7 +328,7 @@ struct SemanticLookup
 		if (id == id_ptr)
 		{
 			expr.memberIndex = 1;
-			expr.type = cast(TypeNode*) new PtrTypeNode(sliceType.loc, sliceType.base);
+			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
 			return true;
 		}
 		else if (id == id_length)
@@ -554,7 +554,7 @@ struct SemanticStaticTypes
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert || force)
 			{
-				expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
+				expr = cast(ExpressionNode*) context.appendAst!TypeConvExprNode(expr.loc, type, IrIndex(), expr);
 				return true;
 			}
 		}
@@ -604,7 +604,7 @@ struct SemanticStaticTypes
 					//writefln("int %s %s -> %s", expr.loc, expr.type.printer(context), type.printer(context));
 					expr.type = type;
 				} else {
-					expr = cast(ExpressionNode*) new TypeConvExprNode(expr.loc, type, IrIndex(), expr);
+					expr = cast(ExpressionNode*) context.appendAst!TypeConvExprNode(expr.loc, type, IrIndex(), expr);
 				}
 				return true;
 			}
@@ -627,8 +627,8 @@ struct SemanticStaticTypes
 		else if (expr.astType == AstType.literal_string)
 		{
 			if (type.astType == AstType.type_slice &&
-				type.ptrTypeNode.base.astType == AstType.type_basic &&
-				type.ptrTypeNode.base.basicTypeNode.basicType == BasicType.t_u8)
+				type.sliceTypeNode.base.astType == AstType.type_basic &&
+				type.sliceTypeNode.base.basicTypeNode.basicType == BasicType.t_u8)
 			{
 				return true;
 			}
@@ -762,8 +762,8 @@ struct SemanticStaticTypes
 	}
 
 	void visit(ModuleDeclNode* m) {
-		u8Ptr = new PtrTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
-		u8Slice = new SliceTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
+		u8Ptr = context.appendAst!PtrTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
+		u8Slice = context.appendAst!SliceTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(FunctionDeclNode* f) {
@@ -926,7 +926,7 @@ struct SemanticStaticTypes
 					default:
 						context.internal_error("Cannot take address of %s", u.child.astType);
 				}
-				u.type = cast(TypeNode*) new PtrTypeNode(u.child.loc, u.child.type);
+				u.type = cast(TypeNode*) context.appendAst!PtrTypeNode(u.child.loc, u.child.type);
 				break;
 			default:
 				context.internal_error("un op %s not implemented", u.op);

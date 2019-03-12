@@ -62,21 +62,20 @@ struct CompilationContext
 
 	// storage
 
+	Arena!SourceFileInfo files;
 	/// Buffer for sources of all modules
 	Arena!char sourceBuffer;
-	Arena!SourceFileInfo files;
-	/// Buffer for resulting machine code
-	Arena!ubyte codeBuffer;
-	/// Buffer for indirect addresses when in JIT mode
-	/// Buffer for import section when in exe mode
-	Arena!ubyte importBuffer;
-	Arena!ubyte binaryBuffer;
-	/// Identifier interning/deduplication
-	IdentifierMap idMap;
 	/// Token buffer
 	Arena!TokenType tokenBuffer;
 	/// Token locations in source code
 	Arena!SourceLocation tokenLocationBuffer;
+	///
+	Arena!ubyte astBuffer;
+	/// Identifier interning/deduplication
+	IdentifierMap idMap;
+
+	/// Buffer for intra-pass temporary data
+	Arena!uint tempBuffer;
 	/// Buffer for function IR generation
 	Arena!uint irBuffer;
 	///
@@ -85,16 +84,23 @@ struct CompilationContext
 	IrConstantStorage constants;
 	/// Module global values and literals.
 	IrGlobalStorage globals;
-	/// Buffer for intra-pass temporary data
-	Arena!uint tempBuffer;
+
 	/// Buffer for string/array/struct literals
 	/// String literals have \0 after last character
 	/// Must be allocated before or after code segment to allow relative addressing
 	Arena!ubyte staticDataBuffer;
-	/// Symbols, sections and references
-	ObjectSymbolTable objSymTab;
+	/// Buffer for resulting machine code
+	Arena!ubyte codeBuffer;
+	/// Buffer for indirect addresses when in JIT mode
+	/// Buffer for import section when in exe mode
+	Arena!ubyte importBuffer;
+
 	/// Symbols provided by the environment
 	LinkIndex[Identifier] externalSymbols;
+	/// Symbols, sections and references
+	ObjectSymbolTable objSymTab;
+
+	Arena!ubyte binaryBuffer;
 
 	// sections
 	LinkIndex hostSectionIndex;
@@ -127,6 +133,8 @@ struct CompilationContext
 	bool printAstSema = false;
 	/// Print IR after AST to IR pass
 	bool printIr = false;
+	/// Print IR after optimization pass
+	bool printIrOpt = false;
 	/// Print LIR after IR to LIR pass
 	bool printLir = false;
 	/// Print liveness analisys info
@@ -328,6 +336,17 @@ struct CompilationContext
 		return result;
 	}
 
+	T* appendAst(T, Args...)(Args args) {
+		/*
+		import core.memory : GC;
+		T* result = cast(T*)astBuffer.nextPtr;
+		astBuffer.voidPut(T.sizeof);
+		*result = T(args);
+		GC.addRange(result, T.sizeof, typeid(T));
+		return result;*/
+		return new T(args);
+	}
+
 	void printMemSize()
 	{
 		writefln("Arena sizes:");
@@ -335,6 +354,7 @@ struct CompilationContext
 		writefln("  files:        %sB", scaledNumberFmt(files.byteLength));
 		writefln("  tokens:       %sB", scaledNumberFmt(tokenBuffer.byteLength));
 		writefln("  token loc:    %sB", scaledNumberFmt(tokenLocationBuffer.byteLength));
+		writefln("  AST:          %sB", scaledNumberFmt(astBuffer.byteLength));
 		writefln("  IR:           %sB", scaledNumberFmt(irBuffer.byteLength));
 		writefln("  temp:         %sB", scaledNumberFmt(tempBuffer.byteLength));
 		writefln("  types:        %sB", scaledNumberFmt(types.buffer.byteLength));

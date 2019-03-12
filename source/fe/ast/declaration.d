@@ -61,7 +61,7 @@ struct FunctionBackendData
 	/// Machine-level IR
 	IrFunction* lirData;
 	///
-	FunctionLiveIntervals* liveIntervals;
+	FunctionLiveIntervals liveIntervals;
 	/// Executable machine-code bytes
 	ubyte[] code;
 	/// Position in buffer or in memory

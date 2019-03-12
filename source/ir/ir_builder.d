@@ -22,8 +22,9 @@ struct InstrWithResult
 
 struct ExtraInstrArgs
 {
-	ubyte cond; // used when IrInstrFlags.hasCondition is set
 	IrOpcode opcode; // used when opcode is IrOpcode.invalid
+	ubyte cond; // used when IrInstrFlags.hasCondition is set
+	IrArgSize argSize;
 
 	bool addUsers = true;
 
@@ -314,6 +315,8 @@ struct IrBuilder
 			instrHeader.op = extra.opcode;
 		else
 			instrHeader.op = getInstrInfo!I.opcode;
+
+		instrHeader.argSize = extra.argSize;
 
 		// result
 		static if (getInstrInfo!I.hasVariadicResult)

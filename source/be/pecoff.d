@@ -504,9 +504,9 @@ struct PecoffObj
 		stringTable = cast(string)slicer.getArrayOf!char(stringTableSize - 4);
 
 		// Fill sections
-		foreach(uint i, ref section; sections)
+		foreach(size_t i, ref section; sections)
 		{
-			section.sectionId = i;
+			section.sectionId = cast(uint)i;
 			section.header = sectionHeaders[i];
 			section.name = section.header.getName(stringTable);
 

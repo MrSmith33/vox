@@ -7,6 +7,7 @@ module bench;
 
 import all;
 import tests;
+import std.stdio;
 
 void runBench()
 {
@@ -31,5 +32,6 @@ void runBench()
 		times.onIteration(iteration, time2-time1);
 	}
 
+	driver.context.printMemSize;
 	times.print;
 }

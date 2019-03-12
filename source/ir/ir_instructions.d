@@ -101,7 +101,38 @@ bool hasSideEffects(IrOpcode opcode)
 	return opcode == IrOpcode.store || opcode == IrOpcode.call;
 }
 
+enum IrArgSize : ubyte {
+	size8,
+	size16,
+	size32,
+	size64,
+}
 
+IrArgSize sizeToIrArgSize(uint typeSize, CompilationContext* context) {
+	switch (typeSize) {
+		case 1: return IrArgSize.size8;
+		case 2: return IrArgSize.size16;
+		case 4: return IrArgSize.size32;
+		case 8: return IrArgSize.size64;
+		default:
+			context.internal_error("Type of size %s cannot be stored in a register", typeSize);
+			assert(false);
+	}
+}
+
+IrArgSize typeToIrArgSize(IrIndex type, CompilationContext* context) {
+	uint typeSize = context.types.typeSize(type);
+	switch (typeSize) {
+		case 1: return IrArgSize.size8;
+		case 2: return IrArgSize.size16;
+		case 4: return IrArgSize.size32;
+		case 8: return IrArgSize.size64;
+		default:
+			context.internal_error("Type %s of size %s cannot be stored in a register",
+				IrTypeDump(type, *context), typeSize);
+			assert(false);
+	}
+}
 
 /// Common prefix of all IR instruction structs
 @(IrValueKind.instruction) @InstrInfo()
@@ -113,7 +144,9 @@ struct IrInstrHeader
 	mixin(bitfields!(
 		bool,       "hasResult", 1,
 		ubyte,      "cond",      4,
-		uint, "",                3
+		// Not always possible to infer arg size from arguments (like in store ptr, imm)
+		IrArgSize,  "argSize",   2,
+		uint, "",                1
 	));
 
 	static assert(IrBinaryCondition.max <= 0b1111, "4 bits are reserved");

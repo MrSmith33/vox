@@ -152,7 +152,7 @@ struct LinearScan
 
 		lir = fun.backendData.lirData;
 		builder.beginDup(lir, context);
-		livePtr = fun.backendData.liveIntervals;
+		livePtr = &fun.backendData.liveIntervals;
 		physRegs.setup(fun, context.machineInfo);
 
 		scope(exit) {
@@ -519,7 +519,7 @@ struct LinearScan
 		// fix uses first, because we may copy arg to result below
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
 		{
-			IrIndex reg = live.getRegFor(vregIndex);
+			IrIndex reg = live.getRegFor(vregIndex, lir);
 			foreach (size_t i, IrIndex userIndex; vreg.users.range(*lir))
 			{
 				final switch (userIndex.kind) with(IrValueKind)
@@ -547,7 +547,7 @@ struct LinearScan
 		// fix results
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
 		{
-			IrIndex reg = live.getRegFor(vregIndex);
+			IrIndex reg = live.getRegFor(vregIndex, lir);
 			switch(vreg.definition.kind) with(IrValueKind)
 			{
 				case instruction:
@@ -770,11 +770,12 @@ struct LinearScan
 				IrIndex slot = stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), false, 0);
 
 				// save register
-				IrIndex instrStore = builder.emitInstr!LirAmd64Instr_store(ExtraInstrArgs(), slot, reg.index);
+				ExtraInstrArgs extra1 = { argSize : IrArgSize.size64 };
+				IrIndex instrStore = builder.emitInstr!LirAmd64Instr_store(extra1, slot, reg.index);
 				builder.prependBlockInstr(entryBlock, instrStore);
 
 				// restore register
-				ExtraInstrArgs extra = {result : reg.index};
+				ExtraInstrArgs extra = { result : reg.index };
 				InstrWithResult instrLoad = builder.emitInstr!LirAmd64Instr_load(extra, slot);
 				builder.insertBeforeLastInstr(exitBlock, instrLoad.instruction);
 			}
