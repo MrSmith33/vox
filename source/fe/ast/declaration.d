@@ -28,6 +28,8 @@ struct ModuleDeclNode {
 	IrModule lirModule;
 	LinkIndex objectSymIndex;
 	ModuleIndex moduleIndex;
+	/// module identifier. Used by import declaration.
+	Identifier id;
 
 	void addFunction(FunctionDeclNode* func) {
 		func.backendData.index = FunctionIndex(cast(uint)functions.length, moduleIndex);
@@ -41,9 +43,16 @@ struct ModuleDeclNode {
 	}
 	FunctionDeclNode* findFunction(Identifier id) {
 		Symbol* sym = _scope.symbols.get(id, null);
+		if (sym is null) return null;
 		if (sym.symClass != SymbolClass.c_function) return null;
 		return sym.funcDecl;
 	}
+}
+
+struct ImportDeclNode
+{
+	mixin AstNodeData!(AstType.decl_import, AstFlags.isDeclaration);
+	Identifier id;
 }
 
 struct StructDeclNode {

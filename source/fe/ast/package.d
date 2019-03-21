@@ -22,6 +22,7 @@ enum AstType : ubyte
 	abstract_node,
 
 	decl_module,
+	decl_import,
 	decl_function,
 	decl_var,
 	decl_struct,

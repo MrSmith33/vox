@@ -70,7 +70,7 @@ struct AstToIr
 		context.assertf(n.isDeclaration, n.loc, "Expected declaration, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case decl_function, decl_struct:
+			case decl_function, decl_struct, decl_import:
 				// skip
 				if (currentBlock.isDefined)
 					builder.addJumpToLabel(currentBlock, nextStmt);

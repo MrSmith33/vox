@@ -88,6 +88,7 @@ enum TokenType : ubyte {
 	@("do")       DO_SYM,
 	@("else")     ELSE_SYM,
 	@("if")       IF_SYM,
+	@("import")   IMPORT_SYM,
 	@("return")   RETURN_SYM,
 	@("struct")   STRUCT_SYM,
 	@("while")    WHILE_SYM,
@@ -158,6 +159,7 @@ struct TokenIndex
 
 struct SourceFileInfo
 {
+	/// File name. Must be always set.
 	string name;
 	/// If set, then used as a source. Otherwise is read from file `name`
 	string content;
@@ -183,18 +185,29 @@ struct SourceLocation {
 	}
 }
 
+struct FmtSrcLoc
+{
+	TokenIndex tok;
+	CompilationContext* ctx;
+	void toString(scope void delegate(const(char)[]) sink) {
+		auto loc = ctx.tokenLoc(tok);
+		sink.formattedWrite("%s(%s, %s)",
+			ctx.idString(ctx.getModuleFromToken(tok).id), loc.line+1, loc.col+1);
+	}
+}
+
 /// Start of input
 enum char SOI_CHAR = '\2';
 /// End of input
 enum char EOI_CHAR = '\3';
 
 immutable string[] keyword_strings = ["bool","break","continue","do","else","f32","f64",
-	"i16","i32","i64","i8","if","isize","return","struct","u16","u32","u64",
+	"i16","i32","i64","i8","if","import","isize","return","struct","u16","u32","u64",
 	"u8","usize","void","while","cast","enum"];
 enum NUM_KEYWORDS = keyword_strings.length;
 immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,
 	TT.ELSE_SYM,TT.TYPE_F32,TT.TYPE_F64,TT.TYPE_I16,TT.TYPE_I32,TT.TYPE_I64,
-	TT.TYPE_I8,TT.IF_SYM,TT.TYPE_ISIZE,TT.RETURN_SYM,TT.STRUCT_SYM,
+	TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.TYPE_ISIZE,TT.RETURN_SYM,TT.STRUCT_SYM,
 	TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
 	TT.TYPE_VOID,TT.WHILE_SYM,TT.CAST,TT.ENUM];
 
@@ -539,6 +552,7 @@ struct Lexer
 					case '8': if (match("8"))  return TT.TYPE_I8;  break;
 					case 's': if (match("size")) return TT.TYPE_ISIZE; break;
 					case 'f': if (match("f")) return TT.IF_SYM; break;
+					case 'm': if (match("mport")) return TT.IMPORT_SYM; break;
 					default: break;
 				}
 				break;

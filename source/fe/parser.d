@@ -190,6 +190,10 @@ struct Parser
 		{
 			return parse_enum();
 		}
+		else if (tok.type == TokenType.IMPORT_SYM)
+		{
+			return parse_import();
+		}
 		else // <func_declaration> / <var_declaration>
 		{
 			TokenIndex start = tok.index;
@@ -432,6 +436,16 @@ struct Parser
 		}
 	}
 
+	AstNode* parse_import()
+	{
+		TokenIndex start = tok.index;
+		version(print_parse) auto s = scop("import %s", start);
+		nextToken; // skip "import"
+		Identifier moduleId = expectIdentifier();
+		expectAndConsume(TokenType.SEMICOLON);
+		return cast(AstNode*)make!ImportDeclNode(start, moduleId);
+	}
+
 	AstNode*[] parse_enum_body(TypeNode* type) { // { id [= val], ... }
 		expectAndConsume(TokenType.LCURLY);
 		AstNode*[] members;
@@ -591,7 +605,8 @@ struct Parser
 				version(print_parse) auto s2 = scop("default %s", loc);
 				if (isBasicTypeToken(tok.type) ||
 					tok.type == TokenType.STRUCT_SYM ||
-					tok.type == TokenType.ENUM) // declaration
+					tok.type == TokenType.ENUM ||
+					tok.type == TokenType.IMPORT_SYM) // declaration
 				{
 					AstNode* decl = parse_declaration;
 					return decl;

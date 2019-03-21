@@ -345,6 +345,28 @@ struct CompilationContext
 		return new T(args);
 	}
 
+	ModuleDeclNode* getModuleFromToken(TokenIndex tokIndex)
+	{
+		assert(tokIndex < tokenBuffer.length);
+
+		ModuleDeclNode* lastMod;
+		foreach(ref SourceFileInfo file; files.data)
+		{
+			if (tokIndex <= file.firstTokenIndex)
+				return lastMod;
+			lastMod = file.mod;
+		}
+		return lastMod;
+	}
+
+	ModuleDeclNode* findModule(const Identifier modId)
+	{
+		foreach(ref SourceFileInfo file; files.data)
+			if (file.mod.id == modId)
+				return file.mod;
+		return null;
+	}
+
 	ModuleDeclNode* getModule(ModuleIndex index)
 	{
 		return files[index.fileIndex].mod;

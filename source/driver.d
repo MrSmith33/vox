@@ -6,6 +6,7 @@ Authors: Andrey Penechko.
 module driver;
 
 import std.stdio : writeln, write, writef, writefln, stdout;
+import std.path : stripExtension;
 import all;
 
 void pass_source(ref CompilationContext ctx)
@@ -13,6 +14,8 @@ void pass_source(ref CompilationContext ctx)
 	size_t start = 0;
 	foreach(ref file; ctx.files.data)
 	{
+		file.mod.id = ctx.idMap.getOrRegNoDup(stripExtension(file.name));
+
 		if (file.content)
 		{
 			ctx.sourceBuffer.put(SOI_CHAR);

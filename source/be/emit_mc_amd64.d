@@ -23,6 +23,13 @@ void pass_emit_mc_amd64(ref CompilationContext context)
 		addFunctionSymbols(context, *file.mod);
 	}
 
+	if (context.printStaticData) {
+		writefln("// Data: addr 0x%X, %s bytes",
+			context.staticDataBuffer.bufPtr,
+			context.staticDataBuffer.length);
+		printHex(context.staticDataBuffer.data, 16);
+	}
+
 	if (context.hasErrors) return;
 
 	// emit code
@@ -160,13 +167,6 @@ struct CodeEmitter
 		}
 
 		ubyte[] code = codeStart[0..context.codeBuffer.nextPtr-codeStart];
-
-		if (context.printStaticData) {
-			writefln("// Data: addr 0x%X, %s bytes",
-				context.staticDataBuffer.bufPtr,
-				context.staticDataBuffer.length);
-			printHex(context.staticDataBuffer.data, 16);
-		}
 
 		if (context.printCodeHex) {
 			writefln("// Amd64 code: addr 0x%X, %s bytes", code.ptr, code.length);

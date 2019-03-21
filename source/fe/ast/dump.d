@@ -31,6 +31,9 @@ struct AstPrinter {
 		print("MODULE");
 		foreach (decl; m.declarations) pr_node(decl);
 	}
+	void visit(ImportDeclNode* i) {
+		print("IMPORT ", context.idString(i.id));
+	}
 	void visit(FunctionDeclNode* f) {
 		print("FUNC ", f.returnType.printer(context), " ", f.strId(context));
 		foreach (param; f.parameters) pr_node(cast(AstNode*)param);
@@ -143,6 +146,9 @@ struct AstDotPrinter {
 	void visit(ModuleDeclNode* m) {
 		printLabel(m, "Module");
 		foreach (decl; m.declarations) pr_node_edge(m, decl);
+	}
+	void visit(ImportDeclNode* i) {
+		printLabel(i, `IMPORT\n%s`, context.idString(i.id));
 	}
 	void visit(FunctionDeclNode* f) {
 		printLabel(f, `FUNC\n%s %s`, f.returnType.printer(context), f.strId(context));

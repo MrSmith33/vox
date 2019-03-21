@@ -24,8 +24,8 @@ void runDevTests()
 
 	//driver.context.printSource = true;
 	//driver.context.printLexemes = true;
-	driver.context.printAstFresh = true;
-	driver.context.printAstSema = true;
+	//driver.context.printAstFresh = true;
+	//driver.context.printAstSema = true;
 	//driver.context.runTesters = false;
 
 	//driver.context.printIr = true;
@@ -62,7 +62,8 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	dumpSettings.printBlockFlags = true;
 
 	Test[] jitTests = [test7, test8, test8_1, test10, test9, test13, test18, test19,
-		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31, test32];
+		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31,
+		test32, test33];
 
 	Test[] exeTests = [test28, test29];
 
@@ -976,7 +977,8 @@ immutable input33_1 =
 q{void print(i32); // external
 };
 immutable input33_2 =
-q{void fibonacci() {
+q{import input33_1;
+	void fibonacci() {
 	i32 lo = 0;
 	i32 hi = 1;
 	while (hi < 10000) {

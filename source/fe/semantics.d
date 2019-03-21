@@ -15,6 +15,8 @@ struct Scope
 {
 	///
 	Symbol*[Identifier] symbols;
+	/// Imported modules
+	ModuleDeclNode*[] imports;
 	///
 	Scope* parentScope;
 	///
@@ -87,6 +89,12 @@ struct SemanticDeclarations
 		mod._scope = pushScope("Module", No.ordered);
 		foreach (decl; mod.declarations) _visit(decl);
 		popScope;
+	}
+	void visit(ImportDeclNode* i) {
+		ModuleDeclNode* m = context.findModule(i.id);
+		currentScope.imports ~= m;
+		if (m is null)
+			context.error(i.loc, "Cannot find module `%s`", context.idString(i.id));
 	}
 	void visit(FunctionDeclNode* f) {
 		mod.addFunction(f);
@@ -237,7 +245,8 @@ struct SemanticLookup
 	/// Look up symbol by Identifier. Searches the whole stack of scopes.
 	Symbol* lookup(const Identifier id, TokenIndex from)
 	{
-		auto sym = symbols.get(id, null);
+		Symbol* sym = symbols.get(id, null);
+		// first phase
 		while (sym)
 		{
 			// forward reference allowed for unordered scope
@@ -253,6 +262,11 @@ struct SemanticLookup
 			sym = sym.outerSymbol;
 		}
 
+		if (sym) return sym;
+
+		// second phase
+		sym = lookupImports(id, from);
+
 		if (sym) {
 			// exists
 		}
@@ -261,6 +275,43 @@ struct SemanticLookup
 			context.error(from, "undefined identifier `%s`", context.idString(id));
 		}
 		return sym;
+	}
+
+	Symbol* lookupImports(const Identifier id, TokenIndex from)
+	{
+		Scope* sc = currentScope;
+		while (sc)
+		{
+			Symbol* sym;
+			ModuleDeclNode* symMod;
+
+			foreach (ModuleDeclNode* imp; sc.imports)
+			{
+				// TODO: check that import is higher in ordered scopes
+				Symbol* scopeSym = imp._scope.symbols.get(id, null);
+				if (scopeSym && sym && scopeSym != sym)
+				{
+					string mod1Id = context.idString(symMod.id);
+					string sym1Id = context.idString(sym.id);
+
+					string mod2Id = context.idString(imp.id);
+					string sym2Id = context.idString(scopeSym.id);
+
+					context.error(from,
+						"`%s.%s` at %s conflicts with `%s.%s` at %s",
+						mod1Id, sym1Id, FmtSrcLoc(sym.loc, context),
+						mod2Id, sym2Id, FmtSrcLoc(scopeSym.loc, context));
+				}
+
+				sym = scopeSym;
+				symMod = imp;
+			}
+
+			if (sym) return sym;
+
+			sc = sc.parentScope;
+		}
+		return null;
 	}
 
 	/// Look up member by Identifier. Searches aggregate scope for identifier.
@@ -392,6 +443,7 @@ struct SemanticLookup
 		foreach (decl; m.declarations) _visit(decl);
 		popScope;
 	}
+	void visit(ImportDeclNode* i) {}
 	void visit(FunctionDeclNode* f) {
 		pushCompleteScope(f._scope);
 		_visit(f.returnType);
@@ -775,6 +827,7 @@ struct SemanticStaticTypes
 		u8Slice = context.appendAst!SliceTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
 		foreach (decl; m.declarations) _visit(decl);
 	}
+	void visit(ImportDeclNode* i) {}
 	void visit(FunctionDeclNode* f) {
 		auto prevFunc = curFunc;
 		curFunc = f;

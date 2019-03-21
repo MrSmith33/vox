@@ -18,6 +18,7 @@ mixin template AstVisitorMixin() {
 			case abstract_node: context.internal_error(n.loc, "Visiting abstract node"); break;
 
 			case decl_module: auto m = cast(ModuleDeclNode*)n; visit(m); break;
+			case decl_import: auto i = cast(ImportDeclNode*)n; visit(i); break;
 			case decl_function: auto f = cast(FunctionDeclNode*)n; visit(f); break;
 			case decl_var: auto v = cast(VariableDeclNode*)n; visit(v); break;
 			case decl_struct: auto s = cast(StructDeclNode*)n; visit(s); break;
