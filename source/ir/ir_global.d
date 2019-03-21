@@ -45,6 +45,7 @@ struct IrGlobal
 	uint numUsers;
 	///
 	LinkIndex objectSymIndex;
+	LinkIndex moduleSymIndex;
 
 	bool isMutable() { return (flags & IrGlobalFlags.isMutable) != 0; }
 	bool isAllZero() { return (flags & IrGlobalFlags.isAllZero) != 0; }

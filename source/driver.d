@@ -49,7 +49,7 @@ void pass_source(ref CompilationContext ctx)
 		}
 
 		if (ctx.printSource) {
-			writefln(`// "%s"`, file.name);
+			writefln("// Source `%s`", file.name);
 			writeln(file.content);
 		}
 	}
@@ -94,6 +94,16 @@ immutable CompilePass[] extraExePasses = [
 CompilePass[] jitPasses = commonPasses ~ extraJitPasses;
 CompilePass[] exePasses = commonPasses ~ extraExePasses;
 
+/// To compile a set of modules do following steps:
+/// 1. initialize(passes)
+/// 2. beginCompilation()
+/// 3. addHostSymbols(hostSymbols)  --+
+/// 4. addDllModules(dllModules)      | In any order
+/// foreach(module; modules)          |
+/// 5. addModule(module)  ------------+
+/// 6. compile()
+/// 7. markCodeAsExecutable() if in JIT mode
+/// 8. releaseMemory()
 struct Driver
 {
 	CompilationContext context;
@@ -137,7 +147,7 @@ struct Driver
 		arenaPool.decommitAll;
 	}
 
-	ModuleDeclNode* compileModule(SourceFileInfo moduleFile, HostSymbol[] hostSymbols, DllModule[] dllModules)
+	void beginCompilation()
 	{
 		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
 		context.sourceBuffer.clear;
@@ -158,13 +168,27 @@ struct Driver
 		context.astBuffer.clear;
 		context.entryPoint = null;
 
-		context.files.put(moduleFile);
 		context.externalSymbols.clear();
 
 		addSections();
-		addHostSymbols(hostSymbols);
-		addDllModules(dllModules);
+	}
 
+	void addModule(SourceFileInfo moduleFile)
+	{
+		context.files.put(moduleFile);
+		SourceFileInfo* file = &context.files.back();
+
+		ObjectModule localModule = {
+			kind : ObjectModuleKind.isLocal,
+			id : context.idMap.getOrRegNoDup(":local")
+		};
+		file.mod = context.appendAst!ModuleDeclNode();
+		file.mod.moduleIndex = ModuleIndex(0);
+		file.mod.objectSymIndex = context.objSymTab.addModule(localModule);
+	}
+
+	void compile()
+	{
 		foreach (ref pass; passes)
 		{
 			auto time1 = currTime;
@@ -178,8 +202,6 @@ struct Driver
 			// throws if there were recoverable error in the pass
 			context.throwOnErrors;
 		}
-
-		return context.mod;
 	}
 
 	/// Must be called after compilation is finished and before execution

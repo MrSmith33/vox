@@ -11,9 +11,8 @@ import std.stdio;
 import all;
 import be.pecoff;
 
-void linkModule(ref CompilationContext context)
+void linkModule(ref CompilationContext context, LinkIndex modIndex)
 {
-	LinkIndex modIndex = context.mod.moduleIndex;
 	ObjectModule* mod = &context.objSymTab.getModule(modIndex);
 	//writefln("%s %s", modIndex, context.idString(mod.id));
 

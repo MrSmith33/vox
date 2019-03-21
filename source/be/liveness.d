@@ -56,7 +56,8 @@ for each block b in reverse order do
 void pass_live_intervals(ref CompilationContext context)
 {
 	LiveBitmap liveBitmap;
-	foreach (FunctionDeclNode* fun; context.mod.functions)
+	foreach (ref SourceFileInfo file; context.files.data)
+	foreach (FunctionDeclNode* fun; file.mod.functions)
 	{
 		if (fun.isExternal) continue;
 
@@ -291,7 +292,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			if (instrInfo.isCall)
 			{
 				FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
-				FunctionDeclNode* callee = context.mod.functions[calleeIndex];
+				FunctionDeclNode* callee = context.getFunction(calleeIndex);
 				CallConv* cc = callee.backendData.callingConvention;
 				IrIndex[] volatileRegs = cc.volatileRegs;
 				foreach(IrIndex reg; volatileRegs) {

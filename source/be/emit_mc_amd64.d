@@ -15,7 +15,124 @@ import be.amd64asm;
 void pass_emit_mc_amd64(ref CompilationContext context)
 {
 	auto emitter = CodeEmitter(&context);
-	emitter.compileModule;
+
+	// Add all symbols first, so they can be referenced during code emission
+	addStaticDataSymbols(context);
+	finalizeStaticData(context);
+	foreach (ref SourceFileInfo file; context.files.data) {
+		addFunctionSymbols(context, *file.mod);
+	}
+
+	if (context.hasErrors) return;
+
+	// emit code
+	foreach (ref SourceFileInfo file; context.files.data) {
+		emitter.compileModule(file.mod);
+	}
+}
+
+void finalizeStaticData(ref CompilationContext context)
+{
+	// copy static data into buffer and set offsets
+	foreach(size_t i, ref IrGlobal global; context.globals.buffer.data)
+	{
+		IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
+		global.validate(globalIndex, &context);
+
+		if (global.isInBuffer) continue; // already in buffer
+		if (global.numUsers == 0) continue; // no users
+
+		// alignment
+		uint padding = paddingSize!uint(cast(uint)context.staticDataBuffer.length, global.alignment);
+		context.staticDataBuffer.pad(padding);
+
+		// offset
+		global.staticBufferOffset = cast(uint)context.staticDataBuffer.length;
+
+		ObjectSymbol* globalSym = &context.objSymTab.getSymbol(global.objectSymIndex);
+		globalSym.sectionOffset = global.staticBufferOffset;
+
+		// copy
+		if (global.initializerPtr !is null) {
+			context.staticDataBuffer.put(global.initializer);
+		} else {
+			context.staticDataBuffer.voidPut(global.length)[] = 0;
+		}
+
+		// zero termination
+		if (global.needsZeroTermination)
+			context.staticDataBuffer.put(0);
+
+		global.flags |= IrGlobalFlags.isInBuffer;
+		//writefln("Global %s, size %s, zero %s, offset %s, buf size %s",
+		//	global.initializer, global.length, global.needsZeroTermination, global.staticBufferOffset, context.staticDataBuffer.length);
+	}
+}
+
+void addStaticDataSymbols(ref CompilationContext context)
+{
+	Identifier dataId = context.idMap.getOrRegNoDup(":data");
+	foreach(size_t i, ref IrGlobal global; context.globals.buffer.data)
+	{
+		IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
+		global.validate(globalIndex, &context);
+
+		ushort symFlags;
+
+		if (global.isMutable) symFlags |= ObjectSymbolFlags.isMutable;
+		if (global.isAllZero) symFlags |= ObjectSymbolFlags.isAllZero;
+		if (global.needsZeroTermination) symFlags |= ObjectSymbolFlags.needsZeroTermination;
+		if (global.isString) symFlags |= ObjectSymbolFlags.isString;
+
+		ObjectSymbol sym = {
+			kind : ObjectSymbolKind.isLocal,
+			flags : symFlags,
+			sectionOffset : global.staticBufferOffset,
+			dataPtr : global.initializerPtr,
+			sectionIndex : context.dataSectionIndex,
+			moduleIndex : global.moduleSymIndex,
+			length : global.length,
+			alignment : global.alignment,
+			id : dataId,
+		};
+
+		global.objectSymIndex = context.objSymTab.addSymbol(sym);
+	}
+}
+
+void addFunctionSymbols(ref CompilationContext context, ref ModuleDeclNode mod)
+{
+	foreach(FunctionDeclNode* f; mod.functions)
+	{
+		LinkIndex symbolIndex;
+
+		if (f.isExternal)
+		{
+			// When JIT-compiling, host can provide a set of external functions
+			// we will use provided function pointer
+			symbolIndex = context.externalSymbols.get(f.id, LinkIndex());
+
+			if (!symbolIndex.isDefined)
+			{
+				context.error(f.loc, "Unresolved external function %s", f.strId(&context));
+				continue;
+			}
+		}
+		else
+		{
+			ObjectSymbol sym = {
+				kind : ObjectSymbolKind.isLocal,
+				sectionIndex : context.textSectionIndex,
+				moduleIndex : mod.objectSymIndex,
+				alignment : 1,
+				id : f.id,
+			};
+			symbolIndex = context.objSymTab.addSymbol(sym);
+		}
+
+		// TODO: check that parameters match
+		f.backendData.objectSymIndex = symbolIndex;
+	}
 }
 
 //version = emit_mc_print;
@@ -32,131 +149,17 @@ struct CodeEmitter
 	int stackPointerExtraOffset;
 	IrIndex stackPointer;
 
-	void addStaticDataSymbols()
+	void compileModule(ModuleDeclNode* mod)
 	{
-		Identifier dataId = context.idMap.getOrRegNoDup(":data");
-		foreach(size_t i, ref IrGlobal global; context.globals.buffer.data)
-		{
-			IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
-			global.validate(globalIndex, context);
-
-			ushort symFlags;
-
-			if (global.isMutable) symFlags |= ObjectSymbolFlags.isMutable;
-			if (global.isAllZero) symFlags |= ObjectSymbolFlags.isAllZero;
-			if (global.needsZeroTermination) symFlags |= ObjectSymbolFlags.needsZeroTermination;
-			if (global.isString) symFlags |= ObjectSymbolFlags.isString;
-
-			ObjectSymbol sym = {
-				kind : ObjectSymbolKind.isLocal,
-				flags : symFlags,
-				sectionOffset : global.staticBufferOffset,
-				dataPtr : global.initializerPtr,
-				sectionIndex : context.dataSectionIndex,
-				moduleIndex : context.mod.moduleIndex,
-				length : global.length,
-				alignment : global.alignment,
-				id : dataId,
-			};
-
-			global.objectSymIndex = context.objSymTab.addSymbol(sym);
-		}
-	}
-
-	void finalizeStaticData()
-	{
-		// copy static data into buffer and set offsets
-		foreach(size_t i, ref IrGlobal global; context.globals.buffer.data)
-		{
-			IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
-			global.validate(globalIndex, context);
-
-			if (global.isInBuffer) continue; // already in buffer
-			if (global.numUsers == 0) continue; // no users
-
-			// alignment
-			uint padding = paddingSize!uint(cast(uint)context.staticDataBuffer.length, global.alignment);
-			context.staticDataBuffer.pad(padding);
-
-			// offset
-			global.staticBufferOffset = cast(uint)context.staticDataBuffer.length;
-
-			ObjectSymbol* globalSym = &context.objSymTab.getSymbol(global.objectSymIndex);
-			globalSym.sectionOffset = global.staticBufferOffset;
-
-			// copy
-			if (global.initializerPtr !is null) {
-				context.staticDataBuffer.put(global.initializer);
-			} else {
-				context.staticDataBuffer.voidPut(global.length)[] = 0;
-			}
-
-			// zero termination
-			if (global.needsZeroTermination)
-				context.staticDataBuffer.put(0);
-
-			global.flags |= IrGlobalFlags.isInBuffer;
-			//writefln("Global %s, size %s, zero %s, offset %s, buf size %s",
-			//	global.initializer, global.length, global.needsZeroTermination, global.staticBufferOffset, context.staticDataBuffer.length);
-		}
-	}
-
-	void addFunctionSymbols()
-	{
-		foreach(FunctionDeclNode* f; context.mod.functions)
-		{
-			LinkIndex symbolIndex;
-
-			if (f.isExternal)
-			{
-				// When JIT-compiling, host can provide a set of external functions
-				// we will use provided function pointer
-				symbolIndex = context.externalSymbols.get(f.id, LinkIndex());
-
-				if (!symbolIndex.isDefined)
-				{
-					context.error(f.loc, "Unresolved external function %s", f.strId(context));
-					continue;
-				}
-			}
-			else
-			{
-				ObjectSymbol sym = {
-					kind : ObjectSymbolKind.isLocal,
-					sectionIndex : context.textSectionIndex,
-					moduleIndex : context.mod.moduleIndex,
-					alignment : 1,
-					id : f.id,
-				};
-				symbolIndex = context.objSymTab.addSymbol(sym);
-			}
-
-			// TODO: check that parameters match
-			f.backendData.objectSymIndex = symbolIndex;
-		}
-	}
-
-	void compileModule()
-	{
-		ObjectModule localModule = {
-			kind : ObjectModuleKind.isLocal,
-			id : context.idMap.getOrRegNoDup(":local")
-		};
-		context.mod.moduleIndex = context.objSymTab.addModule(localModule);
-
-		addStaticDataSymbols();
-		finalizeStaticData();
-		addFunctionSymbols();
-		if (context.hasErrors) return;
-
+		ubyte* codeStart = context.codeBuffer.nextPtr;
 		gen.encoder.setBuffer(&context.codeBuffer);
 
-		foreach(f; context.mod.functions) {
+		foreach(f; mod.functions) {
 			if (f.isExternal) continue;
 			compileFunction(f);
 		}
 
-		context.mod.code = gen.encoder.code;
+		ubyte[] code = codeStart[0..context.codeBuffer.nextPtr-codeStart];
 
 		if (context.printStaticData) {
 			writefln("// Data: addr 0x%X, %s bytes",
@@ -166,8 +169,8 @@ struct CodeEmitter
 		}
 
 		if (context.printCodeHex) {
-			writefln("// Amd64 code: addr 0x%X, %s bytes", context.mod.code.ptr, context.mod.code.length);
-			printHex(context.mod.code, 16);
+			writefln("// Amd64 code: addr 0x%X, %s bytes", code.ptr, code.length);
+			printHex(code, 16);
 			writeln;
 		}
 	}
@@ -313,7 +316,7 @@ struct CodeEmitter
 						break;
 					case Amd64Opcode.call:
 						FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
-						FunctionDeclNode* callee = context.mod.functions[calleeIndex];
+						FunctionDeclNode* callee = context.getFunction(calleeIndex);
 						ObjectSymbol* sym = &context.objSymTab.getSymbol(callee.backendData.objectSymIndex);
 
 						if (sym.isIndirect)

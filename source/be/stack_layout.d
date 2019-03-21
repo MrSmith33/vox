@@ -50,7 +50,8 @@ enum STACK_ITEM_SIZE = 8; // x86_64
 /// Arranges items on the stack according to calling convention
 void pass_stack_layout(ref CompilationContext ctx)
 {
-	foreach (FunctionDeclNode* func; ctx.mod.functions)
+	foreach (ref SourceFileInfo file; ctx.files.data)
+	foreach (FunctionDeclNode* func; file.mod.functions)
 	{
 		if (func.isExternal) continue;
 

@@ -18,5 +18,7 @@ void pass_link_jit(ref CompilationContext context)
 	context.objSymTab.getSection(context.importSectionIndex).sectionAddress = cast(ulong)context.importBuffer.bufPtr;
 	context.objSymTab.getSection(context.textSectionIndex).sectionAddress = cast(ulong)context.codeBuffer.bufPtr;
 
-	linkModule(context);
+	foreach (ref SourceFileInfo file; context.files.data) {
+		linkModule(context, file.mod.objectSymIndex);
+	}
 }

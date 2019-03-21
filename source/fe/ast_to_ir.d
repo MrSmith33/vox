@@ -11,7 +11,9 @@ import all;
 
 void pass_ir_gen(ref CompilationContext ctx) {
 	auto astToIr = AstToIr(&ctx);
-	astToIr.visit(ctx.mod);
+	foreach (ref SourceFileInfo file; ctx.files.data) {
+		astToIr.visit(file.mod);
+	}
 }
 
 //version = IrGenPrint;
@@ -104,6 +106,7 @@ struct AstToIr
 	}
 
 	CompilationContext* context;
+	ModuleDeclNode* mod;
 
 	Identifier tempId;
 	Identifier startId;
@@ -125,6 +128,8 @@ struct AstToIr
 
 	void visit(ModuleDeclNode* m)
 	{
+		mod = m;
+
 		version(IrGenPrint) writeln("[IR GEN] module begin");
 
 		tempId = context.idMap.getOrRegNoDup("__tmp");
@@ -154,7 +159,7 @@ struct AstToIr
 			{
 				m.irModule.addFunction(decl.backendData.irData);
 				if (context.validateIr) validateIrFunction(*context, *decl.backendData.irData);
-				if (context.printIr) dumpFunction(*decl.backendData.irData, *context);
+				if (context.printIr && context.printDumpOf(decl)) dumpFunction(*decl.backendData.irData, *context);
 			}
 		}
 
@@ -337,6 +342,7 @@ struct AstToIr
 			global.type = context.types.appendPtr(valueType);
 			uint valueSize = context.types.typeSize(valueType);
 			global.length = valueSize;
+			global.moduleSymIndex = mod.objectSymIndex;
 			return;
 		}
 
@@ -691,6 +697,7 @@ struct AstToIr
 			global.setInitializer(cast(ubyte[])c.value);
 			global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
 			global.type = c.type.genIrType(context);
+			global.moduleSymIndex = mod.objectSymIndex;
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -916,10 +923,6 @@ struct AstToIr
 		FunctionDeclNode* callee = calleeSym.funcDecl;
 
 		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.index);
-		context.assertf(callee.backendData.index < context.mod.functions.length,
-			"Callee index is out of bounds: index %s, num functions %s",
-			callee.backendData.index, context.mod.functions.length);
-
 		builder.emitInstrPreheader(IrInstrPreheader_call(callee.backendData.index));
 
 		if (callee.returnType.isVoid)

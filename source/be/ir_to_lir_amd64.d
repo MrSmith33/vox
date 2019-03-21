@@ -22,14 +22,15 @@ struct IrToLir
 
 	void run()
 	{
-		foreach (i, FunctionDeclNode* fun; context.mod.functions)
+		foreach (ref SourceFileInfo file; context.files.data)
+		foreach (i, FunctionDeclNode* fun; file.mod.functions)
 		{
 			if (fun.isExternal) continue;
 
 			fun.backendData.lirData = context.appendAst!IrFunction;
 			fun.backendData.lirData.backendData = &fun.backendData;
 
-			context.mod.lirModule.addFunction(fun.backendData.lirData);
+			file.mod.lirModule.addFunction(fun.backendData.lirData);
 			processFunc(*fun.backendData.irData, *fun.backendData.lirData);
 			if (context.validateIr) validateIrFunction(*context, *fun.backendData.lirData);
 			if (context.printLir && context.printDumpOf(fun)) dumpFunction(*fun.backendData.lirData, *context);
@@ -231,7 +232,6 @@ struct IrToLir
 							};
 
 							FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
-							context.assertf(calleeIndex < context.mod.functions.length, "Invalid callee index %s", calleeIndex);
 							builder.emitInstrPreheader(IrInstrPreheader_call(calleeIndex));
 							InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
 								lirBlockIndex, callExtra, physArgs[0..numPhysRegs]);

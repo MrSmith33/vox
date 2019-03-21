@@ -14,7 +14,8 @@ alias FuncPass = void function(ref CompilationContext, ref IrFunction);
 
 void apply_lir_func_pass(ref CompilationContext context, FuncPass pass)
 {
-	foreach (IrFunction* lir; context.mod.lirModule.functions) {
+	foreach (ref SourceFileInfo file; context.files.data)
+	foreach (IrFunction* lir; file.mod.lirModule.functions) {
 		pass(context, *lir);
 		if (context.validateIr)
 			validateIrFunction(context, *lir);
@@ -26,13 +27,11 @@ void pass_optimize_ir(ref CompilationContext context)
 	FuncPassIr[] passes = [&func_pass_invert_conditions, &func_pass_remove_dead_code, &func_pass_lower_gep];
 	IrBuilder builder;
 
-
-	foreach (IrFunction* ir; context.mod.irModule.functions) {
-		//dumpFunction(*ir, context);
+	foreach (ref SourceFileInfo file; context.files.data)
+	foreach (IrFunction* ir; file.mod.irModule.functions) {
 		builder.beginDup(ir, &context);
 		foreach (FuncPassIr pass; passes) {
 			pass(context, *ir, builder);
-			//dumpFunction(*ir, context);
 			if (context.validateIr)
 				validateIrFunction(context, *ir);
 			if (context.printIrOpt) dumpFunction(*ir, context);

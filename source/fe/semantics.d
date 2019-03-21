@@ -27,7 +27,9 @@ struct Scope
 void pass_semantic_decl(ref CompilationContext ctx)
 {
 	auto sem1 = SemanticDeclarations(&ctx);
-	sem1.visit(ctx.mod);
+	foreach (ref SourceFileInfo file; ctx.files.data) {
+		sem1.visit(file.mod);
+	}
 }
 
 /// Register identifiers in scope tree
@@ -37,6 +39,7 @@ struct SemanticDeclarations
 
 	CompilationContext* context;
 	Scope* currentScope;
+	ModuleDeclNode* mod;
 
 	Scope* pushScope(string name, Flag!"ordered" isOrdered)
 	{
@@ -80,12 +83,13 @@ struct SemanticDeclarations
 	}
 
 	void visit(ModuleDeclNode* m) {
-		context.mod._scope = pushScope("Module", No.ordered);
-		foreach (decl; context.mod.declarations) _visit(decl);
+		mod = m;
+		mod._scope = pushScope("Module", No.ordered);
+		foreach (decl; mod.declarations) _visit(decl);
 		popScope;
 	}
 	void visit(FunctionDeclNode* f) {
-		context.mod.addFunction(f);
+		mod.addFunction(f);
 		f.resolveSymbol = insert(f.id, f.loc, SymbolClass.c_function, cast(AstNode*)f);
 		f._scope = pushScope(context.idString(f.id), Yes.ordered);
 		foreach (param; f.parameters) visit(param);
@@ -176,7 +180,9 @@ struct SemanticDeclarations
 void pass_semantic_lookup(ref CompilationContext ctx)
 {
 	auto sem2 = SemanticLookup(&ctx);
-	sem2.visit(ctx.mod);
+	foreach (ref SourceFileInfo file; ctx.files.data) {
+		sem2.visit(file.mod);
+	}
 }
 
 /// Resolves all symbol references (variable/type/function uses)
@@ -483,11 +489,14 @@ struct SemanticLookup
 void pass_semantic_type(ref CompilationContext ctx)
 {
 	auto sem3 = SemanticStaticTypes(&ctx);
-	sem3.visit(ctx.mod);
+	foreach (ref SourceFileInfo file; ctx.files.data) {
+		sem3.visit(file.mod);
 
-	if (ctx.printAstSema && ctx.mod !is null) {
-		auto astPrinter = AstPrinter(&ctx, 2);
-		astPrinter.printAst(cast(AstNode*)ctx.mod);
+		if (ctx.printAstSema && file.mod !is null) {
+			auto astPrinter = AstPrinter(&ctx, 2);
+			writefln("// AST sema `%s`", file.name);
+			astPrinter.printAst(cast(AstNode*)file.mod);
+		}
 	}
 }
 

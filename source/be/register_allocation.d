@@ -26,7 +26,8 @@ import all;
 void pass_linear_scan(ref CompilationContext context) {
 	LinearScan linearScan;
 	linearScan.context = &context;
-	foreach (FunctionDeclNode* fun; context.mod.functions) {
+	foreach (ref SourceFileInfo file; context.files.data)
+	foreach (FunctionDeclNode* fun; file.mod.functions) {
 		if (fun.isExternal) continue;
 		linearScan.scanFun(fun);
 		if (context.printLirRA && context.printDumpOf(fun)) dumpFunction(*fun.backendData.lirData, context);

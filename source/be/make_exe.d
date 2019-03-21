@@ -45,7 +45,7 @@ void pass_create_executable(ref CompilationContext context)
 	ubyte[] importBuffer = context.importBuffer.voidPut(impSize.totalSectionBytes);
 	auto importMapping = CoffImportSectionMapping(importBuffer, impSize);
 
-	textSection.data = context.mod.code;
+	textSection.data = context.codeBuffer.data;
 	idataSection.data = importMapping.sectionData;
 	dataSection.data = context.staticDataBuffer.data;
 
@@ -85,7 +85,9 @@ void pass_create_executable(ref CompilationContext context)
 	// uses sectionAddress
 	fillImports(importMapping, &context);
 
-	linkModule(context);
+	foreach (ref SourceFileInfo file; context.files.data) {
+		linkModule(context, file.mod.objectSymIndex);
+	}
 
 	if (context.entryPoint is null)
 	{

@@ -78,19 +78,24 @@ void runCli(string[] args)
 		return;
 	}
 
-	string filename = args[0];
+	string[] filenames = args;
 
 	driver.initialize(exePasses);
 	driver.context.buildType = BuildType.exe;
 	if (outputFilename) driver.context.outputFilename = outputFilename;
-	else driver.context.outputFilename = setExtension(filename, ".exe");
+	else driver.context.outputFilename = setExtension(filenames[0], ".exe");
 	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(filterFuncName);
 	auto times = PerPassTimeMeasurements(1, driver.passes);
 	auto endInitTime = currTime;
 
 	try
 	{
-		driver.compileModule(SourceFileInfo(filename), null, null);
+		driver.beginCompilation();
+		//driver.addHostSymbols();
+		//driver.addDllModules();
+		foreach(filename; filenames)
+			driver.addModule(SourceFileInfo(filename));
+		driver.compile();
 	}
 	catch(CompilationException e) {
 		writeln(driver.context.sink.text);

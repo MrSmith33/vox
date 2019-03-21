@@ -165,6 +165,11 @@ struct SourceFileInfo
 	uint start;
 	/// Length of source code
 	uint length;
+	///
+	TokenIndex firstTokenIndex;
+
+	/// Module declaration
+	ModuleDeclNode* mod;
 }
 
 struct SourceLocation {
@@ -204,22 +209,27 @@ immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT
 
 void pass_lexer(ref CompilationContext ctx)
 {
-	Lexer lexer = Lexer(&ctx, ctx.sourceBuffer.data, &ctx.tokenBuffer, &ctx.tokenLocationBuffer);
-	// TODO: when compiling multiple modules, continue buffers instead of overwriting them
+	foreach (ref SourceFileInfo file; ctx.files.data)
+	{
+		file.firstTokenIndex = TokenIndex(cast(uint)ctx.tokenLocationBuffer.length);
 
-	lexer.lex();
+		Lexer lexer = Lexer(&ctx, ctx.sourceBuffer.data, &ctx.tokenBuffer, &ctx.tokenLocationBuffer);
+		lexer.position = file.start;
 
-	if (ctx.printLexemes) {
-		writeln("// Lexemes");
-		Token tok;
-		do
-		{
-			tok.type = ctx.tokenBuffer[tok.index];
-			auto loc = ctx.tokenLocationBuffer[tok.index];
-			writefln("%s %s, `%s`", tok, loc, loc.getTokenString(ctx.sourceBuffer.data));
-			++tok.index;
+		lexer.lex();
+
+		if (ctx.printLexemes) {
+			writefln("// Lexemes `%s`", file.name);
+			Token tok = Token(TokenType.init, file.firstTokenIndex);
+			do
+			{
+				tok.type = ctx.tokenBuffer[tok.index];
+				auto loc = ctx.tokenLocationBuffer[tok.index];
+				writefln("%s %s, `%s`", tok, loc, loc.getTokenString(ctx.sourceBuffer.data));
+				++tok.index;
+			}
+			while(tok.type != TokenType.EOI);
 		}
-		while(tok.type != TokenType.EOI);
 	}
 }
 
@@ -229,8 +239,6 @@ struct Lexer
 	const(char)[] inputChars;
 	Arena!TokenType* outputTokens;
 	Arena!SourceLocation* outputTokenLocations;
-
-	TokenIndex tokenIndex;
 
 	private dchar c; // current symbol
 
@@ -250,7 +258,6 @@ struct Lexer
 
 			outputTokens.put(tokType);
 			set_loc();
-			++tokenIndex;
 
 			if (tokType == TokenType.EOI) return;
 		}
@@ -421,7 +428,8 @@ struct Lexer
 				{
 					case EOI_CHAR:
 						set_loc();
-						context.unrecoverable_error(tokenIndex, "Unterminated comment");
+						TokenIndex lastToken = TokenIndex(cast(uint)outputTokenLocations.length-1);
+						context.unrecoverable_error(lastToken, "Unterminated comment");
 						return TT.INVALID;
 
 					case '\n': lex_EOLN(); continue;
@@ -453,7 +461,8 @@ struct Lexer
 			{
 				case EOI_CHAR:
 					set_loc();
-					context.unrecoverable_error(tokenIndex, "Unterminated string literal");
+					TokenIndex lastToken = TokenIndex(cast(uint)outputTokenLocations.length-1);
+					context.unrecoverable_error(lastToken, "Unterminated string literal");
 					return TT.INVALID;
 				case '\n': lex_EOLN(); continue;
 				case '\r': lex_EOLR(); continue;

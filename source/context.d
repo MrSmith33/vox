@@ -40,8 +40,6 @@ struct CompilationContext
 	///
 	string outputFilename = "out.exe";
 
-	/// Module declaration
-	ModuleDeclNode* mod;
 	/// Set when BuildType.exe is used
 	FunctionDeclNode* entryPoint;
 
@@ -345,6 +343,16 @@ struct CompilationContext
 		GC.addRange(result, T.sizeof, typeid(T));
 		return result;*/
 		return new T(args);
+	}
+
+	ModuleDeclNode* getModule(ModuleIndex index)
+	{
+		return files[index.fileIndex].mod;
+	}
+
+	FunctionDeclNode* getFunction(FunctionIndex index)
+	{
+		return files[index.moduleIndex.fileIndex].mod.functions[index.functionIndex];
 	}
 
 	void printMemSize()

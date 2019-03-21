@@ -74,12 +74,15 @@ import all;
 void pass_parser(ref CompilationContext ctx) {
 	Parser parser = Parser(&ctx);
 
-	ctx.mod = parser.parseModule();
+	foreach (ref SourceFileInfo file; ctx.files.data)
+	{
+		parser.parseModule(file.mod, file.firstTokenIndex);
 
-	if (ctx.printAstFresh && ctx.mod !is null) {
-		auto astPrinter = AstPrinter(&ctx, 2);
-		writeln("// AST fresh");
-		astPrinter.printAst(cast(AstNode*)ctx.mod);
+		if (ctx.printAstFresh) {
+			auto astPrinter = AstPrinter(&ctx, 2);
+			writefln("// AST fresh `%s`", file.name);
+			astPrinter.printAst(cast(AstNode*)file.mod);
+		}
 	}
 }
 
@@ -152,12 +155,13 @@ struct Parser
 
 	// ------------------------------ PARSING ----------------------------------
 
-	ModuleDeclNode* parseModule() { // <module> ::= <declaration>*
+	void parseModule(ModuleDeclNode* mod, TokenIndex firstTokenIndex) { // <module> ::= <declaration>*
 		version(print_parse) auto s1 = scop("parseModule");
-		tok.index = TokenIndex(0);
+		tok.index = firstTokenIndex;
 		tok.type = context.tokenBuffer[tok.index];
 		expectAndConsume(TokenType.SOI);
-		return make!ModuleDeclNode(tok.index, parse_declarations(TokenType.EOI));
+		mod.loc = tok.index;
+		mod.declarations = parse_declarations(TokenType.EOI);
 	}
 
 	AstNode*[] parse_declarations(TokenType until) { // <declaration>*

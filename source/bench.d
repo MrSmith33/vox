@@ -11,7 +11,6 @@ import std.stdio;
 
 void runBench()
 {
-	ModuleDeclNode* mod;
 	Test curTest = test8;
 	//Test curTest = test31;
 
@@ -26,7 +25,12 @@ void runBench()
 	foreach (iteration; 0..times.totalTimes.numIters)
 	{
 		auto time1 = currTime;
-		mod = driver.compileModule(SourceFileInfo("test", curTest.source), curTest.hostSymbols, curTest.dllModules);
+		driver.beginCompilation();
+		driver.addHostSymbols(curTest.hostSymbols);
+		driver.addDllModules(curTest.dllModules);
+		foreach(source; curTest.sources)
+			driver.addModule(SourceFileInfo(source.name, source.source));
+		driver.compile();
 		auto time2 = currTime;
 
 		times.onIteration(iteration, time2-time1);

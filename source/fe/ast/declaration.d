@@ -13,6 +13,12 @@ mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {
 	AstNode*[] declarations;
 }
 
+/// Index into CompilationContext.files
+struct ModuleIndex
+{
+	uint fileIndex;
+}
+
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
 	Scope* _scope;
@@ -20,11 +26,11 @@ struct ModuleDeclNode {
 	FunctionDeclNode*[] functions;
 	IrModule irModule;
 	IrModule lirModule;
-	ubyte[] code;
-	LinkIndex moduleIndex;
+	LinkIndex objectSymIndex;
+	ModuleIndex moduleIndex;
 
 	void addFunction(FunctionDeclNode* func) {
-		func.backendData.index = FunctionIndex(cast(uint)functions.length);
+		func.backendData.index = FunctionIndex(cast(uint)functions.length, moduleIndex);
 		functions ~= func;
 	}
 
@@ -47,11 +53,12 @@ struct StructDeclNode {
 	IrIndex irType;
 }
 
-/// Points into ModuleDeclNode.functions
+/// Refers to a function inside a module
 struct FunctionIndex
 {
-	uint index;
-	alias index this;
+	/// Points into ModuleDeclNode.functions
+	uint functionIndex;
+	ModuleIndex moduleIndex;
 }
 
 struct FunctionBackendData
