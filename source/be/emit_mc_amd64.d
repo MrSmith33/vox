@@ -19,9 +19,6 @@ void pass_emit_mc_amd64(ref CompilationContext context)
 	// Add all symbols first, so they can be referenced during code emission
 	addStaticDataSymbols(context);
 	finalizeStaticData(context);
-	foreach (ref SourceFileInfo file; context.files.data) {
-		addFunctionSymbols(context, *file.mod);
-	}
 
 	if (context.printStaticData) {
 		writefln("// Data: addr 0x%X, %s bytes",
@@ -30,6 +27,9 @@ void pass_emit_mc_amd64(ref CompilationContext context)
 		printHex(context.staticDataBuffer.data, 16);
 	}
 
+	foreach (ref SourceFileInfo file; context.files.data) {
+		addFunctionSymbols(context, *file.mod);
+	}
 	if (context.hasErrors) return;
 
 	// emit code

@@ -373,7 +373,7 @@ struct CoffExecutable
 				if (!importSectionDetected)
 				{
 					importSectionDetected = true;
-					optionalHeader.ImportTable = section.header.VirtualAddress;
+					optionalHeader.ImportTable.VirtualAddress = section.header.VirtualAddress;
 				}
 			}
 

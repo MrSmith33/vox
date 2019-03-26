@@ -5,6 +5,7 @@ Authors: Andrey Penechko.
 */
 module fe.ast.declaration;
 
+import std.stdio;
 import all;
 
 mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {

@@ -6,6 +6,8 @@ Authors: Andrey Penechko.
 module cli;
 
 import std.stdio;
+import std.file : exists;
+import std.path : absolutePath;
 import all;
 
 /// exe path is stripped from args
@@ -18,6 +20,11 @@ void tryRunCli(string[] args)
 	}
 }
 
+enum WindowsSubsystemCli : ushort {
+	CUI,
+	GUI
+}
+
 void runCli(string[] args)
 {
 	import std.path;
@@ -27,6 +34,7 @@ void runCli(string[] args)
 	auto startInitTime = currTime;
 
 	Driver driver;
+	WindowsSubsystemCli subSystem;
 
 	bool printTime;
 	bool printMem;
@@ -52,7 +60,14 @@ void runCli(string[] args)
 		"print-symbols", "Print symbols.", &driver.context.printSymbols,
 		"print-mem", "Print memory consumtion.", &printMem,
 		"print-filter", "Print only info about <function name>.", &filterFuncName,
+		"print-error-trace", "Print stack trace for every error", &driver.context.printTraceOnError,
+		"subsystem", "Select windows subsystem. [CUI(default), GUI].", &subSystem,
 		);
+
+	final switch (subSystem) {
+		case WindowsSubsystemCli.CUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_CUI; break;
+		case WindowsSubsystemCli.GUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI; break;
+	}
 
 	args = args[1..$]; // skip program name
 
@@ -82,19 +97,54 @@ void runCli(string[] args)
 
 	driver.initialize(exePasses);
 	driver.context.buildType = BuildType.exe;
+
 	if (outputFilename) driver.context.outputFilename = outputFilename;
-	else driver.context.outputFilename = setExtension(filenames[0], ".exe");
+	else driver.context.outputFilename = std.path.setExtension(filenames[0], ".exe");
+
 	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(filterFuncName);
+
 	auto times = PerPassTimeMeasurements(1, driver.passes);
 	auto endInitTime = currTime;
 
 	try
 	{
 		driver.beginCompilation();
-		//driver.addHostSymbols();
-		//driver.addDllModules();
+
 		foreach(filename; filenames)
-			driver.addModule(SourceFileInfo(filename));
+		{
+			string ext = std.path.extension(filename);
+			switch(ext)
+			{
+				case ".dll":
+					string libName = std.path.baseName(filename);
+					LinkIndex importedModule = driver.addDllModule(libName);
+
+					void onDllSymbol(uint ordinal, string symName) {
+						driver.addDllModuleSymbol(importedModule, symName);
+					}
+
+					size_t savedLength = driver.context.sourceBuffer.length;
+					scope(exit) driver.context.sourceBuffer.length = savedLength;
+
+					if (!exists(filename))
+					{
+						driver.context.error("File `%s` not found", absolutePath(filename));
+						break;
+					}
+
+					auto file = File(filename, "r");
+					char[] sourceBuffer = driver.context.sourceBuffer.voidPut(file.size);
+					char[] dllData = file.rawRead(sourceBuffer);
+					file.close();
+
+					getExportNames(driver.context, filename, cast(ubyte[])dllData, &onDllSymbol);
+					break;
+				default:
+					driver.addModule(SourceFileInfo(filename));
+					break;
+			}
+		}
+
 		driver.compile();
 	}
 	catch(CompilationException e) {
@@ -106,7 +156,6 @@ void runCli(string[] args)
 	catch(Throwable t) {
 		writeln(driver.context.sink.text);
 		writeln(t);
-		driver.context.printMemSize;
 		return;
 	}
 
@@ -130,5 +179,67 @@ void runCli(string[] args)
 			scaledNumberFmt(duration),
 			scaledNumberFmt(endInitTime-startInitTime),
 			scaledNumberFmt(endReleaseTime-startReleaseTime));
+	}
+}
+
+void getExportNames(ref CompilationContext context, string filename, ubyte[] dllData, void delegate(uint, string) onExport)
+{
+	import be.pecoff;
+	import std.string : fromStringz;
+
+	if (dllData.length < DosHeader.sizeof) {
+		context.error("`%s` is invalid .dll file. Size is %s bytes.", filename, dllData.length);
+		return;
+	}
+
+	auto slicer = FileDataSlicer(dllData);
+	DosHeader* dosHeader = slicer.getPtrTo!DosHeader;
+	slicer.fileCursor = dosHeader.e_lfanew;
+	PeSignature peSignature = *slicer.getPtrTo!PeSignature;
+
+	if (peSignature != PeSignature.init) {
+		context.error("`%s` is not a PE file", filename);
+		return;
+	}
+
+	CoffFileHeader* header = slicer.getPtrTo!CoffFileHeader;
+	if (header.Machine != MachineType.amd64) {
+		context.error("`%s` machine type is %s", filename, header.Machine);
+		return;
+	}
+
+	size_t sectionPtr = slicer.fileCursor + header.SizeOfOptionalHeader;
+
+	OptionalHeader* opt = slicer.getPtrTo!OptionalHeader;
+	if (!opt.isValidMember!"ExportTable"(header.SizeOfOptionalHeader)) return; // no export table in optional header
+	if (opt.NumberOfRvaAndSizes < 1) return; // no export table in optional header
+
+	uint exportsRVA = opt.ExportTable.VirtualAddress;
+
+	slicer.fileCursor = sectionPtr;
+	SectionHeader[] sectionHeaders = slicer.getArrayOf!SectionHeader(header.NumberOfSections);
+
+	char[8] edataName = ".edata\0\0";
+	foreach(ref section; sectionHeaders)
+	{
+		// export table is inside this section
+		if (exportsRVA >= section.VirtualAddress && exportsRVA < section.VirtualAddress + section.SizeOfRawData)
+		{
+			ptrdiff_t offset = section.VirtualAddress - section.PointerToRawData;
+			slicer.fileCursor = exportsRVA - offset;
+			auto exportDir = slicer.getPtrTo!ExportDirectoryEntry;
+
+			size_t nameTblPtr = exportDir.AddressOfNames - offset;
+			slicer.fileCursor = nameTblPtr;
+			uint[] namePointers = slicer.getArrayOf!uint(exportDir.NumberOfNames);
+
+			foreach(size_t ordinal, uint namePtr; namePointers)
+			{
+				slicer.fileCursor = namePtr - offset;
+				char* namez = slicer.getPtrTo!char;
+				string name = cast(string)fromStringz(namez);
+				onExport(cast(uint)ordinal, name);
+			}
+		}
 	}
 }

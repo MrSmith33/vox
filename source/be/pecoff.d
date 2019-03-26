@@ -1340,7 +1340,7 @@ struct Executable
 				if (!importSectionDetected)
 				{
 					importSectionDetected = true;
-					optionalHeader.ImportTable = section.header.VirtualAddress;
+					optionalHeader.ImportTable.VirtualAddress = section.header.VirtualAddress;
 				}
 			}
 
@@ -1423,7 +1423,27 @@ struct Executable
 
 struct DosHeader
 {
-	ubyte[64] hexData = [
+	char[2] signature = ['M', 'Z'];
+	short lastsize = 0x90;
+	short nblocks = 0x03;
+	short nreloc = 0;
+	short hdrsize = 0x04;
+	short minalloc = 0;
+	short maxalloc = -1;
+	ushort ss = 0;
+	ushort sp = 0xB8;
+	short checksum = 0;
+	ushort ip = 0;
+	ushort cs = 0;
+	short relocpos;
+	short noverlay;
+	short[4] reserved1;
+	short oem_id;
+	short oem_info;
+	short[10] reserved2;
+	int   e_lfanew = 0xA8; // Offset to the 'PE\0\0' signature relative to the beginning of the file
+
+	static ubyte[64] hexData = [
 		0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00,
 		0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1434,6 +1454,7 @@ struct DosHeader
 		sink.put(hexData);
 	}
 }
+static assert(DosHeader.sizeof == 64);
 
 /// MS-DOS Stub (Image Only)
 ///
@@ -1840,71 +1861,71 @@ struct OptionalHeader
 	/// The export table address and size. For more
 	/// information see section 6.3, “The .edata Section
 	/// (Image Only).”
-	ulong ExportTable;
+	ImageDataDirectory ExportTable;
 
 	/// The import table address and size. For more
 	/// information, see section 6.4, “The .idata
 	/// Section.”
-	ulong ImportTable;
+	ImageDataDirectory ImportTable;
 
 	/// The resource table address and size. For more
 	/// information, see section 6.9, “The .rsrc Section.”
-	ulong ResourceTable;
+	ImageDataDirectory ResourceTable;
 
 	/// The exception table address and size. For more
 	/// information, see section 6.5, “The .pdata
 	/// Section.”
-	ulong ExceptionTable;
+	ImageDataDirectory ExceptionTable;
 
 	/// The attribute certificate table address and size.
 	/// For more information, see section 5.7, “The
 	/// Attribute Certificate Table (Image Only).”
-	ulong CertificateTable;
+	ImageDataDirectory CertificateTable;
 
 	/// The base relocation table address and size. For
 	/// more information, see section 6.6, "The .reloc
 	/// Section (Image Only)."
-	ulong BaseRelocationTable;
+	ImageDataDirectory BaseRelocationTable;
 
 	/// The debug data starting address and size. For
 	/// more information, see section 6.1, “The .debug
 	/// Section.”
-	ulong Debug;
+	ImageDataDirectory Debug;
 
 	/// Reserved, must be 0
-	ulong Architecture = 0;
+	ImageDataDirectory Architecture;
 
 	/// The RVA of the value to be stored in the global
 	/// pointer register. The size member of this
 	/// structure must be set to zero.
-	ulong GlobalPtr;
+	ImageDataDirectory GlobalPtr;
 
 	/// The thread local storage (TLS) table address
 	/// and size. For more information, see section 6.7,
 	/// “The .tls Section.”
-	ulong TLSTable;
+	ImageDataDirectory TLSTable;
 
 	/// The load configuration table address and size.
 	/// For more information, see section 6.8, “The Load
 	/// Configuration Structure (Image Only).”
-	ulong LoadConfigTable;
+	ImageDataDirectory LoadConfigTable;
 
 	/// The bound import table address and size.
-	ulong BoundImport;
+	ImageDataDirectory BoundImport;
 
 	/// The import address table address and size. For
 	/// more information, see section 6.4.4, “Import
 	/// Address Table.”
-	ulong IAT;
+	ImageDataDirectory IAT;
 
 	/// The delay import descriptor address and size.
 	/// For more information, see section 5.8, “DelayLoad Import Tables (Image Only).”
-	ulong DelayImportDescriptor;
+	ImageDataDirectory DelayImportDescriptor;
 
 	/// The CLR runtime header address and size. For
 	/// more information, see section 6.10, “The
 	/// .cormeta Section (Object Only).”
-	ulong CLRRuntimeHeader;
+	ImageDataDirectory CLRRuntimeHeader;
 
 	ulong _reserved; /// Reserved, must be zero
 
@@ -1957,8 +1978,20 @@ struct OptionalHeader
 		sink.put(_reserved);
 		return offset;
 	}
+
+	/// True if member is within SizeOfOptionalHeader bytes
+	bool isValidMember(string member)(ushort SizeOfOptionalHeader)
+	{
+		return (mixin(member).offsetof + mixin(member).sizeof) <= SizeOfOptionalHeader;
+	}
 }
 static assert(OptionalHeader.sizeof == 240);
+
+struct ImageDataDirectory
+{
+	uint VirtualAddress;
+	uint Size;
+}
 
 enum SectionFlags : uint
 {
@@ -2387,6 +2420,21 @@ struct ImportLookupEntry
 		sink.put(this);
 		return offset;
 	}
+}
+
+struct ExportDirectoryEntry
+{
+	uint Characteristics;
+	uint TimeDateStamp;
+	ushort MajorVersion;
+	ushort MinorVersion;
+	uint Name;
+	uint Base;
+	uint NumberOfFunctions;
+	uint NumberOfNames;
+	uint AddressOfFunctions;
+	uint AddressOfNames;
+	uint AddressOfNameOrdinals;
 }
 
 struct HintNameTable

@@ -532,7 +532,6 @@ struct Arena(T)
 		}
 
 		capacity = (_committedBytes + bytesToCommit) / T.sizeof;
-		stdout.flush;
 	}
 }
 

@@ -179,7 +179,9 @@ struct Driver
 	void addModule(SourceFileInfo moduleFile)
 	{
 		context.files.put(moduleFile);
+		import core.memory : GC;
 		SourceFileInfo* file = &context.files.back();
+		GC.addRange(cast(void*)file, SourceFileInfo.sizeof, typeid(SourceFileInfo));
 
 		ObjectModule localModule = {
 			kind : ObjectModuleKind.isLocal,
@@ -307,6 +309,31 @@ struct Driver
 		}
 	}
 
+	/// Returns index of imported module
+	LinkIndex addDllModule(string libName)
+	{
+		ObjectModule importedModule = {
+			kind : ObjectModuleKind.isImported,
+			id : context.idMap.getOrRegNoDup(libName)
+		};
+		return context.objSymTab.addModule(importedModule);
+	}
+
+	void addDllModuleSymbol(LinkIndex dllModuleIndex, string symName)
+	{
+		Identifier symId = context.idMap.getOrReg(symName);
+		ObjectSymbol importedSymbol = {
+			kind : ObjectSymbolKind.isImported,
+			flags : ObjectSymbolFlags.isIndirect,
+			id : symId,
+			alignment : 8, // pointer size
+			sectionIndex : context.importSectionIndex,
+			moduleIndex : dllModuleIndex,
+		};
+		LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
+		context.externalSymbols[symId] = importedSymbolIndex;
+	}
+
 	void addDllModules(DllModule[] dllModules)
 	{
 		if (dllModules.length > 0)
@@ -314,25 +341,11 @@ struct Driver
 
 		foreach (ref DllModule dllModule; dllModules)
 		{
-			ObjectModule importedModule = {
-				kind : ObjectModuleKind.isImported,
-				id : context.idMap.getOrRegNoDup(dllModule.libName)
-			};
-			LinkIndex importedModuleIndex = context.objSymTab.addModule(importedModule);
+			LinkIndex importedModuleIndex = addDllModule(dllModule.libName);
 
 			foreach (string symName; dllModule.importedSymbols)
 			{
-				Identifier symId = context.idMap.getOrRegNoDup(symName);
-				ObjectSymbol importedSymbol = {
-					kind : ObjectSymbolKind.isImported,
-					flags : ObjectSymbolFlags.isIndirect,
-					id : symId,
-					alignment : 8, // pointer size
-					sectionIndex : context.importSectionIndex,
-					moduleIndex : importedModuleIndex,
-				};
-				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
-				context.externalSymbols[symId] = importedSymbolIndex;
+				addDllModuleSymbol(importedModuleIndex, symName);
 			}
 		}
 	}

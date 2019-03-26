@@ -800,6 +800,7 @@ private TokenLookups cexp_parser()
 
 // id, int_literal, string_literal
 ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
+	import std.algorithm.iteration : filter;
 	switch(token.type) with(TokenType)
 	{
 		case IDENTIFIER:
@@ -811,15 +812,15 @@ ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
 			return p.makeExpr!StringLiteralExprNode(token.index, value);
 		case INT_DEC_LITERAL:
 			string value = cast(string)p.context.getTokenString(token.index);
-			long intValue = to!ulong(value);
+			long intValue = value.filter!(c => c != '_').to!ulong;
 			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
 		case INT_HEX_LITERAL:
 			string value = cast(string)p.context.getTokenString(token.index);
-			long intValue = to!ulong(value[2..$], 16); // skip 0x, 0X
+			long intValue = value[2..$].filter!(c => c != '_').to!ulong(16); // skip 0x, 0X
 			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
 		case INT_BIN_LITERAL:
 			string value = cast(string)p.context.getTokenString(token.index);
-			long intValue = to!ulong(value[2..$], 2); // skip 0b, 0B
+			long intValue = value[2..$].filter!(c => c != '_').to!ulong(2); // skip 0b, 0B
 			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
 		default:
 			p.context.unreachable(); assert(false);
