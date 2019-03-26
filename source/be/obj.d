@@ -87,7 +87,7 @@ enum ObjectSymbolFlags : ushort {
 	/// If true, data can be printed for debug as a string
 	isString    = 1 << 4,
 	/// Marked if transitively used from any root symbol (not yet. TODO)
-	isUsed      = 1 << 5,
+	isReferenced      = 1 << 5,
 }
 
 enum ObjectSymbolKind : ushort {
@@ -126,11 +126,14 @@ struct ObjectSymbol
 	/// List of module symbols
 	LinkIndex nextSymbol;
 
+	void markReferenced() { flags |= ObjectSymbolFlags.isReferenced; }
+
 	bool isMutable() { return cast(bool)(flags & ObjectSymbolFlags.isMutable); }
 	bool isAllZero() { return cast(bool)(flags & ObjectSymbolFlags.isAllZero); }
 	bool needsZeroTermination() { return cast(bool)(flags & ObjectSymbolFlags.needsZeroTermination); }
 	bool isIndirect() { return cast(bool)(flags & ObjectSymbolFlags.isIndirect); }
 	bool isString() { return cast(bool)(flags & ObjectSymbolFlags.isString); }
+	bool isReferenced() { return cast(bool)(flags & ObjectSymbolFlags.isReferenced); }
 }
 
 enum ObjectModuleKind : ubyte {
@@ -184,9 +187,9 @@ enum ObjectSymbolRefKind : ubyte {
 @(LinkIndexKind.reference)
 struct ObjectSymbolReference
 {
-	/// Symbol that stores address of 'referencedSymbol'
+	///
 	LinkIndex fromSymbol;
-	/// Symbol who's address is stored inside 'fromSymbol'
+	///
 	LinkIndex referencedSymbol;
 	/// link to next reference coming from 'fromSymbol'
 	LinkIndex nextReference;
@@ -228,6 +231,7 @@ struct ObjectSymbolTable
 			ObjectSymbol* sym = &getSymbol(type.fromSymbol);
 			type.nextReference = sym.firstRef;
 			sym.firstRef = result;
+			getSymbol(type.referencedSymbol).markReferenced;
 		}
 		else static if (is(T == ObjectModule))
 		{

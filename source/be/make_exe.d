@@ -137,12 +137,16 @@ CoffImportSectionSize calcImportSize(CompilationContext* context)
 			{
 				ObjectSymbol* sym = &context.objSymTab.getSymbol(symIndex);
 
-				string symName = context.idString(sym.id);
-				++numImportedFunctions;
-				impSize.totalDllHintsBytes = alignValue(
-					impSize.totalDllHintsBytes +
-					HintNameEntry.Hint.sizeof +
-					symName.length + 1, 2);
+				// Only add referenced symbols to import table
+				if (sym.isReferenced)
+				{
+					string symName = context.idString(sym.id);
+					++numImportedFunctions;
+					impSize.totalDllHintsBytes = alignValue(
+						impSize.totalDllHintsBytes +
+						HintNameEntry.Hint.sizeof +
+						symName.length + 1, 2);
+				}
 
 				symIndex = sym.nextSymbol;
 			}
@@ -245,23 +249,27 @@ void fillImports(ref CoffImportSectionMapping mapping, CompilationContext* conte
 			{
 				ObjectSymbol* sym = &context.objSymTab.getSymbol(symIndex);
 
-				string symName = context.idString(sym.id);
+				// Only add referenced symbols to import table
+				if (sym.isReferenced)
+				{
+					string symName = context.idString(sym.id);
 
-				uint hintRVA = cast(uint)(str_rva + strSink.length);
-				auto hint = ImportLookupEntry.fromHintNameTableRVA(hintRVA);
+					uint hintRVA = cast(uint)(str_rva + strSink.length);
+					auto hint = ImportLookupEntry.fromHintNameTableRVA(hintRVA);
 
-				mapping.ILTs[tableIndex] = hint;
-				mapping.IATs[tableIndex] = hint;
+					mapping.ILTs[tableIndex] = hint;
+					mapping.IATs[tableIndex] = hint;
 
-				uint sectionOffset = cast(uint)(mapping.iat_rva + tableIndex * IAT_ILT_ENTRY_BYTES);
-				sym.sectionOffset = sectionOffset;
-				sym.length = IAT_ILT_ENTRY_BYTES;
+					uint sectionOffset = cast(uint)(mapping.iat_rva + tableIndex * IAT_ILT_ENTRY_BYTES);
+					sym.sectionOffset = sectionOffset;
+					sym.length = IAT_ILT_ENTRY_BYTES;
 
-				auto pre2 = strSink.length;
-				HintNameEntry(0, symName).write(strSink);
-				version(print_info) writefln("write '%s' len %s RVA %x", symName, strSink.length - pre2, sectionOffset);
+					auto pre2 = strSink.length;
+					HintNameEntry(0, symName).write(strSink);
+					version(print_info) writefln("write '%s' len %s RVA %x", symName, strSink.length - pre2, sectionOffset);
 
-				++tableIndex;
+					++tableIndex;
+				}
 
 				symIndex = sym.nextSymbol;
 			}
