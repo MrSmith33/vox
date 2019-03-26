@@ -147,11 +147,17 @@ struct Driver
 
 	void releaseMemory()
 	{
+		import core.memory : GC;
+		GC.removeRange(context.files.bufPtr);
 		arenaPool.decommitAll;
 	}
 
 	void beginCompilation()
 	{
+		import core.memory : GC;
+		if (context.files.length)
+			GC.removeRange(context.files.bufPtr);
+
 		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
 		context.sourceBuffer.clear;
 		context.files.clear;
@@ -179,9 +185,10 @@ struct Driver
 	void addModule(SourceFileInfo moduleFile)
 	{
 		context.files.put(moduleFile);
-		import core.memory : GC;
 		SourceFileInfo* file = &context.files.back();
-		GC.addRange(cast(void*)file, SourceFileInfo.sizeof, typeid(SourceFileInfo));
+
+		import core.memory : GC;
+		GC.addRange(cast(void*)context.files.bufPtr, SourceFileInfo.sizeof*context.files.length, typeid(SourceFileInfo));
 
 		ObjectModule localModule = {
 			kind : ObjectModuleKind.isLocal,
