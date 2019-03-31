@@ -84,6 +84,10 @@ struct TypeNode {
 		return TypePrinter(&this, context);
 	}
 
+	bool isPassByPtr() {
+		return astType == AstType.type_struct || astType == AstType.type_slice;
+	}
+
 	bool isVoid() {
 		return astType == AstType.type_basic &&
 			basicTypeNode.basicType == BasicType.t_void;

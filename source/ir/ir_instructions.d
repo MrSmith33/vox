@@ -122,16 +122,7 @@ IrArgSize sizeToIrArgSize(uint typeSize, CompilationContext* context) {
 
 IrArgSize typeToIrArgSize(IrIndex type, CompilationContext* context) {
 	uint typeSize = context.types.typeSize(type);
-	switch (typeSize) {
-		case 1: return IrArgSize.size8;
-		case 2: return IrArgSize.size16;
-		case 4: return IrArgSize.size32;
-		case 8: return IrArgSize.size64;
-		default:
-			context.internal_error("Type %s of size %s cannot be stored in a register",
-				IrTypeDump(type, *context), typeSize);
-			assert(false);
-	}
+	return sizeToIrArgSize(typeSize, context);
 }
 
 /// Common prefix of all IR instruction structs

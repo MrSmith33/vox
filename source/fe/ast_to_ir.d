@@ -213,9 +213,6 @@ struct AstToIr
 		// In case new block was created, no new predecessors will be added
 		builder.sealBlock(currentBlock);
 
-		//writefln("cur block %s finished %s", currentBlock, ir.getBlock(currentBlock).isFinished);
-		//writefln("end reached %s", bodyExitLabel.numPredecessors != 0);
-
 		version(IrGenPrint) writefln("[IR GEN] function return");
 		if (!context.types.isVoid(ir.backendData.returnType))
 		{
@@ -237,7 +234,6 @@ struct AstToIr
 		}
 
 		version(IrGenPrint) writefln("[IR GEN] function seal exit");
-		//dumpFunction(*ir, *context);
 
 		// all blocks with return (exit's predecessors) already connected, seal exit block
 		builder.sealBlock(ir.exitBasicBlock);
@@ -287,8 +283,13 @@ struct AstToIr
 
 	IrIndex buildGEP(IrIndex currentBlock, IrIndex aggrPtr, IrIndex ptrIndex, IrIndex[] indicies...)
 	{
-		context.assertf(!aggrPtr.isVariable, "Aggregate must not be variable (%s)", aggrPtr);
-		context.assertf(indicies.length < MAX_GEP_INDICIES, "too much indicies for GEP instruction (%s) > %s", indicies.length, MAX_GEP_INDICIES);
+		context.assertf(indicies.length < MAX_GEP_INDICIES,
+			"too much indicies for GEP instruction (%s) > %s",
+			indicies.length, MAX_GEP_INDICIES);
+
+		if (aggrPtr.isVariable) {
+			aggrPtr = builder.readVariable(currentBlock, aggrPtr);
+		}
 
 		IrIndex aggrPtrType = ir.getValueType(*context, aggrPtr);
 		IrIndex aggrType = context.types.getPointerBaseType(aggrPtrType);
@@ -366,11 +367,16 @@ struct AstToIr
 			if (v.isParameter)
 			{
 				// register parameter input
-				ExtraInstrArgs extra = {type : v.type.genIrType(context)};
+				IrIndex valueType = v.type.genIrType(context);
+				IrIndex type = valueType;
+				if (v.type.isPassByPtr)
+					type = context.types.appendPtr(type);
+
+				ExtraInstrArgs extra = {type : type};
 				InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
 				ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
 
-				store(currentBlock, v.irValue, param.result, v.type.argSize(context));
+				store(currentBlock, v.irValue, param.result, typeToIrArgSize(type, context));
 			}
 		}
 
@@ -600,8 +606,7 @@ struct AstToIr
 				}
 				else {
 					TypeNode* type = v.getSym.varDecl.type;
-					bool passByPtr = type.astType == AstType.type_struct || type.astType == AstType.type_slice;
-					if (v.isArgument && passByPtr)
+					if (v.isArgument && type.isPassByPtr)
 					{
 						IrIndex irType = type.genIrType(context);
 						uint size = context.types.typeSize(irType);
@@ -951,6 +956,7 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg INDEX VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end INDEX VAL cur %s next %s", currentBlock, nextStmt);
 		IrLabel afterIndex = IrLabel(currentBlock);
+		i.array.flags |= AstFlags.isLvalue;
 		visitExprValue(i.array, currentBlock, afterIndex);
 		currentBlock = afterIndex.blockIndex;
 
@@ -958,31 +964,31 @@ struct AstToIr
 		visitExprValue(i.index, currentBlock, afterRight);
 		currentBlock = afterRight.blockIndex;
 
-		IrIndex address;
-		ExtraInstrArgs extra = { type : makeBasicTypeIndex(IrValueType.i64) };
-		if (i.index.irValue.isConstant)
+		IrIndex aggregateIndex = context.constants.add(IrConstant(0));
+		IrIndex slicePtrIndex = context.constants.add(IrConstant(1));
+
+		switch (i.array.type.astType) with(AstType)
 		{
-			ulong index = context.constants.get(i.index.irValue).i64;
-			if (index == 0) {
-				address = i.array.irValue;
-			} else {
-				ulong elemSize = i.type.size;
-				IrIndex offset = context.constants.add(IrConstant(index * elemSize));
-				address = builder.emitInstr!IrInstr_add(currentBlock, extra, i.array.irValue, offset).result;
-			}
-		}
-		else
-		{
-			IrIndex scale = context.constants.add(IrConstant(i.type.size));
-			IrIndex offset = builder.emitInstr!IrInstr_mul(currentBlock, extra, i.index.irValue, scale).result;
-			address = builder.emitInstr!IrInstr_add(currentBlock, extra, i.array.irValue, offset).result;
+			case type_ptr:
+				i.irValue = buildGEP(currentBlock, i.array.irValue, i.index.irValue);
+				break;
+			case type_static_array:
+				i.irValue = buildGEP(currentBlock, i.array.irValue, i.index.irValue);
+				break;
+			case type_slice:
+				IrIndex ptrPtr = buildGEP(currentBlock, i.array.irValue, aggregateIndex, slicePtrIndex);
+				IrIndex ptr = load(currentBlock, ptrPtr);
+				i.irValue = buildGEP(currentBlock, ptr, i.index.irValue);
+				break;
+			default:
+				context.internal_error("Cannot index %s", i.array.type.printer(context));
+				break;
 		}
 
-		if (i.isLvalue) {
-			i.irValue = address;
-		} else {
-			i.irValue = load(currentBlock, address);
+		if (!i.isLvalue) {
+			i.irValue = load(currentBlock, i.irValue);
 		}
+
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 

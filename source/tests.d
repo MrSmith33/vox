@@ -37,7 +37,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test33);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test34);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -63,7 +63,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	Test[] jitTests = [test7, test8, test8_1, test10, test9, test13, test18, test19,
 		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31,
-		test32, test33];
+		test32, test33, test34];
 
 	Test[] exeTests = [test28, test29];
 
@@ -868,7 +868,7 @@ immutable input30 = q{
 	struct SDL_Event
 	{
 		u32 type;
-	    u8[52] padding;
+		u8[52] padding;
 	}
 	void ExitProcess(u32 uExitCode);
 
@@ -989,3 +989,17 @@ q{import input33_1;
 }};
 auto test33 = Test("Test 33", [tfile("input33_1", input33_1), tfile("input33_2", input33_2)], "fibonacci", cast(Test.Tester)&tester21,
 	[HostSymbol("print", cast(void*)&test21_external_func)]);
+
+alias Func34 = extern(C) int function(Slice!int, int);
+immutable input34 = q{
+	i32 getElement(i32[] items, i32 index) { return items[index]; }
+};
+void tester34(Func34 fun) {
+	int[2] val = [42, 56];
+	Slice!int slice = {val.length, val.ptr};
+	int res0 = fun(slice, 0);
+	int res1 = fun(slice, 1);
+	assert(res0 == 42);
+	assert(res1 == 56);
+}
+auto test34 = Test("Test 34", [tfile("input34", input34)], "getElement", cast(Test.Tester)&tester34);

@@ -848,6 +848,7 @@ struct SemanticStaticTypes
 			autoconvTo(v.initializer, v.type);
 		}
 
+		if (!v.isParameter)
 		switch (v.type.astType) with(AstType)
 		{
 			case type_static_array, type_struct, type_slice:
