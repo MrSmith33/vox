@@ -37,7 +37,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test34);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test35);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -63,7 +63,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	Test[] jitTests = [test7, test8, test8_1, test10, test9, test13, test18, test19,
 		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31,
-		test32, test33, test34];
+		test32, test33, test34, test35];
 
 	Test[] exeTests = [test28, test29];
 
@@ -1003,3 +1003,17 @@ void tester34(Func34 fun) {
 	assert(res1 == 56);
 }
 auto test34 = Test("Test 34", [tfile("input34", input34)], "getElement", cast(Test.Tester)&tester34);
+
+alias Func35 = extern(C) void function(Slice!int, int, int);
+immutable input35 = q{
+	void setElement(i32[] items, i32 index, i32 value) { items[index] = value; }
+};
+void tester35(Func35 fun) {
+	int[2] val = [42, 56];
+	Slice!int slice = {val.length, val.ptr};
+	fun(slice, 0, 88);
+	assert(val == [88, 56]);
+	fun(slice, 1, 96);
+	assert(val == [88, 96]);
+}
+auto test35 = Test("Test 35", [tfile("input35", input35)], "setElement", cast(Test.Tester)&tester35);
