@@ -842,8 +842,14 @@ ExpressionNode* nullPrefixOp(ref Parser p, Token token, int rbp) {
 	UnOp op;
 	switch(token.type) with(TokenType)
 	{
-		case PLUS: op = UnOp.plus; break;
-		case MINUS: op = UnOp.minus; break;
+		case PLUS: return right;
+		case MINUS:
+			if (right.astType == AstType.literal_int) {
+				(cast(IntLiteralExprNode*)right).negate(token.index, *p.context);
+				return right;
+			}
+			op = UnOp.minus;
+			break;
 		case NOT: op = UnOp.logicalNot; break;
 		case TILDE: op = UnOp.bitwiseNot; break;
 		case STAR: op = UnOp.deref; break;

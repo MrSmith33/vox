@@ -31,7 +31,22 @@ struct NameUseExprNode {
 
 struct IntLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral);
-	long value;
+	ulong value;
+	bool isNegative() { return cast(bool)(flags & AstFlags.user1); }
+	void negate(TokenIndex pos, ref CompilationContext context) {
+		if (isNegative) {
+			value = -(cast(long)value);
+			flags &= ~AstFlags.user1;
+		} else {
+			if (value <= 0x8000_0000_0000_0000) {
+				value = -(cast(long)value);
+				flags |= AstFlags.user1;
+			}
+			else {
+				context.error(pos, "`-%s` results in signed integer overflow", value);
+			}
+		}
+	}
 }
 
 struct StringLiteralExprNode {
