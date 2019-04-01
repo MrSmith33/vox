@@ -190,7 +190,7 @@ struct IrToLir
 							if (numArgs % 2 == 1)
 							{	// align stack to 16 bytes
 								stackReserve += STACK_ITEM_SIZE;
-								IrIndex paddingSize = context.constants.add(IrConstant(STACK_ITEM_SIZE));
+								IrIndex paddingSize = context.constants.add(STACK_ITEM_SIZE, IsSigned.no);
 								ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
 								builder.emitInstr!LirAmd64Instr_sub(
 									lirBlockIndex, extra, stackPtrReg, paddingSize);
@@ -218,7 +218,7 @@ struct IrToLir
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, arg);
 						}
 						{	// Allocate shadow space for 4 physical registers
-							IrIndex const_32 = context.constants.add(IrConstant(32));
+							IrIndex const_32 = context.constants.add(32, IsSigned.no);
 							ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
 							builder.emitInstr!LirAmd64Instr_sub(
 								lirBlockIndex, extra, stackPtrReg, const_32);
@@ -238,7 +238,7 @@ struct IrToLir
 							recordIndex(instrIndex, callInstr.instruction);
 
 							{	// Deallocate stack after call
-								IrIndex conReservedBytes = context.constants.add(IrConstant(stackReserve));
+								IrIndex conReservedBytes = context.constants.add(stackReserve, IsSigned.no);
 								ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
 								builder.emitInstr!LirAmd64Instr_add(
 									lirBlockIndex, extra, stackPtrReg, conReservedBytes);

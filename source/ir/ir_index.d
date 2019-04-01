@@ -50,8 +50,9 @@ struct IrIndex
 			// Big constants use constantIndex as index into IrConstantStorage
 			// Small constants store data directly in constantIndex.
 			uint,            "constantIndex", 24,
+			IrArgSize,       "constantSize",   2,
 			// kind of constant
-			IrConstantKind,  "constantKind",   4,
+			IrConstantKind,  "constantKind",   2,
 			IrValueKind,     "",               4  // index kind
 		));
 
@@ -93,7 +94,15 @@ struct IrIndex
 			case listItem: sink.formattedWrite("l.%s", storageUintIndex); break;
 			case instruction: sink.formattedWrite("i.%s", storageUintIndex); break;
 			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
-			case constant: sink.formattedWrite("c.%s", storageUintIndex); break;
+			case constant:
+				final switch(constantKind) with(IrConstantKind) {
+					case intUnsignedSmall: sink.formattedWrite("%s", constantIndex); break;
+					case intSignedSmall: sink.formattedWrite("%s", (cast(int)constantIndex << 8) >> 8); break;
+					case intUnsignedBig: sink.formattedWrite("cu.%s", constantIndex); break;
+					case intSignedBig: sink.formattedWrite("cs.%s", constantIndex); break;
+				}
+				break;
+
 			case global: sink.formattedWrite("g.%s", storageUintIndex); break;
 			case phi: sink.formattedWrite("phi.%s", storageUintIndex); break;
 			case stackSlot: sink.formattedWrite("s.%s", storageUintIndex); break;
@@ -136,4 +145,10 @@ struct IrIndex
 	bool isTypePointer() { return kind == IrValueKind.type && typeKind == IrTypeKind.pointer; }
 	bool isTypeArray() { return kind == IrValueKind.type && typeKind == IrTypeKind.array; }
 	bool isTypeStruct() { return kind == IrValueKind.type && typeKind == IrTypeKind.struct_t; }
+
+	bool isSignedConstant() {
+		return kind == IrValueKind.constant &&
+			(constantKind == IrConstantKind.intSignedSmall ||
+			constantKind == IrConstantKind.intSignedBig);
+	}
 }

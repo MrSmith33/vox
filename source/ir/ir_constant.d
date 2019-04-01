@@ -19,8 +19,6 @@ enum IrConstantKind : ubyte {
 	intUnsignedBig,
 	/// Signed integer constant. Stored in constants buffer.
 	intSignedBig,
-	/// Complex type initializer. Stored as IrIndex[].
-	aggregate
 }
 
 /// Stores numeric constant data
@@ -28,41 +26,24 @@ enum IrConstantKind : ubyte {
 @(IrValueKind.constant)
 struct IrConstant
 {
-	this(long value, IrIndex type) {
-		this.i64 = value;
-		this.type = type;
-	}
 	this(long value) {
 		this.i64 = value;
-		switch(numSignedBytes) {
-			case 1: type = makeBasicTypeIndex(IrValueType.i8); break;
-			case 2: type = makeBasicTypeIndex(IrValueType.i16); break;
-			case 4: type = makeBasicTypeIndex(IrValueType.i32); break;
-			case 8: type = makeBasicTypeIndex(IrValueType.i64); break;
-			default: assert(false);
+	}
+
+	static IrIndex type(IrIndex index) {
+		final switch(index.constantSize) with(IrArgSize) {
+			case size8: return makeBasicTypeIndex(IrValueType.i8); break;
+			case size16: return makeBasicTypeIndex(IrValueType.i16); break;
+			case size32: return makeBasicTypeIndex(IrValueType.i32); break;
+			case size64: return makeBasicTypeIndex(IrValueType.i64); break;
 		}
 	}
 
-	ubyte numSignedBytes() {
-		if (cast(byte)(i64 & 0xFF) == i64)
-			return 1;
-		else if (cast(short)(i64 & 0xFFFF) == i64)
-			return 2;
-		else if (cast(int)(i64 & 0xFFFF_FFFF) == i64)
-			return 4;
+	IrArgSize payloadSize(IrIndex index) {
+		if (index.isSignedConstant)
+			return argSizeIntSigned(i64);
 		else
-			return 8;
-	}
-
-	ubyte numUnsignedBytes() {
-		if (cast(ubyte)(i64 & 0xFF) == i64)
-			return 1;
-		else if (cast(ushort)(i64 & 0xFFFF) == i64)
-			return 2;
-		else if (cast(uint)(i64 & 0xFFFF_FFFF) == i64)
-			return 4;
-		else
-			return 8;
+			return argSizeIntUnsigned(i64);
 	}
 
 	union {
@@ -72,8 +53,14 @@ struct IrConstant
 		int i32;
 		long i64;
 	}
-	IrIndex type;
 }
+
+enum IsSigned : bool {
+	no = false,
+	yes = true,
+}
+
+enum ulong MASK_24_BITS = (1 << 24) - 1;
 
 ///
 struct IrConstantStorage
@@ -81,18 +68,65 @@ struct IrConstantStorage
 	Arena!IrConstant buffer;
 
 	///
-	IrIndex add(IrConstant con)
+	IrIndex add(ulong value, IsSigned signed)
 	{
-		IrIndex conIndex = IrIndex(cast(uint)buffer.length, IrValueKind.constant);
-		buffer.put(con);
-		return conIndex;
+		if (signed)
+			return add(value, signed, argSizeIntSigned(value));
+		else
+			return add(value, signed, argSizeIntUnsigned(value));
+	}
+
+	IrIndex add(ulong value, IsSigned signed, IrArgSize constantSize)
+	{
+		IrIndex result;
+		if (signed) {
+			bool fitsInSmallInt = ((value << 40) >> 40) == value;
+			if (fitsInSmallInt) {
+				result.constantIndex = cast(uint)(value & MASK_24_BITS);
+				result.constantKind = IrConstantKind.intSignedSmall;
+			} else {
+				result.constantIndex = cast(uint)buffer.length;
+				result.constantKind = IrConstantKind.intSignedBig;
+				buffer.put(IrConstant(value));
+			}
+		} else {
+			bool fitsInSmallInt = (value & MASK_24_BITS) == value;
+			if (fitsInSmallInt) {
+				result.constantIndex = cast(uint)(value & MASK_24_BITS);
+				result.constantKind = IrConstantKind.intUnsignedSmall;
+			} else {
+				result.constantIndex = cast(uint)buffer.length;
+				result.constantKind = IrConstantKind.intUnsignedBig;
+				buffer.put(IrConstant(value));
+			}
+		}
+		result.constantSize = constantSize;
+		result.kind = IrValueKind.constant;
+		return result;
 	}
 
 	///
-	ref IrConstant get(IrIndex index)
+	IrConstant get(IrIndex index)
 	{
 		assert(index.kind == IrValueKind.constant, format("Not a constant (%s)", index));
-		assert(index.storageUintIndex < buffer.length, "Not in bounds");
-		return buffer[index.storageUintIndex];
+		final switch(index.constantKind) with(IrConstantKind) {
+			case intUnsignedSmall: return IrConstant(index.constantIndex);
+			case intSignedSmall: return IrConstant((cast(int)index.constantIndex << 8) >> 8);
+			case intUnsignedBig, intSignedBig:
+				assert(index.constantIndex < buffer.length,
+					format("Not in bounds: index.constantIndex(%s) < buffer.length(%s)",
+						index.constantIndex, buffer.length));
+				return buffer[index.constantIndex];
+		}
 	}
+
+	enum IrIndex ZERO = makeConst(0, IrConstantKind.intSignedSmall);
+	enum IrIndex ONE = makeConst(1, IrConstantKind.intSignedSmall);
+}
+
+private IrIndex makeConst(uint val, IrConstantKind kind) {
+	IrIndex result;
+	result.storageUintIndex = val | kind << 24;
+	result.kind = IrValueKind.constant;
+	return result;
 }

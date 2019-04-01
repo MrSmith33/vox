@@ -395,7 +395,7 @@ struct AstToIr
 				// TODO: default init structs, arrays, slices
 				if (v.type.basicTypeNode || v.type.ptrTypeNode)
 				{
-					IrIndex value = context.constants.add(IrConstant(0));
+					IrIndex value = context.constants.ZERO;
 					store(currentBlock, v.irValue, value, v.type.argSize(context));
 				}
 			}
@@ -660,8 +660,8 @@ struct AstToIr
 				}
 				case c_variable:
 				{
-					IrIndex ptrIndex = context.constants.add(IrConstant(0));
-					IrIndex memberIndex = context.constants.add(IrConstant(m.memberIndex));
+					IrIndex ptrIndex = context.constants.ZERO;
+					IrIndex memberIndex = context.constants.add(m.memberIndex, IsSigned.no);
 					m.irValue = buildGEP(currentBlock, m.aggregate.irValue, ptrIndex, memberIndex);
 					if (m.isLvalue) {
 						// already stores l-value
@@ -684,7 +684,7 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] int literal value (%s) value %s", c.loc, c.value);
 
 		if (!c.irValue.isDefined) {
-			c.irValue = context.constants.add(IrConstant(c.value, c.type.genIrType(context)));
+			c.irValue = context.constants.add(c.value, c.isSigned, c.type.argSize(context));
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -697,7 +697,7 @@ struct AstToIr
 
 		if (!c.irValue.isDefined) {
 			c.irValue = context.globals.add();
-			c.irValueLength = context.constants.add(IrConstant(c.value.length, makeBasicTypeIndex(IrValueType.i64)));
+			c.irValueLength = context.constants.add(c.value.length, IsSigned.no);
 			IrGlobal* global = &context.globals.get(c.irValue);
 			global.setInitializer(cast(ubyte[])c.value);
 			global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
@@ -752,7 +752,7 @@ struct AstToIr
 			long value = calcBinOp(b.op, arg0, arg1);
 			static if (forValue)
 			{
-				b.irValue = context.constants.add(IrConstant(value));
+				b.irValue = context.constants.add(value, IsSigned.yes); // TODO proper signedness handling
 			}
 			else
 			{
@@ -834,13 +834,13 @@ struct AstToIr
 				else if (leftType.astType == AstType.type_slice)
 				{
 					// u8[] = "string";
-					IrIndex baseIndex = context.constants.add(IrConstant(0));
+					IrIndex baseIndex = context.constants.ZERO;
 
 					IrIndex lengthIndex = baseIndex; // 0
 					IrIndex lengthAddress = buildGEP(currentBlock, leftValue, baseIndex, lengthIndex);
 					store(currentBlock, lengthAddress, right.isStringLiteral.irValueLength, IrArgSize.size64);
 
-					IrIndex ptrIndex = context.constants.add(IrConstant(1));
+					IrIndex ptrIndex = context.constants.ONE;
 					IrIndex ptrAddress = buildGEP(currentBlock, leftValue, baseIndex, ptrIndex);
 					store(currentBlock, ptrAddress, right.irValue, IrArgSize.size64);
 				}
@@ -964,8 +964,8 @@ struct AstToIr
 		visitExprValue(i.index, currentBlock, afterRight);
 		currentBlock = afterRight.blockIndex;
 
-		IrIndex aggregateIndex = context.constants.add(IrConstant(0));
-		IrIndex slicePtrIndex = context.constants.add(IrConstant(1));
+		IrIndex aggregateIndex = context.constants.ZERO;
+		IrIndex slicePtrIndex = context.constants.ONE;
 
 		switch (i.array.type.astType) with(AstType)
 		{

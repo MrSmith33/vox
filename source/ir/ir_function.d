@@ -98,7 +98,7 @@ struct IrFunction
 			case none, listItem, instruction, basicBlock, phi, physicalRegister, type, variable, func:
 				context.internal_error("Cannot get type for non-value %s %s", someIndex.kind, someIndex);
 				assert(false);
-			case constant: return context.constants.get(someIndex).type;
+			case constant: return context.constants.get(someIndex).type(someIndex);
 			case global: return context.globals.get(someIndex).type;
 			case stackSlot: return backendData.stackLayout[someIndex].type;
 			case virtualRegister: return getVirtReg(someIndex).type;
