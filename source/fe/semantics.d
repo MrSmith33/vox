@@ -193,6 +193,13 @@ void pass_semantic_lookup(ref CompilationContext ctx)
 	}
 }
 
+/// Error means that lookup failed due to earlier failure or error, so no new error should be produced
+enum LookupResult : ubyte {
+	success,
+	failure,
+	error
+}
+
 /// Resolves all symbol references (variable/type/function uses)
 /// using information collected on previous pass
 struct SemanticLookup
@@ -325,12 +332,15 @@ struct SemanticLookup
 			return;
 		}
 
+		// skip unresolved symbol
+		if (!expr.aggregate.isSymResolved) return;
+
 		Symbol* aggSym = (cast(NameUseExprNode*)expr.aggregate).getSym;
 
 		switch(aggSym.symClass)
 		{
 			case SymbolClass.c_variable:
-				bool success;
+				LookupResult success;
 				VariableDeclNode* varDecl = aggSym.varDecl;
 
 				switch (varDecl.type.astType)
@@ -345,7 +355,7 @@ struct SemanticLookup
 
 					default: break;
 				}
-				if (!success)
+				if (success == LookupResult.failure)
 					context.error(expr.loc, "`%s` of type `%s` has no member `%s`",
 						varDecl.strId(context), varDecl.type.printer(context), idStr);
 				break;
@@ -380,26 +390,29 @@ struct SemanticLookup
 		}
 	}
 
-	bool lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id)
+	LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id)
 	{
 		if (id == id_ptr)
 		{
 			expr.memberIndex = 1;
 			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
-			return true;
+			return LookupResult.success;
 		}
 		else if (id == id_length)
 		{
 			expr.memberIndex = 0;
 			expr.type = context.basicTypeNodes(BasicType.t_u64);
-			return true;
+			return LookupResult.success;
 		}
 
-		return false;
+		return LookupResult.failure;
 	}
 
-	bool lookupStructMember(MemberExprNode* expr, StructTypeNode* structType, Identifier id)
+	LookupResult lookupStructMember(MemberExprNode* expr, StructTypeNode* structType, Identifier id)
 	{
+		// skip unresolved symbol
+		if (!structType.isSymResolved) return LookupResult.error;
+
 		StructDeclNode* structDecl = structType.getSym.structDecl;
 		Symbol* memberSym = structDecl._scope.symbols.get(id, null);
 		expr.member.resolveSymbol(memberSym);
@@ -413,10 +426,13 @@ struct SemanticLookup
 					assert(false);
 
 				case SymbolClass.c_variable:
+					// skip unresolved symbol
+					if (!expr.member.isSymResolved) return LookupResult.error;
+
 					VariableDeclNode* memberVar = expr.member.getSym.varDecl;
 					expr.type = memberVar.type;
 					expr.memberIndex = memberVar.scopeIndex;
-					return true;
+					return LookupResult.success;
 
 				case SymbolClass.c_struct:
 					context.internal_error("member structs are not implemented");
@@ -432,7 +448,7 @@ struct SemanticLookup
 			}
 		}
 
-		return false;
+		return LookupResult.failure;
 	}
 
 	void visit(ModuleDeclNode* m) {

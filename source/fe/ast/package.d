@@ -119,6 +119,7 @@ mixin template SymRefNodeData()
 	string strId(CompilationContext* context) { return context.idString(symRef.id(isSymResolved)); }
 	Identifier id() { return symRef.id(isSymResolved); }
 	void resolveSymbol(Symbol* symbol) {
+		if (symbol is null) return;
 		symRef._symbol = symbol;
 		flags |= AstFlags.isSymResolved;
 	}

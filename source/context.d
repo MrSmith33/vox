@@ -190,8 +190,7 @@ struct CompilationContext
 
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
-		SourceLocation loc = tokenLocationBuffer[tokIdx];
-		sink.putf("file(%s, %s): Error: ", loc.line+1, loc.col+1);
+		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, &this));
 		sink.putfln(format, args);
 		if (printTraceOnError)
 			try
@@ -215,8 +214,7 @@ struct CompilationContext
 
 	void unrecoverable_error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
-		SourceLocation loc = tokenLocationBuffer[tokIdx];
-		sink.putf("file(%s, %s): Error: ", loc.line+1, loc.col+1);
+		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, &this));
 		sink.putfln(format, args);
 		if (printTraceOnError)
 			try
@@ -240,8 +238,7 @@ struct CompilationContext
 	void assertf(Args...)(bool cond, TokenIndex tokIdx, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
-		SourceLocation loc = tokenLocationBuffer[tokIdx];
-		sink.putf("%s(%s): file(%s, %s): ICE: ", file, line, loc.line+1, loc.col+1);
+		sink.putf("%s(%s): %s: ICE: ", file, line, FmtSrcLoc(tokIdx, &this));
 		sink.putfln(fmt, args);
 		hasErrors = true;
 		handleICE;
@@ -255,8 +252,7 @@ struct CompilationContext
 
 	void internal_error(Args...)(TokenIndex tokIdx, string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
-		SourceLocation loc = tokenLocationBuffer[tokIdx];
-		sink.putf("source(%s, %s): ", loc.line+1, loc.col+1);
+		sink.putf("%s: ", FmtSrcLoc(tokIdx, &this));
 		internal_error_impl(format, file, line, args);
 	}
 
@@ -352,9 +348,16 @@ struct CompilationContext
 		ModuleDeclNode* lastMod;
 		foreach(ref SourceFileInfo file; files.data)
 		{
-			if (tokIndex <= file.firstTokenIndex)
+			if (tokIndex < file.firstTokenIndex) {
+				assertf(lastMod !is null,
+					"Cannot find file of token %s, before first file starting at %s",
+					tokIndex, file.firstTokenIndex);
 				return lastMod;
+			}
 			lastMod = file.mod;
+		}
+		if (lastMod is null) {
+			internal_error("Cannot find file of token %s, no files", tokIndex);
 		}
 		return lastMod;
 	}

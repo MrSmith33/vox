@@ -53,7 +53,7 @@ struct IntLiteralExprNode {
 struct StringLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral);
 	string value;
-	IrIndex irValueLength; // irValue stores ptr
+	IrIndex irValueLength; // ExpressionNodeData.irValue stores ptr
 }
 
 enum BinOp : ubyte {
