@@ -119,6 +119,28 @@ ubyte numUnsignedBytesForInt(ulong value) {
 		return 8;
 }
 
+IrArgSize argSizeIntSigned(long value) {
+	if (cast(byte)(value & 0xFF) == value)
+		return IrArgSize.size8;
+	else if (cast(short)(value & 0xFFFF) == value)
+		return IrArgSize.size16;
+	else if (cast(int)(value & 0xFFFF_FFFF) == value)
+		return IrArgSize.size32;
+	else
+		return IrArgSize.size64;
+}
+
+IrArgSize argSizeIntUnsigned(ulong value) {
+	if (cast(ubyte)(value & 0xFF) == value)
+		return IrArgSize.size8;
+	else if (cast(ushort)(value & 0xFFFF) == value)
+		return IrArgSize.size16;
+	else if (cast(uint)(value & 0xFFFF_FFFF) == value)
+		return IrArgSize.size32;
+	else
+		return IrArgSize.size64;
+}
+
 BasicType minUnsignedIntType(ulong value) {
 	if (cast(ubyte)(value & 0xFF) == value)
 		return BasicType.t_u8;

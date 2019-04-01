@@ -33,6 +33,7 @@ struct IntLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral);
 	ulong value;
 	bool isNegative() { return cast(bool)(flags & AstFlags.user1); }
+	IsSigned isSigned() { return cast(IsSigned)isNegative; }
 	void negate(TokenIndex pos, ref CompilationContext context) {
 		if (isNegative) {
 			value = -(cast(long)value);

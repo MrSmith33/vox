@@ -444,7 +444,7 @@ struct CodeEmitter
 			case none, listItem, instruction, basicBlock, phi, type, virtualRegister, variable, func: assert(false);
 			case constant:
 				IrConstant con = context.constants.get(src);
-				if (con.numSignedBytes == 1) {
+				if (con.i64.argSizeIntSigned == IrArgSize.size8) {
 					param.immType = ArgType.BYTE;
 					argSrc.imm8 = Imm8(con.i8);
 				}
