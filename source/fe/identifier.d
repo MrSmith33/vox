@@ -5,12 +5,13 @@ Authors: Andrey Penechko.
 */
 module fe.identifier;
 
-import utils : Buffer;
+import utils : Buffer, Arena;
 
 alias Identifier = uint;
 
 struct IdentifierMap {
-	string[] strings;
+	Arena!char stringDataBuffer;
+	Arena!(const(char)[]) strings;
 	uint[string] map;
 
 	Buffer!char tempBuf;
@@ -35,10 +36,12 @@ struct IdentifierMap {
 	Identifier getOrReg(const(char)[] str) {
 		uint id = map.get(cast(string)str, uint.max);
 		if (id == uint.max) {
-			string duppedKey = str.idup;
+			char[] buf = stringDataBuffer.voidPut(str.length);
+			buf[] = str;
+			string duppedKey = cast(string)buf;
 			id = cast(uint)strings.length;
 			map[duppedKey] = id;
-			strings ~= duppedKey;
+			strings.put(duppedKey);
 		}
 		return id;
 	}
@@ -48,7 +51,7 @@ struct IdentifierMap {
 		if (id == uint.max) {
 			id = cast(uint)strings.length;
 			map[str] = id;
-			strings ~= cast(string)str;
+			strings.put(str);
 		}
 		return id;
 	}

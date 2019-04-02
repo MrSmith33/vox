@@ -296,6 +296,8 @@ struct SemanticLookup
 			{
 				// TODO: check that import is higher in ordered scopes
 				Symbol* scopeSym = imp._scope.symbols.get(id, null);
+				if (!scopeSym) continue;
+
 				if (scopeSym && sym && scopeSym != sym)
 				{
 					string mod1Id = context.idString(symMod.id);

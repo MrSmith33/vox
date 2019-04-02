@@ -43,40 +43,50 @@ void runCli(string[] args)
 	string filterFuncName;
 
 	bool printHelp;
+	GetoptResult optResult;
 
-	auto optResult = getopt(
-		args,
-		"of", "Write output to file.", &outputFilename,
-		"print-time", "Print time of compilation.", &printTime,
-		"print-source", "Print source code.", &driver.context.printSource,
-		"print-lexemes", "Print lexemes.", &driver.context.printLexemes,
-		"print-ast-fresh", "Print AST after parsing.", &driver.context.printAstFresh,
-		"print-ast-sema", "Print AST after semantic analisys.", &driver.context.printAstSema,
-		"print-ir", "Print IR after AST to IR pass.", &driver.context.printIr,
-		"print-lir", "Print Print LIR after IR to LIR pass.", &driver.context.printLir,
-		"print-lir-ra", "Print LIR after register allocation pass.", &driver.context.printLirRA,
-		"print-liveness", "Print liveness analisys info.", &driver.context.printLiveIntervals,
-		"print-stack-layout", "Print stack layout.", &driver.context.printStackLayout,
-		"print-symbols", "Print symbols.", &driver.context.printSymbols,
-		"print-mem", "Print memory consumtion.", &printMem,
-		"print-filter", "Print only info about <function name>.", &filterFuncName,
-		"print-error-trace", "Print stack trace for every error", &driver.context.printTraceOnError,
-		"subsystem", "Select windows subsystem. [CUI(default), GUI].", &subSystem,
-		);
+	try
+	{
+		// GC
+		optResult = getopt(
+			args,
+			"of", "Write output to file.", &outputFilename,
+			"print-time", "Print time of compilation.", &printTime,
+			"print-source", "Print source code.", &driver.context.printSource,
+			"print-lexemes", "Print lexemes.", &driver.context.printLexemes,
+			"print-ast-fresh", "Print AST after parsing.", &driver.context.printAstFresh,
+			"print-ast-sema", "Print AST after semantic analisys.", &driver.context.printAstSema,
+			"print-ir", "Print IR after AST to IR pass.", &driver.context.printIr,
+			"print-lir", "Print Print LIR after IR to LIR pass.", &driver.context.printLir,
+			"print-lir-ra", "Print LIR after register allocation pass.", &driver.context.printLirRA,
+			"print-liveness", "Print liveness analisys info.", &driver.context.printLiveIntervals,
+			"print-stack-layout", "Print stack layout.", &driver.context.printStackLayout,
+			"print-symbols", "Print symbols.", &driver.context.printSymbols,
+			"print-mem", "Print memory consumtion.", &printMem,
+			"print-filter", "Print only info about <function name>.", &filterFuncName,
+			"print-error-trace", "Print stack trace for every error", &driver.context.printTraceOnError,
+			"subsystem", "Select windows subsystem. [CUI(default), GUI].", &subSystem,
+			);
 
-	final switch (subSystem) {
-		case WindowsSubsystemCli.CUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_CUI; break;
-		case WindowsSubsystemCli.GUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI; break;
+		final switch (subSystem) {
+			case WindowsSubsystemCli.CUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_CUI; break;
+			case WindowsSubsystemCli.GUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI; break;
+		}
+
+		args = args[1..$]; // skip program name
+
+		if (args.length < 1) printHelp = true;
+		if (optResult.helpWanted) printHelp = true;
 	}
-
-	args = args[1..$]; // skip program name
-
-	if (args.length < 1) printHelp = true;
-	if (optResult.helpWanted) printHelp = true;
+	catch(GetOptException e)
+	{
+		writeln(e.msg);
+		printHelp = true;
+	}
 
 	if (printHelp)
 	{
-		writeln("Usage: tiny_jit [options...] infile(s)...");
+		writeln("Usage: tiny_jit [options]... [source|.dll/|.har]...");
 
 		size_t ls, ll;
 		foreach (it; optResult.options)
@@ -99,7 +109,7 @@ void runCli(string[] args)
 	driver.context.buildType = BuildType.exe;
 
 	if (outputFilename) driver.context.outputFilename = outputFilename;
-	else driver.context.outputFilename = std.path.setExtension(filenames[0], ".exe");
+	else driver.context.outputFilename = std.path.setExtension(filenames[0], ".exe"); // GC
 
 	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(filterFuncName);
 
@@ -138,6 +148,20 @@ void runCli(string[] args)
 					file.close();
 
 					getExportNames(driver.context, filename, cast(ubyte[])dllData, &onDllSymbol);
+					break;
+				case ".har":
+					if (!exists(filename))
+					{
+						driver.context.error("File `%s` not found", absolutePath(filename));
+						break;
+					}
+
+					auto file = File(filename, "r");
+					char[] sourceBuffer = driver.context.sourceBuffer.voidPut(file.size);
+					char[] harData = file.rawRead(sourceBuffer);
+					file.close();
+
+					driver.addHar(filename, harData);
 					break;
 				default:
 					driver.addModule(SourceFileInfo(filename));

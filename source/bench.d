@@ -8,6 +8,7 @@ module bench;
 import all;
 import tests;
 import std.stdio;
+import std.string : stripLeft;
 
 void runBench()
 {
@@ -28,8 +29,8 @@ void runBench()
 		driver.beginCompilation();
 		driver.addHostSymbols(curTest.hostSymbols);
 		driver.addDllModules(curTest.dllModules);
-		foreach(source; curTest.sources)
-			driver.addModule(SourceFileInfo(source.name, source.source));
+		string strippedHar = curTest.harData.stripLeft;
+		driver.addHar("test.har", strippedHar);
 		driver.compile();
 		auto time2 = currTime;
 

@@ -7,6 +7,7 @@ module tests;
 
 import std.stdio;
 import std.format : formattedWrite, format;
+import std.string : stripLeft;
 import all;
 
 void runDevTests()
@@ -37,7 +38,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test35);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test32);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -142,27 +143,14 @@ TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings
 
 void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
 {
-	if (dumpTest)
-	{
-		// dump settings
-		//driver.context.printSource = true;
-		//driver.context.printAst = true;
-		//driver.context.printIr = true;
-		//driver.context.printLir = true;
-		//driver.context.printLiveIntervals = true;
-		//driver.context.printStaticData = true;
-		//driver.context.printCodeHex = true;
-		//driver.context.printTimings = true;
-	}
-
 	enum NUM_ITERS = 1;
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
 		driver.beginCompilation();
 		driver.addHostSymbols(curTest.hostSymbols);
 		driver.addDllModules(curTest.dllModules);
-		foreach(source; curTest.sources)
-			driver.addModule(SourceFileInfo(source.name, source.source));
+		string strippedHar = curTest.harData.stripLeft;
+		driver.addHar("test.har", strippedHar);
 		driver.compile();
 		driver.markCodeAsExecutable();
 	auto time2 = currTime;
@@ -217,16 +205,10 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 	}
 }
 
-struct tfile
-{
-	string name;
-	string source;
-}
-
 struct Test
 {
 	string testName;
-	tfile[] sources;
+	string harData;
 	string funcName;
 	alias Tester = void function(void* funcPtr);
 	void function(void* funcPtr) tester;
@@ -421,7 +403,8 @@ immutable input6 = q{void f() {
 	var_f32 + var_f64;
 }};
 
-immutable input7 = q{i32 fib(i32 number) {
+immutable input7 = q{--- test7
+i32 fib(i32 number) {
 	if (number < 1) return 0;
 	if (number < 3) return 1;
 	return fib(number-1) + fib(number-2);
@@ -436,9 +419,10 @@ void tester7(Func7 fib) {
 		assert(res == expected, format("%s != %s", res, expected));
 	}
 }
-auto test7 = Test("Test 7", [tfile("input7", input7)], "fib", cast(Test.Tester)&tester7);
+auto test7 = Test("Test 7", input7, "fib", cast(Test.Tester)&tester7);
 
-immutable input9 = q{i32 test(i32 number) {
+immutable input9 = q{--- test9
+i32 test(i32 number) {
 	i32 result;
 	if (1 == 1)
 	{
@@ -450,9 +434,10 @@ immutable input9 = q{i32 test(i32 number) {
 	}
 	return result;
 }};
-auto test9 = Test("Test 9", [tfile("input9", input9)]);
+auto test9 = Test("Test 9", input9);
 
-immutable input8 = q{i32 sign(i32 number) {
+immutable input8 = q{--- test8
+i32 sign(i32 number) {
 	i32 result;
 	if (number < 0) result = 0-1;
 	else if (number > 0) result = 1;
@@ -460,7 +445,8 @@ immutable input8 = q{i32 sign(i32 number) {
 	return result;
 }};
 
-immutable input8_1 = q{i32 sign(i32 number) {
+immutable input8_1 = q{--- test8_1
+i32 sign(i32 number) {
 	if (number < 0) return 0-1;
 	else if (number > 0) return 1;
 	else return 0;
@@ -477,10 +463,11 @@ void tester8(Func8 sign) {
 	assert(res2 == 0);
 	assert(res3 == -1);
 }
-auto test8 = Test("Test 8", [tfile("input8", input8)], "sign", cast(Test.Tester)&tester8);
-auto test8_1 = Test("Test 8.1", [tfile("input8_1", input8_1)], "sign", cast(Test.Tester)&tester8);
+auto test8 = Test("Test 8", input8, "sign", cast(Test.Tester)&tester8);
+auto test8_1 = Test("Test 8.1", input8_1, "sign", cast(Test.Tester)&tester8);
 
-immutable input10 = q{i32 test(i32* array) {
+immutable input10 = q{--- test10
+i32 test(i32* array) {
 	return array[0];
 }};
 alias Func10 = extern(C) int function(int*);
@@ -490,9 +477,10 @@ void tester10(Func10 fun) {
 	//writefln("test(&42) -> %s", res);
 	assert(res == 42);
 }
-auto test10 = Test("Test 10", [tfile("input10", input10)], "test", cast(Test.Tester)&tester10);
+auto test10 = Test("Test 10", input10, "test", cast(Test.Tester)&tester10);
 
-immutable input11 = q{i32 test(i32* array) {
+immutable input11 = q{--- test11
+i32 test(i32* array) {
 	return array[1];
 }};
 alias Func11 = extern(C) int function(int*);
@@ -502,9 +490,10 @@ void tester11(Func11 fun) {
 	//writefln("test([42, 56].ptr) -> %s", res);
 	assert(res == 56);
 }
-auto test11 = Test("Test 11", [tfile("input11", input11)], "test", cast(Test.Tester)&tester11);
+auto test11 = Test("Test 11", input11, "test", cast(Test.Tester)&tester11);
 
-immutable input12 = q{i32 test(i32* array, i32 index) {
+immutable input12 = q{--- test12
+i32 test(i32* array, i32 index) {
 	return array[index];
 }};
 alias Func12 = extern(C) int function(int*, int);
@@ -516,9 +505,10 @@ void tester12(Func12 fun) {
 	assert(res0 == 42);
 	assert(res1 == 56);
 }
-auto test12 = Test("Test 12", [tfile("input12", input12)], "test", cast(Test.Tester)&tester12);
+auto test12 = Test("Test 12", input12, "test", cast(Test.Tester)&tester12);
 
-immutable input13 = q{void test(i32* array, i32 index, i32 value) {
+immutable input13 = q{--- test13
+void test(i32* array, i32 index, i32 value) {
 	array[index] = value;
 }};
 alias Func13 = extern(C) void function(int*, int, int);
@@ -529,10 +519,11 @@ void tester13(Func13 fun) {
 	//writefln("test([42, 56].ptr, 1, 20) -> %s", val);
 	assert(val == expected, format("%s != %s", val, expected));
 }
-auto test13 = Test("Test 13", [tfile("input13", input13)], "test", cast(Test.Tester)&tester13);
+auto test13 = Test("Test 13", input13, "test", cast(Test.Tester)&tester13);
 
 
-immutable input14 = q{void test(i32* array, i32 index, i32 value, i32 value2, i32 value3) {
+immutable input14 = q{--- test14
+void test(i32* array, i32 index, i32 value, i32 value2, i32 value3) {
 	array[index] = value + value2 + value3;
 }};
 alias Func14 = extern(C) void function(int*, int, int, int, int);
@@ -542,11 +533,12 @@ void tester14(Func14 fun) {
 	writefln("test([42, 56].ptr, 1, 10, 6, 4) -> %s", val);
 	assert(val[1] == 20);
 }
-auto test14 = Test("Test 14", [tfile("input14", input14)], "test", cast(Test.Tester)&tester14);
+auto test14 = Test("Test 14", input14, "test", cast(Test.Tester)&tester14);
 
 
 // Test 3 inputs no parameters pushed to the stack
-immutable input15 = q{i32 test(i32 par) {
+immutable input15 = q{--- test15
+i32 test(i32 par) {
 	return external(par, 10, 20);
 }
 i32 external(i32, i32, i32);
@@ -560,12 +552,13 @@ void tester15(Func15 funcPtr) {
 	writefln("fun(10) -> %s", result);
 	assert(result == 40);
 }
-auto test15 = Test("Test 15", [tfile("input15", input15)], "test", cast(Test.Tester)&tester15,
+auto test15 = Test("Test 15", input15, "test", cast(Test.Tester)&tester15,
 	[HostSymbol("external", cast(void*)&test15_external_func)]);
 
 
 // Test more than 4 inputs (5-th parameter pushed to the stack, extra alignment needed)
-immutable input16 = q{i32 test(i32 par) {
+immutable input16 = q{--- test16
+i32 test(i32 par) {
 	return external(par, 10, 20, 30, 40);
 }
 i32 external(i32, i32, i32, i32, i32);
@@ -579,11 +572,12 @@ void tester16(Func16 funcPtr) {
 	writefln("fun(10) -> %s", result);
 	assert(result == 110);
 }
-auto test16 = Test("Test 16", [tfile("input16", input16)], "test", cast(Test.Tester)&tester16,
+auto test16 = Test("Test 16", input16, "test", cast(Test.Tester)&tester16,
 	[HostSymbol("external", cast(void*)&test16_external_func)]);
 
 // Test 6 inputs (5-th and 6-th parameters pushed to the stack, no extra alignment needed)
-immutable input17 = q{i32 test(i32 par) {
+immutable input17 = q{--- test17
+i32 test(i32 par) {
 	return external(par, 10, 20, 30, 40, 50);
 }
 i32 external(i32, i32, i32, i32, i32, i32);
@@ -597,54 +591,60 @@ void tester17(Func17 funcPtr) {
 	writefln("fun(10) -> %s", result);
 	assert(result == 160);
 }
-auto test17 = Test("Test 17", [tfile("input17", input17)], "test", cast(Test.Tester)&tester17,
+auto test17 = Test("Test 17", input17, "test", cast(Test.Tester)&tester17,
 	[HostSymbol("external", cast(void*)&test17_external_func)]);
 
 // test empty void function
-immutable input18 = q{void test() {}};
+immutable input18 = q{--- test18
+void test() {}};
 alias Func18 = extern(C) void function();
 void tester18(Func18 fun) { fun(); }
-auto test18 = Test("Test 18", [tfile("input18", input18)], "test", cast(Test.Tester)&tester18);
+auto test18 = Test("Test 18", input18, "test", cast(Test.Tester)&tester18);
 
 // test empty void function with return
-immutable input19 = q{void test() { return; }};
+immutable input19 = q{--- test19
+void test() { return; }};
 alias Func19 = extern(C) void function();
 void tester19(Func19 fun) { fun(); }
-auto test19 = Test("Test 19", [tfile("input19", input19)], "test", cast(Test.Tester)&tester19);
+auto test19 = Test("Test 19", input19, "test", cast(Test.Tester)&tester19);
 
-// test empty i32 function without return and with control flow
-immutable input20 = q{void test(i32 i) { if(i){}else{} }};
+immutable input20 = q{--- test20
+	// test empty i32 function without return and with control flow
+	void test(i32 i) { if(i){}else{} }
+};
 alias Func20 = extern(C) void function(int);
 void tester20(Func20 fun) { fun(1); }
-auto test20 = Test("Test 20", [tfile("input20", input20)], "test", cast(Test.Tester)&tester20);
+auto test20 = Test("Test 20", input20, "test", cast(Test.Tester)&tester20);
 
-// test fibonacci. while loop. func call
-immutable input21 =
-q{void print(i32); // external
-void fibonacci() {
-	i32 lo = 0;
-	i32 hi = 1;
-	while (hi < 10000) {
-		hi = hi + lo;
-		lo = hi - lo;
-		print(lo);
+immutable input21 = q{--- test21
+	// test fibonacci. while loop. func call
+	void print(i32); // external
+	void fibonacci() {
+		i32 lo = 0;
+		i32 hi = 1;
+		while (hi < 10000) {
+			hi = hi + lo;
+			lo = hi - lo;
+			print(lo);
+		}
 	}
-}};
+};
 
-// Causes other order of phi functions, which requires correct move sequence to resolve
-// Tests phi resolution after register allocation
-immutable input21_2 =
-q{void print(i32); // external
-void fibonacci() {
-	i32 lo = 0;
-	i32 hi = 1;
-	while (hi < 10000) {
-		i32 tmp = hi;
-		hi = hi + lo;
-		lo = tmp;
-		print(lo);
+immutable input21_2 = q{--- test21_2
+	// Causes other order of phi functions, which requires correct move sequence to resolve
+	// Tests phi resolution after register allocation
+	void print(i32); // external
+	void fibonacci() {
+		i32 lo = 0;
+		i32 hi = 1;
+		while (hi < 10000) {
+			i32 tmp = hi;
+			hi = hi + lo;
+			lo = tmp;
+			print(lo);
+		}
 	}
-}};
+};
 alias Func21 = extern(C) void function();
 void tester21(Func21 fibonacci) {
 	fibonacci();
@@ -654,46 +654,48 @@ void tester21(Func21 fibonacci) {
 extern(C) void test21_external_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
-auto test21 = Test("Test 21", [tfile("input21", input21)], "fibonacci", cast(Test.Tester)&tester21,
+auto test21 = Test("Test 21", input21, "fibonacci", cast(Test.Tester)&tester21,
 	[HostSymbol("print", cast(void*)&test21_external_func)]);
-auto test21_2 = Test("Test 21.2", [tfile("input21_2", input21_2)], "fibonacci", cast(Test.Tester)&tester21,
+auto test21_2 = Test("Test 21.2", input21_2, "fibonacci", cast(Test.Tester)&tester21,
 	[HostSymbol("print", cast(void*)&test21_external_func)]);
 
-// test phi resolution with critical edge and test break;
-immutable input22 = q{
-i32 test() {
-	i32 counter = 10;
-	i32 counter2 = 0;
-	while (counter > 0)
-	{
-		counter = counter - 1;
-		counter2 = counter2 + 1;
-		if (counter2 == 5) break;
+immutable input22 = q{--- test22
+	// test phi resolution with critical edge and test break;
+	i32 test() {
+		i32 counter = 10;
+		i32 counter2 = 0;
+		while (counter > 0)
+		{
+			counter = counter - 1;
+			counter2 = counter2 + 1;
+			if (counter2 == 5) break;
+		}
+		return counter;
 	}
-	return counter;
-}};
+};
 alias Func22 = extern(C) int function();
 void tester22(Func22 fun) { int res = fun(); assert(res == 5); }
-auto test22 = Test("Test 22", [tfile("input22", input22)], "test", cast(Test.Tester)&tester22);
+auto test22 = Test("Test 22", input22, "test", cast(Test.Tester)&tester22);
 
-// test continue
-immutable input23 = q{
-i32 test() {
-	i32 counter = 10;
-	i32 counter2 = 2;
-	while (counter > 0) {
-		counter = counter - 1;
-		if (counter < 5) continue;
-		counter2 = counter2 + 1;
+immutable input23 = q{--- test23
+	// test continue
+	i32 test() {
+		i32 counter = 10;
+		i32 counter2 = 2;
+		while (counter > 0) {
+			counter = counter - 1;
+			if (counter < 5) continue;
+			counter2 = counter2 + 1;
+		}
+		return counter2;
 	}
-	return counter2;
-}};
+};
 alias Func23 = extern(C) int function();
 void tester23(Func23 fun) { int res = fun(); assert(res == 7); }
-auto test23 = Test("Test 23", [tfile("input23", input23)], "test", cast(Test.Tester)&tester23);
+auto test23 = Test("Test 23", input23, "test", cast(Test.Tester)&tester23);
 
 // test string literal
-immutable input24 = q{
+immutable input24 = q{--- test24
 	void print(u8*);
 	void test(){ print("Hello"); }
 };
@@ -706,11 +708,11 @@ void tester24(Func24 fun) {
 	assert(testSink.text == "Hello");
 	testSink.clear;
 }
-auto test24 = Test("String literal as u8* param", [tfile("input24", input24)], "test", cast(Test.Tester)&tester24,
+auto test24 = Test("String literal as u8* param", input24, "test", cast(Test.Tester)&tester24,
 	[HostSymbol("print", cast(void*)&test24_external_print)]);
 
-// test struct creation, member set, struct as func arg
-immutable input25 = q{
+immutable input25 = q{--- test25
+	// test struct creation, member set, struct as func arg
 	struct string { u64 length; u8* ptr; }
 	void print(string);
 	void test(){
@@ -735,11 +737,11 @@ void tester25(Func25 fun) {
 	assert(testSink.text == "Hello");
 	testSink.clear;
 }
-auto test25 = Test("Stack struct as parameter", [tfile("input25", input25)], "test", cast(Test.Tester)&tester25,
+auto test25 = Test("Stack struct as parameter", input25, "test", cast(Test.Tester)&tester25,
 	[HostSymbol("print", cast(void*)&test25_external_print)]);
 
-// test global parameter, assignment
-immutable input26 = q{
+immutable input26 = q{--- test26
+	// test global parameter, assignment
 	struct string { u64 length; u8* ptr; }
 	void print(string);
 	string str;
@@ -749,18 +751,20 @@ immutable input26 = q{
 		print(str);
 	}
 };
-auto test26 = Test("Global struct", [tfile("input26", input26)], "test", cast(Test.Tester)&tester25,
+auto test26 = Test("Global struct", input26, "test", cast(Test.Tester)&tester25,
 	[HostSymbol("print", cast(void*)&test25_external_print)]);
 
-// test slices
-immutable input27 = q{
+immutable input27 = q{--- test27
+	// test slices
 	void print(u8[]);
 	void test() {
 		u8[] array;
 		array.length = 9;
+		// Assign string literal to ptr
 		array.ptr = "AssignPtr";
 		print(array);
 
+		// Assign string literal to slice
 		array = "AssignSlice";
 		print(array);
 	}
@@ -771,7 +775,7 @@ void tester27(Func25 fun) {
 	assert(testSink.text == "AssignPtrAssignSlice");
 	testSink.clear;
 }
-auto test27 = Test("Assign string literal to slice/ptr", [tfile("input27", input27)], "test", cast(Test.Tester)&tester27,
+auto test27 = Test("Test 27", input27, "test", cast(Test.Tester)&tester27,
 	[HostSymbol("print", cast(void*)&test25_external_print)]);
 
 void testNativeFun()
@@ -829,14 +833,14 @@ immutable inputX = q{
 	}
 };
 
-immutable input28 = q{
+immutable input28 = q{--- test28
 	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
 		return 0;
 	}
 };
-auto test28 = Test("exe no static data, no imports", [tfile("input28", input28)]);
+auto test28 = Test("exe no static data, no imports", input28);
 
-immutable input29 = q{
+immutable input29 = q{--- test29
 	u8 WriteConsoleA(
 		void* hConsoleOutput,
 		u8* lpBuffer,
@@ -853,10 +857,10 @@ immutable input29 = q{
 		return 0;
 	}
 };
-auto test29 = Test("exe", [tfile("input29", input29)], null, null, null,
+auto test29 = Test("exe", input29, null, null, null,
 	[DllModule("kernel32", ["WriteConsoleA", "GetStdHandle"])]);
 
-immutable input30 = q{
+immutable input30 = q{--- test30
 	void SDL_SetMainReady();
 	i32 SDL_Init(u32);
 	void SDL_Quit();
@@ -891,7 +895,7 @@ immutable input30 = q{
 		return 0;
 	}
 };
-auto test30 = Test("exe SDL", [tfile("input30", input30)], null, null, null, [
+auto test30 = Test("exe SDL", input30, null, null, null, [
 	DllModule("SDL2", ["SDL_SetMainReady", "SDL_Init", "SDL_Quit",
 		"SDL_CreateWindow", "SDL_CreateRenderer", "SDL_PollEvent",
 		"SDL_DestroyRenderer", "SDL_DestroyWindow"]),
@@ -902,7 +906,8 @@ extern(C) void test31_external_print_num(long param) {
 	testSink.putf("%s", param);
 }
 
-immutable input31 = q{
+immutable input31 = q{--- test31
+	// test enums
 	//enum i32 e2; // manifest constant, invalid, need initializer
 	enum e3 = 3; // manifest constant
 	enum i32 e4 = 4; // manifest constant
@@ -931,67 +936,69 @@ void tester31(Func25 fun) {
 	assert(testSink.text == "345679");
 	testSink.clear;
 }
-auto test31 = Test("enum", [tfile("input31", input31)], "test", cast(Test.Tester)&tester31,
+auto test31 = Test("enum", input31, "test", cast(Test.Tester)&tester31,
 	[HostSymbol("print_num", cast(void*)&test31_external_print_num)]);
 
-// Test reg alloc xchg generation
-immutable input32 =
-q{void print(i32); // external
-void main() {
-	i32 lo = 0;
-	i32 hi = 1;
-	while (hi < 10000) {
-		i32 tmp = hi;
-		hi = hi + lo;
-		lo = tmp;
-		print(lo);
+immutable input32 = q{--- test32
+	// Test reg alloc xchg generation
+	void print(i32); // external
+	void main() {
+		i32 lo = 0;
+		i32 hi = 1;
+		while (hi < 10000) {
+			i32 tmp = hi;
+			hi = hi + lo;
+			lo = tmp;
+			print(lo);
+		}
+		while (hi < 10000) {
+			i32 tmp = hi;
+			hi = hi + lo;
+			lo = tmp;
+			print(lo);
+		}
+		while (hi < 10000) {
+			i32 tmp = hi;
+			hi = hi + lo;
+			lo = tmp;
+			print(lo);
+		}
+		while (hi < 10000) {
+			i32 tmp = hi;
+			hi = hi + lo;
+			lo = tmp;
+			print(lo);
+		}
 	}
-	while (hi < 10000) {
-		i32 tmp = hi;
-		hi = hi + lo;
-		lo = tmp;
-		print(lo);
-	}
-	while (hi < 10000) {
-		i32 tmp = hi;
-		hi = hi + lo;
-		lo = tmp;
-		print(lo);
-	}
-	while (hi < 10000) {
-		i32 tmp = hi;
-		hi = hi + lo;
-		lo = tmp;
-		print(lo);
-	}
-}};
+};
 alias Func32 = extern(C) void function();
 extern(C) void test32_external_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
-auto test32 = Test("Test 32 - fibonacci 4 times", [tfile("input32", input32)], "main", cast(Test.Tester)&tester21,
+auto test32 = Test("Test 32 - fibonacci 4 times", input32, "main", cast(Test.Tester)&tester21,
 	[HostSymbol("print", cast(void*)&test32_external_func)]);
 
-// test multifile compilation
-immutable input33_1 =
-q{void print(i32); // external
-};
-immutable input33_2 =
-q{import input33_1;
+immutable input33 = q{
+--- test33_1
+	// test multifile compilation
+	void print(i32); // external
+--- test33_2
+	import test33_1;
 	void fibonacci() {
-	i32 lo = 0;
-	i32 hi = 1;
-	while (hi < 10000) {
-		hi = hi + lo;
-		lo = hi - lo;
-		print(lo);
+		i32 lo = 0;
+		i32 hi = 1;
+		while (hi < 10000) {
+			hi = hi + lo;
+			lo = hi - lo;
+			print(lo);
+		}
 	}
-}};
-auto test33 = Test("Test 33", [tfile("input33_1", input33_1), tfile("input33_2", input33_2)], "fibonacci", cast(Test.Tester)&tester21,
+};
+auto test33 = Test("Test 33", input33, "fibonacci", cast(Test.Tester)&tester21,
 	[HostSymbol("print", cast(void*)&test21_external_func)]);
 
 alias Func34 = extern(C) int function(Slice!int, int);
-immutable input34 = q{
+immutable input34 = q{--- test34
 	i32 getElement(i32[] items, i32 index) { return items[index]; }
 };
 void tester34(Func34 fun) {
@@ -1002,10 +1009,10 @@ void tester34(Func34 fun) {
 	assert(res0 == 42);
 	assert(res1 == 56);
 }
-auto test34 = Test("Test 34", [tfile("input34", input34)], "getElement", cast(Test.Tester)&tester34);
+auto test34 = Test("Test 34", input34, "getElement", cast(Test.Tester)&tester34);
 
 alias Func35 = extern(C) void function(Slice!int, int, int);
-immutable input35 = q{
+immutable input35 = q{--- test35
 	void setElement(i32[] items, i32 index, i32 value) { items[index] = value; }
 };
 void tester35(Func35 fun) {
@@ -1016,4 +1023,4 @@ void tester35(Func35 fun) {
 	fun(slice, 1, 96);
 	assert(val == [88, 96]);
 }
-auto test35 = Test("Test 35", [tfile("input35", input35)], "setElement", cast(Test.Tester)&tester35);
+auto test35 = Test("Test 35", input35, "setElement", cast(Test.Tester)&tester35);

@@ -162,7 +162,7 @@ struct SourceFileInfo
 	/// File name. Must be always set.
 	string name;
 	/// If set, then used as a source. Otherwise is read from file `name`
-	string content;
+	const(char)[] content;
 	/// Start of file source code in CompilationContext.sourceBuffer
 	uint start;
 	/// Length of source code

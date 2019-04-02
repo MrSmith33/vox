@@ -11,7 +11,7 @@ import all;
 
 void pass_source(ref CompilationContext ctx)
 {
-	size_t start = 0;
+	size_t start = ctx.sourceBuffer.length;
 	foreach(ref file; ctx.files.data)
 	{
 		file.mod.id = ctx.idMap.getOrRegNoDup(stripExtension(file.name));
@@ -122,8 +122,9 @@ struct Driver
 		// IrIndex can address 2^28 * 4 bytes = 1GB
 		enum ulong GiB = 1024UL*1024*1024;
 
-		size_t irMemSize = GiB*53;
+		size_t irMemSize = GiB*57;
 		arenaPool.reserve(irMemSize);
+		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
 		/// Those 3 must be allocated in this order (or in inverse order)
 		/// Code must be able to use RIP-relative addressing into static data (and into import data when in JIT mode)
@@ -143,20 +144,26 @@ struct Driver
 		context.globals.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.constants.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.astBuffer.setBuffer(arenaPool.take(16*GiB), 0);
+
+		context.idMap.strings.setBuffer(arenaPool.take(2*GiB), 0);
+		context.idMap.stringDataBuffer.setBuffer(arenaPool.take(2*GiB), 0);
 	}
 
 	void releaseMemory()
 	{
-		import core.memory : GC;
-		GC.removeRange(context.files.bufPtr);
+		releaseGCRanges;
 		arenaPool.decommitAll;
+	}
+
+	void releaseGCRanges() {
+		import core.memory : GC;
+		if (context.files.length) GC.removeRange(context.files.bufPtr);
+		if (context.astBuffer.length) GC.removeRange(context.astBuffer.bufPtr);
 	}
 
 	void beginCompilation()
 	{
-		import core.memory : GC;
-		if (context.files.length)
-			GC.removeRange(context.files.bufPtr);
+		releaseGCRanges;
 
 		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
 		context.sourceBuffer.clear;
@@ -197,6 +204,58 @@ struct Driver
 		file.mod = context.appendAst!ModuleDeclNode();
 		file.mod.moduleIndex = ModuleIndex(0);
 		file.mod.objectSymIndex = context.objSymTab.addModule(localModule);
+	}
+
+	void addHar(string harFilename, const(char)[] harData)
+	{
+		import std.string : indexOf, lineSplitter;
+		import std.algorithm : startsWith;
+		auto lines = harData.lineSplitter;
+		size_t lineNumber = 1;
+		auto line = lines.front;
+
+		auto spaceIndex = line.indexOf(' ');
+		if (spaceIndex <= 0) {
+			context.error("HAR file error `%s`: First line must start with delimiter ending with space", harFilename);
+			return;
+		}
+
+		auto delimiter = line[0 .. spaceIndex + 1];
+
+		outer:
+		while (true)
+		{
+			if (line.length == 0) {
+				context.error("HAR file error `%s`: Missing filename on line %s", harFilename, lineNumber);
+				return;
+			}
+
+			string filename = cast(string)line[delimiter.length .. $];
+			lines.popFront();
+
+			if (lines.empty) break;
+			const(char)* fileStart = lines.front.ptr;
+			const(char)* fileEnd = lines.front.ptr + lines.front.length;
+
+			while (true)
+			{
+				if (lines.empty) {
+					addModule(SourceFileInfo(filename, fileStart[0..fileEnd-fileStart]));
+					break outer;
+				}
+
+				lineNumber++;
+				line = lines.front;
+
+				if (line.startsWith(delimiter)) {
+					addModule(SourceFileInfo(filename, fileStart[0..fileEnd-fileStart]));
+					break;
+				}
+
+				fileEnd = lines.front.ptr + lines.front.length;
+				lines.popFront();
+			}
+		}
 	}
 
 	void compile()
