@@ -46,6 +46,6 @@ struct ContinueStmtNode {
 struct BlockStmtNode {
 	mixin AstNodeData!(AstType.stmt_block, AstFlags.isStatement);
 	/// Each node can be expression, declaration or expression
-	AstNode*[] statements;
+	Array!(AstNode*) statements;
 	Scope* _scope;
 }

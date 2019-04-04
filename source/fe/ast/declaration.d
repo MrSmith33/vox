@@ -11,7 +11,7 @@ import all;
 mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {
 	mixin AstNodeData!(_astType, default_flags | AstFlags.isScope | AstFlags.isDeclaration);
 	/// Each node can be struct, function or variable
-	AstNode*[] declarations;
+	Array!(AstNode*) declarations;
 }
 
 /// Index into CompilationContext.files
@@ -24,7 +24,7 @@ struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
 	Scope* _scope;
 	/// Linear list of all functions of a module (including nested and methods and externals)
-	FunctionDeclNode*[] functions;
+	Array!(FunctionDeclNode*) functions;
 	IrModule irModule;
 	IrModule lirModule;
 	LinkIndex objectSymIndex;
@@ -32,9 +32,9 @@ struct ModuleDeclNode {
 	/// module identifier. Used by import declaration.
 	Identifier id;
 
-	void addFunction(FunctionDeclNode* func) {
+	void addFunction(ref ArrayArena arrayArena, FunctionDeclNode* func) {
 		func.backendData.index = FunctionIndex(cast(uint)functions.length, moduleIndex);
-		functions ~= func;
+		functions.put(arrayArena, func);
 	}
 
 	FunctionDeclNode* findFunction(string idStr, CompilationContext* ctx) {
@@ -101,7 +101,7 @@ struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
 	mixin SymRefNodeData;
 	TypeNode* returnType;
-	VariableDeclNode*[] parameters;
+	Array!(VariableDeclNode*) parameters;
 	BlockStmtNode* block_stmt; // null if external
 	Scope* _scope;
 	FunctionBackendData backendData;
@@ -137,7 +137,7 @@ struct EnumDeclaration
 	TypeNode* memberType;
 	Scope* _scope;
 
-	this(TokenIndex loc, AstNode*[] members, TypeNode* memberType, Identifier id)
+	this(TokenIndex loc, Array!(AstNode*) members, TypeNode* memberType, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
@@ -148,7 +148,7 @@ struct EnumDeclaration
 	}
 
 	/// Anonymous
-	this(TokenIndex loc, AstNode*[] members, TypeNode* memberType)
+	this(TokenIndex loc, Array!(AstNode*) members, TypeNode* memberType)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;

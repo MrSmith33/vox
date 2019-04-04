@@ -120,9 +120,7 @@ struct Driver
 		passes = passes_;
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		enum ulong GiB = 1024UL*1024*1024;
-
-		size_t irMemSize = GiB*57;
+		size_t irMemSize = GiB*66;
 		arenaPool.reserve(irMemSize);
 		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
@@ -144,6 +142,7 @@ struct Driver
 		context.globals.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.constants.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.astBuffer.setBuffer(arenaPool.take(16*GiB), 0);
+		context.arrayArena.setBuffer(arenaPool.take(9*GiB));
 
 		context.idMap.strings.setBuffer(arenaPool.take(2*GiB), 0);
 		context.idMap.stringDataBuffer.setBuffer(arenaPool.take(2*GiB), 0);
@@ -182,6 +181,7 @@ struct Driver
 		context.globals.buffer.clear;
 		context.constants.buffer.clear;
 		context.astBuffer.clear;
+		context.arrayArena.clear;
 		context.entryPoint = null;
 
 		context.externalSymbols.clear();

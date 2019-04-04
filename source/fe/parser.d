@@ -164,8 +164,8 @@ struct Parser
 		mod.declarations = parse_declarations(TokenType.EOI);
 	}
 
-	AstNode*[] parse_declarations(TokenType until) { // <declaration>*
-		AstNode*[] declarations;
+	AstNodes parse_declarations(TokenType until) { // <declaration>*
+		AstNodes declarations;
 		ushort varIndex = 0;
 		while (tok.type != until)
 		{
@@ -173,7 +173,7 @@ struct Parser
 			if (decl.astType == AstType.decl_var) {
 				(cast(VariableDeclNode*)decl).scopeIndex = varIndex++;
 			}
-			declarations ~= decl;
+			declarations.put(context.arrayArena, decl);
 		}
 		return declarations;
 	}
@@ -231,7 +231,7 @@ struct Parser
 			{
 				version(print_parse) auto s3 = scop("<func_declaration> %s", start);
 				expectAndConsume(TokenType.LPAREN);
-				VariableDeclNode*[] params;
+				Array!(VariableDeclNode*) params;
 				while (tok.type != TokenType.RPAREN)
 				{
 					// <param> ::= <type> <identifier>?
@@ -249,7 +249,7 @@ struct Parser
 					VariableDeclNode* param = make!VariableDeclNode(start, SymbolRef(paramId), paramType);
 					param.varFlags |= VariableFlags.isParameter;
 					param.scopeIndex = cast(typeof(param.scopeIndex))paramIndex;
-					params ~= param;
+					params.put(context.arrayArena, param);
 					if (tok.type == TokenType.COMMA) nextToken; // skip ","
 					else break;
 				}
@@ -280,7 +280,7 @@ struct Parser
 		nextToken; // skip "struct"
 		Identifier structId = expectIdentifier();
 		expectAndConsume(TokenType.LCURLY);
-		AstNode*[] declarations = parse_declarations(TokenType.RCURLY);
+		AstNodes declarations = parse_declarations(TokenType.RCURLY);
 		expectAndConsume(TokenType.RCURLY);
 		return cast(AstNode*)make!StructDeclNode(start, declarations, SymbolRef(structId));
 	}
@@ -318,18 +318,18 @@ struct Parser
 			return type;
 		}
 
-		AstNode*[] tryParseEnumBody(TypeNode* type)
+		AstNodes tryParseEnumBody(TypeNode* type)
 		{
 			if (tok.type == TokenType.SEMICOLON) {
 				nextToken; // skip ";"
-				return null;
+				return AstNodes();
 			} else if (tok.type == TokenType.LCURLY) {
 				return parse_enum_body(type);
 			} else {
 				context.unrecoverable_error(tok.index,
 					"Expected `;` or `{` at the end of enum declaration, while got `%s`",
 					context.getTokenString(tok.index));
-				return null;
+				return AstNodes();
 			}
 		}
 
@@ -367,7 +367,7 @@ struct Parser
 				nextToken; // skip ";"
 				Identifier enumId = makeIdentifier(id);
 
-				return cast(AstNode*)make!EnumDeclaration(start, null, intType, enumId);
+				return cast(AstNode*)make!EnumDeclaration(start, AstNodes(), intType, enumId);
 			}
 			else if (tok.type == TokenType.EQUAL)
 			{
@@ -386,7 +386,7 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				TypeNode* type = parseColonType;
-				AstNode*[] members = tryParseEnumBody(type);
+				AstNodes members = tryParseEnumBody(type);
 
 				// enum e7 : i32 { e7 }
 				// enum e8 : i32;
@@ -396,7 +396,7 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				TypeNode* type = intType;
-				AstNode*[] members = parse_enum_body(type);
+				AstNodes members = parse_enum_body(type);
 
 				// enum e9 { e9 }
 				return cast(AstNode*)make!EnumDeclaration(start, members, type, enumId);
@@ -410,7 +410,7 @@ struct Parser
 		else if (tok.type == TokenType.COLON)
 		{
 			TypeNode* type = parseColonType;
-			AstNode*[] members = parse_enum_body(type);
+			AstNodes members = parse_enum_body(type);
 
 			// enum : i32 { e6 }
 			return cast(AstNode*)make!EnumDeclaration(start, members, type);
@@ -418,7 +418,7 @@ struct Parser
 		else if (tok.type == TokenType.LCURLY)
 		{
 			TypeNode* type = intType;
-			AstNode*[] members = parse_enum_body(type);
+			AstNodes members = parse_enum_body(type);
 
 			// enum { e5 }
 			return cast(AstNode*)make!EnumDeclaration(start, members, type);
@@ -446,9 +446,9 @@ struct Parser
 		return cast(AstNode*)make!ImportDeclNode(start, moduleId);
 	}
 
-	AstNode*[] parse_enum_body(TypeNode* type) { // { id [= val], ... }
+	AstNodes parse_enum_body(TypeNode* type) { // { id [= val], ... }
 		expectAndConsume(TokenType.LCURLY);
-		AstNode*[] members;
+		AstNodes members;
 		ushort varIndex = 0;
 		while (tok.type != TokenType.RCURLY)
 		{
@@ -464,7 +464,7 @@ struct Parser
 
 			auto member = make!EnumMemberDecl(start, SymbolRef(id), type, value);
 			member.scopeIndex = varIndex++;
-			members ~= cast(AstNode*)member;
+			members.put(context.arrayArena, cast(AstNode*)member);
 
 			if (tok.type == TokenType.COMMA) {
 				nextToken; // skip ","
@@ -543,12 +543,12 @@ struct Parser
 	BlockStmtNode* block_stmt() // <block_statement> ::= "{" <statement>* "}"
 	{
 		version(print_parse) auto s1 = scop("block_stmt %s", loc);
-		AstNode*[] statements;
+		AstNodes statements;
 		TokenIndex start = tok.index;
 		expectAndConsume(TokenType.LCURLY);
 		while (tok.type != TokenType.RCURLY)
 		{
-			statements ~= statement();
+			statements.put(context.arrayArena, statement());
 		}
 		expectAndConsume(TokenType.RCURLY);
 		return make!BlockStmtNode(start, statements);
@@ -597,7 +597,7 @@ struct Parser
 				return cast(AstNode*)make!ContinueStmtNode(start);
 			case TokenType.SEMICOLON:  /* ";" */
 				nextToken;
-				return cast(AstNode*)make!BlockStmtNode(start, null); // TODO: make this an error
+				return cast(AstNode*)make!BlockStmtNode(start, AstNodes()); // TODO: make this an error
 			case TokenType.LCURLY:  /* "{" { <statement> } "}" */
 				return cast(AstNode*)block_stmt();
 			default:
@@ -974,10 +974,10 @@ ExpressionNode* leftAssignOp(ref Parser p, Token token, int rbp, ExpressionNode*
 
 // <id> "(" <expr_list> ")"
 ExpressionNode* leftFuncCall(ref Parser p, Token token, int unused_rbp, ExpressionNode* callee) {
-	ExpressionNode*[] args;
+	Array!(ExpressionNode*) args;
 	while (p.tok.type != TokenType.RPAREN) {
 		// We don't want to grab the comma, e.g. it is NOT a sequence operator.
-		args ~= p.expr(COMMA_PREC);
+		args.put(p.context.arrayArena, p.expr(COMMA_PREC));
 		// allows trailing comma too
 		if (p.tok.type == TokenType.COMMA)
 			p.nextToken;

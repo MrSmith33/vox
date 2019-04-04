@@ -149,7 +149,7 @@ struct TypeConvExprNode {
 struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
 	ExpressionNode* callee;
-	ExpressionNode*[] args;
+	Array!(ExpressionNode*) args;
 }
 
 struct IndexExprNode {

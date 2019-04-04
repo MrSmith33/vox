@@ -16,7 +16,7 @@ struct Scope
 	///
 	Symbol*[Identifier] symbols;
 	/// Imported modules
-	ModuleDeclNode*[] imports;
+	Array!(ModuleDeclNode*) imports;
 	///
 	Scope* parentScope;
 	///
@@ -92,12 +92,12 @@ struct SemanticDeclarations
 	}
 	void visit(ImportDeclNode* i) {
 		ModuleDeclNode* m = context.findModule(i.id);
-		currentScope.imports ~= m;
+		currentScope.imports.put(context.arrayArena, m);
 		if (m is null)
 			context.error(i.loc, "Cannot find module `%s`", context.idString(i.id));
 	}
 	void visit(FunctionDeclNode* f) {
-		mod.addFunction(f);
+		mod.addFunction(context.arrayArena, f);
 		f.resolveSymbol = insert(f.id, f.loc, SymbolClass.c_function, cast(AstNode*)f);
 		f._scope = pushScope(context.idString(f.id), Yes.ordered);
 		foreach (param; f.parameters) visit(param);
@@ -827,9 +827,9 @@ struct SemanticStaticTypes
 	void checkBodyForReturnType(FunctionDeclNode* f) {
 		if (f.returnType.isVoid) return; // void functions don't need return at the end
 
-		if (f.block_stmt.statements.length > 0)
+		if (!f.block_stmt.statements.empty)
 		{
-			AstNode* lastStmt = f.block_stmt.statements[$-1];
+			AstNode* lastStmt = f.block_stmt.statements.back;
 			if (lastStmt.astType == AstType.stmt_return)
 				return; // return type is already checked
 		}
@@ -1027,7 +1027,7 @@ struct SemanticStaticTypes
 			return;
 		}
 
-		VariableDeclNode*[] params = calleeSym.funcDecl.parameters;
+		Array!(VariableDeclNode*) params = calleeSym.funcDecl.parameters;
 		auto numParams = params.length;
 		auto numArgs = c.args.length;
 

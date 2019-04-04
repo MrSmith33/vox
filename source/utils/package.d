@@ -10,6 +10,7 @@ public import std.algorithm : min, max;
 public import std.string : format;
 public import std.conv : to;
 public import std.stdio;
+public import core.bitop : bsr;
 
 public import utils.arena;
 public import utils.arenapool;
@@ -21,6 +22,7 @@ public import utils.numfmt;
 public import utils.textsink;
 
 enum PAGE_SIZE = 4096;
+enum ulong GiB = 1024UL*1024*1024;
 
 void printHex(ubyte[] buffer, size_t lineLength)
 {

@@ -130,3 +130,5 @@ struct AstNode
 {
 	mixin AstNodeData;
 }
+
+alias AstNodes = Array!(AstNode*);

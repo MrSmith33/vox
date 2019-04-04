@@ -67,8 +67,10 @@ struct CompilationContext
 	Arena!TokenType tokenBuffer;
 	/// Token locations in source code
 	Arena!SourceLocation tokenLocationBuffer;
-	///
+	/// For AST nodes
 	Arena!ubyte astBuffer;
+	/// For arrays and hashmaps used in AST nodes
+	ArrayArena arrayArena;
 	/// Identifier interning/deduplication
 	IdentifierMap idMap;
 
@@ -390,6 +392,7 @@ struct CompilationContext
 		writefln("  tokens:       %sB", scaledNumberFmt(tokenBuffer.byteLength));
 		writefln("  token loc:    %sB", scaledNumberFmt(tokenLocationBuffer.byteLength));
 		writefln("  AST:          %sB", scaledNumberFmt(astBuffer.byteLength));
+		writefln("  arrays:       %sB", scaledNumberFmt(arrayArena.byteLength));
 		writefln("  IR:           %sB", scaledNumberFmt(irBuffer.byteLength));
 		writefln("  temp:         %sB", scaledNumberFmt(tempBuffer.byteLength));
 		writefln("  types:        %sB", scaledNumberFmt(types.buffer.byteLength));
