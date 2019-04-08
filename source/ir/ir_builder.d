@@ -54,12 +54,17 @@ struct IrBuilder
 	IrFunction* ir;
 
 	// Stores current definition of variable per block during SSA-form IR construction.
-	private IrIndex[BlockVarPair] blockVarDef;
-	private IrIndex[IrIndex] blockToIrIncompletePhi;
+	private HashMap!(BlockVarPair, IrIndex, BlockVarPair.init) blockVarDef;
+	private HashMap!(IrIndex, IrIndex, IrIndex.init) blockToIrIncompletePhi;
 
 	private uint nextIrVarIndex;
 
 	private IrIndex returnVar;
+
+	void free() {
+		blockVarDef.free(context.arrayArena);
+		blockToIrIncompletePhi.free(context.arrayArena);
+	}
 
 	/// Must be called before compilation of each function. Allows reusing temp buffers.
 	/// Sets up entry and exit basic blocks.
@@ -212,7 +217,7 @@ struct IrBuilder
 			addPhiOperands(basicBlockToSeal, ip.var, ip.phi);
 			index = ip.nextListItem;
 		}
-		blockToIrIncompletePhi.remove(basicBlockToSeal);
+		blockToIrIncompletePhi.remove(context.arrayArena, basicBlockToSeal);
 		bb.isSealed = true;
 	}
 
@@ -233,7 +238,7 @@ struct IrBuilder
 			"writeVariable(block %s, variable %s, value %s)",
 			blockIndex, var, value);
 
-		blockVarDef[BlockVarPair(blockIndex, var)] = value;
+		blockVarDef.put(context.arrayArena, BlockVarPair(blockIndex, var), value);
 	}
 
 	/// Returns the value that currently defines `var` within `blockIndex`
@@ -734,18 +739,16 @@ struct IrBuilder
 			// Incomplete CFG
 			IrIndex phiIndex = addPhi(blockIndex);
 			value = ir.get!IrPhi(phiIndex).result;
-			blockToIrIncompletePhi.update(blockIndex,
-				{
-					IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
-					context.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex);
-					return incompletePhi;
-				},
-				(ref IrIndex oldPhi)
-				{
-					IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
-					context.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex, oldPhi);
-					return incompletePhi;
-				});
+			bool wasCreated;
+			IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
+			IrIndex* phi = blockToIrIncompletePhi.getOrCreate(context.arrayArena, blockIndex, wasCreated, incompletePhi);
+			if (wasCreated)
+				context.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex);
+			else
+			{
+				context.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex, *phi);
+				*phi = incompletePhi;
+			}
 		}
 		else
 		{

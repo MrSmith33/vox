@@ -120,6 +120,11 @@ mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 		_length = 0;
 	}
 
+	void clear() {
+		KeyBucketT.clearBuckets(keyBuckets[0.._capacity]);
+		_length = 0;
+	}
+
 	private void extend(ref ArrayArena arena)
 	{
 		uint newCapacity = _capacity ? _capacity * 2 : MIN_CAPACITY;
@@ -197,25 +202,84 @@ mixin template HashMapImpl()
 			if (keyBuckets[index].key == key) { // same key
 				values[index] = value;
 				return &values[index];
-			} else if (keyBuckets[index].empty) { // bucket is empty
+			}
+			if (keyBuckets[index].empty) { // bucket is empty
 				++_length;
 				keyBuckets[index].assignKey(key);
 				values[index] = value;
 				return &values[index];
-			} else {
-				size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
-				ptrdiff_t current_dib = index - current_initial_bucket;
-				if (current_dib < 0) current_dib += _capacity;
-				// swap inserted item with current only if DIB(current) < DIB(inserted item)
-				if (inserted_dib > current_dib) {
-					swap(key, keyBuckets[index].key);
-					swap(value, values[index]);
-					inserted_dib = current_dib;
-				}
+			}
+			size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
+			ptrdiff_t current_dib = index - current_initial_bucket;
+			if (current_dib < 0) current_dib += _capacity;
+			// swap inserted item with current only if DIB(current) < DIB(inserted item)
+			if (inserted_dib > current_dib) {
+				swap(key, keyBuckets[index].key);
+				swap(value, values[index]);
+				inserted_dib = current_dib;
 			}
 			++inserted_dib;
 			index = (index + 1) % _capacity;
 		}
+	}
+
+	Value* getOrCreate(ref ArrayArena arena, Key key, out bool wasCreated, Value default_value = Value.init)
+	{
+		if (_length == 0) {
+			wasCreated = true;
+			return put(arena, key, default_value);
+		}
+
+		auto index = getHash(key) % _capacity;
+		size_t inserted_dib = 0;
+		Value value;
+		while (true) {
+			if (keyBuckets[index].empty) { // bucket is empty
+				++_length;
+				keyBuckets[index].assignKey(key);
+				values[index] = default_value;
+				wasCreated = true;
+				return &values[index];
+			}
+			if (keyBuckets[index].key == key) return &values[index];
+			size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
+			ptrdiff_t current_dib = index - current_initial_bucket;
+			if (current_dib < 0) current_dib += _capacity;
+			if (inserted_dib > current_dib) {
+				value = default_value;
+				wasCreated = true;
+				swap(key, keyBuckets[index].key);
+				swap(value, values[index]);
+				inserted_dib = current_dib;
+				++inserted_dib;
+				index = (index + 1) % _capacity;
+				break; // item must have been inserted here
+			}
+			++inserted_dib;
+			index = (index + 1) % _capacity;
+		}
+
+		while (true) {
+			if (keyBuckets[index].empty) { // bucket is empty
+				++_length;
+				keyBuckets[index].assignKey(key);
+				values[index] = value;
+				return &values[index];
+			}
+			size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
+			ptrdiff_t current_dib = index - current_initial_bucket;
+			if (current_dib < 0) current_dib += _capacity;
+			// swap inserted item with current only if DIB(current) < DIB(inserted item)
+			if (inserted_dib > current_dib) {
+				swap(key, keyBuckets[index].key);
+				swap(value, values[index]);
+				inserted_dib = current_dib;
+			}
+			++inserted_dib;
+			index = (index + 1) % _capacity;
+		}
+
+		return &values[index];
 	}
 
 	inout(Value)* opBinaryRight(string op)(Key key) inout if (op == "in") {
