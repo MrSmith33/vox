@@ -71,21 +71,21 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	size_t numTests = jitTests.length + exeTests.length;
 	size_t numSuccessfulTests;
 	writefln("Running %s tests", numTests);
+	bool failed = false;
 
 	void runTests(size_t indexOffset, Test[] tests)
 	{
 		foreach(size_t i, ref Test test; tests)
 		{
+			if (stopOnFirstFail && failed) break;
+
 			TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
 
 			if (res == TestResult.failure)
 			{
 				writefln("%s/%s %s %s", indexOffset+i+1, numTests, test.testName, res);
-
-				if (stopOnFirstFail) {
-					writeln("Stopping on first fail");
-					break;
-				}
+				failed = true;
+				if (stopOnFirstFail) writeln("Stopping on first fail");
 			}
 			else
 			{

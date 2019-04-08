@@ -5,18 +5,22 @@ Authors: Andrey Penechko.
 */
 module utils;
 
-public import core.time : MonoTime, Duration, usecs, dur;
-public import std.algorithm : min, max;
-public import std.string : format;
-public import std.conv : to;
-public import std.stdio;
 public import core.bitop : bsr;
+public import core.time : MonoTime, Duration, usecs, dur;
+public import std.algorithm : min, max, swap;
+public import std.conv : to;
+public import std.exception : enforce;
+public import std.format : formattedWrite;
+public import std.stdio : write, writef, writeln, writefln;
+public import std.string : format;
 
 public import utils.arena;
 public import utils.arenapool;
+public import utils.arrayarena;
 public import utils.array;
 public import utils.buffer;
 public import utils.fixedbuffer;
+public import utils.hash;
 public import utils.mem;
 public import utils.numfmt;
 public import utils.textsink;

@@ -14,7 +14,7 @@ import all;
 struct Scope
 {
 	///
-	Symbol*[Identifier] symbols;
+	HashMap!(Identifier, Symbol*, Identifier.max) symbols;
 	/// Imported modules
 	Array!(ModuleDeclNode*) imports;
 	///
@@ -81,7 +81,7 @@ struct SemanticDeclarations
 			context.error(sym.loc,
 				"declaration `%s` is already defined at %s", context.idString(sym.id), s.loc);
 		}
-		currentScope.symbols[sym.id] = sym;
+		currentScope.symbols.put(context.arrayArena, sym.id, sym);
 	}
 
 	void visit(ModuleDeclNode* m) {
@@ -191,6 +191,7 @@ void pass_semantic_lookup(ref CompilationContext ctx)
 	foreach (ref SourceFileInfo file; ctx.files.data) {
 		sem2.visit(file.mod);
 	}
+	sem2.symbols.free(ctx.arrayArena);
 }
 
 /// Error means that lookup failed due to earlier failure or error, so no new error should be produced
@@ -212,7 +213,7 @@ struct SemanticLookup
 	// We will only use a small portion of visible symbols in each scope,
 	// so maintaining this is most probably wasted effort, and
 	// it is faster to walk up the scope stack. Need to benchmark.
-	Symbol*[Identifier] symbols;
+	HashMap!(Identifier, Symbol*, Identifier.max) symbols;
 
 	Scope* currentScope;
 
@@ -226,7 +227,7 @@ struct SemanticLookup
 		{
 			if (auto outerSymbol = symbols.get(sym.id, null))
 				sym.outerSymbol = outerSymbol;
-			symbols[id] = sym;
+			symbols.put(context.arrayArena, id, sym);
 		}
 	}
 
@@ -238,9 +239,9 @@ struct SemanticLookup
 		foreach(id, sym; currentScope.symbols)
 		{
 			if (sym.outerSymbol) // replace by symbol from outer scope
-				symbols[id] = sym.outerSymbol;
+				symbols.put(context.arrayArena, id, sym.outerSymbol);
 			else // or simply remove it if no such symbol
-				symbols.remove(id);
+				symbols.remove(context.arrayArena, id);
 		}
 
 		if (currentScope.parentScope)
