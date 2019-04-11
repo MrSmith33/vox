@@ -11,7 +11,7 @@ public import std.algorithm : min, max, swap;
 public import std.conv : to;
 public import std.exception : enforce;
 public import std.format : formattedWrite;
-public import std.stdio : write, writef, writeln, writefln;
+public import std.stdio : stdout, write, writef, writeln, writefln;
 public import std.string : format;
 
 public import utils.arena;

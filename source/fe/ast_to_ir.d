@@ -157,7 +157,7 @@ struct AstToIr
 			// can be null if function is external
 			if (decl.backendData.irData)
 			{
-				m.irModule.addFunction(decl.backendData.irData);
+				m.irModule.addFunction(*context, decl.backendData.irData);
 				if (context.validateIr) validateIrFunction(*context, *decl.backendData.irData);
 				if (context.printIr && context.printDumpOf(decl)) dumpFunction(*decl.backendData.irData, *context);
 			}

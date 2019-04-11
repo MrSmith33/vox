@@ -11,11 +11,11 @@ import all;
 
 struct IrModule
 {
-	IrFunction*[] functions;
+	Array!(IrFunction*) functions;
 
-	void addFunction(IrFunction* fun)
+	void addFunction(ref CompilationContext context, IrFunction* fun)
 	{
-		functions ~= fun;
+		functions.put(context.arrayArena, fun);
 	}
 
 	void dump(ref TextSink sink, ref CompilationContext context, ref FuncDumpSettings settings)

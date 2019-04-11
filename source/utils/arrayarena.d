@@ -5,6 +5,7 @@ module utils.arrayarena;
 
 struct FreeList
 {
+	import utils : writef, writefln;
 	void* head;
 	ubyte[] get(size_t size) {
 		if (head) {
@@ -23,11 +24,13 @@ struct FreeList
 
 struct ArrayArena
 {
-	import utils : Arena, bsr, isPowerOfTwo, PAGE_SIZE, writefln;
+	import core.stdc.stdlib : malloc, free;
+	import utils : Arena, bsr, isPowerOfTwo, PAGE_SIZE, writefln, format;
 
-	// arenas for buffers from 16 to 4096 bytes
-	enum NUM_ARENAS = 9;
+	// arenas for buffers from 16 to 65536 bytes
+	enum NUM_ARENAS = 13;
 	enum MIN_BLOCK_BYTES = 16;
+	enum MAX_BLOCK_BYTES = 65536;
 
 	private Arena!ubyte[NUM_ARENAS] arenas;
 	private size_t[NUM_ARENAS] arenaLengths;
@@ -48,25 +51,27 @@ struct ArrayArena
 	ubyte[] allocBlock(size_t size) {
 		assert(isPowerOfTwo(size));
 		assert(size >= MIN_BLOCK_BYTES);
-		assert(size <= PAGE_SIZE);
+		if (size > MAX_BLOCK_BYTES) {
+			return (cast(ubyte*)malloc(size))[0..size];
+		}
 		uint index = sizeToIndex(size);
-		ubyte[] freeBlock = freeLists[index].get(size);
-		if (freeBlock) {
-			//writefln("allocBlock [%s] %X %s free", index, freeBlock.ptr, size);
-			return freeBlock;
+		ubyte[] block = freeLists[index].get(size);
+		if (block) {
+			assert(arenas[index].contains(block.ptr), format("allocBlock %s, freeList get %X, %s", size, block.ptr, block.length));
+			return block;
 		}
 		++arenaLengths[index];
 		ubyte[] result = arenas[index].voidPut(size);
-		//writefln("allocBlock [%s] %X %s", index, result.ptr, size);
 		return result;
 	}
 
 	void freeBlock(ubyte[] block) {
 		assert(isPowerOfTwo(block.length));
 		assert(block.length >= MIN_BLOCK_BYTES);
-		assert(block.length <= PAGE_SIZE);
+		if (block.length > MAX_BLOCK_BYTES) {
+			return free(block.ptr);
+		}
 		uint index = sizeToIndex(block.length);
-		//writefln("freeBlock [%s] %X %s", index, block.ptr, block.length);
 		freeLists[index].put(block);
 	}
 
@@ -77,8 +82,8 @@ struct ArrayArena
 	}
 
 	private uint sizeToIndex(size_t size) {
-		// from 16 32 64 128 256 512 1024 2048 4096
-		//   to  0  1  2   3   4   5    6    7    8
+		// from 16 32 64 128 256 512 1024 2048 4096 8192 16384 32768 65536
+		//   to  0  1  2   3   4   5    6    7    8    9    10    11    12
 		uint index = bsr(size) - 4;
 		return index;
 	}

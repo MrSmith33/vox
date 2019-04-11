@@ -333,16 +333,10 @@ struct CompilationContext
 	}
 
 	T* appendAst(T, Args...)(Args args) {
-		enum alignment = T.alignof;
-		size_t pad = paddingSize(cast(size_t)astBuffer.bufPtr, alignment);
-		astBuffer.voidPut(pad);
-		import core.memory : GC;
 		T* result = cast(T*)astBuffer.nextPtr;
 		astBuffer.voidPut(T.sizeof);
 		*result = T(args);
-		GC.addRange(astBuffer.bufPtr, astBuffer.length);
 		return result;
-		//return new T(args);
 	}
 
 	ModuleDeclNode* getModuleFromToken(TokenIndex tokIndex)

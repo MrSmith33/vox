@@ -175,7 +175,7 @@ struct StackLayout
 	// TODO: if 0 or 1, we can merge stack allocation with function's stack
 	// TODO: if 0, we can omit stack alignment
 	uint numCalls;
-	StackSlot[] slots;
+	Array!StackSlot slots;
 
 	ref StackSlot opIndex(IrIndex slotIndex) {
 		assert(slotIndex.kind == IrValueKind.stackSlot);
@@ -197,7 +197,7 @@ struct StackLayout
 
 		if(isParameter) ++numParamSlots;
 
-		slots ~= slot;
+		slots.put(context.arrayArena, slot);
 		return IrIndex(id, IrValueKind.stackSlot);
 	}
 

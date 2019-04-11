@@ -120,7 +120,7 @@ struct Driver
 		passes = passes_;
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		size_t irMemSize = GiB*66;
+		size_t irMemSize = GiB*109;
 		arenaPool.reserve(irMemSize);
 		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
@@ -142,7 +142,7 @@ struct Driver
 		context.globals.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.constants.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.astBuffer.setBuffer(arenaPool.take(16*GiB), 0);
-		context.arrayArena.setBuffer(arenaPool.take(9*GiB));
+		context.arrayArena.setBuffer(arenaPool.take(13*4*GiB));
 
 		context.idMap.strings.setBuffer(arenaPool.take(2*GiB), 0);
 		context.idMap.stringDataBuffer.setBuffer(arenaPool.take(2*GiB), 0);
@@ -150,20 +150,11 @@ struct Driver
 
 	void releaseMemory()
 	{
-		releaseGCRanges;
 		arenaPool.decommitAll;
-	}
-
-	void releaseGCRanges() {
-		import core.memory : GC;
-		if (context.files.length) GC.removeRange(context.files.bufPtr);
-		if (context.astBuffer.length) GC.removeRange(context.astBuffer.bufPtr);
 	}
 
 	void beginCompilation()
 	{
-		releaseGCRanges;
-
 		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
 		context.sourceBuffer.clear;
 		context.files.clear;
@@ -193,9 +184,6 @@ struct Driver
 	{
 		context.files.put(moduleFile);
 		SourceFileInfo* file = &context.files.back();
-
-		import core.memory : GC;
-		GC.addRange(cast(void*)context.files.bufPtr, SourceFileInfo.sizeof*context.files.length, typeid(SourceFileInfo));
 
 		ObjectModule localModule = {
 			kind : ObjectModuleKind.isLocal,

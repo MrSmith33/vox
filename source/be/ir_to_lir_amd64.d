@@ -30,7 +30,7 @@ struct IrToLir
 			fun.backendData.lirData = context.appendAst!IrFunction;
 			fun.backendData.lirData.backendData = &fun.backendData;
 
-			file.mod.lirModule.addFunction(fun.backendData.lirData);
+			file.mod.lirModule.addFunction(*context, fun.backendData.lirData);
 			processFunc(*fun.backendData.irData, *fun.backendData.lirData);
 			if (context.validateIr) validateIrFunction(*context, *fun.backendData.lirData);
 			if (context.printLir && context.printDumpOf(fun)) dumpFunction(*fun.backendData.lirData, *context);

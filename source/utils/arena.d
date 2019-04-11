@@ -29,6 +29,7 @@ struct Arena(T)
 	inout(T[]) data() inout { return bufPtr[0..length]; }
 	bool empty() { return length == 0; }
 	T* nextPtr() { return bufPtr + length; }
+	bool contains(void* ptr) { return bufPtr <= cast(T*)ptr && cast(T*)ptr <= bufPtr + length; }
 
 	void setBuffer(ubyte[] reservedBuffer) {
 		setBuffer(reservedBuffer, reservedBuffer.length);
