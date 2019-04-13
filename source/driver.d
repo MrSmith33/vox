@@ -182,6 +182,7 @@ struct Driver
 
 	void addModule(SourceFileInfo moduleFile)
 	{
+		uint fileIndex = cast(uint)context.files.length;
 		context.files.put(moduleFile);
 		SourceFileInfo* file = &context.files.back();
 
@@ -190,7 +191,7 @@ struct Driver
 			id : context.idMap.getOrRegNoDup(":local")
 		};
 		file.mod = context.appendAst!ModuleDeclNode();
-		file.mod.moduleIndex = ModuleIndex(0);
+		file.mod.moduleIndex = ModuleIndex(fileIndex);
 		file.mod.objectSymIndex = context.objSymTab.addModule(localModule);
 	}
 
