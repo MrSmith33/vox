@@ -64,7 +64,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	Test[] jitTests = [test7, test8, test8_1, test10, test9, test13, test18, test19,
 		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31,
-		test32, test33, test34, test35, test36];
+		test32, test33, test34, test35, test36, test37];
 
 	Test[] exeTests = [test28, test29];
 
@@ -99,23 +99,35 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	runTests(0, jitTests);
 
+	auto time2 = currTime;
 	driver.context.buildType = BuildType.exe;
 	driver.passes = exePasses;
 	runTests(jitTests.length, exeTests);
 
-	auto time2 = currTime;
-	Duration duration = time2-time1;
+	auto time3 = currTime;
+	Duration durationJit = time2-time1;
+	Duration durationExe = time3-time2;
+	Duration durationTotal = time3-time1;
 
 	auto startReleaseTime = currTime;
 	driver.releaseMemory;
 	auto endReleaseTime = currTime;
 
+	writefln("jit(%s tests) %ss",
+		jitTests.length,
+		scaledNumberFmt(durationJit),
+		);
+	writefln("exe(%s tests) %ss",
+		exeTests.length,
+		scaledNumberFmt(durationExe),
+		);
 	writefln("Done %s/%s successful in %ss, init %ss, release %ss",
 		numSuccessfulTests,
 		numTests,
-		scaledNumberFmt(duration),
+		scaledNumberFmt(durationTotal),
 		scaledNumberFmt(endInitTime-startInitTime),
-		scaledNumberFmt(endReleaseTime-startReleaseTime));
+		scaledNumberFmt(endReleaseTime-startReleaseTime),
+		);
 }
 
 enum DumpTest : bool { no = false, yes = true }
@@ -1027,7 +1039,7 @@ auto test35 = Test("Test 35", input35, "setElement", cast(Test.Tester)&tester35)
 
 immutable input36 = q{--- test36
 	// Test null literal implicit conversion to pointer types
-	void test(){
+	void test() {
 		callee1(null);
 		callee2(null);
 	}
@@ -1035,3 +1047,12 @@ immutable input36 = q{--- test36
 	void callee2(u8*) {}
 };
 auto test36 = Test("Test 36", input36);
+
+immutable input37 = q{--- test37
+	// Test negative int literal
+	void test() {
+		callee1(-1);
+	}
+	void callee1(i32) {}
+};
+auto test37 = Test("Test 37", input37);

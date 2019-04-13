@@ -580,6 +580,7 @@ struct Lexer
 		return TT.IDENTIFIER;
 	}
 
+	// Does not reset in case of mismatch, so we continue consuming chars as regular identifier
 	private bool match(string identifier)
 	{
 		uint index = 0;

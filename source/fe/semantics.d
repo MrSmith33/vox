@@ -692,10 +692,16 @@ struct SemanticStaticTypes
 			}
 			else if (expr.astType == AstType.literal_int && toType.isInteger) {
 				auto lit = cast(IntLiteralExprNode*) expr;
-				if (numUnsignedBytesForInt(lit.value) == integerSize(toType))
-				{
-					expr.type = type;
-					return true;
+				if (lit.isSigned) {
+					if (numSignedBytesForInt(lit.value) <= integerSize(toType)) {
+						expr.type = type;
+						return true;
+					}
+				} else {
+					if (numUnsignedBytesForInt(lit.value) <= integerSize(toType)) {
+						expr.type = type;
+						return true;
+					}
 				}
 
 				context.error(expr.loc, "Cannot auto-convert integer `0x%X` of type %s to `%s`",
