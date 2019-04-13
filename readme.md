@@ -79,6 +79,15 @@ runDevTests(); // Run single test with fine-tuned logging. Useful for developmen
 
 Run with: `source> dmd -m64 -i main.d`
 
+Benchmarking:
+    `ldc2 -d-version=bench -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d && main`
+
+Debug CLI build:
+    `dmd -i -g -m64 -version=cli main.d -of=tjc.exe && move /Y tjc.exe ../test_work_dir/tjc.exe`
+    
+Release CLI build:
+    `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d -of=tjc.exe && move /Y tjc.exe ../test_work_dir/tjc.exe`
+
 # What works
 
 - You can use code in `compiler1.d` as JIT compiler for amd64:
@@ -106,6 +115,58 @@ assert(val[1] == 10);
 
 - Executable generation:
 
+File `sdl_test.har`:
+```D
+--- sdl
+void SDL_SetMainReady();
+i32 SDL_Init(u32);
+void SDL_Quit();
+void* SDL_CreateWindow(u8* title, i32 x, i32 y, i32 w, i32 h, u32 flags);
+void* SDL_CreateRenderer(void* window, i32 index, u32 flags);
+void SDL_DestroyRenderer(void* renderer);
+void SDL_DestroyWindow(void* renderer);
+i32 SDL_PollEvent(SDL_Event* event);
+struct SDL_Event
+{
+    u32 type;
+    u8[52] padding;
+}
+
+enum u32 SDL_INIT_VIDEO = 0x00000020;
+enum i32 SDL_WINDOWPOS_UNDEFINED = 0x1FFF0000;
+enum SDL_EventType {
+    SDL_QUIT = 0x100
+}
+
+--- kernel32
+void ExitProcess(u32 uExitCode);
+
+--- main
+import sdl;
+import kernel32;
+i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
+    SDL_SetMainReady();
+    if(SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
+    void* window = SDL_CreateWindow("SDL test via tiny_jit",
+        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 300, 100, 4);
+    void* renderer = SDL_CreateRenderer(window, -1, 2);
+    SDL_Event e;
+    while (1)
+    {
+        SDL_PollEvent(&e);
+        if (e.type == SDL_EventType.SDL_QUIT)
+            break;
+    }
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    ExitProcess(0);
+    return 0;
+}
+```
+
+Compiling with `tjc --subsystem=GUI sdl_test.har SDL2.dll C:\Windows\System32\kernel32.dll`
+produces `sdl_test.exe` for win64
 
 # Roadmap
 
