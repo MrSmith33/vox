@@ -102,6 +102,7 @@ enum TokenType : ubyte {
 
 	@("void") TYPE_VOID,                // void
 	@("bool") TYPE_BOOL,                // bool
+	@("null") NULL,                     // null
 	@("i8")   TYPE_I8,                  // i8
 	@("i16")  TYPE_I16,                 // i16
 	@("i32")  TYPE_I32,                 // i32
@@ -203,13 +204,13 @@ enum char EOI_CHAR = '\3';
 
 immutable string[] keyword_strings = ["bool","break","continue","do","else","f32","f64",
 	"i16","i32","i64","i8","if","import","isize","return","struct","u16","u32","u64",
-	"u8","usize","void","while","cast","enum"];
+	"u8","usize","void","while","cast","enum","null"];
 enum NUM_KEYWORDS = keyword_strings.length;
 immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,
 	TT.ELSE_SYM,TT.TYPE_F32,TT.TYPE_F64,TT.TYPE_I16,TT.TYPE_I32,TT.TYPE_I64,
 	TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.TYPE_ISIZE,TT.RETURN_SYM,TT.STRUCT_SYM,
 	TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
-	TT.TYPE_VOID,TT.WHILE_SYM,TT.CAST,TT.ENUM];
+	TT.TYPE_VOID,TT.WHILE_SYM,TT.CAST,TT.ENUM,TT.NULL];
 
 //                          #        #######  #     #
 //                          #        #         #   #
@@ -556,6 +557,7 @@ struct Lexer
 					default: break;
 				}
 				break;
+			case 'n': if (match("null")) return TT.NULL; break;
 			case 'r': if (match("return")) return TT.RETURN_SYM; break;
 			case 's': if (match("struct")) return TT.STRUCT_SYM; break;
 			case 'u':

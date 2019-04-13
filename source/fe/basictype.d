@@ -14,6 +14,7 @@ enum BasicType : ubyte {
 	t_error,
 	t_void,
 	t_bool,
+	t_null,
 
 	t_i8,
 	t_i16,
@@ -51,42 +52,44 @@ bool isUnsignedInteger(BasicType b) {
 }
 
 // usage isAutoConvertibleFromToBasic[from][to]
-immutable bool[13][13] isAutoConvertibleFromToBasic = [
-	//err  void bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64  // to
-	[   0,   0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from error
-	[   0,   0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from void
-	[   0,   0,  0,  1,  1,  1,  1,  1,  1,  1,  1, 1,  1], // from bool
-	[   0,   0,  1,  0,  1,  1,  1,  0,  0,  0,  0, 1,  1], // from i8
-	[   0,   0,  1,  0,  0,  1,  1,  0,  0,  0,  0, 1,  1], // from i16
-	[   0,   0,  1,  0,  0,  0,  1,  0,  0,  0,  0, 1,  1], // from i32
-	[   0,   0,  1,  0,  0,  0,  0,  0,  0,  0,  0, 1,  1], // from i64
-	[   0,   0,  1,  0,  1,  1,  1,  0,  1,  1,  1, 1,  1], // from u8
-	[   0,   0,  1,  0,  0,  1,  1,  0,  0,  1,  1, 1,  1], // from u16
-	[   0,   0,  1,  0,  0,  0,  1,  0,  0,  0,  1, 1,  1], // from u32
-	[   0,   0,  1,  0,  0,  0,  0,  0,  0,  0,  0, 1,  1], // from u64
-	[   0,   0,  1,  0,  0,  0,  0,  0,  0,  0,  0, 0,  1], // from f32
-	[   0,   0,  1,  0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from f64
+immutable bool[14][14] isAutoConvertibleFromToBasic = [
+	//err void bool null i8 i16 i32 i64 u8 u16 u32 u64 f32 f64  // to
+	[   0,   0,   0,   0, 0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from error
+	[   0,   0,   0,   0, 0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from void
+	[   0,   0,   0,   0, 1,  1,  1,  1,  1,  1,  1,  1, 1,  1], // from bool
+	[   0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from null
+	[   0,   0,   1,   0, 0,  1,  1,  1,  0,  0,  0,  0, 1,  1], // from i8
+	[   0,   0,   1,   0, 0,  0,  1,  1,  0,  0,  0,  0, 1,  1], // from i16
+	[   0,   0,   1,   0, 0,  0,  0,  1,  0,  0,  0,  0, 1,  1], // from i32
+	[   0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0, 1,  1], // from i64
+	[   0,   0,   1,   0, 0,  1,  1,  1,  0,  1,  1,  1, 1,  1], // from u8
+	[   0,   0,   1,   0, 0,  0,  1,  1,  0,  0,  1,  1, 1,  1], // from u16
+	[   0,   0,   1,   0, 0,  0,  0,  1,  0,  0,  0,  1, 1,  1], // from u32
+	[   0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0, 1,  1], // from u64
+	[   0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0, 0,  1], // from f32
+	[   0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from f64
 ];
 
-immutable BasicType[13][13] commonBasicType = (){ with(BasicType){ return [
-	// error     void     bool       i8      i16      i32      i64       u8      u16      u32      u64      f32      f64
-	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // error
-	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // void
-	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // bool
-	[t_error, t_error, t_error, t_i8,    t_i16,   t_i32,   t_i64,   t_i8,    t_i16,   t_i32,   t_i64,   t_f32,   t_f64  ], // i8
-	[t_error, t_error, t_error, t_i16,   t_i16,   t_i32,   t_i64,   t_i16,   t_i16,   t_i32,   t_i64,   t_f32,   t_f64  ], // i16
-	[t_error, t_error, t_error, t_i32,   t_i32,   t_i32,   t_i64,   t_i32,   t_i32,   t_i32,   t_i64,   t_f32,   t_f64  ], // i32
-	[t_error, t_error, t_error, t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_f32,   t_f64  ], // i64
-	[t_error, t_error, t_error, t_i8,    t_i16,   t_i32,   t_i64,   t_u8,    t_u16,   t_u32,   t_u64,   t_f32,   t_f64  ], // u8
-	[t_error, t_error, t_error, t_i16,   t_i16,   t_i32,   t_i64,   t_u16,   t_u16,   t_u32,   t_u64,   t_f32,   t_f64  ], // u16
-	[t_error, t_error, t_error, t_i32,   t_i32,   t_i32,   t_i64,   t_u32,   t_u32,   t_u32,   t_u64,   t_f32,   t_f64  ], // u32
-	[t_error, t_error, t_error, t_i64,   t_i64,   t_i64,   t_i64,   t_u64,   t_u64,   t_u64,   t_u64,   t_f32,   t_f64  ], // u64
-	[t_error, t_error, t_error, t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f64  ], // f32
-	[t_error, t_error, t_error, t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64  ], // f64
+immutable BasicType[14][14] commonBasicType = (){ with(BasicType){ return [
+	// error     void     bool     null       i8      i16      i32      i64       u8      u16      u32      u64      f32      f64
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // error
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // void
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // bool
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // null
+	[t_error, t_error, t_error, t_error, t_i8,    t_i16,   t_i32,   t_i64,   t_i8,    t_i16,   t_i32,   t_i64,   t_f32,   t_f64  ], // i8
+	[t_error, t_error, t_error, t_error, t_i16,   t_i16,   t_i32,   t_i64,   t_i16,   t_i16,   t_i32,   t_i64,   t_f32,   t_f64  ], // i16
+	[t_error, t_error, t_error, t_error, t_i32,   t_i32,   t_i32,   t_i64,   t_i32,   t_i32,   t_i32,   t_i64,   t_f32,   t_f64  ], // i32
+	[t_error, t_error, t_error, t_error, t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_f32,   t_f64  ], // i64
+	[t_error, t_error, t_error, t_error, t_i8,    t_i16,   t_i32,   t_i64,   t_u8,    t_u16,   t_u32,   t_u64,   t_f32,   t_f64  ], // u8
+	[t_error, t_error, t_error, t_error, t_i16,   t_i16,   t_i32,   t_i64,   t_u16,   t_u16,   t_u32,   t_u64,   t_f32,   t_f64  ], // u16
+	[t_error, t_error, t_error, t_error, t_i32,   t_i32,   t_i32,   t_i64,   t_u32,   t_u32,   t_u32,   t_u64,   t_f32,   t_f64  ], // u32
+	[t_error, t_error, t_error, t_error, t_i64,   t_i64,   t_i64,   t_i64,   t_u64,   t_u64,   t_u64,   t_u64,   t_f32,   t_f64  ], // u64
+	[t_error, t_error, t_error, t_error, t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f64  ], // f32
+	[t_error, t_error, t_error, t_error, t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64  ], // f64
 ]; }
 }();
 
-string[13] basicTypeNames = ["error", "void", "bool", "i8", "i16", "i32",
+string[14] basicTypeNames = ["error", "void", "bool", "null", "i8", "i16", "i32",
 "i64", "u8", "u16", "u32", "u64", "f32", "f64"];
 
 bool isBasicTypeToken(TokenType tt) {

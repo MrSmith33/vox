@@ -38,7 +38,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test32);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test36);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -64,7 +64,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	Test[] jitTests = [test7, test8, test8_1, test10, test9, test13, test18, test19,
 		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31,
-		test32, test33, test34, test35];
+		test32, test33, test34, test35, test36];
 
 	Test[] exeTests = [test28, test29];
 
@@ -1024,3 +1024,14 @@ void tester35(Func35 fun) {
 	assert(val == [88, 96]);
 }
 auto test35 = Test("Test 35", input35, "setElement", cast(Test.Tester)&tester35);
+
+immutable input36 = q{--- test36
+	// Test null literal implicit conversion to pointer types
+	void test(){
+		callee1(null);
+		callee2(null);
+	}
+	void callee1(void*) {}
+	void callee2(u8*) {}
+};
+auto test36 = Test("Test 36", input36);

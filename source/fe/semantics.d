@@ -166,6 +166,7 @@ struct SemanticDeclarations
 	void visit(MemberExprNode* m) {}
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
+	void visit(NullLiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {
 		if (b.isAssignment)
 		{
@@ -537,6 +538,7 @@ struct SemanticLookup
 	}
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
+	void visit(NullLiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {
 		_visit(b.left);
 		_visit(b.right);
@@ -712,6 +714,10 @@ struct SemanticStaticTypes
 			{
 				return true;
 			}
+		}
+		else if (expr.astType == AstType.literal_null && type.isPointer) {
+			expr.type = type;
+			return true;
 		}
 		else
 		{
@@ -986,6 +992,9 @@ struct SemanticStaticTypes
 	}
 	void visit(StringLiteralExprNode* c) {
 		c.type = cast(TypeNode*)u8Ptr;
+	}
+	void visit(NullLiteralExprNode* c) {
+		c.type = context.basicTypeNodes(BasicType.t_null);
 	}
 	void visit(BinaryExprNode* b) {
 		_visit(b.left);

@@ -8,7 +8,7 @@ module utils.array;
 // Can store inline up to 8 bytes
 struct Array(T)
 {
-	import utils : isPowerOfTwo, nextPOT, divCeil, min, max, writefln, ArrayArena;
+	import utils : isPowerOfTwo, nextPOT, divCeil, min, max, writefln, ArrayArena, format;
 
 	// Can be 0
 	enum uint NUM_INLINE_ITEMS = 8 / T.sizeof;
@@ -42,6 +42,7 @@ struct Array(T)
 
 	ref T opIndex(size_t index)
 	{
+		assert(index < _capacity, format("opIndex(%s), capacity %s", index, _capacity));
 		static if (NUM_INLINE_ITEMS > 0)
 			if (_capacity == NUM_INLINE_ITEMS)
 				return inlineItems[index];

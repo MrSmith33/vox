@@ -28,7 +28,7 @@ struct AstPrinter {
 	}
 
 	void visit(ModuleDeclNode* m) {
-		print("MODULE");
+		print("MODULE ", context.files[m.moduleIndex.fileIndex].name);
 		foreach (decl; m.declarations) pr_node(decl);
 	}
 	void visit(ImportDeclNode* i) {
@@ -92,6 +92,7 @@ struct AstPrinter {
 	}
 	void visit(IntLiteralExprNode* lit) { print("Int LITERAL ", lit.type.printer(context), " ", lit.value); }
 	void visit(StringLiteralExprNode* lit) { print("String LITERAL ", lit.type.printer(context), " ", lit.value); }
+	void visit(NullLiteralExprNode* lit) { print("null LITERAL"); }
 	void visit(BinaryExprNode* b) {
 		if (b.type) print("BINOP ", b.type.printer(context), " ", b.op);
 		else print("BINOP ", b.op);
@@ -206,6 +207,7 @@ struct AstDotPrinter {
 	}
 	void visit(IntLiteralExprNode* lit) { printLabel(lit, `Int LITERAL\n%s %s`, lit.type.printer(context), lit.value); }
 	void visit(StringLiteralExprNode* lit) { printLabel(lit, `String LITERAL\n%s %s`, lit.type.printer(context), lit.value); }
+	void visit(NullLiteralExprNode* lit) { printLabel(lit, `null LITERAL`); }
 	void visit(BinaryExprNode* b) {
 		if (b.type) printLabel(b, `BINOP\n%s %s`, b.type.printer(context), b.op);
 		else printLabel(b, `BINOP\n%s`, b.op);

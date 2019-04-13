@@ -48,6 +48,7 @@ struct AstToIr
 			case expr_type_conv: visitExprValue(cast(TypeConvExprNode*)n, currentBlock, nextStmt); break;
 			case literal_int: visitExprValue(cast(IntLiteralExprNode*)n, currentBlock, nextStmt); break;
 			case literal_string: visitExprValue(cast(StringLiteralExprNode*)n, currentBlock, nextStmt); break;
+			case literal_null: visitExprValue(cast(NullLiteralExprNode*)n, currentBlock, nextStmt); break;
 
 			default: context.unreachable(); assert(false);
 		}
@@ -703,6 +704,15 @@ struct AstToIr
 			global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
 			global.type = c.type.genIrType(context);
 			global.moduleSymIndex = mod.objectSymIndex;
+		}
+
+		builder.addJumpToLabel(currentBlock, nextStmt);
+	}
+
+	void visitExprValue(NullLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
+	{
+		if (!c.irValue.isDefined) {
+			c.irValue = context.constants.add(0, IsSigned.no, c.type.argSize(context));
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);

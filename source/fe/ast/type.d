@@ -96,6 +96,7 @@ struct TypeNode {
 		return astType == AstType.type_basic &&
 			basicTypeNode.basicType == BasicType.t_error;
 	}
+	bool isPointer() { return astType == AstType.type_ptr; }
 
 	void assertImplemented(TokenIndex tokIdx, CompilationContext* context) {
 		if (!isImplemented)
@@ -304,6 +305,7 @@ enum BasicTypeFlag : ubyte {
 }
 
 enum POINTER_SIZE = 8;
+enum IrArgSize POINTER_ARG_SIZE = IrArgSize.size64;
 BasicTypeNode basicTypeNode(uint size, BasicType basicType, int typeFlags = 0)
 {
 	return BasicTypeNode(TokenIndex(), size, basicType, cast(ubyte)typeFlags);

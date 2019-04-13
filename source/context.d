@@ -171,6 +171,7 @@ struct CompilationContext
 		basicTypeNode(0, BasicType.t_error),
 		basicTypeNode(0, BasicType.t_void),
 		basicTypeNode(1, BasicType.t_bool , BasicTypeFlag.isBoolean),
+		basicTypeNode(8, BasicType.t_null),
 
 		basicTypeNode(1, BasicType.t_i8   , BasicTypeFlag.isInteger),
 		basicTypeNode(2, BasicType.t_i16  , BasicTypeFlag.isInteger),

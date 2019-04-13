@@ -43,6 +43,7 @@ mixin template AstVisitorMixin() {
 
 			case literal_int: auto l = cast(IntLiteralExprNode*)n; visit(l); break;
 			case literal_string: auto l = cast(StringLiteralExprNode*)n; visit(l); break;
+			case literal_null: auto l = cast(NullLiteralExprNode*)n; visit(l); break;
 
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
