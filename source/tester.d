@@ -10,7 +10,7 @@ import tests.exe;
 public import all : HostSymbol, DllModule;
 
 public import std.format : formattedWrite, format;
-import std.string : stripLeft;
+import std.string : stripLeft, strip;
 
 void runDevTests()
 {
@@ -40,7 +40,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test36);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, fail2);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -58,14 +58,15 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 	driver.context.buildType = BuildType.jit;
 	driver.context.buildDebug = false;
 	driver.context.validateIr = true;
-	driver.context.printTraceOnError = true;
+	// Is slow when doing failing tests
+	//driver.context.printTraceOnError = true;
 	auto endInitTime = currTime;
 
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	Test[] jitTests = tests.passing.passingTests();
-	Test[] exeTests = tests.exe.exeTests();
+	Test[] jitTests = tests.passing.passingTests ~ tests.failing.failingTests;
+	Test[] exeTests = tests.exe.exeTests;
 
 	size_t numTests = jitTests.length + exeTests.length;
 	size_t numSuccessfulTests;
@@ -82,7 +83,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 
 			if (res == TestResult.failure)
 			{
-				writefln("%s/%s %s %s", indexOffset+i+1, numTests, test.testName, res);
+				writefln("%s/%s test `%s` %s", indexOffset+i+1, numTests, test.testName, res);
 				failed = true;
 				if (stopOnFirstFail) writeln("Stopping on first fail");
 			}
@@ -96,7 +97,7 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	auto time1 = currTime;
 
-	runTests(0, passingTests);
+	runTests(0, jitTests);
 
 	auto time2 = currTime;
 	driver.context.buildType = BuildType.exe;
@@ -149,7 +150,8 @@ TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings
 {
 	try
 	{
-		runSingleTest(driver, dumpSettings, dumpTest, curTest);
+		TestResult res = runSingleTest(driver, dumpSettings, dumpTest, curTest);
+		return res;
 	}
 	catch(CompilationException e) {
 		writeln(driver.context.sink.text);
@@ -165,29 +167,82 @@ TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings
 	return TestResult.success;
 }
 
-void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
+TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
 {
+	bool isFailingTest;
+	string expectedError;
+
 	enum NUM_ITERS = 1;
 	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
+
+		// setup modules
 		driver.beginCompilation();
 		driver.addHostSymbols(curTest.hostSymbols);
 		driver.addDllModules(curTest.dllModules);
+
+		void onHarFile(SourceFileInfo fileInfo)
+		{
+			if (fileInfo.name == "<error>") {
+				assert(!isFailingTest, format("Multiple <error> files in test `%s`", curTest.testName));
+				isFailingTest = true;
+				expectedError = cast(string)fileInfo.content.strip;
+			} else {
+				driver.addModule(fileInfo);
+			}
+		}
+
 		string strippedHar = curTest.harData.stripLeft;
-		driver.addHar("test.har", strippedHar);
-		driver.compile();
+		parseHar(driver.context, "test.har", strippedHar, &onHarFile);
+
+		// compile
+		try
+		{
+			driver.compile();
+		}
+		catch(CompilationException e)
+		{
+			if (!isFailingTest) throw e;
+			if (e.isICE) throw e;
+
+			// successfully matched the error message(s)
+			// TODO: we skip `times.print` below for failing tests, move it upward
+			if (driver.context.errorSink.text == expectedError) {
+				return TestResult.success;
+			}
+
+			writefln("Test `%s` failed", curTest.testName);
+			writefln("Expected error:");
+			writeln(expectedError);
+			writefln("Received error:");
+			writeln(driver.context.sink.text);
+			writefln("Stack trace:");
+			writeln(e.info);
+			return TestResult.failure;
+		}
+
+		// Compiled successfully, but expected to fail
+		if (isFailingTest) {
+			writefln("Test `%s` compiled successfully, but expected to fail", curTest.testName);
+			writefln("Expected error:");
+			writeln(expectedError);
+			return TestResult.failure;
+		}
+
+		// finalize code pages
 		driver.markCodeAsExecutable();
+
 	auto time2 = currTime;
 	times.onIteration(0, time2-time1);
 
 	if (dumpTest && driver.context.printTimings) times.print;
 
-	if (!driver.context.runTesters) return;
+	if (!driver.context.runTesters) return TestResult.success;
 
 	final switch (driver.context.buildType)
 	{
 		case BuildType.jit:
-			if (curTest.funcName is null) return;
+			if (curTest.funcName is null) return TestResult.success;
 
 			FunctionDeclNode* funDecl;
 			foreach (ref SourceFileInfo file; driver.context.files.data)
@@ -227,4 +282,6 @@ void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTes
 			}
 			break;
 	}
+
+	return TestResult.success;
 }

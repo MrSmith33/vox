@@ -113,6 +113,8 @@ struct CompilationContext
 	/// True if current/last pass had errors
 	bool hasErrors;
 	/// Text output for errors
+	TextSink errorSink;
+	/// Text output for errors and stack traces
 	TextSink sink;
 	/// If true, stack traces are added to output
 	bool printTraceOnError;
@@ -193,8 +195,10 @@ struct CompilationContext
 
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
+		size_t startLen = sink.data.length;
 		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, &this));
 		sink.putfln(format, args);
+		errorSink.put(sink.data[startLen..$]);
 		if (printTraceOnError)
 			try
 				throw new Exception(null);
@@ -205,8 +209,10 @@ struct CompilationContext
 
 	void error(Args...)(string format, Args args)
 	{
+		size_t startLen = sink.data.length;
 		sink.put("Error: ");
 		sink.putfln(format, args);
+		errorSink.put(sink.data[startLen..$]);
 		if (printTraceOnError)
 			try
 				throw new Exception(null);
@@ -217,8 +223,10 @@ struct CompilationContext
 
 	void unrecoverable_error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
+		size_t startLen = sink.data.length;
 		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, &this));
 		sink.putfln(format, args);
+		errorSink.put(sink.data[startLen..$]);
 		if (printTraceOnError)
 			try
 				throw new Exception(null);
@@ -231,8 +239,10 @@ struct CompilationContext
 	void assertf(Args...)(bool cond, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
+		size_t startLen = sink.data.length;
 		sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
 		sink.putfln(fmt, args);
+		errorSink.put(sink.data[startLen..$]);
 		hasErrors = true;
 		handleICE;
 		throw new CompilationException(true);
@@ -241,8 +251,10 @@ struct CompilationContext
 	void assertf(Args...)(bool cond, TokenIndex tokIdx, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
-		sink.putf("%s(%s): %s: ICE: ", file, line, FmtSrcLoc(tokIdx, &this));
+		size_t startLen = sink.data.length;
+		sink.putf("%s(%s): %s: ICE: Assertion failure: ", file, line, FmtSrcLoc(tokIdx, &this));
 		sink.putfln(fmt, args);
+		errorSink.put(sink.data[startLen..$]);
 		hasErrors = true;
 		handleICE;
 		throw new CompilationException(true);
@@ -255,7 +267,9 @@ struct CompilationContext
 
 	void internal_error(Args...)(TokenIndex tokIdx, string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
+		size_t startLen = sink.data.length;
 		sink.putf("%s: ", FmtSrcLoc(tokIdx, &this));
+		errorSink.put(sink.data[startLen..$]);
 		internal_error_impl(format, file, line, args);
 	}
 
@@ -266,8 +280,10 @@ struct CompilationContext
 
 	private void internal_error_impl(Args...)(string format, string file, int line, Args args)
 	{
+		size_t startLen = sink.data.length;
 		sink.putf("ICE(%s:%s): ", file, line);
 		sink.putfln(format, args);
+		errorSink.put(sink.data[startLen..$]);
 		hasErrors = true;
 		handleICE;
 		throw new CompilationException(true);
@@ -342,11 +358,14 @@ struct CompilationContext
 
 	ModuleDeclNode* getModuleFromToken(TokenIndex tokIndex)
 	{
-		assert(tokIndex < tokenBuffer.length);
+		assert(tokIndex < tokenBuffer.length, format("getModuleFromToken(%s), numTokens %s", tokIndex, tokenBuffer.length));
 
 		ModuleDeclNode* lastMod;
 		foreach(ref SourceFileInfo file; files.data)
 		{
+			// We are parsing and this module is not parsed yet, so it's previous one
+			if (!file.firstTokenIndex.isValid) break;
+
 			if (tokIndex < file.firstTokenIndex) {
 				assertf(lastMod !is null,
 					"Cannot find file of token %s, before first file starting at %s",
@@ -398,5 +417,32 @@ struct CompilationContext
 		writefln("  symbols:      %sB", scaledNumberFmt(objSymTab.buffer.byteLength));
 		writefln("  machine code: %sB", scaledNumberFmt(codeBuffer.byteLength));
 		writefln("  binary:       %sB", scaledNumberFmt(binaryBuffer.byteLength));
+	}
+
+	void clear()
+	{
+		hasErrors = false;
+		sourceBuffer.clear;
+		files.clear;
+		codeBuffer.clear;
+		importBuffer.clear;
+		tokenBuffer.clear;
+		tokenLocationBuffer.clear;
+		binaryBuffer.clear;
+		irBuffer.clear;
+		types.buffer.clear;
+		tempBuffer.clear;
+		staticDataBuffer.clear;
+		objSymTab.buffer.clear;
+		objSymTab.firstModule = LinkIndex();
+		globals.buffer.clear;
+		constants.buffer.clear;
+		astBuffer.clear;
+		arrayArena.clear;
+		entryPoint = null;
+		sink.clear;
+		errorSink.clear;
+
+		externalSymbols.clear();
 	}
 }

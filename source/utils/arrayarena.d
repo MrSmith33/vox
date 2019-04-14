@@ -66,6 +66,7 @@ struct ArrayArena
 	}
 
 	void freeBlock(ubyte[] block) {
+		if (block.ptr is null) return;
 		assert(isPowerOfTwo(block.length));
 		assert(block.length >= MIN_BLOCK_BYTES);
 		if (block.length > MAX_BLOCK_BYTES) {

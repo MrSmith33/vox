@@ -1,8 +1,6 @@
-/**
-Copyright: Copyright (c) 2017-2019 Andrey Penechko.
-License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
-Authors: Andrey Penechko.
-*/
+/// Copyright: Copyright (c) 2017-2019 Andrey Penechko.
+/// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+/// Authors: Andrey Penechko.
 module driver;
 
 import std.stdio : writeln, write, writef, writefln, stdout;
@@ -156,27 +154,7 @@ struct Driver
 	void beginCompilation()
 	{
 		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
-		context.sourceBuffer.clear;
-		context.files.clear;
-		context.codeBuffer.clear;
-		context.importBuffer.clear;
-		context.tokenBuffer.clear;
-		context.tokenLocationBuffer.clear;
-		context.binaryBuffer.clear;
-		context.irBuffer.clear;
-		context.types.buffer.clear;
-		context.tempBuffer.clear;
-		context.staticDataBuffer.clear;
-		context.objSymTab.buffer.clear;
-		context.objSymTab.firstModule = LinkIndex();
-		context.globals.buffer.clear;
-		context.constants.buffer.clear;
-		context.astBuffer.clear;
-		context.arrayArena.clear;
-		context.entryPoint = null;
-
-		context.externalSymbols.clear();
-
+		context.clear;
 		addSections();
 	}
 
@@ -197,54 +175,10 @@ struct Driver
 
 	void addHar(string harFilename, const(char)[] harData)
 	{
-		import std.string : indexOf, lineSplitter;
-		import std.algorithm : startsWith;
-		auto lines = harData.lineSplitter;
-		size_t lineNumber = 1;
-		auto line = lines.front;
-
-		auto spaceIndex = line.indexOf(' ');
-		if (spaceIndex <= 0) {
-			context.error("HAR file error `%s`: First line must start with delimiter ending with space", harFilename);
-			return;
+		void onHarFile(SourceFileInfo fileInfo) {
+			addModule(fileInfo);
 		}
-
-		auto delimiter = line[0 .. spaceIndex + 1];
-
-		outer:
-		while (true)
-		{
-			if (line.length == 0) {
-				context.error("HAR file error `%s`: Missing filename on line %s", harFilename, lineNumber);
-				return;
-			}
-
-			string filename = cast(string)line[delimiter.length .. $];
-			lines.popFront();
-
-			if (lines.empty) break;
-			const(char)* fileStart = lines.front.ptr;
-			const(char)* fileEnd = lines.front.ptr + lines.front.length;
-
-			while (true)
-			{
-				if (lines.empty) {
-					addModule(SourceFileInfo(filename, fileStart[0..fileEnd-fileStart]));
-					break outer;
-				}
-
-				lineNumber++;
-				line = lines.front;
-
-				if (line.startsWith(delimiter)) {
-					addModule(SourceFileInfo(filename, fileStart[0..fileEnd-fileStart]));
-					break;
-				}
-
-				fileEnd = lines.front.ptr + lines.front.length;
-				lines.popFront();
-			}
-		}
+		parseHar(context, harFilename, harData, &onHarFile);
 	}
 
 	void compile()

@@ -6,11 +6,10 @@ module tests.passing;
 import std.stdio;
 import tester;
 
-Test[] passingTests() {
-	return [
-		test7, test8, test8_1, test10, test9, test13, test14, test15, test16, test17,
-		test18, test19, test20, test21, test21_2, test22, test23, test24, test25, test26,
-		test27, test31, test32, test33, test34, test35, test36, test37];
+Test[] passingTests() { return [
+	test7, test8, test8_1, test10, test9, test13, test14, test15, test16, test17,
+	test18, test19, test20, test21, test21_2, test22, test23, test24, test25, test26,
+	test27, test31, test32, test33, test34, test35, test36, test37];
 }
 
 extern(C) void external_print_i32_func(int par1) {

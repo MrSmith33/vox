@@ -93,6 +93,7 @@ else version(Windows)
 
 	void markAsExecutable(void* addr, size_t numPages)
 	{
+		if (numPages == 0) return;
 		uint val;
 		int res = VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_EXECUTE, &val);
 		assert(res != 0, format("VirtualProtect(%X, %s, PAGE_EXECUTE, %s) failed", addr, numPages*PAGE_SIZE, val));

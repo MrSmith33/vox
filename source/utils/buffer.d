@@ -17,6 +17,7 @@ struct Buffer(T)
 	// Must be kept private since it can be used to check for avaliable space
 	// when used as output range
 	uint length;
+	alias opDollar = length;
 
 	// postblit
 	this(this)
@@ -68,6 +69,9 @@ struct Buffer(T)
 
 	T[] data() {
 		return bufPtr[0..length];
+	}
+	T[] data(size_t from, size_t to) {
+		return bufPtr[from..to];
 	}
 
 	alias opSlice = data;

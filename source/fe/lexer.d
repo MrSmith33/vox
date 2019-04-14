@@ -154,8 +154,9 @@ struct Token {
 
 struct TokenIndex
 {
-	uint index;
+	uint index = uint.max;
 	alias index this;
+	bool isValid() { return index != uint.max; }
 }
 
 struct SourceFileInfo
@@ -310,7 +311,12 @@ struct Lexer
 
 			switch(c)
 			{
-				case SOI_CHAR:         nextChar; return TT.SOI;
+				case SOI_CHAR:
+					// manual nextChar, because we don't want to advance column
+					++position;
+					c = inputChars[position];
+					return TT.SOI;
+
 				case EOI_CHAR:         return TT.EOI;
 				case '\t': nextChar;   continue;
 				case '\n': lex_EOLN(); continue;
@@ -441,8 +447,9 @@ struct Lexer
 				switch(c)
 				{
 					case EOI_CHAR:
+						outputTokens.put(TT.COMMENT);
 						set_loc();
-						TokenIndex lastToken = TokenIndex(cast(uint)outputTokenLocations.length-1);
+						TokenIndex lastToken = TokenIndex(cast(uint)outputTokens.length-1);
 						context.unrecoverable_error(lastToken, "Unterminated comment");
 						return TT.INVALID;
 
@@ -474,8 +481,9 @@ struct Lexer
 			switch(c)
 			{
 				case EOI_CHAR:
+					outputTokens.put(TT.STRING_LITERAL);
 					set_loc();
-					TokenIndex lastToken = TokenIndex(cast(uint)outputTokenLocations.length-1);
+					TokenIndex lastToken = TokenIndex(cast(uint)outputTokens.length-1);
 					context.unrecoverable_error(lastToken, "Unterminated string literal");
 					return TT.INVALID;
 				case '\n': lex_EOLN(); continue;
