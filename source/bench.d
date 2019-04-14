@@ -6,9 +6,10 @@ Authors: Andrey Penechko.
 module bench;
 
 import all;
-import tests;
+import tester;
 import std.stdio;
 import std.string : stripLeft;
+import tests.passing;
 
 void runBench()
 {

@@ -1,419 +1,22 @@
-/**
-Copyright: Copyright (c) 2017-2019 Andrey Penechko.
-License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
-Authors: Andrey Penechko.
-*/
-module tests;
+/// Copyright: Copyright (c) 2017-2019 Andrey Penechko.
+/// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+/// Authors: Andrey Penechko.
+module tests.passing;
 
 import std.stdio;
-import std.format : formattedWrite, format;
-import std.string : stripLeft;
-import all;
+import tester;
 
-void runDevTests()
-{
-	Driver driver;
-	driver.initialize(jitPasses);
-	driver.context.buildType = BuildType.jit;
-	driver.context.validateIr = true;
-	driver.context.printTraceOnError = true;
-	driver.context.printTodos = true;
-	scope(exit) driver.releaseMemory;
-
-	FuncDumpSettings dumpSettings;
-	dumpSettings.printBlockFlags = true;
-
-	//driver.context.printSource = true;
-	//driver.context.printLexemes = true;
-	//driver.context.printAstFresh = true;
-	//driver.context.printAstSema = true;
-	//driver.context.runTesters = false;
-
-	//driver.context.printIr = true;
-	//driver.context.printIrOpt = true;
-	//driver.context.printLir = true;
-	//driver.context.printLirRA = true;
-	//driver.context.printLiveIntervals = true;
-	//driver.context.printStaticData = true;
-	//driver.context.printCodeHex = true;
-	//driver.context.printTimings = true;
-
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test36);
-
-	//driver.context.buildType = BuildType.exe;
-	//driver.passes = exePasses;
-	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
-	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test30);
+Test[] passingTests() {
+	return [
+		test7, test8, test8_1, test10, test9, test13, test14, test15, test16, test17,
+		test18, test19, test20, test21, test21_2, test22, test23, test24, test25, test26,
+		test27, test31, test32, test33, test34, test35, test36, test37];
 }
 
-enum StopOnFirstFail : bool { no = false, yes = true }
-
-void runAllTests(StopOnFirstFail stopOnFirstFail)
-{
-	auto startInitTime = currTime;
-	Driver driver;
-	driver.initialize(jitPasses);
-	driver.context.buildType = BuildType.jit;
-	driver.context.buildDebug = false;
-	driver.context.validateIr = true;
-	driver.context.printTraceOnError = true;
-	auto endInitTime = currTime;
-
-	FuncDumpSettings dumpSettings;
-	dumpSettings.printBlockFlags = true;
-
-	Test[] jitTests = [test7, test8, test8_1, test10, test9, test13, test18, test19,
-		test20, test21, test21_2, test22, test23, test24, test25, test26, test27, test31,
-		test32, test33, test34, test35, test36, test37];
-
-	Test[] exeTests = [test28, test29];
-
-	size_t numTests = jitTests.length + exeTests.length;
-	size_t numSuccessfulTests;
-	writefln("Running %s tests", numTests);
-	bool failed = false;
-
-	void runTests(size_t indexOffset, Test[] tests)
-	{
-		foreach(size_t i, ref Test test; tests)
-		{
-			if (stopOnFirstFail && failed) break;
-
-			TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.no, test);
-
-			if (res == TestResult.failure)
-			{
-				writefln("%s/%s %s %s", indexOffset+i+1, numTests, test.testName, res);
-				failed = true;
-				if (stopOnFirstFail) writeln("Stopping on first fail");
-			}
-			else
-			{
-				//writefln("%s `%s` success", indexOffset+i+1, test.testName);
-				++numSuccessfulTests;
-			}
-		}
-	}
-
-	auto time1 = currTime;
-
-	runTests(0, jitTests);
-
-	auto time2 = currTime;
-	driver.context.buildType = BuildType.exe;
-	driver.passes = exePasses;
-	runTests(jitTests.length, exeTests);
-
-	auto time3 = currTime;
-	Duration durationJit = time2-time1;
-	Duration durationExe = time3-time2;
-	Duration durationTotal = time3-time1;
-
-	auto startReleaseTime = currTime;
-	driver.releaseMemory;
-	auto endReleaseTime = currTime;
-
-	writefln("jit(%s tests) %ss",
-		jitTests.length,
-		scaledNumberFmt(durationJit),
-		);
-	writefln("exe(%s tests) %ss",
-		exeTests.length,
-		scaledNumberFmt(durationExe),
-		);
-	writefln("Done %s/%s successful in %ss, init %ss, release %ss",
-		numSuccessfulTests,
-		numTests,
-		scaledNumberFmt(durationTotal),
-		scaledNumberFmt(endInitTime-startInitTime),
-		scaledNumberFmt(endReleaseTime-startReleaseTime),
-		);
+extern(C) void external_print_i32_func(int par1) {
+	formattedWrite(testSink, "%s ", par1);
 }
 
-enum DumpTest : bool { no = false, yes = true }
-enum TestResult { failure, success }
-
-TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
-{
-	try
-	{
-		runSingleTest(driver, dumpSettings, dumpTest, curTest);
-	}
-	catch(CompilationException e) {
-		writeln(driver.context.sink.text);
-		if (e.isICE)
-			writeln(e);
-		return TestResult.failure;
-	}
-	catch(Throwable t) {
-		writeln(driver.context.sink.text);
-		writeln(t);
-		return TestResult.failure;
-	}
-	return TestResult.success;
-}
-
-void runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
-{
-	enum NUM_ITERS = 1;
-	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
-	auto time1 = currTime;
-		driver.beginCompilation();
-		driver.addHostSymbols(curTest.hostSymbols);
-		driver.addDllModules(curTest.dllModules);
-		string strippedHar = curTest.harData.stripLeft;
-		driver.addHar("test.har", strippedHar);
-		driver.compile();
-		driver.markCodeAsExecutable();
-	auto time2 = currTime;
-	times.onIteration(0, time2-time1);
-
-	if (dumpTest && driver.context.printTimings) times.print;
-
-	if (!driver.context.runTesters) return;
-
-	final switch (driver.context.buildType)
-	{
-		case BuildType.jit:
-			if (curTest.funcName is null) return;
-
-			FunctionDeclNode* funDecl;
-			foreach (ref SourceFileInfo file; driver.context.files.data)
-			{
-				FunctionDeclNode* fun = file.mod.findFunction(curTest.funcName, &driver.context);
-				if (fun !is null)
-				{
-					if (funDecl !is null)
-						driver.context.internal_error("test function %s is found in 2 places", curTest.funcName);
-					funDecl = fun;
-				}
-			}
-
-			if (funDecl is null)
-				driver.context.internal_error("test function `%s` is not found in %s modules", curTest.funcName, driver.context.files.length);
-
-			if (funDecl != null && funDecl.backendData.funcPtr != null)
-			{
-				if (dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
-				curTest.tester(funDecl.backendData.funcPtr);
-			}
-			break;
-
-		case BuildType.exe:
-			import std.process;
-			import std.file : exists;
-			import std.path;
-			if(exists(driver.context.outputFilename))
-			{
-				if (dumpTest) writef("Running: %s", driver.context.outputFilename.absolutePath);
-				auto result = execute(driver.context.outputFilename);
-				if (dumpTest) writefln(", status %s, output '%s'", result.status, result.output);
-			}
-			else
-			{
-				writefln("No executable produced '%s'", driver.context.outputFilename);
-			}
-			break;
-	}
-}
-
-struct Test
-{
-	string testName;
-	string harData;
-	string funcName;
-	alias Tester = void function(void* funcPtr);
-	void function(void* funcPtr) tester;
-	HostSymbol[] hostSymbols;
-	DllModule[] dllModules;
-}
-
-TextSink testSink;
-
-immutable input1 = q{
-	i32 a;
-	struct structWIP {
-		i64 e;
-		i32 member(i32 param) {
-			i32 c;
-			i32 d;
-			a = b + c + d + e + g;
-		}
-		i32 g;
-	}
-	i32 b;
-};
-
-immutable input2 = q{void e() {
-	i32 a;
-	i32 b;
-	i32 c;
-
-	void f() {
-		i32 a;
-		i32 b;
-		i32 c;
-		a = b + c;
-	}
-
-	void g() {
-		i32 a;
-		i32 b;
-
-		void h() {
-			i32 c;
-			i32 d;
-			c = a + d;
-		}
-
-		void i() {
-			i32 b;
-			i32 d;
-			b = a + c;
-		}
-
-		b = a + c;
-	}
-
-	a = b + c;
-}};
-
-immutable input3 = q{
-	A b;
-	struct A{
-		void fun(i32 param) {
-			//a = 1;
-			i32 a;
-			a = (param + 1) - var + fun42();
-		}
-	}
-	A a;
-	i32 var;
-	i32 fun42() { return 42; }
-};
-
-immutable input4 = q{
-	struct A {
-		int x;
-		struct B { int y; }
-		B b;
-	}
-
-	int i=0;
-	int j=0;
-
-	void f() {
-		A a;
-		a.x = 1+i*j;
-		a.b.y = 2;
-		bool b = 3 == a.x;
-		if ( i < j ) f();
-	}
-};
-
-// test implicit casting
-immutable input5 = q{void f() {
-	//struct A{}
-	//A a;
-	//if (a){} // error
-	f32 var_f32;
-	f64 var_f64;
-	//var_f32 = var_f64; // error
-	var_f64 = var_f32;
-
-	i8 var_i8;
-	if (var_i8){}
-	i16 var_i16;
-	if (var_i16){}
-	i32 var_i32;
-	if (var_i32){}
-	i64 var_i64;
-	if (var_i64){}
-
-	u8 var_u8;
-	if (var_u8){}
-	u16 var_u16;
-	if (var_u16){}
-	u32 var_u32;
-	if (var_u32){}
-	u64 var_u64;
-	if (var_u64){}
-}};
-
-immutable input6 = q{void f() {
-	f32 var_f32;
-	f64 var_f64;
-	var_f64 = var_f32;
-	i8 var_i8;
-	i16 var_i16;
-	i32 var_i32;
-	i64 var_i64;
-	u8 var_u8;
-	u16 var_u16;
-	u32 var_u32;
-	u64 var_u64;
-
-	var_i8 + var_i16;
-	var_i8 + var_i32;
-	var_i8 + var_i64;
-	var_i8 + var_u8;
-	var_i8 + var_u16;
-	var_i8 + var_u32;
-	var_i8 + var_u64;
-	var_i8 + var_f32;
-	var_i8 + var_f64;
-
-	var_i16 + var_i32;
-	var_i16 + var_i64;
-	var_i16 + var_u8;
-	var_i16 + var_u16;
-	var_i16 + var_u32;
-	var_i16 + var_u64;
-	var_i16 + var_f32;
-	var_i16 + var_f64;
-
-	var_i32 + var_i32;
-	var_i32 + var_i64;
-	var_i32 + var_u8;
-	var_i32 + var_u16;
-	var_i32 + var_u32;
-	var_i32 + var_u64;
-	var_i32 + var_f32;
-	var_i32 + var_f64;
-
-	var_i64 + var_i64;
-	var_i64 + var_u8;
-	var_i64 + var_u16;
-	var_i64 + var_u32;
-	var_i64 + var_u64;
-	var_i64 + var_f32;
-	var_i64 + var_f64;
-
-	var_u8 + var_u8;
-	var_u8 + var_u16;
-	var_u8 + var_u32;
-	var_u8 + var_u64;
-	var_u8 + var_f32;
-	var_u8 + var_f64;
-
-	var_u16 + var_u16;
-	var_u16 + var_u32;
-	var_u16 + var_u64;
-	var_u16 + var_f32;
-	var_u16 + var_f64;
-
-	var_u32 + var_u32;
-	var_u32 + var_u64;
-	var_u32 + var_f32;
-	var_u32 + var_f64;
-
-	var_u64 + var_u64;
-	var_u64 + var_f32;
-	var_u64 + var_f64;
-
-	var_f32 + var_f32;
-	var_f32 + var_f64;
-}};
 
 immutable input7 = q{--- test7
 i32 fib(i32 number) {
@@ -542,7 +145,7 @@ alias Func14 = extern(C) void function(int*, int, int, int, int);
 void tester14(Func14 fun) {
 	int[2] val = [42, 56];
 	fun(val.ptr, 1, 10, 6, 4);
-	writefln("test([42, 56].ptr, 1, 10, 6, 4) -> %s", val);
+	//writefln("test([42, 56].ptr, 1, 10, 6, 4) -> %s", val);
 	assert(val[1] == 20);
 }
 auto test14 = Test("Test 14", input14, "test", cast(Test.Tester)&tester14);
@@ -550,10 +153,10 @@ auto test14 = Test("Test 14", input14, "test", cast(Test.Tester)&tester14);
 
 // Test 3 inputs no parameters pushed to the stack
 immutable input15 = q{--- test15
-i32 test(i32 par) {
-	return external(par, 10, 20);
-}
-i32 external(i32, i32, i32);
+	i32 test(i32 par) {
+		return external(par, 10, 20);
+	}
+	i32 external(i32, i32, i32);
 };
 alias Func15 = extern(C) int function(int par);
 extern(C) int test15_external_func(int par1, int par2, int par3) {
@@ -561,7 +164,7 @@ extern(C) int test15_external_func(int par1, int par2, int par3) {
 }
 void tester15(Func15 funcPtr) {
 	int result = funcPtr(10);
-	writefln("fun(10) -> %s", result);
+	//writefln("fun(10) -> %s", result);
 	assert(result == 40);
 }
 auto test15 = Test("Test 15", input15, "test", cast(Test.Tester)&tester15,
@@ -581,7 +184,7 @@ extern(C) int test16_external_func(int par1, int par2, int par3, int par4, int p
 }
 void tester16(Func16 funcPtr) {
 	int result = funcPtr(10);
-	writefln("fun(10) -> %s", result);
+	//writefln("fun(10) -> %s", result);
 	assert(result == 110);
 }
 auto test16 = Test("Test 16", input16, "test", cast(Test.Tester)&tester16,
@@ -589,10 +192,10 @@ auto test16 = Test("Test 16", input16, "test", cast(Test.Tester)&tester16,
 
 // Test 6 inputs (5-th and 6-th parameters pushed to the stack, no extra alignment needed)
 immutable input17 = q{--- test17
-i32 test(i32 par) {
-	return external(par, 10, 20, 30, 40, 50);
-}
-i32 external(i32, i32, i32, i32, i32, i32);
+	i32 test(i32 par) {
+		return external(par, 10, 20, 30, 40, 50);
+	}
+	i32 external(i32, i32, i32, i32, i32, i32);
 };
 alias Func17 = extern(C) int function(int par);
 extern(C) int test17_external_func(int par1, int par2, int par3, int par4, int par5, int par6) {
@@ -600,7 +203,7 @@ extern(C) int test17_external_func(int par1, int par2, int par3, int par4, int p
 }
 void tester17(Func17 funcPtr) {
 	int result = funcPtr(10);
-	writefln("fun(10) -> %s", result);
+	//writefln("fun(10) -> %s", result);
 	assert(result == 160);
 }
 auto test17 = Test("Test 17", input17, "test", cast(Test.Tester)&tester17,
@@ -608,14 +211,16 @@ auto test17 = Test("Test 17", input17, "test", cast(Test.Tester)&tester17,
 
 // test empty void function
 immutable input18 = q{--- test18
-void test() {}};
+	void test() {}
+};
 alias Func18 = extern(C) void function();
 void tester18(Func18 fun) { fun(); }
 auto test18 = Test("Test 18", input18, "test", cast(Test.Tester)&tester18);
 
 // test empty void function with return
 immutable input19 = q{--- test19
-void test() { return; }};
+	void test() { return; }
+};
 alias Func19 = extern(C) void function();
 void tester19(Func19 fun) { fun(); }
 auto test19 = Test("Test 19", input19, "test", cast(Test.Tester)&tester19);
@@ -663,13 +268,10 @@ void tester21(Func21 fibonacci) {
 	assert(testSink.text == "1 1 2 3 5 8 13 21 34 55 89 144 233 377 610 987 1597 2584 4181 6765");
 	testSink.clear;
 }
-extern(C) void test21_external_func(int par1) {
-	formattedWrite(testSink, "%s ", par1);
-}
 auto test21 = Test("Test 21", input21, "fibonacci", cast(Test.Tester)&tester21,
-	[HostSymbol("print", cast(void*)&test21_external_func)]);
+	[HostSymbol("print", cast(void*)&external_print_i32_func)]);
 auto test21_2 = Test("Test 21.2", input21_2, "fibonacci", cast(Test.Tester)&tester21,
-	[HostSymbol("print", cast(void*)&test21_external_func)]);
+	[HostSymbol("print", cast(void*)&external_print_i32_func)]);
 
 immutable input22 = q{--- test22
 	// test phi resolution with critical edge and test break;
@@ -790,129 +392,6 @@ void tester27(Func25 fun) {
 auto test27 = Test("Test 27", input27, "test", cast(Test.Tester)&tester27,
 	[HostSymbol("print", cast(void*)&test25_external_print)]);
 
-void testNativeFun()
-{
-	auto time0 = currTime;
-	int res1;
-	int res2;
-	int res3;
-	test_fun = &sign;
-	foreach(_; 0..10_000)
-	{
-		res1 = test_fun(10);
-		res2 = test_fun(0);
-		res3 = test_fun(-10);
-	}
-	auto time1 = currTime;
-	writefln("sign(10) -> %s", res1);
-	writefln("sign(0) -> %s", res2);
-	writefln("sign(-10) -> %s", res3);
-	writefln("native fun run x10k %ss", scaledNumberFmt(time1-time0));
-}
-
-__gshared int function(int) test_fun;
-
-int sign(int number)
-{
-	int result;
-	if (number < 0) result = -1;
-	else if (number > 0) result = 1;
-	else result = 0;
-	return result;
-}
-
-immutable inputX = q{
-	#pragma(lib, "kernel32")
-	u8 WriteConsoleA(
-		void* hConsoleOutput,
-		void* lpBuffer,
-		u32 nNumberOfCharsToWrite,
-		u32* lpNumberOfCharsWritten,
-		void* lpReserved
-	);
-	#pragma(lib, "kernel32")
-	void* GetStdHandle(u32 nStdHandle);
-	enum : u32 {
-		STD_INPUT_HANDLE  = 0xFFFFFFF6,
-		STD_OUTPUT_HANDLE = 0xFFFFFFF5,
-		STD_ERROR_HANDLE  = 0xFFFFFFF4
-	}
-	void main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
-		u8[] array = "Hello world";
-		u32 numWritten;
-		void* handle = GetStdHandle(STD_OUTPUT_HANDLE);
-		WriteConsoleA(handle, array.ptr, array.length, &numWritten, null);
-	}
-};
-
-immutable input28 = q{--- test28
-	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
-		return 0;
-	}
-};
-auto test28 = Test("exe no static data, no imports", input28);
-
-immutable input29 = q{--- test29
-	u8 WriteConsoleA(
-		void* hConsoleOutput,
-		u8* lpBuffer,
-		u32 nNumberOfCharsToWrite,
-		u32* lpNumberOfCharsWritten,
-		u64 lpReserved
-	);
-	void* GetStdHandle(u32 nStdHandle);
-	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
-		u8[] array = "Hello world";
-		u32 numWritten;
-		void* handle = GetStdHandle(0xFFFFFFF5); // STD_OUTPUT_HANDLE
-		WriteConsoleA(handle, array.ptr, cast(u32)array.length, &numWritten, 0);
-		return 0;
-	}
-};
-auto test29 = Test("exe", input29, null, null, null,
-	[DllModule("kernel32", ["WriteConsoleA", "GetStdHandle"])]);
-
-immutable input30 = q{--- test30
-	void SDL_SetMainReady();
-	i32 SDL_Init(u32);
-	void SDL_Quit();
-	void* SDL_CreateWindow(u8* title, i32 x, i32 y, i32 w, i32 h, u32 flags);
-	void* SDL_CreateRenderer(void* window, i32 index, u32 flags);
-	void SDL_DestroyRenderer(void* renderer);
-	void SDL_DestroyWindow(void* renderer);
-	i32 SDL_PollEvent(SDL_Event* event);
-	struct SDL_Event
-	{
-		u32 type;
-		u8[52] padding;
-	}
-	void ExitProcess(u32 uExitCode);
-
-	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
-		SDL_SetMainReady();
-		if(SDL_Init(0x00000020) < 0) return 1;
-		void* window = SDL_CreateWindow("SDL test via tiny_jit", 0x1FFF0000, 0x1FFF0000, 300, 100, 4);
-		void* renderer = SDL_CreateRenderer(window, 0xFFFF_FFFF, 2);
-		SDL_Event e;
-		while (1)
-		{
-			SDL_PollEvent(&e);
-			if (e.type == 0x100) // SDL_QUIT
-				break;
-		}
-		SDL_DestroyRenderer(renderer);
-		SDL_DestroyWindow(window);
-		SDL_Quit();
-		ExitProcess(0);
-		return 0;
-	}
-};
-auto test30 = Test("exe SDL", input30, null, null, null, [
-	DllModule("SDL2", ["SDL_SetMainReady", "SDL_Init", "SDL_Quit",
-		"SDL_CreateWindow", "SDL_CreateRenderer", "SDL_PollEvent",
-		"SDL_DestroyRenderer", "SDL_DestroyWindow"]),
-	DllModule("kernel32", ["ExitProcess"])]
-);
 
 extern(C) void test31_external_print_num(long param) {
 	testSink.putf("%s", param);
@@ -984,11 +463,8 @@ immutable input32 = q{--- test32
 	}
 };
 alias Func32 = extern(C) void function();
-extern(C) void test32_external_func(int par1) {
-	formattedWrite(testSink, "%s ", par1);
-}
 auto test32 = Test("Test 32 - fibonacci 4 times", input32, "main", cast(Test.Tester)&tester21,
-	[HostSymbol("print", cast(void*)&test32_external_func)]);
+	[HostSymbol("print", cast(void*)&external_print_i32_func)]);
 
 immutable input33 = q{
 --- test33_1
@@ -1007,7 +483,7 @@ immutable input33 = q{
 	}
 };
 auto test33 = Test("Test 33", input33, "fibonacci", cast(Test.Tester)&tester21,
-	[HostSymbol("print", cast(void*)&test21_external_func)]);
+	[HostSymbol("print", cast(void*)&external_print_i32_func)]);
 
 alias Func34 = extern(C) int function(Slice!int, int);
 immutable input34 = q{--- test34

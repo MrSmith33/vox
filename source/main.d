@@ -8,12 +8,12 @@ module main;
 import std.stdio;
 import bench;
 import cli;
-import tests;
+import tester;
 
 version = standalone;
 //version = cli;
 //version = bench;
-//version = test;
+version = test;
 version(standalone) void main(string[] args)
 {
 	scope(exit) stdout.flush;
@@ -21,6 +21,8 @@ version(standalone) void main(string[] args)
 	version(bench) runBench();
 	version(test) runAllTests(StopOnFirstFail.yes);
 	//runDevTests();
+	//runCli([args[0], "sdl_test.har"]);
+	//runCli([args[0], "--print-mem", "--subsystem=GUI", "sdl_window.d", "SDL2.dll", `C:\Windows\System32\kernel32.dll`]);
 }
 
 unittest
