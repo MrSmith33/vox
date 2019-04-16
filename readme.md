@@ -1,6 +1,10 @@
 # Small and fast JIT/AOT compiler with zero dependencies
 
+[![Build status](https://ci.appveyor.com/api/projects/status/3os1s4a34hl83r0b?svg=true)](https://ci.appveyor.com/project/MrSmith33/tiny-jit)
+
 Project/language name is still missing.
+
+[Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
 
 # Project goals
 
