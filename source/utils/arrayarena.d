@@ -48,6 +48,18 @@ struct ArrayArena
 		return total;
 	}
 
+	size_t reservedBytes() {
+		size_t total;
+		foreach(ref arena; arenas) total += arena.reservedBytes;
+		return total;
+	}
+	size_t committedBytes() {
+		size_t total;
+		foreach(ref arena; arenas) total += arena.committedBytes;
+		return total;
+	}
+
+
 	ubyte[] allocBlock(size_t size) {
 		assert(isPowerOfTwo(size));
 		assert(size >= MIN_BLOCK_BYTES);

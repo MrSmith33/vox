@@ -400,23 +400,30 @@ struct CompilationContext
 
 	void printMemSize()
 	{
-		writefln("Arena sizes:");
-		writefln("  source:       %sB", scaledNumberFmt(sourceBuffer.byteLength));
-		writefln("  files:        %sB", scaledNumberFmt(files.byteLength));
-		writefln("  tokens:       %sB", scaledNumberFmt(tokenBuffer.byteLength));
-		writefln("  token loc:    %sB", scaledNumberFmt(tokenLocationBuffer.byteLength));
-		writefln("  AST:          %sB", scaledNumberFmt(astBuffer.byteLength));
-		writefln("  arrays:       %sB", scaledNumberFmt(arrayArena.byteLength));
-		writefln("  IR:           %sB", scaledNumberFmt(irBuffer.byteLength));
-		writefln("  temp:         %sB", scaledNumberFmt(tempBuffer.byteLength));
-		writefln("  types:        %sB", scaledNumberFmt(types.buffer.byteLength));
-		writefln("  static data:  %sB", scaledNumberFmt(staticDataBuffer.byteLength));
-		writefln("  globals:      %sB", scaledNumberFmt(globals.buffer.byteLength));
-		writefln("  constants:    %sB", scaledNumberFmt(constants.buffer.byteLength));
-		writefln("  imports:      %sB", scaledNumberFmt(importBuffer.byteLength));
-		writefln("  symbols:      %sB", scaledNumberFmt(objSymTab.buffer.byteLength));
-		writefln("  machine code: %sB", scaledNumberFmt(codeBuffer.byteLength));
-		writefln("  binary:       %sB", scaledNumberFmt(binaryBuffer.byteLength));
+		writefln("Arena sizes:       used  committed  reserved");
+		void printArena(A)(ref A arena, string name) {
+			writefln("  %-14s%-6iB    %-6iB   %-6iB",
+				name,
+				scaledNumberFmt(arena.byteLength),
+				scaledNumberFmt(arena.committedBytes),
+				scaledNumberFmt(arena.reservedBytes));
+		}
+		printArena(sourceBuffer, "source");
+		printArena(files, "files");
+		printArena(tokenBuffer, "tokens");
+		printArena(tokenLocationBuffer, "token loc");
+		printArena(astBuffer, "AST");
+		printArena(arrayArena, "arrays");
+		printArena(irBuffer, "IR");
+		printArena(tempBuffer, "temp");
+		printArena(types.buffer, "types");
+		printArena(staticDataBuffer, "static data");
+		printArena(globals.buffer, "globals");
+		printArena(constants.buffer, "constants");
+		printArena(importBuffer, "imports");
+		printArena(objSymTab.buffer, "symbols");
+		printArena(codeBuffer, "machine code");
+		printArena(binaryBuffer, "binary");
 	}
 
 	void clear()

@@ -9,20 +9,20 @@ import tester;
 Test[] passingTests() { return [
 	test7, test8, test8_1, test10, test9, test13, test14, test15, test16, test17,
 	test18, test19, test20, test21, test21_2, test22, test23, test24, test25, test26,
-	test27, test31, test32, test33, test34, test35, test36, test37];
+	test27, test31, test32, test33, test34, test35, test36, test37, test38];
 }
 
 extern(C) void external_print_i32_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
 
-
 immutable input7 = q{--- test7
-i32 fib(i32 number) {
-	if (number < 1) return 0;
-	if (number < 3) return 1;
-	return fib(number-1) + fib(number-2);
-}};
+	i32 fib(i32 number) {
+		if (number < 1) return 0;
+		if (number < 3) return 1;
+		return fib(number-1) + fib(number-2);
+	}
+};
 alias Func7 = extern(C) int function(int);
 void tester7(Func7 fib) {
 	immutable int[] results = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233,
@@ -36,35 +36,38 @@ void tester7(Func7 fib) {
 auto test7 = Test("Test 7", input7, "fib", cast(Test.Tester)&tester7);
 
 immutable input9 = q{--- test9
-i32 test(i32 number) {
-	i32 result;
-	if (1 == 1)
-	{
-		result = 1;
+	i32 test(i32 number) {
+		i32 result;
+		if (1 == 1)
+		{
+			result = 1;
+		}
+		else
+		{
+			result = 0;
+		}
+		return result;
 	}
-	else
-	{
-		result = 0;
-	}
-	return result;
-}};
+};
 auto test9 = Test("Test 9", input9);
 
 immutable input8 = q{--- test8
-i32 sign(i32 number) {
-	i32 result;
-	if (number < 0) result = 0-1;
-	else if (number > 0) result = 1;
-	else result = 0;
-	return result;
-}};
+	i32 sign(i32 number) {
+		i32 result;
+		if (number < 0) result = 0-1;
+		else if (number > 0) result = 1;
+		else result = 0;
+		return result;
+	}
+};
 
 immutable input8_1 = q{--- test8_1
-i32 sign(i32 number) {
-	if (number < 0) return 0-1;
-	else if (number > 0) return 1;
-	else return 0;
-}};
+	i32 sign(i32 number) {
+		if (number < 0) return 0-1;
+		else if (number > 0) return 1;
+		else return 0;
+	}
+};
 alias Func8 = extern(C) int function(int);
 void tester8(Func8 sign) {
 	int res1 = sign(10);
@@ -81,9 +84,10 @@ auto test8 = Test("Test 8", input8, "sign", cast(Test.Tester)&tester8);
 auto test8_1 = Test("Test 8.1", input8_1, "sign", cast(Test.Tester)&tester8);
 
 immutable input10 = q{--- test10
-i32 test(i32* array) {
-	return array[0];
-}};
+	i32 test(i32* array) {
+		return array[0];
+	}
+};
 alias Func10 = extern(C) int function(int*);
 void tester10(Func10 fun) {
 	int val = 42;
@@ -94,9 +98,10 @@ void tester10(Func10 fun) {
 auto test10 = Test("Test 10", input10, "test", cast(Test.Tester)&tester10);
 
 immutable input11 = q{--- test11
-i32 test(i32* array) {
-	return array[1];
-}};
+	i32 test(i32* array) {
+		return array[1];
+	}
+};
 alias Func11 = extern(C) int function(int*);
 void tester11(Func11 fun) {
 	int[2] val = [42, 56];
@@ -107,9 +112,10 @@ void tester11(Func11 fun) {
 auto test11 = Test("Test 11", input11, "test", cast(Test.Tester)&tester11);
 
 immutable input12 = q{--- test12
-i32 test(i32* array, i32 index) {
-	return array[index];
-}};
+	i32 test(i32* array, i32 index) {
+		return array[index];
+	}
+};
 alias Func12 = extern(C) int function(int*, int);
 void tester12(Func12 fun) {
 	int[2] val = [42, 56];
@@ -122,9 +128,10 @@ void tester12(Func12 fun) {
 auto test12 = Test("Test 12", input12, "test", cast(Test.Tester)&tester12);
 
 immutable input13 = q{--- test13
-void test(i32* array, i32 index, i32 value) {
-	array[index] = value;
-}};
+	void test(i32* array, i32 index, i32 value) {
+		array[index] = value;
+	}
+};
 alias Func13 = extern(C) void function(int*, int, int);
 void tester13(Func13 fun) {
 	int[4] val = [42, 56, 96, 102];
@@ -137,9 +144,10 @@ auto test13 = Test("Test 13", input13, "test", cast(Test.Tester)&tester13);
 
 
 immutable input14 = q{--- test14
-void test(i32* array, i32 index, i32 value, i32 value2, i32 value3) {
-	array[index] = value + value2 + value3;
-}};
+	void test(i32* array, i32 index, i32 value, i32 value2, i32 value3) {
+		array[index] = value + value2 + value3;
+	}
+};
 alias Func14 = extern(C) void function(int*, int, int, int, int);
 void tester14(Func14 fun) {
 	int[2] val = [42, 56];
@@ -150,8 +158,8 @@ void tester14(Func14 fun) {
 auto test14 = Test("Test 14", input14, "test", cast(Test.Tester)&tester14);
 
 
-// Test 3 inputs no parameters pushed to the stack
 immutable input15 = q{--- test15
+	// Test 3 inputs no parameters pushed to the stack
 	i32 test(i32 par) {
 		return external(par, 10, 20);
 	}
@@ -170,12 +178,12 @@ auto test15 = Test("Test 15", input15, "test", cast(Test.Tester)&tester15,
 	[HostSymbol("external", cast(void*)&test15_external_func)]);
 
 
-// Test more than 4 inputs (5-th parameter pushed to the stack, extra alignment needed)
 immutable input16 = q{--- test16
-i32 test(i32 par) {
-	return external(par, 10, 20, 30, 40);
-}
-i32 external(i32, i32, i32, i32, i32);
+	// Test more than 4 inputs (5-th parameter pushed to the stack, extra alignment needed)
+	i32 test(i32 par) {
+		return external(par, 10, 20, 30, 40);
+	}
+	i32 external(i32, i32, i32, i32, i32);
 };
 alias Func16 = extern(C) int function(int par);
 extern(C) int test16_external_func(int par1, int par2, int par3, int par4, int par5) {
@@ -208,16 +216,16 @@ void tester17(Func17 funcPtr) {
 auto test17 = Test("Test 17", input17, "test", cast(Test.Tester)&tester17,
 	[HostSymbol("external", cast(void*)&test17_external_func)]);
 
-// test empty void function
 immutable input18 = q{--- test18
+	// test empty void function
 	void test() {}
 };
 alias Func18 = extern(C) void function();
 void tester18(Func18 fun) { fun(); }
 auto test18 = Test("Test 18", input18, "test", cast(Test.Tester)&tester18);
 
-// test empty void function with return
 immutable input19 = q{--- test19
+	// test empty void function with return
 	void test() { return; }
 };
 alias Func19 = extern(C) void function();
@@ -307,8 +315,8 @@ alias Func23 = extern(C) int function();
 void tester23(Func23 fun) { int res = fun(); assert(res == 7); }
 auto test23 = Test("Test 23", input23, "test", cast(Test.Tester)&tester23);
 
-// test string literal
 immutable input24 = q{--- test24
+	// test string literal
 	void print(u8*);
 	void test(){ print("Hello"); }
 };
@@ -392,10 +400,6 @@ auto test27 = Test("Test 27", input27, "test", cast(Test.Tester)&tester27,
 	[HostSymbol("print", cast(void*)&test25_external_print)]);
 
 
-extern(C) void test31_external_print_num(long param) {
-	testSink.putf("%s", param);
-}
-
 immutable input31 = q{--- test31
 	// test enums
 	//enum i32 e2; // manifest constant, invalid, need initializer
@@ -420,6 +424,9 @@ immutable input31 = q{--- test31
 		print_num(e9.e9);
 	}
 };
+extern(C) void test31_external_print_num(long param) {
+	testSink.putf("%s", param);
+}
 void tester31(Func25 fun) {
 	fun();
 	//writefln("fun() == '%s'", testSink.text);
@@ -531,3 +538,9 @@ immutable input37 = q{--- test37
 	void callee1(i32) {}
 };
 auto test37 = Test("Test 37", input37);
+
+immutable input38 = q{--- test38
+	// Test empty struct
+	struct A {}
+};
+auto test38 = Test("Test 38", input38);

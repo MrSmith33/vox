@@ -131,7 +131,7 @@ struct Parser
 		if (tok.type != type) {
 			const(char)[] tokenString = context.getTokenString(tok.index);
 			context.unrecoverable_error(tok.index, "Expected `%s` token, while got `%s` token '%s'",
-				type, tok, tokenString);
+				type, tok.type, tokenString);
 		}
 	}
 
@@ -169,6 +169,7 @@ struct Parser
 		ushort varIndex = 0;
 		while (tok.type != until)
 		{
+			if (tok.type == TokenType.EOI) break;
 			AstNode* decl = enforceNode(parse_declaration);
 			if (decl.astType == AstType.decl_var) {
 				(cast(VariableDeclNode*)decl).scopeIndex = varIndex++;
@@ -234,6 +235,8 @@ struct Parser
 				Array!(VariableDeclNode*) params;
 				while (tok.type != TokenType.RPAREN)
 				{
+					if (tok.type == TokenType.EOI) break;
+
 					// <param> ::= <type> <identifier>?
 					TypeNode* paramType = parse_type_expected();
 					Identifier paramId;
@@ -452,6 +455,8 @@ struct Parser
 		ushort varIndex = 0;
 		while (tok.type != TokenType.RCURLY)
 		{
+			if (tok.type == TokenType.EOI) break;
+
 			TokenIndex start = tok.index;
 			Identifier id = expectIdentifier;
 			ExpressionNode* value;
@@ -548,6 +553,8 @@ struct Parser
 		expectAndConsume(TokenType.LCURLY);
 		while (tok.type != TokenType.RCURLY)
 		{
+			if (tok.type == TokenType.EOI) break;
+
 			statements.put(context.arrayArena, statement());
 		}
 		expectAndConsume(TokenType.RCURLY);
@@ -682,12 +689,20 @@ alias NullParser = ExpressionNode* function(ref Parser p, Token token, int rbp);
 
 ExpressionNode* left_error_parser(ref Parser p, Token token, int rbp, ExpressionNode* left)
 {
-	throw new Exception(format("%s can't be used in infix position", token));
+	if (token.type == TokenType.EOI)
+		p.context.unrecoverable_error(token.index, "Unexpected end of input");
+	else
+		p.context.unrecoverable_error(token.index, "%s is not an expression", token.type);
+	assert(false);
 }
 
 ExpressionNode* null_error_parser(ref Parser p, Token token, int rbp)
 {
-	throw new Exception(format("%s can't be used in prefix position", token));
+	if (token.type == TokenType.EOI)
+		p.context.unrecoverable_error(token.index, "Unexpected end of input");
+	else
+		p.context.unrecoverable_error(token.index, "%s is not an expression", token.type);
+	assert(false);
 }
 
 struct LeftInfo

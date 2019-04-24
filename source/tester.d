@@ -20,7 +20,10 @@ void runDevTests()
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
 	driver.context.printTodos = true;
-	scope(exit) driver.releaseMemory;
+	scope(exit) {
+		//driver.context.printMemSize;
+		driver.releaseMemory;
+	}
 
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
@@ -40,7 +43,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, fail2);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, fail12);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;

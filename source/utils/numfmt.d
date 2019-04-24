@@ -15,13 +15,28 @@ struct ScaledNumberFmt(T)
 	T value;
 	void toString(scope void delegate(const(char)[]) sink, const ref FormatSpec!char fmt)
 	{
-		int scale = calcScale(value);
-		auto scaledValue = scaled(value, -scale);
-		int digits = numDigitsInNumber(scaledValue);
-		string suffix = scaleSuffixes[scaleToScaleIndex(scale)]; // length is 1 or 0
-		int width = fmt.width - cast(int)suffix.length;
-		int precision = min(3-digits, fmt.precision); // gives 0 or 1
-		sink.formattedWrite("%*.*f%s", width, precision, scaledValue, suffix);
+		if (fmt.spec == 'i') {
+			// Use binary suffixes instead of decimal suffixes
+			import std.math: abs;
+			size_t intVal = cast(size_t)value;
+			int scale = calcScale2(intVal);
+			double divisor = 1 << scale;
+			double scaledValue = value / divisor;
+			int digits = numDigitsInNumber10(scaledValue);
+			string suffix = scaleSuffixes[scaleToScaleIndex2(scale)]; // length is 1 or 0
+			int precision = min(3-digits, fmt.precision); // gives 0 or 1
+			int width = fmt.width - (cast(int)suffix.length * 2); // account for 'i' suffix
+			string fmtString = (scale == 0) ? "%*.*f%s" : "%*.*f%si";
+			sink.formattedWrite(fmtString, width, precision, scaledValue, suffix);
+		} else {
+			int scale = calcScale10(value);
+			auto scaledValue = scaled10(value, -scale);
+			int digits = numDigitsInNumber10(scaledValue);
+			string suffix = scaleSuffixes[scaleToScaleIndex10(scale)]; // length is 1 or 0
+			int width = fmt.width - cast(int)suffix.length;
+			int precision = min(3-digits, fmt.precision); // gives 0 or 1
+			sink.formattedWrite("%*.*f%s", width, precision, scaledValue, suffix);
+		}
 	}
 }
 
@@ -43,7 +58,7 @@ enum MIN_SCALE_SUFFIX = -30;
 enum MAX_SCALE_SUFFIX = 30;
 
 
-int numDigitsInNumber(Num)(const Num val)
+int numDigitsInNumber10(Num)(const Num val)
 {
 	import std.math: abs, round;
 	ulong absVal = cast(ulong)val.abs.round;
@@ -58,7 +73,8 @@ int numDigitsInNumber(Num)(const Num val)
 	return numDigits;
 }
 
-int calcScale(Num)(Num val)
+/// Returns number in range of [-30; 30]
+int calcScale10(Num)(Num val)
 {
 	import std.algorithm: clamp;
 	import std.math: abs, floor, ceil, log10;
@@ -86,12 +102,45 @@ int calcScale(Num)(Num val)
 	return clampedScale;
 }
 
-int scaleToScaleIndex(int scale)
+/// Returns number in range of [0; 100]
+/// Only non-negative integers are supported
+int calcScale2(Num)(Num val)
 {
+	import std.algorithm: clamp;
+	import std.math: abs, floor, ceil, log2;
+	static int signum(T)(const T x) pure nothrow
+	{
+		return (x > 0) - (x < 0);
+	}
+
+	auto lg = log2(val);
+	int logSign = signum(lg);
+	double absLog = abs(lg);
+
+	int scale;
+	if (lg < 0)
+		scale = cast(int)(ceil(absLog/10.0))*10;
+	else
+		scale = cast(int)(floor(absLog/10.0))*10;
+
+	int clampedScale = scale * logSign;
+	if (clampedScale < 0)
+		clampedScale = 0; // negative scale should not happen for non-negative numbers, but check anyway
+	else if (clampedScale > MAX_SCALE_SUFFIX)
+		clampedScale = MAX_SCALE_SUFFIX;
+
+	return clampedScale;
+}
+
+int scaleToScaleIndex10(int scale) {
 	return scale / 3 + NUM_SCALE_SUFFIXES; // -30...30 -> -10...10 -> 0...20
 }
 
-double scaled(Num)(Num num, int scale)
+int scaleToScaleIndex2(int scale) {
+	return scale / 10 + NUM_SCALE_SUFFIXES; // -100...100 -> -10...10 -> 0...20
+}
+
+double scaled10(Num)(Num num, int scale)
 {
 	import std.math: pow;
 	return num * pow(10.0, scale);

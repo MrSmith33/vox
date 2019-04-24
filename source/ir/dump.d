@@ -95,7 +95,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 	sink.put("function ");
 	sink.put(ctx.idString(ir.backendData.name));
 	sink.putfln(`() %s bytes ir:"%s" {`, ir.storage.length * uint.sizeof, instr_set_names[ir.instructionSet]);
-	int indexPadding = numDigitsInNumber(ir.storage.length);
+	int indexPadding = numDigitsInNumber10(ir.storage.length);
 
 	InstrPrintInfo printer;
 	printer.context = &ctx;
@@ -230,7 +230,7 @@ void dumpFunctionCFG(ref IrFunction ir, ref TextSink sink, ref CompilationContex
 	sink.put("function ");
 	sink.put(ctx.idString(ir.backendData.name));
 	sink.putfln(`() %s bytes" {`, ir.storage.length * uint.sizeof);
-	int indexPadding = numDigitsInNumber(ir.storage.length);
+	int indexPadding = numDigitsInNumber10(ir.storage.length);
 
 	InstrPrintInfo p;
 	p.context = &ctx;
