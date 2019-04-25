@@ -384,6 +384,22 @@ struct PerPassTimeMeasurements
 		foreach (passIndex, ref times; passTimes)
 			printRow(passes[passIndex].name, times);
 	}
+
+	void printTsv()
+	{
+		void printRow(string name, ref TimeMeasurements times)
+		{
+			writef("%s", name);
+			times.printTsv;
+			writeln;
+		}
+
+		writef("Iterations %s", scaledNumberFmt(totalTimes.numIters));
+		totalTimes.printHeaderTsv; writeln;
+		printRow("Total", totalTimes);
+		foreach (passIndex, ref times; passTimes)
+			printRow(passes[passIndex].name, times);
+	}
 }
 
 struct TimeMeasurements
@@ -413,12 +429,9 @@ struct TimeMeasurements
 
 	void printHeader()
 	{
-		if (numIters == 1)
-		{
+		if (numIters == 1) {
 			write("    time");
-		}
-		else
-		{
+		} else {
 			foreach (i; 0..min(numIters, showNumFirstIters))
 				writef("  iter %s", i);
 			write("   total     avg     min     max");
@@ -427,18 +440,40 @@ struct TimeMeasurements
 
 	void print()
 	{
-		if (numIters == 1)
-		{
+		if (numIters == 1) {
 			writef(" % 6.1ss", scaledNumberFmt(iterTimes[0]));
-		}
-		else
-		{
+		} else {
 			foreach (i; 0..min(numIters, showNumFirstIters))
 				writef(" % 6.1ss", scaledNumberFmt(iterTimes[i]));
 			writef(" % 6.1ss", scaledNumberFmt(totalTime));
 			writef(" % 6.1ss", scaledNumberFmt(avgTime));
 			writef(" % 6.1ss", scaledNumberFmt(minTime));
 			writef(" % 6.1ss", scaledNumberFmt(maxTime));
+		}
+	}
+
+	void printHeaderTsv()
+	{
+		if (numIters == 1) {
+			write("\ttime");
+		} else {
+			foreach (i; 0..min(numIters, showNumFirstIters))
+				writef("\titer %s", i);
+			write("\ttotal\tavg\tmin\tmax");
+		}
+	}
+
+	void printTsv()
+	{
+		if (numIters == 1) {
+			writef("\t%ss", scaledNumberFmt(iterTimes[0]));
+		} else {
+			foreach (i; 0..min(numIters, showNumFirstIters))
+				writef("\t%#ss", scaledNumberFmt(iterTimes[i]));
+			writef("\t%#ss", scaledNumberFmt(totalTime));
+			writef("\t%#ss", scaledNumberFmt(avgTime));
+			writef("\t%#ss", scaledNumberFmt(minTime));
+			writef("\t%#ss", scaledNumberFmt(maxTime));
 		}
 	}
 }

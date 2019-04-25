@@ -32,7 +32,7 @@ import all;
 	<var_decl> = <type> <identifier> ("=" <expression>)? ";"
 	<struct_decl> = "struct" <identifier> "{" <declaration>* "}"
 	<enum_decl> = <enum_decl_single> / <enum_decl_multi>
-	<enum_decl_multi> = "enum" [<identifier>] [":" <type>] {" <identifier> ["=" <expr>] ,* "}"
+	<enum_decl_multi> = "enum" [<identifier>] [":" <type>] "{" (<identifier> ["=" <expr>] ",") * "}"
 	<enum_decl_single> = "enum" <identifier> [ "=" <expr> ] ";"
 
 	<statement> = "if" <paren_expression> <statement> ("else" <statement>)?
@@ -58,17 +58,16 @@ import all;
 	<identifier> = [_a-zA-Z] [_a-zA-Z0-9]*
 
 	<type> = (<type_basic> / <type_struct>) <type_specializer>*
-	<type_specializer> = '*' / '[' <expression> ']' / '[' ']'
-	<type_basic> = ("i8" | "i16" | "i32" | "i64" | "isize" |
-		"u8" | "u16" | "u32" | "u64" | "usize" | "void" | "f32" | "f64")
+	<type_specializer> = "*" / "[" <expression> "]" / "[" "]"
+	<type_basic> = ("i8" | "i16" | "i32" | "i64" |
+		"u8" | "u16" | "u32" | "u64" | "void" | "f32" | "f64")
 
 	<type_struct> = <identifier>
 
-	<int_literal> = <literal_dec_int> / <literal_hex_int>
+	<int_literal> = <literal_dec_int> / <literal_hex_int> / <literal_bin_int>
 	<literal_dec_int> = 0|[1-9][0-9_]*
 	<literal_hex_int> = ("0x"|"0X")[0-9A-Fa-f_]+
 	<literal_bin_int> = ("0b"|"0B")[01_]+
-	<literal_oct_int> = 0[01_]*
 */
 
 void pass_parser(ref CompilationContext ctx) {

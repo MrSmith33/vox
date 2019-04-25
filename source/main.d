@@ -18,7 +18,7 @@ version(standalone) void main(string[] args)
 {
 	scope(exit) stdout.flush;
 	version(cli) runCli(args);
-	version(bench) runBench();
+	version(bench) runBench(args);
 	version(test) runAllTests(StopOnFirstFail.no);
 	//runDevTests();
 }

@@ -11,8 +11,12 @@ import std.stdio;
 import std.string : stripLeft;
 import tests.passing;
 
-void runBench()
+/// --tsv  output in tsv format with greek µ instead of u
+void runBench(string[] args)
 {
+	bool outputTsv;
+	foreach(arg; args) if (arg == "--tsv") outputTsv = true;
+
 	Test curTest = test8;
 	//Test curTest = test31;
 
@@ -39,5 +43,7 @@ void runBench()
 	}
 
 	driver.context.printMemSize;
-	times.print;
+
+	if (outputTsv) times.printTsv;
+	else times.print;
 }
