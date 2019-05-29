@@ -70,7 +70,7 @@ import all;
 	<literal_bin_int> = ("0b"|"0B")[01_]+
 */
 
-void pass_parser(ref CompilationContext ctx) {
+void pass_parser(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 	Parser parser = Parser(&ctx);
 
 	foreach (ref SourceFileInfo file; ctx.files.data)

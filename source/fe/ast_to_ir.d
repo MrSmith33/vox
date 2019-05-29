@@ -9,7 +9,7 @@ import std.stdio;
 import all;
 
 
-void pass_ir_gen(ref CompilationContext ctx) {
+void pass_ir_gen(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 	auto astToIr = AstToIr(&ctx);
 	foreach (ref SourceFileInfo file; ctx.files.data) {
 		astToIr.visit(file.mod);

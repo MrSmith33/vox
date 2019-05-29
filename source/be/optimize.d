@@ -22,20 +22,19 @@ void apply_lir_func_pass(ref CompilationContext context, FuncPass pass)
 	}
 }
 
-void pass_optimize_ir(ref CompilationContext context)
+void pass_optimize_ir(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode func)
 {
+	if (func.isExternal) return;
+
 	FuncPassIr[] passes = [&func_pass_invert_conditions, &func_pass_remove_dead_code, &func_pass_lower_gep];
 	IrBuilder builder;
 
-	foreach (ref SourceFileInfo file; context.files.data)
-	foreach (IrFunction* ir; file.mod.irModule.functions) {
-		builder.beginDup(ir, &context);
-		foreach (FuncPassIr pass; passes) {
-			pass(context, *ir, builder);
-			if (context.validateIr)
-				validateIrFunction(context, *ir);
-			if (context.printIrOpt) dumpFunction(*ir, context);
-		}
+	builder.beginDup(func.backendData.irData, &context);
+	foreach (FuncPassIr pass; passes) {
+		pass(context, *func.backendData.irData, builder);
+		if (context.validateIr)
+			validateIrFunction(context, *func.backendData.irData);
+		if (context.printIrOpt) dumpFunction(*func.backendData.irData, context);
 	}
 }
 

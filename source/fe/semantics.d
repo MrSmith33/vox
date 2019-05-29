@@ -26,7 +26,7 @@ struct Scope
 	bool isOrdered;
 }
 
-void pass_semantic_decl(ref CompilationContext ctx)
+void pass_semantic_decl(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
 	auto sem1 = SemanticDeclarations(&ctx);
 	foreach (ref SourceFileInfo file; ctx.files.data) {
@@ -186,7 +186,7 @@ struct SemanticDeclarations
 	void visit(StructTypeNode* t) {}
 }
 
-void pass_semantic_lookup(ref CompilationContext ctx)
+void pass_semantic_lookup(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
 	auto sem2 = SemanticLookup(&ctx);
 	foreach (ref SourceFileInfo file; ctx.files.data) {
@@ -559,7 +559,7 @@ struct SemanticLookup
 	void visit(StructTypeNode* t) { t.resolveSymbol = lookup(t.id, t.loc); }
 }
 
-void pass_semantic_type(ref CompilationContext ctx)
+void pass_semantic_type(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
 	auto sem3 = SemanticStaticTypes(&ctx);
 	foreach (ref SourceFileInfo file; ctx.files.data) {

@@ -7,7 +7,7 @@ import std.stdio : writeln, write, writef, writefln, stdout;
 import std.path : stripExtension;
 import all;
 
-void pass_source(ref CompilationContext ctx)
+void pass_source(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
 	size_t start = ctx.sourceBuffer.length;
 	foreach(ref file; ctx.files.data)
@@ -56,44 +56,169 @@ void pass_source(ref CompilationContext ctx)
 	}
 }
 
-void pass_write_exe(ref CompilationContext ctx)
+void pass_write_exe(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
 	import std.file : write;
-	write(ctx.outputFilename, ctx.binaryBuffer.data);
+	write(context.outputFilename, context.binaryBuffer.data);
 }
 
-immutable CompilePass[] commonPasses = [
-	CompilePass("Read source", &pass_source),
-	CompilePass("Lex", &pass_lexer),
-	CompilePass("Parse", &pass_parser),
-	CompilePass("Semantic insert", &pass_semantic_decl),
-	CompilePass("Semantic lookup", &pass_semantic_lookup),
-	CompilePass("Semantic types", &pass_semantic_type),
-	CompilePass("IR gen", &pass_ir_gen),
-	CompilePass("Optimize", &pass_optimize_ir),
-	CompilePass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
+immutable CompilePassGlobal[] commonPasses = [
+	global_pass("Read source", &pass_source),
+	global_pass("Lex", &pass_lexer),
+	global_pass("Parse", &pass_parser),
+	global_pass("Semantic insert", &pass_semantic_decl),
+	global_pass("Semantic lookup", &pass_semantic_lookup),
+	global_pass("Semantic types", &pass_semantic_type),
+	global_pass("IR gen", &pass_ir_gen),
+
+	global_pass("Optimize", &pass_optimize_ir),
+	global_pass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
 
 	// IR liveness
-	CompilePass("Live intervals", &pass_live_intervals),
+	global_pass("Live intervals", &pass_live_intervals),
 	// IR regalloc
-	CompilePass("Linear scan", &pass_linear_scan),
+	global_pass("Linear scan", &pass_linear_scan),
 	// Stack layout
-	CompilePass("Stack layout", &pass_stack_layout),
+	global_pass("Stack layout", &pass_stack_layout),
+
 	// LIR -> machine code
-	CompilePass("Code gen", &pass_emit_mc_amd64),
+	global_pass("Code gen", &pass_emit_mc_amd64),
 ];
 
-immutable CompilePass[] extraJitPasses = [
-	CompilePass("Link JIT", &pass_link_jit),
+immutable CompilePassGlobal[] extraJitPasses = [
+	CompilePassGlobal("Link JIT", &pass_link_jit),
 ];
 
-immutable CompilePass[] extraExePasses = [
-	CompilePass("Exe", &pass_create_executable),
-	CompilePass("Write exe", &pass_write_exe),
+immutable CompilePassGlobal[] extraExePasses = [
+	CompilePassGlobal("Link executable", &pass_create_executable),
+	CompilePassGlobal("Write executable", &pass_write_exe),
 ];
 
-CompilePass[] jitPasses = commonPasses ~ extraJitPasses;
-CompilePass[] exePasses = commonPasses ~ extraExePasses;
+CompilePassGlobal[] jitPasses = commonPasses ~ extraJitPasses;
+CompilePassGlobal[] exePasses = commonPasses ~ extraExePasses;
+
+void run_global_pass(ref CompilationContext context, CompilePassPerModule[] subPasses)
+{
+	//context.printMemSize;
+	foreach (ref SourceFileInfo file; context.files.data)
+	{
+		foreach(ref CompilePassPerModule subPass; subPasses)
+		{
+			//auto time1 = currTime;
+
+			// throws immediately on unrecoverable error or ICE
+			subPass.run(context, *file.mod, subPass.subPasses);
+
+			//auto time2 = currTime;
+			//subPass.duration += time2-time1;
+
+			// throws if there were recoverable error in the pass
+			context.throwOnErrors;
+		}
+	}
+}
+
+void run_module_pass(ref CompilationContext context, ref ModuleDeclNode mod, CompilePassPerFunction[] subPasses)
+{
+	foreach (FunctionDeclNode* func; mod.functions)
+	{
+		foreach(ref CompilePassPerFunction subPass; subPasses)
+		{
+			//auto time1 = currTime;
+
+			// throws immediately on unrecoverable error or ICE
+			subPass.run(context, mod, *func);
+
+			//auto time2 = currTime;
+			//subPass.duration += time2-time1;
+
+			// throws if there were recoverable error in the pass
+			context.throwOnErrors;
+		}
+	}
+}
+
+CompilePassGlobal global_pass(string name, GlobalPassFun run, CompilePassPerModule[] subPasses = null)
+{
+	return CompilePassGlobal(name, run, subPasses);
+}
+
+CompilePassGlobal global_pass(string name, FunctionPassFun run)
+{
+	return CompilePassGlobal(null, &run_global_pass, [
+		CompilePassPerModule(null, &run_module_pass, [
+			CompilePassPerFunction(name, run)])]);
+}
+
+alias GlobalPassFun = void function(ref CompilationContext context, CompilePassPerModule[] subPasses);
+alias ModulePassFun = void function(ref CompilationContext context, ref ModuleDeclNode mod, CompilePassPerFunction[] subPasses);
+alias FunctionPassFun = void function(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode func);
+
+/// Must have either `run` or subPasses
+struct CompilePassGlobal
+{
+	string name;
+	GlobalPassFun run;
+	CompilePassPerModule[] subPasses;
+	Duration duration;
+	void clear() {
+		duration = Duration.init;
+		foreach(ref subPass; subPasses) subPass.clear;
+	}
+}
+
+struct CompilePassPerModule
+{
+	string name;
+	void function(ref CompilationContext context, ref ModuleDeclNode mod, CompilePassPerFunction[] subPasses) run;
+	CompilePassPerFunction[] subPasses;
+	Duration duration;
+	void clear() {
+		duration = Duration.init;
+		foreach(ref subPass; subPasses) subPass.clear;
+	}
+}
+
+struct CompilePassPerFunction
+{
+	string name;
+	void function(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode func) run;
+	Duration duration;
+	void clear() {
+		duration = Duration.init;
+	}
+}
+
+struct PassMeta
+{
+	string name;
+	Duration duration;
+}
+
+struct PassMetaIterator
+{
+	CompilePassGlobal[] passes;
+	int opApply(scope int delegate(size_t, string name, Duration duration) dg)
+	{
+		size_t i = 0;
+		foreach(ref pass; passes)
+		{
+			if (auto res = dg(i, pass.name, pass.duration)) return res;
+			++i;
+			foreach(ref subPass; pass.subPasses)
+			{
+				if (auto res = dg(i, subPass.name, subPass.duration)) return res;
+				++i;
+				foreach(ref subPass2; subPass.subPasses)
+				{
+					if (auto res = dg(i, subPass2.name, subPass2.duration)) return res;
+					++i;
+				}
+			}
+		}
+		return 0;
+	}
+}
 
 /// To compile a set of modules do following steps:
 /// 1. initialize(passes)
@@ -108,12 +233,12 @@ CompilePass[] exePasses = commonPasses ~ extraExePasses;
 struct Driver
 {
 	CompilationContext context;
-	CompilePass[] passes;
+	CompilePassGlobal[] passes;
 
 	ArenaPool arenaPool;
 
 	static void funWithAddress(){}
-	void initialize(CompilePass[] passes_)
+	void initialize(CompilePassGlobal[] passes_)
 	{
 		passes = passes_;
 
@@ -155,6 +280,7 @@ struct Driver
 	{
 		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
 		context.clear;
+		foreach(ref pass; passes) pass.clear;
 		addSections();
 	}
 
@@ -188,7 +314,7 @@ struct Driver
 			auto time1 = currTime;
 
 			// throws immediately on unrecoverable error or ICE
-			pass.run(context);
+			pass.run(context, pass.subPasses);
 
 			auto time2 = currTime;
 			pass.duration = time2-time1;
@@ -340,33 +466,27 @@ struct Driver
 	}
 }
 
-struct CompilePass
-{
-	string name;
-	void function(ref CompilationContext context) run;
-
-	Duration duration;
-}
-
 struct PerPassTimeMeasurements
 {
 	TimeMeasurements totalTimes;
 	TimeMeasurements[] passTimes;
-	CompilePass[] passes;
+	CompilePassGlobal[] passes;
+	size_t numPasses; // number of passes in the tree of passes
 
-	this(size_t numIters, CompilePass[] passes)
+	this(size_t numIters, CompilePassGlobal[] passes)
 	{
 		this.passes = passes;
 		totalTimes = TimeMeasurements(numIters);
-		passTimes = new TimeMeasurements[passes.length];
+		foreach (passIndex, string name, Duration dur; PassMetaIterator(passes)) ++numPasses;
+		passTimes = new TimeMeasurements[numPasses];
 		foreach (ref times; passTimes) times = TimeMeasurements(numIters);
 	}
 
 	void onIteration(size_t iterIndex, Duration iterTime)
 	{
 		totalTimes.onIteration(iterIndex, iterTime);
-		foreach (passIndex, ref pass; passes)
-			passTimes[passIndex].onIteration(iterIndex, pass.duration);
+		foreach (passIndex, string name, Duration dur; PassMetaIterator(passes))
+			passTimes[passIndex].onIteration(iterIndex, dur);
 	}
 
 	void print()
@@ -381,8 +501,9 @@ struct PerPassTimeMeasurements
 		writef("Iterations % 5.0s    ", scaledNumberFmt(totalTimes.numIters));
 		totalTimes.printHeader; writeln;
 		printRow("Total", totalTimes);
-		foreach (passIndex, ref times; passTimes)
-			printRow(passes[passIndex].name, times);
+		foreach (passIndex, string name, Duration dur; PassMetaIterator(passes))
+			if (name)
+				printRow(name, passTimes[passIndex]);
 	}
 
 	void printTsv()
@@ -397,8 +518,9 @@ struct PerPassTimeMeasurements
 		writef("Iterations %s", scaledNumberFmt(totalTimes.numIters));
 		totalTimes.printHeaderTsv; writeln;
 		printRow("Total", totalTimes);
-		foreach (passIndex, ref times; passTimes)
-			printRow(passes[passIndex].name, times);
+		foreach (passIndex, string name, Duration dur; PassMetaIterator(passes))
+			if (name)
+				printRow(name, passTimes[passIndex]);
 	}
 }
 

@@ -10,7 +10,7 @@ import std.stdio;
 
 import all;
 
-void pass_link_jit(ref CompilationContext context)
+void pass_link_jit(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
 	if (context.printSymbols) context.objSymTab.dump(&context);
 

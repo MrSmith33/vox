@@ -9,10 +9,10 @@ import std.stdio;
 import all;
 
 
-void pass_ir_to_lir_amd64(ref CompilationContext context)
+void pass_ir_to_lir_amd64(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode func)
 {
 	auto pass = IrToLir(&context);
-	pass.run;
+	pass.run(mod, func);
 }
 
 struct IrToLir
@@ -20,21 +20,17 @@ struct IrToLir
 	CompilationContext* context;
 	IrBuilder builder;
 
-	void run()
+	void run(ref ModuleDeclNode mod, ref FunctionDeclNode func)
 	{
-		foreach (ref SourceFileInfo file; context.files.data)
-		foreach (i, FunctionDeclNode* fun; file.mod.functions)
-		{
-			if (fun.isExternal) continue;
+		if (func.isExternal) return;
 
-			fun.backendData.lirData = context.appendAst!IrFunction;
-			fun.backendData.lirData.backendData = &fun.backendData;
+		func.backendData.lirData = context.appendAst!IrFunction;
+		func.backendData.lirData.backendData = &func.backendData;
 
-			file.mod.lirModule.addFunction(*context, fun.backendData.lirData);
-			processFunc(*fun.backendData.irData, *fun.backendData.lirData);
-			if (context.validateIr) validateIrFunction(*context, *fun.backendData.lirData);
-			if (context.printLir && context.printDumpOf(fun)) dumpFunction(*fun.backendData.lirData, *context);
-		}
+		mod.lirModule.addFunction(*context, func.backendData.lirData);
+		processFunc(*func.backendData.irData, *func.backendData.lirData);
+		if (context.validateIr) validateIrFunction(*context, *func.backendData.lirData);
+		if (context.printLir && context.printDumpOf(&func)) dumpFunction(*func.backendData.lirData, *context);
 	}
 
 	void processFunc(ref IrFunction ir, ref IrFunction lir)

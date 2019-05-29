@@ -86,7 +86,7 @@ void runCli(string[] args)
 
 	if (printHelp)
 	{
-		writeln("Usage: tiny_jit [options]... [source|.dll/|.har]...");
+		writeln("Usage: tiny_jit [options]... [source|.dll|.har]...");
 
 		size_t ls, ll;
 		foreach (it; optResult.options)

@@ -14,7 +14,7 @@ import be.pecoff;
 
 //version = print_info;
 
-void pass_create_executable(ref CompilationContext context)
+void pass_create_executable(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
 	// Code section
 	Section textSection = Section(SectionType.text, ".text");

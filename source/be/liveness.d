@@ -53,22 +53,18 @@ for each block b in reverse order do
 	b.liveIn = live
 */
 //version = LivePrint;
-void pass_live_intervals(ref CompilationContext context)
+void pass_live_intervals(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode fun)
 {
 	LiveBitmap liveBitmap;
-	foreach (ref SourceFileInfo file; context.files.data)
-	foreach (FunctionDeclNode* fun; file.mod.functions)
+	if (fun.isExternal) return;
+
+	pass_live_intervals_func(context, fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
+
+	if (context.printLiveIntervals && context.printDumpOf(&fun))
 	{
-		if (fun.isExternal) continue;
-
-		pass_live_intervals_func(context, fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
-
-		if (context.printLiveIntervals && context.printDumpOf(fun))
-		{
-			TextSink sink;
-			fun.backendData.liveIntervals.dump(sink, context);
-			writeln(sink.text);
-		}
+		TextSink sink;
+		fun.backendData.liveIntervals.dump(sink, context);
+		writeln(sink.text);
 	}
 }
 

@@ -23,15 +23,13 @@ import all;
 
 /// Does linear scan register allocation.
 /// Uses live intervals produced by pass_live_intervals
-void pass_linear_scan(ref CompilationContext context) {
+void pass_linear_scan(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode func) {
 	LinearScan linearScan;
 	linearScan.context = &context;
-	foreach (ref SourceFileInfo file; context.files.data)
-	foreach (FunctionDeclNode* fun; file.mod.functions) {
-		if (fun.isExternal) continue;
-		linearScan.scanFun(fun);
-		if (context.printLirRA && context.printDumpOf(fun)) dumpFunction(*fun.backendData.lirData, context);
-	}
+
+	if (func.isExternal) return;
+	linearScan.scanFun(&func);
+	if (context.printLirRA && context.printDumpOf(&func)) dumpFunction(*func.backendData.lirData, context);
 }
 
 struct RegisterState

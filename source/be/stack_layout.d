@@ -48,121 +48,117 @@ import all;
 enum STACK_ITEM_SIZE = 8; // x86_64
 
 /// Arranges items on the stack according to calling convention
-void pass_stack_layout(ref CompilationContext ctx)
+void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode func)
 {
-	foreach (ref SourceFileInfo file; ctx.files.data)
-	foreach (FunctionDeclNode* func; file.mod.functions)
+	if (func.isExternal) return;
+
+	auto layout = &func.backendData.stackLayout;
+	// TODO: Win64 calling convention hardcoded
+
+	context.assertf(layout.maxAlignment <= 16, "Big alingments aren't implemented");
+	/*
+	if (context.useFramePointer)
 	{
-		if (func.isExternal) continue;
-
-		auto layout = &func.backendData.stackLayout;
-		// TODO: Win64 calling convention hardcoded
-
-		ctx.assertf(layout.maxAlignment <= 16, "Big alingments aren't implemented");
-		/*
-		if (ctx.useFramePointer)
+		// ++        varIndex
+		// shadow4                                  \
+		// shadow3                                   \ shadow space
+		// param2    1              \                /
+		// param1    0  rbp + 2     / numParams = 2 / this address is aligned to 16 bytes
+		// ret addr     rbp + 1
+		// rbp      <-- rbp + 0
+		// local1    2  rbp - 1     \
+		// local2    3  rbp - 2     / numLocals = 2
+		// --
+		if (isParameter) // parameter
 		{
-			// ++        varIndex
-			// shadow4                                  \
-			// shadow3                                   \ shadow space
-			// param2    1              \                /
-			// param1    0  rbp + 2     / numParams = 2 / this address is aligned to 16 bytes
-			// ret addr     rbp + 1
-			// rbp      <-- rbp + 0
-			// local1    2  rbp - 1     \
-			// local2    3  rbp - 2     / numLocals = 2
-			// --
-			if (isParameter) // parameter
-			{
-				index = 2 + varIndex;
-			}
-			else // local variable
-			{
-				index = -(varIndex - numParams + 1);
-			}
-			baseReg = func.callingConvention.framePointer;
-		}*/
-
-		IrIndex baseReg = func.backendData.callingConvention.stackPointer;
-
-		// 1, 2, 4, 8, 16
-		uint[5] numAlignments;
-		uint[5] alignmentSizes;
-		uint[5] alignmentOffsets;
-
-		uint alignToIndex(uint alignment) {
-			switch(alignment) {
-				case 1: return 0;
-				case 2: return 1;
-				case 4: return 2;
-				case 8: return 3;
-				case 16: return 4;
-				default: assert(false);
-			}
+			index = 2 + varIndex;
 		}
-
-		layout.reservedBytes = 0;
-
-		foreach (i, ref slot; layout.slots)
+		else // local variable
 		{
-			if (slot.isParameter) continue;
-
-			uint index = alignToIndex(slot.alignment);
-			++numAlignments[index];
-			alignmentSizes[index] += slot.size;
-			layout.reservedBytes += slot.size;
+			index = -(varIndex - numParams + 1);
 		}
-		//writefln("reservedBytes1 0x%X", layout.reservedBytes);
+		baseReg = func.callingConvention.framePointer;
+	}*/
 
-		if (ctx.useFramePointer)
-		{
-			baseReg = func.backendData.callingConvention.framePointer;
-			// frame pointer is stored together with locals
-			layout.reservedBytes += STACK_ITEM_SIZE;
+	IrIndex baseReg = func.backendData.callingConvention.stackPointer;
+
+	// 1, 2, 4, 8, 16
+	uint[5] numAlignments;
+	uint[5] alignmentSizes;
+	uint[5] alignmentOffsets;
+
+	uint alignToIndex(uint alignment) {
+		switch(alignment) {
+			case 1: return 0;
+			case 2: return 1;
+			case 4: return 2;
+			case 8: return 3;
+			case 16: return 4;
+			default: assert(false);
 		}
-		//writefln("reservedBytes2 0x%X", layout.reservedBytes);
-
-		alignmentOffsets[4] = 0;
-		foreach_reverse (i; 0..4)
-		{
-			alignmentOffsets[i] = alignmentOffsets[i+1] + alignmentSizes[i+1];
-		}
-
-		// align to 8 bytes first
-		layout.reservedBytes = alignValue(layout.reservedBytes, STACK_ITEM_SIZE);
-		//writefln("reservedBytes3 0x%X", layout.reservedBytes);
-
-		// Align to 16 bytes
-		// Before we are called, the stack is aligned to 16 bytes, after call return address is pushed
-		// We take into account the return address (extra 8 bytes)
-		if ((layout.reservedBytes + STACK_ITEM_SIZE) % 16 != 0) {
-			layout.reservedBytes += STACK_ITEM_SIZE;
-		}
-		//writefln("reservedBytes4 0x%X", layout.reservedBytes);
-
-		uint paramsSize = STACK_ITEM_SIZE * layout.numParamSlots;
-		uint paramsOffset = layout.reservedBytes + STACK_ITEM_SIZE; // locals size + ret addr
-
-		// TODO utilize shadow space
-
-		int nextLocalIndex = 0;
-		foreach (i, ref slot; layout.slots)
-		{
-			if (slot.isParameter)
-			{
-				slot.displacement = paramsOffset + slot.paramIndex * STACK_ITEM_SIZE;
-			}
-			else
-			{
-				uint index = alignToIndex(slot.alignment);
-				alignmentSizes[index] -= slot.size;
-				slot.displacement = alignmentOffsets[index] + alignmentSizes[index];
-			}
-			slot.baseReg = baseReg;
-		}
-
-		if (ctx.printStackLayout) layout.dump(&ctx);
 	}
+
+	layout.reservedBytes = 0;
+
+	foreach (i, ref slot; layout.slots)
+	{
+		if (slot.isParameter) continue;
+
+		uint index = alignToIndex(slot.alignment);
+		++numAlignments[index];
+		alignmentSizes[index] += slot.size;
+		layout.reservedBytes += slot.size;
+	}
+	//writefln("reservedBytes1 0x%X", layout.reservedBytes);
+
+	if (context.useFramePointer)
+	{
+		baseReg = func.backendData.callingConvention.framePointer;
+		// frame pointer is stored together with locals
+		layout.reservedBytes += STACK_ITEM_SIZE;
+	}
+	//writefln("reservedBytes2 0x%X", layout.reservedBytes);
+
+	alignmentOffsets[4] = 0;
+	foreach_reverse (i; 0..4)
+	{
+		alignmentOffsets[i] = alignmentOffsets[i+1] + alignmentSizes[i+1];
+	}
+
+	// align to 8 bytes first
+	layout.reservedBytes = alignValue(layout.reservedBytes, STACK_ITEM_SIZE);
+	//writefln("reservedBytes3 0x%X", layout.reservedBytes);
+
+	// Align to 16 bytes
+	// Before we are called, the stack is aligned to 16 bytes, after call return address is pushed
+	// We take into account the return address (extra 8 bytes)
+	if ((layout.reservedBytes + STACK_ITEM_SIZE) % 16 != 0) {
+		layout.reservedBytes += STACK_ITEM_SIZE;
+	}
+	//writefln("reservedBytes4 0x%X", layout.reservedBytes);
+
+	uint paramsSize = STACK_ITEM_SIZE * layout.numParamSlots;
+	uint paramsOffset = layout.reservedBytes + STACK_ITEM_SIZE; // locals size + ret addr
+
+	// TODO utilize shadow space
+
+	int nextLocalIndex = 0;
+	foreach (i, ref slot; layout.slots)
+	{
+		if (slot.isParameter)
+		{
+			slot.displacement = paramsOffset + slot.paramIndex * STACK_ITEM_SIZE;
+		}
+		else
+		{
+			uint index = alignToIndex(slot.alignment);
+			alignmentSizes[index] -= slot.size;
+			slot.displacement = alignmentOffsets[index] + alignmentSizes[index];
+		}
+		slot.baseReg = baseReg;
+	}
+
+	if (context.printStackLayout) layout.dump(&context);
 }
 
 struct StackLayout

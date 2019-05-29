@@ -12,7 +12,7 @@ import all;
 import be.amd64asm;
 
 /// Emits machine code for amd64 architecture
-void pass_emit_mc_amd64(ref CompilationContext context)
+void pass_emit_mc_amd64(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
 	auto emitter = CodeEmitter(&context);
 

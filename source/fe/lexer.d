@@ -222,7 +222,7 @@ immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT
 //                          ######   #######  #     #
 // -----------------------------------------------------------------------------
 
-void pass_lexer(ref CompilationContext ctx)
+void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
 	foreach (ref SourceFileInfo file; ctx.files.data)
 	{
