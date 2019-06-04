@@ -407,17 +407,17 @@ struct CompilationContext
 
 	FunctionDeclNode* findFunction(string moduleName, string funcName)
 	{
-		ModuleDeclNode* m = findModule(moduleName);
-		if (m is null) return null;
+		ModuleDeclNode* mod = findModule(moduleName);
+		if (mod is null) return null;
 
-		return file.mod.findFunction(funcName, &this);
+		return mod.findFunction(funcName, &this);
 	}
 
 	/// Will throw exception if function exists in more than 1 module
 	void findFunction(string funcName, void delegate(ModuleDeclNode*, FunctionDeclNode*) onFunction)
 	{
 		Identifier funcId = idMap.find(funcName);
-		if (funcId == uint.max) return null;
+		if (funcId == uint.max) return;
 
 		foreach (ref SourceFileInfo file; files.data)
 		{
