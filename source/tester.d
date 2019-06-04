@@ -37,13 +37,13 @@ void runDevTests()
 	//driver.context.printIr = true;
 	//driver.context.printIrOpt = true;
 	//driver.context.printLir = true;
-	//driver.context.printLirRA = true;
+	driver.context.printLirRA = true;
 	//driver.context.printLiveIntervals = true;
 	//driver.context.printStaticData = true;
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, fail12);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test39);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;

@@ -169,12 +169,13 @@ __gshared CallConv win64_call_conv = CallConv
 private alias _ii = InstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	@_ii(1,2,IFLG.isTwoOperandForm) add,
-	@_ii(1,2,IFLG.isTwoOperandForm) sub,
-	@_ii(1,2,IFLG.isTwoOperandForm) imul,
-	@_ii(1,2,IFLG.isTwoOperandForm) or,
-	@_ii(1,2,IFLG.isTwoOperandForm) and,
-	@_ii(1,2,IFLG.isTwoOperandForm) xor,
+	@_ii(0,2,IFLG.isTwoOperandForm) add,
+	@_ii(0,2,IFLG.isTwoOperandForm) sub,
+	@_ii(0,2,IFLG.isTwoOperandForm) imul,
+	@_ii(0,2,IFLG.isTwoOperandForm) or,
+	@_ii(0,2,IFLG.isTwoOperandForm) and,
+	@_ii(0,2,IFLG.isTwoOperandForm) xor,
+	@_ii(0,1,IFLG.isTwoOperandForm) shl,
 	@_ii() mul,
 	@_ii() div,
 	@_ii() lea,
@@ -222,6 +223,7 @@ alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult | I
 alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult | IFLG.isTwoOperandForm); // arg0 = arg0 - arg1
 alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
 alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
+alias LirAmd64Instr_shl = IrGenericInstr!(Amd64Opcode.shl, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
 alias LirAmd64Instr_cmp = IrGenericInstr!(Amd64Opcode.cmp, 2);
 alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1);
 alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0);

@@ -9,7 +9,7 @@ import tester;
 Test[] passingTests() { return [
 	test7, test8, test8_1, test10, test9, test13, test14, test15, test16, test17,
 	test18, test19, test20, test21, test21_2, test22, test23, test24, test25, test26,
-	test27, test31, test32, test33, test34, test35, test36, test37, test38];
+	test27, test31, test32, test33, test34, test35, test36, test37, test38, test39];
 }
 
 extern(C) void external_print_i32_func(int par1) {
@@ -544,3 +544,19 @@ immutable input38 = q{--- test38
 	struct A {}
 };
 auto test38 = Test("Test 38", input38);
+
+immutable input39 = q{--- test39
+	// Test left shift
+	i32 shl(i32 a, i32 b) {
+		return a << b;
+	}
+};
+alias Func39 = extern(C) int function(int, int);
+void tester39(Func39 fun) {
+	foreach(i; 0..33) {
+		int res = fun(1, i);
+		assert(res == 1 << i);
+		//writefln("1 << %s == %b", i, res);
+	}
+}
+auto test39 = Test("Test 39", input39, "shl", cast(Test.Tester)&tester39);

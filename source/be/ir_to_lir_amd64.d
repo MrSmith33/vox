@@ -121,6 +121,10 @@ struct IrToLir
 			prevBlock = lirBlock;
 		}
 
+		// buffer for call/instruction arguments
+		enum MAX_ARGS = 255;
+		IrIndex[MAX_ARGS] argBuffer;
+
 		// fix successors predecessors links
 		foreach (IrIndex lirBlockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{
@@ -153,6 +157,11 @@ struct IrToLir
 						IrIndex res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
 						recordIndex(instrIndex, res);
 					}
+				}
+
+				void movIntoReg(IrIndex from, IrIndex to) {
+					ExtraInstrArgs extra = { addUsers : false, result : to };
+					builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, from);
 				}
 
 				switch(instrHeader.op)
@@ -201,15 +210,13 @@ struct IrToLir
 						}
 
 						// move args to registers
-						enum MAX_PHYS_ARGS = 256;
 						size_t numPhysRegs = min(numParamsInRegs, numArgs);
-						IrIndex[MAX_PHYS_ARGS] physArgs;
 						foreach_reverse (i, IrIndex arg; instrHeader.args[0..numPhysRegs])
 						{
-							physArgs[i] = lir.backendData.callingConvention.paramsInRegs[i];
-							IrIndex argRegister = lir.backendData.callingConvention.paramsInRegs[i];
 							IrIndex type = ir.getValueType(*context, arg);
+							IrIndex argRegister = lir.backendData.callingConvention.paramsInRegs[i];
 							argRegister.physRegSize = typeToRegSize(type, context);
+							argBuffer[i] = argRegister;
 							ExtraInstrArgs extra = {addUsers : false, result : argRegister};
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, arg);
 						}
@@ -230,7 +237,7 @@ struct IrToLir
 							FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 							builder.emitInstrPreheader(IrInstrPreheader_call(calleeIndex));
 							InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
-								lirBlockIndex, callExtra, physArgs[0..numPhysRegs]);
+								lirBlockIndex, callExtra, argBuffer[0..numPhysRegs]);
 							recordIndex(instrIndex, callInstr.instruction);
 
 							{	// Deallocate stack after call
@@ -254,6 +261,16 @@ struct IrToLir
 					case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;
 					case IrOpcode.sub: emitLirInstr!LirAmd64Instr_sub; break;
 					case IrOpcode.mul: emitLirInstr!LirAmd64Instr_imul; break;
+					case IrOpcode.shl:
+						IrIndex rightArg = amd64_reg.cx;
+						rightArg.physRegSize = ArgType.BYTE;
+						movIntoReg(instrHeader.args[1], rightArg);
+						IrIndex type = ir.getVirtReg(instrHeader.result).type;
+						ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
+						InstrWithResult res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, instrHeader.args[0], rightArg);
+						recordIndex(instrIndex, res.instruction);
+						recordIndex(instrHeader.result, res.result);
+						break;
 					case IrOpcode.load: emitLirInstr!LirAmd64Instr_load; break;
 					case IrOpcode.store: emitLirInstr!LirAmd64Instr_store; break;
 					case IrOpcode.conv:

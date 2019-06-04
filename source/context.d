@@ -380,10 +380,17 @@ struct CompilationContext
 		return lastMod;
 	}
 
-	ModuleDeclNode* findModule(const Identifier modId)
+	ModuleDeclNode* findModule(string moduleId)
+	{
+		Identifier id = idMap.find(moduleId);
+		if (id == uint.max) return null;
+		return findModule(id);
+	}
+
+	ModuleDeclNode* findModule(const Identifier moduleId)
 	{
 		foreach(ref SourceFileInfo file; files.data)
-			if (file.mod.id == modId)
+			if (file.mod.id == moduleId)
 				return file.mod;
 		return null;
 	}
@@ -396,6 +403,27 @@ struct CompilationContext
 	FunctionDeclNode* getFunction(FunctionIndex index)
 	{
 		return files[index.moduleIndex.fileIndex].mod.functions[index.functionIndex];
+	}
+
+	FunctionDeclNode* findFunction(string moduleName, string funcName)
+	{
+		ModuleDeclNode* m = findModule(moduleName);
+		if (m is null) return null;
+
+		return file.mod.findFunction(funcName, &this);
+	}
+
+	/// Will throw exception if function exists in more than 1 module
+	void findFunction(string funcName, void delegate(ModuleDeclNode*, FunctionDeclNode*) onFunction)
+	{
+		Identifier funcId = idMap.find(funcName);
+		if (funcId == uint.max) return null;
+
+		foreach (ref SourceFileInfo file; files.data)
+		{
+			FunctionDeclNode* fun = file.mod.findFunction(funcId);
+			if (fun !is null) onFunction(file.mod, fun);
+		}
 	}
 
 	void printMemSize()

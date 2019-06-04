@@ -796,6 +796,9 @@ struct AstToIr
 				case MINUS:
 					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
 					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result; break;
+				case SHL:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					b.irValue = builder.emitInstr!IrInstr_shl(currentBlock, extra, leftValue, rightValue).result; break;
 
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}

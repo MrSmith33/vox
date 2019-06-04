@@ -773,7 +773,7 @@ struct SemanticStaticTypes
 				break;
 
 			// arithmetic op int float
-			case MINUS, PLUS, DIV, MULT:
+			case MINUS, PLUS, DIV, MULT, SHL:
 				if (autoconvToCommonType(b.left, b.right))
 					resRype = b.left.type;
 				else

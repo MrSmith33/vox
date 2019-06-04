@@ -515,7 +515,7 @@ struct LinearScan
 	// Replaces all uses of virtual registers with physical registers or stack slots
 	void fixInstructionArgs()
 	{
-		// fix uses first, because we may copy arg to result below
+		// fix uses first, because we may copy arg to definition below
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
 		{
 			IrIndex reg = live.getRegFor(vregIndex, lir);
@@ -543,7 +543,7 @@ struct LinearScan
 			}
 		}
 
-		// fix results
+		// fix definitions
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
 		{
 			IrIndex reg = live.getRegFor(vregIndex, lir);
@@ -558,34 +558,32 @@ struct LinearScan
 					if (instrInfo.isTwoOperandForm)
 					{
 						// Rewrite
-						// r1 = r2 op r3
+						// input: r1 = r2 op r3
 						// as
-						// r1 = r2
-						// r1 = r1 op r3
+						// output: r1 = r2
+						// output: r1 = r1 op r3
 						//
 						// if r2 != r3
 						// {
-						//     if r1 == r2 {
-						//         "r1 = op r1 r3"
-						//     } else if r1 == r3 {
-						//         if (op.isCommutative) { // "r1 = op r3 r2"
-						//             "r1 = op r1 r2"
-						//         } else {
-						//             // error
-						//             // this case is handled inside liveness analysis
-						//             //
+						//     if r1 == r2 { // input: r1 = r1 op r3
+						//         output: r1 = r1 op r3
+						//     } else if r1 == r3 { // input: "r1 = r2 op r1"
+						//         if (op.isCommutative) { // input: "r1 = r3 op r2"
+						//             output: "r1 = r1 op r2"
+						//         } else { // input: "r1 = r2 op r1"
+						//             // error, we cannot swap r2 with r1 here to get r2 = r1 op r2
+						//             // because r2 may be used later
+						//             // this case is handled inside liveness analysis pass
 						//         }
-						//     }
-						//     else
-						//     {
-						//         "mov r1 r2"
-						//         "r1 = op r1 r3"
+						//     } else { // input: "r1 = r2 op r3"
+						//         output: "mov r1 r2"
+						//         output: "r1 = op r1 r3"
 						//     }
 						// }
-						// else // "r1 = op r2 r2"
+						// else // input: "r1 = op r2 r2"
 						// {
-						//     "mov r1 r2" if r1 != r2
-						//     "r1 = op r1 r1"
+						//     output: "mov r1 r2" if r1 != r2
+						//     output: "r1 = op r1 r1"
 						// }
 
 						IrIndex r1 = instrHeader.result;
@@ -698,6 +696,8 @@ struct LinearScan
 				lir.getBlock(newBlock).predecessors.append(&builder, predIndex);
 				lir.getBlock(newBlock).successors.append(&builder, succIndex);
 				lir.getBlock(newBlock).isSealed = true;
+				builder.emitInstr!LirAmd64Instr_jmp(newBlock);
+				lir.getBlock(newBlock).isFinished = true;
 				return newBlock;
 			}
 
@@ -726,8 +726,6 @@ struct LinearScan
 			if (isCriticalEdge(predBlock, succBlock))
 			{
 				movesTarget = splitCriticalEdge();
-				builder.emitInstr!LirAmd64Instr_jmp(movesTarget);
-				lir.getBlock(movesTarget).isFinished = true;
 			}
 			else if (predBlock.successors.length > 1)
 			{

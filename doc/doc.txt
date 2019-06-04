@@ -340,6 +340,29 @@ REX prefix | Opcode|reg |
    mf means bit field MF (2 bits, bit index 1, memory format); used only with x87 FPU instructions coded with second floating-point instruction format. DA/0 FIADD
 
 
+AMD64 Architecture Programmer’s Manual Volume 3 General Purpose and System Instructions p. 55
+
+Opcode Syntax
+In addition to the notation shown above in “Mnemonic Syntax” on page 52, the following notation
+indicates the size and type of operands in the syntax of an instruction opcode:
+  • /digit — Indicates that the ModRM byte specifies only one register or memory (r/m) operand. The
+    digit is specified by the ModRM reg field and is used as an instruction-opcode extension. Valid
+    digit values range from 0 to 7.
+  • /r — Indicates that the ModRM byte specifies both a register operand and a reg/mem (register or
+    memory) operand.
+  • cb, cw, cd, cp — Specifies a code-offset value and possibly a new code-segment register value. The
+    value following the opcode is either one byte (cb), two bytes (cw), four bytes (cd), or six bytes (cp).
+  • ib, iw, id, iq — Specifies an immediate-operand value. The opcode determines whether the value is
+    signed or unsigned. The value following the opcode, ModRM, or SIB byte is either one byte (ib),
+    two bytes (iw), or four bytes (id). Word and doubleword values start with the low-order byte.
+  • +rb, +rw, +rd, +rq — Specifies a register value that is added to the hexadecimal byte on the left,
+    forming a one-byte opcode. The result is an instruction that operates on the register specified by
+    the register code. Valid register-code values are shown in Table 2-2.
+  • m64 — Specifies a quadword (64-bit) operand in memory.
+  • +i — Specifies an x87 floating-point stack operand, ST(i). The value is used only with x87 floating
+    point instructions. It is added to the hexadecimal byte on the left, forming a one-byte opcode. Valid
+    values range from 0 to 7.
+
 
 # OS
 

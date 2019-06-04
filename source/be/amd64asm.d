@@ -550,6 +550,11 @@ struct CodeGen_x86_64
 	void imuld(Register dst, MemAddress src1, Imm32 src2){ encoder.putInstrBinaryRegMemImm!(ArgType.DWORD)(OP1(0x69), dst, src1, src2); }
 	void imulq(Register dst, MemAddress src1, Imm32 src2){ encoder.putInstrBinaryRegMemImm!(ArgType.QWORD)(OP1(0x69), dst, src1, src2); }
 
+	// shl dst, cl
+	void shlb(Register dst) { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP1(0xD2), 4, dst); }
+	void shlw(Register dst) { encoder.putInstrUnaryReg1!(ArgType.WORD)(OP1(0xD3), 4, dst); }
+	void shld(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(0xD3), 4, dst); }
+	void shlq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xD3), 4, dst); }
 
 	void movzx_btow(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP2(0x0F, 0xB6), dst, src); }
 	void movzx_btod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xB6), dst, src); }
