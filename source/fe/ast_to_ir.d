@@ -730,6 +730,8 @@ struct AstToIr
 			case BinOp.LESS_EQUAL:    return a <= b;
 			case BinOp.PLUS:          return a +  b;
 			case BinOp.MINUS:         return a -  b;
+			// TODO: we need type info here, to correctly mask the shift size
+			case BinOp.SHL:           return a << b;
 			default:
 				context.internal_error("Opcode `%s` is not implemented", op);
 				assert(false);
