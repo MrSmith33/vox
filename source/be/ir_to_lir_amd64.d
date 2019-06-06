@@ -261,13 +261,25 @@ struct IrToLir
 					case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;
 					case IrOpcode.sub: emitLirInstr!LirAmd64Instr_sub; break;
 					case IrOpcode.mul: emitLirInstr!LirAmd64Instr_imul; break;
-					case IrOpcode.shl:
+					case IrOpcode.shl, IrOpcode.shr, IrOpcode.sar:
 						IrIndex rightArg = amd64_reg.cx;
 						rightArg.physRegSize = ArgType.BYTE;
 						movIntoReg(instrHeader.args[1], rightArg);
 						IrIndex type = ir.getVirtReg(instrHeader.result).type;
 						ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
-						InstrWithResult res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, instrHeader.args[0], rightArg);
+						InstrWithResult res;
+						switch(instrHeader.op) {
+							case IrOpcode.shl:
+								res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, instrHeader.args[0], rightArg);
+								break;
+							case IrOpcode.shr:
+								res = builder.emitInstr!LirAmd64Instr_shr(lirBlockIndex, extra, instrHeader.args[0], rightArg);
+								break;
+							case IrOpcode.sar:
+								res = builder.emitInstr!LirAmd64Instr_sar(lirBlockIndex, extra, instrHeader.args[0], rightArg);
+								break;
+							default: assert(false);
+						}
 						recordIndex(instrIndex, res.instruction);
 						recordIndex(instrHeader.result, res.result);
 						break;

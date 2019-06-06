@@ -801,6 +801,12 @@ struct AstToIr
 				case SHL:
 					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
 					b.irValue = builder.emitInstr!IrInstr_shl(currentBlock, extra, leftValue, rightValue).result; break;
+				case SHR:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					b.irValue = builder.emitInstr!IrInstr_shr(currentBlock, extra, leftValue, rightValue).result; break;
+				case ASHR:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					b.irValue = builder.emitInstr!IrInstr_sar(currentBlock, extra, leftValue, rightValue).result; break;
 
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}

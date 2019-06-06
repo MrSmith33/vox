@@ -575,17 +575,34 @@ immutable test38 = q{--- test38
 
 @TestInfo(&tester39)
 immutable test39 = q{--- test39
-	// Test left shift
+	// Test shifts
 	i32 shl(i32 a, i32 b) {
 		return a << b;
+	}
+	i32 shr(i32 a, i32 b) {
+		return a >> b;
+	}
+	i32 sar(i32 a, i32 b) {
+		return a >>> b;
 	}
 };
 void tester39(ref TestContext ctx) {
 	auto shl = ctx.getFunctionPtr!(int, int, int)("shl");
+	auto shr = ctx.getFunctionPtr!(int, int, int)("shr");
+	auto sar = ctx.getFunctionPtr!(int, int, int)("sar");
 	foreach(i; 0..33) {
 		int res = shl(1, i);
 		assert(res == 1 << i);
 		//writefln("1 << %s == %b", i, res);
+
+		enum HIGH_BIT = 1 << 31;
+		int res2 = shr(HIGH_BIT, i);
+		//writefln("%032b >> %s == %032b", HIGH_BIT, i, res2);
+		assert(res2 == HIGH_BIT >> i);
+
+		int res3 = sar(HIGH_BIT, i);
+		assert(res3 == HIGH_BIT >>> i);
+		//writefln("%032b >>> %s == %032b", HIGH_BIT, i, res3);
 	}
 }
 

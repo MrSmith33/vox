@@ -556,6 +556,18 @@ struct CodeGen_x86_64
 	void shld(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(0xD3), 4, dst); }
 	void shlq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xD3), 4, dst); }
 
+	// shr dst, cl
+	void shrb(Register dst) { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP1(0xD2), 5, dst); }
+	void shrw(Register dst) { encoder.putInstrUnaryReg1!(ArgType.WORD)(OP1(0xD3), 5, dst); }
+	void shrd(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(0xD3), 5, dst); }
+	void shrq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xD3), 5, dst); }
+
+	// sar dst, cl
+	void sarb(Register dst) { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP1(0xD2), 7, dst); }
+	void sarw(Register dst) { encoder.putInstrUnaryReg1!(ArgType.WORD)(OP1(0xD3), 7, dst); }
+	void sard(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(0xD3), 7, dst); }
+	void sarq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xD3), 7, dst); }
+
 	void movzx_btow(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP2(0x0F, 0xB6), dst, src); }
 	void movzx_btod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xB6), dst, src); }
 	void movzx_btoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xB6), dst, src); }

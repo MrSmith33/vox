@@ -930,8 +930,8 @@ ExpressionNode* leftBinaryOp(ref Parser p, Token token, int rbp, ExpressionNode*
 		case OR: op = BinOp.BITWISE_OR; break;                    // |
 		case PERCENT: op = BinOp.REMAINDER; break;                // %
 		case LESS_LESS: op = BinOp.SHL; break;                    // <<
-		case MORE_MORE: op = BinOp.SHR; break;                    // >>
-		case MORE_MORE_MORE: op = BinOp.ASHR; break;              // >>>
+		case MORE_MORE: op = BinOp.ASHR; break;                   // >>
+		case MORE_MORE_MORE: op = BinOp.SHR; break;               // >>>
 		case MINUS: op = BinOp.MINUS; break;                      // -
 		case PLUS: op = BinOp.PLUS; break;                        // +
 		case SLASH: op = BinOp.DIV; break;                        // /

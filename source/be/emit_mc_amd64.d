@@ -318,6 +318,14 @@ struct CodeEmitter
 						Register dst = indexToRegister(instrHeader.args[0]);
 						gen.shl(dst, cast(ArgType)instrHeader.args[0].physRegSize);
 						break;
+					case Amd64Opcode.shr:
+						Register dst = indexToRegister(instrHeader.args[0]);
+						gen.shr(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						break;
+					case Amd64Opcode.sar:
+						Register dst = indexToRegister(instrHeader.args[0]);
+						gen.sar(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						break;
 					case Amd64Opcode.call:
 						FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 						FunctionDeclNode* callee = context.getFunction(calleeIndex);
