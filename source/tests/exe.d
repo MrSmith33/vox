@@ -5,16 +5,19 @@ module tests.exe;
 
 import tester;
 
-Test[] exeTests() { return [test28, test29]; }
+Test[] exeTests() { return collectTests!(tests.exe)(); }
 
-immutable input28 = q{--- test28
+@TestInfo()
+immutable exe1 = q{--- exe1
+	// Test exe creation. no static data, no imports
 	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
 		return 0;
 	}
 };
-auto test28 = Test("exe no static data, no imports", input28);
 
-immutable input29 = q{--- test29
+
+@TestInfo(null, null, [DllModule("kernel32", ["WriteConsoleA", "GetStdHandle"])])
+immutable exe2 = q{--- exe2
 	u8 WriteConsoleA(
 		void* hConsoleOutput,
 		u8* lpBuffer,
@@ -31,6 +34,3 @@ immutable input29 = q{--- test29
 		return 0;
 	}
 };
-auto test29 = Test("exe", input29, null, null, null,
-	[DllModule("kernel32", ["WriteConsoleA", "GetStdHandle"])]);
-

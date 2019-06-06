@@ -426,6 +426,59 @@ struct CompilationContext
 		}
 	}
 
+	auto getFunctionPtr(ResultType, ParamTypes...)(string funcName)
+	{
+		FunctionDeclNode* funDecl;
+		foreach (ref SourceFileInfo file; files.data)
+		{
+			FunctionDeclNode* fun = file.mod.findFunction(funcName, &this);
+			if (fun !is null)
+			{
+				if (funDecl !is null)
+					internal_error("Test function %s is found in 2 places", funcName);
+				funDecl = fun;
+			}
+		}
+
+		if (funDecl is null)
+			internal_error("Test function `%s` is not found in %s modules", funcName, files.length);
+
+		return getFunctionPtr!(ResultType, ParamTypes)(funDecl);
+	}
+
+	auto getFunctionPtr(ResultType, ParamTypes...)(string moduleName, string funcName)
+	{
+		FunctionDeclNode* func = findFunction(moduleName, funcName);
+		if (func is null) return null;
+		return getFunctionPtr!(ResultType, ParamTypes)(func);
+	}
+
+	auto getFunctionPtr(ResultType, ParamTypes...)(FunctionDeclNode* funcDecl)
+	{
+		// TODO: check that passed D types match retrieved function signature
+		//assert(funcDecl.returnType.isSameTypeAs!ParamType, "wrong result type");
+
+		auto numRequestedParams = ParamTypes.length;
+		auto numParams = funcDecl.parameters.length;
+
+		Identifier funcId = funcDecl.backendData.name;
+
+		if (numRequestedParams < numParams)
+			internal_error("Insufficient parameters to '%s', got %s, expected %s",
+				idString(funcId), numRequestedParams, numParams);
+		else if (numRequestedParams > numParams)
+			internal_error("Too much parameters to '%s', got %s, expected %s",
+				idString(funcId), numRequestedParams, numParams);
+
+		//foreach(i, ParamType; ParamTypes)
+		//{
+		//	assert(funcDecl.parameters[i].type.isSameTypeAs!ParamType, "wrong param type");
+		//}
+
+		alias JittedFunc = extern(C) ResultType function(ParamTypes);
+		return cast(JittedFunc)funcDecl.backendData.funcPtr;
+	}
+
 	void printMemSize()
 	{
 		writefln("Arena sizes:       used  committed  reserved");

@@ -17,8 +17,8 @@ void runBench(string[] args)
 	bool outputTsv;
 	foreach(arg; args) if (arg == "--tsv") outputTsv = true;
 
-	Test curTest = test21;
-	//Test curTest = test31;
+	Test curTest = makeTest!(tests.passing.test21);
+	//Test curTest = makeTest!(tests.passing.test31);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -65,7 +65,7 @@ immutable input = q{--- fibonacci
 
 void benchSpeed()
 {
-	auto test = Test("Fib", input, "fibonacci");
+	auto test = Test("Fib", input);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -78,33 +78,14 @@ void benchSpeed()
 	driver.addHar("test.har", strippedHar);
 	driver.compile();
 	driver.markCodeAsExecutable();
-	FunctionDeclNode* funDecl;
-	foreach (ref SourceFileInfo file; driver.context.files.data)
-	{
-		FunctionDeclNode* fun = file.mod.findFunction(test.funcName, &driver.context);
-		if (fun !is null)
-		{
-			if (funDecl !is null)
-				driver.context.internal_error("test function %s is found in 2 places", test.funcName);
-			funDecl = fun;
-		}
-	}
 
-	if (funDecl is null)
-		driver.context.internal_error("test function `%s` is not found in %s modules", test.funcName, driver.context.files.length);
-
-	alias FuncT = extern(C) int function(int);
-	FuncT f;
-	if (funDecl != null && funDecl.backendData.funcPtr != null)
-	{
-		f = cast(FuncT)funDecl.backendData.funcPtr;
-	}
+	auto fib = driver.context.getFunctionPtr!(int, int)("fibonacci");
 
 	auto time1 = currTime;
 	int res;
 	foreach (iteration; 0..100_000)
 	{
-		res = f(1073741824);
+		res = fib(1073741824);
 	}
 	auto time2 = currTime;
 

@@ -14,6 +14,8 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
+	Test test = makeTest!(tests.passing.test39);
+
 	Driver driver;
 	driver.initialize(jitPasses);
 	driver.context.buildType = BuildType.jit;
@@ -43,7 +45,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test39);
+	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test);
 
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -139,11 +141,47 @@ struct Test
 {
 	string testName;
 	string harData;
-	string funcName;
-	alias Tester = void function(void* funcPtr);
-	void function(void* funcPtr) tester;
+	void function(ref TestContext) tester;
 	HostSymbol[] hostSymbols;
 	DllModule[] dllModules;
+}
+
+Test makeTest(alias test)() {
+	static assert (__traits(getAttributes, test).length > 0);
+	TestInfo info = __traits(getAttributes, test)[0];
+	return Test(__traits(identifier, test), test, info.tester, info.hostSymbols, info.dllModules);
+}
+
+Test[] collectTests(alias M)()
+{
+	Test[] tests;
+	import std.traits;
+	foreach(m; __traits(allMembers, M))
+	{
+		alias member = __traits(getMember, M, m);
+		static if (is(typeof(member) == immutable string)) {
+			static if (__traits(getAttributes, member).length > 0) {
+				tests ~= makeTest!member;
+			}
+		}
+	}
+	return tests;
+}
+
+struct TestInfo
+{
+	void function(ref TestContext) tester;
+	HostSymbol[] hostSymbols;
+	DllModule[] dllModules;
+}
+
+struct TestContext
+{
+	Driver* driver;
+
+	auto getFunctionPtr(ResultType, ParamTypes...)(string funcName) {
+		return driver.context.getFunctionPtr!(ResultType, ParamTypes)(funcName);
+	}
 }
 
 /// Global test output for jit tests
@@ -245,28 +283,12 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 	final switch (driver.context.buildType)
 	{
 		case BuildType.jit:
-			if (curTest.funcName is null) return TestResult.success;
-
-			FunctionDeclNode* funDecl;
-			foreach (ref SourceFileInfo file; driver.context.files.data)
-			{
-				FunctionDeclNode* fun = file.mod.findFunction(curTest.funcName, &driver.context);
-				if (fun !is null)
-				{
-					if (funDecl !is null)
-						driver.context.internal_error("test function %s is found in 2 places", curTest.funcName);
-					funDecl = fun;
-				}
+			if (curTest.tester) {
+				auto testContext = TestContext(&driver);
+				if (dumpTest) writefln("Running: %s tester", curTest.testName);
+				curTest.tester(testContext);
 			}
 
-			if (funDecl is null)
-				driver.context.internal_error("test function `%s` is not found in %s modules", curTest.funcName, driver.context.files.length);
-
-			if (funDecl != null && funDecl.backendData.funcPtr != null)
-			{
-				if (dumpTest) writefln("Running: %s %s()", curTest.testName, curTest.funcName);
-				curTest.tester(funDecl.backendData.funcPtr);
-			}
 			break;
 
 		case BuildType.exe:
