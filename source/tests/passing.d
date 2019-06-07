@@ -625,3 +625,52 @@ void tester40(ref TestContext ctx) {
 	//writefln("%b", res);
 	assert(res == (1 << 1) + (4 << 1) + (1 << 3) + (1 << 31) + (1 << 31));
 }
+
+@TestInfo(&tester41)
+immutable test41 = q{--- test41
+	// Test division, multiplication, remainder
+	i32 idiv(i32 a, i32 b) {
+		return a / b;
+	}
+	u32 div(u32 a, u32 b) {
+		return a / b;
+	}
+	i32 imul(i32 a, i32 b) {
+		return a * b;
+	}
+	u32 mul(u32 a, u32 b) {
+		return a * b;
+	}
+	i32 irem(i32 a, i32 b) {
+		return a % b;
+	}
+	u32 rem(u32 a, u32 b) {
+		return a % b;
+	}
+};
+void tester41(ref TestContext ctx) {
+	auto div = ctx.getFunctionPtr!(int, int, int)("div");
+	auto idiv = ctx.getFunctionPtr!(int, int, int)("idiv");
+	auto rem = ctx.getFunctionPtr!(int, int, int)("rem");
+	auto irem = ctx.getFunctionPtr!(int, int, int)("irem");
+	auto mul = ctx.getFunctionPtr!(int, int, int)("mul");
+	auto imul = ctx.getFunctionPtr!(int, int, int)("imul");
+	int resDiv = div(10, 5);
+	//writefln("10 / 5 == %s", resDiv);
+	assert(resDiv == 10 / 5);
+	int resIdiv = idiv(-10, 5);
+	//writefln("-10 / 5 == %s %s", resIdiv, -10 / 5);
+	assert(resIdiv == -10 / 5);
+	int resRem = rem(10, 4);
+	//writefln("10 %% 4 == %s", resRem);
+	assert(resRem == 10 % 4);
+	int resIrem = irem(-10, 4);
+	//writefln("-10 %% 4 == %s %s", resIrem, -10 % 4);
+	assert(resIrem == -10 % 4);
+	int resMul = mul(-10, 4);
+	//writefln("-10 * 4 == %s %s", resMul, -10 * 4);
+	assert(resMul == -10 * 4);
+	int resImul = imul(-10, 4);
+	//writefln("-10 * 4 == %s %s", resImul, -10 * 4);
+	assert(resImul == -10 * 4);
+}

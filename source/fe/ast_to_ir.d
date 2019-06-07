@@ -363,8 +363,6 @@ struct AstToIr
 		}
 		else
 		{
-			// allocate new variable
-			v.irValue = builder.newIrVarIndex();
 			if (v.isParameter)
 			{
 				// register parameter input
@@ -372,12 +370,21 @@ struct AstToIr
 				IrIndex type = valueType;
 				if (v.type.isPassByPtr)
 					type = context.types.appendPtr(type);
+				IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(type), context);
 
-				ExtraInstrArgs extra = {type : type};
+				// allocate new variable
+				v.irValue = builder.newIrVarIndex(type);
+
+				ExtraInstrArgs extra = {type : type, argSize : argSize};
 				InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
 				ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
 
-				store(currentBlock, v.irValue, param.result, typeToIrArgSize(type, context));
+				store(currentBlock, v.irValue, param.result, argSize);
+			}
+			else
+			{
+				// allocate new variable
+				v.irValue = builder.newIrVarIndex(v.type.genIrType(context));
 			}
 		}
 
@@ -764,7 +771,8 @@ struct AstToIr
 			long value = calcBinOp(b.op, arg0, arg1);
 			static if (forValue)
 			{
-				b.irValue = context.constants.add(value, IsSigned.yes); // TODO proper signedness handling
+				IrArgSize argSize = max(b.type.argSize(context), argSizeIntSigned(value));
+				b.irValue = context.constants.add(value, IsSigned.yes, argSize); // TODO proper signedness handling
 			}
 			else
 			{
@@ -793,19 +801,40 @@ struct AstToIr
 
 				// TODO
 				case PLUS:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_add(currentBlock, extra, leftValue, rightValue).result; break;
 				case MINUS:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result; break;
+				case DIV:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
+					if (b.left.type.isUnsigned)
+						b.irValue = builder.emitInstr!IrInstr_div(currentBlock, extra, leftValue, rightValue).result;
+					else
+						b.irValue = builder.emitInstr!IrInstr_idiv(currentBlock, extra, leftValue, rightValue).result;
+					break;
+				case REMAINDER:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
+					if (b.left.type.isUnsigned)
+						b.irValue = builder.emitInstr!IrInstr_rem(currentBlock, extra, leftValue, rightValue).result;
+					else
+						b.irValue = builder.emitInstr!IrInstr_irem(currentBlock, extra, leftValue, rightValue).result;
+					break;
+				case MULT:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
+					if (b.left.type.isUnsigned)
+						b.irValue = builder.emitInstr!IrInstr_mul(currentBlock, extra, leftValue, rightValue).result;
+					else
+						b.irValue = builder.emitInstr!IrInstr_imul(currentBlock, extra, leftValue, rightValue).result;
+					break;
 				case SHL:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_shl(currentBlock, extra, leftValue, rightValue).result; break;
 				case SHR:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_shr(currentBlock, extra, leftValue, rightValue).result; break;
 				case ASHR:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context)};
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_sar(currentBlock, extra, leftValue, rightValue).result; break;
 
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;

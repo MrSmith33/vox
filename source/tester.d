@@ -14,7 +14,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(tests.passing.test39);
+	Test test = makeTest!(tests.passing.test34);
 
 	Driver driver;
 	driver.initialize(jitPasses);

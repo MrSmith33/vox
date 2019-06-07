@@ -264,7 +264,7 @@ struct CodeEmitter
 				switch(cast(Amd64Opcode)instrHeader.op)
 				{
 					case Amd64Opcode.mov:
-						genMove(instrHeader.result, instrHeader.args[0], ArgType.QWORD);
+						genMove(instrHeader.result, instrHeader.args[0]);
 						break;
 					case Amd64Opcode.xchg:
 						context.assertf(instrHeader.args[0].isPhysReg, "%s is not phys reg", instrHeader.args[0]);
@@ -312,6 +312,22 @@ struct CodeEmitter
 							default:
 								context.internal_error("imul %s not implemented", instrHeader.args);
 								assert(false);
+						}
+						break;
+					case Amd64Opcode.div:
+						Register divisor = indexToRegister(instrHeader.args[2]);
+						gen.div(divisor, cast(ArgType)instrHeader.args[2].physRegSize);
+						break;
+					case Amd64Opcode.idiv:
+						Register divisor = indexToRegister(instrHeader.args[2]);
+						gen.idiv(divisor, cast(ArgType)instrHeader.args[2].physRegSize);
+						break;
+					case Amd64Opcode.divsx:
+						final switch(instrHeader.argSize) {
+							case IrArgSize.size8: gen.movsx_btow(Register.AX, Register.AX); break;
+							case IrArgSize.size16: gen.cwd; break;
+							case IrArgSize.size32: gen.cdq; break;
+							case IrArgSize.size64: gen.cqo; break;
 						}
 						break;
 					case Amd64Opcode.shl:
@@ -481,9 +497,10 @@ struct CodeEmitter
 	}
 
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
-	void genMove(IrIndex dst, IrIndex src, ArgType argType)
+	void genMove(IrIndex dst, IrIndex src)
 	{
-		version(emit_mc_print) writefln("genMove %s %s", dst, src);
+		ArgType argType = cast(ArgType)dst.physRegSize;
+		version(emit_mc_print) writefln("genMove %s %s %s", dst, src, argType);
 		MoveType moveType = calcMoveType(dst.kind, src.kind);
 
 		if (moveType != MoveType.invalid && dst == src) return;
@@ -498,9 +515,9 @@ struct CodeEmitter
 				assert(false);
 
 			case MoveType.const_to_reg:
-				int con = context.constants.get(src).i32;
-				version(emit_mc_print) writefln("  move.%s reg:%s, con:%s", argType, dstReg, con);
-				if (con == 0) // xor
+				IrConstant con = context.constants.get(src);
+				version(emit_mc_print) writefln("  move.%s reg:%s, con:%s", argType, dstReg, con.i64);
+				if (con.i64 == 0) // xor
 				{
 					AsmArg argDst = {reg : dstReg};
 					AsmArg argSrc = {reg : dstReg};
@@ -508,7 +525,19 @@ struct CodeEmitter
 					gen.encodeRegular(argDst, argSrc, param);
 				}
 				else
-					gen.mov(dstReg, Imm32(con), argType);
+				{
+					final switch(argType) {
+						case ArgType.BYTE: gen.movb(dstReg, Imm8(con.i8)); break;
+						case ArgType.WORD: gen.movw(dstReg, Imm16(con.i16)); break;
+						case ArgType.DWORD: gen.movd(dstReg, Imm32(con.i32)); break;
+						case ArgType.QWORD:
+							if (src.constantSize == IrArgSize.size64)
+								gen.movq(dstReg, Imm64(con.i64));
+							else
+								gen.movd(dstReg, Imm32(con.i32));
+							break;
+					}
+				}
 				break;
 
 			// copy address of global into register
@@ -530,6 +559,7 @@ struct CodeEmitter
 
 			case MoveType.reg_to_reg:
 				version(emit_mc_print) writefln("  move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
+				if (dstReg == srcReg) return; // skip if same register
 				gen.mov(dstReg, srcReg, argType);
 				break;
 

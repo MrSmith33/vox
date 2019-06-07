@@ -104,11 +104,11 @@ struct IrToLir
 			// Add phis with old args
 			foreach(IrIndex phiIndex, ref IrPhi phi; irBlock.phis(ir))
 			{
-				IrIndex newPhi = builder.addPhi(lirBlock);
+				IrVirtualRegister* oldReg = &ir.getVirtReg(phi.result);
+				IrIndex newPhi = builder.addPhi(lirBlock, oldReg.type);
 				recordIndex(phiIndex, newPhi);
 				IrIndex newResult = lir.getPhi(newPhi).result;
 				IrVirtualRegister* newReg = &lir.getVirtReg(newResult);
-				IrVirtualRegister* oldReg = &ir.getVirtReg(phi.result);
 				newReg.type = oldReg.type;
 
 				recordIndex(phi.result, lir.getPhi(newPhi).result);
@@ -159,8 +159,8 @@ struct IrToLir
 					}
 				}
 
-				void movIntoReg(IrIndex from, IrIndex to) {
-					ExtraInstrArgs extra = { addUsers : false, result : to };
+				void makeMov(IrIndex to, IrIndex from, IrArgSize argSize) {
+					ExtraInstrArgs extra = { addUsers : false, result : to, argSize : argSize };
 					builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, from);
 				}
 
@@ -174,7 +174,7 @@ struct IrToLir
 						IrIndex paramReg = lir.backendData.callingConvention.paramsInRegs[paramIndex];
 						IrIndex type = ir.getVirtReg(instrHeader.result).type;
 						paramReg.physRegSize = typeToRegSize(type, context);
-						ExtraInstrArgs extra = {type : type};
+						ExtraInstrArgs extra = { type : type, argSize : instrHeader.argSize };
 						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, paramReg);
 						recordIndex(instrIndex, instr.instruction);
 						recordIndex(instrHeader.result, instr.result);
@@ -260,11 +260,62 @@ struct IrToLir
 
 					case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;
 					case IrOpcode.sub: emitLirInstr!LirAmd64Instr_sub; break;
-					case IrOpcode.mul: emitLirInstr!LirAmd64Instr_imul; break;
+					case IrOpcode.mul, IrOpcode.imul: emitLirInstr!LirAmd64Instr_imul; break;
+
+					case IrOpcode.div, IrOpcode.idiv, IrOpcode.rem, IrOpcode.irem:
+						//   v1 = div v2, v3
+						// is converted into:
+						//   mov ax, v2
+						//   zx/sx dx:ax
+						//   ax = div dx:ax, v3
+						//   mov v1, ax
+
+						bool isSigned = instrHeader.op == IrOpcode.idiv || instrHeader.op == IrOpcode.irem;
+						bool isDivision = instrHeader.op == IrOpcode.div || instrHeader.op == IrOpcode.idiv;
+
+						// copy bottom half of dividend
+						IrIndex dividendBottom = amd64_reg.ax;
+						dividendBottom.physRegSize = instrHeader.argSize;
+						makeMov(dividendBottom, instrHeader.args[0], instrHeader.argSize);
+
+						IrIndex dividendTop = amd64_reg.dx;
+						dividendTop.physRegSize = instrHeader.argSize;
+
+						if (isSigned) {
+							// sign-extend top half of dividend
+							ExtraInstrArgs extra2 = { argSize : instrHeader.argSize };
+							builder.emitInstr!LirAmd64Instr_divsx(lirBlockIndex, extra2);
+						} else {
+							// zero top half of dividend
+							makeMov(dividendTop, context.constants.add(0, IsSigned.no), IrArgSize.size32);
+						}
+
+						// choose result
+						IrIndex resultReg = dividendTop; // remainder
+						if (isDivision) {
+							resultReg = dividendBottom; // dividend
+						}
+
+						// divide
+						ExtraInstrArgs extra3 = { addUsers : false, argSize : instrHeader.argSize, result : resultReg };
+						InstrWithResult res;
+						if (isSigned)
+							res = builder.emitInstr!LirAmd64Instr_idiv(lirBlockIndex, extra3, dividendTop, dividendBottom, instrHeader.args[1]);
+						else
+							res = builder.emitInstr!LirAmd64Instr_div(lirBlockIndex, extra3, dividendTop, dividendBottom, instrHeader.args[1]);
+						recordIndex(instrIndex, res.instruction);
+
+						// copy result (quotient)
+						ExtraInstrArgs extra4 = { addUsers : false, argSize : instrHeader.argSize, type : ir.getVirtReg(instrHeader.result).type };
+						InstrWithResult movResult = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra4, resultReg);
+						recordIndex(instrHeader.result, movResult.result);
+						break;
+
 					case IrOpcode.shl, IrOpcode.shr, IrOpcode.sar:
+						// TODO: check if right operand is constant and pass it as is. Recognize constants in codegen
 						IrIndex rightArg = amd64_reg.cx;
 						rightArg.physRegSize = ArgType.BYTE;
-						movIntoReg(instrHeader.args[1], rightArg);
+						makeMov(rightArg, instrHeader.args[1], instrHeader.argSize);
 						IrIndex type = ir.getVirtReg(instrHeader.result).type;
 						ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
 						InstrWithResult res;

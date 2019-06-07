@@ -104,6 +104,10 @@ struct TypeNode {
 				typeName(context));
 	}
 
+	bool isUnsigned() {
+		return astType == AstType.type_basic && basicTypeNode.isUnsigned;
+	}
+
 	bool isImplemented() {
 		switch (astType)
 		{

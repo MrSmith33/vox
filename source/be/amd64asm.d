@@ -497,7 +497,11 @@ struct CodeGen_x86_64
 	mixin unaryInstr_RM!("neg", [0xF6,0xF7], 3);
 	mixin unaryInstr_RM!("mul", [0xF6,0xF7], 4);
 	mixin unaryInstr_RM!("div", [0xF6,0xF7], 6);
+	mixin unaryInstr_RM!("idiv", [0xF6,0xF7], 7);
 	mixin unaryInstr_RM!("not", [0xF6,0xF7], 2);
+	mixin unaryInstr_RM!("shl", [0xD2,0xD3], 4); // shl dst, cl
+	mixin unaryInstr_RM!("shr", [0xD2,0xD3], 5); // shr dst, cl
+	mixin unaryInstr_RM!("sar", [0xD2,0xD3], 7); // sar dst, cl
 
 	void nop() { encoder.putInstrNullary(OP1(0x90)); }
 
@@ -550,29 +554,21 @@ struct CodeGen_x86_64
 	void imuld(Register dst, MemAddress src1, Imm32 src2){ encoder.putInstrBinaryRegMemImm!(ArgType.DWORD)(OP1(0x69), dst, src1, src2); }
 	void imulq(Register dst, MemAddress src1, Imm32 src2){ encoder.putInstrBinaryRegMemImm!(ArgType.QWORD)(OP1(0x69), dst, src1, src2); }
 
-	// shl dst, cl
-	void shlb(Register dst) { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP1(0xD2), 4, dst); }
-	void shlw(Register dst) { encoder.putInstrUnaryReg1!(ArgType.WORD)(OP1(0xD3), 4, dst); }
-	void shld(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(0xD3), 4, dst); }
-	void shlq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xD3), 4, dst); }
-
-	// shr dst, cl
-	void shrb(Register dst) { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP1(0xD2), 5, dst); }
-	void shrw(Register dst) { encoder.putInstrUnaryReg1!(ArgType.WORD)(OP1(0xD3), 5, dst); }
-	void shrd(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(0xD3), 5, dst); }
-	void shrq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xD3), 5, dst); }
-
-	// sar dst, cl
-	void sarb(Register dst) { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP1(0xD2), 7, dst); }
-	void sarw(Register dst) { encoder.putInstrUnaryReg1!(ArgType.WORD)(OP1(0xD3), 7, dst); }
-	void sard(Register dst) { encoder.putInstrUnaryReg1!(ArgType.DWORD)(OP1(0xD3), 7, dst); }
-	void sarq(Register dst) { encoder.putInstrUnaryReg1!(ArgType.QWORD)(OP1(0xD3), 7, dst); }
-
 	void movzx_btow(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP2(0x0F, 0xB6), dst, src); }
 	void movzx_btod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xB6), dst, src); }
 	void movzx_btoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xB6), dst, src); }
 	void movzx_wtod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xB7), dst, src); }
 	void movzx_wtoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xB7), dst, src); }
+
+	void movsx_btow(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP2(0x0F, 0xBE), dst, src); }
+	void movsx_btod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xBE), dst, src); }
+	void movsx_btoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xBE), dst, src); }
+	void movsx_wtod(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP2(0x0F, 0xBF), dst, src); }
+	void movsx_wtoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xBF), dst, src); }
+
+	void cwd() { encoder.putInstrNullary(OP2(0x66, 0x99)); }
+	void cdq() { encoder.putInstrNullary(OP1(0x99)); }
+	void cqo() { encoder.putInstrNullary(OP2(0x48, 0x99)); }
 
 	void popw(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.WORD )(0x58, dst); }
 	void popq(Register dst)   { encoder.putInstrUnaryReg2!(ArgType.DWORD)(0x58, dst); } // use DWORD to omit REX.W

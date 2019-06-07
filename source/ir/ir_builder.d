@@ -80,7 +80,7 @@ struct IrBuilder
 
 		if (!context.types.isVoid(ir.backendData.returnType))
 		{
-			returnVar = newIrVarIndex();
+			returnVar = newIrVarIndex(ir.backendData.returnType);
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
 			emitInstr!IrInstr_return_value(ir.exitBasicBlock, retValue);
 		}
@@ -223,8 +223,14 @@ struct IrBuilder
 
 	/// Allocates new variable id for this function. It should be bound to a variable
 	/// and used with writeVariable, readVariable functions
-	IrIndex newIrVarIndex() {
-		return IrIndex(nextIrVarIndex++, IrValueKind.variable);
+	IrIndex newIrVarIndex(IrIndex varType) {
+		IrIndex varId = context.appendTemp!IrVariableInfo;
+		context.getTemp!IrVariableInfo(varId).type = varType;
+		return varId;
+	}
+
+	private IrIndex getVarType(IrIndex varId) {
+		return context.getTemp!IrVariableInfo(varId).type;
 	}
 
 	// Algorithm 1: Implementation of local value numbering
@@ -408,10 +414,7 @@ struct IrBuilder
 				}
 				else
 				{
-					instrHeader.result = addVirtualRegister(instr);
-					IrVirtualRegister* virtReg = &ir.getVirtReg(instrHeader.result);
-					assert(extra.type.isType, format("Invalid extra.type (%s)", extra.type));
-					virtReg.type = extra.type;
+					instrHeader.result = addVirtualRegister(instr, extra.type);
 				}
 
 				return InstrWithResult(instr, instrHeader.result);
@@ -657,7 +660,7 @@ struct IrBuilder
 
 	/// Creates virtual register to represent result of phi/instruction
 	/// `definition` is phi/instruction that produces a value
-	IrIndex addVirtualRegister(IrIndex definition)
+	IrIndex addVirtualRegister(IrIndex definition, IrIndex type)
 	{
 		uint seqIndex = ir.numVirtualRegisters;
 		++ir.numVirtualRegisters;
@@ -666,6 +669,8 @@ struct IrBuilder
 		IrVirtualRegister* virtReg = &ir.getVirtReg(virtRegIndex);
 		virtReg.definition = definition;
 		virtReg.seqIndex = seqIndex;
+		assert(type.isType, format("Invalid type (%s)", type));
+		virtReg.type = type;
 		if (ir.lastVirtualReg.isDefined) {
 			ir.getVirtReg(ir.lastVirtualReg).nextVirtReg = virtRegIndex;
 		} else {
@@ -695,10 +700,10 @@ struct IrBuilder
 	}
 
 	// Adds phi function to specified block
-	IrIndex addPhi(IrIndex blockIndex)
+	IrIndex addPhi(IrIndex blockIndex, IrIndex type)
 	{
 		IrIndex phiIndex = append!IrPhi;
-		IrIndex vreg = addVirtualRegister(phiIndex);
+		IrIndex vreg = addVirtualRegister(phiIndex, type);
 		ir.get!IrPhi(phiIndex) = IrPhi(blockIndex, vreg);
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		if (block.firstPhi.isDefined) {
@@ -737,7 +742,7 @@ struct IrBuilder
 		IrIndex value;
 		if (!ir.getBlock(blockIndex).isSealed) {
 			// Incomplete CFG
-			IrIndex phiIndex = addPhi(blockIndex);
+			IrIndex phiIndex = addPhi(blockIndex, getVarType(variable));
 			value = ir.get!IrPhi(phiIndex).result;
 			bool wasCreated;
 			IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
@@ -760,7 +765,7 @@ struct IrBuilder
 			else
 			{
 				// Break potential cycles with operandless phi
-				IrIndex phiIndex = addPhi(blockIndex);
+				IrIndex phiIndex = addPhi(blockIndex, getVarType(variable));
 				value = ir.get!IrPhi(phiIndex).result;
 				writeVariable(blockIndex, variable, value);
 				value = addPhiOperands(blockIndex, variable, phiIndex);

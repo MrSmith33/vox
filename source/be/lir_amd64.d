@@ -171,15 +171,17 @@ private alias _ii = InstrInfo;
 enum Amd64Opcode : ushort {
 	@_ii(0,2,IFLG.isTwoOperandForm) add,
 	@_ii(0,2,IFLG.isTwoOperandForm) sub,
+	@_ii(0,2,IFLG.isTwoOperandForm) mul,
 	@_ii(0,2,IFLG.isTwoOperandForm) imul,
+	@_ii(0,2) div,
+	@_ii(0,2) idiv,
+	@_ii(0,0) divsx,
 	@_ii(0,2,IFLG.isTwoOperandForm) or,
 	@_ii(0,2,IFLG.isTwoOperandForm) and,
 	@_ii(0,2,IFLG.isTwoOperandForm) xor,
 	@_ii(0,1,IFLG.isTwoOperandForm) shl,
 	@_ii(0,1,IFLG.isTwoOperandForm) shr,
 	@_ii(0,1,IFLG.isTwoOperandForm) sar,
-	@_ii() mul,
-	@_ii() div,
 	@_ii() lea,
 
 	@_ii(0,1,IFLG.isMov) mov, // rr, ri
@@ -223,7 +225,11 @@ InstrInfo[] gatherInfos()
 
 alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult | IFLG.isTwoOperandForm); // arg0 = arg0 + arg1
 alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult | IFLG.isTwoOperandForm); // arg0 = arg0 - arg1
+alias LirAmd64Instr_mul = IrGenericInstr!(Amd64Opcode.mul, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
 alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
+alias LirAmd64Instr_div = IrGenericInstr!(Amd64Opcode.div, 3, IFLG.hasResult); // (dx, ax) = div (dx, ax) / v2
+alias LirAmd64Instr_idiv = IrGenericInstr!(Amd64Opcode.idiv, 3, IFLG.hasResult); // (dx, ax) = div (dx, ax) / v2
+alias LirAmd64Instr_divsx = IrGenericInstr!(Amd64Opcode.divsx, 0); // CWD/CDQ/CQO
 alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
 alias LirAmd64Instr_shl = IrGenericInstr!(Amd64Opcode.shl, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
 alias LirAmd64Instr_shr = IrGenericInstr!(Amd64Opcode.shr, 2, IFLG.hasResult | IFLG.isTwoOperandForm);

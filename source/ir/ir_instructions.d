@@ -93,7 +93,14 @@ enum IrOpcode : ushort
 
 	add,
 	sub,
+
 	mul,
+	imul,
+	div,
+	idiv,
+	rem,
+	irem,
+
 	shl,
 	shr,
 	sar,
@@ -187,12 +194,17 @@ alias IrInstr_return_void = IrGenericInstr!(IrOpcode.block_exit_return_void, 0);
 alias IrInstr_store = IrGenericInstr!(IrOpcode.store, 2);
 alias IrInstr_load = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
 alias IrInstr_set_binary_cond = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
-alias IrInstr_add = IrGenericInstr!(IrOpcode.add, 2, IFLG.hasResult);
-alias IrInstr_sub = IrGenericInstr!(IrOpcode.sub, 2, IFLG.hasResult);
-alias IrInstr_mul = IrGenericInstr!(IrOpcode.mul, 2, IFLG.hasResult);
-alias IrInstr_shl = IrGenericInstr!(IrOpcode.shl, 2, IFLG.hasResult);
-alias IrInstr_shr = IrGenericInstr!(IrOpcode.shr, 2, IFLG.hasResult);
-alias IrInstr_sar = IrGenericInstr!(IrOpcode.sar, 2, IFLG.hasResult);
+alias IrInstr_add =  IrGenericInstr!(IrOpcode.add,  2, IFLG.hasResult);
+alias IrInstr_sub =  IrGenericInstr!(IrOpcode.sub,  2, IFLG.hasResult);
+alias IrInstr_mul =  IrGenericInstr!(IrOpcode.mul,  2, IFLG.hasResult); // unsigned multiply
+alias IrInstr_imul = IrGenericInstr!(IrOpcode.imul, 2, IFLG.hasResult); // signed multiply
+alias IrInstr_div =  IrGenericInstr!(IrOpcode.div,  2, IFLG.hasResult); // unsigned division
+alias IrInstr_idiv = IrGenericInstr!(IrOpcode.idiv, 2, IFLG.hasResult); // signed division
+alias IrInstr_rem =  IrGenericInstr!(IrOpcode.rem,  2, IFLG.hasResult); // unsigned remainder
+alias IrInstr_irem = IrGenericInstr!(IrOpcode.irem, 2, IFLG.hasResult); // signed remainder
+alias IrInstr_shl =  IrGenericInstr!(IrOpcode.shl,  2, IFLG.hasResult);
+alias IrInstr_shr =  IrGenericInstr!(IrOpcode.shr,  2, IFLG.hasResult);
+alias IrInstr_sar =  IrGenericInstr!(IrOpcode.sar,  2, IFLG.hasResult);
 alias IrInstr_conv = IrGenericInstr!(IrOpcode.conv, 1, IFLG.hasResult);
 alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
 alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);

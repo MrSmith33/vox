@@ -610,7 +610,7 @@ struct LinearScan
 							else // r1 = op r2 r3; all different
 							{
 								// mov r1 r2
-								ExtraInstrArgs extra = {addUsers : false, result : r1};
+								ExtraInstrArgs extra = {addUsers : false, result : r1, argSize : IrArgSize.size64 };
 								InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
 								builder.insertBeforeInstr(vreg.definition, instr.instruction);
 								// r1 = op r1 r3
@@ -621,7 +621,7 @@ struct LinearScan
 						{
 							if (r1 != r2)
 							{
-								ExtraInstrArgs extra = {addUsers : false, result : r1};
+								ExtraInstrArgs extra = {addUsers : false, result : r1, argSize : IrArgSize.size64};
 								InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
 								builder.insertBeforeInstr(vreg.definition, instr.instruction);
 							}
@@ -879,7 +879,7 @@ struct MoveSolver
 
 			if (to.numReads == 0)
 			{
-				ExtraInstrArgs extra = {result : toIndex};
+				ExtraInstrArgs extra = { result : toIndex, argSize : IrArgSize.size64 };
 				InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, fromIndex);
 				builder.insertBeforeLastInstr(blockIndex, instr.instruction);
 
