@@ -674,3 +674,50 @@ void tester41(ref TestContext ctx) {
 	//writefln("-10 * 4 == %s %s", resImul, -10 * 4);
 	assert(resImul == -10 * 4);
 }
+
+@TestInfo(&tester42)
+immutable test42 = q{--- test42
+	// Test bit-wise negation, unary minus, xor, or, and operators
+	i32 not(i32 a) {
+		return ~a;
+	}
+	i32 neg(i32 a) {
+		return -a;
+	}
+	i32 xor(i32 a, i32 b) {
+		return a ^ b;
+	}
+	i32 or(i32 a, i32 b) {
+		return a | b;
+	}
+	i32 and(i32 a, i32 b) {
+		return a & b;
+	}
+};
+void tester42(ref TestContext ctx) {
+	auto not = ctx.getFunctionPtr!(int, int)("not");
+	auto neg = ctx.getFunctionPtr!(int, int)("neg");
+	auto xor = ctx.getFunctionPtr!(int, int, int)("xor");
+	auto or  = ctx.getFunctionPtr!(int, int, int)("or");
+	auto and = ctx.getFunctionPtr!(int, int, int)("and");
+
+	int res_not = not(0b01);
+	//writefln("~0b01 == %02b", res_not);
+	assert(res_not == ~0b01);
+
+	int res_neg = neg(1);
+	//writefln("-1 == %s", res_neg);
+	assert(res_neg == -1);
+
+	int res_xor = xor(0b0011, 0b0101);
+	//writefln("0b0011 ^ 0b0101 == %04b", res_xor);
+	assert(res_xor == (0b0011 ^ 0b0101));
+
+	int res_or = or(0b0011, 0b0101);
+	//writefln("0b0011 | 0b0101 == %04b", res_or);
+	assert(res_or == (0b0011 | 0b0101));
+
+	int res_and = and(0b0011, 0b0101);
+	//writefln("0b0011 & 0b0101 == %04b", res_and);
+	assert(res_and == (0b0011 & 0b0101));
+}

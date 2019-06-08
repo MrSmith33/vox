@@ -297,6 +297,15 @@ struct CodeEmitter
 							stackPointerExtraOffset += context.constants.get(instrHeader.args[1]).i64;
 						}
 						break;
+					case Amd64Opcode.xor:
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.xor, cast(ArgType)instrHeader.args[0].physRegSize);
+						break;
+					case Amd64Opcode.or:
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.or, cast(ArgType)instrHeader.args[0].physRegSize);
+						break;
+					case Amd64Opcode.and:
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.and, cast(ArgType)instrHeader.args[0].physRegSize);
+						break;
 					case Amd64Opcode.imul:
 						context.assertf(instrHeader.args[0].isPhysReg, "%s is not phys reg", instrHeader.args[0]);
 						Register dst = indexToRegister(instrHeader.args[0]);
@@ -341,6 +350,14 @@ struct CodeEmitter
 					case Amd64Opcode.sar:
 						Register dst = indexToRegister(instrHeader.args[0]);
 						gen.sar(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						break;
+					case Amd64Opcode.not:
+						Register dst = indexToRegister(instrHeader.args[0]);
+						gen.not(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						break;
+					case Amd64Opcode.neg:
+						Register dst = indexToRegister(instrHeader.args[0]);
+						gen.neg(dst, cast(ArgType)instrHeader.args[0].physRegSize);
 						break;
 					case Amd64Opcode.call:
 						FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;

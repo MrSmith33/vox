@@ -773,7 +773,7 @@ struct SemanticStaticTypes
 				break;
 
 			// arithmetic op int float
-			case MINUS, PLUS, DIV, REMAINDER, MULT, SHL, SHR, ASHR:
+			case MINUS, PLUS, DIV, REMAINDER, MULT, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
 				if (autoconvToCommonType(b.left, b.right))
 					resRype = b.left.type;
 				else
@@ -796,17 +796,6 @@ struct SemanticStaticTypes
 				resRype = context.basicTypeNodes(BasicType.t_void);
 				break;
 		/*
-			// arithmetic op int
-			case AND: goto case;
-			case ASHR: goto case;
-			case OR: goto case;
-			case PERCENT: goto case;
-			case SHL: goto case;
-			case SHR: goto case;
-			case XOR:
-				resRype = context.basicTypeNodes(BasicType.t_i32);
-				break;
-
 			// arithmetic opEqual
 			case AND_EQUAL: goto case;
 			case ASHR_EQUAL: goto case;
@@ -1024,6 +1013,12 @@ struct SemanticStaticTypes
 						context.internal_error("Cannot take address of %s", u.child.astType);
 				}
 				u.type = cast(TypeNode*) context.appendAst!PtrTypeNode(u.child.loc, u.child.type);
+				break;
+			case bitwiseNot:
+				u.type = u.child.type;
+				break;
+			case minus:
+				u.type = u.child.type;
 				break;
 			default:
 				context.internal_error("un op %s not implemented", u.op);

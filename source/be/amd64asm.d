@@ -494,11 +494,11 @@ struct CodeGen_x86_64
 
 	mixin unaryInstr_RM!("inc", [0xFE,0xFF], 0);
 	mixin unaryInstr_RM!("dec", [0xFE,0xFF], 1);
-	mixin unaryInstr_RM!("neg", [0xF6,0xF7], 3);
+	mixin unaryInstr_RM!("neg", [0xF6,0xF7], 3); // Two's Complement Negation
 	mixin unaryInstr_RM!("mul", [0xF6,0xF7], 4);
 	mixin unaryInstr_RM!("div", [0xF6,0xF7], 6);
 	mixin unaryInstr_RM!("idiv", [0xF6,0xF7], 7);
-	mixin unaryInstr_RM!("not", [0xF6,0xF7], 2);
+	mixin unaryInstr_RM!("not", [0xF6,0xF7], 2); // One's Complement Negation
 	mixin unaryInstr_RM!("shl", [0xD2,0xD3], 4); // shl dst, cl
 	mixin unaryInstr_RM!("shr", [0xD2,0xD3], 5); // shr dst, cl
 	mixin unaryInstr_RM!("sar", [0xD2,0xD3], 7); // sar dst, cl

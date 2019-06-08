@@ -31,7 +31,7 @@ struct InstrInfo
 	bool hasVariadicArgs() { return (flags & IFLG.hasVariadicArgs) != 0; }
 	bool hasVariadicResult() { return (flags & IFLG.hasVariadicResult) != 0; }
 	bool hasCondition() { return (flags & IFLG.hasCondition) != 0; }
-	bool isTwoOperandForm() { return (flags & IFLG.isTwoOperandForm) != 0; }
+	bool isResultInDst() { return (flags & IFLG.isResultInDst) != 0; }
 	bool isCommutative() { return (flags & IFLG.isCommutative) != 0; }
 	bool isCall() { return (flags & IFLG.isCall) != 0; }
 
@@ -55,9 +55,9 @@ enum IrInstrFlags : uint {
 	hasVariadicResult = 1 << 8,
 	/// If set IrInstrHeader.cond is used
 	hasCondition = 1 << 9,
-	/// If set machine instruction requires a = a op b form
-	/// while IR instruction has a = b op c form
-	isTwoOperandForm = 1 << 10,
+	/// If set machine instruction requires a = a op b, or a = op a form
+	/// while IR instruction has a = b op c, or a = op b form
+	isResultInDst = 1 << 10,
 	/// If order of arguments doesn't change the result
 	isCommutative = 1 << 11,
 	isCall = 1 << 12,
@@ -89,10 +89,16 @@ enum IrOpcode : ushort
 	load,
 	get_element_ptr,
 
+	not, // One's Complement Negation
+	neg, // Two's Complement Negation
+
 	conv,
 
 	add,
 	sub,
+	and,
+	or,
+	xor,
 
 	mul,
 	imul,
@@ -193,6 +199,8 @@ alias IrInstr_return_value = IrGenericInstr!(IrOpcode.block_exit_return_value, 1
 alias IrInstr_return_void = IrGenericInstr!(IrOpcode.block_exit_return_void, 0);
 alias IrInstr_store = IrGenericInstr!(IrOpcode.store, 2);
 alias IrInstr_load = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
+alias IrInstr_not = IrGenericInstr!(IrOpcode.not, 1, IFLG.hasResult); // one's complement negation
+alias IrInstr_neg = IrGenericInstr!(IrOpcode.neg, 1, IFLG.hasResult); // two's complement negation
 alias IrInstr_set_binary_cond = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
 alias IrInstr_add =  IrGenericInstr!(IrOpcode.add,  2, IFLG.hasResult);
 alias IrInstr_sub =  IrGenericInstr!(IrOpcode.sub,  2, IFLG.hasResult);
@@ -205,6 +213,9 @@ alias IrInstr_irem = IrGenericInstr!(IrOpcode.irem, 2, IFLG.hasResult); // signe
 alias IrInstr_shl =  IrGenericInstr!(IrOpcode.shl,  2, IFLG.hasResult);
 alias IrInstr_shr =  IrGenericInstr!(IrOpcode.shr,  2, IFLG.hasResult);
 alias IrInstr_sar =  IrGenericInstr!(IrOpcode.sar,  2, IFLG.hasResult);
+alias IrInstr_and =  IrGenericInstr!(IrOpcode.and,  2, IFLG.hasResult);
+alias IrInstr_or =  IrGenericInstr!(IrOpcode.or,  2, IFLG.hasResult);
+alias IrInstr_xor =  IrGenericInstr!(IrOpcode.xor,  2, IFLG.hasResult);
 alias IrInstr_conv = IrGenericInstr!(IrOpcode.conv, 1, IFLG.hasResult);
 alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
 alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);

@@ -169,19 +169,19 @@ __gshared CallConv win64_call_conv = CallConv
 private alias _ii = InstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	@_ii(0,2,IFLG.isTwoOperandForm) add,
-	@_ii(0,2,IFLG.isTwoOperandForm) sub,
-	@_ii(0,2,IFLG.isTwoOperandForm) mul,
-	@_ii(0,2,IFLG.isTwoOperandForm) imul,
+	@_ii(0,2,IFLG.isResultInDst) add,
+	@_ii(0,2,IFLG.isResultInDst) sub,
+	@_ii(0,2,IFLG.isResultInDst) mul,
+	@_ii(0,2,IFLG.isResultInDst) imul,
 	@_ii(0,2) div,
 	@_ii(0,2) idiv,
 	@_ii(0,0) divsx,
-	@_ii(0,2,IFLG.isTwoOperandForm) or,
-	@_ii(0,2,IFLG.isTwoOperandForm) and,
-	@_ii(0,2,IFLG.isTwoOperandForm) xor,
-	@_ii(0,1,IFLG.isTwoOperandForm) shl,
-	@_ii(0,1,IFLG.isTwoOperandForm) shr,
-	@_ii(0,1,IFLG.isTwoOperandForm) sar,
+	@_ii(0,2,IFLG.isResultInDst) or,
+	@_ii(0,2,IFLG.isResultInDst) and,
+	@_ii(0,2,IFLG.isResultInDst) xor,
+	@_ii(0,1,IFLG.isResultInDst) shl,
+	@_ii(0,1,IFLG.isResultInDst) shr,
+	@_ii(0,1,IFLG.isResultInDst) sar,
 	@_ii() lea,
 
 	@_ii(0,1,IFLG.isMov) mov, // rr, ri
@@ -191,8 +191,8 @@ enum Amd64Opcode : ushort {
 	@_ii() movzx,
 	@_ii() xchg,
 
-	@_ii() not,
-	@_ii() neg,
+	@_ii(0,1,IFLG.isResultInDst) not,
+	@_ii(0,1,IFLG.isResultInDst) neg,
 
 	@_ii() cmp,
 	@_ii() test,
@@ -223,17 +223,19 @@ InstrInfo[] gatherInfos()
 	return res;
 }
 
-alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult | IFLG.isTwoOperandForm); // arg0 = arg0 + arg1
-alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult | IFLG.isTwoOperandForm); // arg0 = arg0 - arg1
-alias LirAmd64Instr_mul = IrGenericInstr!(Amd64Opcode.mul, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
-alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
+alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult | IFLG.isResultInDst); // arg0 = arg0 + arg1
+alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult | IFLG.isResultInDst); // arg0 = arg0 - arg1
+alias LirAmd64Instr_mul = IrGenericInstr!(Amd64Opcode.mul, 2, IFLG.hasResult | IFLG.isResultInDst);
+alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult | IFLG.isResultInDst);
 alias LirAmd64Instr_div = IrGenericInstr!(Amd64Opcode.div, 3, IFLG.hasResult); // (dx, ax) = div (dx, ax) / v2
 alias LirAmd64Instr_idiv = IrGenericInstr!(Amd64Opcode.idiv, 3, IFLG.hasResult); // (dx, ax) = div (dx, ax) / v2
 alias LirAmd64Instr_divsx = IrGenericInstr!(Amd64Opcode.divsx, 0); // CWD/CDQ/CQO
-alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
-alias LirAmd64Instr_shl = IrGenericInstr!(Amd64Opcode.shl, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
-alias LirAmd64Instr_shr = IrGenericInstr!(Amd64Opcode.shr, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
-alias LirAmd64Instr_sar = IrGenericInstr!(Amd64Opcode.sar, 2, IFLG.hasResult | IFLG.isTwoOperandForm);
+alias LirAmd64Instr_and = IrGenericInstr!(Amd64Opcode.and, 2, IFLG.hasResult | IFLG.isResultInDst);
+alias LirAmd64Instr_or  = IrGenericInstr!(Amd64Opcode.or,  2, IFLG.hasResult | IFLG.isResultInDst);
+alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult | IFLG.isResultInDst);
+alias LirAmd64Instr_shl = IrGenericInstr!(Amd64Opcode.shl, 2, IFLG.hasResult | IFLG.isResultInDst);
+alias LirAmd64Instr_shr = IrGenericInstr!(Amd64Opcode.shr, 2, IFLG.hasResult | IFLG.isResultInDst);
+alias LirAmd64Instr_sar = IrGenericInstr!(Amd64Opcode.sar, 2, IFLG.hasResult | IFLG.isResultInDst);
 alias LirAmd64Instr_cmp = IrGenericInstr!(Amd64Opcode.cmp, 2);
 alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1);
 alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0);
@@ -246,6 +248,8 @@ alias LirAmd64Instr_mov = IrGenericInstr!(Amd64Opcode.mov, 1, IFLG.hasResult); /
 alias LirAmd64Instr_load = IrGenericInstr!(Amd64Opcode.load, 1, IFLG.hasResult); // mov rm
 alias LirAmd64Instr_store = IrGenericInstr!(Amd64Opcode.store, 2); // mov mr/mi
 alias LirAmd64Instr_xchg = IrGenericInstr!(Amd64Opcode.xchg, 2); // xchg mr/mr
+alias LirAmd64Instr_not = IrGenericInstr!(Amd64Opcode.not, 1, IFLG.hasResult | IFLG.isResultInDst);
+alias LirAmd64Instr_neg = IrGenericInstr!(Amd64Opcode.neg, 1, IFLG.hasResult | IFLG.isResultInDst);
 // call layout
 // - header
 // - result (if callee is non-void)

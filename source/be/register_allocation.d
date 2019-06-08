@@ -555,7 +555,7 @@ struct LinearScan
 					InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
 
 					// Insert mov for instructions requiring two-operand form (like x86 xor)
-					if (instrInfo.isTwoOperandForm)
+					if (instrInfo.isResultInDst && instrHeader.numArgs == 2)
 					{
 						// Rewrite
 						// input: r1 = r2 op r3
@@ -631,6 +631,26 @@ struct LinearScan
 						// validation
 						context.assertf(instrHeader.result == instrHeader.args[0],
 							"two-operand form not ensured res(%s) != arg0(%s)", instrHeader.result, instrHeader.args[0]);
+					}
+
+					if (instrInfo.isResultInDst && instrHeader.numArgs == 1)
+					{
+						// Rewrite
+						// input: r1 = op r2
+						// as
+						// output: r1 = r2
+						// output: r1 = op r1
+						//
+						IrIndex r1 = instrHeader.result;
+						IrIndex r2 = instrHeader.args[0];
+
+						if (r1 != r2)
+						{
+							ExtraInstrArgs extra = {addUsers : false, result : r1, argSize : IrArgSize.size64};
+							InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
+							builder.insertBeforeInstr(vreg.definition, instr.instruction);
+						}
+						instrHeader.args[0] = r1;
 					}
 
 					break;

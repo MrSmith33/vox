@@ -802,10 +802,12 @@ struct AstToIr
 				// TODO
 				case PLUS:
 					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_add(currentBlock, extra, leftValue, rightValue).result; break;
+					b.irValue = builder.emitInstr!IrInstr_add(currentBlock, extra, leftValue, rightValue).result;
+					break;
 				case MINUS:
 					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result; break;
+					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result;
+					break;
 				case DIV:
 					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
 					if (b.left.type.isUnsigned)
@@ -829,13 +831,28 @@ struct AstToIr
 					break;
 				case SHL:
 					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_shl(currentBlock, extra, leftValue, rightValue).result; break;
+					b.irValue = builder.emitInstr!IrInstr_shl(currentBlock, extra, leftValue, rightValue).result;
+					break;
 				case SHR:
 					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_shr(currentBlock, extra, leftValue, rightValue).result; break;
+					b.irValue = builder.emitInstr!IrInstr_shr(currentBlock, extra, leftValue, rightValue).result;
+					break;
 				case ASHR:
 					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_sar(currentBlock, extra, leftValue, rightValue).result; break;
+					b.irValue = builder.emitInstr!IrInstr_sar(currentBlock, extra, leftValue, rightValue).result;
+					break;
+				case XOR:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
+					b.irValue = builder.emitInstr!IrInstr_xor(currentBlock, extra, leftValue, rightValue).result;
+					break;
+				case BITWISE_AND:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
+					b.irValue = builder.emitInstr!IrInstr_and(currentBlock, extra, leftValue, rightValue).result;
+					break;
+				case BITWISE_OR:
+					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
+					b.irValue = builder.emitInstr!IrInstr_or(currentBlock, extra, leftValue, rightValue).result;
+					break;
 
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}
@@ -939,6 +956,16 @@ struct AstToIr
 				u.child.flags |= AstFlags.isLvalue;
 				visitExprValue(u.child, currentBlock, nextStmt);
 				u.irValue = u.child.irValue;
+				break;
+			case bitwiseNot:
+				visitExprValue(u.child, currentBlock, nextStmt);
+				ExtraInstrArgs extra = {type : u.type.genIrType(context), argSize : u.type.argSize(context) };
+				u.irValue = builder.emitInstr!IrInstr_not(currentBlock, extra, u.child.irValue).result;
+				break;
+			case minus:
+				visitExprValue(u.child, currentBlock, nextStmt);
+				ExtraInstrArgs extra = {type : u.type.genIrType(context), argSize : u.type.argSize(context) };
+				u.irValue = builder.emitInstr!IrInstr_neg(currentBlock, extra, u.child.irValue).result;
 				break;
 			default:
 				context.internal_error(u.loc, "un op %s not implemented", u.op);

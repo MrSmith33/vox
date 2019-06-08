@@ -256,7 +256,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			// extension
 			// if op requires two operand form and op is not commutative and arg0 != arg1
 			//   we need to extend range of right-most opd by 1
-			if (instrInfo.isTwoOperandForm && !instrInfo.isCommutative)
+			if (instrInfo.isResultInDst && instrHeader.numArgs == 2 && !instrInfo.isCommutative)
 			{
 				IrIndex arg0 = instrHeader.args[0];
 				IrIndex arg1 = instrHeader.args[1];
