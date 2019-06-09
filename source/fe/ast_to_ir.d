@@ -800,60 +800,15 @@ struct AstToIr
 					break;
 
 				// TODO
-				case PLUS:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_add(currentBlock, extra, leftValue, rightValue).result;
+				case PLUS, MINUS, DIV, REMAINDER, MULT, SHL, SHR, ASHR, XOR, BITWISE_AND, BITWISE_OR:
+					ExtraInstrArgs extra = {
+						opcode : binOpcode(b.op, b.left.type.isUnsigned, b.loc),
+						type : b.type.genIrType(context),
+						argSize : b.type.argSize(context)
+					};
+					b.irValue = builder.emitInstr!IrInstr_any_binary_instr(
+						currentBlock, extra, leftValue, rightValue).result;
 					break;
-				case MINUS:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case DIV:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					if (b.left.type.isUnsigned)
-						b.irValue = builder.emitInstr!IrInstr_div(currentBlock, extra, leftValue, rightValue).result;
-					else
-						b.irValue = builder.emitInstr!IrInstr_idiv(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case REMAINDER:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					if (b.left.type.isUnsigned)
-						b.irValue = builder.emitInstr!IrInstr_rem(currentBlock, extra, leftValue, rightValue).result;
-					else
-						b.irValue = builder.emitInstr!IrInstr_irem(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case MULT:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					if (b.left.type.isUnsigned)
-						b.irValue = builder.emitInstr!IrInstr_mul(currentBlock, extra, leftValue, rightValue).result;
-					else
-						b.irValue = builder.emitInstr!IrInstr_imul(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case SHL:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_shl(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case SHR:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_shr(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case ASHR:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_sar(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case XOR:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_xor(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case BITWISE_AND:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_and(currentBlock, extra, leftValue, rightValue).result;
-					break;
-				case BITWISE_OR:
-					ExtraInstrArgs extra = {type : b.type.genIrType(context), argSize : b.type.argSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_or(currentBlock, extra, leftValue, rightValue).result;
-					break;
-
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}
 			builder.addJumpToLabel(currentBlock, trueExit);
@@ -919,6 +874,32 @@ struct AstToIr
 		}
 	}
 
+	IrOpcode binOpcode(BinOp binop, bool isUnsigned, TokenIndex loc) {
+		switch(binop) with(BinOp)
+		{
+			case PLUS, PLUS_ASSIGN: return IrOpcode.add;
+			case MINUS, MINUS_ASSIGN: return IrOpcode.sub;
+			case DIV, DIV_ASSIGN:
+				if (isUnsigned) return IrOpcode.div;
+				else return IrOpcode.idiv;
+			case REMAINDER, REMAINDER_ASSIGN:
+				if (isUnsigned) return IrOpcode.rem;
+				else return IrOpcode.irem;
+			case MULT, MULT_ASSIGN:
+				if (isUnsigned) return IrOpcode.mul;
+				else return IrOpcode.imul;
+			case SHL, SHL_ASSIGN: return IrOpcode.shl;
+			case SHR, SHR_ASSIGN: return IrOpcode.shr;
+			case ASHR, ASHR_ASSIGN: return IrOpcode.sar;
+			case XOR, XOR_ASSIGN: return IrOpcode.xor;
+			case BITWISE_AND, BITWISE_AND_ASSIGN: return IrOpcode.and;
+			case BITWISE_OR, BITWISE_OR_ASSIGN: return IrOpcode.or;
+			default:
+				context.internal_error(loc, "assign op %s not implemented", binop);
+				assert(false);
+		}
+	}
+
 	void visitExprValue(BinaryExprNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		version(CfgGenPrint) writefln("[CFG GEN] beg BINOP VAL cur %s next %s", currentBlock, nextStmt);
@@ -936,7 +917,21 @@ struct AstToIr
 			visitExprValue(b.right, currentBlock, afterRight);
 			currentBlock = afterRight.blockIndex;
 
-			assign(b.left.type, b.left.irValue, b.right, currentBlock);
+			if (b.op == BinOp.ASSIGN) {
+				assign(b.left.type, b.left.irValue, b.right, currentBlock);
+			}
+			else
+			{
+				IrIndex leftRvalue = load(currentBlock, b.left.irValue);
+				ExtraInstrArgs extra = {
+					opcode : binOpcode(b.op, b.left.type.isUnsigned, b.loc),
+					type : b.right.type.genIrType(context),
+					argSize : b.right.type.argSize(context)
+				};
+				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
+					currentBlock, extra, leftRvalue, b.right.irValue).result;
+				store(currentBlock, b.left.irValue, opResult, b.right.type.argSize(context));
+			}
 
 			builder.addJumpToLabel(currentBlock, nextStmt);
 		}

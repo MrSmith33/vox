@@ -202,6 +202,7 @@ alias IrInstr_load = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
 alias IrInstr_not = IrGenericInstr!(IrOpcode.not, 1, IFLG.hasResult); // one's complement negation
 alias IrInstr_neg = IrGenericInstr!(IrOpcode.neg, 1, IFLG.hasResult); // two's complement negation
 alias IrInstr_set_binary_cond = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
+
 alias IrInstr_add =  IrGenericInstr!(IrOpcode.add,  2, IFLG.hasResult);
 alias IrInstr_sub =  IrGenericInstr!(IrOpcode.sub,  2, IFLG.hasResult);
 alias IrInstr_mul =  IrGenericInstr!(IrOpcode.mul,  2, IFLG.hasResult); // unsigned multiply
@@ -214,8 +215,12 @@ alias IrInstr_shl =  IrGenericInstr!(IrOpcode.shl,  2, IFLG.hasResult);
 alias IrInstr_shr =  IrGenericInstr!(IrOpcode.shr,  2, IFLG.hasResult);
 alias IrInstr_sar =  IrGenericInstr!(IrOpcode.sar,  2, IFLG.hasResult);
 alias IrInstr_and =  IrGenericInstr!(IrOpcode.and,  2, IFLG.hasResult);
-alias IrInstr_or =  IrGenericInstr!(IrOpcode.or,  2, IFLG.hasResult);
+alias IrInstr_or  =  IrGenericInstr!(IrOpcode.or,   2, IFLG.hasResult);
 alias IrInstr_xor =  IrGenericInstr!(IrOpcode.xor,  2, IFLG.hasResult);
+
+// used when generating any of above binary instructions. Actual opcode is passed via ExtraInstrArgs.opcode
+alias IrInstr_any_binary_instr =  IrGenericInstr!(IrOpcode.invalid,  2, IFLG.hasResult);
+
 alias IrInstr_conv = IrGenericInstr!(IrOpcode.conv, 1, IFLG.hasResult);
 alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
 alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);

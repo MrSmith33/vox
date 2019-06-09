@@ -721,3 +721,44 @@ void tester42(ref TestContext ctx) {
 	//writefln("0b0011 & 0b0101 == %04b", res_and);
 	assert(res_and == (0b0011 & 0b0101));
 }
+
+@TestInfo(&tester43)
+immutable test43 = q{--- test43
+	// Test op=
+	i32 add(i32 a, i32 b) { a += b; return a; }
+	i32 sub(i32 a, i32 b) { a -= b; return a; }
+	i32 mul(i32 a, i32 b) { a *= b; return a; }
+	i32 div(i32 a, i32 b) { a /= b; return a; }
+	i32 rem(i32 a, i32 b) { a %= b; return a; }
+	i32 shl(i32 a, i32 b) { a <<= b; return a; }
+	i32 shr(i32 a, i32 b) { a >>>= b; return a; }
+	i32 sar(i32 a, i32 b) { a >>= b; return a; }
+	i32 or (i32 a, i32 b) { a |= b; return a; }
+	i32 xor(i32 a, i32 b) { a ^= b; return a; }
+	i32 and(i32 a, i32 b) { a &= b; return a; }
+};
+void tester43(ref TestContext ctx) {
+	auto add = ctx.getFunctionPtr!(int, int, int)("add");
+	auto sub = ctx.getFunctionPtr!(int, int, int)("sub");
+	auto mul = ctx.getFunctionPtr!(int, int, int)("mul");
+	auto div = ctx.getFunctionPtr!(int, int, int)("div");
+	auto rem = ctx.getFunctionPtr!(int, int, int)("rem");
+	auto shl = ctx.getFunctionPtr!(int, int, int)("shl");
+	auto shr = ctx.getFunctionPtr!(int, int, int)("shr");
+	auto sar = ctx.getFunctionPtr!(int, int, int)("sar");
+	auto or  = ctx.getFunctionPtr!(int, int, int)("or");
+	auto xor = ctx.getFunctionPtr!(int, int, int)("xor");
+	auto and = ctx.getFunctionPtr!(int, int, int)("and");
+
+	assert(add(1, 3) == 4);
+	assert(sub(3, 1) == 2);
+	assert(mul(3, 2) == 6);
+	assert(div(7, 2) == 3);
+	assert(rem(7, 2) == 1);
+	assert(shl(1, 2) == 4);
+	assert(shr(int.min, 2) == (int.min >>> 2));
+	assert(sar(int.min, 2) == (int.min >> 2));
+	assert(or(0b0011, 0b0101) == 0b0111);
+	assert(xor(0b0011, 0b0101) == 0b0110);
+	assert(and(0b0011, 0b0101) == 0b0001);
+}

@@ -784,7 +784,8 @@ struct SemanticStaticTypes
 				}
 				break;
 
-			case ASSIGN:
+			case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN, SHL_ASSIGN, SHR_ASSIGN,
+				ASHR_ASSIGN, MINUS_ASSIGN, PLUS_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
 				if (b.left.astType == AstType.expr_name_use ||
 					b.left.astType == AstType.expr_index ||
 					b.left.astType == AstType.expr_member)
@@ -795,21 +796,7 @@ struct SemanticStaticTypes
 					context.error(b.left.loc, "Cannot perform assignment into %s", b.left.astType);
 				resRype = context.basicTypeNodes(BasicType.t_void);
 				break;
-		/*
-			// arithmetic opEqual
-			case AND_EQUAL: goto case;
-			case ASHR_EQUAL: goto case;
-			case MINUS_EQUAL: goto case;
-			case OR_EQUAL: goto case;
-			case PERCENT_EQUAL: goto case;
-			case PLUS_EQUAL: goto case;
-			case SHL_EQUAL: goto case;
-			case SHR_EQUAL: goto case;
-			case SLASH_EQUAL: goto case;
-			case STAR_EQUAL: goto case;
-			case XOR_EQUAL:
-				resRype = context.basicTypeNodes(BasicType.t_i32);
-				break;*/
+
 			default:
 				context.internal_error(b.loc, "Unimplemented op %s", b.op);
 				assert(false);

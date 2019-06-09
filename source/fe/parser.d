@@ -969,8 +969,8 @@ ExpressionNode* leftAssignOp(ref Parser p, Token token, int rbp, ExpressionNode*
 		case OR_EQUAL: op = BinOp.BITWISE_OR_ASSIGN; break;       // |=
 		case PERCENT_EQUAL: op = BinOp.REMAINDER_ASSIGN; break;   // %=
 		case LESS_LESS_EQUAL: op = BinOp.SHL_ASSIGN; break;       // <<=
-		case MORE_MORE_EQUAL: op = BinOp.SHR_ASSIGN; break;       // >>=
-		case MORE_MORE_MORE_EQUAL: op = BinOp.ASHR_ASSIGN; break; // >>>=
+		case MORE_MORE_EQUAL: op = BinOp.ASHR_ASSIGN; break;      // >>=
+		case MORE_MORE_MORE_EQUAL: op = BinOp.SHR_ASSIGN; break;  // >>>=
 		case MINUS_EQUAL: op = BinOp.MINUS_ASSIGN; break;         // -=
 		case PLUS_EQUAL: op = BinOp.PLUS_ASSIGN; break;           // +=
 		case SLASH_EQUAL: op = BinOp.DIV_ASSIGN; break;           // /=
