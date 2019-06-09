@@ -337,6 +337,7 @@ struct PtrTypeNode {
 	IrIndex irType;
 	uint size() { return POINTER_SIZE; }
 	uint alignment() { return POINTER_SIZE; }
+	bool isVoidPtr() { return base.isVoid; }
 }
 
 bool sameType(PtrTypeNode* t1, PtrTypeNode* t2)

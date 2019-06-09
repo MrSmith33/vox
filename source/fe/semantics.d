@@ -764,6 +764,18 @@ struct SemanticStaticTypes
 		*/
 			// logic ops. Requires both operands to be of the same type
 			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
+				if (b.left.type.isPointer && b.right.type.isPointer)
+				{
+					if (
+						sameType(b.left.type, b.right.type) ||
+						b.left.type.ptrTypeNode.isVoidPtr ||
+						b.right.type.ptrTypeNode.isVoidPtr)
+					{
+						resRype = context.basicTypeNodes(BasicType.t_bool);
+						break;
+					}
+				}
+
 				if (autoconvToCommonType(b.left, b.right))
 					resRype = context.basicTypeNodes(BasicType.t_bool);
 				else
@@ -1009,6 +1021,12 @@ struct SemanticStaticTypes
 				break;
 			case preIncrement, postIncrement, preDecrement, postDecrement:
 				u.type = u.child.type;
+				break;
+			case deref:
+				if (!u.child.type.isPointer) {
+					context.error("Cannot dereference %s", u.child.type.printer(context));
+				}
+				u.type = u.child.type.ptrTypeNode.base;
 				break;
 			default:
 				context.internal_error("un op %s not implemented", u.op);

@@ -814,3 +814,18 @@ void tester45(ref TestContext ctx) {
 	incArray(arr.ptr, arr.length);
 	assert(arr == [2, 3, 4, 5]);
 }
+
+@TestInfo(&tester46)
+immutable test46 = q{--- test46
+	void incArray(i32* begin, i32* end) {
+		while(begin < end) {
+			++(*begin++);
+		}
+	}
+};
+void tester46(ref TestContext ctx) {
+	int[4] arr = [1, 2, 3, 4];
+	auto incArray = ctx.getFunctionPtr!(void, int*, int*)("incArray");
+	incArray(arr.ptr, arr.ptr + arr.length);
+	assert(arr == [2, 3, 4, 5]);
+}

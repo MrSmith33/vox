@@ -998,7 +998,16 @@ struct AstToIr
 				if (u.op == preIncrement || u.op == preDecrement) u.irValue = opResult;
 				else u.irValue = rval;
 				break;
-
+			case deref:
+				IrLabel afterChild = IrLabel(currentBlock);
+				visitExprValue(u.child, currentBlock, afterChild);
+				currentBlock = afterChild.blockIndex;
+				if (u.isLvalue) {
+					u.irValue = u.child.irValue;
+				} else {
+					u.irValue = load(currentBlock, u.child.irValue);
+				}
+				break;
 			default:
 				context.internal_error(u.loc, "un op %s not implemented", u.op);
 				builder.addJumpToLabel(currentBlock, nextStmt);
