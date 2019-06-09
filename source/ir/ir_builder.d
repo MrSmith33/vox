@@ -208,6 +208,7 @@ struct IrBuilder
 	/// Sealed block is not necessarily filled.
 	/// Ignores already sealed blocks.
 	void sealBlock(IrIndex basicBlockToSeal) {
+		version(IrPrint) writefln("[IR] seal %s", basicBlockToSeal);
 		IrBasicBlock* bb = &ir.getBlock(basicBlockToSeal);
 		if (bb.isSealed) return;
 		IrIndex index = blockToIrIncompletePhi.get(basicBlockToSeal, IrIndex());
@@ -315,7 +316,7 @@ struct IrBuilder
 		}
 	}
 
-	/// Only creates instruction
+	/// Only creates instruction, doesn't add to basic block
 	auto emitInstr(I)(ExtraInstrArgs extra, IrIndex[] args ...)
 	{
 		IrIndex instr = append!I;
@@ -579,7 +580,7 @@ struct IrBuilder
 	IrIndex addJump(IrIndex blockIndex)
 	{
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
-		assert(!block.isFinished);
+		context.assertf(!block.isFinished, "%s.%s is already finished", context.idString(ir.backendData.name), blockIndex);
 		block.isFinished = true;
 		return emitInstr!IrInstr_jump(blockIndex);
 	}
@@ -720,7 +721,7 @@ struct IrBuilder
 		IrPhi* phi = &ir.get!IrPhi(phiIndex);
 		IrBasicBlock* block = &ir.getBlock(phi.blockIndex);
 		version(IrPrint) {
-			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
+			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(*ir)) {
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
 			}
 		}
@@ -730,7 +731,7 @@ struct IrBuilder
 		if (phi.prevPhi.isDefined) ir.get!IrPhi(phi.prevPhi).nextPhi = phi.nextPhi;
 		version(IrPrint) writefln("[IR] after remove phi %s", phiIndex);
 		version(IrPrint) {
-			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
+			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(*ir)) {
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
 			}
 		}

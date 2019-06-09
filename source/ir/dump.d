@@ -42,12 +42,12 @@ struct IrIndexDump
 	InstrPrintInfo* printInfo;
 
 	void toString(scope void delegate(const(char)[]) sink) {
-		printInfo.handlers.indexDumper(sink, *printInfo, index);
+		printInfo.handlers.indexDumper(sink, *printInfo.context, index);
 	}
 }
 
 alias InstructionDumper = void function(ref InstrPrintInfo p);
-alias IrIndexDumper = void function(scope void delegate(const(char)[]) sink, ref InstrPrintInfo, IrIndex);
+alias IrIndexDumper = void function(scope void delegate(const(char)[]) sink, ref CompilationContext, IrIndex);
 
 struct FuncDumpSettings
 {
@@ -284,7 +284,7 @@ void dumpFunctionCFG(ref IrFunction ir, ref TextSink sink, ref CompilationContex
 	sink.putln("}");
 }
 
-void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, IrIndex index)
+void dumpIrIndex(scope void delegate(const(char)[]) sink, ref CompilationContext context, IrIndex index)
 {
 	if (!index.isDefined) {
 		sink("<null>");
@@ -296,13 +296,13 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, 
 		case listItem: sink.formattedWrite("l.%s", index.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i.%s", index.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
-		case constant: sink.formattedWrite("%s", p.context.constants.get(index).i64); break;
+		case constant: sink.formattedWrite("%s", context.constants.get(index).i64); break;
 		case global: sink.formattedWrite("g.%s", index.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi.%s", index.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s.%s", index.storageUintIndex); break;
 		case virtualRegister: sink.formattedWrite("v.%s", index.storageUintIndex); break;
 		case physicalRegister: sink.formattedWrite("p.%s", index.storageUintIndex); break;
-		case type: dumpIrType(sink, *p.context, index); break;
+		case type: dumpIrType(sink, context, index); break;
 		case variable: assert(false);
 		case func: sink.formattedWrite("m.%s", index.storageUintIndex); break;
 	}

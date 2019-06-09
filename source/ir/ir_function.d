@@ -41,6 +41,11 @@ enum IrInstructionSet : ubyte
 immutable string[] instr_set_names = ["IR", "LIR Amd64"];
 static assert(instr_set_names.length == IrInstructionSet.max+1);
 
+immutable InstrInfo[][] allInstrInfos = [
+	irInstrInfos,
+	amd64InstrInfos
+];
+
 struct IrFunction
 {
 	/// Slice of CompilationContext.irBuffer
@@ -198,6 +203,8 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 {
 	scope(failure) dumpFunction(ir, context);
 
+	auto funcInstrInfos = allInstrInfos[ir.instructionSet];
+
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		if (!block.isSealed)
@@ -209,6 +216,12 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 		{
 			context.internal_error("Unfinished basic block %s", blockIndex);
 		}
+
+		IrInstrHeader* firstInstr = &ir.get!IrInstrHeader(block.firstInstr);
+		IrInstrHeader* lastInstr = &ir.get!IrInstrHeader(block.lastInstr);
+		context.assertf(funcInstrInfos[lastInstr.op].isBlockExit,
+			"Basic block %s does not end with jump, branch or return instruction",
+			blockIndex);
 
 		// Check that all users of virtual reg point to definition
 		void checkArg(IrIndex argUser, IrIndex arg)
@@ -311,6 +324,13 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 			if (instrHeader.hasResult)
 			{
 				checkResult(instrIndex, instrHeader.result);
+			}
+
+			if (funcInstrInfos[instrHeader.op].isBlockExit)
+			{
+				context.assertf(&instrHeader == lastInstr,
+					"Branch %s is in the middle of basic block %s",
+					instrIndex, blockIndex);
 			}
 		}
 	}

@@ -949,16 +949,22 @@ struct AstToIr
 		{
 			case addrOf:
 				u.child.flags |= AstFlags.isLvalue;
-				visitExprValue(u.child, currentBlock, nextStmt);
+				IrLabel afterChild = IrLabel(currentBlock);
+				visitExprValue(u.child, currentBlock, afterChild);
+				currentBlock = afterChild.blockIndex;
 				u.irValue = u.child.irValue;
 				break;
 			case bitwiseNot:
-				visitExprValue(u.child, currentBlock, nextStmt);
+				IrLabel afterChild = IrLabel(currentBlock);
+				visitExprValue(u.child, currentBlock, afterChild);
+				currentBlock = afterChild.blockIndex;
 				ExtraInstrArgs extra = {type : u.type.genIrType(context), argSize : u.type.argSize(context) };
 				u.irValue = builder.emitInstr!IrInstr_not(currentBlock, extra, u.child.irValue).result;
 				break;
 			case minus:
-				visitExprValue(u.child, currentBlock, nextStmt);
+				IrLabel afterChild = IrLabel(currentBlock);
+				visitExprValue(u.child, currentBlock, afterChild);
+				currentBlock = afterChild.blockIndex;
 				ExtraInstrArgs extra = {type : u.type.genIrType(context), argSize : u.type.argSize(context) };
 				u.irValue = builder.emitInstr!IrInstr_neg(currentBlock, extra, u.child.irValue).result;
 				break;
@@ -967,7 +973,10 @@ struct AstToIr
 				if (u.op == preIncrement || u.op == postIncrement) opcode = IrOpcode.add;
 
 				u.child.flags |= AstFlags.isLvalue;
-				visitExprValue(u.child, currentBlock, nextStmt);
+
+				IrLabel afterChild = IrLabel(currentBlock);
+				visitExprValue(u.child, currentBlock, afterChild);
+				currentBlock = afterChild.blockIndex;
 
 				IrIndex increment = context.constants.ONE; // integers increment by 1
 				if (u.child.type.isPointer) { // pointers increment by size of element
@@ -995,6 +1004,7 @@ struct AstToIr
 				builder.addJumpToLabel(currentBlock, nextStmt);
 				break;
 		}
+		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
 	void visitExprValue(CallExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)

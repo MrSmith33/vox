@@ -80,7 +80,7 @@ __gshared MachineInfo mach_info_amd64 = MachineInfo(
 		PhysicalRegister("r14", amd64_reg.r14),
 		PhysicalRegister("r15", amd64_reg.r15),
 	],
-	gatherInfos()
+	amd64InstrInfos.dup
 );
 
 enum amd64_reg : IrIndex {
@@ -166,6 +166,8 @@ __gshared CallConv win64_call_conv = CallConv
 	amd64_reg.sp, // stack pointer
 );
 
+immutable InstrInfo[] amd64InstrInfos = gatherInstrInfos!Amd64Opcode;
+
 private alias _ii = InstrInfo;
 ///
 enum Amd64Opcode : ushort {
@@ -198,29 +200,19 @@ enum Amd64Opcode : ushort {
 	@_ii() test,
 
 	// machine specific branches
-	@_ii(0,0,IFLG.isJump) jmp,
-	@_ii() jcc,
+	@_ii(0,0,IFLG.isJump | IFLG.isBlockExit) jmp,
+	@_ii(0,0,IFLG.isBlockExit) jcc,
 	// high-level branches
-	@_ii(0,2,IFLG.isBranch) bin_branch,
-	@_ii(0,2,IFLG.isBranch) un_branch,
+	@_ii(0,2,IFLG.isBranch | IFLG.isBlockExit) bin_branch,
+	@_ii(0,2,IFLG.isBranch | IFLG.isBlockExit) un_branch,
 
 	@_ii() setcc,
 
 	@_ii(0,0,IFLG.isCall) call,
-	@_ii() ret,
+	@_ii(0,0,IFLG.isBlockExit) ret,
 
 	@_ii() pop,
 	@_ii() push,
-}
-
-InstrInfo[] gatherInfos()
-{
-	InstrInfo[] res = new InstrInfo[__traits(allMembers, Amd64Opcode).length];
-	foreach (i, m; __traits(allMembers, Amd64Opcode))
-	{
-		res[i] = __traits(getAttributes, mixin("Amd64Opcode."~m))[0];
-	}
-	return res;
 }
 
 alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult | IFLG.isResultInDst); // arg0 = arg0 + arg1
@@ -301,7 +293,7 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 	}
 }
 
-void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref InstrPrintInfo p, IrIndex i)
+void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref CompilationContext context, IrIndex i)
 {
 	if (!i.isDefined) {
 		sink("<null>");
@@ -313,13 +305,13 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref InstrPrintIn
 		case listItem: sink.formattedWrite("l.%s", i.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i.%s", i.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
-		case constant: sink.formattedWrite("%s", p.context.constants.get(i).i64); break;
+		case constant: sink.formattedWrite("%s", context.constants.get(i).i64); break;
 		case global: sink.formattedWrite("g.%s", i.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi.%s", i.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s.%s", i.storageUintIndex); break;
 		case virtualRegister: sink.formattedWrite("v.%s", i.storageUintIndex); break;
 		case physicalRegister: sink(reg_names[i.physRegClass][i.physRegSize][i.physRegIndex]); break;
-		case type: dumpIrType(sink, *p.context, i); break;
+		case type: dumpIrType(sink, context, i); break;
 		case variable: assert(false);
 		case func: sink.formattedWrite("f.%s", i.storageUintIndex); break;
 	}

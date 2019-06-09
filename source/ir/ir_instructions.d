@@ -21,21 +21,32 @@ struct InstrInfo
 	uint flags;
 	static assert(IrInstrFlags.max <= uint.max, "Not enough bits for flags");
 
-	bool isMov() { return (flags & IFLG.isMov) != 0; }
-	bool isJump() { return (flags & IFLG.isJump) != 0; }
-	bool isBranch() { return (flags & IFLG.isBranch) != 0; }
-	bool isLoad() { return (flags & IFLG.isLoad) != 0; }
-	bool isStore() { return (flags & IFLG.isStore) != 0; }
-	bool modifiesMemory() { return (flags & IFLG.modifiesMemory) != 0; }
-	bool hasResult() { return (flags & IFLG.hasResult) != 0; }
-	bool hasVariadicArgs() { return (flags & IFLG.hasVariadicArgs) != 0; }
-	bool hasVariadicResult() { return (flags & IFLG.hasVariadicResult) != 0; }
-	bool hasCondition() { return (flags & IFLG.hasCondition) != 0; }
-	bool isResultInDst() { return (flags & IFLG.isResultInDst) != 0; }
-	bool isCommutative() { return (flags & IFLG.isCommutative) != 0; }
-	bool isCall() { return (flags & IFLG.isCall) != 0; }
+	bool isMov() const { return (flags & IFLG.isMov) != 0; }
+	bool isJump() const { return (flags & IFLG.isJump) != 0; }
+	bool isBranch() const { return (flags & IFLG.isBranch) != 0; }
+	bool isBlockExit() const { return (flags & IFLG.isBlockExit) != 0; }
+	bool isLoad() const { return (flags & IFLG.isLoad) != 0; }
+	bool isStore() const { return (flags & IFLG.isStore) != 0; }
+	bool modifiesMemory() const { return (flags & IFLG.modifiesMemory) != 0; }
+	bool hasResult() const { return (flags & IFLG.hasResult) != 0; }
+	bool hasVariadicArgs() const { return (flags & IFLG.hasVariadicArgs) != 0; }
+	bool hasVariadicResult() const { return (flags & IFLG.hasVariadicResult) != 0; }
+	bool hasCondition() const { return (flags & IFLG.hasCondition) != 0; }
+	bool isResultInDst() const { return (flags & IFLG.isResultInDst) != 0; }
+	bool isCommutative() const { return (flags & IFLG.isCommutative) != 0; }
+	bool isCall() const { return (flags & IFLG.isCall) != 0; }
 
 	bool mayHaveResult() { return hasResult || hasVariadicResult; }
+}
+
+InstrInfo[] gatherInstrInfos(alias instrsEnum)()
+{
+	InstrInfo[] res = new InstrInfo[__traits(allMembers, instrsEnum).length];
+	foreach (i, m; __traits(allMembers, instrsEnum))
+	{
+		res[i] = __traits(getAttributes, __traits(getMember, instrsEnum, m))[0];
+	}
+	return res;
 }
 
 enum IrInstrFlags : uint {
@@ -43,24 +54,25 @@ enum IrInstrFlags : uint {
 	isMov = 1 << 1,
 	isBranch = 1 << 2,
 	isJump = 1 << 3,
-	isLoad = 1 << 4,
-	isStore = 1 << 5,
-	modifiesMemory = 1 << 6,
+	isBlockExit = 1 << 4,
+	isLoad = 1 << 5,
+	isStore = 1 << 6,
+	modifiesMemory = 1 << 7,
 	/// If set InstrInfo.numArgs defines minimaly required number of args
 	/// and IrInstrHeader.numArgs is set at runtime
 	/// IrBuilder automatically allocates nesessary amount of argument slots after the result slot
-	hasVariadicArgs = 1 << 7,
+	hasVariadicArgs = 1 << 8,
 	/// If set IFLG.hasResult flag must not be set
 	/// and IrInstrHeader.hasResult is set at runtime
-	hasVariadicResult = 1 << 8,
+	hasVariadicResult = 1 << 9,
 	/// If set IrInstrHeader.cond is used
-	hasCondition = 1 << 9,
+	hasCondition = 1 << 10,
 	/// If set machine instruction requires a = a op b, or a = op a form
 	/// while IR instruction has a = b op c, or a = op b form
-	isResultInDst = 1 << 10,
+	isResultInDst = 1 << 11,
 	/// If order of arguments doesn't change the result
-	isCommutative = 1 << 11,
-	isCall = 1 << 12,
+	isCommutative = 1 << 12,
+	isCall = 1 << 13,
 }
 
 alias IFLG = IrInstrFlags;
@@ -68,48 +80,50 @@ alias IFLG = IrInstrFlags;
 enum getInstrInfo(T) = getUDAs!(T, InstrInfo)[0];
 enum getIrValueKind(T) = getUDAs!(T, IrValueKind)[0];
 
+immutable InstrInfo[] irInstrInfos = gatherInstrInfos!IrOpcode;
+private alias _ii = InstrInfo;
 enum IrOpcode : ushort
 {
 	// used as placeholder inside generic instructions. Must not remain in IR.
-	invalid,
+	@_ii(0) invalid,
 
-	block_exit_jump,
-	block_exit_unary_branch,
-	block_exit_binary_branch,
-	block_exit_return_void,
-	block_exit_return_value,
+	@_ii(0, 0, IFLG.isBlockExit) block_exit_jump,
+	@_ii(0, 1, IFLG.isBlockExit) block_exit_unary_branch,
+	@_ii(0, 2, IFLG.isBlockExit) block_exit_binary_branch,
+	@_ii(0, 0, IFLG.isBlockExit) block_exit_return_void,
+	@_ii(0, 1, IFLG.isBlockExit) block_exit_return_value,
 
-	parameter,
-	call,
+	@_ii(0) parameter,
+	@_ii(0) call,
 
-	set_binary_cond,
-	set_unary_cond,
+	@_ii(0) set_binary_cond,
+	@_ii(0) set_unary_cond,
 
-	store,
-	load,
-	get_element_ptr,
+	@_ii(0) store,
+	@_ii(0) load,
+	@_ii(0) get_element_ptr,
 
-	not, // One's Complement Negation
-	neg, // Two's Complement Negation
+	@_ii(0) not, // One's Complement Negation
+	@_ii(0) neg, // Two's Complement Negation
 
-	conv,
+	@_ii(0) conv,
 
-	add,
-	sub,
-	and,
-	or,
-	xor,
+	@_ii(0) add,
+	@_ii(0) sub,
+	@_ii(0) and,
+	@_ii(0) or,
+	@_ii(0) xor,
 
-	mul,
-	imul,
-	div,
-	idiv,
-	rem,
-	irem,
+	@_ii(0) mul,
+	@_ii(0) imul,
+	@_ii(0) div,
+	@_ii(0) idiv,
+	@_ii(0) rem,
+	@_ii(0) irem,
 
-	shl,
-	shr,
-	sar,
+	@_ii(0) shl,
+	@_ii(0) shr,
+	@_ii(0) sar,
 }
 
 bool hasSideEffects(IrOpcode opcode)
@@ -195,8 +209,8 @@ template IrGenericInstr(ushort opcode, uint numArgs, uint flags = 0)
 	}
 }
 
-alias IrInstr_return_value = IrGenericInstr!(IrOpcode.block_exit_return_value, 1);
-alias IrInstr_return_void = IrGenericInstr!(IrOpcode.block_exit_return_void, 0);
+alias IrInstr_return_value = IrGenericInstr!(IrOpcode.block_exit_return_value, 1, IFLG.isBlockExit);
+alias IrInstr_return_void = IrGenericInstr!(IrOpcode.block_exit_return_void, 0, IFLG.isBlockExit);
 alias IrInstr_store = IrGenericInstr!(IrOpcode.store, 2);
 alias IrInstr_load = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
 alias IrInstr_not = IrGenericInstr!(IrOpcode.not, 1, IFLG.hasResult); // one's complement negation
@@ -222,7 +236,7 @@ alias IrInstr_xor =  IrGenericInstr!(IrOpcode.xor,  2, IFLG.hasResult);
 alias IrInstr_any_binary_instr =  IrGenericInstr!(IrOpcode.invalid,  2, IFLG.hasResult);
 
 alias IrInstr_conv = IrGenericInstr!(IrOpcode.conv, 1, IFLG.hasResult);
-alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0);
+alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0, IFLG.isBlockExit);
 alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);
 
 enum IrBinaryCondition : ubyte {
@@ -251,7 +265,7 @@ IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
 }
 
 /// Uses header.cond
-alias IrInstr_binary_branch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, IFLG.hasCondition);
+alias IrInstr_binary_branch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, IFLG.hasCondition | IFLG.isBlockExit);
 
 enum IrUnaryCondition : ubyte {
 	zero,
@@ -269,7 +283,7 @@ IrUnaryCondition invertUnaryCond(IrUnaryCondition cond)
 }
 
 /// Uses header.cond
-alias IrInstr_unary_branch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, IFLG.hasCondition);
+alias IrInstr_unary_branch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, IFLG.hasCondition | IFLG.isBlockExit);
 
 @(IrValueKind.instruction) @InstrInfo(IrOpcode.parameter, 0, IFLG.hasResult)
 struct IrInstr_parameter
