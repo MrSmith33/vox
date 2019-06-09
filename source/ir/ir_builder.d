@@ -831,16 +831,17 @@ struct IrBuilder
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex) {
 		IrPhiArg same;
+		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
 		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(*ir))
 		{
 			version(IrPrint) writefln("[IR] arg %s", phiArg.value);
-			if (phiArg.value == same.value || phiArg.value == phiIndex) {
+			if (phiArg.value == same.value || phiArg.value == phiResultIndex) {
 				version(IrPrint) writefln("[IR]   same");
 				continue; // Unique value or self−reference
 			}
 			if (same != IrPhiArg()) {
 				version(IrPrint) writefln("[IR]   non-trivial");
-				return ir.get!IrPhi(phiIndex).result; // The phi merges at least two values: not trivial
+				return phiResultIndex; // The phi merges at least two values: not trivial
 			}
 			version(IrPrint) writefln("[IR]   same = %s", phiArg.value);
 			same = phiArg;
@@ -849,7 +850,6 @@ struct IrBuilder
 		assert(same.value.isDefined, "Phi function got no arguments");
 
 		// Remember all users except the phi itself
-		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
 		assert(phiResultIndex.kind == IrValueKind.virtualRegister, format("%s", phiResultIndex));
 
 		SmallVector users = ir.getVirtReg(phiResultIndex).users;

@@ -291,11 +291,25 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
 			size_t numPhiArgs = 0;
+			size_t numUniqueArgs = 0; // not an exact count, but precise in [0..2] range
+			IrIndex uniqueValue;
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
 				++numPhiArgs;
 				checkArg(phiIndex, phiArg.value);
+
+				if (phiArg.value == uniqueValue || phiArg.value == phi.result) {
+					continue;
+				}
+				// assignment will be done first time when uniqueValue is undefined and phiArg.value != phi.result
+				// second time when phiArg.value != uniqueValue and phiArg.value != phi.result,
+				// so, we are looking for numUniqueArgs > 1
+				uniqueValue = phiArg.value;
+				++numUniqueArgs;
 			}
+
+			// check that phi function is not redundant
+			context.assertf(numUniqueArgs > 1, "%s is redundant", phiIndex);
 
 			// TODO: check that all types of args match type of result
 
@@ -305,6 +319,9 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 			{
 				++numPredecessors;
 			}
+			context.assertf(numPredecessors == block.predecessors.length,
+				"Corrupted list of predecessors %s != %s",
+				numPredecessors, block.predecessors.length);
 
 			context.assertf(numPhiArgs == numPredecessors,
 				"Number of predecessors: %s doesn't match number of phi arguments: %s",
