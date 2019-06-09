@@ -962,6 +962,34 @@ struct AstToIr
 				ExtraInstrArgs extra = {type : u.type.genIrType(context), argSize : u.type.argSize(context) };
 				u.irValue = builder.emitInstr!IrInstr_neg(currentBlock, extra, u.child.irValue).result;
 				break;
+			case preIncrement, postIncrement, preDecrement, postDecrement:
+				IrOpcode opcode = IrOpcode.sub;
+				if (u.op == preIncrement || u.op == postIncrement) opcode = IrOpcode.add;
+
+				u.child.flags |= AstFlags.isLvalue;
+				visitExprValue(u.child, currentBlock, nextStmt);
+
+				IrIndex increment = context.constants.ONE; // integers increment by 1
+				if (u.child.type.isPointer) { // pointers increment by size of element
+					uint size = u.child.type.ptrTypeNode.base.size;
+					increment = context.constants.add(size, IsSigned.no);
+				}
+
+				IrArgSize argSize = u.child.type.argSize(context);
+				IrIndex rval = load(currentBlock, u.child.irValue);
+				ExtraInstrArgs extra = {
+					opcode : opcode,
+					type : u.child.type.genIrType(context),
+					argSize : argSize
+				};
+				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
+					currentBlock, extra, rval, increment).result;
+				store(currentBlock, u.child.irValue, opResult, argSize);
+
+				if (u.op == preIncrement || u.op == preDecrement) u.irValue = opResult;
+				else u.irValue = rval;
+				break;
+
 			default:
 				context.internal_error(u.loc, "un op %s not implemented", u.op);
 				builder.addJumpToLabel(currentBlock, nextStmt);

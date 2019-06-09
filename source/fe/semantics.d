@@ -1007,6 +1007,9 @@ struct SemanticStaticTypes
 			case minus:
 				u.type = u.child.type;
 				break;
+			case preIncrement, postIncrement, preDecrement, postDecrement:
+				u.type = u.child.type;
+				break;
 			default:
 				context.internal_error("un op %s not implemented", u.op);
 				u.type = u.child.type;

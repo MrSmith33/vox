@@ -762,3 +762,39 @@ void tester43(ref TestContext ctx) {
 	assert(xor(0b0011, 0b0101) == 0b0110);
 	assert(and(0b0011, 0b0101) == 0b0001);
 }
+
+@TestInfo(&tester44)
+immutable test44 = q{--- test44
+	// Test --a, ++a
+	i32 preInc(i32 a) { return ++a + ++a; }
+	i32 postInc(i32 a) { return a++ + a++; }
+	i32 preDec(i32 a) { return --a + --a; }
+	i32 postDec(i32 a) { return a-- + a--; }
+
+	i32* preIncPtr(i32* a) { return ++a; }
+	i32* postIncPtr(i32* a) { return a++; }
+	i32* preDecPtr(i32* a) { return --a; }
+	i32* postDecPtr(i32* a) { return a--; }
+};
+void tester44(ref TestContext ctx) {
+	auto preInc = ctx.getFunctionPtr!(int, int)("preInc");
+	auto postInc = ctx.getFunctionPtr!(int, int)("postInc");
+	auto preDec = ctx.getFunctionPtr!(int, int)("preDec");
+	auto postDec = ctx.getFunctionPtr!(int, int)("postDec");
+
+	assert(preInc(10) == 23);
+	assert(postInc(10) == 21);
+	assert(preDec(3) == 3);
+	assert(postDec(3) == 5);
+
+	auto preIncPtr = ctx.getFunctionPtr!(int*, int*)("preIncPtr");
+	auto postIncPtr = ctx.getFunctionPtr!(int*, int*)("postIncPtr");
+	auto preDecPtr = ctx.getFunctionPtr!(int*, int*)("preDecPtr");
+	auto postDecPtr = ctx.getFunctionPtr!(int*, int*)("postDecPtr");
+
+	int[4] arr;
+	assert(preIncPtr(&arr[1]) == &arr[2]);
+	assert(postIncPtr(&arr[1]) == &arr[1]);
+	assert(preDecPtr(&arr[1]) == &arr[0]);
+	assert(postDecPtr(&arr[1]) == &arr[1]);
+}
