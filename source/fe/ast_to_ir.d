@@ -63,8 +63,9 @@ struct AstToIr
 
 			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visitExprBranch(b, currentBlock, trueExit, falseExit); break;
 			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visitExprBranch(t, currentBlock, trueExit, falseExit); break;
+			case expr_un_op: auto u = cast(UnaryExprNode*)n; visitExprBranch(u, currentBlock, trueExit, falseExit); break;
 
-			default: context.unreachable(); assert(false);
+			default: context.internal_error("%s", n.astType); assert(false);
 		}
 	}
 	void visitDecl(AstNode* n, IrIndex currentBlock, ref IrLabel nextStmt) {
@@ -823,8 +824,6 @@ struct AstToIr
 						currentBlock, convertBinOpToIrCond(b.op),
 						leftValue, rightValue, trueExit, falseExit);
 					break;
-
-				// TODO && || !
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}
 		}
@@ -840,7 +839,47 @@ struct AstToIr
 		{
 			context.error(b.loc, "Cannot assign inside condition");
 		}
+		if (b.op == BinOp.LOGIC_AND)
+		{
+			IrLabel cond2Label = IrLabel(currentBlock);
+			visitExprBranch(b.left, currentBlock, cond2Label, falseExit);
+
+			if (cond2Label.numPredecessors != 0)
+			{
+				IrIndex cond2Block = cond2Label.blockIndex;
+				builder.sealBlock(cond2Block);
+				visitExprBranch(b.right, cond2Block, trueExit, falseExit);
+			}
+
+			return;
+		}
+		else if (b.op == BinOp.LOGIC_OR)
+		{
+			IrLabel cond2Label = IrLabel(currentBlock);
+			visitExprBranch(b.left, currentBlock, trueExit, cond2Label);
+
+			if (cond2Label.numPredecessors != 0)
+			{
+				IrIndex cond2Block = cond2Label.blockIndex;
+				builder.sealBlock(cond2Block);
+				visitExprBranch(b.right, cond2Block, trueExit, falseExit);
+			}
+
+			return;
+		}
 		visitBinOpImpl!false(b, currentBlock, trueExit, falseExit);
+	}
+
+	void visitExprBranch(UnaryExprNode* u, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
+	{
+		switch(u.op) with(UnOp)
+		{
+			case logicalNot:
+				visitExprBranch(u.child, currentBlock, falseExit, trueExit);
+				break;
+
+			default: context.internal_error(u.loc, "Opcode `%s` is not implemented", u.op); break;
+		}
 	}
 
 	void assign(TypeNode* leftType, IrIndex leftValue, ExpressionNode* right, IrIndex currentBlock)

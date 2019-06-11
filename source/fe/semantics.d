@@ -618,9 +618,11 @@ struct SemanticStaticTypes
 		return false;
 	}
 
-	bool autoconvToBool(ref ExpressionNode* expr)
+	void autoconvToBool(ref ExpressionNode* expr)
 	{
-		return autoconvTo(expr, BasicType.t_bool, No.force);
+		if (!autoconvTo(expr, BasicType.t_bool, No.force))
+			context.error(expr.loc, "Cannot implicitly convert `%s` to bool",
+				expr.type.typeName(context));
 	}
 
 	/// Returns true if conversion was successful. False otherwise
@@ -742,26 +744,12 @@ struct SemanticStaticTypes
 		TypeNode* resRype = context.basicTypeNodes(BasicType.t_error);
 		switch(b.op) with(BinOp)
 		{
-			/*
 			// logic ops. Requires both operands to be bool
-			case AND_AND, OR_OR:
-				bool successLeft = autoconvToBool(b.left);
-				bool successRight = autoconvToBool(b.right);
-				if (successLeft && successRight)
-				{
-					resRype = context.basicTypeNodes(BasicType.t_bool);
-				}
-				else
-				{
-					if (!successLeft) context.error(b.left.loc, "Cannot implicitly convert `%s` of type `%s` to bool",
-						b.left.type.typeName(context),
-						b.right.type.typeName(context));
-					if (!successRight) context.error(b.right.loc, "Cannot implicitly convert `%s` of type `%s` to bool",
-						b.left.type.typeName(context),
-						b.right.type.typeName(context));
-				}
+			case LOGIC_AND, LOGIC_OR:
+				autoconvToBool(b.left);
+				autoconvToBool(b.right);
+				resRype = context.basicTypeNodes(BasicType.t_bool);
 				break;
-		*/
 			// logic ops. Requires both operands to be of the same type
 			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 				if (b.left.type.isPointer && b.right.type.isPointer)
@@ -1015,6 +1003,10 @@ struct SemanticStaticTypes
 				break;
 			case bitwiseNot:
 				u.type = u.child.type;
+				break;
+			case logicalNot:
+				autoconvToBool(u.child);
+				u.type = context.basicTypeNodes(BasicType.t_bool);
 				break;
 			case minus:
 				u.type = u.child.type;

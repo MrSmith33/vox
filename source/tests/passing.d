@@ -829,3 +829,38 @@ void tester46(ref TestContext ctx) {
 	incArray(arr.ptr, arr.ptr + arr.length);
 	assert(arr == [2, 3, 4, 5]);
 }
+
+@TestInfo(&tester47)
+immutable test47 = q{--- test47
+	// test logical not, or, and
+	i32 selectNot(i32 selector, i32 a, i32 b) {
+		if (!selector)
+			return a;
+		else return b;
+	}
+	i32 selectOr(i32 selectorA, i32 selectorB, i32 a, i32 b) {
+		if (selectorA || selectorB)
+			return a;
+		else return b;
+	}
+	i32 selectAnd(i32 selectorA, i32 selectorB, i32 a, i32 b) {
+		if (selectorA && selectorB)
+			return a;
+		else return b;
+	}
+};
+void tester47(ref TestContext ctx) {
+	auto selectNot = ctx.getFunctionPtr!(int, int, int, int)("selectNot");
+	assert(selectNot(0, 1, 2) == 1);
+	assert(selectNot(1, 1, 2) == 2);
+	auto selectOr = ctx.getFunctionPtr!(int, int, int, int, int)("selectOr");
+	assert(selectOr(0, 0, 1, 0) == 0);
+	assert(selectOr(0, 1, 1, 0) == 1);
+	assert(selectOr(1, 0, 1, 0) == 1);
+	assert(selectOr(1, 1, 1, 0) == 1);
+	auto selectAnd = ctx.getFunctionPtr!(int, int, int, int, int)("selectAnd");
+	assert(selectAnd(0, 0, 1, 0) == 0);
+	assert(selectAnd(0, 1, 1, 0) == 0);
+	assert(selectAnd(1, 0, 1, 0) == 0);
+	assert(selectAnd(1, 1, 1, 0) == 1);
+}
