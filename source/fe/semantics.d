@@ -774,8 +774,47 @@ struct SemanticStaticTypes
 						b.right.type.typeName(context));
 				break;
 
+			case MINUS:
+				if (b.left.type.isPointer && b.right.type.isPointer) // handle ptr - ptr
+				{
+					if (sameType(b.left.type, b.right.type))
+					{
+						b.op = BinOp.PTR_DIFF;
+						resRype = context.basicTypeNodes(BasicType.t_i64);
+						break;
+					}
+					else
+					{
+						context.error(b.loc, "cannot subtract pointers to different types: `%s` and `%s`",
+							b.left.type.printer(context), b.right.type.printer(context));
+						break;
+					}
+				} else if (b.left.type.isPointer && b.right.type.isInteger) { // handle ptr - int
+					b.op = BinOp.PTR_PLUS_INT;
+					(cast(IntLiteralExprNode*)b.right).negate(b.loc, *context);
+					resRype = b.left.type;
+					break;
+				}
+				goto case DIV;
+
+			case PLUS:
+				// handle int + ptr and ptr + int
+				if (b.left.type.isPointer && b.right.type.isInteger) {
+					b.op = BinOp.PTR_PLUS_INT;
+					resRype = b.left.type;
+					break;
+				} else if (b.left.type.isInteger && b.right.type.isPointer) {
+					b.op = BinOp.PTR_PLUS_INT;
+					// canonicalize
+					swap(b.left, b.right);
+					resRype = b.left.type;
+					break;
+				}
+
+				goto case DIV;
+
 			// arithmetic op int float
-			case MINUS, PLUS, DIV, REMAINDER, MULT, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
+			case DIV, REMAINDER, MULT, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
 				if (autoconvToCommonType(b.left, b.right))
 					resRype = b.left.type;
 				else
@@ -786,11 +825,29 @@ struct SemanticStaticTypes
 				}
 				break;
 
+			case MINUS_ASSIGN:
+				if (b.left.type.isPointer && b.right.type.isInteger) {
+					b.op = BinOp.PTR_PLUS_INT_ASSIGN;
+					(cast(IntLiteralExprNode*)b.right).negate(b.loc, *context);
+					resRype = b.left.type;
+					break;
+				}
+				goto case BITWISE_AND_ASSIGN;
+
+			case PLUS_ASSIGN:
+				if (b.left.type.isPointer && b.right.type.isInteger) {
+					b.op = BinOp.PTR_PLUS_INT_ASSIGN;
+					resRype = b.left.type;
+					break;
+				}
+				goto case BITWISE_AND_ASSIGN;
+
 			case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN, SHL_ASSIGN, SHR_ASSIGN,
-				ASHR_ASSIGN, MINUS_ASSIGN, PLUS_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
+				ASHR_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
 				if (b.left.astType == AstType.expr_name_use ||
 					b.left.astType == AstType.expr_index ||
-					b.left.astType == AstType.expr_member)
+					b.left.astType == AstType.expr_member ||
+					(b.left.astType == AstType.expr_un_op && (cast(UnaryExprNode*)b.left).op == UnOp.deref))
 				{
 					autoconvTo(b.right, b.left.type);
 				}
@@ -951,28 +1008,10 @@ struct SemanticStaticTypes
 		m.type.assertImplemented(m.loc, context);
 	}
 	void visit(IntLiteralExprNode* c) {
-		if (c.value < 0)
-		{
-			if (cast(byte)(c.value & 0xFF) == c.value)
-				c.type = context.basicTypeNodes(BasicType.t_i8);
-			else if (cast(short)(c.value & 0xFFFF) == c.value)
-				c.type = context.basicTypeNodes(BasicType.t_i16);
-			else if (cast(int)(c.value & 0xFFFF_FFFF) == c.value)
-				c.type = context.basicTypeNodes(BasicType.t_i32);
-			else
-				c.type = context.basicTypeNodes(BasicType.t_i64);
-		}
+		if (c.isSigned)
+			c.type = context.basicTypeNodes(minSignedIntType(c.value));
 		else
-		{
-			if (cast(ubyte)(c.value & 0xFF) == c.value)
-				c.type = context.basicTypeNodes(BasicType.t_u8);
-			else if (cast(ushort)(c.value & 0xFFFF) == c.value)
-				c.type = context.basicTypeNodes(BasicType.t_u16);
-			else if (cast(uint)(c.value & 0xFFFF_FFFF) == c.value)
-				c.type = context.basicTypeNodes(BasicType.t_u32);
-			else
-				c.type = context.basicTypeNodes(BasicType.t_u64);
-		}
+			c.type = context.basicTypeNodes(minUnsignedIntType(c.value));
 	}
 	void visit(StringLiteralExprNode* c) {
 		c.type = cast(TypeNode*)u8Ptr;
@@ -1020,8 +1059,12 @@ struct SemanticStaticTypes
 				u.type = u.child.type;
 				break;
 			case deref:
+				if (u.child.type.isError) {
+					u.type = u.child.type;
+					break;
+				}
 				if (!u.child.type.isPointer) {
-					context.error("Cannot dereference %s", u.child.type.printer(context));
+					context.unrecoverable_error(u.loc, "Cannot dereference %s", u.child.type.printer(context));
 				}
 				u.type = u.child.type.ptrTypeNode.base;
 				break;
@@ -1070,6 +1113,11 @@ struct SemanticStaticTypes
 		_visit(i.array);
 		_visit(i.index);
 		autoconvTo(i.index, BasicType.t_i64, No.force);
+		switch (i.array.type.astType) with(AstType)
+		{
+			case type_ptr, type_static_array, type_slice: break; // valid
+			default: context.internal_error("Cannot index value of type `%s`", i.array.type.printer(context));
+		}
 		i.type = i.array.type.getElementType(context);
 	}
 	void visit(TypeConvExprNode* t) {

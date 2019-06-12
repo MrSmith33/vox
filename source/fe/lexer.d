@@ -194,6 +194,7 @@ struct FmtSrcLoc
 	TokenIndex tok;
 	CompilationContext* ctx;
 	void toString(scope void delegate(const(char)[]) sink) {
+		if (tok.index == uint.max) return;
 		auto loc = ctx.tokenLoc(tok);
 		sink.formattedWrite("%s(%s, %s)",
 			ctx.idString(ctx.getModuleFromToken(tok).id), loc.line+1, loc.col+1);

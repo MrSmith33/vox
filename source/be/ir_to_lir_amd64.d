@@ -55,9 +55,13 @@ struct IrToLir
 			mirror[oldIndex] = newIndex;
 		}
 
-		IrIndex newIndexFromOldIndex(IrIndex oldIndex)
+		IrIndex getFixedIndex(IrIndex index)
 		{
-			return mirror[oldIndex];
+			assert(index.isDefined);
+			if (index.isBasicBlock || index.isVirtReg || index.isPhi || index.isInstruction) {
+				return mirror[index];
+			}
+			return index;
 		}
 
 		void fixIndex(ref IrIndex index)
@@ -134,7 +138,7 @@ struct IrToLir
 			foreach(ref pred; lirBlock.predecessors.range(lir)) fixIndex(pred);
 			foreach(ref succ; lirBlock.successors.range(lir)) fixIndex(succ);
 
-			// get the temp and null it
+			// get link to the old block and null it
 			IrIndex irBlockIndex = lirBlock.firstInstr;
 			lirBlock.firstInstr = IrIndex();
 
@@ -143,25 +147,31 @@ struct IrToLir
 			{
 				auto emitLirInstr(I)()
 				{
+					static assert(!getInstrInfo!I.hasVariadicArgs);
+					static assert(!getInstrInfo!I.hasVariadicResult);
+
+					IrIndex[getInstrInfo!I.numArgs] fixedArgs = instrHeader.args;
+					foreach(ref arg; fixedArgs) fixIndex(arg);
+
 					static if (getInstrInfo!I.hasResult)
 					{
 						IrIndex type = ir.getVirtReg(instrHeader.result).type;
 						ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
-						InstrWithResult res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
+						InstrWithResult res = builder.emitInstr!I(lirBlockIndex, extra, fixedArgs);
 						recordIndex(instrIndex, res.instruction);
 						recordIndex(instrHeader.result, res.result);
 					}
 					else
 					{
 						ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize };
-						IrIndex res = builder.emitInstr!I(lirBlockIndex, extra, instrHeader.args);
+						IrIndex res = builder.emitInstr!I(lirBlockIndex, extra, fixedArgs);
 						recordIndex(instrIndex, res);
 					}
 				}
 
 				void makeMov(IrIndex to, IrIndex from, IrArgSize argSize) {
 					ExtraInstrArgs extra = { addUsers : false, result : to, argSize : argSize };
-					builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, from);
+					builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(from));
 				}
 
 				switch(instrHeader.op)
@@ -204,8 +214,8 @@ struct IrToLir
 							// push args to stack
 							foreach_reverse (IrIndex arg; instrHeader.args[numParamsInRegs..$])
 							{
-								ExtraInstrArgs extra = {addUsers : false};
-								builder.emitInstr!LirAmd64Instr_push(lirBlockIndex, extra, arg);
+								ExtraInstrArgs extra = { addUsers : false };
+								builder.emitInstr!LirAmd64Instr_push(lirBlockIndex, extra, getFixedIndex(arg));
 							}
 						}
 
@@ -218,8 +228,9 @@ struct IrToLir
 							argRegister.physRegSize = typeToRegSize(type, context);
 							argBuffer[i] = argRegister;
 							ExtraInstrArgs extra = {addUsers : false, result : argRegister};
-							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, arg);
+							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(arg));
 						}
+
 						{	// Allocate shadow space for 4 physical registers
 							IrIndex const_32 = context.constants.add(32, IsSigned.no);
 							ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
@@ -301,13 +312,21 @@ struct IrToLir
 							resultReg = dividendBottom; // dividend
 						}
 
+						// divisor must be in register
+						IrIndex divisor = instrHeader.args[1];
+						if (instrHeader.args[1].isConstant) {
+							ExtraInstrArgs extra = { addUsers : false, type : getValueType(divisor, ir, *context) };
+							divisor = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, divisor).result;
+						}
+						else fixIndex(divisor);
+
 						// divide
 						ExtraInstrArgs extra3 = { addUsers : false, argSize : instrHeader.argSize, result : resultReg };
 						InstrWithResult res;
 						if (isSigned)
-							res = builder.emitInstr!LirAmd64Instr_idiv(lirBlockIndex, extra3, dividendTop, dividendBottom, instrHeader.args[1]);
+							res = builder.emitInstr!LirAmd64Instr_idiv(lirBlockIndex, extra3, dividendTop, dividendBottom, divisor);
 						else
-							res = builder.emitInstr!LirAmd64Instr_div(lirBlockIndex, extra3, dividendTop, dividendBottom, instrHeader.args[1]);
+							res = builder.emitInstr!LirAmd64Instr_div(lirBlockIndex, extra3, dividendTop, dividendBottom, divisor);
 						recordIndex(instrIndex, res.instruction);
 
 						// copy result (quotient)
@@ -326,13 +345,13 @@ struct IrToLir
 						InstrWithResult res;
 						switch(instrHeader.op) {
 							case IrOpcode.shl:
-								res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, instrHeader.args[0], rightArg);
+								res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
 								break;
 							case IrOpcode.shr:
-								res = builder.emitInstr!LirAmd64Instr_shr(lirBlockIndex, extra, instrHeader.args[0], rightArg);
+								res = builder.emitInstr!LirAmd64Instr_shr(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
 								break;
 							case IrOpcode.sar:
-								res = builder.emitInstr!LirAmd64Instr_sar(lirBlockIndex, extra, instrHeader.args[0], rightArg);
+								res = builder.emitInstr!LirAmd64Instr_sar(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
 								break;
 							default: assert(false);
 						}
@@ -354,7 +373,7 @@ struct IrToLir
 					case IrOpcode.set_unary_cond:
 						IrIndex type = ir.getVirtReg(instrHeader.result).type;
 						ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize, type : type };
-						InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_unary_cond(lirBlockIndex, extra, instrHeader.args);
+						InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_unary_cond(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
 						recordIndex(instrIndex, res.instruction);
 						recordIndex(instrHeader.result, res.result);
 						break;
@@ -366,14 +385,14 @@ struct IrToLir
 					case IrOpcode.block_exit_unary_branch:
 						ExtraInstrArgs extra = {addUsers : false, cond : instrHeader.cond};
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_un_branch(
-							lirBlockIndex, extra, instrHeader.args);
+							lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
 						recordIndex(instrIndex, instruction);
 						break;
 
 					case IrOpcode.block_exit_binary_branch:
 						ExtraInstrArgs extra = {addUsers : false, cond : instrHeader.cond};
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_bin_branch(
-							lirBlockIndex, extra, instrHeader.args);
+							lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), getFixedIndex(instrHeader.args[1]));
 						recordIndex(instrIndex, instruction);
 						break;
 
@@ -386,7 +405,7 @@ struct IrToLir
 						IrIndex type = lir.backendData.returnType;
 						result.physRegSize = typeToRegSize(type, context);
 						ExtraInstrArgs extra = { addUsers : false, result : result };
-						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, instrHeader.args);
+						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
 						recordIndex(instrIndex, instruction);
 						break;
@@ -399,7 +418,7 @@ struct IrToLir
 
 		void fixArg(IrIndex instrIndex, ref IrIndex arg)
 		{
-			fixIndex(arg);
+			//fixIndex(arg);
 			builder.addUser(instrIndex, arg);
 		}
 

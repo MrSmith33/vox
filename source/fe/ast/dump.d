@@ -90,7 +90,12 @@ struct AstPrinter {
 		pr_node(cast(AstNode*)m.aggregate);
 		pr_node(cast(AstNode*)m.member);
 	}
-	void visit(IntLiteralExprNode* lit) { print("Int LITERAL ", lit.type.printer(context), " ", lit.value); }
+	void visit(IntLiteralExprNode* lit) {
+		if (lit.isSigned)
+			print("Int LITERAL ", lit.type.printer(context), " ", cast(long)lit.value);
+		else
+			print("Int LITERAL ", lit.type.printer(context), " ", lit.value);
+	}
 	void visit(StringLiteralExprNode* lit) { print("String LITERAL ", lit.type.printer(context), " ", lit.value); }
 	void visit(NullLiteralExprNode* lit) { print("null LITERAL"); }
 	void visit(BoolLiteralExprNode* lit) {

@@ -811,6 +811,27 @@ struct AstToIr
 						currentBlock, extra, leftValue, rightValue).result;
 					break;
 
+				case PTR_PLUS_INT:
+					assert(b.left.type.isPointer && b.right.type.isInteger);
+					b.irValue = buildGEP(currentBlock, leftValue, b.right.irValue);
+					break;
+
+				case PTR_DIFF:
+					assert(b.left.type.isPointer && b.right.type.isPointer);
+
+					ExtraInstrArgs extra = { type : b.type.genIrType(context), argSize : b.type.argSize(context) };
+					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result;
+
+					// divide by elem size
+					TypeNode* baseType = b.left.type.ptrTypeNode.base;
+					uint elemSize = baseType.size;
+					if (elemSize == 1 || baseType.isVoid) break;
+
+					ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64), argSize : b.left.type.argSize(context) };
+					IrIndex elemSizeValue = context.constants.add(elemSize, IsSigned.no, b.left.type.argSize(context));
+					b.irValue = builder.emitInstr!IrInstr_idiv(currentBlock, extra, b.irValue, elemSizeValue).result;
+					break;
+
 				// TODO
 				case PLUS, MINUS, DIV, REMAINDER, MULT, SHL, SHR, ASHR, XOR, BITWISE_AND, BITWISE_OR:
 					ExtraInstrArgs extra = {
@@ -979,17 +1000,24 @@ struct AstToIr
 			if (b.op == BinOp.ASSIGN) {
 				assign(b.left.type, b.left.irValue, b.right, currentBlock);
 			}
+			else if (b.op == BinOp.PTR_PLUS_INT_ASSIGN)
+			{
+				IrIndex leftRvalue = load(currentBlock, b.left.irValue);
+				assert(b.left.type.isPointer && b.right.type.isInteger);
+				IrIndex opResult = buildGEP(currentBlock, leftRvalue, b.right.irValue);
+				store(currentBlock, b.left.irValue, opResult, b.left.type.argSize(context));
+			}
 			else
 			{
 				IrIndex leftRvalue = load(currentBlock, b.left.irValue);
 				ExtraInstrArgs extra = {
 					opcode : binOpcode(b.op, b.left.type.isUnsigned, b.loc),
-					type : b.right.type.genIrType(context),
-					argSize : b.right.type.argSize(context)
+					type : b.left.type.genIrType(context),
+					argSize : b.left.type.argSize(context)
 				};
 				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
 					currentBlock, extra, leftRvalue, b.right.irValue).result;
-				store(currentBlock, b.left.irValue, opResult, b.right.type.argSize(context));
+				store(currentBlock, b.left.irValue, opResult, b.left.type.argSize(context));
 			}
 
 			builder.addJumpToLabel(currentBlock, nextStmt);

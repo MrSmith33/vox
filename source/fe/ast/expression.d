@@ -91,6 +91,9 @@ enum BinOp : ubyte {
 	MULT,               // *
 	XOR,                // ^
 
+	PTR_DIFF,           // ptr - ptr
+	PTR_PLUS_INT,       // ptr + int and ptr - int
+
 	// arithmetic opEquals
 	ASSIGN,             // =
 	BITWISE_AND_ASSIGN, // &=
@@ -99,6 +102,7 @@ enum BinOp : ubyte {
 	SHL_ASSIGN,         // <<=
 	SHR_ASSIGN,         // >>=
 	ASHR_ASSIGN,        // >>>=
+	PTR_PLUS_INT_ASSIGN,// ptr -= / += int
 	MINUS_ASSIGN,       // -=
 	PLUS_ASSIGN,        // +=
 	DIV_ASSIGN,         // /=

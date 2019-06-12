@@ -626,6 +626,7 @@ void tester40(ref TestContext ctx) {
 	assert(res == (1 << 1) + (4 << 1) + (1 << 3) + (1 << 31) + (1 << 31));
 }
 
+
 @TestInfo(&tester41)
 immutable test41 = q{--- test41
 	// Test division, multiplication, remainder
@@ -675,6 +676,7 @@ void tester41(ref TestContext ctx) {
 	assert(resImul == -10 * 4);
 }
 
+
 @TestInfo(&tester42)
 immutable test42 = q{--- test42
 	// Test bit-wise negation, unary minus, xor, or, and operators
@@ -722,6 +724,7 @@ void tester42(ref TestContext ctx) {
 	assert(res_and == (0b0011 & 0b0101));
 }
 
+
 @TestInfo(&tester43)
 immutable test43 = q{--- test43
 	// Test op=
@@ -763,6 +766,7 @@ void tester43(ref TestContext ctx) {
 	assert(and(0b0011, 0b0101) == 0b0001);
 }
 
+
 @TestInfo(&tester44)
 immutable test44 = q{--- test44
 	// Test --a, ++a
@@ -799,6 +803,7 @@ void tester44(ref TestContext ctx) {
 	assert(postDecPtr(&arr[1]) == &arr[1]);
 }
 
+
 @TestInfo(&tester45)
 immutable test45 = q{--- test45
 	void incArray(i32* arr, i32 length) {
@@ -815,6 +820,7 @@ void tester45(ref TestContext ctx) {
 	assert(arr == [2, 3, 4, 5]);
 }
 
+
 @TestInfo(&tester46)
 immutable test46 = q{--- test46
 	void incArray(i32* begin, i32* end) {
@@ -829,6 +835,7 @@ void tester46(ref TestContext ctx) {
 	incArray(arr.ptr, arr.ptr + arr.length);
 	assert(arr == [2, 3, 4, 5]);
 }
+
 
 @TestInfo(&tester47)
 immutable test47 = q{--- test47
@@ -864,6 +871,7 @@ void tester47(ref TestContext ctx) {
 	assert(selectAnd(1, 0, 1, 0) == 0);
 	assert(selectAnd(1, 1, 1, 0) == 1);
 }
+
 
 @TestInfo(&tester48)
 immutable test48 = q{--- test48
@@ -904,4 +912,86 @@ void tester48(ref TestContext ctx) {
 	assert(getAnd(0, 1) == false);
 	assert(getAnd(1, 0) == false);
 	assert(getAnd(1, 1) == true);
+}
+
+
+@TestInfo(&tester49)
+immutable test49 = q{--- test49
+	// Test full suite of pointer arithmetic operations
+	void preIncrement(i32* arr, i32 length) {
+		(++arr)[-1] = 10; // arr[0] = 10, negative index
+		*arr        = 15; // arr[1] = 15, deref pointer
+	}
+	void preDecrement(i32* arr, i32 length) {
+		(--arr)[1] = 20; // arr[0] = 20
+		arr[2]  = 25; // arr[1] = 25
+	}
+	void postIncrement(i32* arr, i32 length) {
+		(arr++)[0] = 30; // arr[0] = 30
+		arr[0]  = 35; // arr[1] = 35
+	}
+	void postDecrement(i32* arr, i32 length) {
+		(arr--)[0] = 40; // arr[0] = 40
+		arr[2]  = 45; // arr[1] = 45
+	}
+	void addInt(i32* arr, i32 length) {
+		*(arr + 3) = 50; // arr[3] = 50
+	}
+	void subInt(i32* arr, i32 length) {
+		*(arr - 3) = 60; // arr[-4] = 60
+	}
+	void diff(i32* arr, i32 length) {
+		i32* last = arr + length; // last = &arr[4];
+		// sub two pointers
+		i64 diff = last - arr;
+		arr[length - 3] = cast(i32)diff; // ar[1] = 4
+	}
+	void plusEqual(i32* arr, i32 length) {
+		arr += 3;
+		arr[0] = 90; // arr[3] = 90
+	}
+	void minusEqual(i32* arr, i32 length) {
+		arr -= 3;
+		arr[3] = 100; // arr[0] = 100
+	}
+};
+void tester49(ref TestContext ctx) {
+	int[2] arr;
+	auto preIncrement = ctx.getFunctionPtr!(void, int*, int)("preIncrement");
+	preIncrement(arr.ptr, arr.length);
+	assert(arr == [10, 15]);
+
+	auto preDecrement = ctx.getFunctionPtr!(void, int*, int)("preDecrement");
+	preDecrement(arr.ptr, arr.length);
+	assert(arr == [20, 25]);
+
+	auto postIncrement = ctx.getFunctionPtr!(void, int*, int)("postIncrement");
+	postIncrement(arr.ptr, arr.length);
+	assert(arr == [30, 35]);
+
+	auto postDecrement = ctx.getFunctionPtr!(void, int*, int)("postDecrement");
+	postDecrement(arr.ptr, arr.length);
+	assert(arr == [40, 45]);
+
+	int[4] arr2;
+
+	auto addInt = ctx.getFunctionPtr!(void, int*, int)("addInt");
+	addInt(arr2.ptr, arr2.length);
+	assert(arr2 == [0, 0, 0, 50]);
+
+	auto subInt = ctx.getFunctionPtr!(void, int*, int)("subInt");
+	subInt(arr2.ptr+3, arr2.length);
+	assert(arr2 == [60, 0, 0, 50]);
+
+	auto diff = ctx.getFunctionPtr!(void, int*, int)("diff");
+	diff(arr2.ptr, arr2.length);
+	assert(arr2 == [60, 4, 0, 50]);
+
+	auto plusEqual = ctx.getFunctionPtr!(void, int*, int)("plusEqual");
+	plusEqual(arr2.ptr, arr2.length);
+	assert(arr2 == [60, 4, 0, 90]);
+
+	auto minusEqual = ctx.getFunctionPtr!(void, int*, int)("minusEqual");
+	minusEqual(arr2.ptr, arr2.length);
+	assert(arr2 == [100, 4, 0, 90]);
 }

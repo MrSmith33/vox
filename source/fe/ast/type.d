@@ -97,6 +97,7 @@ struct TypeNode {
 			basicTypeNode.basicType == BasicType.t_error;
 	}
 	bool isPointer() { return astType == AstType.type_ptr; }
+	bool isInteger() { return astType == AstType.type_basic && basicTypeNode.isInteger; }
 	bool isBool() { return astType == AstType.type_basic &&
 			basicTypeNode.basicType == BasicType.t_bool; }
 
