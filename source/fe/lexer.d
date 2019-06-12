@@ -120,6 +120,8 @@ enum TokenType : ubyte {
 	@("isize") TYPE_ISIZE,              // isize
 	@("usize") TYPE_USIZE,              // usize
 
+	@("true")  TRUE_LITERAL,            // true
+	@("false") FALSE_LITERAL,           // false
 	@("#num_dec_lit") INT_DEC_LITERAL,
 	@("#num_hex_lit") INT_HEX_LITERAL,
 	@("#num_bin_lit") INT_BIN_LITERAL,
@@ -203,14 +205,14 @@ enum char SOI_CHAR = '\2';
 /// End of input
 enum char EOI_CHAR = '\3';
 
-immutable string[] keyword_strings = ["bool","break","continue","do","else","f32","f64",
-	"i16","i32","i64","i8","if","import","isize","return","struct","u16","u32","u64",
-	"u8","usize","void","while","cast","enum","null"];
+immutable string[] keyword_strings = ["bool","true","false","break","continue","do","else",
+	"f32","f64","i16","i32","i64","i8","if","import","isize","return","struct","u16","u32",
+	"u64","u8","usize","void","while","cast","enum","null"];
 enum NUM_KEYWORDS = keyword_strings.length;
-immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,
-	TT.ELSE_SYM,TT.TYPE_F32,TT.TYPE_F64,TT.TYPE_I16,TT.TYPE_I32,TT.TYPE_I64,
-	TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.TYPE_ISIZE,TT.RETURN_SYM,TT.STRUCT_SYM,
-	TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
+immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.TRUE_LITERAL,TT.FALSE_LITERAL,
+	TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,TT.ELSE_SYM,TT.TYPE_F32,TT.TYPE_F64,TT.TYPE_I16,
+	TT.TYPE_I32,TT.TYPE_I64,TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.TYPE_ISIZE,TT.RETURN_SYM,
+	TT.STRUCT_SYM,TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
 	TT.TYPE_VOID,TT.WHILE_SYM,TT.CAST,TT.ENUM,TT.NULL];
 
 //                          #        #######  #     #
@@ -549,6 +551,7 @@ struct Lexer
 				break;
 			case 'f':
 				nextChar;
+				if (c == 'a' && match("alse")) return TT.FALSE_LITERAL;
 				if (c == '3' && match("32")) return TT.TYPE_F32;
 				if (c == '6' && match("64")) return TT.TYPE_F64;
 				break;
@@ -579,6 +582,7 @@ struct Lexer
 					default: break;
 				}
 				break;
+			case 't': if (match("true")) return TT.TRUE_LITERAL; break;
 			case 'v': if (match("void")) return TT.TYPE_VOID; break;
 			case 'w': if (match("while")) return TT.WHILE_SYM; break;
 			default: break;

@@ -805,7 +805,7 @@ private TokenLookups cexp_parser()
 	prefix(0, &nullParen, "("); // for grouping
 
 	// 0 precedence -- never used
-	nilfix(0, &nullLiteral, ["#id", "null", "#num_dec_lit", "#num_bin_lit", "#num_hex_lit", "#str_lit"]);
+	nilfix(0, &nullLiteral, ["#id", "null", "true", "false", "#num_dec_lit", "#num_bin_lit", "#num_hex_lit", "#str_lit"]);
 	nilfix(0, &null_error_parser, [")", "]", ":", "#eoi", ";"]);
 	return res;
 }
@@ -822,6 +822,10 @@ ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
 			return p.makeExpr!NameUseExprNode(token.index, SymbolRef(id));
 		case NULL:
 			return p.makeExpr!NullLiteralExprNode(token.index);
+		case TRUE_LITERAL:
+			return p.makeExpr!BoolLiteralExprNode(token.index, true);
+		case FALSE_LITERAL:
+			return p.makeExpr!BoolLiteralExprNode(token.index, false);
 		case STRING_LITERAL:
 			// omit " at the start and end of token
 			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];

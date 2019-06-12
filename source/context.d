@@ -150,10 +150,21 @@ struct CompilationContext
 	bool printTimings = false;
 	Identifier printOnlyFun = Identifier.max;
 
+	/// Check if printing of only this function needed (including if all functions are requested)
 	bool printDumpOf(FunctionDeclNode* fun) {
 		if (printOnlyFun == Identifier.max) return true;
 		if (printOnlyFun == fun.backendData.name) return true;
 		return false;
+	}
+
+	/// Check if printing of only this function needed (not all functions)
+	bool printDumpOnlyOf(FunctionDeclNode* fun) {
+		return printOnlyFun == fun.backendData.name;
+	}
+
+	/// Check if printing of all functions requested
+	bool printDumpOfAll() {
+		return printOnlyFun == Identifier.max;
 	}
 
 	const(char)[] getTokenString(TokenIndex tokenIndex) pure

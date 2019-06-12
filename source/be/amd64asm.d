@@ -528,6 +528,15 @@ struct CodeGen_x86_64
 	void setcc(Condition condition, Register dst)   { encoder.putInstrUnaryReg1!(ArgType.BYTE)(OP2(0x0F, 0x90 | condition), 0, dst); }
 	void setcc(Condition condition, MemAddress dst) { encoder.putInstrUnaryMem !(ArgType.BYTE)(OP2(0x0F, 0x90 | condition), 0, dst); }
 
+	void test(Register dst, Register src, ArgType argType) {
+		final switch(argType) {
+			case ArgType.BYTE:  testb(dst, src); break;
+			case ArgType.WORD:  testw(dst, src); break;
+			case ArgType.DWORD: testd(dst, src); break;
+			case ArgType.QWORD: testq(dst, src); break;
+		}
+	}
+
 	void testb(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.BYTE) (OP1(0x84), dst, src); }
 	void testw(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.WORD) (OP1(0x85), dst, src); }
 	void testd(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.DWORD)(OP1(0x85), dst, src); }

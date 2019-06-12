@@ -351,6 +351,14 @@ struct IrToLir
 						emitLirInstr!LirAmd64Instr_mov;
 						break;
 
+					case IrOpcode.set_unary_cond:
+						IrIndex type = ir.getVirtReg(instrHeader.result).type;
+						ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize, type : type };
+						InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_unary_cond(lirBlockIndex, extra, instrHeader.args);
+						recordIndex(instrIndex, res.instruction);
+						recordIndex(instrHeader.result, res.result);
+						break;
+
 					case IrOpcode.block_exit_jump:
 						builder.emitInstr!LirAmd64Instr_jmp(lirBlockIndex);
 						break;

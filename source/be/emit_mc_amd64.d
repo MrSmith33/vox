@@ -168,7 +168,7 @@ struct CodeEmitter
 
 		ubyte[] code = codeStart[0..context.codeBuffer.nextPtr-codeStart];
 
-		if (context.printCodeHex) {
+		if (context.printCodeHex && context.printDumpOfAll) {
 			writefln("// Amd64 code: addr 0x%X, %s bytes", code.ptr, code.length);
 			printHex(code, 16);
 			writeln;
@@ -207,6 +207,13 @@ struct CodeEmitter
 		compileFuncProlog();
 		compileBody();
 		fixJumps();
+
+		funcSym.length = cast(uint)(gen.pc - funcSym.dataPtr);
+
+		if (context.printCodeHex && context.printDumpOnlyOf(f)) {
+			writefln("// Amd64 code: %s addr 0x%X, %s bytes", context.idString(f.backendData.name), funcSym.dataPtr, funcSym.length);
+			printHex(funcSym.dataPtr[0..funcSym.length], 16);
+		}
 	}
 
 	void compileFuncProlog()
@@ -408,6 +415,13 @@ struct CodeEmitter
 							gen.jmp(Imm32(0));
 							jumpFixups[lirBlock.seqIndex][1] = gen.pc;
 						}
+						break;
+					case Amd64Opcode.set_unary_cond:
+						Register reg = indexToRegister(instrHeader.args[0]);
+						gen.test(reg, reg, cast(ArgType)instrHeader.args[0].physRegSize);
+						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
+						Register dst = indexToRegister(instrHeader.result);
+						gen.setcc(cond, dst);
 						break;
 					case Amd64Opcode.ret:
 						compileFuncEpilog();

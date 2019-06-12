@@ -864,3 +864,44 @@ void tester47(ref TestContext ctx) {
 	assert(selectAnd(1, 0, 1, 0) == 0);
 	assert(selectAnd(1, 1, 1, 0) == 1);
 }
+
+@TestInfo(&tester48)
+immutable test48 = q{--- test48
+	// bool values
+	bool getFalse() { return false; }
+	bool getTrue() { return true; }
+	bool getBool(i32 selectorA) {
+		return selectorA;
+	}
+	bool getNot(i32 selectorA) {
+		return !selectorA;
+	}
+	bool getOr(i32 selectorA, i32 selectorB) {
+		return selectorA || selectorB;
+	}
+	bool getAnd(i32 selectorA, i32 selectorB) {
+		return selectorA && selectorB;
+	}
+};
+void tester48(ref TestContext ctx) {
+	auto getFalse = ctx.getFunctionPtr!(bool)("getFalse");
+	assert(getFalse() == false);
+	auto getTrue = ctx.getFunctionPtr!(bool)("getTrue");
+	assert(getTrue() == true);
+	auto getBool = ctx.getFunctionPtr!(bool, int)("getBool");
+	assert(getBool(0) == false);
+	assert(getBool(1) == true);
+	auto getNot = ctx.getFunctionPtr!(bool, int)("getNot");
+	assert(getNot(0) == true);
+	assert(getNot(1) == false);
+	auto getOr = ctx.getFunctionPtr!(bool, int, int)("getOr");
+	assert(getOr(0, 0) == false);
+	assert(getOr(0, 1) == true);
+	assert(getOr(1, 0) == true);
+	assert(getOr(1, 1) == true);
+	auto getAnd = ctx.getFunctionPtr!(bool, int, int)("getAnd");
+	assert(getAnd(0, 0) == false);
+	assert(getAnd(0, 1) == false);
+	assert(getAnd(1, 0) == false);
+	assert(getAnd(1, 1) == true);
+}

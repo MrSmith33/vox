@@ -205,6 +205,8 @@ enum Amd64Opcode : ushort {
 	// high-level branches
 	@_ii(0,2,IFLG.isBranch | IFLG.isBlockExit) bin_branch,
 	@_ii(0,2,IFLG.isBranch | IFLG.isBlockExit) un_branch,
+	@_ii(0,1) set_unary_cond,
+	@_ii(0,2) set_binary_cond,
 
 	@_ii() setcc,
 
@@ -233,6 +235,8 @@ alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1);
 alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0);
 alias LirAmd64Instr_bin_branch = IrGenericInstr!(Amd64Opcode.bin_branch, 2, IFLG.hasCondition);
 alias LirAmd64Instr_un_branch = IrGenericInstr!(Amd64Opcode.un_branch, 1, IFLG.hasCondition);
+alias LirAmd64Instr_set_unary_cond = IrGenericInstr!(Amd64Opcode.set_unary_cond, 1, IFLG.hasResult | IFLG.hasCondition);
+alias LirAmd64Instr_set_binary_cond = IrGenericInstr!(Amd64Opcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
 alias LirAmd64Instr_test = IrGenericInstr!(Amd64Opcode.test, 1);
 alias LirAmd64Instr_push = IrGenericInstr!(Amd64Opcode.push, 1);
 alias LirAmd64Instr_return = IrGenericInstr!(Amd64Opcode.ret, 0);

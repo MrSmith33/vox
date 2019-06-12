@@ -167,6 +167,7 @@ struct SemanticDeclarations
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
 	void visit(NullLiteralExprNode* c) {}
+	void visit(BoolLiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {
 		if (b.isAssignment)
 		{
@@ -539,6 +540,7 @@ struct SemanticLookup
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
 	void visit(NullLiteralExprNode* c) {}
+	void visit(BoolLiteralExprNode* c) {}
 	void visit(BinaryExprNode* b) {
 		_visit(b.left);
 		_visit(b.right);
@@ -977,6 +979,9 @@ struct SemanticStaticTypes
 	}
 	void visit(NullLiteralExprNode* c) {
 		c.type = context.basicTypeNodes(BasicType.t_null);
+	}
+	void visit(BoolLiteralExprNode* c) {
+		c.type = context.basicTypeNodes(BasicType.t_bool);
 	}
 	void visit(BinaryExprNode* b) {
 		_visit(b.left);

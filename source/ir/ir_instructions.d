@@ -216,6 +216,7 @@ alias IrInstr_load = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
 alias IrInstr_not = IrGenericInstr!(IrOpcode.not, 1, IFLG.hasResult); // one's complement negation
 alias IrInstr_neg = IrGenericInstr!(IrOpcode.neg, 1, IFLG.hasResult); // two's complement negation
 alias IrInstr_set_binary_cond = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
+alias IrInstr_set_unary_cond = IrGenericInstr!(IrOpcode.set_unary_cond, 1, IFLG.hasResult | IFLG.hasCondition);
 
 alias IrInstr_add =  IrGenericInstr!(IrOpcode.add,  2, IFLG.hasResult);
 alias IrInstr_sub =  IrGenericInstr!(IrOpcode.sub,  2, IFLG.hasResult);

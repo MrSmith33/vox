@@ -97,6 +97,8 @@ struct TypeNode {
 			basicTypeNode.basicType == BasicType.t_error;
 	}
 	bool isPointer() { return astType == AstType.type_ptr; }
+	bool isBool() { return astType == AstType.type_basic &&
+			basicTypeNode.basicType == BasicType.t_bool; }
 
 	void assertImplemented(TokenIndex tokIdx, CompilationContext* context) {
 		if (!isImplemented)
@@ -189,7 +191,7 @@ IrIndex genIrType(BasicTypeNode* t, CompilationContext* context)
 	switch(t.basicType)
 	{
 		case BasicType.t_void: return makeBasicTypeIndex(IrValueType.void_t);
-		case BasicType.t_bool: return makeBasicTypeIndex(IrValueType.i32);
+		case BasicType.t_bool: return makeBasicTypeIndex(IrValueType.i8);
 		case BasicType.t_u8: return makeBasicTypeIndex(IrValueType.i8);
 		case BasicType.t_i8: return makeBasicTypeIndex(IrValueType.i8);
 		case BasicType.t_i16: return makeBasicTypeIndex(IrValueType.i16);

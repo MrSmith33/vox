@@ -14,7 +14,8 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(tests.passing.test44);
+	Test test = makeTest!(tests.passing.test48);
+	string filterFuncName;
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -44,6 +45,9 @@ void runDevTests()
 	//driver.context.printStaticData = true;
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
+
+	driver.context.printOnlyFun = Identifier.max;
+	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(filterFuncName);
 
 	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test);
 

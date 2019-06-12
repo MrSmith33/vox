@@ -49,7 +49,7 @@ struct AstToIr
 			case literal_int: visitExprValue(cast(IntLiteralExprNode*)n, currentBlock, nextStmt); break;
 			case literal_string: visitExprValue(cast(StringLiteralExprNode*)n, currentBlock, nextStmt); break;
 			case literal_null: visitExprValue(cast(NullLiteralExprNode*)n, currentBlock, nextStmt); break;
-
+			case literal_bool: visitExprValue(cast(BoolLiteralExprNode*)n, currentBlock, nextStmt); break;
 			default: context.unreachable(); assert(false);
 		}
 	}
@@ -726,6 +726,17 @@ struct AstToIr
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
+	void visitExprValue(BoolLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
+	{
+		if (!c.irValue.isDefined) {
+			if (c.value)
+				c.irValue = context.constants.add(1, IsSigned.no, c.type.argSize(context));
+			else
+				c.irValue = context.constants.add(0, IsSigned.no, c.type.argSize(context));
+		}
+		builder.addJumpToLabel(currentBlock, nextStmt);
+	}
+
 	long calcBinOp(BinOp op, long a, long b)
 	{
 		switch(op)
@@ -946,6 +957,15 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] bin expr value (%s) begin", b.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] bin expr value (%s) end", b.loc);
 
+		if (b.op == BinOp.LOGIC_AND || b.op == BinOp.LOGIC_OR)
+		{
+			IrLabel afterChild = IrLabel(currentBlock);
+			b.irValue = makeBoolValue(cast(ExpressionNode*)b, currentBlock, afterChild);
+			currentBlock = afterChild.blockIndex;
+			builder.addJumpToLabel(currentBlock, nextStmt);
+			return;
+		}
+
 		if (b.isAssignment)
 		{
 			IrLabel afterLeft = IrLabel(currentBlock);
@@ -982,6 +1002,57 @@ struct AstToIr
 		}
 	}
 
+	IrIndex makeBoolValue(ExpressionNode* n, IrIndex currentBlock, ref IrLabel nextStmt)
+	{
+		IrLabel trueLabel = IrLabel(currentBlock);
+		IrLabel falseLabel = IrLabel(currentBlock);
+		IrLabel nextLabel = IrLabel(currentBlock);
+		IrIndex nextBlock;
+		visitExprBranch(n, currentBlock, trueLabel, falseLabel);
+
+		IrIndex value;
+
+		if (trueLabel.numPredecessors != 0)
+		{
+			IrIndex trueBlock = trueLabel.blockIndex;
+			builder.sealBlock(trueBlock);
+			builder.addJumpToLabel(trueBlock, nextLabel);
+
+			if (falseLabel.numPredecessors != 0) // both blocks exist
+			{
+				IrIndex falseBlock = falseLabel.blockIndex;
+				builder.sealBlock(falseBlock);
+				builder.addJumpToLabel(falseBlock, nextLabel);
+
+				nextBlock = nextLabel.blockIndex;
+				builder.sealBlock(nextBlock);
+
+				IrIndex phiIndex = builder.addPhi(nextBlock, n.type.genIrType(context));
+				IrIndex trueValue = context.constants.add(1, IsSigned.no, n.type.argSize(context));
+				builder.addPhiArg(phiIndex, trueBlock, trueValue);
+				IrIndex falseValue = context.constants.add(0, IsSigned.no, n.type.argSize(context));
+				builder.addPhiArg(phiIndex, falseBlock, falseValue);
+				value = builder.ir.get!IrPhi(phiIndex).result;
+			}
+			else // only true block exists
+			{
+				nextBlock = trueBlock;
+				value = context.constants.add(1, IsSigned.no, n.type.argSize(context));
+			}
+		}
+		else if (falseLabel.numPredecessors != 0) // only false block exists
+		{
+			nextBlock = falseLabel.blockIndex;
+			builder.sealBlock(nextBlock);
+
+			value = context.constants.add(0, IsSigned.no, n.type.argSize(context));
+		}
+
+		builder.addJumpToLabel(nextBlock, nextStmt);
+
+		return value;
+	}
+
 	void visitExprValue(UnaryExprNode* u, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		switch(u.op) with(UnOp)
@@ -999,6 +1070,11 @@ struct AstToIr
 				currentBlock = afterChild.blockIndex;
 				ExtraInstrArgs extra = {type : u.type.genIrType(context), argSize : u.type.argSize(context) };
 				u.irValue = builder.emitInstr!IrInstr_not(currentBlock, extra, u.child.irValue).result;
+				break;
+			case logicalNot:
+				IrLabel afterChild = IrLabel(currentBlock);
+				u.irValue = makeBoolValue(cast(ExpressionNode*)u, currentBlock, afterChild);
+				currentBlock = afterChild.blockIndex;
 				break;
 			case minus:
 				IrLabel afterChild = IrLabel(currentBlock);
@@ -1193,6 +1269,11 @@ struct AstToIr
 		if (t.expr.irValue.isConstant || (from == makeBasicTypeIndex(IrValueType.i32) && to == makeBasicTypeIndex(IrValueType.i64)))
 		{
 			t.irValue = t.expr.irValue;
+		}
+		else if (t.type.isBool)
+		{
+			ExtraInstrArgs extra = { type : to, cond : IrUnaryCondition.not_zero };
+			t.irValue = builder.emitInstr!IrInstr_set_unary_cond(currentBlock, extra, t.expr.irValue).result;
 		}
 		else
 		{

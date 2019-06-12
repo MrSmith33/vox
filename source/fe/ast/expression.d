@@ -54,6 +54,11 @@ struct NullLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_null, AstFlags.isLiteral);
 }
 
+struct BoolLiteralExprNode {
+	mixin ExpressionNodeData!(AstType.literal_bool, AstFlags.isLiteral);
+	bool value;
+}
+
 struct StringLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral);
 	string value;

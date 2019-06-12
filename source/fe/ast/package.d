@@ -48,6 +48,7 @@ enum AstType : ubyte
 	literal_int,
 	literal_string,
 	literal_null,
+	literal_bool,
 
 	type_basic,
 	type_ptr,
