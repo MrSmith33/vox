@@ -121,7 +121,7 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 		IrIndex scale = context.constants.add(elemSize, IsSigned.no);
 
 		ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
-		InstrWithResult offsetInstr = builder.emitInstr!IrInstr_mul(extra1, index, scale);
+		InstrWithResult offsetInstr = builder.emitInstr!IrInstr_umul(extra1, index, scale);
 		builder.insertBeforeInstr(instrIndex, offsetInstr.instruction);
 
 		ExtraInstrArgs extra2 = { type : resultType };

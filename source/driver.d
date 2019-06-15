@@ -104,13 +104,13 @@ void run_global_pass(ref CompilationContext context, CompilePassPerModule[] subP
 	{
 		foreach(ref CompilePassPerModule subPass; subPasses)
 		{
-			//auto time1 = currTime;
+			auto time1 = currTime;
 
 			// throws immediately on unrecoverable error or ICE
 			subPass.run(context, *file.mod, subPass.subPasses);
 
-			//auto time2 = currTime;
-			//subPass.duration += time2-time1;
+			auto time2 = currTime;
+			subPass.duration += time2-time1;
 
 			// throws if there were recoverable error in the pass
 			context.throwOnErrors;
@@ -124,13 +124,13 @@ void run_module_pass(ref CompilationContext context, ref ModuleDeclNode mod, Com
 	{
 		foreach(ref CompilePassPerFunction subPass; subPasses)
 		{
-			//auto time1 = currTime;
+			auto time1 = currTime;
 
 			// throws immediately on unrecoverable error or ICE
 			subPass.run(context, mod, *func);
 
-			//auto time2 = currTime;
-			//subPass.duration += time2-time1;
+			auto time2 = currTime;
+			subPass.duration += time2-time1;
 
 			// throws if there were recoverable error in the pass
 			context.throwOnErrors;

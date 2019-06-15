@@ -271,14 +271,14 @@ struct IrToLir
 
 					case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;
 					case IrOpcode.sub: emitLirInstr!LirAmd64Instr_sub; break;
-					case IrOpcode.mul, IrOpcode.imul: emitLirInstr!LirAmd64Instr_imul; break;
+					case IrOpcode.umul, IrOpcode.smul: emitLirInstr!LirAmd64Instr_mul; break;
 					case IrOpcode.not: emitLirInstr!LirAmd64Instr_not; break;
 					case IrOpcode.neg: emitLirInstr!LirAmd64Instr_neg; break;
 					case IrOpcode.and: emitLirInstr!LirAmd64Instr_and; break;
 					case IrOpcode.or: emitLirInstr!LirAmd64Instr_or; break;
 					case IrOpcode.xor: emitLirInstr!LirAmd64Instr_xor; break;
 
-					case IrOpcode.div, IrOpcode.idiv, IrOpcode.rem, IrOpcode.irem:
+					case IrOpcode.udiv, IrOpcode.sdiv, IrOpcode.urem, IrOpcode.srem:
 						//   v1 = div v2, v3
 						// is converted into:
 						//   mov ax, v2
@@ -286,8 +286,8 @@ struct IrToLir
 						//   ax = div dx:ax, v3
 						//   mov v1, ax
 
-						bool isSigned = instrHeader.op == IrOpcode.idiv || instrHeader.op == IrOpcode.irem;
-						bool isDivision = instrHeader.op == IrOpcode.div || instrHeader.op == IrOpcode.idiv;
+						bool isSigned = instrHeader.op == IrOpcode.sdiv || instrHeader.op == IrOpcode.srem;
+						bool isDivision = instrHeader.op == IrOpcode.udiv || instrHeader.op == IrOpcode.sdiv;
 
 						// copy bottom half of dividend
 						IrIndex dividendBottom = amd64_reg.ax;
@@ -335,7 +335,7 @@ struct IrToLir
 						recordIndex(instrHeader.result, movResult.result);
 						break;
 
-					case IrOpcode.shl, IrOpcode.shr, IrOpcode.sar:
+					case IrOpcode.shl, IrOpcode.lshr, IrOpcode.ashr:
 						// TODO: check if right operand is constant and pass it as is. Recognize constants in codegen
 						IrIndex rightArg = amd64_reg.cx;
 						rightArg.physRegSize = ArgType.BYTE;
@@ -347,10 +347,10 @@ struct IrToLir
 							case IrOpcode.shl:
 								res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
 								break;
-							case IrOpcode.shr:
+							case IrOpcode.lshr:
 								res = builder.emitInstr!LirAmd64Instr_shr(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
 								break;
-							case IrOpcode.sar:
+							case IrOpcode.ashr:
 								res = builder.emitInstr!LirAmd64Instr_sar(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
 								break;
 							default: assert(false);

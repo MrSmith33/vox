@@ -114,16 +114,16 @@ enum IrOpcode : ushort
 	@_ii(0) or,
 	@_ii(0) xor,
 
-	@_ii(0) mul,
-	@_ii(0) imul,
-	@_ii(0) div,
-	@_ii(0) idiv,
-	@_ii(0) rem,
-	@_ii(0) irem,
+	@_ii(0) umul,
+	@_ii(0) smul,
+	@_ii(0) udiv,
+	@_ii(0) sdiv,
+	@_ii(0) urem,
+	@_ii(0) srem,
 
 	@_ii(0) shl,
-	@_ii(0) shr,
-	@_ii(0) sar,
+	@_ii(0) lshr,
+	@_ii(0) ashr,
 }
 
 bool hasSideEffects(IrOpcode opcode)
@@ -220,15 +220,15 @@ alias IrInstr_set_unary_cond = IrGenericInstr!(IrOpcode.set_unary_cond, 1, IFLG.
 
 alias IrInstr_add =  IrGenericInstr!(IrOpcode.add,  2, IFLG.hasResult);
 alias IrInstr_sub =  IrGenericInstr!(IrOpcode.sub,  2, IFLG.hasResult);
-alias IrInstr_mul =  IrGenericInstr!(IrOpcode.mul,  2, IFLG.hasResult); // unsigned multiply
-alias IrInstr_imul = IrGenericInstr!(IrOpcode.imul, 2, IFLG.hasResult); // signed multiply
-alias IrInstr_div =  IrGenericInstr!(IrOpcode.div,  2, IFLG.hasResult); // unsigned division
-alias IrInstr_idiv = IrGenericInstr!(IrOpcode.idiv, 2, IFLG.hasResult); // signed division
-alias IrInstr_rem =  IrGenericInstr!(IrOpcode.rem,  2, IFLG.hasResult); // unsigned remainder
-alias IrInstr_irem = IrGenericInstr!(IrOpcode.irem, 2, IFLG.hasResult); // signed remainder
+alias IrInstr_umul =  IrGenericInstr!(IrOpcode.umul,  2, IFLG.hasResult); // unsigned multiply
+alias IrInstr_smul = IrGenericInstr!(IrOpcode.smul, 2, IFLG.hasResult); // signed multiply
+alias IrInstr_udiv =  IrGenericInstr!(IrOpcode.udiv,  2, IFLG.hasResult); // unsigned division
+alias IrInstr_sdiv = IrGenericInstr!(IrOpcode.sdiv, 2, IFLG.hasResult); // signed division
+alias IrInstr_urem =  IrGenericInstr!(IrOpcode.urem,  2, IFLG.hasResult); // unsigned remainder
+alias IrInstr_srem = IrGenericInstr!(IrOpcode.srem, 2, IFLG.hasResult); // signed remainder
 alias IrInstr_shl =  IrGenericInstr!(IrOpcode.shl,  2, IFLG.hasResult);
-alias IrInstr_shr =  IrGenericInstr!(IrOpcode.shr,  2, IFLG.hasResult);
-alias IrInstr_sar =  IrGenericInstr!(IrOpcode.sar,  2, IFLG.hasResult);
+alias IrInstr_lshr =  IrGenericInstr!(IrOpcode.lshr,  2, IFLG.hasResult);
+alias IrInstr_ashr =  IrGenericInstr!(IrOpcode.ashr,  2, IFLG.hasResult);
 alias IrInstr_and =  IrGenericInstr!(IrOpcode.and,  2, IFLG.hasResult);
 alias IrInstr_or  =  IrGenericInstr!(IrOpcode.or,   2, IFLG.hasResult);
 alias IrInstr_xor =  IrGenericInstr!(IrOpcode.xor,  2, IFLG.hasResult);

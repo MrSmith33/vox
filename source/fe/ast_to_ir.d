@@ -829,7 +829,7 @@ struct AstToIr
 
 					ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64), argSize : b.left.type.argSize(context) };
 					IrIndex elemSizeValue = context.constants.add(elemSize, IsSigned.no, b.left.type.argSize(context));
-					b.irValue = builder.emitInstr!IrInstr_idiv(currentBlock, extra, b.irValue, elemSizeValue).result;
+					b.irValue = builder.emitInstr!IrInstr_sdiv(currentBlock, extra, b.irValue, elemSizeValue).result;
 					break;
 
 				// TODO
@@ -951,17 +951,17 @@ struct AstToIr
 			case PLUS, PLUS_ASSIGN: return IrOpcode.add;
 			case MINUS, MINUS_ASSIGN: return IrOpcode.sub;
 			case DIV, DIV_ASSIGN:
-				if (isUnsigned) return IrOpcode.div;
-				else return IrOpcode.idiv;
+				if (isUnsigned) return IrOpcode.udiv;
+				else return IrOpcode.sdiv;
 			case REMAINDER, REMAINDER_ASSIGN:
-				if (isUnsigned) return IrOpcode.rem;
-				else return IrOpcode.irem;
+				if (isUnsigned) return IrOpcode.urem;
+				else return IrOpcode.srem;
 			case MULT, MULT_ASSIGN:
-				if (isUnsigned) return IrOpcode.mul;
-				else return IrOpcode.imul;
+				if (isUnsigned) return IrOpcode.umul;
+				else return IrOpcode.smul;
 			case SHL, SHL_ASSIGN: return IrOpcode.shl;
-			case SHR, SHR_ASSIGN: return IrOpcode.shr;
-			case ASHR, ASHR_ASSIGN: return IrOpcode.sar;
+			case SHR, SHR_ASSIGN: return IrOpcode.lshr;
+			case ASHR, ASHR_ASSIGN: return IrOpcode.ashr;
 			case XOR, XOR_ASSIGN: return IrOpcode.xor;
 			case BITWISE_AND, BITWISE_AND_ASSIGN: return IrOpcode.and;
 			case BITWISE_OR, BITWISE_OR_ASSIGN: return IrOpcode.or;

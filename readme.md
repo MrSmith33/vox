@@ -27,7 +27,7 @@ Target platforms (Only win64 is supported now):
 - amd64 (Windows, Linux, MacOS)
 - WebAssembly (browsers)
 - ARM (Android, Linux)
-- SPIR-V (Vulkan/OpenCL/OpenGL Шейдеры)
+- SPIR-V (Vulkan/OpenCL/OpenGL shaders)
 
 
 # Compiler
@@ -45,6 +45,8 @@ Target platforms (Only win64 is supported now):
 * Linear Scan Register Allocation - Replaces virtual registers with physical ones
 * Stack layout - Calculates offsets for stack slots
 * Code gen - Converts LIR into machine code
+* Linking
+* Executable generation (optional, used in non-JIT mode)
 
 
 ## Source code
