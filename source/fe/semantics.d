@@ -744,6 +744,8 @@ struct SemanticStaticTypes
 	void setResultType(BinaryExprNode* b)
 	{
 		TypeNode* resRype = context.basicTypeNodes(BasicType.t_error);
+		if (b.left.type.isError || b.right.type.isError) return;
+
 		switch(b.op) with(BinOp)
 		{
 			// logic ops. Requires both operands to be bool
@@ -1080,22 +1082,27 @@ struct SemanticStaticTypes
 			c.loc, "Only direct function calls are supported right now");
 		Symbol* calleeSym = (cast(NameUseExprNode*)c.callee).getSym;
 
-		if (calleeSym.symClass != SymbolClass.c_function)
+		switch (calleeSym.symClass)
 		{
-			context.error(c.loc, "Cannot call %s", calleeSym.symClass);
-			return;
+			case SymbolClass.c_function: return visitCall(c, calleeSym.funcDecl);
+			case SymbolClass.c_struct: return visitConstructor(c, calleeSym.structDecl);
+			default:
+				c.type = context.basicTypeNodes(BasicType.t_error);
+				context.error(c.loc, "Cannot call %s", calleeSym.symClass);
 		}
 
-		Array!(VariableDeclNode*) params = calleeSym.funcDecl.parameters;
+	}
+	void visitCall(CallExprNode* c, FunctionDeclNode* funcDecl) {
+		Array!(VariableDeclNode*) params = funcDecl.parameters;
 		auto numParams = params.length;
 		auto numArgs = c.args.length;
 
 		if (numArgs < numParams)
 			context.error(c.loc, "Insufficient parameters to '%s', got %s, expected %s",
-				context.idString(calleeSym.id), numArgs, numParams);
+				context.idString(funcDecl.backendData.name), numArgs, numParams);
 		else if (numArgs > numParams)
 			context.error(c.loc, "Too much parameters to '%s', got %s, expected %s",
-				context.idString(calleeSym.id), numArgs, numParams);
+				context.idString(funcDecl.backendData.name), numArgs, numParams);
 
 		foreach (i, ExpressionNode* arg; c.args)
 		{
@@ -1107,7 +1114,24 @@ struct SemanticStaticTypes
 			//			params[i].type.printer(context),
 			//			arg.type.printer(context));
 		}
-		c.type = calleeSym.getType;
+		c.type = funcDecl.returnType;
+	}
+	void visitConstructor(CallExprNode* c, StructDeclNode* s) {
+		size_t numStructMembers;
+		foreach(AstNode* member; s.declarations)
+		{
+			if (member.astType == AstType.decl_var)
+			{
+				ExpressionNode* initializer;
+				if (c.args.length > numStructMembers) { // init from constructor argument
+					initializer = c.args[numStructMembers];
+				} else { // init with initializer from struct definition
+
+				}
+				++numStructMembers;
+			}
+		}
+		context.unrecoverable_error(c.loc, "visitConstructor not impl");
 	}
 	void visit(IndexExprNode* i) {
 		_visit(i.array);
