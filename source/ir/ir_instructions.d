@@ -16,6 +16,8 @@ import ir.ir_index;
 struct InstrInfo
 {
 	ushort opcode;
+	/// If hasVariadicArgs is set, then determines the minimum required number of arguments
+	/// Otherwise specifies exact number of arguments
 	uint numArgs;
 	/// Set of IrInstrFlags
 	uint flags;
@@ -58,7 +60,7 @@ enum IrInstrFlags : uint {
 	isLoad = 1 << 5,
 	isStore = 1 << 6,
 	modifiesMemory = 1 << 7,
-	/// If set InstrInfo.numArgs defines minimaly required number of args
+	/// If set, InstrInfo.numArgs defines minimaly required number of args
 	/// and IrInstrHeader.numArgs is set at runtime
 	/// IrBuilder automatically allocates nesessary amount of argument slots after the result slot
 	hasVariadicArgs = 1 << 8,
@@ -102,6 +104,9 @@ enum IrOpcode : ushort
 	@_ii(0) store,
 	@_ii(0) load,
 	@_ii(0) get_element_ptr,
+	@_ii(0) create_aggregate,
+	@_ii(0) get_element,
+	@_ii(0) insert_element,
 
 	@_ii(0) not, // One's Complement Negation
 	@_ii(0) neg, // Two's Complement Negation
@@ -240,6 +245,15 @@ alias IrInstr_conv = IrGenericInstr!(IrOpcode.conv, 1, IFLG.hasResult);
 alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0, IFLG.isBlockExit);
 alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);
 
+/// args: aggregate pointer, 1 or more index
+alias IrInstr_get_element_ptr = IrGenericInstr!(IrOpcode.get_element_ptr, 2, IFLG.hasVariadicArgs | IFLG.hasResult);
+/// args: aggregate, 1 or more index
+alias IrInstr_create_aggregate = IrGenericInstr!(IrOpcode.create_aggregate, 1, IFLG.hasVariadicArgs | IFLG.hasResult);
+/// args: aggregate, 1 or more index
+alias IrInstr_get_element = IrGenericInstr!(IrOpcode.get_element, 2, IFLG.hasVariadicArgs | IFLG.hasResult);
+/// args: aggregate, new element value, 1 or more index
+alias IrInstr_insert_element = IrGenericInstr!(IrOpcode.insert_element, 3, IFLG.hasVariadicArgs | IFLG.hasResult);
+
 enum IrBinaryCondition : ubyte {
 	eq,
 	ne,
@@ -297,12 +311,4 @@ struct IrInstr_parameter
 struct IrInstrPreheader_call
 {
 	FunctionIndex calleeIndex;
-}
-
-/// args: aggregete pointer, 1 or more index
-@(IrValueKind.instruction) @InstrInfo(IrOpcode.get_element_ptr, 2, IFLG.hasVariadicArgs | IFLG.hasResult)
-struct IrInstr_get_element_ptr
-{
-	IrInstrHeader header;
-	IrIndex result;
 }
