@@ -271,7 +271,7 @@ struct IrToLir
 
 					case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;
 					case IrOpcode.sub: emitLirInstr!LirAmd64Instr_sub; break;
-					case IrOpcode.umul, IrOpcode.smul: emitLirInstr!LirAmd64Instr_mul; break;
+					case IrOpcode.umul, IrOpcode.smul: emitLirInstr!LirAmd64Instr_imul; break;
 					case IrOpcode.not: emitLirInstr!LirAmd64Instr_not; break;
 					case IrOpcode.neg: emitLirInstr!LirAmd64Instr_neg; break;
 					case IrOpcode.and: emitLirInstr!LirAmd64Instr_and; break;

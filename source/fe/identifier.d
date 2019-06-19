@@ -7,7 +7,11 @@ module fe.identifier;
 
 import utils : Buffer, Arena;
 
-alias Identifier = uint;
+struct Identifier {
+	uint index = uint.max;
+	bool isDefined() { return index != uint.max; }
+	bool isUndefined() { return index == uint.max; }
+}
 
 struct IdentifierMap {
 	Arena!char stringDataBuffer;
@@ -17,11 +21,12 @@ struct IdentifierMap {
 	Buffer!char tempBuf;
 
 	string get(Identifier id) {
-		return strings[id];
+		if (id.isDefined) return strings[id.index];
+		return "<undefined id>";
 	}
 
 	Identifier find(const(char)[] str) {
-		return map.get(cast(string)str, uint.max);
+		return Identifier(map.get(cast(string)str, uint.max));
 	}
 
 	Identifier getOrRegWithSuffix(const(char)[] str, size_t suffix) {
@@ -39,11 +44,12 @@ struct IdentifierMap {
 			char[] buf = stringDataBuffer.voidPut(str.length);
 			buf[] = str;
 			string duppedKey = cast(string)buf;
+			assert(strings.length < uint.max, "Id map overflow");
 			id = cast(uint)strings.length;
 			map[duppedKey] = id;
 			strings.put(duppedKey);
 		}
-		return id;
+		return Identifier(id);
 	}
 
 	Identifier getOrRegNoDup(const(char)[] str) {
@@ -53,6 +59,6 @@ struct IdentifierMap {
 			map[str] = id;
 			strings.put(str);
 		}
-		return id;
+		return Identifier(id);
 	}
 }

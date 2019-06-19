@@ -54,7 +54,6 @@ enum AstType : ubyte
 	type_ptr,
 	type_static_array,
 	type_slice,
-	type_struct,
 }
 
 enum AstFlags
@@ -75,8 +74,9 @@ enum AstFlags
 	isArgument    = 1 <<  9,
 	/// Declaration at module level
 	isGlobal      = 1 << 10,
-	user1         = 1 << 11,
-	user2         = 1 << 12,
+	isInOrderedScope = 1 << 11,
+	user1         = 1 << 12,
+	user2         = 1 << 13,
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0)
@@ -112,20 +112,39 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
 	bool isArgument() { return cast(bool)(flags & AstFlags.isArgument); }
 	bool isGlobal() { return cast(bool)(flags & AstFlags.isGlobal); }
+	bool isInOrderedScope() { return cast(bool)(flags & AstFlags.isInOrderedScope); }
 }
 
-mixin template SymRefNodeData()
-{
-	SymbolRef symRef;
-
-	string strId(CompilationContext* context) { return context.idString(symRef.id(isSymResolved)); }
-	Identifier id() { return symRef.id(isSymResolved); }
-	void resolveSymbol(Symbol* symbol) {
-		if (symbol is null) return;
-		symRef._symbol = symbol;
-		flags |= AstFlags.isSymResolved;
+Identifier get_node_id(AstNode* n) {
+	switch(n.astType) with(AstType)
+	{
+		case decl_module: return n.cast_decl_module.id;
+		case decl_struct: return n.cast_decl_struct.id;
+		case decl_function: return n.cast_decl_function.id;
+		case decl_var: return n.cast_decl_var.id;
+		case decl_enum: return n.cast_decl_enum.id;
+		case decl_enum_member: return n.cast_decl_enum_member.id;
+		case expr_name_use: return n.cast_expr_name_use.id;
+		default: assert(false, format("got %s", n.astType));
 	}
-	Symbol* getSym() { assert(isSymResolved, "Unresolved symbol"); return symRef._symbol; }
+}
+
+TypeNode* get_node_type(AstNode* n) {
+	switch(n.astType) with(AstType)
+	{
+		case decl_struct: return cast(TypeNode*)n;
+		case decl_function: return cast(TypeNode*)n.cast_decl_function.returnType;
+		case decl_var: return n.cast_decl_var.type;
+		case decl_enum: return cast(TypeNode*)n;
+		case decl_enum_member: return cast(TypeNode*)n.cast_decl_enum_member.type;
+		case type_basic: return cast(TypeNode*)n;
+		case expr_name_use: return n.cast_expr_name_use.entity.get_node_type;
+
+		case literal_int, literal_string, expr_member, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv:
+			return cast(TypeNode*)(cast(ExpressionNode*)n).type;
+
+		default: assert(false, format("get_node_type used on %s", n.astType));
+	}
 }
 
 struct AstNode

@@ -148,23 +148,23 @@ struct CompilationContext
 	bool printSymbols = false;
 	bool printCodeHex = false;
 	bool printTimings = false;
-	Identifier printOnlyFun = Identifier.max;
+	Identifier printOnlyFun;
 
 	/// Check if printing of only this function needed (including if all functions are requested)
 	bool printDumpOf(FunctionDeclNode* fun) {
-		if (printOnlyFun == Identifier.max) return true;
-		if (printOnlyFun == fun.backendData.name) return true;
+		if (printOnlyFun.isUndefined) return true;
+		if (printOnlyFun == fun.id) return true;
 		return false;
 	}
 
 	/// Check if printing of only this function needed (not all functions)
 	bool printDumpOnlyOf(FunctionDeclNode* fun) {
-		return printOnlyFun == fun.backendData.name;
+		return printOnlyFun == fun.id;
 	}
 
 	/// Check if printing of all functions requested
 	bool printDumpOfAll() {
-		return printOnlyFun == Identifier.max;
+		return printOnlyFun.isUndefined;
 	}
 
 	const(char)[] getTokenString(TokenIndex tokenIndex) pure
@@ -394,7 +394,7 @@ struct CompilationContext
 	ModuleDeclNode* findModule(string moduleId)
 	{
 		Identifier id = idMap.find(moduleId);
-		if (id == uint.max) return null;
+		if (id.isUndefined) return null;
 		return findModule(id);
 	}
 
@@ -428,7 +428,7 @@ struct CompilationContext
 	void findFunction(string funcName, void delegate(ModuleDeclNode*, FunctionDeclNode*) onFunction)
 	{
 		Identifier funcId = idMap.find(funcName);
-		if (funcId == uint.max) return;
+		if (funcId.isUndefined) return;
 
 		foreach (ref SourceFileInfo file; files.data)
 		{
@@ -472,7 +472,7 @@ struct CompilationContext
 		auto numRequestedParams = ParamTypes.length;
 		auto numParams = funcDecl.parameters.length;
 
-		Identifier funcId = funcDecl.backendData.name;
+		Identifier funcId = funcDecl.id;
 
 		if (numRequestedParams < numParams)
 			internal_error("Insufficient parameters to '%s', got %s, expected %s",

@@ -14,7 +14,7 @@ import all;
 struct Scope
 {
 	///
-	HashMap!(Identifier, Symbol*, Identifier.max) symbols;
+	HashMap!(Identifier, AstNode*, Identifier.init) symbols;
 	/// Imported modules
 	Array!(ModuleDeclNode*) imports;
 	///
@@ -46,8 +46,8 @@ struct SemanticDeclarations
 	Scope* pushScope(string name, Flag!"ordered" isOrdered)
 	{
 		Scope* newScope = context.appendAst!Scope;
-		newScope.isOrdered = isOrdered;
 		newScope.debugName = name;
+		newScope.isOrdered = isOrdered;
 
 		if (currentScope)
 			newScope.parentScope = currentScope;
@@ -65,23 +65,15 @@ struct SemanticDeclarations
 	}
 
 	/// Constructs and inserts symbol with id
-	Symbol* insert(Identifier id, TokenIndex loc, SymbolClass symClass, AstNode* node)
+	void insert(Identifier id, AstNode* node)
 	{
-		typeof(Symbol.flags) flags = currentScope.isOrdered ? SymbolFlags.isInOrderedScope : 0;
-		Symbol* sym = context.appendAst!Symbol(id, loc, symClass, flags, node);
-		insert(sym);
-		return sym;
-	}
-
-	/// Inserts symbol `sym`
-	void insert(Symbol* sym)
-	{
-		if (auto s = currentScope.symbols.get(sym.id, null))
+		node.flags |= currentScope.isOrdered ? SymbolFlags.isInOrderedScope : 0;
+		if (auto s = currentScope.symbols.get(id, null))
 		{
-			context.error(sym.loc,
-				"declaration `%s` is already defined at %s", context.idString(sym.id), s.loc);
+			context.error(node.loc,
+				"declaration `%s` is already defined at %s", context.idString(id), s.loc);
 		}
-		currentScope.symbols.put(context.arrayArena, sym.id, sym);
+		currentScope.symbols.put(context.arrayArena, id, node);
 	}
 
 	void visit(ModuleDeclNode* m) {
@@ -98,18 +90,18 @@ struct SemanticDeclarations
 	}
 	void visit(FunctionDeclNode* f) {
 		mod.addFunction(context.arrayArena, f);
-		f.resolveSymbol = insert(f.id, f.loc, SymbolClass.c_function, cast(AstNode*)f);
+		insert(f.id, cast(AstNode*)f);
 		f._scope = pushScope(context.idString(f.id), Yes.ordered);
 		foreach (param; f.parameters) visit(param);
 		if (f.block_stmt) visit(f.block_stmt);
 		popScope;
 	}
 	void visit(VariableDeclNode* v) {
-		v.resolveSymbol = insert(v.id, v.loc, SymbolClass.c_variable, cast(AstNode*)v);
+		insert(v.id, cast(AstNode*)v);
 		if (v.initializer) _visit(v.initializer);
 	}
 	void visit(StructDeclNode* s) {
-		s.resolveSymbol = insert(s.id, s.loc, SymbolClass.c_struct, cast(AstNode*)s);
+		insert(s.id, cast(AstNode*)s);
 		s._scope = pushScope(context.idString(s.id), No.ordered);
 		foreach (decl; s.declarations) _visit(decl);
 		popScope;
@@ -121,14 +113,14 @@ struct SemanticDeclarations
 		}
 		else
 		{
-			e.resolveSymbol = insert(e.id, e.loc, SymbolClass.c_enum, cast(AstNode*)e);
+			insert(e.id, cast(AstNode*)e);
 			e._scope = pushScope(context.idString(e.id), No.ordered);
 			foreach (decl; e.declarations) _visit(decl);
 			popScope;
 		}
 	}
 	void visit(EnumMemberDecl* m) {
-		m.resolveSymbol = insert(m.id, m.loc, SymbolClass.c_enum_member, cast(AstNode*)m);
+		insert(m.id, cast(AstNode*)m);
 		if (m.initializer) _visit(m.initializer);
 	}
 	void visit(BlockStmtNode* b) {
@@ -184,7 +176,6 @@ struct SemanticDeclarations
 	void visit(PtrTypeNode* t) {}
 	void visit(StaticArrayTypeNode* t) {}
 	void visit(SliceTypeNode* t) {}
-	void visit(StructTypeNode* t) {}
 }
 
 void pass_semantic_lookup(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
@@ -193,7 +184,6 @@ void pass_semantic_lookup(ref CompilationContext ctx, CompilePassPerModule[] sub
 	foreach (ref SourceFileInfo file; ctx.files.data) {
 		sem2.visit(file.mod);
 	}
-	sem2.symbols.free(ctx.arrayArena);
 }
 
 /// Error means that lookup failed due to earlier failure or error, so no new error should be produced
@@ -211,12 +201,6 @@ struct SemanticLookup
 
 	CompilationContext* context;
 
-	// TODO: do not maintain all visible symbols for current scope
-	// We will only use a small portion of visible symbols in each scope,
-	// so maintaining this is most probably wasted effort, and
-	// it is faster to walk up the scope stack. Need to benchmark.
-	HashMap!(Identifier, Symbol*, Identifier.max) symbols;
-
 	Scope* currentScope;
 
 	Identifier id_ptr;
@@ -225,26 +209,11 @@ struct SemanticLookup
 	void pushCompleteScope(Scope* newScope)
 	{
 		currentScope = newScope;
-		foreach (id, sym; newScope.symbols)
-		{
-			if (auto outerSymbol = symbols.get(sym.id, null))
-				sym.outerSymbol = outerSymbol;
-			symbols.put(context.arrayArena, id, sym);
-		}
 	}
 
 	void popScope()
 	{
 		assert(currentScope);
-
-		// Pop all symbols of the scope we are leaving from symbols
-		foreach(id, sym; currentScope.symbols)
-		{
-			if (sym.outerSymbol) // replace by symbol from outer scope
-				symbols.put(context.arrayArena, id, sym.outerSymbol);
-			else // or simply remove it if no such symbol
-				symbols.remove(context.arrayArena, id);
-		}
 
 		if (currentScope.parentScope)
 			currentScope = currentScope.parentScope;
@@ -253,61 +222,66 @@ struct SemanticLookup
 	}
 
 	/// Look up symbol by Identifier. Searches the whole stack of scopes.
-	Symbol* lookup(const Identifier id, TokenIndex from)
+	AstNode* lookup(const Identifier id, TokenIndex from)
 	{
-		Symbol* sym = symbols.get(id, null);
+		Scope* sc = currentScope;
+
 		// first phase
-		while (sym)
+		while(sc)
 		{
-			// forward reference allowed for unordered scope
-			if (!sym.isInOrderedScope) { break; }
-			// ordered scope
-			else
+			AstNode* sym = sc.symbols.get(id, null);
+
+			if (sym)
 			{
-				uint fromStart = context.tokenLocationBuffer[from].start;
-				uint toStart = context.tokenLocationBuffer[sym.loc].start;
-				if (fromStart > toStart) { break; }
+				// forward reference allowed for unordered scope
+				if (!sym.isInOrderedScope) {
+					return sym;
+				} else { // ordered scope
+					// we need to skip forward references in ordered scope
+					uint fromStart = context.tokenLocationBuffer[from].start;
+					uint toStart = context.tokenLocationBuffer[sym.loc].start;
+					// backward reference
+					if (fromStart > toStart) {
+						return sym;
+					}
+				}
 			}
 
-			sym = sym.outerSymbol;
+			sc = sc.parentScope;
 		}
-
-		if (sym) return sym;
 
 		// second phase
-		sym = lookupImports(id, from);
+		AstNode* sym = lookupImports(id, from);
 
 		if (sym) {
-			// exists
-		}
-		else
-		{
+			return sym;
+		} else {
 			context.error(from, "undefined identifier `%s`", context.idString(id));
+			assert(false);
 		}
-		return sym;
 	}
 
-	Symbol* lookupImports(const Identifier id, TokenIndex from)
+	AstNode* lookupImports(const Identifier id, TokenIndex from)
 	{
 		Scope* sc = currentScope;
 		while (sc)
 		{
-			Symbol* sym;
+			AstNode* sym;
 			ModuleDeclNode* symMod;
 
 			foreach (ModuleDeclNode* imp; sc.imports)
 			{
 				// TODO: check that import is higher in ordered scopes
-				Symbol* scopeSym = imp._scope.symbols.get(id, null);
+				AstNode* scopeSym = imp._scope.symbols.get(id, null);
 				if (!scopeSym) continue;
 
 				if (scopeSym && sym && scopeSym != sym)
 				{
 					string mod1Id = context.idString(symMod.id);
-					string sym1Id = context.idString(sym.id);
+					string sym1Id = context.idString(sym.get_node_id);
 
 					string mod2Id = context.idString(imp.id);
-					string sym2Id = context.idString(scopeSym.id);
+					string sym2Id = context.idString(scopeSym.get_node_id);
 
 					context.error(from,
 						"`%s.%s` at %s conflicts with `%s.%s` at %s",
@@ -338,59 +312,62 @@ struct SemanticLookup
 		}
 
 		// skip unresolved symbol
-		if (!expr.aggregate.isSymResolved) return;
+		if (!expr.aggregate.isSymResolved) {
+			return;
+		}
 
-		Symbol* aggSym = (cast(NameUseExprNode*)expr.aggregate).getSym;
+		AstNode* aggSym = expr.aggregate.as_base.cast_expr_name_use.entity;
 
-		switch(aggSym.symClass)
+		switch(aggSym.astType)
 		{
-			case SymbolClass.c_variable:
+			case AstType.decl_var:
 				LookupResult success;
-				VariableDeclNode* varDecl = aggSym.varDecl;
+				VariableDeclNode* varDecl = aggSym.cast_decl_var;
+				TypeNode* type = varDecl.type.foldAliases;
 
-				switch (varDecl.type.astType)
+				switch (type.astType)
 				{
 					case AstType.type_slice:
-						success = lookupSliceMember(expr, varDecl.type.sliceTypeNode, id);
+						success = lookupSliceMember(expr, type.as_slice, id);
 						break;
 
-					case AstType.type_struct:
-						success = lookupStructMember(expr, varDecl.type.structTypeNode, id);
+					case AstType.decl_struct:
+						success = lookupStructMember(expr, type.as_struct, id);
 						break;
 
 					default: break;
 				}
 				if (success == LookupResult.failure)
-					context.error(expr.loc, "`%s` of type `%s` has no member `%s`",
-						varDecl.strId(context), varDecl.type.printer(context), idStr);
+					context.error(expr.loc, "variable `%s` of type `%s` has no member `%s`",
+						context.idString(varDecl.id), type.printer(context), idStr);
 				break;
 
-			case SymbolClass.c_enum:
-				EnumDeclaration* enumDecl = aggSym.enumDecl;
+			case AstType.decl_enum:
+				EnumDeclaration* enumDecl = aggSym.cast_decl_enum;
 				context.assertf(!enumDecl.isAnonymous, expr.loc,
 					"Trying to get member from anonymous enum defined at %s",
 					context.tokenLoc(enumDecl.loc));
 
-				Symbol* memberSym = enumDecl._scope.symbols.get(id, null);
-				if (memberSym is null)
+				AstNode* memberNode = enumDecl._scope.symbols.get(id, null);
+				if (memberNode is null)
 				{
 					context.error(expr.loc, "Enum `%s` has no member `%s`",
-						enumDecl.strId(context), idStr);
+						context.idString(enumDecl.id), idStr);
 					break;
 				}
 
-				context.assertf(memberSym.symClass == SymbolClass.c_enum_member, expr.loc,
-					"Unexpected enum member %s", memberSym.symClass);
+				context.assertf(memberNode.astType == AstType.decl_enum_member, expr.loc,
+					"Unexpected enum member %s", memberNode.astType);
 
-				expr.member.resolveSymbol(memberSym);
+				expr.member.resolve = memberNode;
 
-				EnumMemberDecl* enumMember = memberSym.enumMember;
+				EnumMemberDecl* enumMember = memberNode.cast_decl_enum_member;
 				expr.type = enumMember.type;
 				expr.memberIndex = enumMember.scopeIndex;
 				break;
 
 			default:
-				context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, aggSym.symClass);
+				context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, aggSym.astType);
 				return;
 		}
 	}
@@ -413,47 +390,42 @@ struct SemanticLookup
 		return LookupResult.failure;
 	}
 
-	LookupResult lookupStructMember(MemberExprNode* expr, StructTypeNode* structType, Identifier id)
+	LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl, Identifier id)
 	{
 		// skip unresolved symbol
-		if (!structType.isSymResolved) return LookupResult.error;
+		AstNode* memberSym = structDecl._scope.symbols.get(id, null);
+		if (!memberSym) return LookupResult.failure;
 
-		StructDeclNode* structDecl = structType.getSym.structDecl;
-		Symbol* memberSym = structDecl._scope.symbols.get(id, null);
-		expr.member.resolveSymbol(memberSym);
+		expr.member.resolve = memberSym;
 
-		if (memberSym)
+		switch(memberSym.astType)
 		{
-			final switch(memberSym.symClass)
-			{
-				case SymbolClass.c_function:
-					context.internal_error("member functions/UFCS calls are not implemented");
-					assert(false);
+			case AstType.decl_function:
+				context.internal_error("member functions/UFCS calls are not implemented");
+				assert(false);
 
-				case SymbolClass.c_variable:
-					// skip unresolved symbol
-					if (!expr.member.isSymResolved) return LookupResult.error;
+			case AstType.decl_var:
+				VariableDeclNode* memberVar = expr.member.varDecl;
+				expr.type = memberVar.type.foldAliases;
+				expr.memberIndex = memberVar.scopeIndex;
+				return LookupResult.success;
 
-					VariableDeclNode* memberVar = expr.member.getSym.varDecl;
-					expr.type = memberVar.type;
-					expr.memberIndex = memberVar.scopeIndex;
-					return LookupResult.success;
+			case AstType.decl_struct:
+				context.internal_error("member structs are not implemented");
+				assert(false);
 
-				case SymbolClass.c_struct:
-					context.internal_error("member structs are not implemented");
-					assert(false);
+			case AstType.decl_enum:
+				context.internal_error("member enums are not implemented");
+				assert(false);
 
-				case SymbolClass.c_enum:
-					context.internal_error("member enums are not implemented");
-					assert(false);
+			case AstType.decl_enum_member:
+				context.internal_error("enums member are not implemented");
+				assert(false);
 
-				case SymbolClass.c_enum_member:
-					context.internal_error("enums member are not implemented");
-					assert(false);
-			}
+			default:
+				context.internal_error("Unexpected struct member %s", memberSym.astType);
+				assert(false);
 		}
-
-		return LookupResult.failure;
 	}
 
 	void visit(ModuleDeclNode* m) {
@@ -531,7 +503,7 @@ struct SemanticLookup
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
 	void visit(NameUseExprNode* v) {
-		v.resolveSymbol = lookup(v.id, v.loc);
+		v.resolve = lookup(v.id, v.loc);
 	}
 	void visit(MemberExprNode* m) {
 		_visit(m.aggregate);
@@ -558,7 +530,6 @@ struct SemanticLookup
 	void visit(PtrTypeNode* t) { _visit(t.base); }
 	void visit(StaticArrayTypeNode* t) { _visit(t.base); }
 	void visit(SliceTypeNode* t) { _visit(t.base); }
-	void visit(StructTypeNode* t) { t.resolveSymbol = lookup(t.id, t.loc); }
 }
 
 void pass_semantic_type(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
@@ -590,7 +561,7 @@ struct SemanticStaticTypes
 	{
 		return
 			type.astType == AstType.type_basic &&
-			type.basicTypeNode.basicType == BasicType.t_bool;
+			type.as_basic.basicType == BasicType.t_bool;
 	}
 
 	/// Returns true if types are equal or were converted to common type. False otherwise
@@ -598,8 +569,8 @@ struct SemanticStaticTypes
 	{
 		if (left.type.astType == AstType.type_basic && right.type.astType == AstType.type_basic)
 		{
-			BasicTypeNode* leftType = left.type.basicTypeNode;
-			BasicTypeNode* rightType = right.type.basicTypeNode;
+			BasicTypeNode* leftType = left.type.as_basic;
+			BasicTypeNode* rightType = right.type.as_basic;
 
 			BasicType commonType = commonBasicType[leftType.basicType][rightType.basicType];
 			bool successLeft = autoconvTo(left, commonType, Yes.force);
@@ -636,7 +607,7 @@ struct SemanticStaticTypes
 
 		if (expr.type.astType == AstType.type_basic)
 		{
-			BasicType fromType = expr.type.basicTypeNode.basicType;
+			BasicType fromType = expr.type.as_basic.basicType;
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert || force)
 			{
@@ -657,8 +628,8 @@ struct SemanticStaticTypes
 
 		if (fromType.astType == AstType.type_basic && toType.astType == AstType.type_basic)
 		{
-			BasicType fromTypeBasic = fromType.basicTypeNode.basicType;
-			BasicType toTypeBasic = toType.basicTypeNode.basicType;
+			BasicType fromTypeBasic = fromType.as_basic.basicType;
+			BasicType toTypeBasic = toType.as_basic.basicType;
 			bool isRegisterTypeFrom =
 				(fromTypeBasic >= BasicType.t_bool &&
 				fromTypeBasic <= BasicType.t_u64) ||
@@ -681,8 +652,8 @@ struct SemanticStaticTypes
 
 		if (expr.type.astType == AstType.type_basic && type.astType == AstType.type_basic)
 		{
-			BasicType fromType = expr.type.basicTypeNode.basicType;
-			BasicType toType = type.basicTypeNode.basicType;
+			BasicType fromType = expr.type.as_basic.basicType;
+			BasicType toType = type.as_basic.basicType;
 			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 			if (canConvert)
 			{
@@ -719,8 +690,8 @@ struct SemanticStaticTypes
 		else if (expr.astType == AstType.literal_string)
 		{
 			if (type.astType == AstType.type_slice &&
-				type.sliceTypeNode.base.astType == AstType.type_basic &&
-				type.sliceTypeNode.base.basicTypeNode.basicType == BasicType.t_u8)
+				type.as_slice.base.astType == AstType.type_basic &&
+				type.as_slice.base.as_basic.basicType == BasicType.t_u8)
 			{
 				return true;
 			}
@@ -760,8 +731,8 @@ struct SemanticStaticTypes
 				{
 					if (
 						sameType(b.left.type, b.right.type) ||
-						b.left.type.ptrTypeNode.isVoidPtr ||
-						b.right.type.ptrTypeNode.isVoidPtr)
+						b.left.type.as_ptr.isVoidPtr ||
+						b.right.type.as_ptr.isVoidPtr)
 					{
 						resRype = context.basicTypeNodes(BasicType.t_bool);
 						break;
@@ -863,7 +834,6 @@ struct SemanticStaticTypes
 				assert(false);
 		}
 		b.type = resRype;
-		b.type.assertImplemented(b.loc, context);
 	}
 
 	void calcType(BinaryExprNode* b)
@@ -909,17 +879,18 @@ struct SemanticStaticTypes
 		curFunc = prevFunc;
 	}
 	void visit(VariableDeclNode* v) {
-		_visit(v.type);
+		TypeNode* type = v.type.foldAliases;
+		_visit(type);
 
 		if (v.initializer) {
 			_visit(v.initializer);
-			autoconvTo(v.initializer, v.type);
+			autoconvTo(v.initializer, type);
 		}
 
 		if (!v.isParameter)
-		switch (v.type.astType) with(AstType)
+		switch (type.astType) with(AstType)
 		{
-			case type_static_array, type_struct, type_slice:
+			case type_static_array, decl_struct, type_slice:
 				v.varFlags |= VariableFlags.forceMemoryStorage;
 				break;
 
@@ -1002,12 +973,10 @@ struct SemanticStaticTypes
 
 	// Get type from variable declaration
 	void visit(NameUseExprNode* v) {
-		v.type = v.getSym.getType;
-		v.type.assertImplemented(v.loc, context);
+		v.type = v.entity.get_node_type;
 	}
 	void visit(MemberExprNode* m) {
 		_visit(m.aggregate);
-		m.type.assertImplemented(m.loc, context);
 	}
 	void visit(IntLiteralExprNode* c) {
 		if (c.isSigned)
@@ -1028,7 +997,6 @@ struct SemanticStaticTypes
 		_visit(b.left);
 		_visit(b.right);
 		calcType(b);
-		b.type.assertImplemented(b.loc, context);
 	}
 	void visit(UnaryExprNode* u) {
 		_visit(u.child);
@@ -1040,7 +1008,7 @@ struct SemanticStaticTypes
 				switch(u.child.astType)
 				{
 					case AstType.expr_name_use:
-						(cast(NameUseExprNode*)u.child).getSym.varDecl.varFlags |= VariableFlags.isAddressTaken;
+						(cast(AstNode*)u.child).cast_expr_name_use.varDecl.varFlags |= VariableFlags.isAddressTaken;
 						break;
 					default:
 						context.internal_error("Cannot take address of %s", u.child.astType);
@@ -1068,7 +1036,7 @@ struct SemanticStaticTypes
 				if (!u.child.type.isPointer) {
 					context.unrecoverable_error(u.loc, "Cannot dereference %s", u.child.type.printer(context));
 				}
-				u.type = u.child.type.ptrTypeNode.base;
+				u.type = u.child.type.as_ptr.base;
 				break;
 			default:
 				context.internal_error("un op %s not implemented", u.op);
@@ -1080,15 +1048,15 @@ struct SemanticStaticTypes
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
 		context.assertf(c.callee.astType == AstType.expr_name_use,
 			c.loc, "Only direct function calls are supported right now");
-		Symbol* calleeSym = (cast(NameUseExprNode*)c.callee).getSym;
+		AstNode* callee = c.callee.as_name_use.entity;
 
-		switch (calleeSym.symClass)
+		switch (callee.astType)
 		{
-			case SymbolClass.c_function: return visitCall(c, calleeSym.funcDecl);
-			case SymbolClass.c_struct: return visitConstructor(c, calleeSym.structDecl);
+			case AstType.decl_function: return visitCall(c, callee.cast_decl_function);
+			case AstType.decl_struct: return visitConstructor(c, callee.cast_decl_struct);
 			default:
 				c.type = context.basicTypeNodes(BasicType.t_error);
-				context.error(c.loc, "Cannot call %s", calleeSym.symClass);
+				context.error(c.loc, "Cannot call %s", callee.astType);
 		}
 
 	}
@@ -1099,10 +1067,10 @@ struct SemanticStaticTypes
 
 		if (numArgs < numParams)
 			context.error(c.loc, "Insufficient parameters to '%s', got %s, expected %s",
-				context.idString(funcDecl.backendData.name), numArgs, numParams);
+				context.idString(funcDecl.id), numArgs, numParams);
 		else if (numArgs > numParams)
 			context.error(c.loc, "Too much parameters to '%s', got %s, expected %s",
-				context.idString(funcDecl.backendData.name), numArgs, numParams);
+				context.idString(funcDecl.id), numArgs, numParams);
 
 		foreach (i, ExpressionNode* arg; c.args)
 		{
@@ -1153,11 +1121,9 @@ struct SemanticStaticTypes
 				t.expr.type.printer(context),
 				t.type.printer(context));
 		}
-		t.type.assertImplemented(t.loc, context);
 	}
 	void visit(BasicTypeNode* t) {}
 	void visit(PtrTypeNode* t) {}
 	void visit(StaticArrayTypeNode* t) {}
 	void visit(SliceTypeNode* t) {}
-	void visit(StructTypeNode* t) {}
 }

@@ -225,7 +225,7 @@ struct Parser
 			{
 				version(print_parse) auto s3 = scop("<var_declaration> %s", start);
 				nextToken; // skip ";"
-				return cast(AstNode*)make!VariableDeclNode(start, SymbolRef(declarationId), type, initializer);
+				return cast(AstNode*)make!VariableDeclNode(start, type, initializer, declarationId);
 			}
 			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 			{
@@ -248,7 +248,7 @@ struct Parser
 						paramId = context.idMap.getOrRegWithSuffix("__param_", paramIndex);
 					}
 
-					VariableDeclNode* param = make!VariableDeclNode(start, SymbolRef(paramId), paramType);
+					VariableDeclNode* param = make!VariableDeclNode(start, paramType, null, paramId);
 					param.varFlags |= VariableFlags.isParameter;
 					param.scopeIndex = cast(typeof(param.scopeIndex))paramIndex;
 					params.put(context.arrayArena, param);
@@ -264,7 +264,7 @@ struct Parser
 				}
 				else expectAndConsume(TokenType.SEMICOLON); // external function
 
-				return cast(AstNode*)make!FunctionDeclNode(start, SymbolRef(declarationId), type, params, block);
+				return cast(AstNode*)make!FunctionDeclNode(start, type, params, block, declarationId);
 			}
 			else
 			{
@@ -284,7 +284,7 @@ struct Parser
 		expectAndConsume(TokenType.LCURLY);
 		AstNodes declarations = parse_declarations(TokenType.RCURLY);
 		expectAndConsume(TokenType.RCURLY);
-		return cast(AstNode*)make!StructDeclNode(start, declarations, SymbolRef(structId));
+		return cast(AstNode*)make!StructDeclNode(start, declarations, structId);
 	}
 
 	// <enum_decl> = <enum_decl_single> / <enum_decl_multi>
@@ -347,7 +347,7 @@ struct Parser
 			Identifier enumId = expectIdentifier;
 			expectAndConsume(TokenType.EQUAL); // "="
 			ExpressionNode* value = expr; // initializer
-			auto member = make!EnumMemberDecl(start, SymbolRef(enumId), type, value);
+			auto member = make!EnumMemberDecl(start, type, value, enumId);
 
 			expectAndConsume(TokenType.SEMICOLON); // ";"
 
@@ -376,7 +376,7 @@ struct Parser
 				nextToken; // skip "="
 				Identifier enumId = makeIdentifier(id);
 				ExpressionNode* value = expr;
-				auto member = make!EnumMemberDecl(start, SymbolRef(enumId), intType, value);
+				auto member = make!EnumMemberDecl(start, intType, value, enumId);
 
 				expectAndConsume(TokenType.SEMICOLON); // ";"
 
@@ -466,7 +466,7 @@ struct Parser
 				value = expr;
 			}
 
-			auto member = make!EnumMemberDecl(start, SymbolRef(id), type, value);
+			auto member = make!EnumMemberDecl(start, type, value, id);
 			member.scopeIndex = varIndex++;
 			members.put(context.arrayArena, cast(AstNode*)member);
 
@@ -494,7 +494,7 @@ struct Parser
 		TypeNode* base;
 		if (tok.type == TokenType.IDENTIFIER) {
 			Identifier id = expectIdentifier();
-			base = cast(TypeNode*)make!StructTypeNode(start, SymbolRef(id));
+			base = cast(TypeNode*)make!NameUseExprNode(start, id);
 		} else if (isBasicTypeToken(tok.type)) {
 			base = context.basicTypeNodes(parse_type_basic());
 		}
@@ -819,7 +819,7 @@ ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
 	{
 		case IDENTIFIER:
 			Identifier id = p.makeIdentifier(token.index);
-			return p.makeExpr!NameUseExprNode(token.index, SymbolRef(id));
+			return cast(ExpressionNode*)p.make!NameUseExprNode(token.index, id);
 		case NULL:
 			return p.makeExpr!NullLiteralExprNode(token.index);
 		case TRUE_LITERAL:
@@ -951,7 +951,7 @@ ExpressionNode* leftBinaryOp(ref Parser p, Token token, int rbp, ExpressionNode*
 					p.context.getTokenString(token.index));
 			}
 			else
-				name = cast(NameUseExprNode*)right;
+				name = right.as_base.cast_expr_name_use;
 			return p.makeExpr!MemberExprNode(token.index, left, name);
 
 		default:

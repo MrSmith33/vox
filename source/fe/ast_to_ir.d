@@ -30,7 +30,7 @@ struct AstToIr
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
 			case type_static_array: auto t = cast(StaticArrayTypeNode*)n; visit(t); break;
 			case type_slice: auto t = cast(SliceTypeNode*)n; visit(t); break;
-			case type_struct: auto t = cast(StructTypeNode*)n; visit(t); break;
+			case decl_struct: auto t = cast(StructDeclNode*)n; visit(t); break;
 
 			default: context.unreachable(); assert(false);
 		}
@@ -185,7 +185,6 @@ struct AstToIr
 		ir.backendData = &f.backendData;
 
 		ir.backendData.returnType = f.returnType.genIrType(context);
-		ir.backendData.name = f.id;
 		ir.instructionSet = IrInstructionSet.ir;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
@@ -336,12 +335,14 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] Var decl (%s) begin %s", v.loc, v.strId(context));
 		version(IrGenPrint) scope(success) writefln("[IR GEN] Var decl (%s) end %s", v.loc, v.strId(context));
 
+		TypeNode* varType = v.type.foldAliases;
+
 		if (v.isGlobal)
 		{
 			v.irValue = context.globals.add();
 			IrGlobal* global = &context.globals.get(v.irValue);
 			global.flags |= IrGlobalFlags.isAllZero | IrGlobalFlags.isMutable;
-			IrIndex valueType = v.type.genIrType(context);
+			IrIndex valueType = varType.genIrType(context);
 			global.type = context.types.appendPtr(valueType);
 			uint valueSize = context.types.typeSize(valueType);
 			global.length = valueSize;
@@ -360,16 +361,16 @@ struct AstToIr
 		if (needsStackSlot)
 		{
 			// allocate stack slot
-			v.irValue = fun.backendData.stackLayout.addStackItem(context, v.type.genIrType(context), v.isParameter, v.scopeIndex);
+			v.irValue = fun.backendData.stackLayout.addStackItem(context, varType.genIrType(context), v.isParameter, v.scopeIndex);
 		}
 		else
 		{
 			if (v.isParameter)
 			{
 				// register parameter input
-				IrIndex valueType = v.type.genIrType(context);
+				IrIndex valueType = varType.genIrType(context);
 				IrIndex type = valueType;
-				if (v.type.isPassByPtr)
+				if (varType.isPassByPtr)
 					type = context.types.appendPtr(type);
 				IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(type), context);
 
@@ -385,7 +386,7 @@ struct AstToIr
 			else
 			{
 				// allocate new variable
-				v.irValue = builder.newIrVarIndex(v.type.genIrType(context));
+				v.irValue = builder.newIrVarIndex(varType.genIrType(context));
 			}
 		}
 
@@ -397,15 +398,15 @@ struct AstToIr
 				IrLabel afterExpr = IrLabel(currentBlock);
 				visitExprValue(v.initializer, currentBlock, afterExpr);
 				currentBlock = afterExpr.blockIndex;
-				assign(v.type, v.irValue, v.initializer, currentBlock);
+				assign(varType, v.irValue, v.initializer, currentBlock);
 			}
 			else
 			{
 				// TODO: default init structs, arrays, slices
-				if (v.type.basicTypeNode || v.type.ptrTypeNode)
+				if (varType.as_basic || varType.as_ptr)
 				{
 					IrIndex value = context.constants.ZERO;
-					store(currentBlock, v.irValue, value, v.type.argSize(context));
+					store(currentBlock, v.irValue, value, varType.argSize(context));
 				}
 			}
 		}
@@ -592,29 +593,29 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] var expr value (%s) begin", v.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr value (%s) end", v.loc);
 
-		switch (v.getSym.symClass) with(SymbolClass)
+		switch (v.entity.astType) with(AstType)
 		{
-			case c_enum:
+			case decl_enum:
 			{
 				break;
 			}
-			case c_enum_member:
+			case decl_enum_member:
 			{
-				EnumMemberDecl* member = v.getSym.enumMember;
-				context.assertf(member.type !is null, member.loc, "%s type is null", member.strId(context));
+				EnumMemberDecl* member = v.enumMember;
+				context.assertf(member.type !is null, member.loc, "%s type is null", context.idString(member.id));
 				IrLabel afterExpr = IrLabel(currentBlock);
 				visitExprValue(member.initializer, currentBlock, afterExpr);
 				currentBlock = afterExpr.blockIndex;
 				v.irValue = member.initializer.irValue;
 				break;
 			}
-			case c_variable:
+			case decl_var:
 			{
 				if (v.isLvalue) {
-					v.irValue = v.getSym.varDecl.irValue;
+					v.irValue = v.varDecl.irValue;
 				}
 				else {
-					TypeNode* type = v.getSym.varDecl.type;
+					TypeNode* type = v.varDecl.type.foldAliases;
 					if (v.isArgument && type.isPassByPtr)
 					{
 						IrIndex irType = type.genIrType(context);
@@ -622,24 +623,24 @@ struct AstToIr
 						if (size == 1 || size == 2 || size == 4 || size == 8)
 						{
 							// pass by value
-							v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+							v.irValue = load(currentBlock, v.varDecl.irValue);
 						}
 						else
 						{
 							// pass pointer
 							context.todo("need to pass pointer to copy");
-							v.irValue = v.getSym.varDecl.irValue;
+							v.irValue = v.varDecl.irValue;
 						}
 					}
 					else
 					{
-						v.irValue = load(currentBlock, v.getSym.varDecl.irValue);
+						v.irValue = load(currentBlock, v.varDecl.irValue);
 					}
 				}
 				break;
 			}
 			default:
-				writefln("visitExprValue %s", v.getSym.symClass);
+				writefln("visitExprValue %s", v.entity.astType);
 				context.unreachable; assert(false);
 		}
 
@@ -656,10 +657,10 @@ struct AstToIr
 
 		if (m.aggregate.astType == AstType.expr_name_use)
 		{
-			auto name = (cast(NameUseExprNode*)m.aggregate);
-			switch (name.getSym.symClass) with(SymbolClass)
+			NameUseExprNode* name = (cast(AstNode*)m.aggregate).cast_expr_name_use;
+			switch (name.entity.astType) with(AstType)
 			{
-				case c_enum:
+				case decl_enum:
 				{
 					IrLabel afterMember = IrLabel(currentBlock);
 					visitExprValue(m.member, currentBlock, afterMember);
@@ -667,7 +668,7 @@ struct AstToIr
 					m.irValue = m.member.irValue;
 					break;
 				}
-				case c_variable:
+				case decl_var:
 				{
 					IrIndex ptrIndex = context.constants.ZERO;
 					IrIndex memberIndex = context.constants.add(m.memberIndex, IsSigned.no);
@@ -823,7 +824,7 @@ struct AstToIr
 					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result;
 
 					// divide by elem size
-					TypeNode* baseType = b.left.type.ptrTypeNode.base;
+					TypeNode* baseType = b.left.type.as_ptr.base;
 					uint elemSize = baseType.size;
 					if (elemSize == 1 || baseType.isVoid) break;
 
@@ -1123,7 +1124,7 @@ struct AstToIr
 
 				IrIndex increment = context.constants.ONE; // integers increment by 1
 				if (u.child.type.isPointer) { // pointers increment by size of element
-					uint size = u.child.type.ptrTypeNode.base.size;
+					uint size = u.child.type.as_ptr.base.size;
 					increment = context.constants.add(size, IsSigned.no);
 				}
 
@@ -1184,10 +1185,8 @@ struct AstToIr
 		// need handling of function pointers, need function types in IR for that
 		context.assertf(c.callee.astType == AstType.expr_name_use,
 			c.loc, "Only direct function calls are supported right now");
-		Symbol* calleeSym = (cast(NameUseExprNode*)c.callee).getSym;
-
+		FunctionDeclNode* callee = c.callee.as_base.cast_expr_name_use.funcDecl;
 		IrIndex[] args = argsBuf[0..c.args.length];
-		FunctionDeclNode* callee = calleeSym.funcDecl;
 
 		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.index);
 		builder.emitInstrPreheader(IrInstrPreheader_call(callee.backendData.index));
@@ -1314,5 +1313,4 @@ struct AstToIr
 	void visit(PtrTypeNode* t) { context.unreachable; }
 	void visit(StaticArrayTypeNode* t) { context.unreachable; }
 	void visit(SliceTypeNode* t) { context.unreachable; }
-	void visit(StructTypeNode* t) { context.unreachable; }
 }

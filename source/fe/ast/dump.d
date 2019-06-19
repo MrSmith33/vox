@@ -35,26 +35,26 @@ struct AstPrinter {
 		print("IMPORT ", context.idString(i.id));
 	}
 	void visit(FunctionDeclNode* f) {
-		print("FUNC ", f.returnType.printer(context), " ", f.strId(context));
+		print("FUNC ", f.returnType.printer(context), " ", context.idString(f.id));
 		foreach (param; f.parameters) pr_node(cast(AstNode*)param);
 		if (f.block_stmt) pr_node(cast(AstNode*)f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
-		print(v.isParameter ? "PARAM " : "VAR ", v.type.printer(context), " ", v.strId(context));
+		print(v.isParameter ? "PARAM " : "VAR ", v.type.printer(context), " ", context.idString(v.id));
 		if (v.initializer) pr_node(cast(AstNode*)v.initializer);
 	}
 	void visit(StructDeclNode* s) {
-		print("STRUCT ", s.strId(context));
+		print("STRUCT ", context.idString(s.id));
 		foreach (decl; s.declarations) pr_node(decl); }
 	void visit(EnumDeclaration* e) {
 		if (e.isAnonymous)
 			print("ENUM ", e.memberType.printer(context));
 		else
-			print("ENUM ", e.memberType.printer(context), " ", e.strId(context));
+			print("ENUM ", e.memberType.printer(context), " ", context.idString(e.id));
 		foreach (decl; e.declarations) pr_node(decl);
 	}
 	void visit(EnumMemberDecl* m) {
-		print("ENUM MEMBER ", m.type.printer(context), " ", m.strId(context));
+		print("ENUM MEMBER ", m.type.printer(context), " ", context.idString(m.id));
 		if (m.initializer) pr_node(cast(AstNode*)m.initializer);
 	}
 	void visit(BlockStmtNode* b) {
@@ -81,9 +81,9 @@ struct AstPrinter {
 	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
 	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
-			print("VAR_USE ", v.getSym.getType.printer(context), " ", v.strId(context));
+			print("VAR_USE ", v.entity.get_node_type.printer(context), " ", context.idString(v.id));
 		else
-			print("VAR_USE ", v.strId(context));
+			print("VAR_USE ", context.idString(v.id));
 	}
 	void visit(MemberExprNode* m) {
 		print("MEMBER ", m.type.printer(context));
@@ -123,7 +123,6 @@ struct AstPrinter {
 	void visit(PtrTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(SliceTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
-	void visit(StructTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)
 	{
@@ -160,26 +159,26 @@ struct AstDotPrinter {
 		printLabel(i, `IMPORT\n%s`, context.idString(i.id));
 	}
 	void visit(FunctionDeclNode* f) {
-		printLabel(f, `FUNC\n%s %s`, f.returnType.printer(context), f.strId(context));
+		printLabel(f, `FUNC\n%s %s`, f.returnType.printer(context), context.idString(f.id));
 		foreach (param; f.parameters) pr_node_edge(f, param);
 		if (f.block_stmt) pr_node_edge(f, f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
-		printLabel(v, v.isParameter ? `PARAM\n%s %s` : `VAR\n%s %s`, v.type.printer(context), v.strId(context));
+		printLabel(v, v.isParameter ? `PARAM\n%s %s` : `VAR\n%s %s`, v.type.printer(context), context.idString(v.id));
 		if (v.initializer) pr_node_edge(v, v.initializer);
 	}
 	void visit(StructDeclNode* s) {
-		printLabel(s, `STRUCT\n%s`, s.strId(context));
+		printLabel(s, `STRUCT\n%s`, context.idString(s.id));
 		foreach (decl; s.declarations) pr_node_edge(s, decl); }
 	void visit(EnumDeclaration* e) {
 		if (e.isAnonymous)
 			printLabel(e, `ENUM\n%s`, e.memberType.printer(context));
 		else
-			printLabel(e, `ENUM\n%s %s`, e.memberType.printer(context), e.strId(context));
+			printLabel(e, `ENUM\n%s %s`, e.memberType.printer(context), context.idString(e.id));
 		foreach (decl; e.declarations) pr_node_edge(e, decl);
 	}
 	void visit(EnumMemberDecl* m) {
-		printLabel(m, `ENUM MEMBER\n%s %s`, m.type.printer(context), m.strId(context));
+		printLabel(m, `ENUM MEMBER\n%s %s`, m.type.printer(context), context.idString(m.id));
 		if (m.initializer) pr_node_edge(m, m.initializer);
 	}
 	void visit(BlockStmtNode* b) {
@@ -205,12 +204,12 @@ struct AstDotPrinter {
 	void visit(ContinueStmtNode* r) { printLabel(r, "CONTINUE"); }
 	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
-			printLabel(v, `VAR_USE\n%s %s`, v.getSym.getType.printer(context), v.strId(context));
+			printLabel(v, `VAR_USE\n%s %s`, v.entity.get_node_type.printer(context), context.idString(v.id));
 		else
-			printLabel(v, `VAR_USE\n%s`, v.strId(context));
+			printLabel(v, `VAR_USE\n%s`, context.idString(v.id));
 	}
 	void visit(MemberExprNode* m) {
-		printLabel(m, "MEMBER %s", m.member.strId(context));
+		printLabel(m, "MEMBER %s", context.idString(m.member.id));
 		pr_node_edge(m, m.aggregate);
 	}
 	void visit(IntLiteralExprNode* lit) { printLabel(lit, `Int LITERAL\n%s %s`, lit.type.printer(context), lit.value); }
@@ -239,7 +238,6 @@ struct AstDotPrinter {
 	void visit(PtrTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(SliceTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
-	void visit(StructTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)
 	{

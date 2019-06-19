@@ -8,6 +8,13 @@ module fe.ast.declaration;
 import std.stdio;
 import all;
 
+ModuleDeclNode* cast_decl_module(AstNode* n) { if (n.astType == AstType.decl_module) return cast(ModuleDeclNode*)n; return null; }
+StructDeclNode* cast_decl_struct(AstNode* n) { if (n.astType == AstType.decl_struct) return cast(StructDeclNode*)n; return null; }
+FunctionDeclNode* cast_decl_function(AstNode* n) { if (n.astType == AstType.decl_function) return cast(FunctionDeclNode*)n; return null; }
+VariableDeclNode* cast_decl_var(AstNode* n) { if (n.astType == AstType.decl_var) return cast(VariableDeclNode*)n; return null; }
+EnumDeclaration* cast_decl_enum(AstNode* n) { if (n.astType == AstType.decl_enum) return cast(EnumDeclaration*)n; return null; }
+EnumMemberDecl* cast_decl_enum_member(AstNode* n) { if (n.astType == AstType.decl_enum_member) return cast(EnumMemberDecl*)n; return null; }
+
 mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {
 	mixin AstNodeData!(_astType, default_flags | AstFlags.isScope | AstFlags.isDeclaration);
 	/// Each node can be struct, function or variable
@@ -39,14 +46,13 @@ struct ModuleDeclNode {
 
 	FunctionDeclNode* findFunction(string idStr, CompilationContext* ctx) {
 		Identifier id = ctx.idMap.find(idStr);
-		if (id == uint.max) return null;
+		if (id.isUndefined) return null;
 		return findFunction(id);
 	}
 	FunctionDeclNode* findFunction(Identifier id) {
-		Symbol* sym = _scope.symbols.get(id, null);
+		AstNode* sym = _scope.symbols.get(id, null);
 		if (sym is null) return null;
-		if (sym.symClass != SymbolClass.c_function) return null;
-		return sym.funcDecl;
+		return sym.cast_decl_function;
 	}
 }
 
@@ -57,16 +63,18 @@ struct ImportDeclNode
 }
 
 struct StructDeclNode {
-	mixin ScopeDeclNodeData!(AstType.decl_struct);
-	mixin SymRefNodeData;
-	Scope* _scope;
+	mixin ScopeDeclNodeData!(AstType.decl_struct, AstFlags.isType);
+	Identifier id;
 	IrIndex irType;
+	Scope* _scope;
+	uint size = 1;
+	uint alignment = 1;
 }
 
 /// Refers to a function inside a module
 struct FunctionIndex
 {
-	/// Points into ModuleDeclNode.functions
+	/// Index into ModuleDeclNode.functions
 	uint functionIndex;
 	ModuleIndex moduleIndex;
 }
@@ -99,15 +107,26 @@ struct FunctionBackendData
 
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
-	mixin SymRefNodeData;
 	TypeNode* returnType;
 	Array!(VariableDeclNode*) parameters;
 	BlockStmtNode* block_stmt; // null if external
 	Scope* _scope;
 	FunctionBackendData backendData;
 
+	this(TokenIndex loc, TypeNode* retType, Array!(VariableDeclNode*) parameters, BlockStmtNode* block, Identifier id)
+	{
+		this.loc = loc;
+		this.astType = AstType.decl_function;
+		this.flags = AstFlags.isDeclaration;
+		this.returnType = retType;
+		this.parameters = parameters;
+		this.block_stmt = block;
+		this.backendData.name = id;
+	}
+
 	/// External functions have no body
 	bool isExternal() { return block_stmt is null; }
+	ref Identifier id() { return backendData.name; }
 }
 
 enum VariableFlags : ubyte {
@@ -119,9 +138,9 @@ enum VariableFlags : ubyte {
 struct VariableDeclNode
 {
 	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);
-	mixin SymRefNodeData;
 	TypeNode* type;
 	ExpressionNode* initializer; // may be null
+	Identifier id;
 	ubyte varFlags; // VariableFlags
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
 	IrIndex irValue; // kind is variable or stackSlot, unique id of variable within a function
@@ -133,9 +152,9 @@ struct VariableDeclNode
 struct EnumDeclaration
 {
 	mixin ScopeDeclNodeData!(AstType.decl_enum);
-	mixin SymRefNodeData;
 	TypeNode* memberType;
 	Scope* _scope;
+	Identifier id;
 
 	this(TokenIndex loc, Array!(AstNode*) members, TypeNode* memberType, Identifier id)
 	{
@@ -144,7 +163,7 @@ struct EnumDeclaration
 		this.flags = AstFlags.isScope | AstFlags.isDeclaration;
 		this.declarations = members;
 		this.memberType = memberType;
-		this.symRef = SymbolRef(id);
+		this.id = id;
 	}
 
 	/// Anonymous
@@ -163,8 +182,8 @@ struct EnumDeclaration
 struct EnumMemberDecl
 {
 	mixin AstNodeData!(AstType.decl_enum_member, AstFlags.isDeclaration | AstFlags.isStatement);
-	mixin SymRefNodeData;
 	TypeNode* type;
 	ExpressionNode* initializer;
+	Identifier id;
 	ushort scopeIndex;
 }

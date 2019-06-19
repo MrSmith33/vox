@@ -408,7 +408,7 @@ void dumpCall(ref InstrPrintInfo p)
 	FunctionIndex calleeIndex = p.instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
 	FunctionDeclNode* callee = p.context.getFunction(calleeIndex);
 	dumpOptionalResult(p);
-	p.sink.putf("call %s", callee.strId(p.context));
+	p.sink.putf("call %s", p.context.idString(callee.id));
 	dumpArgs(p);
 }
 

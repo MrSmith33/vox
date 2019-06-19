@@ -121,7 +121,7 @@ void addFunctionSymbols(ref CompilationContext context, ref ModuleDeclNode mod)
 
 			if (!symbolIndex.isDefined)
 			{
-				context.error(f.loc, "Unresolved external function %s", f.strId(&context));
+				context.error(f.loc, "Unresolved external function %s", context.idString(f.id));
 				continue;
 			}
 		}
@@ -186,7 +186,7 @@ struct CodeEmitter
 		funcSym.sectionOffset = cast(ulong)(gen.pc - context.codeBuffer.bufPtr);
 
 		Identifier mainId = context.idMap.getOrRegNoDup("main");
-		if (fun.backendData.name == mainId)
+		if (fun.id == mainId)
 		{
 			if (context.entryPoint !is null)
 			{
@@ -211,7 +211,7 @@ struct CodeEmitter
 		funcSym.length = cast(uint)(gen.pc - funcSym.dataPtr);
 
 		if (context.printCodeHex && context.printDumpOnlyOf(f)) {
-			writefln("// Amd64 code: %s addr 0x%X, %s bytes", context.idString(f.backendData.name), funcSym.dataPtr, funcSym.length);
+			writefln("// Amd64 code: %s addr 0x%X, %s bytes", context.idString(f.id), funcSym.dataPtr, funcSym.length);
 			printHex(funcSym.dataPtr[0..funcSym.length], 16);
 		}
 	}
