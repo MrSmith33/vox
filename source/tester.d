@@ -46,7 +46,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	driver.context.printOnlyFun = Identifier.max;
+	driver.context.printOnlyFun = Identifier.init;
 	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(filterFuncName);
 
 	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test);
