@@ -67,7 +67,7 @@ struct SemanticDeclarations
 	/// Constructs and inserts symbol with id
 	void insert(Identifier id, AstNode* node)
 	{
-		node.flags |= currentScope.isOrdered ? SymbolFlags.isInOrderedScope : 0;
+		node.flags |= currentScope.isOrdered ? AstFlags.isInOrderedScope : 0;
 		if (auto s = currentScope.symbols.get(id, null))
 		{
 			context.error(node.loc,

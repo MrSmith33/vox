@@ -15,4 +15,3 @@ import fe.identifier;
 import fe.lexer;
 import fe.parser;
 import fe.semantics;
-import fe.symbol;
