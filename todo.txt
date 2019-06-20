@@ -1,0 +1,163 @@
+- opaque IR type (void?)
+- function signature IR type
+- function pointers
+	- call by pointer
+- char literal / type
+- float double
+- union
+- alias
+- struct methods
+- struct literal
+- pipeline ordering (run all passes per function) will allow to release temporary memory
++- all register subtypes 8/16/32/64 bit registers, !!! QWORD is forced rn everywhere
+- optimize pointer arithmetic into lea
+- array literal
+- slices
+	+ assign string literal
+	+ access .ptr, .length
+	+ indexing
+	- pass literal to function
+	- slicing slice[0..42]
+	- slice assign: slice[] = 42; and slice[] = slice2;
+	- static array to slice (implicit conversion, slicing)
+
+
+- multi-indexing operator x[1, 2, 3]
+- AST Index
+- small pointer type when basic type is store inline + pointer level for more than 1 indirection level
+o dll linking
+	- @dllimport("lz4.dll") attribute on externals
+	- @dllimport("lz4.dll") attribute on module
+		pros: only symbols from specific module will be searched in a dll
+	- .def file passing
+	+ .dll file passing
+		cons: simple passing allows all module externals to be searched for in passed .dll/.def
+		pros: --optname=modulename:.dll/.def allows for benefit of above options
+	- custom .def-like format (binary, combine all libs description in a single file)
++ multiple exported functions per test
++ enum
+	- enum with bigger than i32 values doesn't compile
+- -run option
+- in error on unexpected EOF show unterminated ([{ symbol
+- constant folding << >> >>> shifts needs to know type of left operand to mask the shift size
+- check if right operand of << >> >>> is constant and pass it as is. Recognize constants in codegen
+- store virtual registers, phi functions with arguments in separate arenas
+	vreg will shrink from 7 slots to 4 slots
+	phi will shrink from 5 slots to 2 slots
+	- need array arena for IR with per-function slices
+
+- attributes
+- test all implicit conversions
+- test parsing errors
+- test all integer size code gen
+- test bools
+- test constant folding of all operators
+- test mismatched number of args/params to call/constructor
+- reg alloc performance regression 1.9s -> 6.2s
+- stack layout per IR (use alloca?)
+
++ integer arithmetic operators
+	+ + -
+	+ pointer arithmetics
+		+ add/sub int to ptr
+		+ sub pointer of the same type
+		+ compare pointers
+		+ pre/post increment/decrement ptr
+	+ unary -
+	+ * / %
+	+ <<, >>, >>>
+	+ ~ | & ^
+	+ op=
+	+ v++ v-- ++v --v
++ true, false
++ || && !
+	+ ||
+	+ &&
+	+ !
++ appveyor build/test/release
++ test error cases
++ parse .har in test runner
++ split tests from test runner
++ negative literal type
++ exe tests time
++ null
++ nogc hashmap and array
++ array arena in compiler
++ HAR support: HAR - Human Archive Format: https://github.com/marler8997/har
++ HAR tests
++ small int literal in IR
++ use GEP in index expression
++ Lazy imports
++ AST Arena
++ modules
+	+ multiple files in context
+	+ compile all files
+	+ imports
++ cmdline interface
++ separate lexing
++ array
++ GEP instruction
++ IR types (pointer, struct, array)
+	+ alignment
+	+ correct struct size
++ generate .exe
+	+ detect entry point (main)
++ symbols with references in backend
+	+ linking
++ cast(T) operator
++ split ast.d
++ int literal typing
+	+ virtual reg types
+	+ global types
++ struct
+	+ type definition
+	+ IR type gen
+	+ var definition
+	+ member read
+	+ member write
+	+ call conv
++ string (u8* done / need slices)
++ Pratt parser
++ VariableExprNode -> NameUseExprNode
++ add fixed interval for parameters in registers
++ static data buffer
++ static data IR index
+x parse keywords as identifiers and identify them through interning (slower than switch)
++ while
++ fix stack pointer operations are on ESP instead of RSP
++ var decl inialization (parsing is done)
++ refactor into multiple files
++ new AST to IR pass for new IR
++ new IR
++ Unify all IR levels (IR and LIR)
++ LIR
++ IrRef no longer points to instruction / phi function. It points to virtual (or physical) register instead, and virt reg points to either instruction or phi function
++ unify Ref Id Index
++ use high-level branches instead of cmp + branch
++ no pointers in IR
+x more space for parameters, opcodes, IrValueTypes
++ store/load
++ Reg allocation
+	+ loops
+	+ proper phi resolution (parallel moves)
+	- spilling
+	- more than 4 parameters
+	+ function calls
+	+ two address form
++ Live intervals
++ Remove redundant blocks (that contain only jmp)
++ Code gen
++ Instruction set for IR
+
++ variable declarations
++ types
+arrays
++ basic blocks
++ break continue for loops
+
++ pointer
+
+
+Optimizations:
+- tail call
+- merge stack allocations for local vars and parameters

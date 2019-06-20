@@ -180,6 +180,8 @@ struct CompilationContext
 	///
 	string idString(const Identifier id) { return idMap.get(id); }
 
+	static __gshared ErrorAstNode errorNode = ErrorAstNode();
+
 	static __gshared BasicTypeNode[] basicTypes = [
 		basicTypeNode(0, BasicType.t_error),
 		basicTypeNode(0, BasicType.t_void),

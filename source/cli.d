@@ -61,6 +61,7 @@ void runCli(string[] args)
 			"print-lir-ra", "Print LIR after register allocation pass.", &driver.context.printLirRA,
 			"print-liveness", "Print liveness analisys info.", &driver.context.printLiveIntervals,
 			"print-stack-layout", "Print stack layout.", &driver.context.printStackLayout,
+			"print-code-hex", "Print code hex.", &driver.context.printCodeHex,
 			"print-symbols", "Print symbols.", &driver.context.printSymbols,
 			"print-mem", "Print memory consumtion.", &printMem,
 			"print-filter", "Print only info about <function name>.", &filterFuncName,

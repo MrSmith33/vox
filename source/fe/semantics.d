@@ -257,7 +257,7 @@ struct SemanticLookup
 			return sym;
 		} else {
 			context.error(from, "undefined identifier `%s`", context.idString(id));
-			assert(false);
+			return cast(AstNode*)&context.errorNode;
 		}
 	}
 

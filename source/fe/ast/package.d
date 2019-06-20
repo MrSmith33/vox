@@ -156,4 +156,9 @@ struct AstNode
 	mixin AstNodeData;
 }
 
+struct ErrorAstNode
+{
+	mixin AstNodeData!(AstType.error);
+}
+
 alias AstNodes = Array!(AstNode*);
