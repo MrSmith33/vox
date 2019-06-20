@@ -13,14 +13,20 @@ import tester;
 version = standalone;
 //version = cli;
 //version = bench;
+//version = devtest;
 //version = test;
-version(standalone) void main(string[] args)
+version(standalone) int main(string[] args)
 {
 	scope(exit) stdout.flush;
 	version(cli) runCli(args);
 	version(bench) runBench(args);
-	version(test) runAllTests(StopOnFirstFail.no);
-	//runDevTests();
+	//benchSpeed();
+	version(devtest) runDevTests();
+	version(test) {
+		int numFailedTests = runAllTests(StopOnFirstFail.no);
+		return numFailedTests;
+	}
+	return 0;
 }
 
 unittest

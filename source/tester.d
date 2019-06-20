@@ -14,7 +14,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(tests.passing.test48);
+	Test test = makeTest!(tests.passing.test52);
 	string filterFuncName;
 
 	Driver driver;
@@ -59,7 +59,8 @@ void runDevTests()
 
 enum StopOnFirstFail : bool { no = false, yes = true }
 
-void runAllTests(StopOnFirstFail stopOnFirstFail)
+// Returns number of failed tests
+int runAllTests(StopOnFirstFail stopOnFirstFail)
 {
 	auto startInitTime = currTime;
 	Driver driver;
@@ -137,6 +138,8 @@ void runAllTests(StopOnFirstFail stopOnFirstFail)
 		scaledNumberFmt(endInitTime-startInitTime),
 		scaledNumberFmt(endReleaseTime-startReleaseTime),
 		);
+
+	return cast(int)(numTests - numSuccessfulTests);
 }
 
 enum DumpTest : bool { no = false, yes = true }
