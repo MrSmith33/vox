@@ -96,7 +96,7 @@ Release CLI build:
 
 # What works
 
-- You can use code in `compiler1.d` as JIT compiler for amd64:
+- Example of JIT compilation for amd64 from D code:
 ```D
 string source = q{
     void test(i32* array, i32 index, i32 value) {
@@ -106,16 +106,17 @@ string source = q{
 
 // Error handling is omitted
 Driver driver;
-driver.initPasses();
-ubyte[] codeBuffer = alloc_executable_memory(PAGE_SIZE * 8);
+driver.initialize(jitPasses);
+scope(exit) driver.releaseMemory;
+driver.beginCompilation();
+driver.addModule(SourceFileInfo("test", source));
+driver.compile();
+driver.markCodeAsExecutable();
 
-ModuleDeclNode* mod = driver.compileModule(source, codeBuffer);
-FunctionDeclNode* funDecl = mod.findFunction("test", &driver.context);
-alias FuncT = extern(C) void function(int*, int, int);
-FuncT fun = cast(FuncT)funDecl.irData.funcPtr;
+auto testFun = driver.context.getFunctionPtr!(void, int*, int, int)("test");
 
 int[2] val = [42, 56];
-fun(val.ptr, 1, 10);
+testFun(val.ptr, 1, 10);
 assert(val[1] == 10);
 ```
 
