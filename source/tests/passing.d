@@ -369,6 +369,10 @@ immutable test25 = q{--- test25
 	}
 };
 struct Slice(T) {
+	this(T[] data) {
+		ptr = data.ptr;
+		length = data.length;
+	}
 	ulong length;
 	T* ptr;
 	T[] slice() { return ptr[0..length]; }
@@ -523,7 +527,7 @@ immutable test34 = q{--- test34
 void tester34(ref TestContext ctx) {
 	auto getElement = ctx.getFunctionPtr!(int, Slice!int, int)("getElement");
 	int[2] val = [42, 56];
-	Slice!int slice = {val.length, val.ptr};
+	Slice!int slice = Slice!int(val);
 	int res0 = getElement(slice, 0);
 	int res1 = getElement(slice, 1);
 	assert(res0 == 42);
@@ -538,7 +542,7 @@ immutable test35 = q{--- test35
 void tester35(ref TestContext ctx) {
 	auto setElement = ctx.getFunctionPtr!(void, Slice!int, int, int)("setElement");
 	int[2] val = [42, 56];
-	Slice!int slice = {val.length, val.ptr};
+	Slice!int slice = Slice!int(val);
 	setElement(slice, 0, 88);
 	assert(val == [88, 56]);
 	setElement(slice, 1, 96);
@@ -1138,3 +1142,18 @@ immutable test54 = q{--- test54
 		if (false){}
 	}
 };
+
+
+@TestInfo(&tester55, [HostSymbol("print", cast(void*)&test25_external_print)])
+immutable test55 = q{--- test55
+	// test slice forwarding
+	void print(u8[] str);
+	void forward(u8[] str) {
+		print(str);
+	}
+};
+void tester55(ref TestContext ctx) {
+	auto forward = ctx.getFunctionPtr!(void, Slice!(immutable(char)))("forward");
+	forward(Slice!(immutable(char))("testString"));
+	assert(testSink.text == "testString");
+}

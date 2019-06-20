@@ -371,18 +371,28 @@ struct AstToIr
 				// register parameter input
 				IrIndex valueType = varType.genIrType(context);
 				IrIndex type = valueType;
-				if (varType.isPassByPtr)
+				if (varType.isPassByPtr) // value is already passed as a pointer
+				{
 					type = context.types.appendPtr(type);
-				IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(type), context);
+					IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(type), context);
+					ExtraInstrArgs extra = {type : type, argSize : argSize};
+					InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
+					ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
+					v.irValue = param.result;
+				}
+				else
+				{
+					IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(type), context);
 
-				// allocate new variable
-				v.irValue = builder.newIrVarIndex(type);
+					// allocate new variable
+					v.irValue = builder.newIrVarIndex(type);
 
-				ExtraInstrArgs extra = {type : type, argSize : argSize};
-				InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
-				ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
+					ExtraInstrArgs extra = {type : type, argSize : argSize};
+					InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
+					ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
 
-				store(currentBlock, v.irValue, param.result, argSize);
+					store(currentBlock, v.irValue, param.result, argSize);
+				}
 			}
 			else
 			{
