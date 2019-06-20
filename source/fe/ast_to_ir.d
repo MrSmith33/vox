@@ -738,20 +738,53 @@ struct AstToIr
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
-	long calcBinOp(BinOp op, long a, long b)
+	IrIndex calcBinOp(BinOp op, IrIndex left, IrIndex right)
 	{
+		IrConstant leftCon = context.constants.get(left);
+		IrConstant rightCon = context.constants.get(right);
+
+		bool isAnySigned = left.isSignedConstant || right.isSignedConstant;
+
 		switch(op)
 		{
-			case BinOp.EQUAL:         return a == b;
-			case BinOp.NOT_EQUAL:     return a != b;
-			case BinOp.GREATER:       return a >  b;
-			case BinOp.GREATER_EQUAL: return a >= b;
-			case BinOp.LESS:          return a <  b;
-			case BinOp.LESS_EQUAL:    return a <= b;
-			case BinOp.PLUS:          return a +  b;
-			case BinOp.MINUS:         return a -  b;
+			case BinOp.EQUAL:         return context.constants.add(cast(ubyte)(leftCon.i64 == rightCon.i64), IsSigned.no, IrArgSize.size8);
+			case BinOp.NOT_EQUAL:     return context.constants.add(cast(ubyte)(leftCon.i64 != rightCon.i64), IsSigned.no, IrArgSize.size8);
+			case BinOp.GREATER:       return context.constants.add(cast(ubyte)(leftCon.i64 >  rightCon.i64), IsSigned.no, IrArgSize.size8);
+			case BinOp.GREATER_EQUAL: return context.constants.add(cast(ubyte)(leftCon.i64 >= rightCon.i64), IsSigned.no, IrArgSize.size8);
+			case BinOp.LESS:          return context.constants.add(cast(ubyte)(leftCon.i64 <  rightCon.i64), IsSigned.no, IrArgSize.size8);
+			case BinOp.LESS_EQUAL:    return context.constants.add(cast(ubyte)(leftCon.i64 <= rightCon.i64), IsSigned.no, IrArgSize.size8);
+			case BinOp.PLUS:          return context.constants.add(leftCon.i64 + rightCon.i64, cast(IsSigned)isAnySigned);
+			case BinOp.MINUS:         return context.constants.add(leftCon.i64 - rightCon.i64, cast(IsSigned)isAnySigned);
+			case BinOp.MULT:          return context.constants.add(leftCon.i64 * rightCon.i64, cast(IsSigned)isAnySigned);
+			case BinOp.DIV:           return context.constants.add(leftCon.i64 / rightCon.i64, cast(IsSigned)isAnySigned);
+			case BinOp.REMAINDER:     return context.constants.add(leftCon.i64 % rightCon.i64, cast(IsSigned)isAnySigned);
+
 			// TODO: we need type info here, to correctly mask the shift size
-			case BinOp.SHL:           return a << b;
+			case BinOp.SHL:           return context.constants.add(leftCon.i64 << rightCon.i64, cast(IsSigned)left.isSignedConstant);
+			case BinOp.SHR:
+				ulong result;
+				final switch(left.constantSize)
+				{
+					case IrArgSize.size8:  result = leftCon.i8 >>> rightCon.i64; break;
+					case IrArgSize.size16: result = leftCon.i16 >>> rightCon.i64; break;
+					case IrArgSize.size32: result = leftCon.i32 >>> rightCon.i64; break;
+					case IrArgSize.size64: result = leftCon.i64 >>> rightCon.i64; break;
+				}
+				return context.constants.add(result, cast(IsSigned)left.isSignedConstant);
+			case BinOp.ASHR:
+				ulong result;
+				final switch(left.constantSize)
+				{
+					case IrArgSize.size8:  result = leftCon.i8 >> rightCon.i64; break;
+					case IrArgSize.size16: result = leftCon.i16 >> rightCon.i64; break;
+					case IrArgSize.size32: result = leftCon.i32 >> rightCon.i64; break;
+					case IrArgSize.size64: result = leftCon.i64 >> rightCon.i64; break;
+				}
+				return context.constants.add(result, cast(IsSigned)left.isSignedConstant);
+			case BinOp.BITWISE_OR:    return context.constants.add(leftCon.i64 | rightCon.i64, cast(IsSigned)isAnySigned);
+			case BinOp.BITWISE_AND:   return context.constants.add(leftCon.i64 & rightCon.i64, cast(IsSigned)isAnySigned);
+			case BinOp.XOR:           return context.constants.add(leftCon.i64 ^ rightCon.i64, cast(IsSigned)isAnySigned);
+
 			default:
 				context.internal_error("Opcode `%s` is not implemented", op);
 				assert(false);
@@ -779,17 +812,14 @@ struct AstToIr
 		// constant folding
 		if (b.left.irValue.isConstant && b.right.irValue.isConstant)
 		{
-			long arg0 = context.constants.get(b.left.irValue).i64;
-			long arg1 = context.constants.get(b.right.irValue).i64;
-			long value = calcBinOp(b.op, arg0, arg1);
+			IrIndex value = calcBinOp(b.op, b.left.irValue, b.right.irValue);
 			static if (forValue)
 			{
-				IrArgSize argSize = max(b.type.argSize(context), argSizeIntSigned(value));
-				b.irValue = context.constants.add(value, IsSigned.yes, argSize); // TODO proper signedness handling
+				b.irValue = value;
 			}
 			else
 			{
-				if (value)
+				if (context.constants.get(value).i8)
 					builder.addJumpToLabel(currentBlock, trueExit);
 				else
 					builder.addJumpToLabel(currentBlock, falseExit);

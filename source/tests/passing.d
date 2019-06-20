@@ -1078,3 +1078,45 @@ void tester52(ref TestContext ctx) {
 	test("cmp64", 0xFF_FF_FF_FF_FF_FF_FF_FF, 0xFF_FF_FF_FF_FF_FF_FF_FF);
 	test("br64", 0xFF_FF_FF_FF_FF_FF_FF_FF, 0xFF_FF_FF_FF_FF_FF_FF_FF);
 }
+
+@TestInfo(&tester53)
+immutable test53 = q{--- test53
+	// Test constant folding
+	enum i32 i32_min = -2147483648;
+	i32 add() { return 1 + 3; }
+	i32 sub() { return 3 - 1; }
+	i32 mul() { return 3 * 2; }
+	i32 div() { return 7 / 2; }
+	i32 rem() { return 7 % 2; }
+	i32 shl() { return 1 << 2; }
+	i32 shr() { return i32_min >>> 2; }
+	i32 sar() { return i32_min >> 2; }
+	i32 or () { return 0b0011 | 0b0101; }
+	i32 xor() { return 0b0011 ^ 0b0101; }
+	i32 and() { return 0b0011 & 0b0101; }
+};
+void tester53(ref TestContext ctx) {
+	auto add = ctx.getFunctionPtr!(int)("add");
+	auto sub = ctx.getFunctionPtr!(int)("sub");
+	auto mul = ctx.getFunctionPtr!(int)("mul");
+	auto div = ctx.getFunctionPtr!(int)("div");
+	auto rem = ctx.getFunctionPtr!(int)("rem");
+	auto shl = ctx.getFunctionPtr!(int)("shl");
+	auto shr = ctx.getFunctionPtr!(int)("shr");
+	auto sar = ctx.getFunctionPtr!(int)("sar");
+	auto or  = ctx.getFunctionPtr!(int)("or");
+	auto xor = ctx.getFunctionPtr!(int)("xor");
+	auto and = ctx.getFunctionPtr!(int)("and");
+
+	assert(add() == 4);
+	assert(sub() == 2);
+	assert(mul() == 6);
+	assert(div() == 3);
+	assert(rem() == 1);
+	assert(shl() == 4);
+	assert(shr() == (int.min >>> 2));
+	assert(sar() == (int.min >> 2));
+	assert(or() == 0b0111);
+	assert(xor() == 0b0110);
+	assert(and() == 0b0001);
+}
