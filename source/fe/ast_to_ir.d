@@ -61,9 +61,10 @@ struct AstToIr
 				context.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
 				break;
 
-			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visitExprBranch(b, currentBlock, trueExit, falseExit); break;
-			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visitExprBranch(t, currentBlock, trueExit, falseExit); break;
-			case expr_un_op: auto u = cast(UnaryExprNode*)n; visitExprBranch(u, currentBlock, trueExit, falseExit); break;
+			case expr_bin_op: visitExprBranch(cast(BinaryExprNode*)n, currentBlock, trueExit, falseExit); break;
+			case expr_type_conv: visitExprBranch(cast(TypeConvExprNode*)n, currentBlock, trueExit, falseExit); break;
+			case expr_un_op: visitExprBranch(cast(UnaryExprNode*)n, currentBlock, trueExit, falseExit); break;
+			case literal_bool: visitExprBranch(cast(BoolLiteralExprNode*)n, currentBlock, trueExit, falseExit); break;
 
 			default: context.internal_error("%s", n.astType); assert(false);
 		}
@@ -525,12 +526,13 @@ struct AstToIr
 		// loop header
 		IrLabel loopHeaderLabel = IrLabel(currentBlock);
 
-		IrLabel* prevLoopHeader = currentLoopHeader; // save
+		IrLabel* prevLoopHeader = currentLoopHeader; // save continue label
 		currentLoopHeader = &loopHeaderLabel;
-		scope(exit) currentLoopHeader = prevLoopHeader; // restore
-		IrLabel* prevLoopEnd = currentLoopEnd; // save
+		scope(exit) currentLoopHeader = prevLoopHeader; // restore continue label
+
+		IrLabel* prevLoopEnd = currentLoopEnd; // save break label
 		currentLoopEnd = &nextStmt;
-		scope(exit) currentLoopEnd = prevLoopEnd; // restore
+		scope(exit) currentLoopEnd = prevLoopEnd; // restore break label
 
 		builder.addJumpToLabel(currentBlock, loopHeaderLabel);
 
@@ -538,24 +540,28 @@ struct AstToIr
 		// have 2 predecessors: currentBlock and loop body
 		builder.forceAllocLabelBlock(loopHeaderLabel);
 		IrIndex loopHeaderBlock = loopHeaderLabel.blockIndex;
+		currentBlock = loopHeaderBlock;
+
 		//writefln("loop head %s", loopHeaderBlock);
 		ir.getBlock(loopHeaderBlock).isLoopHeader = true;
 
 		IrLabel bodyLabel = IrLabel(currentBlock);
-		builder.forceAllocLabelBlock(bodyLabel);
 		//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
 
 		// will force allocate body block
 		visitExprBranch(w.condition, loopHeaderBlock, bodyLabel, nextStmt);
 
-		currentBlock = bodyLabel.blockIndex;
-		//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
-		builder.sealBlock(currentBlock);
-
 		// body
-		IrBasicBlock* block = &ir.getBlock(currentBlock);
-		assert(!block.isFinished);
-		visitStmt(w.statement, currentBlock, loopHeaderLabel);
+		if (bodyLabel.numPredecessors > 0)
+		{
+			currentBlock = bodyLabel.blockIndex;
+			//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
+			builder.sealBlock(currentBlock);
+
+			IrBasicBlock* block = &ir.getBlock(currentBlock);
+			assert(!block.isFinished);
+			visitStmt(w.statement, currentBlock, loopHeaderLabel);
+		}
 
 		builder.sealBlock(loopHeaderBlock);
 	}
@@ -943,6 +949,15 @@ struct AstToIr
 
 			default: context.internal_error(u.loc, "Opcode `%s` is not implemented", u.op); break;
 		}
+	}
+
+	void visitExprBranch(BoolLiteralExprNode* n, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
+	{
+		if (n.value)
+			builder.addJumpToLabel(currentBlock, trueExit);
+		else
+			builder.addJumpToLabel(currentBlock, falseExit);
+		return;
 	}
 
 	void assign(TypeNode* leftType, IrIndex leftValue, ExpressionNode* right, IrIndex currentBlock)

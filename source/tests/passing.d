@@ -1120,3 +1120,21 @@ void tester53(ref TestContext ctx) {
 	assert(xor() == 0b0110);
 	assert(and() == 0b0001);
 }
+
+@TestInfo()
+immutable test54 = q{--- test54
+	// Test bool literal branching
+	void run() {
+		while(true) {
+			break;
+		}
+		while(false) {
+
+		}
+		while(true) {
+
+		}
+		if (true){}
+		if (false){}
+	}
+};
