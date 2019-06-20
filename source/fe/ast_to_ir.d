@@ -57,10 +57,10 @@ struct AstToIr
 		context.assertf(n.isExpression, n.loc, "Expected expression, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case expr_name_use, literal_int, literal_string, expr_call, expr_index:
+			case literal_int, literal_string, expr_call, expr_index:
 				context.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
 				break;
-
+			case expr_name_use: visitExprBranch(cast(NameUseExprNode*)n, currentBlock, trueExit, falseExit); break;
 			case expr_bin_op: visitExprBranch(cast(BinaryExprNode*)n, currentBlock, trueExit, falseExit); break;
 			case expr_type_conv: visitExprBranch(cast(TypeConvExprNode*)n, currentBlock, trueExit, falseExit); break;
 			case expr_un_op: visitExprBranch(cast(UnaryExprNode*)n, currentBlock, trueExit, falseExit); break;
@@ -961,6 +961,15 @@ struct AstToIr
 		}
 	}
 
+	void visitExprBranch(NameUseExprNode* n, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
+	{
+		IrLabel afterExpr = IrLabel(currentBlock);
+		visitExprValue(n, currentBlock, afterExpr);
+		currentBlock = afterExpr.blockIndex;
+
+		addUnaryBranch(n.irValue, currentBlock, trueExit, falseExit);
+	}
+
 	void visitExprBranch(BoolLiteralExprNode* n, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
 		if (n.value)
@@ -1353,6 +1362,22 @@ struct AstToIr
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
+	void addUnaryBranch(IrIndex value, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
+	{
+		if (value.isConstant)
+		{
+			long conValue = context.constants.get(value).i64;
+			if (conValue != 0)
+				builder.addJumpToLabel(currentBlock, trueExit);
+			else
+				builder.addJumpToLabel(currentBlock, falseExit);
+			return;
+		}
+
+		IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(ir.getValueType(*context, value)), context);
+		builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, argSize, value, trueExit, falseExit);
+	}
+
 	void visitExprBranch(TypeConvExprNode* t, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit) {
 		version(CfgGenPrint) writefln("[CFG GEN] beg TYPE_CONV BR cur %s true %s false %s", currentBlock, trueExit, falseExit);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end TYPE_CONV BR cur %s true %s false %s", currentBlock, trueExit, falseExit);
@@ -1360,25 +1385,15 @@ struct AstToIr
 		visitExprValue(t.expr, currentBlock, afterExpr);
 		currentBlock = afterExpr.blockIndex;
 
-		IrIndex to = t.type.genIrType(context);
 		IrIndex from = t.expr.type.genIrType(context);
-		if (t.expr.irValue.isConstant)
-		{
-			long value = context.constants.get(t.expr.irValue).i64;
-			if (value != 0)
-				builder.addJumpToLabel(currentBlock, trueExit);
-			else
-				builder.addJumpToLabel(currentBlock, falseExit);
-			return;
-		}
-		else if (
+
+		if (t.expr.irValue.isConstant ||
 			from == makeBasicTypeIndex(IrValueType.i8) ||
 			from == makeBasicTypeIndex(IrValueType.i16) ||
 			from == makeBasicTypeIndex(IrValueType.i32) ||
 			from == makeBasicTypeIndex(IrValueType.i64))
 		{
-			t.irValue = t.expr.irValue;
-			builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, t.expr.type.argSize(context), t.expr.irValue, trueExit, falseExit);
+			addUnaryBranch(t.expr.irValue, currentBlock, trueExit, falseExit);
 			return;
 		}
 		else

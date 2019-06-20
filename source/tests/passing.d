@@ -1158,3 +1158,13 @@ void tester55(ref TestContext ctx) {
 	assert(testSink.text == "testString");
 	testSink.clear;
 }
+
+
+@TestInfo()
+immutable test56 = q{--- test56
+	// test using bool variable for branching
+	void branch() {
+		bool run = true;
+		while (run) {}
+	}
+};

@@ -259,6 +259,15 @@ struct CodeEmitter
 		return cast(uint)diff;
 	}
 
+	void genJumpToSuccessor(ref IrBasicBlock fromBlock, ubyte successorIndex)
+	{
+		if (fromBlock.seqIndex + 1 != lir.getBlock(fromBlock.successors[successorIndex, *lir]).seqIndex)
+		{
+			gen.jmp(Imm32(0));
+			jumpFixups[fromBlock.seqIndex][successorIndex] = gen.pc;
+		}
+	}
+
 	void compileBody()
 	{
 		lir.assignSequentialBlockIndices();
@@ -387,34 +396,32 @@ struct CodeEmitter
 						break;
 
 					case Amd64Opcode.jmp:
-						if (lirBlock.seqIndex + 1 != lir.getBlock(lirBlock.successors[0, *lir]).seqIndex)
-						{
-							gen.jmp(Imm32(0));
-							jumpFixups[lirBlock.seqIndex][0] = gen.pc;
-						}
+						genJumpToSuccessor(lirBlock, 0);
 						break;
 					case Amd64Opcode.bin_branch:
 						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
 						Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
-						if (lirBlock.seqIndex + 1 != lir.getBlock(lirBlock.successors[1, *lir]).seqIndex)
-						{
-							gen.jmp(Imm32(0));
-							jumpFixups[lirBlock.seqIndex][1] = gen.pc;
-						}
+						genJumpToSuccessor(lirBlock, 1);
 						break;
 					case Amd64Opcode.un_branch:
+						if (instrHeader.args[0].isConstant)
+						{
+							IrConstant con = context.constants.get(instrHeader.args[0]).i64;
+							if (con.i64 && instrHeader.cond == IrUnaryCondition.not_zero ||
+								(!con.i64) && instrHeader.cond == IrUnaryCondition.zero)
+								genJumpToSuccessor(lirBlock, 0);
+							else
+								genJumpToSuccessor(lirBlock, 1);
+							break;
+						}
 						Register reg = indexToRegister(instrHeader.args[0]);
 						gen.test(reg, reg, cast(ArgType)instrHeader.args[0].physRegSize);
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
-						if (lirBlock.seqIndex + 1 != lir.getBlock(lirBlock.successors[1, *lir]).seqIndex)
-						{
-							gen.jmp(Imm32(0));
-							jumpFixups[lirBlock.seqIndex][1] = gen.pc;
-						}
+						genJumpToSuccessor(lirBlock, 1);
 						break;
 					case Amd64Opcode.set_unary_cond:
 						Register reg = indexToRegister(instrHeader.args[0]);

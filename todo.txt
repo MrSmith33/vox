@@ -3,6 +3,7 @@
 - function pointers
 	- call by pointer
 - char literal / type
+- escape sequences in string/char literals (\n)
 - float double
 - union
 - alias
@@ -56,6 +57,7 @@ o dll linking
 - test mismatched number of args/params to call/constructor
 - reg alloc performance regression 1.9s -> 6.2s
 - stack layout per IR (use alloca?)
+- optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
 + integer arithmetic operators
 	+ + -
