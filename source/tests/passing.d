@@ -1156,4 +1156,5 @@ void tester55(ref TestContext ctx) {
 	auto forward = ctx.getFunctionPtr!(void, Slice!(immutable(char)))("forward");
 	forward(Slice!(immutable(char))("testString"));
 	assert(testSink.text == "testString");
+	testSink.clear;
 }

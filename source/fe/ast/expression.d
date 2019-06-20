@@ -106,50 +106,61 @@ struct StringLiteralExprNode {
 
 enum BinOp : ubyte {
 	// logic ops
-	LOGIC_AND,          // &&
-	LOGIC_OR,           // ||
+	@("&&") LOGIC_AND,          // &&
+	@("||") LOGIC_OR,           // ||
 
 	// comparisons are converted into IrBinaryCondition, order is important
-	EQUAL,              // ==
-	NOT_EQUAL,          // !=
-	GREATER,            // >
-	GREATER_EQUAL,      // >=
-	LESS,               // <
-	LESS_EQUAL,         // <=
+	@("==") EQUAL,              // ==
+	@("!=") NOT_EQUAL,          // !=
+	@(">")  GREATER,            // >
+	@(">=") GREATER_EQUAL,      // >=
+	@("<")  LESS,               // <
+	@("<=") LESS_EQUAL,         // <=
 
 	// arithmetic ops
-	BITWISE_AND,        // &
-	BITWISE_OR,         // |
-	REMAINDER,          // %
-	SHL,                // <<
-	SHR,                // >>
-	ASHR,               // >>>
-	MINUS,              // -
-	PLUS,               // +
-	DIV,                // /
-	MULT,               // *
-	XOR,                // ^
+	@("&") BITWISE_AND,        // &
+	@("|") BITWISE_OR,         // |
+	@("%") REMAINDER,          // %
+	@("<<") SHL,               // <<
+	@(">>") SHR,               // >>
+	@(">>>") ASHR,             // >>>
+	@("-") MINUS,              // -
+	@("+") PLUS,               // +
+	@("/") DIV,                // /
+	@("*") MULT,               // *
+	@("^") XOR,                // ^
 
-	PTR_DIFF,           // ptr - ptr
-	PTR_PLUS_INT,       // ptr + int and ptr - int
+	@("-") PTR_DIFF,           // ptr - ptr
+	@("+") PTR_PLUS_INT,       // ptr + int and ptr - int
 
 	// arithmetic opEquals
-	ASSIGN,             // =
-	BITWISE_AND_ASSIGN, // &=
-	BITWISE_OR_ASSIGN,  // |=
-	REMAINDER_ASSIGN,   // %=
-	SHL_ASSIGN,         // <<=
-	SHR_ASSIGN,         // >>=
-	ASHR_ASSIGN,        // >>>=
-	PTR_PLUS_INT_ASSIGN,// ptr -= / += int
-	MINUS_ASSIGN,       // -=
-	PLUS_ASSIGN,        // +=
-	DIV_ASSIGN,         // /=
-	MULT_ASSIGN,        // *=
-	XOR_ASSIGN,         // ^=
+	@("=")   ASSIGN,             // =
+	@("&=")  BITWISE_AND_ASSIGN, // &=
+	@("|=")  BITWISE_OR_ASSIGN,  // |=
+	@("%=")  REMAINDER_ASSIGN,   // %=
+	@("<<=") SHL_ASSIGN,         // <<=
+	@(">>=") SHR_ASSIGN,         // >>=
+	@(">>>=") ASHR_ASSIGN,       // >>>=
+	@("+")   PTR_PLUS_INT_ASSIGN,// ptr -= / += int
+	@("-=")  MINUS_ASSIGN,       // -=
+	@("+=")  PLUS_ASSIGN,        // +=
+	@("/=")  DIV_ASSIGN,         // /=
+	@("*=")  MULT_ASSIGN,        // *=
+	@("^=")  XOR_ASSIGN,         // ^=
 
 	// member access
-	DOT,                // .
+	@(".") DOT,                // .
+}
+string[] binOpStrings = gatherStrings!BinOp;
+
+string[] gatherStrings(alias _enum)()
+{
+	string[] res = new string[__traits(allMembers, _enum).length];
+	foreach (i, m; __traits(allMembers, _enum))
+	{
+		res[i] = __traits(getAttributes, __traits(getMember, _enum, m))[0];
+	}
+	return res;
 }
 
 enum BinOp BIN_OP_LOGIC_FIRST = BinOp.EQUAL;

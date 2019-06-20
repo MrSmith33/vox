@@ -136,3 +136,15 @@ immutable fail14 = r"
 --- <error>
 fail14(4, 3): Error: undefined identifier `bar`
 ";
+
+@TestInfo()
+immutable fail15 = r"
+--- fail15
+	void run() {
+		i32 val1 = 0;
+		i32 flags = 1;
+		if (val1 & flags != flags) {}
+	}
+--- <error>
+fail15(4, 12): Error: Cannot perform `i32` & `bool` operation
+";

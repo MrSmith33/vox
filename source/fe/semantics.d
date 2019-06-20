@@ -573,10 +573,13 @@ struct SemanticStaticTypes
 			BasicTypeNode* rightType = right.type.as_basic;
 
 			BasicType commonType = commonBasicType[leftType.basicType][rightType.basicType];
-			bool successLeft = autoconvTo(left, commonType, Yes.force);
-			bool successRight = autoconvTo(right, commonType, Yes.force);
-			if(successLeft && successRight)
-				return true;
+			if (commonType != BasicType.t_error)
+			{
+				bool successLeft = autoconvTo(left, commonType, Yes.force);
+				bool successRight = autoconvTo(right, commonType, Yes.force);
+				if(successLeft && successRight)
+					return true;
+			}
 		}
 		else if (left.type.isPointer && right.type.isTypeofNull) {
 			right.type = left.type;
@@ -589,18 +592,14 @@ struct SemanticStaticTypes
 		else
 		{
 			// error for user-defined types
-
 		}
-
-		context.error(left.loc, "No common type between `%s` and `%s`",
-			left.type.typeName(context),
-			right.type.typeName(context));
 
 		return false;
 	}
 
 	void autoconvToBool(ref ExpressionNode* expr)
 	{
+		if (expr.type.isError) return;
 		if (!autoconvTo(expr, BasicType.t_bool, No.force))
 			context.error(expr.loc, "Cannot implicitly convert `%s` to bool",
 				expr.type.typeName(context));
@@ -800,8 +799,8 @@ struct SemanticStaticTypes
 					resRype = b.left.type;
 				else
 				{
-					context.error(b.left.loc, "Cannot perform `%s` %s `%s` operation",
-						b.left.type.typeName(context), b.op,
+					context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+						b.left.type.typeName(context), binOpStrings[b.op],
 						b.right.type.typeName(context));
 				}
 				break;
@@ -833,7 +832,9 @@ struct SemanticStaticTypes
 					autoconvTo(b.right, b.left.type);
 				}
 				else
-					context.error(b.left.loc, "Cannot perform assignment into %s", b.left.astType);
+					context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+						b.left.type.typeName(context), binOpStrings[b.op],
+						b.right.type.typeName(context));
 				resRype = context.basicTypeNodes(BasicType.t_void);
 				break;
 
