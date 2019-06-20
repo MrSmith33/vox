@@ -646,7 +646,7 @@ struct CodeGen_x86_64
 				} break;
 
 			case REG_IMM:
-				assert(param.argType == param.immType || param.immType == ArgType.BYTE);
+				assert(param.argType == param.immType || param.immType == ArgType.BYTE, format("%s %s", param.argType, param.immType));
 				final switch(param.immType)
 				{
 					case ArgType.BYTE:

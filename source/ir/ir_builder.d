@@ -523,9 +523,9 @@ struct IrBuilder
 		beforeInstrHeader.prevInstr = instr;
 	}
 
-	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1, ref IrLabel trueExit, ref IrLabel falseExit)
+	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrArgSize argSize, IrIndex arg0, IrIndex arg1, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
-		auto res = addBinBranch(blockIndex, cond, arg0, arg1);
+		auto res = addBinBranch(blockIndex, cond, argSize, arg0, arg1);
 		forceAllocLabelBlock(trueExit, 1);
 		forceAllocLabelBlock(falseExit, 1);
 		addBlockTarget(blockIndex, trueExit.blockIndex);
@@ -533,18 +533,18 @@ struct IrBuilder
 		return res;
 	}
 
-	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrIndex arg0, IrIndex arg1)
+	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrArgSize argSize, IrIndex arg0, IrIndex arg1)
 	{
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		ExtraInstrArgs extra = {cond : cond};
+		ExtraInstrArgs extra = { cond : cond, argSize : argSize };
 		return emitInstr!IrInstr_binary_branch(blockIndex, extra, arg0, arg1);
 	}
 
-	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrIndex arg0, ref IrLabel trueExit, ref IrLabel falseExit)
+	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrArgSize argSize, IrIndex arg0, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
-		auto res = addUnaryBranch(blockIndex, cond, arg0);
+		auto res = addUnaryBranch(blockIndex, cond, argSize, arg0);
 		forceAllocLabelBlock(trueExit, 1);
 		forceAllocLabelBlock(falseExit, 1);
 		addBlockTarget(blockIndex, trueExit.blockIndex);
@@ -552,12 +552,12 @@ struct IrBuilder
 		return res;
 	}
 
-	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrIndex arg0)
+	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrArgSize argSize, IrIndex arg0)
 	{
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
-		ExtraInstrArgs extra = {cond : cond};
+		ExtraInstrArgs extra = { cond : cond, argSize : argSize };
 		return emitInstr!IrInstr_unary_branch(blockIndex, extra, arg0);
 	}
 

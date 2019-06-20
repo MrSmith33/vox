@@ -391,14 +391,14 @@ struct IrToLir
 						break;
 
 					case IrOpcode.block_exit_unary_branch:
-						ExtraInstrArgs extra = {addUsers : false, cond : instrHeader.cond};
+						ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize };
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_un_branch(
 							lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
 						recordIndex(instrIndex, instruction);
 						break;
 
 					case IrOpcode.block_exit_binary_branch:
-						ExtraInstrArgs extra = {addUsers : false, cond : instrHeader.cond};
+						ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize };
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_bin_branch(
 							lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), getFixedIndex(instrHeader.args[1]));
 						recordIndex(instrIndex, instruction);

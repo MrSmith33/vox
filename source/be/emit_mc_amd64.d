@@ -502,7 +502,7 @@ struct CodeEmitter
 
 		param.dstKind = AsmArgKind.REG;
 
-		//writefln("%s.%s %s %s", op, argType, dst.type, src.type);
+		//writefln("%s.%s %s %s", op, argType, dst.kind, src.kind);
 
 		final switch (src.kind) with(IrValueKind)
 		{

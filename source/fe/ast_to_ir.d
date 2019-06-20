@@ -854,7 +854,7 @@ struct AstToIr
 				case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op branch %s", b.op);
 					auto branch = builder.addBinBranch(
-						currentBlock, convertBinOpToIrCond(b.op),
+						currentBlock, convertBinOpToIrCond(b.op), b.left.type.argSize(context),
 						leftValue, rightValue, trueExit, falseExit);
 					break;
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
@@ -1323,7 +1323,7 @@ struct AstToIr
 			from == makeBasicTypeIndex(IrValueType.i64))
 		{
 			t.irValue = t.expr.irValue;
-			builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, t.expr.irValue, trueExit, falseExit);
+			builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, t.expr.type.argSize(context), t.expr.irValue, trueExit, falseExit);
 			return;
 		}
 		else
