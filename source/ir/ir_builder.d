@@ -796,7 +796,7 @@ struct IrBuilder
 			addPhiArg(phi, predIndex, value);
 			addUser(phi, value);
 		}
-		return tryRemoveTrivialPhi(phi);
+		return tryRemoveTrivialPhi(phi, variable);
 	}
 
 	void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
@@ -829,7 +829,7 @@ struct IrBuilder
 
 	// Algorithm 3: Detect and recursively remove a trivial φ function
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
-	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex) {
+	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex, IrIndex maybePhiVar) {
 		IrPhiArg same;
 		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
 		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(*ir))
@@ -856,12 +856,25 @@ struct IrBuilder
 
 		// Reroute all uses of phi to same and remove phi
 		replaceBy(users, phiResultIndex, same);
+
+		// Update mapping from old phi result to same, since we may need to read
+		// this variable in later blocks, which will cause us to read removed phi
+		// HACK: replace old phi result with same, so that all references
+		// to removed phi automatically redirect to same
+		// We only rewire first phi in a chain of trivial phi, since we have variable info
+		// only for the first one inside addPhiOperands.
+		// Probably that can't lead to the same problem, since users of first phi would be located in loop body, not after the loop
+		if (maybePhiVar.isDefined)
+		{
+			blockVarDef.put(context.arrayArena, BlockVarPair(ir.get!IrPhi(phiIndex).blockIndex, maybePhiVar), same.value);
+		}
+
 		removePhi(phiIndex);
 
 		// Try to recursively remove all phi users, which might have become trivial
 		foreach (i, index; users.range(*ir))
 			if (index.kind == IrValueKind.phi && index != phiIndex)
-				tryRemoveTrivialPhi(index);
+				tryRemoveTrivialPhi(index, IrIndex.init);
 
 		removeVirtualRegister(phiResultIndex);
 		return same.value;

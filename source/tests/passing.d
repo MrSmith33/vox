@@ -1168,3 +1168,14 @@ immutable test56 = q{--- test56
 		while (run) {}
 	}
 };
+
+@TestInfo()
+immutable test57 = q{--- test57
+	// test using bool variable for branching
+	void use(bool){}
+	void branch() {
+		bool run = true;
+		while (run) {}
+		use(run);
+	}
+};
