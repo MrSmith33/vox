@@ -807,7 +807,7 @@ struct AstToIr
 			{
 				case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op value %s", b.op);
-					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op), type : b.type.genIrType(context)};
+					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op), type : b.type.genIrType(context), argSize : b.left.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_set_binary_cond(
 						currentBlock, extra, leftValue, rightValue).result;
 					break;
@@ -820,7 +820,7 @@ struct AstToIr
 				case PTR_DIFF:
 					assert(b.left.type.isPointer && b.right.type.isPointer);
 
-					ExtraInstrArgs extra = { type : b.type.genIrType(context), argSize : b.type.argSize(context) };
+					ExtraInstrArgs extra = { type : b.type.genIrType(context), argSize : b.left.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result;
 
 					// divide by elem size
@@ -1167,6 +1167,19 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] call value (%s) begin", c.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] call value (%s) end", c.loc);
 
+		AstNode* callee = c.callee.as_name_use.entity;
+
+		switch (callee.astType)
+		{
+			case AstType.decl_function: return visitCall(c, callee.cast_decl_function, currentBlock, nextStmt);
+			case AstType.decl_struct: return visitConstructor(c, callee.cast_decl_struct, currentBlock, nextStmt);
+			default:
+				c.type = context.basicTypeNodes(BasicType.t_error);
+				context.error(c.loc, "Cannot call %s", callee.astType);
+		}
+	}
+
+	void visitCall(CallExprNode* c, FunctionDeclNode* callee, IrIndex currentBlock, ref IrLabel nextStmt) {
 		context.assertf(c.args.length <= MAX_ARGS,
 			"Cannot generate a call with %s arguments, max args is %s",
 			c.args.length, MAX_ARGS);
@@ -1183,9 +1196,6 @@ struct AstToIr
 
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
 		// need handling of function pointers, need function types in IR for that
-		context.assertf(c.callee.astType == AstType.expr_name_use,
-			c.loc, "Only direct function calls are supported right now");
-		FunctionDeclNode* callee = c.callee.as_base.cast_expr_name_use.funcDecl;
 		IrIndex[] args = argsBuf[0..c.args.length];
 
 		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.index);
@@ -1210,6 +1220,41 @@ struct AstToIr
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
+	}
+
+	void visitConstructor(CallExprNode* c, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt) {
+		size_t numStructMembers;
+		foreach(AstNode* member; s.declarations)
+		{
+			if (member.astType != AstType.decl_var) continue;
+
+			ExpressionNode* initializer;
+			if (c.args.length > numStructMembers) { // init from constructor argument
+				initializer = c.args[numStructMembers];
+			} else { // init with initializer from struct definition
+				context.internal_error(c.loc, "Not implemented");
+			}
+
+			IrLabel afterArg = IrLabel(currentBlock);
+			visitExprValue(initializer, currentBlock, afterArg);
+			argsBuf[numStructMembers] = initializer.irValue;
+			currentBlock = afterArg.blockIndex;
+
+			++numStructMembers;
+		}
+
+		IrIndex[] args = argsBuf[0..numStructMembers];
+		IrIndex resType = s.genIrType(context);
+
+		ExtraInstrArgs extra = { type : resType };
+		InstrWithResult res = builder.emitInstr!IrInstr_create_aggregate(currentBlock, extra, args);
+		c.irValue = res.result;
+
+		if (c.isLvalue) {
+			context.internal_error(c.loc, "Constructor cannot be an l-value");
+		}
+
+		c.type = s.as_node.cast_type_node;
 	}
 
 	void visitExprValue(IndexExprNode* i, IrIndex currentBlock, ref IrLabel nextStmt)
@@ -1271,7 +1316,11 @@ struct AstToIr
 				builder.addJumpToLabel(currentBlock, falseExit);
 			return;
 		}
-		else if (from == makeBasicTypeIndex(IrValueType.i32) || from == makeBasicTypeIndex(IrValueType.i64))
+		else if (
+			from == makeBasicTypeIndex(IrValueType.i8) ||
+			from == makeBasicTypeIndex(IrValueType.i16) ||
+			from == makeBasicTypeIndex(IrValueType.i32) ||
+			from == makeBasicTypeIndex(IrValueType.i64))
 		{
 			t.irValue = t.expr.irValue;
 			builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, t.expr.irValue, trueExit, falseExit);
