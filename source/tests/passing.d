@@ -371,6 +371,8 @@ immutable test25 = q{--- test25
 struct Slice(T) {
 	ulong length;
 	T* ptr;
+	T[] slice() { return ptr[0..length]; }
+	alias slice this;
 }
 extern(C) void test25_external_print(Slice!char param) {
 	char[] slice = *cast(char[]*)&param;
@@ -994,4 +996,85 @@ void tester49(ref TestContext ctx) {
 	auto minusEqual = ctx.getFunctionPtr!(void, int*, int)("minusEqual");
 	minusEqual(arr2.ptr, arr2.length);
 	assert(arr2 == [100, 4, 0, 90]);
+}
+
+@TestInfo(&tester50)
+immutable test50 = q{--- test50
+	// test ptr cmp with null
+	// test unary branch on byte value
+	u64 cstrlen(u8* str) {
+		if (str == null) return 0;
+
+		u8* start = str;
+		while(*str)
+		{
+			++str;
+		}
+		return cast(u64)(str - start);
+	}
+};
+void tester50(ref TestContext ctx) {
+	auto cstrlen = ctx.getFunctionPtr!(ulong, const(char)*)("cstrlen");
+	string str = "test";
+	ulong length = cstrlen(str.ptr);
+	assert(length == str.length);
+}
+
+@TestInfo(&tester51)
+immutable test51 = q{--- test51
+	// test null assign, compare
+	u8* assignNull() {
+		u8* ptr = null;
+		return ptr;
+	}
+	bool testNull(u8* ptr) {
+		return ptr == null;
+	}
+};
+void tester51(ref TestContext ctx) {
+	auto assignNull = ctx.getFunctionPtr!(ubyte*)("assignNull");
+	ubyte* val = assignNull();
+	assert(val == null);
+
+	auto testNull = ctx.getFunctionPtr!(bool, ubyte*)("testNull");
+	bool resNull = testNull(val);
+	assert(resNull == true);
+
+	ubyte value;
+	bool resNotNull = testNull(&value);
+	assert(resNotNull == false);
+}
+
+@TestInfo(&tester52)
+immutable test52 = q{--- test52
+	// test integer comparison
+	bool cmp8(i8 a, i8 b) { return a == b; }
+	bool cmp16(i16 a, i16 b) { return a == b; }
+	bool cmp32(i32 a, i32 b) { return a == b; }
+	bool cmp64(i64 a, i64 b) { return a == b; }
+
+	bool br8(i8 a, i8 b) { bool result; if (a == b) result = true; else result = false; return result; }
+	bool br16(i16 a, i16 b) { bool result; if (a == b) result = true; else result = false; return result; }
+	bool br32(i32 a, i32 b) { bool result; if (a == b) result = true; else result = false; return result; }
+	bool br64(i64 a, i64 b) { bool result; if (a == b) result = true; else result = false; return result; }
+};
+void tester52(ref TestContext ctx) {
+	// pass 64bit values, to check that only lower bits are compared
+	void test(string funcName, ulong a, ulong b)
+	{
+		auto cmp = ctx.getFunctionPtr!(bool, ulong, ulong)(funcName);
+		bool res = cmp(a, b);
+		assert(res == true);
+	}
+	test("cmp8", 0xF0_F0_F0_F0_F0_F0_F0_FF, 0x0F_0F_0F_0F_0F_0F_0F_FF);
+	test("br8", 0xF0_F0_F0_F0_F0_F0_F0_FF, 0x0F_0F_0F_0F_0F_0F_0F_FF);
+
+	test("cmp16", 0xF0_F0_F0_F0_F0_F0_FF_FF, 0x0F_0F_0F_0F_0F_0F_FF_FF);
+	test("br16", 0xF0_F0_F0_F0_F0_F0_FF_FF, 0x0F_0F_0F_0F_0F_0F_FF_FF);
+
+	test("cmp32", 0xF0_F0_F0_F0_FF_FF_FF_FF, 0x0F_0F_0F_0F_FF_FF_FF_FF);
+	test("br32", 0xF0_F0_F0_F0_FF_FF_FF_FF, 0x0F_0F_0F_0F_FF_FF_FF_FF);
+
+	test("cmp64", 0xFF_FF_FF_FF_FF_FF_FF_FF, 0xFF_FF_FF_FF_FF_FF_FF_FF);
+	test("br64", 0xFF_FF_FF_FF_FF_FF_FF_FF, 0xFF_FF_FF_FF_FF_FF_FF_FF);
 }

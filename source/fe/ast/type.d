@@ -105,6 +105,13 @@ struct TypeNode
 		return astType == AstType.decl_struct || astType == AstType.type_slice;
 	}
 
+	bool isTypeofNull() {
+		return astType == AstType.type_basic &&
+			as_basic.basicType == BasicType.t_null;
+	}
+	bool isTypeBasic() {
+		return astType == AstType.type_basic;
+	}
 	bool isVoid() {
 		return astType == AstType.type_basic &&
 			as_basic.basicType == BasicType.t_void;

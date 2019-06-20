@@ -394,7 +394,7 @@ struct CodeEmitter
 						}
 						break;
 					case Amd64Opcode.bin_branch:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.cmp, ArgType.DWORD);
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
 						Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
@@ -406,7 +406,7 @@ struct CodeEmitter
 						break;
 					case Amd64Opcode.un_branch:
 						Register reg = indexToRegister(instrHeader.args[0]);
-						gen.testd(reg, reg);
+						gen.test(reg, reg, cast(ArgType)instrHeader.args[0].physRegSize);
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
@@ -420,6 +420,12 @@ struct CodeEmitter
 						Register reg = indexToRegister(instrHeader.args[0]);
 						gen.test(reg, reg, cast(ArgType)instrHeader.args[0].physRegSize);
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
+						Register dst = indexToRegister(instrHeader.result);
+						gen.setcc(cond, dst);
+						break;
+					case Amd64Opcode.set_binary_cond:
+						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
+						Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
 						Register dst = indexToRegister(instrHeader.result);
 						gen.setcc(cond, dst);
 						break;

@@ -101,6 +101,10 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	AstType astType = _astType;
 	ushort flags;
 
+	AstNode* as_node() {
+		return cast(AstNode*)&this;
+	}
+
 	bool isDeclaration() { return cast(bool)(flags & AstFlags.isDeclaration); }
 	bool isScope() { return cast(bool)(flags & AstFlags.isScope); }
 	bool isExpression() { return cast(bool)(flags & AstFlags.isExpression); }

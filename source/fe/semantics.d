@@ -578,6 +578,14 @@ struct SemanticStaticTypes
 			if(successLeft && successRight)
 				return true;
 		}
+		else if (left.type.isPointer && right.type.isTypeofNull) {
+			right.type = left.type;
+			return true;
+		}
+		else if (left.type.isTypeofNull && right.type.isPointer) {
+			left.type = right.type;
+			return true;
+		}
 		else
 		{
 			// error for user-defined types
@@ -1088,18 +1096,18 @@ struct SemanticStaticTypes
 		size_t numStructMembers;
 		foreach(AstNode* member; s.declarations)
 		{
-			if (member.astType == AstType.decl_var)
-			{
-				ExpressionNode* initializer;
-				if (c.args.length > numStructMembers) { // init from constructor argument
-					initializer = c.args[numStructMembers];
-				} else { // init with initializer from struct definition
+			if (member.astType != AstType.decl_var) continue;
 
-				}
-				++numStructMembers;
+			ExpressionNode* initializer;
+			if (c.args.length > numStructMembers) { // init from constructor argument
+				_visit(c.args[numStructMembers]);
+				autoconvTo(c.args[numStructMembers], member.cast_decl_var.type.foldAliases);
+			} else { // init with initializer from struct definition
+				context.internal_error(c.loc, "Not implemented");
 			}
+			++numStructMembers;
 		}
-		context.unrecoverable_error(c.loc, "visitConstructor not impl");
+		c.type = s.as_node.cast_type_node;
 	}
 	void visit(IndexExprNode* i) {
 		_visit(i.array);
