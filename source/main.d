@@ -15,6 +15,7 @@ version = standalone;
 //version = bench;
 //version = devtest;
 //version = test;
+
 version(standalone) int main(string[] args)
 {
 	scope(exit) stdout.flush;

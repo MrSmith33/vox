@@ -445,6 +445,7 @@ struct Lexer
 		}
 		if (c == '*')
 		{
+			nextChar;
 			while (true)
 			{
 				switch(c)

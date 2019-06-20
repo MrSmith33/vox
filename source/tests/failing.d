@@ -124,3 +124,15 @@ immutable fail13 = r"
 --- <error>
 fail13(3, 1): Error: Expected `SEMICOLON` token, while got `EOI` token ''
 ";
+
+@TestInfo()
+immutable fail14 = r"
+--- fail14
+	i32 fun(){
+	/*
+	*/
+		bar();
+	}
+--- <error>
+fail14(4, 3): Error: undefined identifier `bar`
+";

@@ -18,6 +18,7 @@
 	+ indexing
 	- pass literal to function
 	- slicing slice[0..42]
+	- slice ptr
 	- slice assign: slice[] = 42; and slice[] = slice2;
 	- static array to slice (implicit conversion, slicing)
 
