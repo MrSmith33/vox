@@ -1179,3 +1179,14 @@ immutable test57 = q{--- test57
 		use(run);
 	}
 };
+
+@TestInfo()
+immutable test58 = q{--- test58
+	// Test declaration statement that declares pointer var
+	struct SDL_Event {
+		u32 type;
+	}
+	void run() {
+		SDL_Event* key;
+	}
+};

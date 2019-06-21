@@ -81,9 +81,9 @@ struct AstPrinter {
 	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
 	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
-			print("VAR_USE ", v.entity.get_node_type.printer(context), " ", context.idString(v.id));
+			print("NAME_USE ", v.entity.get_node_type.printer(context), " ", context.idString(v.id));
 		else
-			print("VAR_USE ", context.idString(v.id));
+			print("NAME_USE ", context.idString(v.id));
 	}
 	void visit(MemberExprNode* m) {
 		print("MEMBER ", m.type.printer(context));
@@ -204,9 +204,9 @@ struct AstDotPrinter {
 	void visit(ContinueStmtNode* r) { printLabel(r, "CONTINUE"); }
 	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
-			printLabel(v, `VAR_USE\n%s %s`, v.entity.get_node_type.printer(context), context.idString(v.id));
+			printLabel(v, `NAME_USE\n%s %s`, v.entity.get_node_type.printer(context), context.idString(v.id));
 		else
-			printLabel(v, `VAR_USE\n%s`, context.idString(v.id));
+			printLabel(v, `NAME_USE\n%s`, context.idString(v.id));
 	}
 	void visit(MemberExprNode* m) {
 		printLabel(m, "MEMBER %s", context.idString(m.member.id));

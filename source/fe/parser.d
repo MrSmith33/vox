@@ -489,7 +489,7 @@ struct Parser
 	/// Can return null
 	TypeNode* parse_type() // <type> = (<type_basic> / <type_struct>) <type_specializer>*
 	{
-		version(print_parse) auto s1 = scop("parse_type %s", loc);
+		version(print_parse) auto s1 = scop("parse_type %s %s", loc, tok.type);
 		TokenIndex start = tok.index;
 		TypeNode* base;
 		if (tok.type == TokenType.IDENTIFIER) {
@@ -623,7 +623,7 @@ struct Parser
 					version(print_parse) auto s3 = scop("<id> %s", loc);
 					nextToken;
 
-					if (tok.type == TokenType.IDENTIFIER) // declaration
+					if (tok.type == TokenType.IDENTIFIER || tok.type == TokenType.STAR) // declaration
 					{
 						version(print_parse) auto s4 = scop("<id> declaration %s", loc);
 						tok = copy; // restore

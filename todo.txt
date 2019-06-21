@@ -48,6 +48,7 @@ o dll linking
 	phi will shrink from 5 slots to 2 slots
 	- need array arena for IR with per-function slices
 
+- improve parser to detect all declaration kinds in statements (add slice and static array)
 - attributes
 - test all implicit conversions
 - test parsing errors
