@@ -58,6 +58,7 @@ o dll linking
 - reg alloc performance regression 1.9s -> 6.2s
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
+- globals need to be initialized
 
 + integer arithmetic operators
 	+ + -

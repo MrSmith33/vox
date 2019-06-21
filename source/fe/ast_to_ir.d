@@ -340,6 +340,7 @@ struct AstToIr
 
 		if (v.isGlobal)
 		{
+			// TODO: initializers
 			v.irValue = context.globals.add();
 			IrGlobal* global = &context.globals.get(v.irValue);
 			global.flags |= IrGlobalFlags.isAllZero | IrGlobalFlags.isMutable;

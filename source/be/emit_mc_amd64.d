@@ -630,7 +630,7 @@ struct CodeEmitter
 	// dst must be phys reg
 	void genLoad(IrIndex dst, IrIndex src)
 	{
-		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot);
+		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot || src.isGlobal);
 		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
 
 		ArgType argType = cast(ArgType)dst.physRegSize;
@@ -645,6 +645,23 @@ struct CodeEmitter
 
 			case stackSlot:
 				gen.mov(dstReg, localVarMemAddress(src), argType);
+				break;
+
+			case global:
+				IrGlobal* global = &context.globals.get(src);
+				context.assertf(global.isInBuffer, "Global is not in static data buffer");
+
+				MemAddress addr = memAddrRipDisp32(0);
+				gen.mov(dstReg, addr, argType);
+
+				ObjectSymbolReference r = {
+					fromSymbol : fun.backendData.objectSymIndex,
+					referencedSymbol : global.objectSymIndex,
+					refOffset : referenceOffset() - 4,
+					4,
+					ObjectSymbolRefKind.relative32,
+				};
+				context.objSymTab.addReference(r);
 				break;
 
 			default:

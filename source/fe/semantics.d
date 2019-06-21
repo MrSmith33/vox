@@ -71,7 +71,7 @@ struct SemanticDeclarations
 		if (auto s = currentScope.symbols.get(id, null))
 		{
 			context.error(node.loc,
-				"declaration `%s` is already defined at %s", context.idString(id), s.loc);
+				"declaration `%s` is already defined at %s", context.idString(id), FmtSrcLoc(s.loc, context));
 		}
 		currentScope.symbols.put(context.arrayArena, id, node);
 	}
