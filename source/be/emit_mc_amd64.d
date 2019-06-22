@@ -681,9 +681,19 @@ struct CodeEmitter
 		switch (moveType) with(MoveType)
 		{
 			case const_to_stack:
-				uint con = context.constants.get(src).i32;
+				IrConstant con = context.constants.get(src);
 				MemAddress dstMem = localVarMemAddress(dst);
-				gen.mov(dstMem, Imm32(con), argType);
+				final switch(argType) with(ArgType)
+				{
+					case BYTE: gen.movb(dstMem, Imm8(con.i8)); break;
+					case WORD: gen.movw(dstMem, Imm16(con.i16)); break;
+					case DWORD: gen.movd(dstMem, Imm32(con.i32)); break;
+					case QWORD:
+						IrArgSize dataSize = con.payloadSize(src);
+						context.assertf(dataSize != IrArgSize.size64, "Constant is too big");
+						gen.movq(dstMem, Imm32(con.i32));
+						break;
+				}
 				break;
 			case const_to_reg:
 				Register dstReg = indexToRegister(dst);

@@ -1282,3 +1282,22 @@ immutable test62 = q{--- test62
 		}
 	}
 };
+
+@TestInfo()
+immutable test63 = q{--- test63
+	// Store const into stack
+	void usePtru8(u8*){}
+	void usePtru16(u16*){}
+	void usePtru32(u32*){}
+	void usePtru64(u64*){}
+	void run() {
+		u8 num8 = 10;
+		u16 num16 = 10;
+		u32 num32 = 10;
+		u64 num64 = 10;
+		usePtru8(&num8);
+		usePtru16(&num16);
+		usePtru32(&num32);
+		usePtru64(&num64);
+	}
+};

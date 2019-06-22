@@ -148,3 +148,24 @@ immutable fail15 = r"
 --- <error>
 fail15(4, 12): Error: Cannot perform `i32` & `bool` operation
 ";
+
+@TestInfo()
+immutable fail16 = q{
+--- fail16
+	// Test argument checking for pointers
+	void usePtru8(u8*){}
+	void usePtru16(u16*){}
+	void usePtru32(u32*){}
+	void usePtru64(u64*){}
+	void run() {
+		u8 num8 = 10;
+		usePtru8(&num8);
+		usePtru16(&num8);
+		usePtru32(&num8);
+		usePtru64(&num8);
+	}
+--- <error>
+fail16(9, 13): Error: Argument 1, must have type u16*, not u8*
+fail16(10, 13): Error: Argument 1, must have type u32*, not u8*
+fail16(11, 13): Error: Argument 1, must have type u64*, not u8*
+};

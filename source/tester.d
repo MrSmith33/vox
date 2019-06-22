@@ -14,7 +14,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(tests.passing.test52);
+	Test test = makeTest!(tests.passing.test63);
 	string filterFuncName;
 
 	Driver driver;
@@ -263,8 +263,9 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 			writefln("Expected error:");
 			writeln(expectedError);
 			writefln("Received error:");
-			writeln(driver.context.sink.text);
+			writeln(driver.context.errorSink.text);
 			writefln("Stack trace:");
+			writeln(driver.context.sink.text);
 			writeln(e.info);
 			return TestResult.failure;
 		}

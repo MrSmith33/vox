@@ -1069,7 +1069,12 @@ struct SemanticStaticTypes
 		foreach (i, ExpressionNode* arg; c.args)
 		{
 			_visit(arg);
-			autoconvTo(arg, params[i].type);
+			bool success = autoconvTo(arg, params[i].type);
+			if (!success)
+				context.error(arg.loc,
+					"Argument %s, must have type %s, not %s", i+1,
+					params[i].type.printer(context),
+					arg.type.printer(context));
 			//if (!sameType(arg.type, params[i].type))
 			//	context.error(arg.loc,
 			//		"Argument %s, must have type %s, not %s", i+1,
