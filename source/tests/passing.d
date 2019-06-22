@@ -1228,3 +1228,25 @@ immutable test60 = q{--- test60
 		}
 	}
 };
+
+@TestInfo()
+immutable test61 = q{--- test61
+	// Test pointer to pointer cast
+	struct SDL_Event {
+		u32 type;
+		u8[52] padding;
+	}
+	struct SDL_KeyboardEvent {
+		u32 type;
+		u32 timestamp;
+		SDL_Keysym keysym;
+	}
+	struct SDL_Keysym {
+		u32 scancode;
+		u32 sym;
+	}
+	void run(SDL_KeyboardEvent* key) {
+		SDL_Event e;
+		SDL_KeyboardEvent* key = cast(SDL_KeyboardEvent*)&e;
+	}
+};
