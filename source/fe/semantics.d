@@ -203,9 +203,6 @@ struct SemanticLookup
 
 	Scope* currentScope;
 
-	Identifier id_ptr;
-	Identifier id_length;
-
 	void pushCompleteScope(Scope* newScope)
 	{
 		currentScope = newScope;
@@ -300,138 +297,7 @@ struct SemanticLookup
 		return null;
 	}
 
-	/// Look up member by Identifier. Searches aggregate scope for identifier.
-	void lookupMember(MemberExprNode* expr)
-	{
-		Identifier id = expr.member.id;
-		string idStr = context.idString(id);
-
-		if (expr.aggregate.astType != AstType.expr_name_use) {
-			context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, expr.aggregate.astType);
-			return;
-		}
-
-		// skip unresolved symbol
-		if (!expr.aggregate.isSymResolved) {
-			return;
-		}
-
-		AstNode* aggSym = expr.aggregate.as_base.cast_expr_name_use.entity;
-
-		switch(aggSym.astType)
-		{
-			case AstType.decl_var:
-				LookupResult success;
-				VariableDeclNode* varDecl = aggSym.cast_decl_var;
-				TypeNode* type = varDecl.type.foldAliases;
-
-				switch (type.astType)
-				{
-					case AstType.type_slice:
-						success = lookupSliceMember(expr, type.as_slice, id);
-						break;
-
-					case AstType.decl_struct:
-						success = lookupStructMember(expr, type.as_struct, id);
-						break;
-
-					default: break;
-				}
-				if (success == LookupResult.failure)
-					context.error(expr.loc, "variable `%s` of type `%s` has no member `%s`",
-						context.idString(varDecl.id), type.printer(context), idStr);
-				break;
-
-			case AstType.decl_enum:
-				EnumDeclaration* enumDecl = aggSym.cast_decl_enum;
-				context.assertf(!enumDecl.isAnonymous, expr.loc,
-					"Trying to get member from anonymous enum defined at %s",
-					context.tokenLoc(enumDecl.loc));
-
-				AstNode* memberNode = enumDecl._scope.symbols.get(id, null);
-				if (memberNode is null)
-				{
-					context.error(expr.loc, "Enum `%s` has no member `%s`",
-						context.idString(enumDecl.id), idStr);
-					break;
-				}
-
-				context.assertf(memberNode.astType == AstType.decl_enum_member, expr.loc,
-					"Unexpected enum member %s", memberNode.astType);
-
-				expr.member.resolve = memberNode;
-
-				EnumMemberDecl* enumMember = memberNode.cast_decl_enum_member;
-				expr.type = enumMember.type;
-				expr.memberIndex = enumMember.scopeIndex;
-				break;
-
-			default:
-				context.error(expr.loc, "Cannot resolve `%s` for %s", idStr, aggSym.astType);
-				return;
-		}
-	}
-
-	LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id)
-	{
-		if (id == id_ptr)
-		{
-			expr.memberIndex = 1;
-			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
-			return LookupResult.success;
-		}
-		else if (id == id_length)
-		{
-			expr.memberIndex = 0;
-			expr.type = context.basicTypeNodes(BasicType.t_u64);
-			return LookupResult.success;
-		}
-
-		return LookupResult.failure;
-	}
-
-	LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl, Identifier id)
-	{
-		// skip unresolved symbol
-		AstNode* memberSym = structDecl._scope.symbols.get(id, null);
-		if (!memberSym) return LookupResult.failure;
-
-		expr.member.resolve = memberSym;
-
-		switch(memberSym.astType)
-		{
-			case AstType.decl_function:
-				context.internal_error("member functions/UFCS calls are not implemented");
-				assert(false);
-
-			case AstType.decl_var:
-				VariableDeclNode* memberVar = expr.member.varDecl;
-				expr.type = memberVar.type.foldAliases;
-				expr.memberIndex = memberVar.scopeIndex;
-				return LookupResult.success;
-
-			case AstType.decl_struct:
-				context.internal_error("member structs are not implemented");
-				assert(false);
-
-			case AstType.decl_enum:
-				context.internal_error("member enums are not implemented");
-				assert(false);
-
-			case AstType.decl_enum_member:
-				context.internal_error("enums member are not implemented");
-				assert(false);
-
-			default:
-				context.internal_error("Unexpected struct member %s", memberSym.astType);
-				assert(false);
-		}
-	}
-
 	void visit(ModuleDeclNode* m) {
-		id_ptr = context.idMap.getOrRegNoDup("ptr");
-		id_length = context.idMap.getOrRegNoDup("length");
-
 		pushCompleteScope(m._scope);
 		foreach (decl; m.declarations) _visit(decl);
 		popScope;
@@ -504,10 +370,28 @@ struct SemanticLookup
 	void visit(ContinueStmtNode* r) {}
 	void visit(NameUseExprNode* v) {
 		v.resolve = lookup(v.id, v.loc);
+		if (v.entity !is null)
+		{
+			switch(v.entity.astType) with(AstType) {
+				case decl_function:
+					v.astType = expr_func_name_use; break;
+				case decl_var:
+					v.astType = expr_var_name_use; break;
+				case decl_struct:
+					v.astType = expr_type_name_use; break;
+				case decl_enum_member:
+					v.astType = expr_var_name_use; break;
+				case decl_enum:
+					v.astType = expr_type_name_use; break;
+				case error:
+					v.astType = expr_var_name_use; break;
+				default:
+					context.internal_error("Unknown entity %s", v.entity.astType);
+			}
+		}
 	}
 	void visit(MemberExprNode* m) {
 		_visit(m.aggregate);
-		lookupMember(m);
 	}
 	void visit(IntLiteralExprNode* c) {}
 	void visit(StringLiteralExprNode* c) {}
@@ -556,6 +440,117 @@ struct SemanticStaticTypes
 	FunctionDeclNode* curFunc;
 	PtrTypeNode* u8Ptr;
 	SliceTypeNode* u8Slice;
+	Identifier id_ptr;
+	Identifier id_length;
+
+	/// Look up member by Identifier. Searches aggregate scope for identifier.
+	void lookupMember(MemberExprNode* expr)
+	{
+		TypeNode* obj = expr.aggregate.as_node.get_node_type;
+
+		// Allow member access for pointers
+		if (obj.isPointer)
+			obj = obj.as_ptr.base.as_node.get_node_type;
+
+		expr.member.astType = AstType.expr_member_name_use;
+		switch(obj.astType)
+		{
+			case AstType.type_slice: lookupSliceMember(expr, obj.as_slice, expr.member.id); break;
+ 			case AstType.decl_struct: lookupStructMember(expr, obj.as_struct, expr.member.id); break;
+			case AstType.decl_enum: lookupEnumMember(expr, obj.as_enum, expr.member.id); break;
+			default:
+				context.unrecoverable_error(expr.loc, "Cannot resolve `%s` for %s", context.idString(expr.member.id), obj.astType);
+				expr.type = context.basicTypeNodes(BasicType.t_error);
+				return;
+		}
+	}
+
+	LookupResult lookupEnumMember(MemberExprNode* expr, EnumDeclaration* enumDecl, Identifier id)
+	{
+		context.assertf(!enumDecl.isAnonymous, expr.loc,
+			"Trying to get member from anonymous enum defined at %s",
+			context.tokenLoc(enumDecl.loc));
+
+		AstNode* memberNode = enumDecl._scope.symbols.get(id, null);
+		if (memberNode is null)
+		{
+			context.error(expr.loc, "Enum `%s` has no member `%s`",
+				context.idString(enumDecl.id), context.idString(id));
+			return LookupResult.failure;
+		}
+
+		context.assertf(memberNode.astType == AstType.decl_enum_member, expr.loc,
+			"Unexpected enum member %s", memberNode.astType);
+
+		expr.member.resolve = memberNode;
+
+		EnumMemberDecl* enumMember = memberNode.cast_decl_enum_member;
+		expr.type = enumMember.type;
+		expr.memberIndex = enumMember.scopeIndex;
+		expr.astType = AstType.expr_enum_member;
+		return LookupResult.success;
+	}
+
+	LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id)
+	{
+		expr.astType = AstType.expr_slice_member;
+		if (id == id_ptr)
+		{
+			expr.memberIndex = 1;
+			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
+			return LookupResult.success;
+		}
+		else if (id == id_length)
+		{
+			expr.memberIndex = 0;
+			expr.type = context.basicTypeNodes(BasicType.t_u64);
+			return LookupResult.success;
+		}
+
+		context.error(expr.loc, "Slice `%s` has no member `%s`", sliceType.typeNode.printer(context), context.idString(id));
+		return LookupResult.failure;
+	}
+
+	LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl, Identifier id)
+	{
+		AstNode* memberSym = structDecl._scope.symbols.get(id, null);
+		if (!memberSym) {
+			context.error(expr.loc, "Struct `%s` has no member `%s`", structDecl.typeNode.printer(context), context.idString(id));
+			return LookupResult.failure;
+		}
+
+		expr.member.resolve = memberSym;
+		expr.astType = AstType.expr_struct_member;
+
+		switch(memberSym.astType)
+		{
+			case AstType.decl_function:
+				context.internal_error("member functions/UFCS calls are not implemented");
+				assert(false);
+
+			case AstType.decl_var:
+				VariableDeclNode* memberVar = expr.member.varDecl;
+				expr.type = memberVar.type.foldAliases;
+				expr.memberIndex = memberVar.scopeIndex;
+				return LookupResult.success;
+
+			case AstType.decl_struct:
+				context.internal_error("member structs are not implemented");
+				assert(false);
+
+			case AstType.decl_enum:
+				context.internal_error("member enums are not implemented");
+				assert(false);
+
+			case AstType.decl_enum_member:
+				context.internal_error("enums member are not implemented");
+				assert(false);
+
+			default:
+				context.internal_error("Unexpected struct member %s", memberSym.astType);
+				assert(false);
+		}
+	}
 
 	bool isBool(TypeNode* type)
 	{
@@ -654,7 +649,6 @@ struct SemanticStaticTypes
 	bool autoconvTo(ref ExpressionNode* expr, TypeNode* type)
 	{
 		if (sameType(expr.type, type)) return true;
-
 		string extraError;
 
 		if (expr.type.astType == AstType.type_basic && type.astType == AstType.type_basic)
@@ -712,10 +706,6 @@ struct SemanticStaticTypes
 			extraError = ". Cannot convert from/to user-defined type";
 		}
 
-		context.error(expr.loc, "Cannot auto-convert expression of type `%s` to `%s`%s",
-			expr.type.printer(context),
-			type.printer(context),
-			extraError);
 		return false;
 	}
 
@@ -824,18 +814,11 @@ struct SemanticStaticTypes
 
 			case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN, SHL_ASSIGN, SHR_ASSIGN,
 				ASHR_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
-				if (b.left.astType == AstType.expr_name_use ||
-					b.left.astType == AstType.expr_index ||
-					b.left.astType == AstType.expr_member ||
-					(b.left.astType == AstType.expr_un_op && (cast(UnaryExprNode*)b.left).op == UnOp.deref))
-				{
-					autoconvTo(b.right, b.left.type);
-				}
-				else
+				bool success = autoconvTo(b.right, b.left.type);
+				if (!success)
 					context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
 						b.left.type.typeName(context), binOpStrings[b.op],
 						b.right.type.typeName(context));
-				resRype = context.basicTypeNodes(BasicType.t_void);
 				break;
 
 			default:
@@ -870,6 +853,8 @@ struct SemanticStaticTypes
 	}
 
 	void visit(ModuleDeclNode* m) {
+		id_ptr = context.idMap.getOrRegNoDup("ptr");
+		id_length = context.idMap.getOrRegNoDup("length");
 		u8Ptr = context.appendAst!PtrTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
 		u8Slice = context.appendAst!SliceTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
 		foreach (decl; m.declarations) _visit(decl);
@@ -986,6 +971,7 @@ struct SemanticStaticTypes
 	}
 	void visit(MemberExprNode* m) {
 		_visit(m.aggregate);
+		lookupMember(m);
 	}
 	void visit(IntLiteralExprNode* c) {
 		if (c.isSigned)
@@ -1016,7 +1002,7 @@ struct SemanticStaticTypes
 				// make sure that variable gets stored in memory
 				switch(u.child.astType)
 				{
-					case AstType.expr_name_use:
+					case AstType.expr_var_name_use:
 						(cast(AstNode*)u.child).cast_expr_name_use.varDecl.varFlags |= VariableFlags.isAddressTaken;
 						break;
 					default:
@@ -1055,7 +1041,7 @@ struct SemanticStaticTypes
 	// Get type from function declaration
 	void visit(CallExprNode* c) {
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-		context.assertf(c.callee.astType == AstType.expr_name_use,
+		context.assertf(c.callee.astType == AstType.expr_func_name_use,
 			c.loc, "Only direct function calls are supported right now");
 		AstNode* callee = c.callee.as_name_use.entity;
 

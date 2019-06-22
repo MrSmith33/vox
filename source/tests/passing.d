@@ -1190,3 +1190,41 @@ immutable test58 = q{--- test58
 		SDL_Event* key;
 	}
 };
+
+@TestInfo()
+immutable test59 = q{--- test59
+	// Test dot operator on dereference and member expressions
+	struct SDL_KeyboardEvent {
+		u32 type;
+		u32 timestamp;
+		SDL_Keysym keysym;
+	}
+	struct SDL_Keysym {
+		u32 scancode;
+		u32 sym;
+	}
+	void run(SDL_KeyboardEvent* key) {
+		if ((*key).keysym.scancode == 1) {
+			(*key).keysym.sym = 42;
+		}
+	}
+};
+
+@TestInfo()
+immutable test60 = q{--- test60
+	// Test dot operator on pointer type
+	struct SDL_KeyboardEvent {
+		u32 type;
+		u32 timestamp;
+		SDL_Keysym keysym;
+	}
+	struct SDL_Keysym {
+		u32 scancode;
+		u32 sym;
+	}
+	void run(SDL_KeyboardEvent* key) {
+		if (key.keysym.scancode == 1) {
+			key.keysym.sym = 42;
+		}
+	}
+};

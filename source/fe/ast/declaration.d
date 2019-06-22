@@ -69,6 +69,7 @@ struct StructDeclNode {
 	Scope* _scope;
 	uint size = 1;
 	uint alignment = 1;
+	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 }
 
 /// Refers to a function inside a module
@@ -155,6 +156,7 @@ struct EnumDeclaration
 	TypeNode* memberType;
 	Scope* _scope;
 	Identifier id;
+	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 
 	this(TokenIndex loc, Array!(AstNode*) members, TypeNode* memberType, Identifier id)
 	{

@@ -7,7 +7,13 @@ module fe.ast.expression;
 
 import all;
 
-NameUseExprNode* cast_expr_name_use(AstNode* t) { if (t.astType == AstType.expr_name_use) return cast(NameUseExprNode*)t; return null; }
+NameUseExprNode* cast_expr_name_use(AstNode* t) {
+	switch(t.astType) with(AstType) {
+		case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
+			return cast(NameUseExprNode*)t;
+		default: return null;
+	}
+}
 
 mixin template ExpressionNodeData(AstType _astType, int default_flags = 0) {
 	mixin AstNodeData!(_astType, default_flags | AstFlags.isExpression);
@@ -16,7 +22,7 @@ mixin template ExpressionNodeData(AstType _astType, int default_flags = 0) {
 	IrIndex irValue;
 
 	AstNode* as_base() { return cast(AstNode*)&this; }
-	NameUseExprNode* as_name_use() { if (astType == AstType.expr_name_use) return cast(NameUseExprNode*)&this; return null; }
+	NameUseExprNode* as_name_use() { return cast_expr_name_use(cast(AstNode*)&this); }
 }
 
 // Abstract node, must not be instantiated

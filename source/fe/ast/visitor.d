@@ -33,8 +33,10 @@ mixin template AstVisitorMixin() {
 			case stmt_break: auto b = cast(BreakStmtNode*)n; visit(b); break;
 			case stmt_continue: auto c = cast(ContinueStmtNode*)n; visit(c); break;
 
-			case expr_name_use: auto v = cast(NameUseExprNode*)n; visit(v); break;
-			case expr_member: auto m = cast(MemberExprNode*)n; visit(m); break;
+			case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
+				auto v = cast(NameUseExprNode*)n; visit(v); break;
+			case expr_member, expr_struct_member, expr_enum_member, expr_slice_member:
+				auto m = cast(MemberExprNode*)n; visit(m); break;
 			case expr_bin_op: auto b = cast(BinaryExprNode*)n; visit(b); break;
 			case expr_un_op: auto u = cast(UnaryExprNode*)n; visit(u); break;
 			case expr_call: auto c = cast(CallExprNode*)n; visit(c); break;

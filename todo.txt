@@ -36,7 +36,6 @@ o dll linking
 		cons: simple passing allows all module externals to be searched for in passed .dll/.def
 		pros: --optname=modulename:.dll/.def allows for benefit of above options
 	- custom .def-like format (binary, combine all libs description in a single file)
-+ multiple exported functions per test
 + enum
 	- enum with bigger than i32 values doesn't compile
 - -run option
@@ -61,6 +60,7 @@ o dll linking
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 - globals need to be initialized
 
++ multiple exported functions per test
 + integer arithmetic operators
 	+ + -
 	+ pointer arithmetics
