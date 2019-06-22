@@ -834,7 +834,7 @@ struct IrBuilder
 		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
 		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(*ir))
 		{
-			version(IrPrint) writefln("[IR] arg %s", phiArg.value);
+			version(IrPrint) writefln("[IR] arg %s %s", phiArg.value, phiArg.basicBlock);
 			if (phiArg.value == same.value || phiArg.value == phiResultIndex) {
 				version(IrPrint) writefln("[IR]   same");
 				continue; // Unique value or self−reference
@@ -855,7 +855,7 @@ struct IrBuilder
 		SmallVector users = ir.getVirtReg(phiResultIndex).users;
 
 		// Reroute all uses of phi to same and remove phi
-		replaceBy(users, phiResultIndex, same);
+		replaceBy(phiIndex, users, phiResultIndex, same);
 
 		// Update mapping from old phi result to same, since we may need to read
 		// this variable in later blocks, which will cause us to read removed phi
@@ -929,9 +929,12 @@ struct IrBuilder
 	// ditto
 	/// Rewrites all users of phi to point to `byWhat` instead of its result `what`.
 	/// `what` is the result of phi (vreg), `phiUsers` is users of `what`
-	private void replaceBy(SmallVector phiUsers, IrIndex what, IrPhiArg byWhat) {
+	private void replaceBy(IrIndex phiIndex, SmallVector phiUsers, IrIndex what, IrPhiArg byWhat) {
 		foreach (size_t i, IrIndex userIndex; phiUsers.range(*ir))
 		{
+			// skip self-reference (we will delete phi anyway)
+			if (userIndex == phiIndex) continue;
+
 			final switch (userIndex.kind) with(IrValueKind) {
 				case none: assert(false);
 				case listItem: assert(false);
@@ -948,11 +951,14 @@ struct IrBuilder
 				case global: assert(false);
 				case phi:
 					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(*ir))
+					{
 						if (phiArg.value == what)
 						{
-							phiArg = byWhat;
+							phiArg.value = byWhat.value;
+							phiArg.basicBlock = byWhat.basicBlock;
 							replaceUserWith(byWhat.value, definitionOf(what), userIndex);
 						}
+					}
 					break;
 				case stackSlot: assert(false); // TODO
 				case virtualRegister: assert(false);

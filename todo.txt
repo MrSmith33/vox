@@ -46,6 +46,7 @@ o dll linking
 	vreg will shrink from 7 slots to 4 slots
 	phi will shrink from 5 slots to 2 slots
 	- need array arena for IR with per-function slices
+- don't store self-reference arguments in phi functions
 
 - improve parser to detect all declaration kinds in statements (add slice and static array)
 - attributes

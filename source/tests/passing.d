@@ -1250,3 +1250,35 @@ immutable test61 = q{--- test61
 		SDL_KeyboardEvent* key = cast(SDL_KeyboardEvent*)&e;
 	}
 };
+
+@TestInfo()
+immutable test62 = q{--- test62
+	// Bug. Infinite loop in trivial phi removal
+	struct SDL_Event {
+		u32 type;
+		u8[52] padding;
+	}
+	struct SDL_KeyboardEvent {
+		u32 type;
+		u32 timestamp;
+		u32 keysym;
+	}
+	i32 SDL_PollEvent(SDL_Event*){return 0;}
+	i32 player_x;
+	void run(SDL_KeyboardEvent* key) {
+		bool run = true;
+		SDL_Event e;
+
+		while (run)
+		{
+			if (e.type == 1)
+			{
+				SDL_KeyboardEvent* key = cast(SDL_KeyboardEvent*)&e;
+				if ((*key).keysym == 1)
+				{
+					++player_x;
+				}
+			}
+		}
+	}
+};
