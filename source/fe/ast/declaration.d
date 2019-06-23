@@ -99,7 +99,9 @@ struct FunctionBackendData
 	/// Callers will use this index to call this function.
 	FunctionIndex index;
 	/// Index of IrValueKind.type kind
-	IrIndex returnType;
+	IrIndex returnType; // TODO: remove in favor of `type`
+	/// Index of function type
+	IrIndex irType;
 	///
 	Identifier name;
 	///

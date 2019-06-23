@@ -194,6 +194,10 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 				aggrPtr = buildOffset(aggrPtr, member.offset, memberPtrType);
 				aggrType = member.type;
 				break;
+
+			case IrTypeKind.func_t:
+				context.internal_error("Cannot index function type");
+				break;
 		}
 	}
 

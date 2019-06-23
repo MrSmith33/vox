@@ -189,6 +189,7 @@ struct AstToIr
 		ir.backendData = &f.backendData;
 
 		ir.backendData.returnType = f.returnType.genIrType(context);
+		ir.type = f.genIrType(context);
 		ir.instructionSet = IrInstructionSet.ir;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
@@ -320,6 +321,10 @@ struct AstToIr
 					context.assertf(memberIndex.isConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
 					uint memberIndexVal = context.constants.get(memberIndex).i32;
 					aggrType = context.types.getStructMemberType(aggrType, memberIndexVal, *context);
+					break;
+
+				case IrTypeKind.func_t:
+					context.internal_error("Cannot index function type");
 					break;
 			}
 		}
@@ -984,6 +989,7 @@ struct AstToIr
 	{
 		switch (right.astType)
 		{
+			// TODO: lower in semantic into field extract
 			case AstType.literal_string:
 				if (leftType.astType == AstType.type_ptr)
 				{

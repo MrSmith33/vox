@@ -92,17 +92,32 @@ void dumpFunction(ref IrFunction ir, ref CompilationContext ctx, ref FuncDumpSet
 
 void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext ctx, ref FuncDumpSettings settings)
 {
-	sink.put("function ");
-	sink.put(ctx.idString(ir.backendData.name));
-	sink.putfln(`() %s bytes ir:"%s" {`, ir.storage.length * uint.sizeof, instr_set_names[ir.instructionSet]);
-	int indexPadding = numDigitsInNumber10(ir.storage.length);
-
 	InstrPrintInfo printer;
 	printer.context = &ctx;
 	printer.sink = &sink;
 	printer.ir = &ir;
 	printer.handlers = &instrSetDumpHandlers[ir.instructionSet];
 	printer.settings = &settings;
+
+	sink.put("func ");
+	// results
+	auto funcType = &ctx.types.get!IrTypeFunction(ir.type);
+	foreach(i, result; funcType.resultTypes) {
+		if (i > 0) sink.put(", ");
+		sink.putf("%s", IrIndexDump(result, printer));
+	}
+	if (funcType.numResults > 0) sink.put(" ");
+	sink.put(ctx.idString(ir.backendData.name));
+
+	// parameters
+	sink.put("(");
+	foreach(i, param; funcType.parameterTypes) {
+		if (i > 0) sink.put(", ");
+		sink.putf("%s", IrIndexDump(param, printer));
+	}
+	sink.put(")");
+	sink.putfln(` %s bytes ir:"%s" {`, ir.storage.length * uint.sizeof, instr_set_names[ir.instructionSet]);
+	int indexPadding = numDigitsInNumber10(ir.storage.length);
 
 	void printInstrIndex(IrIndex someIndex) {
 		if (!settings.printInstrIndexEnabled) return;
@@ -345,6 +360,22 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 				dumpIrType(sink, ctx, member.type);
 			}
 			sink("}");
+			break;
+		case func_t:
+			// results
+			auto funcType = &ctx.types.get!IrTypeFunction(type);
+			foreach(i, result; funcType.resultTypes) {
+				if (i > 0) sink(", ");
+				dumpIrType(sink, ctx, result);
+			}
+
+			// parameters
+			sink("(");
+			foreach(i, param; funcType.parameterTypes) {
+				if (i > 0) sink(", ");
+				dumpIrType(sink, ctx, param);
+			}
+			sink(")");
 			break;
 	}
 }

@@ -1,5 +1,4 @@
 - opaque IR type (void?)
-- function signature IR type
 - function pointers
 	- call by pointer
 - char literal / type
@@ -7,9 +6,11 @@
 - float double
 - union
 - alias
-- struct methods
-- struct literal
-- pipeline ordering (run all passes per function) will allow to release temporary memory
+- function signature IR type (needed to allow changing signature for ABI handling in IR to LIR pass)
+- struct
+	- struct methods
+	- struct literal
+- pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 +- all register subtypes 8/16/32/64 bit registers, !!! QWORD is forced rn everywhere
 - optimize pointer arithmetic into lea
 - array literal
@@ -48,6 +49,7 @@ o dll linking
 	- need array arena for IR with per-function slices
 - don't store self-reference arguments in phi functions
 - mutable globals need their own read-write section
+- globals need to be initialized
 
 - improve parser to detect all declaration kinds in statements (add slice and static array)
 - attributes
@@ -60,7 +62,6 @@ o dll linking
 - reg alloc performance regression 1.9s -> 6.2s
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
-- globals need to be initialized
 
 + multiple exported functions per test
 + integer arithmetic operators

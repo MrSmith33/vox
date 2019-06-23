@@ -67,6 +67,9 @@ struct IrFunction
 	/// Total number of virtual registers
 	uint numVirtualRegisters;
 
+	/// IrTypeFunction index
+	IrIndex type;
+
 	VregIterator virtualRegsiters() { return VregIterator(&this); }
 
 	///

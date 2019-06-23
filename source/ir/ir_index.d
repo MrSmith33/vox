@@ -145,6 +145,7 @@ struct IrIndex
 	bool isTypePointer() { return kind == IrValueKind.type && typeKind == IrTypeKind.pointer; }
 	bool isTypeArray() { return kind == IrValueKind.type && typeKind == IrTypeKind.array; }
 	bool isTypeStruct() { return kind == IrValueKind.type && typeKind == IrTypeKind.struct_t; }
+	bool isTypeFunction() { return kind == IrValueKind.type && typeKind == IrTypeKind.func_t; }
 
 	bool isSignedConstant() {
 		return kind == IrValueKind.constant &&

@@ -28,7 +28,8 @@ enum IrTypeKind : ubyte
 	basic,
 	pointer,
 	array,
-	struct_t
+	struct_t,
+	func_t
 }
 
 enum getIrTypeKind(T) = getUDAs!(T, IrTypeKind)[0];
@@ -90,6 +91,20 @@ struct IrTypeStructMember
 	uint offset;
 }
 
+/// variadic type, members follow the struct in memory
+@(IrValueKind.type, IrTypeKind.func_t)
+align(8)
+struct IrTypeFunction
+{
+	IrTypeHeader header;
+	uint numResults;
+	uint numParameters;
+	IrIndex[0] payload; // result types followed by paramter types
+	/// This must be called on the value in the buffer, not stack-local value
+	IrIndex[] resultTypes() { return payload.ptr[0..numResults];}
+	IrIndex[] parameterTypes() { return payload.ptr[numResults..numResults+numParameters];}
+}
+
 ///
 struct IrTypeStorage
 {
@@ -109,6 +124,23 @@ struct IrTypeStorage
 		}
 
 		get!IrTypeStruct(result).numMembers = numMembers;
+		return result;
+	}
+
+	IrIndex appendFuncSignature(uint numResults, uint numParameters)
+	{
+		IrIndex result = append!IrTypeFunction;
+
+		{ // add slots for results and paramters
+			uint numIndicies = numResults + numParameters;
+			size_t numSlots = divCeil(IrIndex.sizeof * numIndicies, ulong.sizeof);
+			ulong[] data = buffer.voidPut(numSlots);
+			data[] = 0;
+		}
+
+		auto func = &get!IrTypeFunction(result);
+		func.numResults = numResults;
+		func.numParameters = numParameters;
 		return result;
 	}
 
@@ -195,6 +227,8 @@ struct IrTypeStorage
 				return elemSize * array.size;
 			case IrTypeKind.struct_t:
 				return get!IrTypeStruct(type).size;
+			case IrTypeKind.func_t:
+				return 0;
 		}
 	}
 
@@ -216,6 +250,8 @@ struct IrTypeStorage
 				return typeAlignment(array.elemType);
 			case IrTypeKind.struct_t:
 				return get!IrTypeStruct(type).alignment;
+			case IrTypeKind.func_t:
+				return 0;
 		}
 	}
 

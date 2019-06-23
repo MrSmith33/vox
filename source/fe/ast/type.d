@@ -277,6 +277,30 @@ IrIndex genIrType(StructDeclNode* s, CompilationContext* context)
 	return s.irType;
 }
 
+IrIndex genIrType(FunctionDeclNode* f, CompilationContext* context)
+	out(res; res.isTypeFunction, "Not a function type")
+{
+	if (f.backendData.irType.isDefined) return f.backendData.irType;
+
+	uint numResults = 0;
+	if (!f.returnType.isVoid) numResults = 1;
+
+	f.backendData.irType = context.types.appendFuncSignature(numResults, f.parameters.length);
+	auto funcType = &context.types.get!IrTypeFunction(f.backendData.irType);
+
+	if (numResults == 1) {
+		IrIndex returnType = f.returnType.genIrType(context);
+		funcType.resultTypes[0] = returnType;
+	}
+
+	IrIndex[] parameterTypes = funcType.parameterTypes;
+	foreach(i, VariableDeclNode* parameter; f.parameters) {
+		parameterTypes[i] = parameter.type.genIrType(context);
+	}
+
+	return f.backendData.irType;
+}
+
 bool sameType(TypeNode* _t1, TypeNode* _t2) {
 	TypeNode* t1 = _t1.foldAliases;
 	TypeNode* t2 = _t2.foldAliases;

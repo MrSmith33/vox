@@ -1040,7 +1040,8 @@ struct SemanticStaticTypes
 	// Get type from function declaration
 	void visit(CallExprNode* c) {
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-		context.assertf(c.callee.astType == AstType.expr_func_name_use,
+		context.assertf(c.callee.astType == AstType.expr_func_name_use ||
+			c.callee.astType == AstType.expr_type_name_use,
 			c.loc, "Only direct function calls are supported right now");
 		AstNode* callee = c.callee.as_name_use.entity;
 
