@@ -6,7 +6,6 @@
 - float double
 - union
 - alias
-- function signature IR type (needed to allow changing signature for ABI handling in IR to LIR pass)
 - struct
 	- struct methods
 	- struct literal
@@ -14,7 +13,7 @@
 +- all register subtypes 8/16/32/64 bit registers, !!! QWORD is forced rn everywhere
 - optimize pointer arithmetic into lea
 - array literal
-- slices
+- slices (need better structs)
 	+ assign string literal
 	+ access .ptr, .length
 	+ indexing
@@ -63,6 +62,7 @@ o dll linking
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
++ function signature IR type (needed to allow changing signature for ABI handling in IR to LIR pass)
 + multiple exported functions per test
 + integer arithmetic operators
 	+ + -

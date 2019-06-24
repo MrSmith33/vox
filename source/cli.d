@@ -10,16 +10,6 @@ import std.file : exists;
 import std.path : absolutePath;
 import all;
 
-/// exe path is stripped from args
-void tryRunCli(string[] args)
-{
-	try {
-		runCli(args);
-	} catch(Throwable t) {
-		writeln(t);
-	}
-}
-
 enum WindowsSubsystemCli : ushort {
 	CUI,
 	GUI
@@ -184,7 +174,8 @@ void runCli(string[] args)
 		return;
 	}
 
-	if (printMem) driver.context.printMemSize;
+	TextSink sink;
+	if (printMem) driver.context.printMemSize(sink);
 
 	auto startReleaseTime = currTime;
 		// releasing memory is not necessary when running in standalone mode
@@ -195,6 +186,8 @@ void runCli(string[] args)
 	Duration duration = time2-time1;
 
 	times.onIteration(0, duration);
+
+	if (printMem) write(cast(string)sink.data.data);
 
 	if (printTime)
 	{

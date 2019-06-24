@@ -492,11 +492,16 @@ struct CompilationContext
 		return cast(JittedFunc)funcDecl.backendData.funcPtr;
 	}
 
-	void printMemSize()
+	void printMemSize() {
+		TextSink sink;
+		printMemSize(sink);
+		write(cast(string)sink.data.data);
+	}
+	void printMemSize(ref TextSink sink)
 	{
-		writefln("Arena sizes:       used  committed  reserved");
+		sink.putfln("Arena sizes:       used  committed  reserved");
 		void printArena(A)(ref A arena, string name) {
-			writefln("  %-14s%-6iB    %-6iB   %-6iB",
+			sink.putfln("  %-14s%-6iB    %-6iB   %-6iB",
 				name,
 				scaledNumberFmt(arena.byteLength),
 				scaledNumberFmt(arena.committedBytes),
