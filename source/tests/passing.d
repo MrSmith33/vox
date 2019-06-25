@@ -1301,3 +1301,44 @@ immutable test63 = q{--- test63
 		usePtru64(&num64);
 	}
 };
+
+@TestInfo(&tester64)
+immutable test64 = q{--- test64
+	// Test structs
+	struct Test64 {
+		i64 a;
+		i64 b;
+	}
+	// constructor is a function (expression) that returns struct type
+	// can compile it into create_aggregate instruction
+	// - default initialization of members
+	// + return result (by ptr)
+	// return aggregate by storing into hidden first parameter
+	Test64 returnBigStruct() {
+		return Test64(10, 42);
+	}
+	// - pass as arg (fits in register)
+	// - pass as arg (by ptr)
+	// - receive parameter (fits in register)
+	// - receive parameter (by ptr)
+	// - pass member as arg (by ptr)
+	// - pass member as arg (fits in register)
+	// - receive result (fits in register)
+	// - receive result (by ptr)
+	// - return result (fits in register)
+	// - store in memory
+	// - load from memory
+	// - set member
+	// - get member
+	// - get member ptr
+	// - get ptr
+};
+struct Test64 {
+	long a;
+	long b;
+}
+void tester64(ref TestContext ctx) {
+	auto returnBigStruct = ctx.getFunctionPtr!(Test64)("returnBigStruct");
+	assert(returnBigStruct() == Test64(10, 42));
+}
+

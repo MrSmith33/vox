@@ -22,7 +22,7 @@
 	- slice ptr
 	- slice assign: slice[] = 42; and slice[] = slice2;
 	- static array to slice (implicit conversion, slicing)
-
+- IrBuilder must prevent adding instructions from wrong instruction set
 
 - multi-indexing operator x[1, 2, 3]
 - AST Index

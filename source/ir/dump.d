@@ -36,13 +36,20 @@ struct IrIndexDump
 {
 	this(IrIndex index, ref InstrPrintInfo printInfo) {
 		this.index = index;
-		this.printInfo = &printInfo;
+		this.context = printInfo.context;
+		this.instrSet = printInfo.ir.instructionSet;
+	}
+	this(IrIndex index, ref CompilationContext context, ref IrFunction ir) {
+		this.index = index;
+		this.context = &context;
+		this.instrSet = ir.instructionSet;
 	}
 	IrIndex index;
-	InstrPrintInfo* printInfo;
+	IrInstructionSet instrSet;
+	CompilationContext* context;
 
 	void toString(scope void delegate(const(char)[]) sink) {
-		printInfo.handlers.indexDumper(sink, *printInfo.context, index);
+		instrSetDumpHandlers[instrSet].indexDumper(sink, *context, index);
 	}
 }
 

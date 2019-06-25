@@ -73,6 +73,46 @@ struct IrToLir
 			}
 		}
 
+		void genStore(IrIndex lirPtr, uint offset, IrIndex irValue, IrIndex lirBlockIndex, ref IrFunction ir)
+		{
+			IrIndex valType = getValueType(irValue, ir, *context);
+
+			switch(valType.typeKind) with(IrTypeKind) {
+				case basic, pointer:
+					IrArgSize argSize = typeToIrArgSize(valType, context);
+
+					IrIndex ptr;
+					if (offset == 0) {
+						ptr = lirPtr;
+					} else {
+						IrIndex elemPtrType = context.types.appendPtr(valType);
+						IrIndex offsetIndex = context.constants.add(offset, IsSigned.no);
+						ExtraInstrArgs extra = { addUsers : false, type : elemPtrType };
+						InstrWithResult addressInstr = builder.emitInstr!LirAmd64Instr_add(lirBlockIndex, extra, lirPtr, offsetIndex);
+						ptr = addressInstr.result;
+					}
+
+					ExtraInstrArgs extra = { addUsers : false, argSize : argSize };
+					builder.emitInstr!LirAmd64Instr_store(lirBlockIndex, extra, ptr, getFixedIndex(irValue));
+					break;
+
+				case struct_t:
+					IrTypeStruct* structType = &context.types.get!IrTypeStruct(valType);
+					IrIndex origin = ir.getVirtReg(irValue).definition;
+					IrInstrHeader* instr = &ir.get!IrInstrHeader(origin);
+					context.assertf(instr.op == IrOpcode.create_aggregate, "%s", cast(IrOpcode)instr.op);
+					context.assertf(instr.numArgs == structType.numMembers, "%s != %s", instr.numArgs, structType.numMembers);
+
+					foreach (i, IrTypeStructMember member; structType.members)
+					{
+						genStore(lirPtr, offset + member.offset, instr.args[i], lirBlockIndex, ir);
+					}
+					break;
+				default:
+					context.internal_error("%s", valType.typeKind); assert(false);
+			}
+		}
+
 		IrIndex prevBlock;
 		// dup basic blocks
 		foreach (IrIndex blockIndex, ref IrBasicBlock irBlock; ir.blocks)
@@ -125,6 +165,67 @@ struct IrToLir
 			prevBlock = lirBlock;
 		}
 
+		bool isPassByValue(IrIndex type) {
+			if (type.isTypeStruct) {
+				IrTypeStruct* structRes = &context.types.get!IrTypeStruct(type);
+				switch(structRes.size) {
+					case 1: return true;
+					case 2: return true;
+					case 4: return true;
+					case 8: return true;
+					default: return false;
+				}
+			}
+			return true;
+		}
+
+		// Handle ABI
+		auto irFuncType = &context.types.get!IrTypeFunction(ir.type);
+		IrIndex[] paramTypes;
+		uint numHiddenParams = 0;
+		IrIndex hiddenParameter;
+
+		if (irFuncType.numResults == 0)
+		{
+			lir.type = context.types.appendFuncSignature(0, irFuncType.numParameters);
+			auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
+			paramTypes = lirFuncType.parameterTypes;
+		}
+		else if (irFuncType.numResults == 1)
+		{
+			IrIndex resType = irFuncType.resultTypes[0];
+			if (isPassByValue(resType))
+			{
+				lir.type = context.types.appendFuncSignature(1, irFuncType.numParameters);
+				auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
+				lirFuncType.resultTypes[0] = resType;
+			}
+			else
+			{
+				numHiddenParams = 1;
+				lir.type = context.types.appendFuncSignature(1, irFuncType.numParameters + 1);
+				auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
+				paramTypes = lirFuncType.parameterTypes[1..$];
+				IrIndex retType = context.types.appendPtr(resType);
+				lirFuncType.parameterTypes[0] = retType;
+				lirFuncType.resultTypes[0] = retType;
+			}
+		}
+		else
+		{
+			context.internal_error("%s results is not implemented", irFuncType.numResults);
+		}
+
+		foreach (i, ref IrIndex irParamType; irFuncType.parameterTypes)
+		{
+			if (isPassByValue(irParamType))
+				paramTypes[i] = irParamType;
+			else
+				paramTypes[i] = context.types.appendPtr(irParamType);
+		}
+
+		//writefln("%s", IrIndexDump(lir.type, *context, lir));
+
 		// buffer for call/instruction arguments
 		enum MAX_ARGS = 255;
 		IrIndex[MAX_ARGS] argBuffer;
@@ -141,6 +242,18 @@ struct IrToLir
 			// get link to the old block and null it
 			IrIndex irBlockIndex = lirBlock.firstInstr;
 			lirBlock.firstInstr = IrIndex();
+
+			// Add hidden parameter(s) to first block
+			if (irBlockIndex == ir.entryBasicBlock && numHiddenParams == 1)
+			{
+				auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
+				IrIndex type = lirFuncType.parameterTypes[0];
+				IrIndex paramReg = lir.backendData.callingConvention.paramsInRegs[0];
+				paramReg.physRegSize = typeToRegSize(type, context);
+				ExtraInstrArgs extra = { type : type };
+				InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, paramReg);
+				hiddenParameter = instr.result;
+			}
 
 			// Add instructions with old args
 			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; ir.getBlock(irBlockIndex).instructions(ir))
@@ -177,7 +290,7 @@ struct IrToLir
 				switch(instrHeader.op)
 				{
 					case IrOpcode.parameter:
-						uint paramIndex = ir.get!IrInstr_parameter(instrIndex).index;
+						uint paramIndex = ir.get!IrInstr_parameter(instrIndex).index + numHiddenParams;
 						context.assertf(paramIndex < lir.backendData.callingConvention.paramsInRegs.length,
 							"Only parameters passed through registers are implemented");
 
@@ -188,6 +301,10 @@ struct IrToLir
 						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, paramReg);
 						recordIndex(instrIndex, instr.instruction);
 						recordIndex(instrHeader.result, instr.result);
+						break;
+
+					case IrOpcode.create_aggregate:
+						// skip
 						break;
 
 					// TODO. Win64 call conv is hardcoded here
@@ -410,10 +527,19 @@ struct IrToLir
 
 					case IrOpcode.block_exit_return_value:
 						IrIndex result = lir.backendData.callingConvention.returnReg;
-						IrIndex type = lir.backendData.returnType;
+						auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
+						IrIndex type = lirFuncType.resultTypes[0];
 						result.physRegSize = typeToRegSize(type, context);
 						ExtraInstrArgs extra = { addUsers : false, result : result };
-						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
+
+						if (numHiddenParams == 1) {
+							// store struct into pointer, then return pointer
+							genStore(hiddenParameter, 0, instrHeader.args[0], lirBlockIndex, ir);
+							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, hiddenParameter);
+						} else {
+							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
+						}
+
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
 						recordIndex(instrIndex, instruction);
 						break;
@@ -424,12 +550,6 @@ struct IrToLir
 			}
 		}
 
-		void fixArg(IrIndex instrIndex, ref IrIndex arg)
-		{
-			//fixIndex(arg);
-			builder.addUser(instrIndex, arg);
-		}
-
 		void fixInstrs(IrIndex blockIndex, ref IrBasicBlock lirBlock)
 		{
 			// replace old args with new args and add users
@@ -437,7 +557,7 @@ struct IrToLir
 			{
 				foreach(ref IrIndex arg; instrHeader.args)
 				{
-					fixArg(instrIndex, arg);
+					builder.addUser(instrIndex, arg);
 				}
 
 				/// Cannot obtain address and store it in another address in one step
