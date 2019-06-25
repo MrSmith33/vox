@@ -199,6 +199,7 @@ struct IrToLir
 				lir.type = context.types.appendFuncSignature(1, irFuncType.numParameters);
 				auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
 				lirFuncType.resultTypes[0] = resType;
+				paramTypes = lirFuncType.parameterTypes;
 			}
 			else
 			{
