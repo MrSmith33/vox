@@ -5,11 +5,14 @@ Authors: Andrey Penechko.
 */
 module utils.arenapool;
 
+version(Posix) extern (C) int getpagesize();
+
 ///
 struct ArenaPool
 {
 	import utils : alignValue;
-	import core.sys.windows.windows : VirtualAlloc, MEM_RESERVE, PAGE_NOACCESS, VirtualFree, MEM_DECOMMIT;
+	import std.format;
+	import std.stdio;
 
 	enum PAGE_SIZE = 65536;
 	ubyte[] buffer;
@@ -17,8 +20,19 @@ struct ArenaPool
 
 	void reserve(size_t size) {
 		size_t reservedBytes = alignValue(size, PAGE_SIZE); // round up to page size
-		ubyte* ptr = cast(ubyte*)VirtualAlloc(null, reservedBytes, MEM_RESERVE, PAGE_NOACCESS);
-		assert(ptr !is null, "VirtualAlloc failed");
+		version(Posix) {
+			import core.stdc.errno : errno;
+			import core.sys.posix.sys.mman : mmap, MAP_ANON, PROT_READ, PROT_WRITE, PROT_EXEC, MAP_PRIVATE, MAP_FAILED;
+			enum MAP_NORESERVE = 0x4000;
+			// TODO: For now always allocate executable mem
+			ubyte* ptr = cast(ubyte*)mmap(null, reservedBytes, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+			assert(ptr != MAP_FAILED, format("mmap failed %s", errno));
+			writefln("mmap(%X) %X %s", reservedBytes, ptr, getpagesize);
+		} else version(Windows) {
+			import core.sys.windows.windows : VirtualAlloc, MEM_RESERVE, PAGE_NOACCESS;
+			ubyte* ptr = cast(ubyte*)VirtualAlloc(null, reservedBytes, MEM_RESERVE, PAGE_NOACCESS);
+			assert(ptr !is null, "VirtualAlloc failed");
+		}
 		buffer = ptr[0..reservedBytes];
 	}
 
@@ -30,7 +44,16 @@ struct ArenaPool
 	}
 
 	void decommitAll() {
-		int res = VirtualFree(buffer.ptr, buffer.length, MEM_DECOMMIT);
-		assert(res != 0, "VirtualFree failed");
+		version(Posix) {
+			import core.sys.posix.sys.mman : munmap;
+			if (buffer.ptr is null) return;
+			// TODO: crashes in WSL
+			//int res = munmap(buffer.ptr, buffer.length);
+			//assert(res != 0, "munmap failed");
+		} else version(Windows) {
+			import core.sys.windows.windows : VirtualFree, MEM_DECOMMIT;
+			int res = VirtualFree(buffer.ptr, buffer.length, MEM_DECOMMIT);
+			assert(res != 0, "VirtualFree failed");
+		}
 	}
 }

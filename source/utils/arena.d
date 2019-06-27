@@ -10,7 +10,6 @@ struct Arena(T)
 {
 	import utils : alignValue, max, format, to, PAGE_SIZE;
 	import std.range : isInputRange;
-	import core.sys.windows.windows : VirtualAlloc, MEM_COMMIT, PAGE_READWRITE;
 
 	T* bufPtr;
 	/// How many items can be stored without commiting more memory (committed items)
@@ -87,22 +86,18 @@ struct Arena(T)
 		size_t bytesToCommit = alignValue((items - (capacity - length)) * T.sizeof, PAGE_SIZE);
 		bytesToCommit = max(bytesToCommit, PAGE_SIZE);
 
-		version(Windows)
-		{
-			if (_committedBytes + bytesToCommit > reservedBytes)
-			{
-				assert(false, format("out of memory: reserved %s, committed bytes %s, requested %s",
-					reservedBytes, _committedBytes, bytesToCommit));
-			}
+		if (_committedBytes + bytesToCommit > reservedBytes) {
+			assert(false, format("Arena.makeSpace() out of memory: reserved %s, committed bytes %s, requested %s",
+				reservedBytes, _committedBytes, bytesToCommit));
+		}
 
-			import core.sys.windows.windows;
+		version(Windows) {
+			import core.sys.windows.windows : VirtualAlloc, MEM_COMMIT, PAGE_READWRITE;
 			void* result = VirtualAlloc(cast(ubyte*)bufPtr + _committedBytes, bytesToCommit, MEM_COMMIT, PAGE_READWRITE);
 			if (result is null) assert(false, "Cannot commit more bytes");
-		}
-		else version(Posix)
-		{
-			static assert(false, "Not implemented for Posix");
-		}
+		} else version(Posix) {
+			// noop, mmap already committed all memory
+		} else static assert(false, "Not implemented on this platform");
 
 		capacity = (_committedBytes + bytesToCommit) / T.sizeof;
 	}

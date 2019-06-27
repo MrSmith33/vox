@@ -25,6 +25,7 @@ bool free_executable_memory(ubyte[] bytes)
 
 version(Posix)
 {
+	import core.stdc.errno : errno;
 	ubyte[] allocate(size_t bytes, void* location, bool is_executable)
 	{
 		import core.sys.posix.sys.mman : mmap, MAP_ANON, PROT_READ,
@@ -43,6 +44,24 @@ version(Posix)
 		import core.sys.posix.sys.mman : munmap;
 		if (b.ptr) munmap(b.ptr, b.length) == 0 || assert(0);
 		return true;
+	}
+
+	void markAsRW(void* addr, size_t numPages)
+	{
+		import core.sys.posix.sys.mman : mprotect, PROT_READ, PROT_WRITE;
+		if (numPages == 0) return;
+		// TODO: crashes in WSL
+		//int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ | PROT_WRITE);
+		//assert(res != 0, format("mprotect(%X, %s, PROT_READ | PROT_WRITE) failed, %s", addr, numPages*PAGE_SIZE, errno));
+	}
+
+	void markAsExecutable(void* addr, size_t numPages)
+	{
+		import core.sys.posix.sys.mman : mprotect, PROT_READ, PROT_EXEC;
+		if (numPages == 0) return;
+		// TODO: crashes in WSL
+		//int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ | PROT_EXEC);
+		//assert(res != 0, format("mprotect(%X, %s, PROT_EXEC) failed, %s", addr, numPages*PAGE_SIZE, errno));
 	}
 }
 else version(Windows)
@@ -87,6 +106,7 @@ else version(Windows)
 
 	void markAsRW(void* addr, size_t numPages)
 	{
+		if (numPages == 0) return;
 		uint val;
 		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_READWRITE, &val);
 	}
