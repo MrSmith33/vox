@@ -311,6 +311,8 @@ struct IrToLir
 					// TODO. Win64 call conv is hardcoded here
 					case IrOpcode.call:
 
+						lir.backendData.stackLayout.numCalls += 1;
+
 						enum STACK_ITEM_SIZE = 8;
 						size_t numArgs = instrHeader.args.length;
 						size_t numParamsInRegs = lir.backendData.callingConvention.paramsInRegs.length;

@@ -55,7 +55,10 @@ void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, r
 	auto layout = &func.backendData.stackLayout;
 	// TODO: Win64 calling convention hardcoded
 
-	context.assertf(layout.maxAlignment <= 16, "Big alingments aren't implemented");
+	// Do not allocate stack for leaf functions with no slots
+	if (layout.slots.length == 0 && layout.numCalls == 0) return;
+
+	context.assertf(layout.maxAlignment <= 16, "Big alignments aren't implemented");
 	/*
 	if (context.useFramePointer)
 	{
@@ -129,11 +132,13 @@ void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, r
 	layout.reservedBytes = alignValue(layout.reservedBytes, STACK_ITEM_SIZE);
 	//writefln("reservedBytes3 0x%X", layout.reservedBytes);
 
-	// Align to 16 bytes
-	// Before we are called, the stack is aligned to 16 bytes, after call return address is pushed
-	// We take into account the return address (extra 8 bytes)
-	if ((layout.reservedBytes + STACK_ITEM_SIZE) % 16 != 0) {
-		layout.reservedBytes += STACK_ITEM_SIZE;
+	if (layout.numCalls != 0) {
+		// Align to 16 bytes when we have calls to other functions
+		// Before we are called, the stack is aligned to 16 bytes, after call return address is pushed
+		// We take into account the return address (extra 8 bytes)
+		if ((layout.reservedBytes + STACK_ITEM_SIZE) % 16 != 0) {
+			layout.reservedBytes += STACK_ITEM_SIZE;
+		}
 	}
 	//writefln("reservedBytes4 0x%X", layout.reservedBytes);
 
