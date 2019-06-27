@@ -1317,10 +1317,22 @@ immutable test64 = q{--- test64
 	Test64 returnBigStruct() {
 		return Test64(10, 42);
 	}
+	//u8[] returnString() {
+	//	return "testString";
+	//}
 	// - pass as arg (fits in register)
 	// - pass as arg (by ptr)
+	void passArgBigStruct() {
+		receiveArgBigStruct(Test64(10, 42));
+	}
+	// - pass as arg (by ptr, pushed)
+	void passArgBigStructPush() {
+		receiveArgBigStructPush(1,2,3,4,Test64(10, 42));
+	}
 	// - receive parameter (fits in register)
 	// - receive parameter (by ptr)
+	void receiveArgBigStruct(Test64 arg) {}
+	void receiveArgBigStructPush(i32,i32,i32,i32,Test64 arg) {}
 	// - pass member as arg (by ptr)
 	// - pass member as arg (fits in register)
 	// - receive result (fits in register)
@@ -1340,5 +1352,8 @@ struct Test64 {
 void tester64(ref TestContext ctx) {
 	auto returnBigStruct = ctx.getFunctionPtr!(Test64)("returnBigStruct");
 	assert(returnBigStruct() == Test64(10, 42));
+	auto passArgBigStruct = ctx.getFunctionPtr!(string)("passArgBigStruct");
+	passArgBigStruct();
+	auto passArgBigStructPush = ctx.getFunctionPtr!(string)("passArgBigStructPush");
+	passArgBigStructPush();
 }
-

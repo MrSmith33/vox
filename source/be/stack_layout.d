@@ -166,6 +166,12 @@ void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, r
 	if (context.printStackLayout) layout.dump(&context);
 }
 
+enum StackSlotKind : ubyte {
+	local,
+	parameter,
+	argument
+}
+
 struct StackLayout
 {
 	/// How much bytes we need to allocate in prolog and deallocate in epilog
@@ -184,10 +190,10 @@ struct StackLayout
 	}
 
 	/// paramIndex == -1 for non-params
-	IrIndex addStackItem(CompilationContext* context, IrIndex type, bool isParameter, ushort paramIndex)
+	IrIndex addStackItem(CompilationContext* context, IrIndex type, StackSlotKind kind, ushort paramIndex)
 	{
 		uint id = cast(uint)(slots.length);
-		StackSlot slot = StackSlot(context.types.typeSize(type), context.types.typeAlignment(type), isParameter, paramIndex);
+		StackSlot slot = StackSlot(context.types.typeSize(type), context.types.typeAlignment(type), kind, paramIndex);
 		slot.type = context.types.appendPtr(type);
 
 		assert(slot.alignment.isPowerOfTwo, format("alignment is not power of 2 (%s)", slot.alignment));
@@ -196,7 +202,7 @@ struct StackLayout
 
 		maxAlignment = max(maxAlignment, slot.alignment);
 
-		if(isParameter) ++numParamSlots;
+		if(kind == StackSlotKind.parameter) ++numParamSlots;
 
 		slots.put(context.arrayArena, slot);
 		return IrIndex(id, IrValueKind.stackSlot);
@@ -216,7 +222,7 @@ struct StackSlot
 {
 	uint size;
 	uint alignment;
-	bool isParameter;
+	StackSlotKind kind;
 	ushort paramIndex;
 	ushort numUses;
 	/// Signed offset from base register
@@ -226,4 +232,5 @@ struct StackSlot
 	/// Must be a pointer type
 	IrIndex type;
 	void addUser() { ++numUses; }
+	bool isParameter() { return kind == StackSlotKind.parameter; }
 }

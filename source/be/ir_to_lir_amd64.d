@@ -320,6 +320,21 @@ struct IrToLir
 						size_t stackReserve = max(numArgs, numParamsInRegs) * STACK_ITEM_SIZE;
 						IrIndex stackPtrReg = lir.backendData.callingConvention.stackPointer;
 
+						// Copy args to stack if necessary (big structs or doesn't fit into regs)
+						foreach (i, IrIndex irArg; instrHeader.args)
+						{
+							IrIndex type = ir.getValueType(*context, irArg);
+
+							if (isPassByValue(type)) {
+								argBuffer[i] = getFixedIndex(irArg);
+							} else {
+								//allocate stack slot, store value there and use slot pointer as argument
+								argBuffer[i] = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
+								genStore(argBuffer[i], 0, irArg, lirBlockIndex, ir);
+							}
+						}
+
+						// align stack and push args that didn't fit into registers (register size args)
 						if (numArgs > numParamsInRegs)
 						{
 							if (numArgs % 2 == 1)
@@ -332,23 +347,29 @@ struct IrToLir
 							}
 
 							// push args to stack
-							foreach_reverse (IrIndex arg; instrHeader.args[numParamsInRegs..$])
+							foreach_reverse (IrIndex lirArg; argBuffer[numParamsInRegs..numArgs])
 							{
+								if (lirArg.isStackSlot) {
+									ExtraInstrArgs extra = { addUsers : false, type : lir.getValueType(*context, lirArg) };
+									InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, lirArg);
+									lirArg = movInstr.result;
+								}
+
 								ExtraInstrArgs extra = { addUsers : false };
-								builder.emitInstr!LirAmd64Instr_push(lirBlockIndex, extra, getFixedIndex(arg));
+								builder.emitInstr!LirAmd64Instr_push(lirBlockIndex, extra, lirArg);
 							}
 						}
 
 						// move args to registers
 						size_t numPhysRegs = min(numParamsInRegs, numArgs);
-						foreach_reverse (i, IrIndex arg; instrHeader.args[0..numPhysRegs])
+						foreach_reverse (i, IrIndex lirArg; argBuffer[0..numPhysRegs])
 						{
-							IrIndex type = ir.getValueType(*context, arg);
+							IrIndex type = lir.getValueType(*context, lirArg);
 							IrIndex argRegister = lir.backendData.callingConvention.paramsInRegs[i];
 							argRegister.physRegSize = typeToRegSize(type, context);
 							argBuffer[i] = argRegister;
 							ExtraInstrArgs extra = {addUsers : false, result : argRegister};
-							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(arg));
+							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, lirArg);
 						}
 
 						{	// Allocate shadow space for 4 physical registers
@@ -592,6 +613,8 @@ struct IrToLir
 				}
 			}
 		}
+
+		//dumpFunction(lir, *context); // uncomment to see generated LIR before fixing
 
 		foreach (IrIndex blockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{

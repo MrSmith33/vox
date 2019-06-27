@@ -464,13 +464,14 @@ void dumpArg(IrIndex arg, ref InstrPrintInfo p)
 	if (arg.isPhysReg)
 	{
 		p.sink.putf(" %s", IrIndexDump(arg, p));
-
 	}
 	else
 	{
-		p.sink.putf(" %s %s",
-			IrIndexDump(p.ir.getValueType(*p.context, arg), p),
-			IrIndexDump(arg, p));
+		if (arg.isDefined)
+			p.sink.putf(" %s %s",
+				IrIndexDump(p.ir.getValueType(*p.context, arg), p),
+				IrIndexDump(arg, p));
+		else p.sink.put(" <null>");
 	}
 }
 

@@ -784,7 +784,7 @@ struct LinearScan
 		{
 			if (reg.isCalleeSaved && reg.isUsed)
 			{
-				IrIndex slot = stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), false, 0);
+				IrIndex slot = stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), StackSlotKind.local, 0);
 
 				// save register
 				ExtraInstrArgs extra1 = { argSize : IrArgSize.size64 };

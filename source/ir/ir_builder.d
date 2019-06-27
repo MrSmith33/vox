@@ -258,8 +258,7 @@ struct IrBuilder
 
 	/// Puts `user` into a list of users of `used` value
 	void addUser(IrIndex user, IrIndex used) {
-		assert(user.isDefined, "user is undefined");
-		assert(used.isDefined, "used is undefined");
+		context.assertf(user.isDefined && used.isDefined, "addUser(%s, %s)", user, used);
 		final switch (used.kind) with(IrValueKind) {
 			case none: assert(false, "addUser none");
 			case listItem: assert(false, "addUser listItem");

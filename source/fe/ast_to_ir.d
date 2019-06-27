@@ -370,8 +370,9 @@ struct AstToIr
 		IrIndex initializer;
 		if (needsStackSlot)
 		{
+			auto slotKind = v.isParameter ? StackSlotKind.parameter : StackSlotKind.local;
 			// allocate stack slot
-			v.irValue = fun.backendData.stackLayout.addStackItem(context, varType.genIrType(context), v.isParameter, v.scopeIndex);
+			v.irValue = fun.backendData.stackLayout.addStackItem(context, varType.genIrType(context), slotKind, v.scopeIndex);
 		}
 		else
 		{
