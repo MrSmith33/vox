@@ -86,9 +86,9 @@ struct AstPrinter {
 			print("NAME_USE ", context.idString(v.id));
 	}
 	void visit(MemberExprNode* m) {
-		print("MEMBER ", m.type.printer(context));
+		print("MEMBER ", m.memberIndex, " ", m.type.printer(context));
 		pr_node(cast(AstNode*)m.aggregate);
-		pr_node(cast(AstNode*)m.member);
+		if(m.member) pr_node(cast(AstNode*)m.member);
 	}
 	void visit(IntLiteralExprNode* lit) {
 		if (lit.isSigned)

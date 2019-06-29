@@ -319,6 +319,14 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref CompilationContext
 		case instruction: sink.formattedWrite("i.%s", index.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
 		case constant: sink.formattedWrite("%s", context.constants.get(index).i64); break;
+		case constantAggregate:
+			sink("{");
+			foreach(i, m; context.constants.getAggregate(index).members) {
+				if (i > 0) sink(", ");
+				dumpIrIndex(sink, context, m);
+			}
+			sink("}");
+			break;
 		case global: sink.formattedWrite("g.%s", index.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi.%s", index.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s.%s", index.storageUintIndex); break;

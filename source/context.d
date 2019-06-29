@@ -150,14 +150,14 @@ struct CompilationContext
 	bool printTimings = false;
 	Identifier printOnlyFun;
 
-	/// Check if printing of only this function needed (including if all functions are requested)
+	/// Check if printing of this function needed (including if all functions are requested)
 	bool printDumpOf(FunctionDeclNode* fun) {
 		if (printOnlyFun.isUndefined) return true;
 		if (printOnlyFun == fun.id) return true;
 		return false;
 	}
 
-	/// Check if printing of only this function needed (not all functions)
+	/// Check if printing of this function only is needed (not all functions)
 	bool printDumpOnlyOf(FunctionDeclNode* fun) {
 		return printOnlyFun == fun.id;
 	}
@@ -181,6 +181,9 @@ struct CompilationContext
 	string idString(const Identifier id) { return idMap.get(id); }
 
 	static __gshared ErrorAstNode errorNode = ErrorAstNode();
+
+	PtrTypeNode* u8Ptr;
+	SliceTypeNode* u8Slice;
 
 	static __gshared BasicTypeNode[] basicTypes = [
 		basicTypeNode(0, BasicType.t_error),
@@ -519,6 +522,7 @@ struct CompilationContext
 		printArena(staticDataBuffer, "static data");
 		printArena(globals.buffer, "globals");
 		printArena(constants.buffer, "constants");
+		printArena(constants.aggregateBuffer, "aggregates");
 		printArena(importBuffer, "imports");
 		printArena(objSymTab.buffer, "symbols");
 		printArena(codeBuffer, "machine code");
@@ -543,6 +547,7 @@ struct CompilationContext
 		objSymTab.firstModule = LinkIndex();
 		globals.buffer.clear;
 		constants.buffer.clear;
+		constants.aggregateBuffer.clear;
 		astBuffer.clear;
 		arrayArena.clear;
 		entryPoint = null;

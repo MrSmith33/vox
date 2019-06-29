@@ -167,6 +167,9 @@ struct IrInstrHeader
 	ushort op;
 	ubyte numArgs;
 
+	// Prevent type from copying because members will not be copied. Need to use ptr.
+	@disable this(this);
+
 	mixin(bitfields!(
 		bool,       "hasResult", 1,
 		ubyte,      "cond",      4,

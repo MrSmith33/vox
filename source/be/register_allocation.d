@@ -523,7 +523,7 @@ struct LinearScan
 			{
 				final switch (userIndex.kind) with(IrValueKind)
 				{
-					case none, listItem, virtualRegister, physicalRegister, constant, global, basicBlock, stackSlot, type, func: assert(false);
+					case none, listItem, virtualRegister, physicalRegister, constant, global, basicBlock, stackSlot, type, func, constantAggregate: assert(false);
 					case instruction:
 						foreach (ref IrIndex arg; lir.get!IrInstrHeader(userIndex).args)
 							if (arg == vregIndex)

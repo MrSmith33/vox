@@ -240,6 +240,8 @@ struct IrBuilder
 		context.assertf(var.kind == IrValueKind.variable, "Variable kind is %s", var.kind);
 		context.assertf(
 			value.kind == IrValueKind.constant ||
+			value.kind == IrValueKind.constantAggregate ||
+			value.kind == IrValueKind.global ||
 			value.kind == IrValueKind.virtualRegister ||
 			value.kind == IrValueKind.physicalRegister,
 			"writeVariable(block %s, variable %s, value %s)",
@@ -265,6 +267,7 @@ struct IrBuilder
 			case instruction: assert(false, "addUser instruction");
 			case basicBlock: break; // allowed. As argument of jmp jcc
 			case constant: break; // allowed, noop
+			case constantAggregate: break;
 			case global:
 				context.globals.get(used).addUser(user);
 				break;
@@ -887,6 +890,7 @@ struct IrBuilder
 			case instruction: return someIndex;
 			case basicBlock: assert(false);
 			case constant: assert(false);
+			case constantAggregate: assert(false);
 			case global: assert(false);
 			case phi: return someIndex;
 			case func: assert(false); // TODO
@@ -946,7 +950,7 @@ struct IrBuilder
 						}
 					break;
 				case basicBlock: assert(false);
-				case constant: assert(false);
+				case constant, constantAggregate: assert(false);
 				case global: assert(false);
 				case phi:
 					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(*ir))
@@ -974,7 +978,7 @@ struct IrBuilder
 		final switch (used.kind) with(IrValueKind) {
 			case none, listItem, basicBlock, physicalRegister: assert(false);
 			case instruction: return ir.getVirtReg(ir.get!IrInstrHeader(used).result).users.replaceAll(*ir, what, byWhat);
-			case constant: return; // constants dont track individual users
+			case constant, constantAggregate: return; // constants dont track individual users
 			case global: return; // globals dont track individual users
 			case phi: return ir.getVirtReg(ir.get!IrPhi(used).result).users.replaceAll(*ir, what, byWhat);
 			case stackSlot: assert(false); // TODO

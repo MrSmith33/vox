@@ -419,6 +419,8 @@ struct SemanticLookup
 void pass_semantic_type(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
 	auto sem3 = SemanticStaticTypes(&ctx);
+	ctx.u8Ptr = ctx.appendAst!PtrTypeNode(TokenIndex(), ctx.basicTypeNodes(BasicType.t_u8));
+	ctx.u8Slice = ctx.appendAst!SliceTypeNode(TokenIndex(), ctx.basicTypeNodes(BasicType.t_u8));
 	foreach (ref SourceFileInfo file; ctx.files.data) {
 		sem3.visit(file.mod);
 
@@ -438,8 +440,6 @@ struct SemanticStaticTypes
 
 	CompilationContext* context;
 	FunctionDeclNode* curFunc;
-	PtrTypeNode* u8Ptr;
-	SliceTypeNode* u8Slice;
 	Identifier id_ptr;
 	Identifier id_length;
 
@@ -689,10 +689,13 @@ struct SemanticStaticTypes
 		// auto cast from string literal to c_char*
 		else if (expr.astType == AstType.literal_string)
 		{
-			if (type.astType == AstType.type_slice &&
-				type.as_slice.base.astType == AstType.type_basic &&
-				type.as_slice.base.as_basic.basicType == BasicType.t_u8)
+			if (type.astType == AstType.type_ptr &&
+				type.as_ptr.base.astType == AstType.type_basic &&
+				type.as_ptr.base.as_basic.basicType == BasicType.t_u8)
 			{
+				auto memberExpr = context.appendAst!MemberExprNode(expr.loc, type, IrIndex(), expr, null, 1);
+				memberExpr.astType = AstType.expr_slice_member;
+				expr = cast(ExpressionNode*)memberExpr;
 				return true;
 			}
 		}
@@ -854,8 +857,6 @@ struct SemanticStaticTypes
 	void visit(ModuleDeclNode* m) {
 		id_ptr = context.idMap.getOrRegNoDup("ptr");
 		id_length = context.idMap.getOrRegNoDup("length");
-		u8Ptr = context.appendAst!PtrTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
-		u8Slice = context.appendAst!SliceTypeNode(TokenIndex(), context.basicTypeNodes(BasicType.t_u8));
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(ImportDeclNode* i) {}
@@ -979,7 +980,7 @@ struct SemanticStaticTypes
 			c.type = context.basicTypeNodes(minUnsignedIntType(c.value));
 	}
 	void visit(StringLiteralExprNode* c) {
-		c.type = cast(TypeNode*)u8Ptr;
+		c.type = cast(TypeNode*)context.u8Slice;
 	}
 	void visit(NullLiteralExprNode* c) {
 		c.type = context.basicTypeNodes(BasicType.t_null);
@@ -1067,7 +1068,7 @@ struct SemanticStaticTypes
 			context.error(c.loc, "Too much parameters to '%s', got %s, expected %s",
 				context.idString(funcDecl.id), numArgs, numParams);
 
-		foreach (i, ExpressionNode* arg; c.args)
+		foreach (i, ref ExpressionNode* arg; c.args)
 		{
 			_visit(arg);
 			bool success = autoconvTo(arg, params[i].type);

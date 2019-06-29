@@ -62,10 +62,26 @@ enum IsSigned : bool {
 
 enum ulong MASK_24_BITS = (1 << 24) - 1;
 
+@(IrValueKind.constantAggregate)
+struct IrAggregateConstant
+{
+	IrIndex type;
+	uint numMembers;
+
+	// Prevent type from copying because members will not be copied. Need to use ptr.
+	@disable this(this);
+
+	IrIndex[0] _memberPayload;
+	IrIndex[] members() {
+		return _memberPayload.ptr[0..numMembers];
+	}
+}
+
 ///
 struct IrConstantStorage
 {
 	Arena!IrConstant buffer;
+	Arena!uint aggregateBuffer;
 
 	///
 	IrIndex add(ulong value, IsSigned signed)
@@ -103,6 +119,30 @@ struct IrConstantStorage
 		result.constantSize = constantSize;
 		result.kind = IrValueKind.constant;
 		return result;
+	}
+
+	///
+	IrIndex addAggrecateConstant(IrIndex type, IrIndex[] members...) {
+		IrIndex resultIndex = IrIndex(cast(uint)aggregateBuffer.length, IrValueKind.constantAggregate);
+		uint numMembers = cast(uint)members.length;
+		uint allocSize = cast(uint)divCeil(IrAggregateConstant.sizeof, uint.sizeof) + numMembers;
+		aggregateBuffer.voidPut(allocSize);
+		IrAggregateConstant* agg = &getAggregate(resultIndex);
+		agg.type = type;
+		agg.numMembers = numMembers;
+		agg.members[] = members;
+		return resultIndex;
+	}
+
+	///
+	ref IrAggregateConstant getAggregate(IrIndex index) {
+		assert(index.kind == IrValueKind.constantAggregate, format("Not a constantAggregate (%s)", index));
+		return *cast(IrAggregateConstant*)(&aggregateBuffer[index.storageUintIndex]);
+	}
+
+	///
+	IrIndex getAggregateMember(IrIndex index, uint memberIndex) {
+		return getAggregate(index).members[memberIndex];
 	}
 
 	///

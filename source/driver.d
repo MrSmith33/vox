@@ -243,7 +243,7 @@ struct Driver
 		passes = passes_;
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		size_t irMemSize = GiB*109;
+		size_t irMemSize = GiB*113;
 		arenaPool.reserve(irMemSize);
 		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
@@ -264,6 +264,7 @@ struct Driver
 		context.objSymTab.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.globals.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.constants.buffer.setBuffer(arenaPool.take(GiB), 0);
+		context.constants.aggregateBuffer.setBuffer(arenaPool.take(4*GiB), 0);
 		context.astBuffer.setBuffer(arenaPool.take(16*GiB), 0);
 		context.arrayArena.setBuffer(arenaPool.take(13*4*GiB));
 

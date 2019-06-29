@@ -103,6 +103,7 @@ struct IrIndex
 				}
 				break;
 
+			case constantAggregate: sink.formattedWrite("caggr.%s", storageUintIndex); break;
 			case global: sink.formattedWrite("g.%s", storageUintIndex); break;
 			case phi: sink.formattedWrite("phi.%s", storageUintIndex); break;
 			case stackSlot: sink.formattedWrite("s.%s", storageUintIndex); break;
@@ -130,6 +131,7 @@ struct IrIndex
 	bool isBasicBlock() { return kind == IrValueKind.basicBlock; }
 	bool isPhi() { return kind == IrValueKind.phi; }
 	bool isConstant() { return kind == IrValueKind.constant; }
+	bool isConstantAggregate() { return kind == IrValueKind.constantAggregate; }
 	bool isGlobal() { return kind == IrValueKind.global; }
 	bool isVirtReg() { return kind == IrValueKind.virtualRegister; }
 	bool isPhysReg() { return kind == IrValueKind.physicalRegister; }

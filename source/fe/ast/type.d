@@ -164,6 +164,9 @@ struct TypeNode
 			case AstType.expr_type_name_use:
 				sink(ctx.idString(as_name_use.id));
 				break;
+			case AstType.expr_name_use:
+				sink(ctx.idString(as_node.cast_expr_name_use.id));
+				break;
 			default: assert(false, format("%s is not type", astType));
 		}
 	}

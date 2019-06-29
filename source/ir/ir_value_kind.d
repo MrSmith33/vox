@@ -15,6 +15,7 @@ enum IrValueKind : ubyte
 	instruction,
 	basicBlock,
 	constant,
+	constantAggregate, /// Cannot appear in LIR
 	global, /// Index of global var or const (or literal data)
 	phi,
 	stackSlot,

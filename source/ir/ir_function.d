@@ -102,15 +102,7 @@ struct IrFunction
 
 	IrIndex getValueType(ref CompilationContext context, IrIndex someIndex)
 	{
-		final switch (someIndex.kind) with(IrValueKind) {
-			case none, listItem, instruction, basicBlock, phi, physicalRegister, type, variable, func:
-				context.internal_error("Cannot get type for non-value %s %s", someIndex.kind, someIndex);
-				assert(false);
-			case constant: return context.constants.get(someIndex).type(someIndex);
-			case global: return context.globals.get(someIndex).type;
-			case stackSlot: return backendData.stackLayout[someIndex].type;
-			case virtualRegister: return getVirtReg(someIndex).type;
-		}
+		return .getValueType(someIndex, this, context);
 	}
 }
 
@@ -138,7 +130,7 @@ void removeUser(ref CompilationContext context, ref IrFunction ir, IrIndex user,
 		case listItem: assert(false, "removeUser listItem");
 		case instruction: assert(false, "removeUser instruction");
 		case basicBlock: break; // allowed. As argument of jmp jcc
-		case constant: break; // allowed, noop
+		case constant, constantAggregate: break; // allowed, noop
 		case global:
 			context.globals.get(used).removeUser(user);
 			break;

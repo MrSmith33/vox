@@ -18,7 +18,7 @@ NameUseExprNode* cast_expr_name_use(AstNode* t) {
 mixin template ExpressionNodeData(AstType _astType, int default_flags = 0) {
 	mixin AstNodeData!(_astType, default_flags | AstFlags.isExpression);
 	TypeNode* type;
-	// can be stack slot, global, variable, virtualRegister, constant
+	// can be stack slot, global, variable, virtualRegister, constant, constantAggregate
 	IrIndex irValue;
 
 	AstNode* as_base() { return cast(AstNode*)&this; }
@@ -107,7 +107,6 @@ struct BoolLiteralExprNode {
 struct StringLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral);
 	string value;
-	IrIndex irValueLength; // ExpressionNodeData.irValue stores ptr
 }
 
 enum BinOp : ubyte {

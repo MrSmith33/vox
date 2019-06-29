@@ -78,6 +78,10 @@ struct IrTypeStruct
 	uint size;
 	uint alignment;
 	uint numMembers;
+
+	// Prevent type from copying because members will not be copied. Need to use ptr.
+	@disable this(this);
+
 	IrTypeStructMember[0] members_payload;
 	/// This must be called on the value in the buffer, not stack-local value
 	IrTypeStructMember[] members() { return members_payload.ptr[0..numMembers];}
@@ -99,6 +103,10 @@ struct IrTypeFunction
 	IrTypeHeader header;
 	uint numResults;
 	uint numParameters;
+
+	// Prevent type from copying because members will not be copied. Need to use ptr.
+	@disable this(this);
+
 	IrIndex[0] payload; // result types followed by paramter types
 	/// This must be called on the value in the buffer, not stack-local value
 	IrIndex[] resultTypes() { return payload.ptr[0..numResults];}
@@ -286,6 +294,8 @@ IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext co
 	{
 		case constant:
 			return context.constants.get(value).type(value);
+		case constantAggregate:
+			return context.constants.getAggregate(value).type;
 		case global:
 			IrGlobal* global = &context.globals.get(value);
 			context.assertf(global.type.isDefined, "Global has no type");

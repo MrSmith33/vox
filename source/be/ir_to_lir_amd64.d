@@ -98,16 +98,32 @@ struct IrToLir
 
 				case struct_t:
 					IrTypeStruct* structType = &context.types.get!IrTypeStruct(valType);
-					IrIndex origin = ir.getVirtReg(irValue).definition;
-					IrInstrHeader* instr = &ir.get!IrInstrHeader(origin);
-					context.assertf(instr.op == IrOpcode.create_aggregate, "%s", cast(IrOpcode)instr.op);
-					context.assertf(instr.numArgs == structType.numMembers, "%s != %s", instr.numArgs, structType.numMembers);
+					IrIndex[] members;
+
+					switch(irValue.kind) with(IrValueKind)
+					{
+						case virtualRegister:
+							IrIndex origin = ir.getVirtReg(irValue).definition;
+							IrInstrHeader* instr = &ir.get!IrInstrHeader(origin);
+							context.assertf(instr.op == IrOpcode.create_aggregate, "%s", cast(IrOpcode)instr.op);
+							members = instr.args;
+							break;
+
+						case constantAggregate:
+							members = context.constants.getAggregate(irValue).members;
+							break;
+
+						default: context.internal_error("%s", irValue.kind); assert(false);
+					}
+
+					context.assertf(members.length == structType.numMembers, "%s != %s", members.length, structType.numMembers);
 
 					foreach (i, IrTypeStructMember member; structType.members)
 					{
-						genStore(lirPtr, offset + member.offset, instr.args[i], lirBlockIndex, ir);
+						genStore(lirPtr, offset + member.offset, members[i], lirBlockIndex, ir);
 					}
 					break;
+
 				default:
 					context.internal_error("%s", valType.typeKind); assert(false);
 			}
@@ -500,7 +516,9 @@ struct IrToLir
 						recordIndex(instrHeader.result, res.result);
 						break;
 					case IrOpcode.load: emitLirInstr!LirAmd64Instr_load; break;
-					case IrOpcode.store: emitLirInstr!LirAmd64Instr_store; break;
+					case IrOpcode.store:
+						genStore(getFixedIndex(instrHeader.args[0]), 0, instrHeader.args[1], lirBlockIndex, ir);
+						break;
 					case IrOpcode.conv:
 						IrIndex typeFrom = getValueType(instrHeader.args[0], ir, *context);
 						IrIndex typeTo = ir.getVirtReg(instrHeader.result).type;

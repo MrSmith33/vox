@@ -513,7 +513,7 @@ struct CodeEmitter
 
 		final switch (src.kind) with(IrValueKind)
 		{
-			case none, listItem, instruction, basicBlock, phi, type, virtualRegister, variable, func: assert(false);
+			case none, listItem, instruction, basicBlock, phi, type, virtualRegister, variable, func, constantAggregate: assert(false);
 			case constant:
 				IrConstant con = context.constants.get(src);
 				if (con.i64.argSizeIntSigned == IrArgSize.size8) {
@@ -696,10 +696,20 @@ struct CodeEmitter
 				}
 				break;
 			case const_to_reg:
+				IrConstant con = context.constants.get(src);
 				Register dstReg = indexToRegister(dst);
 				MemAddress dstMem = memAddrBase(dstReg);
-				uint con = context.constants.get(src).i32;
-				gen.mov(dstMem, Imm32(con), argType);
+				final switch(argType) with(ArgType)
+				{
+					case BYTE: gen.movb(dstMem, Imm8(con.i8)); break;
+					case WORD: gen.movw(dstMem, Imm16(con.i16)); break;
+					case DWORD: gen.movd(dstMem, Imm32(con.i32)); break;
+					case QWORD:
+						IrArgSize dataSize = con.payloadSize(src);
+						context.assertf(dataSize != IrArgSize.size64, "Constant is too big");
+						gen.movq(dstMem, Imm32(con.i32));
+						break;
+				}
 				break;
 			case reg_to_stack:
 				Register srcReg = indexToRegister(src);

@@ -246,15 +246,14 @@ struct AstToIr
 	}
 
 	/// destination must be pointer or variable
-	void store(IrIndex currentBlock, IrIndex destination, IrIndex value, IrArgSize argSize)
+	void store(IrIndex currentBlock, IrIndex destination, IrIndex value)
 	{
-		version(IrGenPrint) writefln("[IR GEN] store %s to '%s'",
-			value, destination);
+		version(IrGenPrint) writefln("[IR GEN] store %s to '%s'", value, destination);
 
 		switch (destination.kind) with(IrValueKind)
 		{
 			case stackSlot, global, virtualRegister:
-				ExtraInstrArgs extra = { argSize : argSize };
+				ExtraInstrArgs extra;
 				// destination must be a pointer
 				builder.emitInstr!IrInstr_store(currentBlock, extra, destination, value);
 				break;
@@ -285,6 +284,50 @@ struct AstToIr
 				context.internal_error("Cannot load from %s", source.kind);
 				assert(false);
 		}
+	}
+
+	static struct LRValue {
+		IrIndex value;
+		bool isLvalue;
+	}
+
+	LRValue getMember(IrIndex currentBlock, IrIndex aggr, IrIndex[] indicies...)
+	{
+		if (aggr.isVariable) {
+			aggr = builder.readVariable(currentBlock, aggr);
+		}
+
+		IrIndex aggrType = ir.getValueType(*context, aggr);
+
+		switch (aggrType.typeKind) {
+			case IrTypeKind.pointer: return LRValue(buildGEP(currentBlock, aggr, context.constants.ZERO, indicies), true);
+			case IrTypeKind.struct_t: return LRValue(getStructMember(currentBlock, aggr, indicies), false);
+			default: context.internal_error("%s", aggrType.typeKind); assert(false);
+		}
+	}
+
+	// cannot assign into struct member when struct is a variable, because we return rvalue here
+	// we need to have 2 functions: one for read, one for write
+	IrIndex getStructMember(IrIndex currentBlock, IrIndex aggr, IrIndex[] indicies...)
+	{
+		IrIndex aggrType = ir.getValueType(*context, aggr);
+		context.assertf(aggr.isConstantAggregate, "%s", aggr.kind);
+		foreach (i, IrIndex memberIndex; indicies)
+		{
+			switch(aggrType.typeKind)
+			{
+				case IrTypeKind.struct_t:
+					context.assertf(memberIndex.isConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
+					uint memberIndexVal = context.constants.get(memberIndex).i32;
+					aggrType = context.types.getStructMemberType(aggrType, memberIndexVal, *context);
+					aggr = context.constants.getAggregateMember(aggr, memberIndexVal);
+					break;
+
+				default: context.internal_error("Cannot index %s", IrIndexDump(aggrType, *context, *ir)); assert(false);
+			}
+		}
+		assert(aggr.isDefined);
+		return aggr;
 	}
 
 	IrIndex buildGEP(IrIndex currentBlock, IrIndex aggrPtr, IrIndex ptrIndex, IrIndex[] indicies...)
@@ -401,7 +444,7 @@ struct AstToIr
 					InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
 					ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
 
-					store(currentBlock, v.irValue, param.result, argSize);
+					store(currentBlock, v.irValue, param.result);
 				}
 			}
 			else
@@ -419,7 +462,7 @@ struct AstToIr
 				IrLabel afterExpr = IrLabel(currentBlock);
 				visitExprValue(v.initializer, currentBlock, afterExpr);
 				currentBlock = afterExpr.blockIndex;
-				assign(varType, v.irValue, v.initializer, currentBlock);
+				store(currentBlock, v.irValue, v.initializer.irValue);
 			}
 			else
 			{
@@ -427,7 +470,7 @@ struct AstToIr
 				if (varType.as_basic || varType.as_ptr)
 				{
 					IrIndex value = context.constants.ZERO;
-					store(currentBlock, v.irValue, value, varType.argSize(context));
+					store(currentBlock, v.irValue, value);
 				}
 			}
 		}
@@ -679,14 +722,17 @@ struct AstToIr
 				visitExprValue(m.aggregate, currentBlock, afterAggr);
 				currentBlock = afterAggr.blockIndex;
 
-				IrIndex ptrIndex = context.constants.ZERO;
 				IrIndex memberIndex = context.constants.add(m.memberIndex, IsSigned.no);
-				m.irValue = buildGEP(currentBlock, m.aggregate.irValue, ptrIndex, memberIndex);
+				LRValue rlVal = getMember(currentBlock, m.aggregate.irValue, memberIndex);
+
 				if (m.isLvalue) {
-					// already stores l-value
+					if (rlVal.isLvalue) m.irValue = rlVal.value;
+					else context.internal_error(m.loc, "member expression is not an l-value");
 				}
 				else {
-					m.irValue = load(currentBlock, m.irValue);
+					if (rlVal.isLvalue)
+						m.irValue = load(currentBlock, rlVal.value);
+					else m.irValue = rlVal.value;
 				}
 				break;
 			case expr_enum_member:
@@ -722,12 +768,13 @@ struct AstToIr
 
 		if (!c.irValue.isDefined) {
 			c.irValue = context.globals.add();
-			c.irValueLength = context.constants.add(c.value.length, IsSigned.no);
 			IrGlobal* global = &context.globals.get(c.irValue);
 			global.setInitializer(cast(ubyte[])c.value);
 			global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
-			global.type = c.type.genIrType(context);
+			global.type = context.u8Ptr.genIrType(context);
 			global.moduleSymIndex = mod.objectSymIndex;
+			IrIndex irValueLength = context.constants.add(c.value.length, IsSigned.no, IrArgSize.size64);
+			c.irValue = context.constants.addAggrecateConstant(c.type.genIrType(context), irValueLength, c.irValue);
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -986,38 +1033,6 @@ struct AstToIr
 		return;
 	}
 
-	void assign(TypeNode* leftType, IrIndex leftValue, ExpressionNode* right, IrIndex currentBlock)
-	{
-		switch (right.astType)
-		{
-			// TODO: lower in semantic into field extract
-			case AstType.literal_string:
-				if (leftType.astType == AstType.type_ptr)
-				{
-					// u8* = "string";
-					store(currentBlock, leftValue, right.irValue, IrArgSize.size64); // store pointer into pointer
-				}
-				else if (leftType.astType == AstType.type_slice)
-				{
-					// u8[] = "string";
-					IrIndex baseIndex = context.constants.ZERO;
-
-					IrIndex lengthIndex = baseIndex; // 0
-					IrIndex lengthAddress = buildGEP(currentBlock, leftValue, baseIndex, lengthIndex);
-					store(currentBlock, lengthAddress, right.isStringLiteral.irValueLength, IrArgSize.size64);
-
-					IrIndex ptrIndex = context.constants.ONE;
-					IrIndex ptrAddress = buildGEP(currentBlock, leftValue, baseIndex, ptrIndex);
-					store(currentBlock, ptrAddress, right.irValue, IrArgSize.size64);
-				}
-				else context.unreachable;
-				break;
-			default:
-				store(currentBlock, leftValue, right.irValue, leftType.argSize(context));
-				break;
-		}
-	}
-
 	IrOpcode binOpcode(BinOp binop, bool isUnsigned, TokenIndex loc) {
 		switch(binop) with(BinOp)
 		{
@@ -1071,14 +1086,14 @@ struct AstToIr
 			currentBlock = afterRight.blockIndex;
 
 			if (b.op == BinOp.ASSIGN) {
-				assign(b.left.type, b.left.irValue, b.right, currentBlock);
+				store(currentBlock, b.left.irValue, b.right.irValue);
 			}
 			else if (b.op == BinOp.PTR_PLUS_INT_ASSIGN)
 			{
 				IrIndex leftRvalue = load(currentBlock, b.left.irValue);
 				assert(b.left.type.isPointer && b.right.type.isInteger);
 				IrIndex opResult = buildGEP(currentBlock, leftRvalue, b.right.irValue);
-				store(currentBlock, b.left.irValue, opResult, b.left.type.argSize(context));
+				store(currentBlock, b.left.irValue, opResult);
 			}
 			else
 			{
@@ -1090,7 +1105,7 @@ struct AstToIr
 				};
 				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
 					currentBlock, extra, leftRvalue, b.right.irValue).result;
-				store(currentBlock, b.left.irValue, opResult, b.left.type.argSize(context));
+				store(currentBlock, b.left.irValue, opResult);
 			}
 
 			builder.addJumpToLabel(currentBlock, nextStmt);
@@ -1209,7 +1224,7 @@ struct AstToIr
 				};
 				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
 					currentBlock, extra, rval, increment).result;
-				store(currentBlock, u.child.irValue, opResult, argSize);
+				store(currentBlock, u.child.irValue, opResult);
 
 				if (u.op == preIncrement || u.op == preDecrement) u.irValue = opResult;
 				else u.irValue = rval;

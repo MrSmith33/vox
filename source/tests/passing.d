@@ -356,7 +356,7 @@ void tester24(ref TestContext ctx) {
 }
 
 
-@TestInfo(&tester25, [HostSymbol("print", cast(void*)&test25_external_print)])
+@TestInfo(&tester25, [HostSymbol("print", cast(void*)&external_print_string)])
 immutable test25 = q{--- test25
 	// test struct creation, member set, stack struct as func argument
 	struct string { u64 length; u8* ptr; }
@@ -378,7 +378,7 @@ struct Slice(T) {
 	T[] slice() { return ptr[0..length]; }
 	alias slice this;
 }
-extern(C) void test25_external_print(Slice!char param) {
+extern(C) void external_print_string(Slice!char param) {
 	char[] slice = *cast(char[]*)&param;
 	testSink.put(slice); // Hello
 }
@@ -391,7 +391,7 @@ void tester25(ref TestContext ctx) {
 }
 
 
-@TestInfo(&tester25, [HostSymbol("print", cast(void*)&test25_external_print)])
+@TestInfo(&tester25, [HostSymbol("print", cast(void*)&external_print_string)])
 immutable test26 = q{--- test26
 	// test global parameter, assignment
 	struct string { u64 length; u8* ptr; }
@@ -405,7 +405,7 @@ immutable test26 = q{--- test26
 };
 
 
-@TestInfo(&tester27, [HostSymbol("print", cast(void*)&test25_external_print)])
+@TestInfo(&tester27, [HostSymbol("print", cast(void*)&external_print_string)])
 immutable test27 = q{--- test27
 	// test slices
 	void print(u8[]);
@@ -1144,7 +1144,7 @@ immutable test54 = q{--- test54
 };
 
 
-@TestInfo(&tester55, [HostSymbol("print", cast(void*)&test25_external_print)])
+@TestInfo(&tester55, [HostSymbol("print", cast(void*)&external_print_string)])
 immutable test55 = q{--- test55
 	// test slice forwarding
 	void print(u8[] str);
@@ -1317,9 +1317,6 @@ immutable test64 = q{--- test64
 	Test64 returnBigStruct() {
 		return Test64(10, 42);
 	}
-	//u8[] returnString() {
-	//	return "testString";
-	//}
 	// - pass as arg (fits in register)
 	// - pass as arg (by ptr)
 	void passArgBigStruct() {
@@ -1352,8 +1349,31 @@ struct Test64 {
 void tester64(ref TestContext ctx) {
 	auto returnBigStruct = ctx.getFunctionPtr!(Test64)("returnBigStruct");
 	assert(returnBigStruct() == Test64(10, 42));
-	auto passArgBigStruct = ctx.getFunctionPtr!(string)("passArgBigStruct");
+
+	auto passArgBigStruct = ctx.getFunctionPtr!(void)("passArgBigStruct");
 	passArgBigStruct();
-	auto passArgBigStructPush = ctx.getFunctionPtr!(string)("passArgBigStructPush");
+
+	auto passArgBigStructPush = ctx.getFunctionPtr!(void)("passArgBigStructPush");
 	passArgBigStructPush();
+}
+
+@TestInfo(&tester65, [HostSymbol("print", cast(void*)&external_print_string)])
+immutable test65 = q{--- test65
+	// Test string literals
+	void print(u8[]); // external
+	u8[] returnStringLiteral() {
+		return "testString";
+	}
+	void passStringLiteralArgument() {
+		print("testString");
+	}
+};
+void tester65(ref TestContext ctx) {
+	auto returnStringLiteral = ctx.getFunctionPtr!(Slice!char)("returnStringLiteral");
+	assert(returnStringLiteral() == "testString");
+
+	auto passStringLiteralArgument = ctx.getFunctionPtr!(void)("passStringLiteralArgument");
+	passStringLiteralArgument();
+	assert(testSink.text == "testString");
+	testSink.clear;
 }
