@@ -275,7 +275,10 @@ struct AstToIr
 			case stackSlot, global, virtualRegister:
 				IrIndex resultType = context.types.getPointerBaseType(ir.getValueType(*context, source));
 				ExtraInstrArgs extra = {type : resultType};
-				return builder.emitInstr!IrInstr_load(currentBlock, extra, source).result;
+				if (resultType.isTypeStruct)
+					return builder.emitInstr!IrInstr_load_aggregate(currentBlock, extra, source).result;
+				else
+					return builder.emitInstr!IrInstr_load(currentBlock, extra, source).result;
 			case variable:
 				return builder.readVariable(currentBlock, source);
 			case constant:

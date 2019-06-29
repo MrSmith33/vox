@@ -1317,6 +1317,10 @@ immutable test64 = q{--- test64
 	Test64 returnBigStruct() {
 		return Test64(10, 42);
 	}
+	Test64 returnBigStruct2() {
+		Test64 res = Test64(10, 42);
+		return res;
+	}
 	// - pass as arg (fits in register)
 	// - pass as arg (by ptr)
 	void passArgBigStruct() {
@@ -1350,12 +1354,16 @@ void tester64(ref TestContext ctx) {
 	auto returnBigStruct = ctx.getFunctionPtr!(Test64)("returnBigStruct");
 	assert(returnBigStruct() == Test64(10, 42));
 
+	auto returnBigStruct2 = ctx.getFunctionPtr!(Test64)("returnBigStruct2");
+	assert(returnBigStruct2() == Test64(10, 42));
+
 	auto passArgBigStruct = ctx.getFunctionPtr!(void)("passArgBigStruct");
 	passArgBigStruct();
 
 	auto passArgBigStructPush = ctx.getFunctionPtr!(void)("passArgBigStructPush");
 	passArgBigStructPush();
 }
+
 
 @TestInfo(&tester65, [HostSymbol("print", cast(void*)&external_print_string)])
 immutable test65 = q{--- test65

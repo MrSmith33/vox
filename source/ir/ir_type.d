@@ -284,6 +284,36 @@ struct IrTypeStorage
 		IrTypeStructMember member = members[memberIndex];
 		return member.type;
 	}
+
+	bool isSameType(IrIndex a, IrIndex b) {
+		assert(a.isType, format("not a type (%s)", a));
+		assert(b.isType, format("not a type (%s)", b));
+
+		if (a == b) return true;
+
+		final switch (a.typeKind) {
+			case IrTypeKind.basic:
+				return b.typeKind == IrTypeKind.basic && a.typeIndex == b.typeIndex;
+			case IrTypeKind.pointer:
+				return b.typeKind == IrTypeKind.pointer && isSameType(getPointerBaseType(a), getPointerBaseType(b));
+			case IrTypeKind.array:
+				if (b.typeKind != IrTypeKind.array) return false;
+				IrTypeArray* arrayA = &get!IrTypeArray(a);
+				IrTypeArray* arrayB = &get!IrTypeArray(b);
+				return isSameType(arrayA.elemType, arrayB.elemType) && arrayA.size == arrayB.size;
+			case IrTypeKind.struct_t:
+				if (b.typeKind != IrTypeKind.struct_t) return false;
+				IrTypeStructMember[] membersA = get!IrTypeStruct(a).members;
+				IrTypeStructMember[] membersB = get!IrTypeStruct(b).members;
+				foreach(i, IrTypeStructMember memA; membersA) {
+					if (!isSameType(memA.type, membersB[i].type)) return false;
+					if (memA.offset != membersB[i].offset) return false;
+				}
+				return true;
+			case IrTypeKind.func_t:
+				return a == b;
+		}
+	}
 }
 
 /// Returns type of value

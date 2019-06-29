@@ -73,31 +73,58 @@ struct IrToLir
 			}
 		}
 
-		void genStore(IrIndex lirPtr, uint offset, IrIndex irValue, IrIndex lirBlockIndex, ref IrFunction ir)
+		IrIndex genAddressOffset(IrIndex lirPtr, uint offset, IrIndex ptrType, IrIndex lirBlockIndex) {
+			IrIndex ptr;
+			if (offset == 0) {
+				ptr = lirPtr;
+			} else {
+				IrIndex offsetIndex = context.constants.add(offset, IsSigned.no);
+				ExtraInstrArgs extra = { addUsers : false, type : ptrType };
+				InstrWithResult addressInstr = builder.emitInstr!LirAmd64Instr_add(lirBlockIndex, extra, lirPtr, offsetIndex);
+				ptr = addressInstr.result;
+			}
+			return ptr;
+		}
+
+		IrIndex genLoad(IrIndex lirPtr, uint offset, IrIndex ptrType, IrIndex lirBlockIndex) {
+			IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
+			IrIndex valType = context.types.getPointerBaseType(ptrType);
+			ExtraInstrArgs extra = { addUsers : false, type : valType };
+			auto instr = builder.emitInstr!LirAmd64Instr_load(lirBlockIndex, extra, ptr);
+			return instr.result;
+		}
+
+		// fromOffset is used when irValue is pointer that needs deferencing
+		void genStore(IrIndex lirPtr, uint offset, IrIndex irValue, uint fromOffset, IrIndex valueType, IrIndex lirBlockIndex, ref IrFunction ir)
 		{
-			IrIndex valType = getValueType(irValue, ir, *context);
+			//writefln("genStore %s %s %s %s %s", lirPtr, offset, irValue, fromOffset, IrIndexDump(valueType, *context, ir));
+			IrIndex srcType = getValueType(irValue, ir, *context);
+			IrIndex dstType = getValueType(lirPtr, lir, *context);
+			context.assertf(dstType.isTypePointer, "%s", IrIndexDump(dstType, *context, lir));
+			IrIndex ptrType = context.types.appendPtr(valueType);
 
-			switch(valType.typeKind) with(IrTypeKind) {
+			switch(valueType.typeKind) with(IrTypeKind) {
 				case basic, pointer:
-					IrArgSize argSize = typeToIrArgSize(valType, context);
+					IrArgSize argSize = typeToIrArgSize(valueType, context);
 
-					IrIndex ptr;
-					if (offset == 0) {
-						ptr = lirPtr;
-					} else {
-						IrIndex elemPtrType = context.types.appendPtr(valType);
-						IrIndex offsetIndex = context.constants.add(offset, IsSigned.no);
-						ExtraInstrArgs extra = { addUsers : false, type : elemPtrType };
-						InstrWithResult addressInstr = builder.emitInstr!LirAmd64Instr_add(lirBlockIndex, extra, lirPtr, offsetIndex);
-						ptr = addressInstr.result;
+					// check if irValue is l-value
+					if (context.types.isSameType(dstType, srcType)) {
+						// load from irValue ptr. loadedVal is already fixed
+						IrIndex loadedVal = genLoad(getFixedIndex(irValue), fromOffset, ptrType, lirBlockIndex);
+
+						IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
+						ExtraInstrArgs extra = { addUsers : false, argSize : argSize };
+						builder.emitInstr!LirAmd64Instr_store(lirBlockIndex, extra, ptr, loadedVal);
+						break;
 					}
 
 					ExtraInstrArgs extra = { addUsers : false, argSize : argSize };
+					IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
 					builder.emitInstr!LirAmd64Instr_store(lirBlockIndex, extra, ptr, getFixedIndex(irValue));
 					break;
 
 				case struct_t:
-					IrTypeStruct* structType = &context.types.get!IrTypeStruct(valType);
+					IrTypeStruct* structType = &context.types.get!IrTypeStruct(valueType);
 					IrIndex[] members;
 
 					switch(irValue.kind) with(IrValueKind)
@@ -105,8 +132,22 @@ struct IrToLir
 						case virtualRegister:
 							IrIndex origin = ir.getVirtReg(irValue).definition;
 							IrInstrHeader* instr = &ir.get!IrInstrHeader(origin);
-							context.assertf(instr.op == IrOpcode.create_aggregate, "%s", cast(IrOpcode)instr.op);
-							members = instr.args;
+
+							switch (instr.op)
+							{
+								case IrOpcode.load_aggregate:
+									foreach (i, IrTypeStructMember member; structType.members)
+									{
+										genStore(lirPtr, offset + member.offset, instr.args[0], fromOffset + member.offset, member.type, lirBlockIndex, ir);
+									}
+									return;
+
+								case IrOpcode.create_aggregate:
+									members = instr.args;
+									break;
+								default:
+									context.internal_error("%s", cast(IrOpcode)instr.op);
+							}
 							break;
 
 						case constantAggregate:
@@ -120,7 +161,7 @@ struct IrToLir
 
 					foreach (i, IrTypeStructMember member; structType.members)
 					{
-						genStore(lirPtr, offset + member.offset, members[i], lirBlockIndex, ir);
+						genStore(lirPtr, offset + member.offset, members[i], fromOffset, member.type, lirBlockIndex, ir);
 					}
 					break;
 
@@ -324,6 +365,10 @@ struct IrToLir
 						// skip
 						break;
 
+					case IrOpcode.load_aggregate:
+						// skip
+						break;
+
 					// TODO. Win64 call conv is hardcoded here
 					case IrOpcode.call:
 
@@ -346,7 +391,7 @@ struct IrToLir
 							} else {
 								//allocate stack slot, store value there and use slot pointer as argument
 								argBuffer[i] = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
-								genStore(argBuffer[i], 0, irArg, lirBlockIndex, ir);
+								genStore(argBuffer[i], 0, irArg, 0, type, lirBlockIndex, ir);
 							}
 						}
 
@@ -517,7 +562,8 @@ struct IrToLir
 						break;
 					case IrOpcode.load: emitLirInstr!LirAmd64Instr_load; break;
 					case IrOpcode.store:
-						genStore(getFixedIndex(instrHeader.args[0]), 0, instrHeader.args[1], lirBlockIndex, ir);
+						IrIndex type = ir.getValueType(*context, instrHeader.args[1]);
+						genStore(getFixedIndex(instrHeader.args[0]), 0, instrHeader.args[1], 0, type, lirBlockIndex, ir);
 						break;
 					case IrOpcode.conv:
 						IrIndex typeFrom = getValueType(instrHeader.args[0], ir, *context);
@@ -576,7 +622,8 @@ struct IrToLir
 
 						if (numHiddenParams == 1) {
 							// store struct into pointer, then return pointer
-							genStore(hiddenParameter, 0, instrHeader.args[0], lirBlockIndex, ir);
+							IrIndex valType = context.types.getPointerBaseType(type);
+							genStore(hiddenParameter, 0, instrHeader.args[0], 0, valType, lirBlockIndex, ir);
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, hiddenParameter);
 						} else {
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));

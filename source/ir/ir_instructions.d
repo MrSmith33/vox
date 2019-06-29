@@ -104,6 +104,7 @@ enum IrOpcode : ushort
 	@_ii(0) store,
 	@_ii(0) load,
 	@_ii(0) get_element_ptr,
+	@_ii(0) load_aggregate,
 	@_ii(0) create_aggregate,
 	@_ii(0) get_element,
 	@_ii(0) insert_element,
@@ -252,6 +253,9 @@ alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IF
 alias IrInstr_get_element_ptr = IrGenericInstr!(IrOpcode.get_element_ptr, 2, IFLG.hasVariadicArgs | IFLG.hasResult);
 /// args: aggregate, 1 or more index
 alias IrInstr_create_aggregate = IrGenericInstr!(IrOpcode.create_aggregate, 1, IFLG.hasVariadicArgs | IFLG.hasResult);
+///
+alias IrInstr_load_aggregate = IrGenericInstr!(IrOpcode.load_aggregate, 1, IFLG.hasResult);
+
 /// args: aggregate, 1 or more index
 alias IrInstr_get_element = IrGenericInstr!(IrOpcode.get_element, 2, IFLG.hasVariadicArgs | IFLG.hasResult);
 /// args: aggregate, new element value, 1 or more index
