@@ -50,6 +50,7 @@ o dll linking
 - don't store self-reference arguments in phi functions
 - mutable globals need their own read-write section
 - globals need to be initialized
+- need assignment visitors
 
 - improve parser to detect all declaration kinds in statements (add slice and static array)
 - attributes

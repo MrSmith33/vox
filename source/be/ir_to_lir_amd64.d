@@ -166,7 +166,7 @@ struct IrToLir
 					break;
 
 				default:
-					context.internal_error("%s", valType.typeKind); assert(false);
+					context.internal_error("%s", valueType.typeKind); assert(false);
 			}
 		}
 
