@@ -14,7 +14,7 @@ version = standalone;
 //version = cli;
 //version = bench;
 //version = devtest;
-//version = test;
+version = test;
 
 version(standalone) int main(string[] args)
 {

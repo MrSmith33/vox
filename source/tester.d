@@ -14,7 +14,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(tests.passing.test63);
+	Test test = makeTest!(tests.passing.test66);
 	string filterFuncName;
 
 	Driver driver;
@@ -31,7 +31,7 @@ void runDevTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	//driver.context.printSource = true;
+	driver.context.printSource = true;
 	//driver.context.printLexemes = true;
 	//driver.context.printAstFresh = true;
 	//driver.context.printAstSema = true;
@@ -39,7 +39,7 @@ void runDevTests()
 
 	//driver.context.printIr = true;
 	//driver.context.printIrOpt = true;
-	//driver.context.printLir = true;
+	driver.context.printLir = true;
 	//driver.context.printLirRA = true;
 	//driver.context.printLiveIntervals = true;
 	//driver.context.printStaticData = true;

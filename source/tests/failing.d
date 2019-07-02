@@ -12,7 +12,7 @@ immutable fail1 = `
 --- fail1
 	"dddd
 --- <error>
-fail1(1, 2): Error: Unterminated string literal
+fail1(1, 2): Error: Unexpected end of input inside string literal
 `;
 
 
@@ -21,7 +21,7 @@ immutable fail2 = `
 --- fail2
 	/*
 --- <error>
-fail2(1, 2): Error: Unterminated comment
+fail2(1, 2): Error: Unterminated multiline comment
 `;
 
 
