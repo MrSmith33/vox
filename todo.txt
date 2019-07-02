@@ -2,6 +2,7 @@
 - function pointers
 	- call by pointer
 - char literal / type
+	+ literal (for now generates int literal expression)
 - escape sequences in string/char literals (\n)
 - float double
 - union

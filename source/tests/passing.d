@@ -1385,3 +1385,13 @@ void tester65(ref TestContext ctx) {
 	assert(testSink.text == "testString");
 	testSink.clear;
 }
+
+@TestInfo(&tester66)
+immutable test66 = q{--- test66
+	// Test char literals
+	u8 getChar() { return '\n'; }
+};
+void tester66(ref TestContext ctx) {
+	auto getChar = ctx.getFunctionPtr!(char)("getChar");
+	assert(getChar() == '\n');
+}

@@ -126,6 +126,7 @@ enum TokenType : ubyte {
 	@("#num_hex_lit") INT_HEX_LITERAL,
 	@("#num_bin_lit") INT_BIN_LITERAL,
 	@("#str_lit") STRING_LITERAL,
+	@("#char_lit") CHAR_LITERAL,
 	//@(null) DECIMAL_LITERAL,          // 0|[1-9][0-9_]*
 	//@(null) BINARY_LITERAL,           // ("0b"|"0B")[01_]+
 	//@(null) HEX_LITERAL,              // ("0x"|"0X")[0-9A-Fa-f_]+
@@ -345,6 +346,7 @@ struct Lexer
 					}
 					return TT.DOT;
 				case '\"': nextChar; return lex_QUOTE_QUOTE();
+				case '\'': nextChar; return lex_QUOTE();
 				case '/' :           return lex_SLASH();
 				case '0' :           return lex_ZERO();
 				case '1' : ..case '9': return lex_DIGIT();
@@ -435,6 +437,13 @@ struct Lexer
 		return single_tok;
 	}
 
+	private void lexError(TT type, string message) {
+		outputTokens.put(type);
+		set_loc();
+		TokenIndex lastToken = TokenIndex(cast(uint)outputTokens.length-1);
+		context.unrecoverable_error(lastToken, message);
+	}
+
 	private TokenType lex_SLASH() // /
 	{
 		nextChar;
@@ -451,10 +460,7 @@ struct Lexer
 				switch(c)
 				{
 					case EOI_CHAR:
-						outputTokens.put(TT.COMMENT);
-						set_loc();
-						TokenIndex lastToken = TokenIndex(cast(uint)outputTokens.length-1);
-						context.unrecoverable_error(lastToken, "Unterminated comment");
+						lexError(TT.COMMENT, "Unterminated multiline comment");
 						return TT.INVALID;
 
 					case '\n': lex_EOLN(); continue;
@@ -485,11 +491,9 @@ struct Lexer
 			switch(c)
 			{
 				case EOI_CHAR:
-					outputTokens.put(TT.STRING_LITERAL);
-					set_loc();
-					TokenIndex lastToken = TokenIndex(cast(uint)outputTokens.length-1);
-					context.unrecoverable_error(lastToken, "Unterminated string literal");
+					lexError(TT.STRING_LITERAL, "Unexpected end of input inside string literal");
 					return TT.INVALID;
+
 				case '\n': lex_EOLN(); continue;
 				case '\r': lex_EOLR(); continue;
 				case '\"':
@@ -498,6 +502,72 @@ struct Lexer
 				default: break;
 			}
 			nextChar;
+		}
+	}
+
+	private void lexEscapeSequence() {
+		switch(c)
+		{
+			case '\'':
+			case '\"':
+			case '\?':
+			case '\\':
+			case '\0':
+			case 'a':
+			case 'b':
+			case 'f':
+			case 'n':
+			case 'r':
+			case 't':
+			case 'v':
+				nextChar;
+				break;
+
+			case 'x':
+				uint numChars = consumeHexadecimal;
+				if (numChars != 2)
+					lexError(TT.INVALID, "Invalid escape sequence");
+				break;
+			case 'u':
+				uint numChars = consumeHexadecimal;
+				if (numChars != 4)
+					lexError(TT.INVALID, "Invalid escape sequence");
+				break;
+			case 'U':
+				uint numChars = consumeHexadecimal;
+				if (numChars != 8)
+					lexError(TT.INVALID, "Invalid escape sequence");
+				break;
+			default:
+				lexError(TT.INVALID, "Invalid escape sequence");
+		}
+	}
+
+	private TokenType lex_QUOTE() // '
+	{
+		switch(c)
+		{
+			case EOI_CHAR:
+				lexError(TT.CHAR_LITERAL, "Unexpected end of input inside char literal");
+				return TT.INVALID;
+
+			case '\\':
+				nextChar;
+				lexEscapeSequence();
+				break;
+
+			case '\n': lex_EOLN(); break;
+			case '\r': lex_EOLR(); break;
+			default:
+				nextChar;
+				break;
+		}
+		if (c == '\'') {
+			nextChar;
+			return TT.CHAR_LITERAL;
+		} else {
+			lexError(TT.CHAR_LITERAL, "Invalid char literal");
+			return TT.INVALID;
 		}
 	}
 
@@ -627,15 +697,17 @@ struct Lexer
 		}
 	}
 
-	private void consumeHexadecimal()
+	private uint consumeHexadecimal()
 	{
+		uint count;
 		while (true)
 		{
 			if ('0' <= c && c <= '9') {
 			} else if ('a' <= c && c <= 'f') {
 			} else if ('A' <= c && c <= 'F') {
-			} else if (c != '_') return;
+			} else if (c != '_') return count;
 			nextChar;
+			++count;
 		}
 	}
 
@@ -663,6 +735,35 @@ struct Lexer
 			nextChar;
 		}
 	}
+}
+
+// strRepr is string representation of a single char, without ' around
+dchar escapeToChar(const(char)[] strRepr) {
+	import std.conv : to;
+	switch (strRepr[0]) {
+		case '\'': return '\'';
+		case '\"': return '\"';
+		case '\?': return '\?';
+		case '\\': return '\\';
+		case '\0': return '\0';
+		case 'a': return '\a';
+		case 'b': return '\b';
+		case 'f': return '\f';
+		case 'n': return '\n';
+		case 'r': return '\r';
+		case 't': return '\t';
+		case 'v': return '\v';
+		case 'x': return strRepr[1..$].to!uint(16);
+		case 'u': return strRepr[1..$].to!uint(16);
+		case 'U': return strRepr[1..$].to!uint(16);
+		default: assert(false, strRepr);
+	}
+}
+
+dchar getCharValue(const(char)[] strRepr) {
+	if (strRepr[0] == '\\') return escapeToChar(strRepr[1..$]);
+	assert(strRepr.length == 1);
+	return strRepr[0];
 }
 
 private bool isIdSecond(dchar chr) pure nothrow {
@@ -765,5 +866,12 @@ unittest
 		lexer.lex;
 		assert(tokenBuffer[0] == TT.STRING_LITERAL);
 		assert(locs[0].getTokenString(source) == `"literal"`, format("%s", tokenBuffer[0]));
+	}
+	{
+		string source = `'@'`;
+		Lexer lexer = makeLexer(source);
+		lexer.lex;
+		assert(tokenBuffer[0] == TT.CHAR_LITERAL);
+		assert(locs[0].getTokenString(source) == `'@'`, format("%s", tokenBuffer[0]));
 	}
 }

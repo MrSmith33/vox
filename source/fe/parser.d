@@ -813,7 +813,7 @@ private TokenLookups cexp_parser()
 	prefix(0, &nullParen, "("); // for grouping
 
 	// 0 precedence -- never used
-	nilfix(0, &nullLiteral, ["#id", "null", "true", "false", "#num_dec_lit", "#num_bin_lit", "#num_hex_lit", "#str_lit"]);
+	nilfix(0, &nullLiteral, ["#id", "null", "true", "false", "#num_dec_lit", "#num_bin_lit", "#num_hex_lit", "#str_lit", "#char_lit"]);
 	nilfix(0, &null_error_parser, [")", "]", ":", "#eoi", ";"]);
 	return res;
 }
@@ -838,6 +838,11 @@ ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
 			// omit " at the start and end of token
 			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
 			return p.makeExpr!StringLiteralExprNode(token.index, value);
+		case CHAR_LITERAL:
+			// omit ' at the start and end of token
+			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
+			dchar charVal = getCharValue(value);
+			return p.makeExpr!IntLiteralExprNode(token.index, cast(uint)charVal);
 		case INT_DEC_LITERAL:
 			string value = cast(string)p.context.getTokenString(token.index);
 			long intValue = value.filter!(c => c != '_').to!ulong;
