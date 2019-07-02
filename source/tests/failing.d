@@ -169,3 +169,20 @@ fail16(9, 13): Error: Argument 1, must have type u16*, not u8*
 fail16(10, 13): Error: Argument 1, must have type u32*, not u8*
 fail16(11, 13): Error: Argument 1, must have type u64*, not u8*
 };
+
+@TestInfo()
+immutable fail17 = q{
+--- fail17
+	// Test instantiation of opaque structs
+	struct Opaque;
+	Opaque op_global;
+	Opaque op_return(Opaque op_param) {
+		Opaque op_local;
+		return op_local;
+	}
+--- <error>
+fail17(3, 2): Error: cannot declare variable `op_global` of opaque type `Opaque`
+fail17(4, 2): Error: function cannot return opaque type `Opaque`
+fail17(4, 19): Error: cannot declare parameter of opaque type `Opaque`
+fail17(5, 3): Error: cannot declare variable `op_local` of opaque type `Opaque`
+};

@@ -69,7 +69,19 @@ struct StructDeclNode {
 	Scope* _scope;
 	uint size = 1;
 	uint alignment = 1;
+
+	this(TokenIndex loc, Array!(AstNode*) members, Identifier id, bool _isOpaque)
+	{
+		this.loc = loc;
+		this.astType = AstType.decl_struct;
+		this.flags = AstFlags.isScope | AstFlags.isDeclaration | AstFlags.isType;
+		this.declarations = members;
+		this.id = id;
+		if (_isOpaque) flags |= AstFlags.user1;
+	}
+
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	bool isOpaque() { return cast(bool)(flags & AstFlags.user1); }
 }
 
 /// Refers to a function inside a module

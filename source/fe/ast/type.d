@@ -27,7 +27,7 @@ struct TypePrinter
 
 TypeNode* cast_type_node(AstNode* node) {
 	assert(node);
-	assert(node.isType);
+	assert(node.isType, format("%s", node.astType));
 	return cast(TypeNode*)node;
 }
 
@@ -96,6 +96,12 @@ struct TypeNode
 			case AstType.expr_type_name_use: return context.idString(as_name_use.id);
 			default: assert(false, format("got %s", astType));
 		}
+	}
+
+	bool isOpaqueStruct() {
+		TypeNode* t = &this;
+		if (t.astType == AstType.expr_type_name_use) t = t.as_name_use.entity.cast_type_node;
+		return t.astType == AstType.decl_struct && t.as_struct.isOpaque;
 	}
 
 	TypePrinter printer(CompilationContext* context) {

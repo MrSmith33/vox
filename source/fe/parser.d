@@ -274,17 +274,25 @@ struct Parser
 		}
 	}
 
-	// <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
+	// <struct_declaration> ::= "struct" <id> "{" <declaration>* "}" /
+	//                          "struct" <id> ";"
 	AstNode* parse_struct()
 	{
 		TokenIndex start = tok.index;
 		version(print_parse) auto s2 = scop("struct %s", start);
 		nextToken; // skip "struct"
 		Identifier structId = expectIdentifier();
+
+		if (tok.type == TokenType.SEMICOLON)
+		{
+			nextToken; // skip semicolon
+			return cast(AstNode*)make!StructDeclNode(start, AstNodes(), structId, true);
+		}
+
 		expectAndConsume(TokenType.LCURLY);
 		AstNodes declarations = parse_declarations(TokenType.RCURLY);
 		expectAndConsume(TokenType.RCURLY);
-		return cast(AstNode*)make!StructDeclNode(start, declarations, structId);
+		return cast(AstNode*)make!StructDeclNode(start, declarations, structId, false);
 	}
 
 	// <enum_decl> = <enum_decl_single> / <enum_decl_multi>

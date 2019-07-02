@@ -838,22 +838,6 @@ struct SemanticStaticTypes
 		setResultType(b);
 	}
 
-	void checkBodyForReturnType(FunctionDeclNode* f) {
-		if (f.returnType.isVoid) return; // void functions don't need return at the end
-
-		if (!f.block_stmt.statements.empty)
-		{
-			AstNode* lastStmt = f.block_stmt.statements.back;
-			if (lastStmt.astType == AstType.stmt_return)
-				return; // return type is already checked
-		}
-
-		// is checked in IR gen
-		//context.error(f.loc,
-		//	"function `%s` has no return statement, but is expected to return a value of type %s",
-		//	context.idString(f.id), f.returnType.typeName(context));
-	}
-
 	void visit(ModuleDeclNode* m) {
 		id_ptr = context.idMap.getOrRegNoDup("ptr");
 		id_length = context.idMap.getOrRegNoDup("length");
@@ -864,17 +848,37 @@ struct SemanticStaticTypes
 		auto prevFunc = curFunc;
 		curFunc = f;
 		f.backendData.callingConvention = &win64_call_conv;
-		foreach (param; f.parameters) visit(param);
+
+		if (f.returnType.isOpaqueStruct) {
+			context.error(f.returnType.loc,
+				"function cannot return opaque type `%s`",
+				f.returnType.printer(context));
+		}
+
+		foreach (VariableDeclNode* param; f.parameters) {
+			visit(param);
+		}
+
 		if (f.block_stmt)
 		{
 			visit(f.block_stmt);
-			checkBodyForReturnType(f);
 		}
 		curFunc = prevFunc;
 	}
 	void visit(VariableDeclNode* v) {
 		TypeNode* type = v.type.foldAliases;
 		_visit(type);
+
+		if (type.isOpaqueStruct) {
+			string msg = v.isParameter ?
+				"cannot declare parameter of opaque type `%2$s`" :
+				"cannot declare variable `%s` of opaque type `%s`";
+
+			context.error(v.type.loc,
+				msg,
+				context.idString(v.id),
+				type.printer(context));
+		}
 
 		if (v.initializer) {
 			_visit(v.initializer);
