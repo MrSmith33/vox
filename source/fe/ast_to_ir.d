@@ -60,13 +60,14 @@ struct AstToIr
 		context.assertf(n.isExpression, n.loc, "Expected expression, not %s", n.astType);
 		switch(n.astType) with(AstType)
 		{
-			case literal_int, literal_string, expr_call, expr_index:
+			case literal_int, literal_string, expr_index: // TODO: expr_index may return bool
 				context.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
 				break;
 			case expr_var_name_use: visitExprBranch(cast(NameUseExprNode*)n, currentBlock, trueExit, falseExit); break;
 			case expr_bin_op: visitExprBranch(cast(BinaryExprNode*)n, currentBlock, trueExit, falseExit); break;
 			case expr_type_conv: visitExprBranch(cast(TypeConvExprNode*)n, currentBlock, trueExit, falseExit); break;
 			case expr_un_op: visitExprBranch(cast(UnaryExprNode*)n, currentBlock, trueExit, falseExit); break;
+			case expr_call: visitExprBranch(cast(CallExprNode*)n, currentBlock, trueExit, falseExit); break;
 			case literal_bool: visitExprBranch(cast(BoolLiteralExprNode*)n, currentBlock, trueExit, falseExit); break;
 
 			case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
@@ -1064,6 +1065,15 @@ struct AstToIr
 		else
 			builder.addJumpToLabel(currentBlock, falseExit);
 		return;
+	}
+
+	void visitExprBranch(CallExprNode* n, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
+	{
+		IrLabel afterExpr = IrLabel(currentBlock);
+		visitExprValue(n, currentBlock, afterExpr);
+		currentBlock = afterExpr.blockIndex;
+
+		addUnaryBranch(n.irValue, currentBlock, trueExit, falseExit);
 	}
 
 	IrOpcode binOpcode(BinOp binop, bool isUnsigned, TokenIndex loc) {
