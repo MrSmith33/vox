@@ -108,6 +108,10 @@ struct Parser
 		while (tok.type == TokenType.COMMENT);
 	}
 
+	bool hasMoreTokens() {
+		return tok.type != TokenType.EOI;
+	}
+
 	T* make(T, Args...)(TokenIndex start, Args args) {
 		return context.appendAst!T(start, args);
 	}
@@ -617,33 +621,23 @@ struct Parser
 			default:
 			{
 				version(print_parse) auto s2 = scop("default %s", loc);
+
 				if (isBasicTypeToken(tok.type) ||
 					tok.type == TokenType.STRUCT_SYM ||
 					tok.type == TokenType.ENUM ||
 					tok.type == TokenType.IMPORT_SYM) // declaration
 				{
+					return parse_declaration;
+				}
+
+				Token copy = tok; // save
+				if (is_declaration)
+				{
+					tok = copy;
 					AstNode* decl = parse_declaration;
 					return decl;
 				}
-				else if (tok.type == TokenType.IDENTIFIER)
-				{
-					Token copy = tok; // save
-					version(print_parse) auto s3 = scop("<id> %s", loc);
-					nextToken;
-
-					if (tok.type == TokenType.IDENTIFIER || tok.type == TokenType.STAR) // declaration
-					{
-						version(print_parse) auto s4 = scop("<id> declaration %s", loc);
-						tok = copy; // restore
-						AstNode* decl = parse_declaration;
-						return decl;
-					}
-					else // expression
-					{
-						version(print_parse) auto s4 = scop("<id> expression %s", loc);
-						tok = copy; // restore
-					}
-				}
+				tok = copy;
 
 				// <expr> ";"
 				ExpressionNode* expression = expr();
@@ -652,6 +646,69 @@ struct Parser
 				return cast(AstNode*)expression;
 			}
 		}
+	}
+
+	// scans forward to check if current token starts new declaration
+	private bool is_declaration()
+	{
+		if (tok.type == TokenType.IDENTIFIER)
+		{
+			nextToken;
+			while(is_declarator)
+			{}
+
+			if (tok.type == TokenType.IDENTIFIER)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	// scans forward to check if current token starts new declarator
+	// doesn't restore in a case of failure
+	// [], *, [expr]
+	private bool is_declarator()
+	{
+		if (tok.type == TokenType.STAR) { // *
+			nextToken;
+			return true;
+		}
+		if (tok.type == TokenType.LBRACKET) { // [
+			skip_brackets;
+			return true;
+		}
+		return false;
+	}
+
+	void skip_brackets() {
+		skip!(TokenType.LBRACKET, TokenType.RBRACKET, '[')();
+	}
+
+	void skip(TokenType Open, TokenType Close, char sym)() {
+		Token start = tok;
+		expectAndConsume(Open);
+		int depth = 1;
+		while (hasMoreTokens) {
+			switch (tok.type) {
+				case Close:
+					nextToken;
+					--depth;
+					if (depth <= 0) {
+						return;
+					}
+					break;
+				case Open:
+					++depth;
+					nextToken;
+					break;
+				default:
+					nextToken;
+					break;
+			}
+		}
+		context.unrecoverable_error(start.index, "Unclosed `%s`", sym);
 	}
 
 	ExpressionNode* paren_expr() { /* <paren_expr> ::= "(" <expr> ")" */

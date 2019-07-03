@@ -1404,6 +1404,17 @@ immutable test67 = q{--- test67
 	u8 getElement(u8[21]* arrPtr, i64 index) { return (*arrPtr)[index]; }
 	void arrayToSlice(u8[21]* arrPtr) { receiveSlice(*arrPtr); }
 	void receiveSlice(u8[] arr) {}
+	struct Color {
+		u8 r;
+		u8 g;
+		u8 b;
+		u8 a;
+	}
+	Color[2] colors;
+	void fun() {
+		Color[2] colors_static_local;
+		Color[] colors_local;
+	}
 };
 void tester67(ref TestContext ctx) {
 	ubyte[21] array;
