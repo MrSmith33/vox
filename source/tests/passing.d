@@ -1489,3 +1489,42 @@ immutable test71 = q{--- test71
 		return &(*array)[0];
 	}
 };
+
+@TestInfo()
+immutable test72 = q{--- test72
+	// Use call result as condition
+	i32 run()
+	{
+		i32 val;
+		if (getBool()) {
+			val = 42;
+		} else {
+			val = 21;
+		}
+		return val;
+	}
+	bool getBool() { return true; }
+};
+
+@TestInfo()
+immutable test73 = q{--- test73
+	// General instruction const handling
+	i32 run()
+	{
+		i8 val8;
+		i16 val16;
+		i32 val32;
+		i64 val64;
+		val8 += 8;
+		val16 += 8;
+		val16 += 500;
+		val32 += 8;
+		val32 += 500;
+		val32 += 70000;
+		val64 += 8;
+		val64 += 500;
+		val64 += 70000;
+		val64 += 0x8_0000_0000;
+		return val;
+	}
+};

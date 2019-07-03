@@ -541,6 +541,10 @@ struct CodeEmitter
 					param.immType = ArgType.BYTE;
 					argSrc.imm8 = Imm8(con.i8);
 				}
+				else if (argType == ArgType.WORD) {
+					param.immType = ArgType.WORD;
+					argSrc.imm16 = Imm16(con.i16);
+				}
 				else {
 					param.immType = ArgType.DWORD;
 					argSrc.imm32 = Imm32(con.i32);
