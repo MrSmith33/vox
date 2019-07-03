@@ -1433,3 +1433,17 @@ void tester67(ref TestContext ctx) {
 	auto arrayToSlice = ctx.getFunctionPtr!(void, ubyte[21]*)("arrayToSlice");
 	arrayToSlice(&array);
 }
+
+@TestInfo()
+immutable test68 = q{--- test68
+	// Test enum inside struct
+	struct Struct {
+		u8 a;
+		enum someVal = 42;
+	}
+	void run() {
+		i64 var = Struct.someVal;
+		Struct s;
+		i64 var2 = s.someVal;
+	}
+};

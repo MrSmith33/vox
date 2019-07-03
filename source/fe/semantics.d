@@ -564,8 +564,11 @@ struct SemanticStaticTypes
 				assert(false);
 
 			case AstType.decl_enum_member:
-				context.internal_error("enums member are not implemented");
-				assert(false);
+				EnumMemberDecl* enumMember = memberSym.cast_decl_enum_member;
+				expr.type = enumMember.type;
+				expr.memberIndex = enumMember.scopeIndex;
+				expr.astType = AstType.expr_enum_member;
+				return LookupResult.success;
 
 			default:
 				context.internal_error("Unexpected struct member %s", memberSym.astType);
