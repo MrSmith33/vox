@@ -47,6 +47,7 @@ enum AstType : ubyte
 	expr_struct_member,
 	expr_enum_member,
 	expr_slice_member,
+	expr_static_array_member,
 
 	expr_call,
 	expr_index,
@@ -164,7 +165,7 @@ TypeNode* get_node_type(AstNode* n) {
 			break;
 
 		case literal_int, literal_string, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv:
-		case expr_member, expr_struct_member, expr_enum_member, expr_slice_member:
+		case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
 			type = n.as_expr.type.as_node;
 			break;
 

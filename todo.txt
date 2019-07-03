@@ -4,12 +4,13 @@
 - char literal / type
 	+ literal (for now generates int literal expression)
 - escape sequences in string/char literals (\n)
+	+ in char literals
 - float double
 - union
 - alias
 - struct
 	- struct methods
-	- struct literal
+	+ struct literal
 - pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 +- all register subtypes 8/16/32/64 bit registers, !!! QWORD is forced rn everywhere
 - optimize pointer arithmetic into lea

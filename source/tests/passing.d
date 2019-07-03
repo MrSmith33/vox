@@ -1395,3 +1395,30 @@ void tester66(ref TestContext ctx) {
 	auto getChar = ctx.getFunctionPtr!(char)("getChar");
 	assert(getChar() == '\n');
 }
+
+@TestInfo(&tester67)
+immutable test67 = q{--- test67
+	// Test static arrays
+	u8* getPtr(u8[21]* arrPtr) { return (*arrPtr).ptr; }
+	u64 getLength(u8[21]* arrPtr) { return (*arrPtr).length; }
+	u8 getElement(u8[21]* arrPtr, i64 index) { return (*arrPtr)[index]; }
+	void arrayToSlice(u8[21]* arrPtr) { receiveSlice(*arrPtr); }
+	void receiveSlice(u8[] arr) {}
+};
+void tester67(ref TestContext ctx) {
+	ubyte[21] array;
+	foreach(i, ref elem; array) elem = cast(ubyte)i;
+
+	auto getPtr = ctx.getFunctionPtr!(ubyte*, ubyte[21]*)("getPtr");
+	assert(getPtr(&array) == array.ptr);
+
+	auto getLength = ctx.getFunctionPtr!(ulong, ubyte[21]*)("getLength");
+	assert(getLength(&array) == array.length);
+
+	auto getElement = ctx.getFunctionPtr!(ubyte, ubyte[21]*, ulong)("getElement");
+	foreach(i, elem; array)
+		assert(getElement(&array, i) == elem);
+
+	auto arrayToSlice = ctx.getFunctionPtr!(void, ubyte[21]*)("arrayToSlice");
+	arrayToSlice(&array);
+}

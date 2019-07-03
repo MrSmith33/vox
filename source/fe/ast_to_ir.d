@@ -41,7 +41,7 @@ struct AstToIr
 		{
 			case expr_var_name_use:
 				visitExprValue(cast(NameUseExprNode*)n, currentBlock, nextStmt); break;
-			case expr_member, expr_struct_member, expr_enum_member, expr_slice_member:
+			case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
 				visitExprValue(cast(MemberExprNode*)n, currentBlock, nextStmt); break;
 			case expr_call: visitExprValue(cast(CallExprNode*)n, currentBlock, nextStmt); break;
 			case expr_index: visitExprValue(cast(IndexExprNode*)n, currentBlock, nextStmt); break;
@@ -719,6 +719,24 @@ struct AstToIr
 
 		switch(m.astType) with(AstType)
 		{
+			case expr_static_array_member:
+				if (m.isLvalue) {
+					context.internal_error(m.loc, "cannot assign static array member");
+				}
+				if (m.memberIndex == 0) // length
+				{
+					StaticArrayTypeNode* arr = m.aggregate.as_node.get_node_type.as_static_array;
+					m.irValue = context.constants.add(arr.length, IsSigned.no, IrArgSize.size64);
+				}
+				else if (m.memberIndex == 1) // ptr
+				{
+					IrLabel afterAggr = IrLabel(currentBlock);
+					m.aggregate.flags |= AstFlags.isLvalue;
+					visitExprValue(m.aggregate, currentBlock, afterAggr);
+					currentBlock = afterAggr.blockIndex;
+					m.irValue = buildGEP(currentBlock, m.aggregate.irValue, context.constants.ZERO, context.constants.ZERO);
+				}
+				break;
 			case expr_struct_member, expr_slice_member:
 				IrLabel afterAggr = IrLabel(currentBlock);
 				m.aggregate.flags |= AstFlags.isLvalue;
@@ -1242,6 +1260,26 @@ struct AstToIr
 					u.irValue = load(currentBlock, u.child.irValue);
 				}
 				break;
+			case staticArrayToSlice:
+				IrLabel afterChild = IrLabel(currentBlock);
+				u.child.flags |= AstFlags.isLvalue;
+				visitExprValue(u.child, currentBlock, afterChild);
+				currentBlock = afterChild.blockIndex;
+
+				IrIndex type = ir.getValueType(*context, u.child.irValue);
+				context.assertf(type.isTypePointer, "%s", type); // pointer to static array
+
+				// pointer to first element
+				IrIndex ptr = buildGEP(currentBlock, u.child.irValue, context.constants.ZERO, context.constants.ZERO);
+				// array length
+				IrIndex length = context.constants.add(u.child.type.as_static_array.length, IsSigned.no, IrArgSize.size64);
+
+				// combine into slice {i64, T*}
+				IrIndex resType = u.type.genIrType(context);
+				ExtraInstrArgs extra = { type : resType };
+				InstrWithResult res = builder.emitInstr!IrInstr_create_aggregate(currentBlock, extra, length, ptr);
+				u.irValue = res.result;
+				break;
 			default:
 				context.internal_error(u.loc, "un op %s not implemented", u.op);
 				builder.addJumpToLabel(currentBlock, nextStmt);
@@ -1369,7 +1407,13 @@ struct AstToIr
 				i.irValue = buildGEP(currentBlock, i.array.irValue, i.index.irValue);
 				break;
 			case type_static_array:
-				i.irValue = buildGEP(currentBlock, i.array.irValue, i.index.irValue);
+				IrIndex type = ir.getValueType(*context, i.array.irValue);
+				if (type.isTypePointer)
+					i.irValue = buildGEP(currentBlock, i.array.irValue, aggregateIndex, i.index.irValue);
+				else {
+					context.assertf(type.isTypeArray, "%s", IrIndexDump(type, *context, *ir));
+					i.irValue = buildGEP(currentBlock, i.array.irValue, i.index.irValue);
+				}
 				break;
 			case type_slice:
 				IrIndex ptrPtr = buildGEP(currentBlock, i.array.irValue, aggregateIndex, slicePtrIndex);

@@ -193,6 +193,7 @@ enum UnOp : ubyte {
 	preDecrement, // --x
 	postIncrement, // x++
 	postDecrement, // x--
+	staticArrayToSlice,
 }
 
 struct UnaryExprNode {

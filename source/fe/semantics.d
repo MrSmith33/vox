@@ -448,7 +448,7 @@ struct SemanticStaticTypes
 	{
 		TypeNode* obj = expr.aggregate.as_node.get_node_type;
 
-		// Allow member access for pointers
+		// Allow member access for pointers to structs
 		if (obj.isPointer)
 			obj = obj.as_ptr.base.as_node.get_node_type;
 
@@ -456,6 +456,7 @@ struct SemanticStaticTypes
 		switch(obj.astType)
 		{
 			case AstType.type_slice: lookupSliceMember(expr, obj.as_slice, expr.member.id); break;
+			case AstType.type_static_array: lookupStaticArrayMember(expr, obj.as_static_array, expr.member.id); break;
  			case AstType.decl_struct: lookupStructMember(expr, obj.as_struct, expr.member.id); break;
 			case AstType.decl_enum: lookupEnumMember(expr, obj.as_enum, expr.member.id); break;
 			default:
@@ -508,6 +509,26 @@ struct SemanticStaticTypes
 		}
 
 		context.error(expr.loc, "Slice `%s` has no member `%s`", sliceType.typeNode.printer(context), context.idString(id));
+		return LookupResult.failure;
+	}
+
+	LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* arrType, Identifier id)
+	{
+		expr.astType = AstType.expr_static_array_member;
+		if (id == id_ptr)
+		{
+			expr.memberIndex = 1;
+			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(arrType.loc, arrType.base);
+			return LookupResult.success;
+		}
+		else if (id == id_length)
+		{
+			expr.memberIndex = 0;
+			expr.type = context.basicTypeNodes(BasicType.t_u64);
+			return LookupResult.success;
+		}
+
+		context.error(expr.loc, "Static array `%s` has no member `%s`", arrType.typeNode.printer(context), context.idString(id));
 		return LookupResult.failure;
 	}
 
@@ -696,6 +717,16 @@ struct SemanticStaticTypes
 				auto memberExpr = context.appendAst!MemberExprNode(expr.loc, type, IrIndex(), expr, null, 1);
 				memberExpr.astType = AstType.expr_slice_member;
 				expr = cast(ExpressionNode*)memberExpr;
+				return true;
+			}
+		}
+		else if (expr.type.astType == AstType.type_static_array &&
+			type.astType == AstType.type_slice)
+		{
+			if (sameType(expr.type.as_static_array.base, type.as_slice.base))
+			{
+				expr = cast(ExpressionNode*)context.appendAst!UnaryExprNode(
+					expr.loc, type, IrIndex(), UnOp.staticArrayToSlice, expr);
 				return true;
 			}
 		}
