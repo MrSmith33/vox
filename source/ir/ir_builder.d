@@ -260,7 +260,8 @@ struct IrBuilder
 
 	/// Puts `user` into a list of users of `used` value
 	void addUser(IrIndex user, IrIndex used) {
-		context.assertf(user.isDefined && used.isDefined, "addUser(%s, %s)", user, used);
+		context.assertf(user.isDefined && used.isDefined, "%s addUser(%s, %s)",
+			context.idString(ir.backendData.name), user, used);
 		final switch (used.kind) with(IrValueKind) {
 			case none: assert(false, "addUser none");
 			case listItem: assert(false, "addUser listItem");
@@ -842,13 +843,13 @@ struct IrBuilder
 				continue; // Unique value or self−reference
 			}
 			if (same != IrPhiArg()) {
-				version(IrPrint) writefln("[IR]   non-trivial");
+				version(IrPrint) writefln("[IR]   %s is non-trivial", phiIndex);
 				return phiResultIndex; // The phi merges at least two values: not trivial
 			}
 			version(IrPrint) writefln("[IR]   same = %s", phiArg.value);
 			same = phiArg;
 		}
-		version(IrPrint) writefln("[IR]   trivial");
+		version(IrPrint) writefln("[IR]   %s is trivial", phiIndex);
 		assert(same.value.isDefined, "Phi function got no arguments");
 
 		// Remember all users except the phi itself
@@ -933,33 +934,33 @@ struct IrBuilder
 	/// Rewrites all users of phi to point to `byWhat` instead of its result `what`.
 	/// `what` is the result of phi (vreg), `phiUsers` is users of `what`
 	private void replaceBy(IrIndex phiIndex, SmallVector phiUsers, IrIndex what, IrPhiArg byWhat) {
-		foreach (size_t i, IrIndex userIndex; phiUsers.range(*ir))
+		foreach (size_t i, IrIndex phiUserIndex; phiUsers.range(*ir))
 		{
 			// skip self-reference (we will delete phi anyway)
-			if (userIndex == phiIndex) continue;
+			if (phiUserIndex == phiIndex) continue;
 
-			final switch (userIndex.kind) with(IrValueKind) {
+			final switch (phiUserIndex.kind) with(IrValueKind) {
 				case none: assert(false);
 				case listItem: assert(false);
 				case instruction:
-					foreach (ref IrIndex arg; ir.get!IrInstrHeader(userIndex).args)
+					foreach (ref IrIndex arg; ir.get!IrInstrHeader(phiUserIndex).args)
 						if (arg == what)
 						{
 							arg = byWhat.value;
-							replaceUserWith(byWhat.value, definitionOf(what), userIndex);
+							replaceUserWith(byWhat.value, phiIndex, phiUserIndex);
 						}
 					break;
 				case basicBlock: assert(false);
 				case constant, constantAggregate: assert(false);
 				case global: assert(false);
 				case phi:
-					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(*ir))
+					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiUserIndex).args(*ir))
 					{
 						if (phiArg.value == what)
 						{
 							phiArg.value = byWhat.value;
 							phiArg.basicBlock = byWhat.basicBlock;
-							replaceUserWith(byWhat.value, definitionOf(what), userIndex);
+							replaceUserWith(byWhat.value, phiIndex, phiUserIndex);
 						}
 					}
 					break;
@@ -975,14 +976,22 @@ struct IrBuilder
 
 	// Replace a user 'what' that uses 'used' by 'byWhat' in a list of users inside 'what'
 	private void replaceUserWith(IrIndex used, IrIndex what, IrIndex byWhat) {
+		// If argument is used once, then user appears only once.
+		// When replacing users with phi users, replacement wil occur only for first phi user.
+		// Other phi users will not find any users to replace.
+		// So add append users instead if no replacement was done.
+		void replaceVregUser(ref IrVirtualRegister vreg) {
+			bool replaced = vreg.users.replaceFirst(*ir, what, byWhat);
+			if (!replaced) vreg.users.append(&this, byWhat);
+		}
 		final switch (used.kind) with(IrValueKind) {
 			case none, listItem, basicBlock, physicalRegister: assert(false);
-			case instruction: return ir.getVirtReg(ir.get!IrInstrHeader(used).result).users.replaceAll(*ir, what, byWhat);
+			case instruction: return replaceVregUser(ir.getVirtReg(ir.get!IrInstrHeader(used).result));
 			case constant, constantAggregate: return; // constants dont track individual users
 			case global: return; // globals dont track individual users
-			case phi: return ir.getVirtReg(ir.get!IrPhi(used).result).users.replaceAll(*ir, what, byWhat);
+			case phi: return replaceVregUser(ir.getVirtReg(ir.get!IrPhi(used).result));
 			case stackSlot: assert(false); // TODO
-			case virtualRegister: return ir.getVirtReg(used).users.replaceAll(*ir, what, byWhat);
+			case virtualRegister: return replaceVregUser(ir.getVirtReg(used));
 			case type: return; // no user tracking
 			case variable: assert(false);
 			case func: assert(false);

@@ -69,6 +69,9 @@ struct AstToIr
 			case expr_un_op: visitExprBranch(cast(UnaryExprNode*)n, currentBlock, trueExit, falseExit); break;
 			case literal_bool: visitExprBranch(cast(BoolLiteralExprNode*)n, currentBlock, trueExit, falseExit); break;
 
+			case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
+				visitExprBranch(cast(MemberExprNode*)n, currentBlock, trueExit, falseExit); break;
+
 			default: context.internal_error("%s", n.astType); assert(false);
 		}
 	}
@@ -1037,6 +1040,15 @@ struct AstToIr
 	}
 
 	void visitExprBranch(NameUseExprNode* n, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
+	{
+		IrLabel afterExpr = IrLabel(currentBlock);
+		visitExprValue(n, currentBlock, afterExpr);
+		currentBlock = afterExpr.blockIndex;
+
+		addUnaryBranch(n.irValue, currentBlock, trueExit, falseExit);
+	}
+
+	void visitExprBranch(MemberExprNode* n, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 	{
 		IrLabel afterExpr = IrLabel(currentBlock);
 		visitExprValue(n, currentBlock, afterExpr);

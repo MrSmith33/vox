@@ -62,6 +62,20 @@ struct SmallVector
 		}
 	}
 
+	/// Returns true if replacement was performed
+	bool replaceFirst(ref IrFunction ir, IrIndex what, IrIndex byWhat)
+	{
+		foreach (ref IrIndex item; range(ir))
+		{
+			if (item == what) {
+				item = byWhat;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/// Removes all occurences of what
 	void remove(ref IrFunction ir, IrIndex what)
 	{
 		if (isBig) // linked list

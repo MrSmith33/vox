@@ -1043,8 +1043,10 @@ struct SemanticStaticTypes
 					case AstType.expr_var_name_use:
 						(cast(AstNode*)u.child).cast_expr_name_use.varDecl.varFlags |= VariableFlags.isAddressTaken;
 						break;
+					case AstType.expr_index:
+						break;
 					default:
-						context.internal_error("Cannot take address of %s", u.child.astType);
+						context.internal_error(u.loc, "Cannot take address of %s", u.child.astType);
 				}
 				u.type = cast(TypeNode*) context.appendAst!PtrTypeNode(u.child.loc, u.child.type);
 				break;

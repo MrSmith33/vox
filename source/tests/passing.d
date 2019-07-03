@@ -1447,3 +1447,45 @@ immutable test68 = q{--- test68
 		i64 var2 = s.someVal;
 	}
 };
+
+@TestInfo()
+immutable test69 = q{--- test69
+	// Bug. Multiple users of trivial phis do not get
+	// all users added when replacing phi result by singular phi argument
+	struct GameMap {
+		bool blocked;
+		bool block_sight;
+	}
+	void initialize_tiles(GameMap* map)
+	{
+		i32 x = 0;
+		while(x < 20) {
+			map.blocked = false;
+			map.block_sight = false;
+		}
+	}
+};
+
+@TestInfo()
+immutable test70 = q{--- test70
+	// usage of member expr in condition
+	struct GameMap {
+		bool blocked;
+		bool block_sight;
+	}
+	void initialize_tiles(GameMap* map)
+	{
+		if (map.blocked) {
+			map.block_sight = true;
+		}
+	}
+};
+
+@TestInfo()
+immutable test71 = q{--- test71
+	// Take address of array index
+	u8* getFirst(u8[2]* array)
+	{
+		return &(*array)[0];
+	}
+};

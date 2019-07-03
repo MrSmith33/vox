@@ -158,7 +158,7 @@ TypeNode* get_node_type(AstNode* n) {
 			type = n.cast_decl_var.type.as_node; break;
 		case decl_enum: type = n; break;
 		case decl_enum_member: type = n.cast_decl_enum_member.type.as_node; break;
-		case type_basic: type = n; break;
+		case type_basic, type_ptr, type_slice, type_static_array: type = n; break;
 		case expr_var_name_use: type = n.cast_expr_name_use.entity.cast_decl_var.type.as_node; break;
 		case expr_type_name_use:
 			type = n.cast_expr_name_use.entity;

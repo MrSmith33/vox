@@ -399,9 +399,30 @@ struct CodeEmitter
 						genJumpToSuccessor(lirBlock, 0);
 						break;
 					case Amd64Opcode.bin_branch:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
-						Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
-						gen.jcc(cond, Imm32(0));
+						IrIndex arg0 = instrHeader.args[0];
+						IrIndex arg1 = instrHeader.args[1];
+						auto cond = cast(IrBinaryCondition)instrHeader.cond;
+
+						if (arg0.isConstant)
+						{
+							if (arg1.isConstant)
+							{
+								if (evalBinCondition(*context, cond, arg0, arg1))
+									genJumpToSuccessor(lirBlock, 0);
+								else
+									genJumpToSuccessor(lirBlock, 1);
+								break;
+							}
+
+							// move const to the right
+							// TODO: perform canonicalization in middle-end
+							swap(arg0, arg1);
+							cond = invertBinaryCond(cond);
+						}
+
+						genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
+						Condition mach_cond = IrBinCondToAmd64Condition[cond];
+						gen.jcc(mach_cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
 						genJumpToSuccessor(lirBlock, 1);
 						break;
@@ -490,7 +511,7 @@ struct CodeEmitter
 	}
 
 	Register indexToRegister(IrIndex regIndex) {
-		context.assertf(regIndex.isPhysReg, "Index is not register, but %s", regIndex.kind);
+		context.assertf(regIndex.isPhysReg, "Index is not register, but %s %s", regIndex.kind, regIndex);
 		return cast(Register)regIndex.physRegIndex;
 	}
 

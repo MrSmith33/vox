@@ -273,6 +273,21 @@ enum IrBinaryCondition : ubyte {
 string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", ">", ">=", "<", "<="];
 string[] binaryCondStringsEscapedForDot = cast(string[IrBinaryCondition.max+1])[`==`, `!=`, `\>`, `\>=`, `\<`, `\<=`];
 
+bool evalBinCondition(ref CompilationContext context, IrBinaryCondition cond, IrIndex conLeft, IrIndex conRight)
+{
+	IrConstant left = context.constants.get(conLeft);
+	IrConstant right = context.constants.get(conRight);
+	final switch(cond) with(IrBinaryCondition)
+	{
+		case eq: return left.i64 == right.i64;
+		case ne: return left.i64 != right.i64;
+		case g:  return left.i64 >  right.i64;
+		case ge: return left.i64 >= right.i64;
+		case l:  return left.i64 <  right.i64;
+		case le: return left.i64 <= right.i64;
+	}
+}
+
 IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
 {
 	final switch(cond) with(IrBinaryCondition)
