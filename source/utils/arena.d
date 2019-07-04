@@ -67,6 +67,14 @@ struct Arena(T)
 		return bufPtr[length-howMany..length];
 	}
 
+	void free(T[] array) {
+		T* endPtr = bufPtr + length;
+		T* arrayEndPtr = array.ptr + array.length;
+		if (endPtr == arrayEndPtr) {
+			length -= array.length;
+		}
+	}
+
 	static if (is(T == ubyte))
 	{
 		void put(V)(V value) {

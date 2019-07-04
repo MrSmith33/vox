@@ -365,6 +365,14 @@ struct CompilationContext
 		return result;
 	}
 
+	void freeTempArray(T)(T[] array)
+	{
+		static assert(T.sizeof % uint.sizeof == 0, "T.sizeof is not multiple of uint.sizeof");
+		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
+		uint[] buf = cast(uint[])array;
+		tempBuffer.free(buf);
+	}
+
 	T* appendAst(T, Args...)(Args args) {
 		T* result = cast(T*)astBuffer.nextPtr;
 		astBuffer.voidPut(T.sizeof);

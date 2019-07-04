@@ -168,6 +168,8 @@ struct IrInstrHeader
 	ushort op;
 	ubyte numArgs;
 
+	enum MAX_ARGS = 255;
+
 	// Prevent type from copying because members will not be copied. Need to use ptr.
 	@disable this(this);
 

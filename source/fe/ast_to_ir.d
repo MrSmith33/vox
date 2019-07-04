@@ -128,8 +128,6 @@ struct AstToIr
 	IrFunction* ir;
 	FunctionDeclNode* fun;
 
-	enum MAX_ARGS = 255;
-	IrIndex[MAX_ARGS] argsBuf = void;
 	enum MAX_GEP_INDICIES = 255;
 	IrIndex[MAX_GEP_INDICIES+2] gepBuf = void; // 2 is extra parameters to GEP instruction
 
@@ -1330,9 +1328,12 @@ struct AstToIr
 	}
 
 	void visitCall(CallExprNode* c, FunctionDeclNode* callee, IrIndex currentBlock, ref IrLabel nextStmt) {
-		context.assertf(c.args.length <= MAX_ARGS,
+		context.assertf(c.args.length <= IrInstrHeader.MAX_ARGS,
 			"Cannot generate a call with %s arguments, max args is %s",
-			c.args.length, MAX_ARGS);
+			c.args.length, IrInstrHeader.MAX_ARGS);
+
+		IrIndex[] args = context.allocateTempArray!IrIndex(c.args.length);
+		scope(exit) context.freeTempArray(args);
 
 		foreach (i, ExpressionNode* arg; c.args)
 		{
@@ -1340,15 +1341,14 @@ struct AstToIr
 			arg.flags |= AstFlags.isArgument;
 			visitExprValue(arg, currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
-			argsBuf[i] = arg.irValue;
+			args[i] = arg.irValue;
 			debug context.assertf(arg.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, arg.astType, context.tokenLoc(arg.loc));
 		}
 
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
 		// need handling of function pointers, need function types in IR for that
-		IrIndex[] args = argsBuf[0..c.args.length];
 
-		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.index);
+		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.backendData.index);
 		builder.emitInstrPreheader(IrInstrPreheader_call(callee.backendData.index));
 
 		if (callee.returnType.isVoid)
@@ -1372,31 +1372,34 @@ struct AstToIr
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
-	void visitConstructor(CallExprNode* c, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt) {
-		size_t numStructMembers;
+	void visitConstructor(CallExprNode* c, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt)
+	{
+		IrIndex structType = s.genIrType(context);
+		uint numStructMembers = context.types.get!IrTypeStruct(structType).numMembers;
+		IrIndex[] args = context.allocateTempArray!IrIndex(numStructMembers);
+		scope(exit) context.freeTempArray(args);
+
+		uint memberIndex;
 		foreach(AstNode* member; s.declarations)
 		{
 			if (member.astType != AstType.decl_var) continue;
 
 			ExpressionNode* initializer;
-			if (c.args.length > numStructMembers) { // init from constructor argument
-				initializer = c.args[numStructMembers];
+			if (c.args.length > memberIndex) { // init from constructor argument
+				initializer = c.args[memberIndex];
 			} else { // init with initializer from struct definition
 				context.internal_error(c.loc, "Not implemented");
 			}
 
 			IrLabel afterArg = IrLabel(currentBlock);
 			visitExprValue(initializer, currentBlock, afterArg);
-			argsBuf[numStructMembers] = initializer.irValue;
+			args[memberIndex] = initializer.irValue;
 			currentBlock = afterArg.blockIndex;
 
-			++numStructMembers;
+			++memberIndex;
 		}
 
-		IrIndex[] args = argsBuf[0..numStructMembers];
-		IrIndex resType = s.genIrType(context);
-
-		ExtraInstrArgs extra = { type : resType };
+		ExtraInstrArgs extra = { type : structType };
 		InstrWithResult res = builder.emitInstr!IrInstr_create_aggregate(currentBlock, extra, args);
 		c.irValue = res.result;
 

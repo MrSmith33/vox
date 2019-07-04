@@ -1509,7 +1509,7 @@ immutable test72 = q{--- test72
 @TestInfo()
 immutable test73 = q{--- test73
 	// General instruction const handling
-	i32 run()
+	void run()
 	{
 		i8 val8;
 		i16 val16;
@@ -1525,6 +1525,31 @@ immutable test73 = q{--- test73
 		val64 += 500;
 		val64 += 70000;
 		val64 += 0x8_0000_0000;
-		return val;
 	}
 };
+
+
+@TestInfo(&tester74)
+immutable test74 = q{--- test74
+	// Test nested call expression
+	struct GameMap;
+	GameMap* pass_ptr_and_struct(GameMap* map) {
+		return create_room(map, Rect(1,1,5,5));
+	}
+
+	struct Rect {
+		i32 x1;
+		i32 y1;
+		i32 x2;
+		i32 y2;
+	}
+
+	GameMap* create_room(GameMap* map, Rect room) {
+		return map;
+	}
+};
+void tester74(ref TestContext ctx) {
+	ubyte b;
+	auto pass_ptr_and_struct = ctx.getFunctionPtr!(ubyte*, ubyte*)("pass_ptr_and_struct");
+	assert(pass_ptr_and_struct(&b) == &b);
+}
