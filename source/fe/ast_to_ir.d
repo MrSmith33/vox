@@ -831,7 +831,7 @@ struct AstToIr
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
-	IrIndex calcBinOp(BinOp op, IrIndex left, IrIndex right)
+	IrIndex calcBinOp(BinOp op, IrIndex left, IrIndex right, IrArgSize argSize)
 	{
 		IrConstant leftCon = context.constants.get(left);
 		IrConstant rightCon = context.constants.get(right);
@@ -840,20 +840,20 @@ struct AstToIr
 
 		switch(op)
 		{
-			case BinOp.EQUAL:         return context.constants.add(cast(ubyte)(leftCon.i64 == rightCon.i64), IsSigned.no, IrArgSize.size8);
-			case BinOp.NOT_EQUAL:     return context.constants.add(cast(ubyte)(leftCon.i64 != rightCon.i64), IsSigned.no, IrArgSize.size8);
-			case BinOp.GREATER:       return context.constants.add(cast(ubyte)(leftCon.i64 >  rightCon.i64), IsSigned.no, IrArgSize.size8);
-			case BinOp.GREATER_EQUAL: return context.constants.add(cast(ubyte)(leftCon.i64 >= rightCon.i64), IsSigned.no, IrArgSize.size8);
-			case BinOp.LESS:          return context.constants.add(cast(ubyte)(leftCon.i64 <  rightCon.i64), IsSigned.no, IrArgSize.size8);
-			case BinOp.LESS_EQUAL:    return context.constants.add(cast(ubyte)(leftCon.i64 <= rightCon.i64), IsSigned.no, IrArgSize.size8);
-			case BinOp.PLUS:          return context.constants.add(leftCon.i64 + rightCon.i64, cast(IsSigned)isAnySigned);
-			case BinOp.MINUS:         return context.constants.add(leftCon.i64 - rightCon.i64, cast(IsSigned)isAnySigned);
-			case BinOp.MULT:          return context.constants.add(leftCon.i64 * rightCon.i64, cast(IsSigned)isAnySigned);
-			case BinOp.DIV:           return context.constants.add(leftCon.i64 / rightCon.i64, cast(IsSigned)isAnySigned);
-			case BinOp.REMAINDER:     return context.constants.add(leftCon.i64 % rightCon.i64, cast(IsSigned)isAnySigned);
+			case BinOp.EQUAL:         return context.constants.add(cast(ubyte)(leftCon.i64 == rightCon.i64), IsSigned.no, argSize);
+			case BinOp.NOT_EQUAL:     return context.constants.add(cast(ubyte)(leftCon.i64 != rightCon.i64), IsSigned.no, argSize);
+			case BinOp.GREATER:       return context.constants.add(cast(ubyte)(leftCon.i64 >  rightCon.i64), IsSigned.no, argSize);
+			case BinOp.GREATER_EQUAL: return context.constants.add(cast(ubyte)(leftCon.i64 >= rightCon.i64), IsSigned.no, argSize);
+			case BinOp.LESS:          return context.constants.add(cast(ubyte)(leftCon.i64 <  rightCon.i64), IsSigned.no, argSize);
+			case BinOp.LESS_EQUAL:    return context.constants.add(cast(ubyte)(leftCon.i64 <= rightCon.i64), IsSigned.no, argSize);
+			case BinOp.PLUS:          return context.constants.add(leftCon.i64 + rightCon.i64, cast(IsSigned)isAnySigned, argSize);
+			case BinOp.MINUS:         return context.constants.add(leftCon.i64 - rightCon.i64, cast(IsSigned)isAnySigned, argSize);
+			case BinOp.MULT:          return context.constants.add(leftCon.i64 * rightCon.i64, cast(IsSigned)isAnySigned, argSize);
+			case BinOp.DIV:           return context.constants.add(leftCon.i64 / rightCon.i64, cast(IsSigned)isAnySigned, argSize);
+			case BinOp.REMAINDER:     return context.constants.add(leftCon.i64 % rightCon.i64, cast(IsSigned)isAnySigned, argSize);
 
 			// TODO: we need type info here, to correctly mask the shift size
-			case BinOp.SHL:           return context.constants.add(leftCon.i64 << rightCon.i64, cast(IsSigned)left.isSignedConstant);
+			case BinOp.SHL:           return context.constants.add(leftCon.i64 << rightCon.i64, cast(IsSigned)left.isSignedConstant, argSize);
 			case BinOp.SHR:
 				ulong result;
 				final switch(left.constantSize)
@@ -863,7 +863,7 @@ struct AstToIr
 					case IrArgSize.size32: result = leftCon.i32 >>> rightCon.i64; break;
 					case IrArgSize.size64: result = leftCon.i64 >>> rightCon.i64; break;
 				}
-				return context.constants.add(result, cast(IsSigned)left.isSignedConstant);
+				return context.constants.add(result, cast(IsSigned)left.isSignedConstant, argSize);
 			case BinOp.ASHR:
 				ulong result;
 				final switch(left.constantSize)
@@ -873,10 +873,10 @@ struct AstToIr
 					case IrArgSize.size32: result = leftCon.i32 >> rightCon.i64; break;
 					case IrArgSize.size64: result = leftCon.i64 >> rightCon.i64; break;
 				}
-				return context.constants.add(result, cast(IsSigned)left.isSignedConstant);
-			case BinOp.BITWISE_OR:    return context.constants.add(leftCon.i64 | rightCon.i64, cast(IsSigned)isAnySigned);
-			case BinOp.BITWISE_AND:   return context.constants.add(leftCon.i64 & rightCon.i64, cast(IsSigned)isAnySigned);
-			case BinOp.XOR:           return context.constants.add(leftCon.i64 ^ rightCon.i64, cast(IsSigned)isAnySigned);
+				return context.constants.add(result, cast(IsSigned)left.isSignedConstant, argSize);
+			case BinOp.BITWISE_OR:    return context.constants.add(leftCon.i64 | rightCon.i64, cast(IsSigned)isAnySigned, argSize);
+			case BinOp.BITWISE_AND:   return context.constants.add(leftCon.i64 & rightCon.i64, cast(IsSigned)isAnySigned, argSize);
+			case BinOp.XOR:           return context.constants.add(leftCon.i64 ^ rightCon.i64, cast(IsSigned)isAnySigned, argSize);
 
 			default:
 				context.internal_error("Opcode `%s` is not implemented", op);
@@ -905,7 +905,7 @@ struct AstToIr
 		// constant folding
 		if (b.left.irValue.isConstant && b.right.irValue.isConstant)
 		{
-			IrIndex value = calcBinOp(b.op, b.left.irValue, b.right.irValue);
+			IrIndex value = calcBinOp(b.op, b.left.irValue, b.right.irValue, b.type.argSize(context));
 			static if (forValue)
 			{
 				b.irValue = value;
