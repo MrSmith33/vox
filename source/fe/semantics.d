@@ -151,6 +151,14 @@ struct SemanticDeclarations
 		popScope;
 		_visit(d.condition);
 	}
+	void visit(ForStmtNode* n) {
+		n._scope = pushScope("For", Yes.ordered);
+		foreach(stmt; n.init_statements) _visit(stmt);
+		if (n.condition) _visit(n.condition);
+		foreach(stmt; n.increment_statements) _visit(stmt);
+		_visit(n.statement);
+		popScope;
+	}
 	void visit(ReturnStmtNode* r) {}
 	void visit(BreakStmtNode* r) {}
 	void visit(ContinueStmtNode* r) {}
@@ -362,6 +370,14 @@ struct SemanticLookup
 		_visit(d.statement);
 		popScope;
 		_visit(d.condition);
+	}
+	void visit(ForStmtNode* n) {
+		pushCompleteScope(n._scope);
+		foreach(stmt; n.init_statements) _visit(stmt);
+		if (n.condition) _visit(n.condition);
+		foreach(stmt; n.increment_statements) _visit(stmt);
+		_visit(n.statement);
+		popScope;
 	}
 	void visit(ReturnStmtNode* r) {
 		if (r.expression) _visit(r.expression);
@@ -968,6 +984,15 @@ struct SemanticStaticTypes
 		_visit(d.statement);
 		_visit(d.condition);
 		autoconvToBool(d.condition);
+	}
+	void visit(ForStmtNode* n) {
+		foreach(stmt; n.init_statements) _visit(stmt);
+		if (n.condition) {
+			_visit(n.condition);
+			autoconvToBool(n.condition);
+		}
+		foreach(stmt; n.increment_statements) _visit(stmt);
+		_visit(n.statement);
 	}
 	// Check return type and function return type
 	void visit(ReturnStmtNode* r) {

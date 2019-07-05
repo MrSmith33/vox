@@ -29,6 +29,7 @@ mixin template AstVisitorMixin() {
 			case stmt_if: auto i = cast(IfStmtNode*)n; visit(i); break;
 			case stmt_while: auto w = cast(WhileStmtNode*)n; visit(w); break;
 			case stmt_do_while: auto d = cast(DoWhileStmtNode*)n; visit(d); break;
+			case stmt_for: auto f = cast(ForStmtNode*)n; visit(f); break;
 			case stmt_return: auto r = cast(ReturnStmtNode*)n; visit(r); break;
 			case stmt_break: auto b = cast(BreakStmtNode*)n; visit(b); break;
 			case stmt_continue: auto c = cast(ContinueStmtNode*)n; visit(c); break;

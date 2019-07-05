@@ -30,6 +30,15 @@ struct DoWhileStmtNode {
 	Scope* _scope;
 }
 
+struct ForStmtNode {
+	mixin AstNodeData!(AstType.stmt_for, AstFlags.isStatement);
+	Array!(AstNode*) init_statements;
+	ExpressionNode* condition; // Nullable
+	Array!(AstNode*) increment_statements;
+	AstNode* statement;
+	Scope* _scope;
+}
+
 struct ReturnStmtNode {
 	mixin AstNodeData!(AstType.stmt_return, AstFlags.isStatement);
 	ExpressionNode* expression; // Nullable

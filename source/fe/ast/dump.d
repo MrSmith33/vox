@@ -74,6 +74,14 @@ struct AstPrinter {
 		pr_node(cast(AstNode*)d.condition);
 		print("WHILE");
 		pr_node(cast(AstNode*)d.statement); }
+	void visit(ForStmtNode* n) {
+		print("FOR");
+		foreach (stmt; n.init_statements) pr_node(stmt);
+		print("COND");
+		if (n.condition) pr_node(cast(AstNode*)n.condition);
+		print("INC");
+		foreach (stmt; n.increment_statements) pr_node(stmt);
+		pr_node(n.statement); }
 	void visit(ReturnStmtNode* r) {
 		print("RETURN");
 		if (r.expression) pr_node(cast(AstNode*)r.expression); }
@@ -197,6 +205,12 @@ struct AstDotPrinter {
 		printLabel(d, "DO");
 		pr_node_edge(d, d.condition);
 		pr_node_edge(d, d.statement); }
+	void visit(ForStmtNode* n) {
+		printLabel(n, "FOR");
+		foreach (stmt; n.init_statements) pr_node_edge(n, stmt);
+		if (n.condition) pr_node_edge(n, cast(AstNode*)n.condition);
+		foreach (stmt; n.increment_statements) pr_node_edge(n, stmt);
+		pr_node_edge(n, n.statement); }
 	void visit(ReturnStmtNode* r) {
 		printLabel(r, "RETURN");
 		if (r.expression) pr_node_edge(r, r.expression); }

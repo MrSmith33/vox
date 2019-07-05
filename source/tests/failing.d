@@ -186,3 +186,15 @@ fail17(4, 2): Error: function cannot return opaque type `Opaque`
 fail17(4, 19): Error: cannot declare parameter of opaque type `Opaque`
 fail17(5, 3): Error: cannot declare variable `op_local` of opaque type `Opaque`
 };
+
+@TestInfo()
+immutable fail18 = q{
+--- fail18
+	// Test for loop. Init declaration must not escape
+	i32 test() {
+		for (i32 i = 0; i < 10; ++i) {}
+		return i;
+	}
+--- <error>
+fail18(4, 10): Error: undefined identifier `i`
+};

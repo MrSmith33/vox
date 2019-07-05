@@ -21,7 +21,7 @@ mixin template ExpressionNodeData(AstType _astType, int default_flags = 0) {
 	// can be stack slot, global, variable, virtualRegister, constant, constantAggregate
 	IrIndex irValue;
 
-	AstNode* as_base() { return cast(AstNode*)&this; }
+	AstNode* as_node() { return cast(AstNode*)&this; }
 	NameUseExprNode* as_name_use() { return cast_expr_name_use(cast(AstNode*)&this); }
 }
 

@@ -107,6 +107,7 @@ struct AstToIr
 			case stmt_if: visit(cast(IfStmtNode*)n, currentBlock, nextStmt); break;
 			case stmt_while: visit(cast(WhileStmtNode*)n, currentBlock, nextStmt); break;
 			case stmt_do_while: visit(cast(DoWhileStmtNode*)n, currentBlock, nextStmt); break;
+			case stmt_for: visit(cast(ForStmtNode*)n, currentBlock, nextStmt); break;
 			case stmt_return: visit(cast(ReturnStmtNode*)n, currentBlock, nextStmt); break;
 			case stmt_break: visit(cast(BreakStmtNode*)n, currentBlock, nextStmt); break;
 			case stmt_continue: visit(cast(ContinueStmtNode*)n, currentBlock, nextStmt); break;
@@ -485,15 +486,19 @@ struct AstToIr
 	void visit(StructDeclNode* s) {}
 	void visit(BlockStmtNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		genBlock(b.as_node, b.statements, currentBlock, nextStmt);
+	}
+	void genBlock(AstNode* parent, ref Array!(AstNode*) statements, IrIndex currentBlock, ref IrLabel nextStmt)
+	{
 		version(CfgGenPrint) writefln("[CFG GEN] beg BLOCK cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end BLOCK cur %s next %s", currentBlock, nextStmt);
-		version(IrGenPrint) writefln("[IR GEN] block (%s) begin", b.loc);
-		version(IrGenPrint) scope(success) writefln("[IR GEN] block (%s) end", b.loc);
-		foreach (i, AstNode* stmt; b.statements)
+		version(IrGenPrint) writefln("[IR GEN] block (%s) begin", parent.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] block (%s) end", parent.loc);
+		foreach (i, AstNode* stmt; statements)
 		{
-			version(IrGenPrint) writefln("[IR GEN]   stmt %s/%s", i+1, b.statements.length);
+			version(IrGenPrint) writefln("[IR GEN]   stmt %s/%s", i+1, statements.length);
 			// if not the last statement of block
-			if (i < b.statements.length - 1)
+			if (i < statements.length - 1)
 			{
 				// nested statement will jump here at its end
 				IrLabel afterStmt = IrLabel(currentBlock);
@@ -504,7 +509,7 @@ struct AstToIr
 
 				if (afterStmt.numPredecessors == 0)
 				{
-					version(IrGenPrint) writefln("[IR GEN]   no returns from stmt %s/%s, skipping the rest", i+1, b.statements.length);
+					version(IrGenPrint) writefln("[IR GEN]   no returns from stmt %s/%s, skipping the rest", i+1, statements.length);
 					// Nested statement never returns here
 					// Skip the rest of block statements
 					return;
@@ -529,7 +534,7 @@ struct AstToIr
 			}
 		}
 
-		if (b.statements.length == 0)
+		if (statements.length == 0)
 			builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
@@ -587,7 +592,7 @@ struct AstToIr
 			version(CfgGenPrint) writefln("[CFG GEN] after true stmt: true %s next %s", trueLabel, nextStmt);
 		}
 	}
-	void visit(WhileStmtNode* w, IrIndex currentBlock, ref IrLabel nextStmt) {
+	void visit(WhileStmtNode* n, IrIndex currentBlock, ref IrLabel nextStmt) {
 		version(CfgGenPrint) writefln("[CFG GEN] beg WHILE cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end WHILE cur %s next %s", currentBlock, nextStmt);
 		//writefln("loop cur 1 %s", currentBlock);
@@ -617,7 +622,7 @@ struct AstToIr
 		//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
 
 		// will force allocate body block
-		visitExprBranch(w.condition, loopHeaderBlock, bodyLabel, nextStmt);
+		visitExprBranch(n.condition, loopHeaderBlock, bodyLabel, nextStmt);
 
 		// body
 		if (bodyLabel.numPredecessors > 0)
@@ -628,13 +633,75 @@ struct AstToIr
 
 			IrBasicBlock* block = &ir.getBlock(currentBlock);
 			assert(!block.isFinished);
-			visitStmt(w.statement, currentBlock, loopHeaderLabel);
+			visitStmt(n.statement, currentBlock, loopHeaderLabel);
 		}
 
 		builder.sealBlock(loopHeaderBlock);
 	}
 	void visit(DoWhileStmtNode* d, IrIndex currentBlock, ref IrLabel nextStmt) {
 		context.unreachable;
+	}
+	void visit(ForStmtNode* n, IrIndex currentBlock, ref IrLabel nextStmt) {
+		//writefln("loop cur 1 %s", currentBlock);
+
+		// init statements
+		IrLabel afterInitLabel = IrLabel(currentBlock);
+		genBlock(n.as_node, n.init_statements, currentBlock, afterInitLabel);
+		currentBlock = afterInitLabel.blockIndex;
+
+		// loop header
+		IrLabel loopHeaderLabel = IrLabel(currentBlock);
+		// increment section of body
+		IrLabel incrementLabel = IrLabel(currentBlock);
+
+		// continue label
+		IrLabel* prevLoopHeader = currentLoopHeader; // save continue label
+		currentLoopHeader = &incrementLabel;
+		scope(exit) currentLoopHeader = prevLoopHeader; // restore continue label
+
+		// break label
+		IrLabel* prevLoopEnd = currentLoopEnd; // save break label
+		currentLoopEnd = &nextStmt;
+		scope(exit) currentLoopEnd = prevLoopEnd; // restore break label
+
+		builder.addJumpToLabel(currentBlock, loopHeaderLabel);
+
+		// we need loop header in a separate block because it will
+		// have 2 predecessors: currentBlock and loop body
+		builder.forceAllocLabelBlock(loopHeaderLabel);
+		IrIndex loopHeaderBlock = loopHeaderLabel.blockIndex;
+		currentBlock = loopHeaderBlock;
+
+		//writefln("loop head %s", loopHeaderBlock);
+		ir.getBlock(loopHeaderBlock).isLoopHeader = true;
+
+		IrLabel bodyLabel = IrLabel(currentBlock);
+		//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
+
+		// will force allocate body block
+		if (n.condition)
+			visitExprBranch(n.condition, loopHeaderBlock, bodyLabel, nextStmt);
+		else
+			builder.addJumpToLabel(loopHeaderBlock, bodyLabel);
+
+		// body
+		if (bodyLabel.numPredecessors > 0)
+		{
+			currentBlock = bodyLabel.blockIndex;
+			//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
+			builder.sealBlock(currentBlock);
+
+			IrBasicBlock* block = &ir.getBlock(currentBlock);
+			assert(!block.isFinished);
+			visitStmt(n.statement, currentBlock, incrementLabel);
+
+			if (incrementLabel.numPredecessors > 0)
+			{
+				genBlock(n.as_node, n.increment_statements, incrementLabel.blockIndex, loopHeaderLabel);
+			}
+		}
+
+		builder.sealBlock(loopHeaderBlock);
 	}
 	void visit(ReturnStmtNode* r, IrIndex currentBlock, ref IrLabel nextStmt)
 	{

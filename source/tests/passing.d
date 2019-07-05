@@ -1553,3 +1553,46 @@ void tester74(ref TestContext ctx) {
 	auto pass_ptr_and_struct = ctx.getFunctionPtr!(ubyte*, ubyte*)("pass_ptr_and_struct");
 	assert(pass_ptr_and_struct(&b) == &b);
 }
+
+
+@TestInfo(&tester75)
+immutable test75 = q{--- test75
+	// Test for loop
+	i32 sum(i32[] numbers) {
+		i32 sum = 0;
+		for (i32 i = 0; i < numbers.length; ++i)
+		{
+			sum += numbers[i];
+		}
+		return sum;
+	}
+	void loops1() {
+		i32 outer1;
+		i32 outer2;
+		for (;;) break;
+		for (i32 i;;) break;
+		for (i32 i, i32 j, i32 k = 8;;) break;
+		for (;outer1 == 0;) break;
+		for (;;outer1 = 0, outer2 = 10) break;
+	}
+};
+void tester75(ref TestContext ctx) {
+	int[10] nums = [1,2,3,4,5,6,7,8,9,10];
+	auto sum = ctx.getFunctionPtr!(int, Slice!int)("sum");
+	assert(sum(Slice!int(nums[])) == 55);
+}
+
+
+@TestInfo(&tester76)
+immutable test76 = q{--- test76
+	// Test for loop break avoiding increments block
+	i32 test_for() {
+		i32 outer;
+		for (;;outer = 10) break;
+		return outer; // must return 0, not 10
+	}
+};
+void tester76(ref TestContext ctx) {
+	auto test_for = ctx.getFunctionPtr!(int)("test_for");
+	assert(test_for() == 0);
+}

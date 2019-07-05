@@ -200,81 +200,94 @@ struct Parser
 		}
 		else // <func_declaration> / <var_declaration>
 		{
-			TokenIndex start = tok.index;
-			version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
-			TypeNode* type = parse_type();
-			if (type is null)
-			{
-				version(print_parse) auto s3 = scop("<type> is null %s", loc);
-				return null;
-			}
-			Identifier declarationId = expectIdentifier();
+			AstNode* n = parse_var_func_declaration();
+			if (n) {
+				bool needSemicolon = n.astType == AstType.decl_var ||
+					n.cast_decl_function.isExternal;
 
-			ExpressionNode* initializer;
-			if (tok.type == TokenType.EQUAL) // "=" <expression>
-			{
-				// <var_decl> = <type> <identifier> ("=" <expression>)? ";"
-				nextToken; // skip "="
-				initializer = expr();
-				if (!initializer.isExpression) {
-					const(char)[] tokenString = context.getTokenString(initializer.loc);
-					context.unrecoverable_error(initializer.loc,
-						"Variable declaration can be only initialized with expressions, not with %s, '%s'",
-						initializer.astType, tokenString);
-				}
-				expect(TokenType.SEMICOLON);
+				if (needSemicolon) expectAndConsume(TokenType.SEMICOLON);
 			}
+			return n;
+		}
+	}
 
-			if (tok.type == TokenType.SEMICOLON) // <var_declaration> ::= <type> <id> ";"
-			{
-				version(print_parse) auto s3 = scop("<var_declaration> %s", start);
-				nextToken; // skip ";"
-				return cast(AstNode*)make!VariableDeclNode(start, type, initializer, declarationId);
+	/// var_terminator can be ";" or ",". Used to parse regular var/func declaration
+	/// or to parse var declaration in foreach
+	AstNode* parse_var_func_declaration()
+	{
+		TokenIndex start = tok.index;
+		version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
+		TypeNode* type = parse_type();
+		if (type is null)
+		{
+			version(print_parse) auto s3 = scop("<type> is null %s", loc);
+			return null;
+		}
+		Identifier declarationId = expectIdentifier();
+
+		ExpressionNode* initializer;
+		if (tok.type == TokenType.EQUAL) // "=" <expression>
+		{
+			// <var_decl> = <type> <identifier> ("=" <expression>)? ";"
+			nextToken; // skip "="
+			initializer = expr();
+			if (!initializer.isExpression) {
+				const(char)[] tokenString = context.getTokenString(initializer.loc);
+				context.unrecoverable_error(initializer.loc,
+					"Variable declaration can be only initialized with expressions, not with %s, '%s'",
+					initializer.astType, tokenString);
 			}
-			else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
+		}
+
+		if (tok.type == TokenType.SEMICOLON || tok.type == TokenType.COMMA) // <var_declaration> ::= <type> <id> (";" / ",")
+		{
+			version(print_parse) auto s3 = scop("<var_declaration> %s", start);
+			// leave ";" or "," for parent to decide
+			return cast(AstNode*)make!VariableDeclNode(start, type, initializer, declarationId);
+		}
+		else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
+		{
+			version(print_parse) auto s3 = scop("<func_declaration> %s", start);
+			expectAndConsume(TokenType.LPAREN);
+			Array!(VariableDeclNode*) params;
+			while (tok.type != TokenType.RPAREN)
 			{
-				version(print_parse) auto s3 = scop("<func_declaration> %s", start);
-				expectAndConsume(TokenType.LPAREN);
-				Array!(VariableDeclNode*) params;
-				while (tok.type != TokenType.RPAREN)
+				if (tok.type == TokenType.EOI) break;
+
+				// <param> ::= <type> <identifier>?
+				TypeNode* paramType = parse_type_expected();
+				Identifier paramId;
+				size_t paramIndex = params.length;
+
+				if (tok.type == TokenType.IDENTIFIER) // named parameter
+					paramId = expectIdentifier();
+				else // anon parameter
 				{
-					if (tok.type == TokenType.EOI) break;
-
-					// <param> ::= <type> <identifier>?
-					TypeNode* paramType = parse_type_expected();
-					Identifier paramId;
-					size_t paramIndex = params.length;
-
-					if (tok.type == TokenType.IDENTIFIER) // named parameter
-						paramId = expectIdentifier();
-					else // anon parameter
-					{
-						paramId = context.idMap.getOrRegWithSuffix("__param_", paramIndex);
-					}
-
-					VariableDeclNode* param = make!VariableDeclNode(start, paramType, null, paramId);
-					param.varFlags |= VariableFlags.isParameter;
-					param.scopeIndex = cast(typeof(param.scopeIndex))paramIndex;
-					params.put(context.arrayArena, param);
-					if (tok.type == TokenType.COMMA) nextToken; // skip ","
-					else break;
+					paramId = context.idMap.getOrRegWithSuffix("__param_", paramIndex);
 				}
-				expectAndConsume(TokenType.RPAREN);
 
-				BlockStmtNode* block;
-				if (tok.type != TokenType.SEMICOLON)
-				{
-					block = block_stmt();
-				}
-				else expectAndConsume(TokenType.SEMICOLON); // external function
-
-				return cast(AstNode*)make!FunctionDeclNode(start, type, params, block, declarationId);
+				VariableDeclNode* param = make!VariableDeclNode(start, paramType, null, paramId);
+				param.varFlags |= VariableFlags.isParameter;
+				param.scopeIndex = cast(typeof(param.scopeIndex))paramIndex;
+				params.put(context.arrayArena, param);
+				if (tok.type == TokenType.COMMA) nextToken; // skip ","
+				else break;
 			}
-			else
+			expectAndConsume(TokenType.RPAREN);
+
+			BlockStmtNode* block;
+			if (tok.type != TokenType.SEMICOLON)
 			{
-				context.unrecoverable_error(tok.index, "Expected '(' or ';', while got '%s'", context.getTokenString(tok.index));
-				assert(false);
+				block = block_stmt();
 			}
+			else expect(TokenType.SEMICOLON); // external function
+
+			return cast(AstNode*)make!FunctionDeclNode(start, type, params, block, declarationId);
+		}
+		else
+		{
+			context.unrecoverable_error(tok.index, "Expected '(' or ';', while got '%s'", context.getTokenString(tok.index));
+			assert(false);
 		}
 	}
 
@@ -600,6 +613,8 @@ struct Parser
 				ExpressionNode* condition = paren_expr();
 				expectAndConsume(TokenType.SEMICOLON);
 				return cast(AstNode*)make!DoWhileStmtNode(start, condition, statement);
+			case TokenType.FOR_SYM:  /* "for" "(" <statement> ";" <statement> ";" "while" <paren_expr> ";" */
+				return parse_for;
 			case TokenType.RETURN_SYM:  /* return <expr> */
 				nextToken;
 				ExpressionNode* expression = tok.type != TokenType.SEMICOLON ? expr() : null;
@@ -643,15 +658,81 @@ struct Parser
 				ExpressionNode* expression = expr();
 				expression.flags |= AstFlags.isStatement;
 				expectAndConsume(TokenType.SEMICOLON);
+
 				return cast(AstNode*)expression;
 			}
 		}
 	}
 
+	AstNode* parse_for() // "for" "(" <init> ";" <cond> ";" <increment> ")" <statement>
+	{
+		TokenIndex start = tok.index;
+		nextToken; // skip "for"
+
+		expectAndConsume(TokenType.LPAREN); // (
+
+		Array!(AstNode*) init_statements;
+
+		// <init>
+		while (tok.type != TokenType.SEMICOLON) // check after trailing comma
+		{
+			AstNode* init_stmt;
+
+			Token copy = tok; // save
+
+			if (is_declaration)
+			{
+				tok = copy;
+				init_stmt = parse_var_func_declaration();
+			}
+			else
+			{
+				tok = copy; // restore
+
+				// <expr>
+				ExpressionNode* expression = expr();
+				expression.flags |= AstFlags.isStatement;
+				init_stmt = expression.as_node;
+			}
+
+			init_statements.put(context.arrayArena, init_stmt);
+
+			if (tok.type == TokenType.COMMA)
+				nextToken; // skip ","
+			else break;
+		}
+		expectAndConsume(TokenType.SEMICOLON);
+
+		// <cond>
+		ExpressionNode* condition;
+		if (tok.type != TokenType.SEMICOLON) {
+			condition = expr();
+		}
+		expectAndConsume(TokenType.SEMICOLON);
+
+		Array!(AstNode*) increment_statements;
+		// <increment>
+		while (tok.type != TokenType.RPAREN) // check after trailing comma
+		{
+			ExpressionNode* inc_expr = expr();
+			inc_expr.flags |= AstFlags.isStatement;
+			increment_statements.put(context.arrayArena, inc_expr.as_node);
+
+			if (tok.type == TokenType.COMMA)
+				nextToken; // skip ","
+			else break;
+		}
+		expectAndConsume(TokenType.RPAREN);
+
+		AstNode* statement = statement();
+
+		return cast(AstNode*)make!ForStmtNode(start, init_statements, condition, increment_statements, statement);
+	}
+
 	// scans forward to check if current token starts new declaration
 	private bool is_declaration()
 	{
-		if (tok.type == TokenType.IDENTIFIER)
+		if (tok.type == TokenType.IDENTIFIER || isBasicTypeToken(tok.type))
 		{
 			nextToken;
 			while(is_declarator)
@@ -1021,7 +1102,7 @@ ExpressionNode* leftBinaryOp(ref Parser p, Token token, int rbp, ExpressionNode*
 					p.context.getTokenString(token.index));
 			}
 			else
-				name = right.as_base.cast_expr_name_use;
+				name = right.as_node.cast_expr_name_use;
 			return p.makeExpr!MemberExprNode(token.index, left, name);
 
 		default:
