@@ -66,6 +66,7 @@ o dll linking
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
++ for loop
 + function signature IR type (needed to allow changing signature for ABI handling in IR to LIR pass)
 + multiple exported functions per test
 + integer arithmetic operators

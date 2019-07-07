@@ -697,6 +697,7 @@ struct AstToIr
 
 			if (incrementLabel.numPredecessors > 0)
 			{
+				builder.sealBlock(incrementLabel.blockIndex);
 				genBlock(n.as_node, n.increment_statements, incrementLabel.blockIndex, loopHeaderLabel);
 			}
 		}

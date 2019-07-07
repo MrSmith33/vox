@@ -1596,3 +1596,28 @@ void tester76(ref TestContext ctx) {
 	auto test_for = ctx.getFunctionPtr!(int)("test_for");
 	assert(test_for() == 0);
 }
+
+@TestInfo()
+immutable test77 = q{--- test77
+	//
+	struct Tile {
+		bool blocked;
+		bool block_sight;
+	}
+
+	struct GameMap {
+		enum map_width = 40;
+		enum map_height = 40;
+		Tile[40][40] tiles;
+	}
+
+	void initialize_tiles(GameMap* map) {
+		for (i32 y = 0; y < map.map_height; ++y) {
+			for (i32 x = 0; x < map.map_width; ++x) {
+				map.tiles[y][x].blocked = true;
+				map.tiles[y][x].block_sight = true;
+			}
+		}
+	}
+};
+
