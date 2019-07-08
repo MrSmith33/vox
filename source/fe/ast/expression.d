@@ -138,20 +138,22 @@ enum BinOp : ubyte {
 	@("-") PTR_DIFF,           // ptr - ptr
 	@("+") PTR_PLUS_INT,       // ptr + int and ptr - int
 
-	// arithmetic opEquals
 	@("=")   ASSIGN,             // =
+
+	// arithmetic opOpAssing, same order as above (to convert)
 	@("&=")  BITWISE_AND_ASSIGN, // &=
 	@("|=")  BITWISE_OR_ASSIGN,  // |=
 	@("%=")  REMAINDER_ASSIGN,   // %=
 	@("<<=") SHL_ASSIGN,         // <<=
 	@(">>=") SHR_ASSIGN,         // >>=
 	@(">>>=") ASHR_ASSIGN,       // >>>=
-	@("+")   PTR_PLUS_INT_ASSIGN,// ptr -= / += int
 	@("-=")  MINUS_ASSIGN,       // -=
 	@("+=")  PLUS_ASSIGN,        // +=
 	@("/=")  DIV_ASSIGN,         // /=
 	@("*=")  MULT_ASSIGN,        // *=
 	@("^=")  XOR_ASSIGN,         // ^=
+
+	@("+")   PTR_PLUS_INT_ASSIGN,// ptr -= / += int
 
 	// member access
 	@(".") DOT,                // .
@@ -167,6 +169,24 @@ string[] gatherStrings(alias _enum)()
 	}
 	return res;
 }
+
+BinOp binOpAssignToRegularOp(BinOp op) {
+	switch(op) with(BinOp) {
+		case BITWISE_AND_ASSIGN: return BITWISE_AND;
+		case BITWISE_OR_ASSIGN: return BITWISE_OR;
+		case REMAINDER_ASSIGN: return REMAINDER;
+		case SHL_ASSIGN: return SHL;
+		case SHR_ASSIGN: return SHR;
+		case ASHR_ASSIGN: return ASHR;
+		case MINUS_ASSIGN: return MINUS;
+		case PLUS_ASSIGN: return PLUS;
+		case DIV_ASSIGN: return DIV;
+		case MULT_ASSIGN: return MULT;
+		case XOR_ASSIGN: return XOR;
+		default: assert(false);
+	}
+}
+
 
 enum BinOp BIN_OP_LOGIC_FIRST = BinOp.EQUAL;
 enum BinOp BIN_OP_LOGIC_LAST = BinOp.LESS_EQUAL;

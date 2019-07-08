@@ -1217,15 +1217,23 @@ struct AstToIr
 			else
 			{
 				IrIndex leftRvalue = load(currentBlock, b.left.irValue);
-				ExtraInstrArgs extra = {
-					opcode : binOpcode(b.op, b.left.type.isUnsigned, b.loc),
-					type : b.left.type.genIrType(context),
-					argSize : b.left.type.argSize(context)
-				};
-				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
-					currentBlock, extra, leftRvalue, b.right.irValue).result;
-				store(currentBlock, b.left.irValue, opResult);
-				b.irValue = opResult;
+
+				if (leftRvalue.isConstant && b.right.irValue.isConstant)
+				{
+					b.irValue = calcBinOp(binOpAssignToRegularOp(b.op), leftRvalue, b.right.irValue, b.left.type.argSize(context));
+				}
+				else
+				{
+					ExtraInstrArgs extra = {
+						opcode : binOpcode(b.op, b.left.type.isUnsigned, b.loc),
+						type : b.left.type.genIrType(context),
+						argSize : b.left.type.argSize(context)
+					};
+					b.irValue = builder.emitInstr!IrInstr_any_binary_instr(
+						currentBlock, extra, leftRvalue, b.right.irValue).result;
+				}
+
+				store(currentBlock, b.left.irValue, b.irValue);
 			}
 			context.assertf(b.irValue.isDefined, b.loc, "%s %s null IR val", b.op, b.astType);
 
