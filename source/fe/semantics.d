@@ -168,14 +168,7 @@ struct SemanticDeclarations
 	void visit(StringLiteralExprNode* c) {}
 	void visit(NullLiteralExprNode* c) {}
 	void visit(BoolLiteralExprNode* c) {}
-	void visit(BinaryExprNode* b) {
-		if (b.isAssignment)
-		{
-			if (!b.isStatement)
-				context.error(b.loc,
-					"Cannot use assignment here. Only can use as statement.");
-		}
-	}
+	void visit(BinaryExprNode* b) {}
 	void visit(UnaryExprNode* u) {}
 	void visit(CallExprNode* c) {}
 	void visit(IndexExprNode* i) {}

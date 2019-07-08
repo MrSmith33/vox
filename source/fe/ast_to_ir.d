@@ -970,6 +970,9 @@ struct AstToIr
 		currentBlock = afterRight.blockIndex;
 		version(CfgGenPrint) writefln("[CFG GEN] after right cur %s true %s false %s", currentBlock, trueExit, falseExit);
 
+		context.assertf(b.left.irValue.isDefined, b.left.loc, "%s null IR val", b.left.astType);
+		context.assertf(b.right.irValue.isDefined, b.right.loc, "%s null IR val", b.right.astType);
+
 		// constant folding
 		if (b.left.irValue.isConstant && b.right.irValue.isConstant)
 		{
@@ -977,6 +980,7 @@ struct AstToIr
 			static if (forValue)
 			{
 				b.irValue = value;
+				context.assertf(b.irValue.isDefined, b.loc, "%s null IR val", b.astType);
 			}
 			else
 			{
@@ -1036,6 +1040,7 @@ struct AstToIr
 					break;
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 			}
+			context.assertf(b.irValue.isDefined, b.loc, "%s null IR val", b.astType);
 			builder.addJumpToLabel(currentBlock, trueExit);
 		}
 		else // branch
@@ -1194,8 +1199,12 @@ struct AstToIr
 			visitExprValue(b.right, currentBlock, afterRight);
 			currentBlock = afterRight.blockIndex;
 
+			context.assertf(b.left.irValue.isDefined, b.left.loc, "%s null IR val", b.left.astType);
+			context.assertf(b.right.irValue.isDefined, b.right.loc, "%s null IR val", b.right.astType);
+
 			if (b.op == BinOp.ASSIGN) {
 				store(currentBlock, b.left.irValue, b.right.irValue);
+				b.irValue = b.right.irValue;
 			}
 			else if (b.op == BinOp.PTR_PLUS_INT_ASSIGN)
 			{
@@ -1203,6 +1212,7 @@ struct AstToIr
 				assert(b.left.type.isPointer && b.right.type.isInteger);
 				IrIndex opResult = buildGEP(currentBlock, leftRvalue, b.right.irValue);
 				store(currentBlock, b.left.irValue, opResult);
+				b.irValue = opResult;
 			}
 			else
 			{
@@ -1215,7 +1225,9 @@ struct AstToIr
 				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
 					currentBlock, extra, leftRvalue, b.right.irValue).result;
 				store(currentBlock, b.left.irValue, opResult);
+				b.irValue = opResult;
 			}
+			context.assertf(b.irValue.isDefined, b.loc, "%s %s null IR val", b.op, b.astType);
 
 			builder.addJumpToLabel(currentBlock, nextStmt);
 		}

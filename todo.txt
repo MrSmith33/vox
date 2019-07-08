@@ -26,6 +26,7 @@
 	- static array to slice (implicit conversion, slicing)
 - IrBuilder must prevent adding instructions from wrong instruction set
 - Allocate argument stack slots for multiple calls from the same space
+- context format/writefln
 
 - multi-indexing operator x[1, 2, 3]
 - AST Index
