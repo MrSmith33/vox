@@ -128,6 +128,8 @@ struct TypeNode
 			as_basic.basicType == BasicType.t_error;
 	}
 	bool isPointer() { return astType == AstType.type_ptr; }
+	bool isSlice() { return astType == AstType.type_slice; }
+	bool isStaticArray() { return astType == AstType.type_static_array; }
 	bool isInteger() { return astType == AstType.type_basic && as_basic.isInteger; }
 	bool isBool() { return astType == AstType.type_basic &&
 			as_basic.basicType == BasicType.t_bool; }

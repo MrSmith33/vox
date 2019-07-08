@@ -125,6 +125,8 @@ struct AstToIr
 	Identifier elseId;
 	Identifier blkId;
 
+	enum IrArgSize SIZET_SIZE = IrArgSize.size64;
+
 	IrBuilder builder;
 	IrFunction* ir;
 	FunctionDeclNode* fun;
@@ -874,7 +876,12 @@ struct AstToIr
 	void visitExprValue(NullLiteralExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
 		if (!c.irValue.isDefined) {
-			c.irValue = context.constants.add(0, IsSigned.no, c.type.argSize(context));
+			if (c.type.isPointer) {
+				c.irValue = context.constants.add(0, IsSigned.no, SIZET_SIZE);
+			} else if (c.type.isSlice) {
+				IrIndex irValue = context.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
+				c.irValue = context.constants.addAggrecateConstant(c.type.genIrType(context), irValue, irValue);
+			} else context.internal_error(c.loc, "%s", c.type.printer(context));
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);

@@ -1637,3 +1637,17 @@ void tester78(ref TestContext ctx) {
 	assert(test_div(97, Slice!ubyte(buf[])) == 9);
 	assert(buf[] == [7, 9]);
 }
+
+@TestInfo(&tester79)
+immutable test79 = q{--- test79
+	// test null to slice conversion
+	void receive(u8[]) {}
+	u8[] make() {
+		receive(null);
+		return null;
+	}
+};
+void tester79(ref TestContext ctx) {
+	auto make = ctx.getFunctionPtr!(Slice!ubyte)("make");
+	assert(make() == null);
+}

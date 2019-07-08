@@ -28,6 +28,10 @@
 - Allocate argument stack slots for multiple calls from the same space
 - context format/writefln
 
+- function call without parentesis
+- empty string
++ null to empty slice
+
 - multi-indexing operator x[1, 2, 3]
 - AST Index
 - small pointer type when basic type is store inline + pointer level for more than 1 indirection level

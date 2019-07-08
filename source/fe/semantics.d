@@ -711,8 +711,7 @@ struct SemanticStaticTypes
 				return true;
 			}
 		}
-		else if (expr.type.astType == AstType.type_static_array &&
-			type.astType == AstType.type_slice)
+		else if (expr.type.isStaticArray && type.isSlice)
 		{
 			if (sameType(expr.type.as_static_array.base, type.as_slice.base))
 			{
@@ -721,9 +720,14 @@ struct SemanticStaticTypes
 				return true;
 			}
 		}
-		else if (expr.astType == AstType.literal_null && type.isPointer) {
-			expr.type = type;
-			return true;
+		else if (expr.astType == AstType.literal_null) {
+			if (type.isPointer) {
+				expr.type = type;
+				return true;
+			} else if (type.isSlice) {
+				expr.type = type;
+				return true;
+			}
 		}
 		else
 		{
