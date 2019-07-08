@@ -1560,7 +1560,7 @@ immutable test75 = q{--- test75
 	// Test for loop
 	i32 sum(i32[] numbers) {
 		i32 sum = 0;
-		for (i32 i = 0; i < numbers.length; ++i)
+		for (u32 i = 0; i < numbers.length; ++i)
 		{
 			sum += numbers[i];
 		}
