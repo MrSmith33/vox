@@ -603,8 +603,9 @@ struct SemanticStaticTypes
 			BasicType commonType = commonBasicType[leftType.basicType][rightType.basicType];
 			if (commonType != BasicType.t_error)
 			{
-				bool successLeft = autoconvTo(left, commonType, Yes.force);
-				bool successRight = autoconvTo(right, commonType, Yes.force);
+				TypeNode* type = context.basicTypeNodes(commonType);
+				bool successLeft = autoconvTo(left, type);
+				bool successRight = autoconvTo(right, type);
 				if(successLeft && successRight)
 					return true;
 			}
@@ -628,33 +629,9 @@ struct SemanticStaticTypes
 	void autoconvToBool(ref ExpressionNode* expr)
 	{
 		if (expr.type.isError) return;
-		if (!autoconvTo(expr, BasicType.t_bool, No.force))
+		if (!autoconvTo(expr, context.basicTypeNodes(BasicType.t_bool)))
 			context.error(expr.loc, "Cannot implicitly convert `%s` to bool",
 				expr.type.typeName(context));
-	}
-
-	/// Returns true if conversion was successful. False otherwise
-	bool autoconvTo(ref ExpressionNode* expr, BasicType toType, Flag!"force" force)
-	{
-		TypeNode* type = context.basicTypeNodes(toType);
-		// Skip if already the same type
-		if (sameType(expr.type, type)) return true;
-
-		if (expr.type.astType == AstType.type_basic)
-		{
-			BasicType fromType = expr.type.as_basic.basicType;
-			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
-			if (canConvert || force)
-			{
-				expr = cast(ExpressionNode*) context.appendAst!TypeConvExprNode(expr.loc, type, IrIndex(), expr);
-				return true;
-			}
-		}
-
-		context.error(expr.loc, "Cannot auto-convert expression of type `%s` to `%s`",
-			expr.type.printer(context),
-			type.printer(context));
-		return false;
 	}
 
 	bool isConvertibleTo(TypeNode* fromType, TypeNode* toType)
@@ -672,12 +649,14 @@ struct SemanticStaticTypes
 				(toTypeBasic >= BasicType.t_bool &&
 				toTypeBasic <= BasicType.t_u64);
 			// all integer types, pointers and bool can be converted between
+			// TODO: bool is special (need to have 0 or 1)
 			return isRegisterTypeFrom && isRegisterTypeTo;
 		}
 		if (fromType.astType == AstType.type_ptr && toType.astType == AstType.type_ptr) return true;
 		return false;
 	}
 
+	/// Returns true if conversion was successful. False otherwise
 	bool autoconvTo(ref ExpressionNode* expr, TypeNode* type)
 	{
 		if (sameType(expr.type, type)) return true;
@@ -1135,11 +1114,6 @@ struct SemanticStaticTypes
 					"Argument %s, must have type %s, not %s", i+1,
 					params[i].type.printer(context),
 					arg.type.printer(context));
-			//if (!sameType(arg.type, params[i].type))
-			//	context.error(arg.loc,
-			//		"Argument %s, must have type %s, not %s", i+1,
-			//			params[i].type.printer(context),
-			//			arg.type.printer(context));
 		}
 		c.type = funcDecl.returnType;
 	}
@@ -1163,7 +1137,7 @@ struct SemanticStaticTypes
 	void visit(IndexExprNode* i) {
 		_visit(i.array);
 		_visit(i.index);
-		autoconvTo(i.index, BasicType.t_i64, No.force);
+		autoconvTo(i.index, context.basicTypeNodes(BasicType.t_i64));
 		switch (i.array.type.astType) with(AstType)
 		{
 			case type_ptr, type_static_array, type_slice: break; // valid
