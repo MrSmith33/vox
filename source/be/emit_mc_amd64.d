@@ -600,7 +600,7 @@ struct CodeEmitter
 						case ArgType.WORD: gen.movw(dstReg, Imm16(con.i16)); break;
 						case ArgType.DWORD: gen.movd(dstReg, Imm32(con.i32)); break;
 						case ArgType.QWORD:
-							if (src.constantSize == IrArgSize.size64)
+							if (con.payloadSize(src) == IrArgSize.size64)
 								gen.movq(dstReg, Imm64(con.i64));
 							else
 								gen.movd(dstReg, Imm32(con.i32));
