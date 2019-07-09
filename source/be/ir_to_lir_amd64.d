@@ -118,9 +118,21 @@ struct IrToLir
 						break;
 					}
 
+					IrIndex rvalue = getFixedIndex(irValue);
+					bool isBigConstant = rvalue.isConstant && context.constants.get(rvalue).payloadSize(rvalue) == IrArgSize.size64;
+
+					/// Cannot obtain address and store it in another address in one step
+					if (rvalue.isGlobal || rvalue.isStackSlot || isBigConstant)
+					{
+						// copy to temp register
+						ExtraInstrArgs extra = { addUsers : false, type : srcType };
+						InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, rvalue);
+						rvalue = movInstr.result;
+					}
+
 					ExtraInstrArgs extra = { addUsers : false, argSize : argSize };
 					IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
-					builder.emitInstr!LirAmd64Instr_store(lirBlockIndex, extra, ptr, getFixedIndex(irValue));
+					builder.emitInstr!LirAmd64Instr_store(lirBlockIndex, extra, ptr, rvalue);
 					break;
 
 				case struct_t:
@@ -647,20 +659,6 @@ struct IrToLir
 				foreach(ref IrIndex arg; instrHeader.args)
 				{
 					builder.addUser(instrIndex, arg);
-				}
-
-				/// Cannot obtain address and store it in another address in one step
-				if (instrHeader.op == Amd64Opcode.store && (instrHeader.args[1].isGlobal || instrHeader.args[1].isStackSlot))
-				{
-					// copy to temp register
-					ExtraInstrArgs extra = { type : lir.getValueType(*context, instrHeader.args[1]) };
-					InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
-						extra, instrHeader.args[1]);
-					builder.insertBeforeInstr(instrIndex, movInstr.instruction);
-					// store temp to memory
-					removeUser(*context, lir, instrIndex, instrHeader.args[1]);
-					instrHeader.args[1] = movInstr.result;
-					builder.addUser(instrIndex, movInstr.result);
 				}
 			}
 		}

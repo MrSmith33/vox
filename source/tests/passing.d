@@ -1690,3 +1690,14 @@ void tester80(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("i32max")() == int.max);
 	assert(ctx.getFunctionPtr!(long)("i64max")() == long.max);
 }
+
+@TestInfo(&tester81)
+immutable test81 = q{--- test81
+	// Test mov of 64bit constant into memory
+	void run(i64* ptr) { *ptr = i64.max; }
+};
+void tester81(ref TestContext ctx) {
+	long val = 0;
+	ctx.getFunctionPtr!(void, long*)("run")(&val);
+	assert(val == long.max);
+}
