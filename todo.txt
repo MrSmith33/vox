@@ -30,7 +30,6 @@
 
 - function call without parentesis
 - empty string
-+ null to empty slice
 
 - multi-indexing operator x[1, 2, 3]
 - AST Index
@@ -71,6 +70,8 @@ o dll linking
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
++ .min, .max properties of numeric types
++ null to empty slice
 + for loop
 + function signature IR type (needed to allow changing signature for ABI handling in IR to LIR pass)
 + multiple exported functions per test

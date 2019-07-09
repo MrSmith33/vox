@@ -1651,3 +1651,42 @@ void tester79(ref TestContext ctx) {
 	auto make = ctx.getFunctionPtr!(Slice!ubyte)("make");
 	assert(make() == null);
 }
+
+@TestInfo(&tester80)
+immutable test80 = q{--- test80
+	// integer types .min, .max properties
+	u8 u8min() {  return u8.min; }
+	u16 u16min() { return u16.min; }
+	u32 u32min() { return u32.min; }
+	u64 u64min() { return u64.min; }
+	u8 u8max() {  return u8.max; }
+	u16 u16max() { return u16.max; }
+	u32 u32max() { return u32.max; }
+	u64 u64max() { return u64.max; }
+	i8 i8min() {  return i8.min; }
+	i16 i16min() { return i16.min; }
+	i32 i32min() { return i32.min; }
+	i64 i64min() { return i64.min; }
+	i8 i8max() {  return i8.max; }
+	i16 i16max() { return i16.max; }
+	i32 i32max() { return i32.max; }
+	i64 i64max() { return i64.max; }
+};
+void tester80(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ubyte)("u8min")()  == ubyte.min);
+	assert(ctx.getFunctionPtr!(ushort)("u16min")() == ushort.min);
+	assert(ctx.getFunctionPtr!(uint)("u32min")() == uint.min);
+	assert(ctx.getFunctionPtr!(ulong)("u64min")() == ulong.min);
+	assert(ctx.getFunctionPtr!(ubyte)("u8max")()  == ubyte.max);
+	assert(ctx.getFunctionPtr!(ushort)("u16max")() == ushort.max);
+	assert(ctx.getFunctionPtr!(uint)("u32max")() == uint.max);
+	assert(ctx.getFunctionPtr!(ulong)("u64max")() == ulong.max);
+	assert(ctx.getFunctionPtr!(byte)("i8min")()  == byte.min);
+	assert(ctx.getFunctionPtr!(short)("i16min")() == short.min);
+	assert(ctx.getFunctionPtr!(int)("i32min")() == int.min);
+	assert(ctx.getFunctionPtr!(long)("i64min")() == long.min);
+	assert(ctx.getFunctionPtr!(byte)("i8max")()  == byte.max);
+	assert(ctx.getFunctionPtr!(short)("i16max")() == short.max);
+	assert(ctx.getFunctionPtr!(int)("i32max")() == int.max);
+	assert(ctx.getFunctionPtr!(long)("i64max")() == long.max);
+}

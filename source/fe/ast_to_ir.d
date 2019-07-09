@@ -795,12 +795,12 @@ struct AstToIr
 				if (m.isLvalue) {
 					context.internal_error(m.loc, "cannot assign static array member");
 				}
-				if (m.memberIndex == 0) // length
+				if (m.memberIndex == BuiltinMemberIndex.MEMBER_LENGTH) // length
 				{
 					StaticArrayTypeNode* arr = m.aggregate.as_node.get_node_type.as_static_array;
 					m.irValue = context.constants.add(arr.length, IsSigned.no, IrArgSize.size64);
 				}
-				else if (m.memberIndex == 1) // ptr
+				else if (m.memberIndex == BuiltinMemberIndex.MEMBER_PTR) // ptr
 				{
 					IrLabel afterAggr = IrLabel(currentBlock);
 					m.aggregate.flags |= AstFlags.isLvalue;
@@ -834,6 +834,26 @@ struct AstToIr
 				visitExprValue(member.initializer, currentBlock, afterAggr);
 				currentBlock = afterAggr.blockIndex;
 				m.irValue = member.initializer.irValue;
+				break;
+			case expr_member:
+				TypeNode* obj = m.aggregate.as_node.get_node_type;
+				if (auto b = obj.as_basic)
+				{
+					if (b.isInteger)
+					{
+						if (m.memberIndex == BuiltinMemberIndex.MEMBER_MIN)
+						{
+							m.irValue = context.constants.add(b.minValue, b.isSigned, obj.argSize(context));
+							break;
+						}
+						else if (m.memberIndex == BuiltinMemberIndex.MEMBER_MAX)
+						{
+							m.irValue = context.constants.add(b.maxValue, b.isSigned, obj.argSize(context));
+							break;
+						}
+					}
+				}
+				context.internal_error(m.loc, "Unexpected node type %s", m.astType);
 				break;
 			default:
 				context.internal_error(m.loc, "Unexpected node type %s", m.astType);

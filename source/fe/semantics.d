@@ -441,6 +441,23 @@ void pass_semantic_type(ref CompilationContext ctx, CompilePassPerModule[] subPa
 	}
 }
 
+struct CommonIdentifiers
+{
+	Identifier id_ptr;
+	Identifier id_length;
+	Identifier id_min;
+	Identifier id_max;
+}
+
+CommonIdentifiers collectIdentifiers(CompilationContext* context) {
+	CommonIdentifiers res;
+	res.id_ptr = context.idMap.getOrRegNoDup("ptr");
+	res.id_length = context.idMap.getOrRegNoDup("length");
+	res.id_min = context.idMap.getOrRegNoDup("min");
+	res.id_max = context.idMap.getOrRegNoDup("max");
+	return res;
+}
+
 /// Annotates all expression nodes with their type
 /// Type checking, casting
 struct SemanticStaticTypes
@@ -449,8 +466,7 @@ struct SemanticStaticTypes
 
 	CompilationContext* context;
 	FunctionDeclNode* curFunc;
-	Identifier id_ptr;
-	Identifier id_length;
+	CommonIdentifiers ids;
 
 	/// Look up member by Identifier. Searches aggregate scope for identifier.
 	void lookupMember(MemberExprNode* expr)
@@ -468,6 +484,7 @@ struct SemanticStaticTypes
 			case AstType.type_static_array: lookupStaticArrayMember(expr, obj.as_static_array, expr.member.id); break;
  			case AstType.decl_struct: lookupStructMember(expr, obj.as_struct, expr.member.id); break;
 			case AstType.decl_enum: lookupEnumMember(expr, obj.as_enum, expr.member.id); break;
+			case AstType.type_basic: lookupBasicMember(expr, obj.as_basic, expr.member.id); break;
 			default:
 				context.unrecoverable_error(expr.loc, "Cannot resolve `%s` for %s", context.idString(expr.member.id), obj.astType);
 				expr.type = context.basicTypeNodes(BasicType.t_error);
@@ -501,18 +518,41 @@ struct SemanticStaticTypes
 		return LookupResult.success;
 	}
 
+	LookupResult lookupBasicMember(MemberExprNode* expr, BasicTypeNode* basicType, Identifier id)
+	{
+		if (basicType.isInteger)
+		{
+			if (id == ids.id_min)
+			{
+				expr.memberIndex = BuiltinMemberIndex.MEMBER_MIN;
+				expr.type = basicType.typeNode;
+				return LookupResult.success;
+			}
+			else if (id == ids.id_max)
+			{
+				expr.memberIndex = BuiltinMemberIndex.MEMBER_MAX;
+				expr.type = basicType.typeNode;
+				return LookupResult.success;
+			}
+		}
+
+		context.error(expr.loc, "%s has no `%s` property", basicType.typeNode.printer(context), context.idString(id));
+		return LookupResult.failure;
+	}
+
 	LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id)
 	{
 		expr.astType = AstType.expr_slice_member;
-		if (id == id_ptr)
+		// use integer indicies, because slice is a struct
+		if (id == ids.id_ptr)
 		{
-			expr.memberIndex = 1;
+			expr.memberIndex = 1; // ptr
 			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
 			return LookupResult.success;
 		}
-		else if (id == id_length)
+		else if (id == ids.id_length)
 		{
-			expr.memberIndex = 0;
+			expr.memberIndex = 0; // length
 			expr.type = context.basicTypeNodes(BasicType.t_u64);
 			return LookupResult.success;
 		}
@@ -524,15 +564,15 @@ struct SemanticStaticTypes
 	LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* arrType, Identifier id)
 	{
 		expr.astType = AstType.expr_static_array_member;
-		if (id == id_ptr)
+		if (id == ids.id_ptr)
 		{
-			expr.memberIndex = 1;
+			expr.memberIndex = BuiltinMemberIndex.MEMBER_PTR;
 			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(arrType.loc, arrType.base);
 			return LookupResult.success;
 		}
-		else if (id == id_length)
+		else if (id == ids.id_length)
 		{
-			expr.memberIndex = 0;
+			expr.memberIndex = BuiltinMemberIndex.MEMBER_LENGTH;
 			expr.type = context.basicTypeNodes(BasicType.t_u64);
 			return LookupResult.success;
 		}
@@ -865,8 +905,7 @@ struct SemanticStaticTypes
 	}
 
 	void visit(ModuleDeclNode* m) {
-		id_ptr = context.idMap.getOrRegNoDup("ptr");
-		id_length = context.idMap.getOrRegNoDup("length");
+		ids = collectIdentifiers(context);
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(ImportDeclNode* i) {}

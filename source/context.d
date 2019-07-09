@@ -186,25 +186,25 @@ struct CompilationContext
 	SliceTypeNode* u8Slice;
 
 	static __gshared BasicTypeNode[] basicTypes = [
-		basicTypeNode(0, BasicType.t_error),
-		basicTypeNode(0, BasicType.t_void),
-		basicTypeNode(1, BasicType.t_bool , BasicTypeFlag.isBoolean),
-		basicTypeNode(8, BasicType.t_null),
+		basicTypeNode(0, 0, 0, BasicType.t_error),
+		basicTypeNode(0, 0, 0, BasicType.t_void),
+		basicTypeNode(1, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean),
+		basicTypeNode(8, 0, 0, BasicType.t_null),
 
-		basicTypeNode(1, BasicType.t_i8   , BasicTypeFlag.isInteger),
-		basicTypeNode(2, BasicType.t_i16  , BasicTypeFlag.isInteger),
-		basicTypeNode(4, BasicType.t_i32  , BasicTypeFlag.isInteger),
-		basicTypeNode(8, BasicType.t_i64  , BasicTypeFlag.isInteger),
+		basicTypeNode(1, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger),
+		basicTypeNode(2, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger),
+		basicTypeNode(4, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger),
+		basicTypeNode(8, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger),
 		//basicTypeNode(1, BasicType.t_isize, BasicTypeFlag.isInteger), // this is alias
 
-		basicTypeNode(1, BasicType.t_u8   , BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-		basicTypeNode(2, BasicType.t_u16  , BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-		basicTypeNode(4, BasicType.t_u32  , BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-		basicTypeNode(8, BasicType.t_u64  , BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+		basicTypeNode(1, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+		basicTypeNode(2, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+		basicTypeNode(4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+		basicTypeNode(8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
 		//basicTypeNode(1, BasicType.t_usize, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned), // this is alias
 
-		basicTypeNode(4, BasicType.t_f32  , BasicTypeFlag.isFloat),
-		basicTypeNode(8, BasicType.t_f64  , BasicTypeFlag.isFloat),
+		basicTypeNode(4, 0, 0, BasicType.t_f32  , BasicTypeFlag.isFloat),
+		basicTypeNode(8, 0, 0, BasicType.t_f64  , BasicTypeFlag.isFloat),
 	];
 
 	TypeNode* basicTypeNodes(BasicType basicType) { return cast(TypeNode*)&basicTypes[basicType]; }

@@ -346,15 +346,17 @@ enum BasicTypeFlag : ubyte {
 
 enum POINTER_SIZE = 8;
 enum IrArgSize POINTER_ARG_SIZE = IrArgSize.size64;
-BasicTypeNode basicTypeNode(uint size, BasicType basicType, int typeFlags = 0)
+BasicTypeNode basicTypeNode(uint size, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
 {
-	return BasicTypeNode(TokenIndex(), size, basicType, cast(ubyte)typeFlags);
+	return BasicTypeNode(TokenIndex(), size, minValue, maxValue, basicType, cast(ubyte)typeFlags);
 }
 
 struct BasicTypeNode {
 	mixin AstNodeData!(AstType.type_basic, AstFlags.isType);
 	uint size;
 	uint alignment() { return size; }
+	ulong minValue;
+	ulong maxValue;
 	BasicType basicType;
 	ubyte typeFlags;
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
@@ -363,7 +365,16 @@ struct BasicTypeNode {
 	bool isFloat() { return cast(bool)(typeFlags & BasicTypeFlag.isFloat); }
 	bool isInteger() { return cast(bool)(typeFlags & BasicTypeFlag.isInteger); }
 	bool isUnsigned() { return cast(bool)(typeFlags & BasicTypeFlag.isUnsigned); }
+	IsSigned isSigned() { if (isUnsigned) return IsSigned.no; else return IsSigned.yes; }
 	bool isBoolean() { return cast(bool)(typeFlags & BasicTypeFlag.isBoolean); }
+}
+
+/// Used inside MemberExprNode.memberIndex
+enum BuiltinMemberIndex : uint {
+	MEMBER_MIN,
+	MEMBER_MAX,
+	MEMBER_PTR,
+	MEMBER_LENGTH,
 }
 
 struct PtrTypeNode {
