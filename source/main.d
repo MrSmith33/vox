@@ -19,7 +19,7 @@ version = standalone;
 version(standalone) int main(string[] args)
 {
 	scope(exit) stdout.flush;
-	version(cli) runCli(args);
+	version(cli) return runCli(args);
 	version(bench) runBench(args);
 	//benchSpeed();
 	version(devtest) runDevTests();

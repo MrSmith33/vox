@@ -1299,7 +1299,7 @@ struct AstToIr
 				nextBlock = nextLabel.blockIndex;
 				builder.sealBlock(nextBlock);
 
-				IrIndex phiIndex = builder.addPhi(nextBlock, n.type.genIrType(context));
+				IrIndex phiIndex = builder.addPhi(nextBlock, n.type.genIrType(context), IrIndex.init);
 				IrIndex trueValue = context.constants.add(1, IsSigned.no, n.type.argSize(context));
 				builder.addPhiArg(phiIndex, trueBlock, trueValue);
 				IrIndex falseValue = context.constants.add(0, IsSigned.no, n.type.argSize(context));

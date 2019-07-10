@@ -218,7 +218,7 @@ struct IrToLir
 			foreach(IrIndex phiIndex, ref IrPhi phi; irBlock.phis(ir))
 			{
 				IrVirtualRegister* oldReg = &ir.getVirtReg(phi.result);
-				IrIndex newPhi = builder.addPhi(lirBlock, oldReg.type);
+				IrIndex newPhi = builder.addPhi(lirBlock, oldReg.type, phi.var);
 				recordIndex(phiIndex, newPhi);
 				IrIndex newResult = lir.getPhi(newPhi).result;
 				IrVirtualRegister* newReg = &lir.getVirtReg(newResult);

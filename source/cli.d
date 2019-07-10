@@ -15,7 +15,7 @@ enum WindowsSubsystemCli : ushort {
 	GUI
 }
 
-void runCli(string[] args)
+int runCli(string[] args)
 {
 	import std.path;
 	import std.getopt;
@@ -91,7 +91,7 @@ void runCli(string[] args)
 			writefln("%-*s %-*s  %s", ls, it.optShort, ll, it.optLong, it.help);
 		}
 
-		return;
+		return 0;
 	}
 
 	string[] filenames = args;
@@ -166,12 +166,12 @@ void runCli(string[] args)
 		writeln(driver.context.sink.text);
 		if (e.isICE)
 			writeln(e);
-		return;
+		return 1;
 	}
 	catch(Throwable t) {
 		writeln(driver.context.sink.text);
 		writeln(t);
-		return;
+		return 1;
 	}
 
 	TextSink sink;
@@ -198,6 +198,8 @@ void runCli(string[] args)
 			scaledNumberFmt(endInitTime-startInitTime),
 			scaledNumberFmt(endReleaseTime-startReleaseTime));
 	}
+
+	return 0;
 }
 
 void getExportNames(ref CompilationContext context, string filename, ubyte[] dllData, void delegate(uint, string) onExport)

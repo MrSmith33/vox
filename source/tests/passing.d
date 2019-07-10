@@ -1691,6 +1691,7 @@ void tester80(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(long)("i64max")() == long.max);
 }
 
+
 @TestInfo(&tester81)
 immutable test81 = q{--- test81
 	// Test mov of 64bit constant into memory
@@ -1701,3 +1702,22 @@ void tester81(ref TestContext ctx) {
 	ctx.getFunctionPtr!(void, long*)("run")(&val);
 	assert(val == long.max);
 }
+
+
+@TestInfo()
+immutable test82 = q{--- test82
+	// Bug
+	void test()
+	{
+		for (u32 roomIndex = 0; roomIndex < 20; ++roomIndex)
+		{
+			for (u32 otherRoom = 0; otherRoom < roomIndex; ++otherRoom)
+			{
+				if (otherRoom < roomIndex) {
+					break;
+				}
+			}
+		}
+	}
+};
+

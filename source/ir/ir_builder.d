@@ -208,6 +208,7 @@ struct IrBuilder
 	/// Sealed block is not necessarily filled.
 	/// Ignores already sealed blocks.
 	void sealBlock(IrIndex basicBlockToSeal) {
+		//dumpFunction(*ir, *context);
 		version(IrPrint) writefln("[IR] seal %s", basicBlockToSeal);
 		IrBasicBlock* bb = &ir.getBlock(basicBlockToSeal);
 		if (bb.isSealed) return;
@@ -247,6 +248,7 @@ struct IrBuilder
 			"writeVariable(block %s, variable %s, value %s)",
 			blockIndex, var, value);
 
+		version(IrPrint) writefln("[IR]  blockVarDef[%s %s] <- %s", blockIndex, var, value);
 		blockVarDef.put(context.arrayArena, BlockVarPair(blockIndex, var), value);
 	}
 
@@ -260,6 +262,7 @@ struct IrBuilder
 
 	/// Puts `user` into a list of users of `used` value
 	void addUser(IrIndex user, IrIndex used) {
+		//if (!used.isDefined) dumpFunction(*ir, *context);
 		context.assertf(user.isDefined && used.isDefined, "%s addUser(%s, %s)",
 			context.idString(ir.backendData.name), user, used);
 		final switch (used.kind) with(IrValueKind) {
@@ -704,11 +707,12 @@ struct IrBuilder
 	}
 
 	// Adds phi function to specified block
-	IrIndex addPhi(IrIndex blockIndex, IrIndex type)
+	IrIndex addPhi(IrIndex blockIndex, IrIndex type, IrIndex var)
 	{
 		IrIndex phiIndex = append!IrPhi;
 		IrIndex vreg = addVirtualRegister(phiIndex, type);
-		ir.get!IrPhi(phiIndex) = IrPhi(blockIndex, vreg);
+		version(IrPrint) writefln("[IR] add %s %s", vreg, phiIndex);
+		ir.get!IrPhi(phiIndex) = IrPhi(blockIndex, vreg, var);
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		if (block.firstPhi.isDefined) {
 			ir.get!IrPhi(block.firstPhi).prevPhi = phiIndex;
@@ -746,7 +750,7 @@ struct IrBuilder
 		IrIndex value;
 		if (!ir.getBlock(blockIndex).isSealed) {
 			// Incomplete CFG
-			IrIndex phiIndex = addPhi(blockIndex, getVarType(variable));
+			IrIndex phiIndex = addPhi(blockIndex, getVarType(variable), variable);
 			value = ir.get!IrPhi(phiIndex).result;
 			bool wasCreated;
 			IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
@@ -769,7 +773,7 @@ struct IrBuilder
 			else
 			{
 				// Break potential cycles with operandless phi
-				IrIndex phiIndex = addPhi(blockIndex, getVarType(variable));
+				IrIndex phiIndex = addPhi(blockIndex, getVarType(variable), variable);
 				value = ir.get!IrPhi(phiIndex).result;
 				writeVariable(blockIndex, variable, value);
 				value = addPhiOperands(blockIndex, variable, phiIndex);
@@ -790,16 +794,17 @@ struct IrBuilder
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex addPhiOperands(IrIndex blockIndex, IrIndex variable, IrIndex phi)
 	{
+		version(IrPrint) writefln("[IR] addPhiOperands %s %s %s", blockIndex, variable, phi);
 		// Determine operands from predecessors
 		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(*ir))
 		{
 			IrIndex value = readVariable(predIndex, variable);
-			version(IrPrint) writefln("[IR] phi operand %s", value);
+			version(IrPrint) writefln("[IR] phi operand %s %s", predIndex, value);
 			// Phi should not be cached before loop, since readVariable can add phi to phis, reallocating the array
 			addPhiArg(phi, predIndex, value);
 			addUser(phi, value);
 		}
-		return tryRemoveTrivialPhi(phi, variable);
+		return tryRemoveTrivialPhi(phi);
 	}
 
 	void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
@@ -832,7 +837,7 @@ struct IrBuilder
 
 	// Algorithm 3: Detect and recursively remove a trivial φ function
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
-	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex, IrIndex maybePhiVar) {
+	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex) {
 		IrPhiArg same;
 		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
 		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(*ir))
@@ -862,14 +867,11 @@ struct IrBuilder
 
 		// Update mapping from old phi result to same, since we may need to read
 		// this variable in later blocks, which will cause us to read removed phi
-		// HACK: replace old phi result with same, so that all references
-		// to removed phi automatically redirect to same
-		// We only rewire first phi in a chain of trivial phi, since we have variable info
-		// only for the first one inside addPhiOperands.
-		// Probably that can't lead to the same problem, since users of first phi would be located in loop body, not after the loop
+		IrIndex maybePhiVar = ir.get!IrPhi(phiIndex).var;
 		if (maybePhiVar.isDefined)
 		{
-			blockVarDef.put(context.arrayArena, BlockVarPair(ir.get!IrPhi(phiIndex).blockIndex, maybePhiVar), same.value);
+			IrIndex blockIndex = ir.get!IrPhi(phiIndex).blockIndex;
+			updatePhiVarDefs(blockIndex, maybePhiVar, phiResultIndex, same.value);
 		}
 
 		removePhi(phiIndex);
@@ -877,10 +879,26 @@ struct IrBuilder
 		// Try to recursively remove all phi users, which might have become trivial
 		foreach (i, index; users.range(*ir))
 			if (index.kind == IrValueKind.phi && index != phiIndex)
-				tryRemoveTrivialPhi(index, IrIndex.init);
+				tryRemoveTrivialPhi(index);
 
 		removeVirtualRegister(phiResultIndex);
 		return same.value;
+	}
+
+	private void updatePhiVarDefs(IrIndex blockIndex, IrIndex var, IrIndex oldValue, IrIndex newValue)
+	{
+		if (auto val = BlockVarPair(blockIndex, var) in blockVarDef)
+		{
+			if (*val == oldValue)
+			{
+				version(IrPrint) writefln("[IR]   phi update blockVarDef %s %s %s -> %s", blockIndex, var, *val, newValue);
+				*val = newValue;
+
+				foreach (i, succIndex; ir.getBlock(blockIndex).successors.range(*ir)) {
+					updatePhiVarDefs(succIndex, var, oldValue, newValue);
+				}
+			}
+		}
 	}
 
 	IrIndex definitionOf(IrIndex someIndex)
@@ -934,8 +952,12 @@ struct IrBuilder
 	/// Rewrites all users of phi to point to `byWhat` instead of its result `what`.
 	/// `what` is the result of phi (vreg), `phiUsers` is users of `what`
 	private void replaceBy(IrIndex phiIndex, SmallVector phiUsers, IrIndex what, IrPhiArg byWhat) {
+		version(IrPrint) writefln("[IR]     replaceBy %s %s -> %s", phiIndex, what, byWhat);
+
 		foreach (size_t i, IrIndex phiUserIndex; phiUsers.range(*ir))
 		{
+			version(IrPrint) writefln("[IR]     user %s %s", i, phiUserIndex);
+
 			// skip self-reference (we will delete phi anyway)
 			if (phiUserIndex == phiIndex) continue;
 
