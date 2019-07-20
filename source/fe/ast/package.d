@@ -10,8 +10,11 @@ import std.stdio;
 import all;
 
 public import fe.ast.declaration;
+public import fe.ast.decl.scope_;
 public import fe.ast.dump;
 public import fe.ast.expression;
+public import fe.ast.lexer;
+public import fe.ast.parser;
 public import fe.ast.statement;
 public import fe.ast.type;
 public import fe.ast.visitor;
@@ -86,35 +89,51 @@ enum AstFlags
 	/// Declaration at module level
 	isGlobal      = 1 << 10,
 	isInOrderedScope = 1 << 11,
-	user1         = 1 << 12,
-	user2         = 1 << 13,
+	// used to find cyclic dependencies
+	isBeingVisited = 1 << 12,
+	user1         = 1 << 13,
+	user2         = 1 << 14,
+}
+
+enum AstNodeState : ubyte
+{
+	// initial state
+	parse,
+	// is set after scope gathered all named entities
+	name_reg,
+	// is set after name uses resolved identifier
+	name_resolve,
+	// is set after type checking
+	type_check,
+	// is set after IR representation was created
+	ir_gen
 }
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0)
 {
 	this(Args...)(TokenIndex loc, Args args) {
 		this(loc);
-		enum len = this.tupleof.length - 3;
+		enum len = this.tupleof.length - 4;
 		enum numDefault = len - args.length;
 		static assert(args.length <= len, "Too many args");
-		this.tupleof[3..$-numDefault] = args;
+		this.tupleof[4..$-numDefault] = args;
 	}
 
 	this(TokenIndex loc) {
-		this.loc = loc; this.astType = _astType; this.flags = cast(ushort)default_flags; }
-	/*this(TokenIndex loc, int flags) {
-		this.loc = loc; this.astType = _astType; this.flags = cast(ushort)(default_flags|flags); }
-	this(TokenIndex loc, AstType astType) {
-		this.loc = loc; this.astType = astType; this.flags = cast(ushort)default_flags; }
-	this(TokenIndex loc, AstType astType, int flags) {
-		this.loc = loc; this.astType = astType; this.flags = cast(ushort)(default_flags|flags); }*/
+		this.loc = loc;
+		this.astType = _astType;
+		this.flags = cast(ushort)default_flags;
+	}
+
 	TokenIndex loc;
-	AstType astType = _astType;
 	ushort flags;
+	AstType astType = _astType;
+	AstNodeState state;
 
 	AstNode* as_node() {
 		return cast(AstNode*)&this;
 	}
+
 	ExpressionNode* as_expr() {
 		if (isExpression) return cast(ExpressionNode*)&this;
 		return null;
@@ -132,6 +151,10 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isArgument() { return cast(bool)(flags & AstFlags.isArgument); }
 	bool isGlobal() { return cast(bool)(flags & AstFlags.isGlobal); }
 	bool isInOrderedScope() { return cast(bool)(flags & AstFlags.isInOrderedScope); }
+
+	bool isBeingVisited() { return cast(bool)(flags & AstFlags.isBeingVisited); }
+	void beginVisit() { flags |= AstFlags.isBeingVisited; }
+	void endVisit() { flags &= ~AstFlags.isBeingVisited; }
 }
 
 Identifier get_node_id(AstNode* n) {

@@ -66,9 +66,9 @@ immutable CompilePassGlobal[] commonPasses = [
 	global_pass("Read source", &pass_source),
 	global_pass("Lex", &pass_lexer),
 	global_pass("Parse", &pass_parser),
-	global_pass("Semantic insert", &pass_semantic_decl),
-	global_pass("Semantic lookup", &pass_semantic_lookup),
-	global_pass("Semantic types", &pass_semantic_type),
+	global_pass("Semantic insert", &pass_names_register),
+	global_pass("Semantic lookup", &pass_names_resolve),
+	global_pass("Semantic types", &pass_type_check),
 	global_pass("IR gen", &pass_ir_gen),
 
 	global_pass("Optimize", &pass_optimize_ir),

@@ -4,7 +4,7 @@ License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
 /// Lexer
-module fe.lexer;
+module fe.ast.lexer;
 
 import std.format : formattedWrite;
 import std.string : format;

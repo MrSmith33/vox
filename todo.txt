@@ -22,11 +22,14 @@
 	- pass literal to function
 	- slicing slice[0..42]
 	- slice ptr
+		- ptr[0..b] -> slice(b, ptr)
+		- ptr[a..b] -> slice(b-a, ptr+a)
 	- slice assign: slice[] = 42; and slice[] = slice2;
 	- static array to slice (implicit conversion, slicing)
 - IrBuilder must prevent adding instructions from wrong instruction set
 - Allocate argument stack slots for multiple calls from the same space
 - context format/writefln
+- inline instructions in IR for representing memory operands in x86 LIR
 
 - function call without parentesis
 - empty string
