@@ -270,6 +270,8 @@ struct Driver
 
 		context.idMap.strings.setBuffer(arenaPool.take(2*GiB), 0);
 		context.idMap.stringDataBuffer.setBuffer(arenaPool.take(2*GiB), 0);
+
+		context.initialize();
 	}
 
 	void releaseMemory()

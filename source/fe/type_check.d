@@ -15,6 +15,7 @@ void pass_type_check(ref CompilationContext ctx, CompilePassPerModule[] subPasse
 	auto sem3 = PassTypeCheck(&ctx);
 	ctx.u8Ptr = ctx.appendAst!PtrTypeNode(TokenIndex(), ctx.basicTypeNodes(BasicType.t_u8));
 	ctx.u8Slice = ctx.appendAst!SliceTypeNode(TokenIndex(), ctx.basicTypeNodes(BasicType.t_u8));
+
 	foreach (ref SourceFileInfo file; ctx.files.data) {
 		sem3.visit(file.mod);
 
@@ -26,21 +27,283 @@ void pass_type_check(ref CompilationContext ctx, CompilePassPerModule[] subPasse
 	}
 }
 
-struct CommonIdentifiers
+bool isBool(TypeNode* type)
 {
-	Identifier id_ptr;
-	Identifier id_length;
-	Identifier id_min;
-	Identifier id_max;
+	return
+		type.astType == AstType.type_basic &&
+		type.as_basic.basicType == BasicType.t_bool;
 }
 
-CommonIdentifiers collectIdentifiers(CompilationContext* context) {
-	CommonIdentifiers res;
-	res.id_ptr = context.idMap.getOrRegNoDup("ptr");
-	res.id_length = context.idMap.getOrRegNoDup("length");
-	res.id_min = context.idMap.getOrRegNoDup("min");
-	res.id_max = context.idMap.getOrRegNoDup("max");
-	return res;
+/// Returns true if types are equal or were converted to common type. False otherwise
+bool autoconvToCommonType(ref ExpressionNode* left, ref ExpressionNode* right, CompilationContext* context)
+{
+	if (left.type.astType == AstType.type_basic && right.type.astType == AstType.type_basic)
+	{
+		BasicTypeNode* leftType = left.type.as_basic;
+		BasicTypeNode* rightType = right.type.as_basic;
+
+		BasicType commonType = commonBasicType[leftType.basicType][rightType.basicType];
+		if (commonType != BasicType.t_error)
+		{
+			TypeNode* type = context.basicTypeNodes(commonType);
+			bool successLeft = autoconvTo(left, type, context);
+			bool successRight = autoconvTo(right, type, context);
+			if(successLeft && successRight)
+				return true;
+		}
+	}
+	else if (left.type.isPointer && right.type.isTypeofNull) {
+		right.type = left.type;
+		return true;
+	}
+	else if (left.type.isTypeofNull && right.type.isPointer) {
+		left.type = right.type;
+		return true;
+	}
+	else
+	{
+		// error for user-defined types
+	}
+
+	return false;
+}
+
+void autoconvToBool(ref ExpressionNode* expr, CompilationContext* context)
+{
+	if (expr.type.isError) return;
+	if (!autoconvTo(expr, context.basicTypeNodes(BasicType.t_bool), context))
+		context.error(expr.loc, "Cannot implicitly convert `%s` to bool",
+			expr.type.typeName(context));
+}
+
+bool isConvertibleTo(TypeNode* fromType, TypeNode* toType, CompilationContext* context)
+{
+	if (sameType(fromType, toType)) return true;
+
+	if (fromType.astType == AstType.type_basic && toType.astType == AstType.type_basic)
+	{
+		BasicType fromTypeBasic = fromType.as_basic.basicType;
+		BasicType toTypeBasic = toType.as_basic.basicType;
+		bool isRegisterTypeFrom =
+			(fromTypeBasic >= BasicType.t_bool &&
+			fromTypeBasic <= BasicType.t_u64);
+		bool isRegisterTypeTo =
+			(toTypeBasic >= BasicType.t_bool &&
+			toTypeBasic <= BasicType.t_u64);
+		// all integer types, pointers and bool can be converted between
+		// TODO: bool is special (need to have 0 or 1)
+		return isRegisterTypeFrom && isRegisterTypeTo;
+	}
+	if (fromType.astType == AstType.type_ptr && toType.astType == AstType.type_ptr) return true;
+	return false;
+}
+
+/// Returns true if conversion was successful. False otherwise
+bool autoconvTo(ref ExpressionNode* expr, TypeNode* type, CompilationContext* context)
+{
+	if (sameType(expr.type, type)) return true;
+	string extraError;
+
+	if (expr.type.astType == AstType.type_basic && type.astType == AstType.type_basic)
+	{
+		BasicType fromType = expr.type.as_basic.basicType;
+		BasicType toType = type.as_basic.basicType;
+		bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
+		if (canConvert)
+		{
+			if (expr.astType == AstType.literal_int) {
+				//writefln("int %s %s -> %s", expr.loc, expr.type.printer(context), type.printer(context));
+				expr.type = type;
+			} else {
+				expr = cast(ExpressionNode*) context.appendAst!TypeConvExprNode(expr.loc, type, IrIndex(), expr);
+			}
+			return true;
+		}
+		else if (expr.astType == AstType.literal_int && toType.isInteger) {
+			auto lit = cast(IntLiteralExprNode*) expr;
+			if (lit.isSigned) {
+				if (numSignedBytesForInt(lit.value) <= integerSize(toType)) {
+					expr.type = type;
+					return true;
+				}
+			} else {
+				if (numUnsignedBytesForInt(lit.value) <= integerSize(toType)) {
+					expr.type = type;
+					return true;
+				}
+			}
+
+			context.error(expr.loc, "Cannot auto-convert integer `0x%X` of type %s to `%s`",
+				lit.value,
+				expr.type.printer(context),
+				type.printer(context));
+			return false;
+		}
+	}
+	// auto cast from string literal to c_char*
+	else if (expr.astType == AstType.literal_string)
+	{
+		if (type.astType == AstType.type_ptr &&
+			type.as_ptr.base.astType == AstType.type_basic &&
+			type.as_ptr.base.as_basic.basicType == BasicType.t_u8)
+		{
+			auto memberExpr = context.appendAst!MemberExprNode(expr.loc, type, IrIndex(), expr, null, 1);
+			memberExpr.astType = AstType.expr_slice_member;
+			expr = cast(ExpressionNode*)memberExpr;
+			return true;
+		}
+	}
+	else if (expr.type.isStaticArray && type.isSlice)
+	{
+		if (sameType(expr.type.as_static_array.base, type.as_slice.base))
+		{
+			expr = cast(ExpressionNode*)context.appendAst!UnaryExprNode(
+				expr.loc, type, IrIndex(), UnOp.staticArrayToSlice, expr);
+			return true;
+		}
+	}
+	else if (expr.astType == AstType.literal_null) {
+		if (type.isPointer) {
+			expr.type = type;
+			return true;
+		} else if (type.isSlice) {
+			expr.type = type;
+			return true;
+		}
+	}
+	else
+	{
+		extraError = ". Cannot convert from/to user-defined type";
+	}
+
+	return false;
+}
+
+void setResultType(BinaryExprNode* b, CompilationContext* context)
+{
+	TypeNode* resRype = context.basicTypeNodes(BasicType.t_error);
+	if (b.left.type.isError || b.right.type.isError) return;
+
+	switch(b.op) with(BinOp)
+	{
+		// logic ops. Requires both operands to be bool
+		case LOGIC_AND, LOGIC_OR:
+			autoconvToBool(b.left, context);
+			autoconvToBool(b.right, context);
+			resRype = context.basicTypeNodes(BasicType.t_bool);
+			break;
+		// logic ops. Requires both operands to be of the same type
+		case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
+			if (b.left.type.isPointer && b.right.type.isPointer)
+			{
+				if (
+					sameType(b.left.type, b.right.type) ||
+					b.left.type.as_ptr.isVoidPtr ||
+					b.right.type.as_ptr.isVoidPtr)
+				{
+					resRype = context.basicTypeNodes(BasicType.t_bool);
+					break;
+				}
+			}
+
+			if (autoconvToCommonType(b.left, b.right, context))
+				resRype = context.basicTypeNodes(BasicType.t_bool);
+			else
+				context.error(b.left.loc, "Cannot compare `%s` and `%s`",
+					b.left.type.typeName(context),
+					b.right.type.typeName(context));
+			break;
+
+		case MINUS:
+			if (b.left.type.isPointer && b.right.type.isPointer) // handle ptr - ptr
+			{
+				if (sameType(b.left.type, b.right.type))
+				{
+					b.op = BinOp.PTR_DIFF;
+					resRype = context.basicTypeNodes(BasicType.t_i64);
+					break;
+				}
+				else
+				{
+					context.error(b.loc, "cannot subtract pointers to different types: `%s` and `%s`",
+						b.left.type.printer(context), b.right.type.printer(context));
+					break;
+				}
+			} else if (b.left.type.isPointer && b.right.type.isInteger) { // handle ptr - int
+				b.op = BinOp.PTR_PLUS_INT;
+				(cast(IntLiteralExprNode*)b.right).negate(b.loc, *context);
+				resRype = b.left.type;
+				break;
+			}
+			goto case DIV;
+
+		case PLUS:
+			// handle int + ptr and ptr + int
+			if (b.left.type.isPointer && b.right.type.isInteger) {
+				b.op = BinOp.PTR_PLUS_INT;
+				resRype = b.left.type;
+				break;
+			} else if (b.left.type.isInteger && b.right.type.isPointer) {
+				b.op = BinOp.PTR_PLUS_INT;
+				// canonicalize
+				swap(b.left, b.right);
+				resRype = b.left.type;
+				break;
+			}
+
+			goto case DIV;
+
+		// arithmetic op int float
+		case DIV, REMAINDER, MULT, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
+			if (autoconvToCommonType(b.left, b.right, context))
+				resRype = b.left.type;
+			else
+			{
+				context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+					b.left.type.typeName(context), binOpStrings[b.op],
+					b.right.type.typeName(context));
+			}
+			break;
+
+		case MINUS_ASSIGN:
+			if (b.left.type.isPointer && b.right.type.isInteger) {
+				b.op = BinOp.PTR_PLUS_INT_ASSIGN;
+				(cast(IntLiteralExprNode*)b.right).negate(b.loc, *context);
+				resRype = b.left.type;
+				break;
+			}
+			goto case BITWISE_AND_ASSIGN;
+
+		case PLUS_ASSIGN:
+			if (b.left.type.isPointer && b.right.type.isInteger) {
+				b.op = BinOp.PTR_PLUS_INT_ASSIGN;
+				resRype = b.left.type;
+				break;
+			}
+			goto case BITWISE_AND_ASSIGN;
+
+		case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN, SHL_ASSIGN, SHR_ASSIGN,
+			ASHR_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
+			bool success = autoconvTo(b.right, b.left.type, context);
+			if (!success)
+				context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+					b.left.type.typeName(context), binOpStrings[b.op],
+					b.right.type.typeName(context));
+			break;
+
+		default:
+			context.internal_error(b.loc, "Unimplemented op %s", b.op);
+			assert(false);
+	}
+	b.type = resRype;
+}
+
+void calcType(BinaryExprNode* b, CompilationContext* context)
+{
+	assert(b.left.type, format("left(%s).type: is null", b.left.astType));
+	assert(b.right.type, format("right(%s).type: is null", b.right.astType));
+
+	setResultType(b, context);
 }
 
 /// Annotates all expression nodes with their type
@@ -51,446 +314,8 @@ struct PassTypeCheck
 
 	CompilationContext* context;
 	FunctionDeclNode* curFunc;
-	CommonIdentifiers ids;
-
-	/// Look up member by Identifier. Searches aggregate scope for identifier.
-	void lookupMember(MemberExprNode* expr)
-	{
-		TypeNode* obj = expr.aggregate.as_node.get_node_type;
-
-		// Allow member access for pointers to structs
-		if (obj.isPointer)
-			obj = obj.as_ptr.base.as_node.get_node_type;
-
-		expr.member.astType = AstType.expr_member_name_use;
-		switch(obj.astType)
-		{
-			case AstType.type_slice: lookupSliceMember(expr, obj.as_slice, expr.member.id); break;
-			case AstType.type_static_array: lookupStaticArrayMember(expr, obj.as_static_array, expr.member.id); break;
- 			case AstType.decl_struct: lookupStructMember(expr, obj.as_struct, expr.member.id); break;
-			case AstType.decl_enum: lookupEnumMember(expr, obj.as_enum, expr.member.id); break;
-			case AstType.type_basic: lookupBasicMember(expr, obj.as_basic, expr.member.id); break;
-			default:
-				context.unrecoverable_error(expr.loc, "Cannot resolve `%s` for %s", context.idString(expr.member.id), obj.astType);
-				expr.type = context.basicTypeNodes(BasicType.t_error);
-				return;
-		}
-	}
-
-	LookupResult lookupEnumMember(MemberExprNode* expr, EnumDeclaration* enumDecl, Identifier id)
-	{
-		context.assertf(!enumDecl.isAnonymous, expr.loc,
-			"Trying to get member from anonymous enum defined at %s",
-			context.tokenLoc(enumDecl.loc));
-
-		AstNode* memberNode = enumDecl._scope.symbols.get(id, null);
-		if (memberNode is null)
-		{
-			context.error(expr.loc, "Enum `%s` has no member `%s`",
-				context.idString(enumDecl.id), context.idString(id));
-			return LookupResult.failure;
-		}
-
-		context.assertf(memberNode.astType == AstType.decl_enum_member, expr.loc,
-			"Unexpected enum member %s", memberNode.astType);
-
-		expr.member.resolve = memberNode;
-
-		EnumMemberDecl* enumMember = memberNode.cast_decl_enum_member;
-		expr.type = enumMember.type;
-		expr.memberIndex = enumMember.scopeIndex;
-		expr.astType = AstType.expr_enum_member;
-		return LookupResult.success;
-	}
-
-	LookupResult lookupBasicMember(MemberExprNode* expr, BasicTypeNode* basicType, Identifier id)
-	{
-		if (basicType.isInteger)
-		{
-			if (id == ids.id_min)
-			{
-				expr.memberIndex = BuiltinMemberIndex.MEMBER_MIN;
-				expr.type = basicType.typeNode;
-				return LookupResult.success;
-			}
-			else if (id == ids.id_max)
-			{
-				expr.memberIndex = BuiltinMemberIndex.MEMBER_MAX;
-				expr.type = basicType.typeNode;
-				return LookupResult.success;
-			}
-		}
-
-		context.error(expr.loc, "%s has no `%s` property", basicType.typeNode.printer(context), context.idString(id));
-		return LookupResult.failure;
-	}
-
-	LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id)
-	{
-		expr.astType = AstType.expr_slice_member;
-		// use integer indicies, because slice is a struct
-		if (id == ids.id_ptr)
-		{
-			expr.memberIndex = 1; // ptr
-			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
-			return LookupResult.success;
-		}
-		else if (id == ids.id_length)
-		{
-			expr.memberIndex = 0; // length
-			expr.type = context.basicTypeNodes(BasicType.t_u64);
-			return LookupResult.success;
-		}
-
-		context.error(expr.loc, "Slice `%s` has no member `%s`", sliceType.typeNode.printer(context), context.idString(id));
-		return LookupResult.failure;
-	}
-
-	LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* arrType, Identifier id)
-	{
-		expr.astType = AstType.expr_static_array_member;
-		if (id == ids.id_ptr)
-		{
-			expr.memberIndex = BuiltinMemberIndex.MEMBER_PTR;
-			expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(arrType.loc, arrType.base);
-			return LookupResult.success;
-		}
-		else if (id == ids.id_length)
-		{
-			expr.memberIndex = BuiltinMemberIndex.MEMBER_LENGTH;
-			expr.type = context.basicTypeNodes(BasicType.t_u64);
-			return LookupResult.success;
-		}
-
-		context.error(expr.loc, "Static array `%s` has no member `%s`", arrType.typeNode.printer(context), context.idString(id));
-		return LookupResult.failure;
-	}
-
-	LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl, Identifier id)
-	{
-		AstNode* memberSym = structDecl._scope.symbols.get(id, null);
-		if (!memberSym) {
-			context.error(expr.loc, "Struct `%s` has no member `%s`", structDecl.typeNode.printer(context), context.idString(id));
-			return LookupResult.failure;
-		}
-
-		expr.member.resolve = memberSym;
-		expr.astType = AstType.expr_struct_member;
-
-		switch(memberSym.astType)
-		{
-			case AstType.decl_function:
-				context.internal_error("member functions/UFCS calls are not implemented");
-				assert(false);
-
-			case AstType.decl_var:
-				VariableDeclNode* memberVar = expr.member.varDecl;
-				expr.type = memberVar.type.foldAliases;
-				expr.memberIndex = memberVar.scopeIndex;
-				return LookupResult.success;
-
-			case AstType.decl_struct:
-				context.internal_error("member structs are not implemented");
-				assert(false);
-
-			case AstType.decl_enum:
-				context.internal_error("member enums are not implemented");
-				assert(false);
-
-			case AstType.decl_enum_member:
-				EnumMemberDecl* enumMember = memberSym.cast_decl_enum_member;
-				expr.type = enumMember.type;
-				expr.memberIndex = enumMember.scopeIndex;
-				expr.astType = AstType.expr_enum_member;
-				return LookupResult.success;
-
-			default:
-				context.internal_error("Unexpected struct member %s", memberSym.astType);
-				assert(false);
-		}
-	}
-
-	bool isBool(TypeNode* type)
-	{
-		return
-			type.astType == AstType.type_basic &&
-			type.as_basic.basicType == BasicType.t_bool;
-	}
-
-	/// Returns true if types are equal or were converted to common type. False otherwise
-	bool autoconvToCommonType(ref ExpressionNode* left, ref ExpressionNode* right)
-	{
-		if (left.type.astType == AstType.type_basic && right.type.astType == AstType.type_basic)
-		{
-			BasicTypeNode* leftType = left.type.as_basic;
-			BasicTypeNode* rightType = right.type.as_basic;
-
-			BasicType commonType = commonBasicType[leftType.basicType][rightType.basicType];
-			if (commonType != BasicType.t_error)
-			{
-				TypeNode* type = context.basicTypeNodes(commonType);
-				bool successLeft = autoconvTo(left, type);
-				bool successRight = autoconvTo(right, type);
-				if(successLeft && successRight)
-					return true;
-			}
-		}
-		else if (left.type.isPointer && right.type.isTypeofNull) {
-			right.type = left.type;
-			return true;
-		}
-		else if (left.type.isTypeofNull && right.type.isPointer) {
-			left.type = right.type;
-			return true;
-		}
-		else
-		{
-			// error for user-defined types
-		}
-
-		return false;
-	}
-
-	void autoconvToBool(ref ExpressionNode* expr)
-	{
-		if (expr.type.isError) return;
-		if (!autoconvTo(expr, context.basicTypeNodes(BasicType.t_bool)))
-			context.error(expr.loc, "Cannot implicitly convert `%s` to bool",
-				expr.type.typeName(context));
-	}
-
-	bool isConvertibleTo(TypeNode* fromType, TypeNode* toType)
-	{
-		if (sameType(fromType, toType)) return true;
-
-		if (fromType.astType == AstType.type_basic && toType.astType == AstType.type_basic)
-		{
-			BasicType fromTypeBasic = fromType.as_basic.basicType;
-			BasicType toTypeBasic = toType.as_basic.basicType;
-			bool isRegisterTypeFrom =
-				(fromTypeBasic >= BasicType.t_bool &&
-				fromTypeBasic <= BasicType.t_u64);
-			bool isRegisterTypeTo =
-				(toTypeBasic >= BasicType.t_bool &&
-				toTypeBasic <= BasicType.t_u64);
-			// all integer types, pointers and bool can be converted between
-			// TODO: bool is special (need to have 0 or 1)
-			return isRegisterTypeFrom && isRegisterTypeTo;
-		}
-		if (fromType.astType == AstType.type_ptr && toType.astType == AstType.type_ptr) return true;
-		return false;
-	}
-
-	/// Returns true if conversion was successful. False otherwise
-	bool autoconvTo(ref ExpressionNode* expr, TypeNode* type)
-	{
-		if (sameType(expr.type, type)) return true;
-		string extraError;
-
-		if (expr.type.astType == AstType.type_basic && type.astType == AstType.type_basic)
-		{
-			BasicType fromType = expr.type.as_basic.basicType;
-			BasicType toType = type.as_basic.basicType;
-			bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
-			if (canConvert)
-			{
-				if (expr.astType == AstType.literal_int) {
-					//writefln("int %s %s -> %s", expr.loc, expr.type.printer(context), type.printer(context));
-					expr.type = type;
-				} else {
-					expr = cast(ExpressionNode*) context.appendAst!TypeConvExprNode(expr.loc, type, IrIndex(), expr);
-				}
-				return true;
-			}
-			else if (expr.astType == AstType.literal_int && toType.isInteger) {
-				auto lit = cast(IntLiteralExprNode*) expr;
-				if (lit.isSigned) {
-					if (numSignedBytesForInt(lit.value) <= integerSize(toType)) {
-						expr.type = type;
-						return true;
-					}
-				} else {
-					if (numUnsignedBytesForInt(lit.value) <= integerSize(toType)) {
-						expr.type = type;
-						return true;
-					}
-				}
-
-				context.error(expr.loc, "Cannot auto-convert integer `0x%X` of type %s to `%s`",
-					lit.value,
-					expr.type.printer(context),
-					type.printer(context));
-				return false;
-			}
-		}
-		// auto cast from string literal to c_char*
-		else if (expr.astType == AstType.literal_string)
-		{
-			if (type.astType == AstType.type_ptr &&
-				type.as_ptr.base.astType == AstType.type_basic &&
-				type.as_ptr.base.as_basic.basicType == BasicType.t_u8)
-			{
-				auto memberExpr = context.appendAst!MemberExprNode(expr.loc, type, IrIndex(), expr, null, 1);
-				memberExpr.astType = AstType.expr_slice_member;
-				expr = cast(ExpressionNode*)memberExpr;
-				return true;
-			}
-		}
-		else if (expr.type.isStaticArray && type.isSlice)
-		{
-			if (sameType(expr.type.as_static_array.base, type.as_slice.base))
-			{
-				expr = cast(ExpressionNode*)context.appendAst!UnaryExprNode(
-					expr.loc, type, IrIndex(), UnOp.staticArrayToSlice, expr);
-				return true;
-			}
-		}
-		else if (expr.astType == AstType.literal_null) {
-			if (type.isPointer) {
-				expr.type = type;
-				return true;
-			} else if (type.isSlice) {
-				expr.type = type;
-				return true;
-			}
-		}
-		else
-		{
-			extraError = ". Cannot convert from/to user-defined type";
-		}
-
-		return false;
-	}
-
-	void setResultType(BinaryExprNode* b)
-	{
-		TypeNode* resRype = context.basicTypeNodes(BasicType.t_error);
-		if (b.left.type.isError || b.right.type.isError) return;
-
-		switch(b.op) with(BinOp)
-		{
-			// logic ops. Requires both operands to be bool
-			case LOGIC_AND, LOGIC_OR:
-				autoconvToBool(b.left);
-				autoconvToBool(b.right);
-				resRype = context.basicTypeNodes(BasicType.t_bool);
-				break;
-			// logic ops. Requires both operands to be of the same type
-			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
-				if (b.left.type.isPointer && b.right.type.isPointer)
-				{
-					if (
-						sameType(b.left.type, b.right.type) ||
-						b.left.type.as_ptr.isVoidPtr ||
-						b.right.type.as_ptr.isVoidPtr)
-					{
-						resRype = context.basicTypeNodes(BasicType.t_bool);
-						break;
-					}
-				}
-
-				if (autoconvToCommonType(b.left, b.right))
-					resRype = context.basicTypeNodes(BasicType.t_bool);
-				else
-					context.error(b.left.loc, "Cannot compare `%s` and `%s`",
-						b.left.type.typeName(context),
-						b.right.type.typeName(context));
-				break;
-
-			case MINUS:
-				if (b.left.type.isPointer && b.right.type.isPointer) // handle ptr - ptr
-				{
-					if (sameType(b.left.type, b.right.type))
-					{
-						b.op = BinOp.PTR_DIFF;
-						resRype = context.basicTypeNodes(BasicType.t_i64);
-						break;
-					}
-					else
-					{
-						context.error(b.loc, "cannot subtract pointers to different types: `%s` and `%s`",
-							b.left.type.printer(context), b.right.type.printer(context));
-						break;
-					}
-				} else if (b.left.type.isPointer && b.right.type.isInteger) { // handle ptr - int
-					b.op = BinOp.PTR_PLUS_INT;
-					(cast(IntLiteralExprNode*)b.right).negate(b.loc, *context);
-					resRype = b.left.type;
-					break;
-				}
-				goto case DIV;
-
-			case PLUS:
-				// handle int + ptr and ptr + int
-				if (b.left.type.isPointer && b.right.type.isInteger) {
-					b.op = BinOp.PTR_PLUS_INT;
-					resRype = b.left.type;
-					break;
-				} else if (b.left.type.isInteger && b.right.type.isPointer) {
-					b.op = BinOp.PTR_PLUS_INT;
-					// canonicalize
-					swap(b.left, b.right);
-					resRype = b.left.type;
-					break;
-				}
-
-				goto case DIV;
-
-			// arithmetic op int float
-			case DIV, REMAINDER, MULT, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
-				if (autoconvToCommonType(b.left, b.right))
-					resRype = b.left.type;
-				else
-				{
-					context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
-						b.left.type.typeName(context), binOpStrings[b.op],
-						b.right.type.typeName(context));
-				}
-				break;
-
-			case MINUS_ASSIGN:
-				if (b.left.type.isPointer && b.right.type.isInteger) {
-					b.op = BinOp.PTR_PLUS_INT_ASSIGN;
-					(cast(IntLiteralExprNode*)b.right).negate(b.loc, *context);
-					resRype = b.left.type;
-					break;
-				}
-				goto case BITWISE_AND_ASSIGN;
-
-			case PLUS_ASSIGN:
-				if (b.left.type.isPointer && b.right.type.isInteger) {
-					b.op = BinOp.PTR_PLUS_INT_ASSIGN;
-					resRype = b.left.type;
-					break;
-				}
-				goto case BITWISE_AND_ASSIGN;
-
-			case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN, SHL_ASSIGN, SHR_ASSIGN,
-				ASHR_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
-				bool success = autoconvTo(b.right, b.left.type);
-				if (!success)
-					context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
-						b.left.type.typeName(context), binOpStrings[b.op],
-						b.right.type.typeName(context));
-				break;
-
-			default:
-				context.internal_error(b.loc, "Unimplemented op %s", b.op);
-				assert(false);
-		}
-		b.type = resRype;
-	}
-
-	void calcType(BinaryExprNode* b)
-	{
-		assert(b.left.type, format("left(%s).type: is null", b.left.astType));
-		assert(b.right.type, format("right(%s).type: is null", b.right.astType));
-
-		setResultType(b);
-	}
 
 	void visit(ModuleDeclNode* m) {
-		ids = collectIdentifiers(context);
 		foreach (decl; m.declarations) _visit(decl);
 	}
 	void visit(ImportDeclNode* i) {}
@@ -532,7 +357,7 @@ struct PassTypeCheck
 
 		if (v.initializer) {
 			_visit(v.initializer);
-			autoconvTo(v.initializer, type);
+			autoconvTo(v.initializer, type, context);
 		}
 
 		if (!v.isParameter)
@@ -561,7 +386,7 @@ struct PassTypeCheck
 			}
 
 			_visit(m.initializer);
-			autoconvTo(m.initializer, m.type);
+			autoconvTo(m.initializer, m.type, context);
 		}
 	}
 	void visit(BlockStmtNode* b) {
@@ -569,7 +394,7 @@ struct PassTypeCheck
 	}
 	void visit(IfStmtNode* i) {
 		_visit(i.condition);
-		autoconvToBool(i.condition);
+		autoconvToBool(i.condition, context);
 		_visit(i.thenStatement);
 		if (i.elseStatement) {
 			_visit(i.elseStatement);
@@ -577,19 +402,19 @@ struct PassTypeCheck
 	}
 	void visit(WhileStmtNode* w) {
 		_visit(w.condition);
-		autoconvToBool(w.condition);
+		autoconvToBool(w.condition, context);
 		_visit(w.statement);
 	}
 	void visit(DoWhileStmtNode* d) {
 		_visit(d.statement);
 		_visit(d.condition);
-		autoconvToBool(d.condition);
+		autoconvToBool(d.condition, context);
 	}
 	void visit(ForStmtNode* n) {
 		foreach(stmt; n.init_statements) _visit(stmt);
 		if (n.condition) {
 			_visit(n.condition);
-			autoconvToBool(n.condition);
+			autoconvToBool(n.condition, context);
 		}
 		foreach(stmt; n.increment_statements) _visit(stmt);
 		_visit(n.statement);
@@ -614,7 +439,7 @@ struct PassTypeCheck
 			}
 			else
 			{
-				autoconvTo(r.expression, curFunc.returnType);
+				autoconvTo(r.expression, curFunc.returnType, context);
 			}
 		}
 		else
@@ -634,7 +459,7 @@ struct PassTypeCheck
 	}
 	void visit(MemberExprNode* m) {
 		_visit(m.aggregate);
-		lookupMember(m);
+		lookupMember(m, context);
 	}
 	void visit(IntLiteralExprNode* c) {
 		if (c.isSigned)
@@ -654,7 +479,7 @@ struct PassTypeCheck
 	void visit(BinaryExprNode* b) {
 		_visit(b.left);
 		_visit(b.right);
-		calcType(b);
+		calcType(b, context);
 	}
 	void visit(UnaryExprNode* u) {
 		_visit(u.child);
@@ -679,7 +504,7 @@ struct PassTypeCheck
 				u.type = u.child.type;
 				break;
 			case logicalNot:
-				autoconvToBool(u.child);
+				autoconvToBool(u.child, context);
 				u.type = context.basicTypeNodes(BasicType.t_bool);
 				break;
 			case minus:
@@ -736,7 +561,7 @@ struct PassTypeCheck
 		foreach (i, ref ExpressionNode* arg; c.args)
 		{
 			_visit(arg);
-			bool success = autoconvTo(arg, params[i].type);
+			bool success = autoconvTo(arg, params[i].type, context);
 			if (!success)
 				context.error(arg.loc,
 					"Argument %s, must have type %s, not %s", i+1,
@@ -754,7 +579,7 @@ struct PassTypeCheck
 			ExpressionNode* initializer;
 			if (c.args.length > numStructMembers) { // init from constructor argument
 				_visit(c.args[numStructMembers]);
-				autoconvTo(c.args[numStructMembers], member.cast_decl_var.type.foldAliases);
+				autoconvTo(c.args[numStructMembers], member.cast_decl_var.type.foldAliases, context);
 			} else { // init with initializer from struct definition
 				context.internal_error(c.loc, "Not implemented");
 			}
@@ -765,7 +590,7 @@ struct PassTypeCheck
 	void visit(IndexExprNode* i) {
 		_visit(i.array);
 		_visit(i.index);
-		autoconvTo(i.index, context.basicTypeNodes(BasicType.t_i64));
+		autoconvTo(i.index, context.basicTypeNodes(BasicType.t_i64), context);
 		switch (i.array.type.astType) with(AstType)
 		{
 			case type_ptr, type_static_array, type_slice: break; // valid
@@ -775,7 +600,7 @@ struct PassTypeCheck
 	}
 	void visit(TypeConvExprNode* t) {
 		_visit(t.expr);
-		if (!isConvertibleTo(t.expr.type, t.type))
+		if (!isConvertibleTo(t.expr.type, t.type, context))
 		{
 			context.error(t.loc,
 				"Cannot auto-convert expression of type `%s` to `%s`",

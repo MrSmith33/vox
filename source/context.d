@@ -184,6 +184,7 @@ struct CompilationContext
 
 	PtrTypeNode* u8Ptr;
 	SliceTypeNode* u8Slice;
+	CommonIdentifiers commonIds;
 
 	static __gshared BasicTypeNode[] basicTypes = [
 		basicTypeNode(0, 0, 0, BasicType.t_error),
@@ -208,6 +209,11 @@ struct CompilationContext
 	];
 
 	TypeNode* basicTypeNodes(BasicType basicType) { return cast(TypeNode*)&basicTypes[basicType]; }
+
+	void initialize()
+	{
+		commonIds = collectIdentifiers(&this);
+	}
 
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
