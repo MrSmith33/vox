@@ -15,8 +15,8 @@ NameUseExprNode* cast_expr_name_use(AstNode* t) {
 	}
 }
 
-mixin template ExpressionNodeData(AstType _astType, int default_flags = 0) {
-	mixin AstNodeData!(_astType, default_flags | AstFlags.isExpression);
+mixin template ExpressionNodeData(AstType _astType, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse) {
+	mixin AstNodeData!(_astType, default_flags | AstFlags.isExpression, _init_state);
 	TypeNode* type;
 	// can be stack slot, global, variable, virtualRegister, constant, constantAggregate
 	IrIndex irValue;
@@ -75,7 +75,7 @@ struct NameUseExprNode {
 }
 
 struct IntLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral);
+	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral, AstNodeState.name_resolve);
 	ulong value;
 	bool isNegative() { return cast(bool)(flags & AstFlags.user1); }
 	IsSigned isSigned() { return cast(IsSigned)isNegative; }
@@ -96,16 +96,16 @@ struct IntLiteralExprNode {
 }
 
 struct NullLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_null, AstFlags.isLiteral);
+	mixin ExpressionNodeData!(AstType.literal_null, AstFlags.isLiteral, AstNodeState.name_resolve);
 }
 
 struct BoolLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_bool, AstFlags.isLiteral);
+	mixin ExpressionNodeData!(AstType.literal_bool, AstFlags.isLiteral, AstNodeState.name_resolve);
 	bool value;
 }
 
 struct StringLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral);
+	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral, AstNodeState.name_resolve);
 	string value;
 }
 
@@ -196,7 +196,7 @@ enum BinOp BIN_OP_ARITH_LAST = BinOp.MULT;
 //enum BinOp BIN_OP_ARITH_EQUALS_LAST = BinOp.XOR_EQUAL;
 
 struct BinaryExprNode {
-	mixin ExpressionNodeData!(AstType.expr_bin_op);
+	mixin ExpressionNodeData!(AstType.expr_bin_op, 0, AstNodeState.name_reg);
 	BinOp op;
 	ExpressionNode* left;
 	ExpressionNode* right;

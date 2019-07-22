@@ -45,11 +45,11 @@ struct ReturnStmtNode {
 }
 
 struct BreakStmtNode {
-	mixin AstNodeData!(AstType.stmt_break, AstFlags.isStatement);
+	mixin AstNodeData!(AstType.stmt_break, AstFlags.isStatement, AstNodeState.name_resolve);
 }
 
 struct ContinueStmtNode {
-	mixin AstNodeData!(AstType.stmt_continue, AstFlags.isStatement);
+	mixin AstNodeData!(AstType.stmt_continue, AstFlags.isStatement, AstNodeState.name_resolve);
 }
 
 struct BlockStmtNode {

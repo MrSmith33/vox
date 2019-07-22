@@ -95,6 +95,7 @@ enum AstFlags
 	user2         = 1 << 14,
 }
 
+/// Invariant: child.state >= parent.state
 enum AstNodeState : ubyte
 {
 	// initial state
@@ -109,7 +110,7 @@ enum AstNodeState : ubyte
 	ir_gen
 }
 
-mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0)
+mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse)
 {
 	this(Args...)(TokenIndex loc, Args args) {
 		this(loc);
@@ -126,9 +127,9 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	}
 
 	TokenIndex loc;
-	ushort flags;
 	AstType astType = _astType;
-	AstNodeState state;
+	AstNodeState state = _init_state;
+	ushort flags = cast(ushort)default_flags;
 
 	AstNode* as_node() {
 		return cast(AstNode*)&this;

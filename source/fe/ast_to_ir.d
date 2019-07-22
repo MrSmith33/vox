@@ -119,12 +119,6 @@ struct AstToIr
 	CompilationContext* context;
 	ModuleDeclNode* mod;
 
-	Identifier tempId;
-	Identifier startId;
-	Identifier thenId;
-	Identifier elseId;
-	Identifier blkId;
-
 	enum IrArgSize SIZET_SIZE = IrArgSize.size64;
 
 	IrBuilder builder;
@@ -142,12 +136,6 @@ struct AstToIr
 		mod = m;
 
 		version(IrGenPrint) writeln("[IR GEN] module begin");
-
-		tempId = context.idMap.getOrRegNoDup("__tmp");
-		startId = context.idMap.getOrRegNoDup("start");
-		thenId = context.idMap.getOrRegNoDup("then");
-		elseId = context.idMap.getOrRegNoDup("else");
-		blkId = context.idMap.getOrRegNoDup("blk");
 
 		foreach (decl; m.declarations)
 		{

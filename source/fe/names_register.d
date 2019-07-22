@@ -72,6 +72,7 @@ struct PassNamesRegister
 		currentScope.imports.put(context.arrayArena, m);
 		if (m is null)
 			context.error(i.loc, "Cannot find module `%s`", context.idString(i.id));
+		i.state = AstNodeState.name_resolve;
 	}
 	void visit(FunctionDeclNode* f) {
 		mod.addFunction(context.arrayArena, f);

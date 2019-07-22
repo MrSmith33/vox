@@ -3,6 +3,10 @@ Copyright: Copyright (c) 2017-2019 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
+
+/// Resolve all symbol references (variable/type/function/enum name uses)
+/// using information collected on previous pass
+
 module fe.names_resolve;
 
 import std.stdio;
@@ -11,9 +15,84 @@ import all;
 
 void pass_names_resolve(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
-	auto sem2 = PassNamesResolve(&ctx);
+	auto state = AstWalkState(&ctx);
+
 	foreach (ref SourceFileInfo file; ctx.files.data) {
-		sem2.visit(file.mod);
+		require_name_resolve(file.mod.as_node, state);
+	}
+}
+
+struct AstWalkState
+{
+	CompilationContext* context;
+	Scope* curScope;
+
+	void pushScope(Scope* scope_)
+	{
+		assert(scope_);
+		curScope = scope_;
+	}
+
+	void popScope()
+	{
+		assert(curScope);
+		curScope = curScope.parentScope;
+	}
+}
+
+void require_name_resolve(TypeNode* node, ref AstWalkState state) {
+	require_name_resolve(node.as_node, state);
+}
+
+void require_name_resolve(ExpressionNode* node, ref AstWalkState state) {
+	require_name_resolve(node.as_node, state);
+}
+
+void require_name_resolve(AstNode* node, ref AstWalkState state)
+{
+	if (node.state >= AstNodeState.name_resolve) return;
+
+	final switch(node.astType) with(AstType)
+	{
+		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
+		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
+
+		case decl_module: name_resolve_module(cast(ModuleDeclNode*)node, state); break;
+		case decl_import: assert(false);
+		case decl_function: name_resolve_func(cast(FunctionDeclNode*)node, state); break;
+		case decl_var: name_resolve_var(cast(VariableDeclNode*)node, state); break;
+		case decl_struct: name_resolve_struct(cast(StructDeclNode*)node, state); break;
+		case decl_enum: name_resolve_enum(cast(EnumDeclaration*)node, state); break;
+		case decl_enum_member: name_resolve_enum_member(cast(EnumMemberDecl*)node, state); break;
+
+		case stmt_block: name_resolve_block(cast(BlockStmtNode*)node, state); break;
+		case stmt_if: name_resolve_if(cast(IfStmtNode*)node, state); break;
+		case stmt_while: name_resolve_while(cast(WhileStmtNode*)node, state); break;
+		case stmt_do_while: name_resolve_do(cast(DoWhileStmtNode*)node, state); break;
+		case stmt_for: name_resolve_for(cast(ForStmtNode*)node, state); break;
+		case stmt_return: name_resolve_return(cast(ReturnStmtNode*)node, state); break;
+		case stmt_break: assert(false);
+		case stmt_continue: assert(false);
+
+		case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
+			name_resolve_name_use(cast(NameUseExprNode*)node, state); break;
+		case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
+			name_resolve_member(cast(MemberExprNode*)node, state); break;
+		case expr_bin_op: name_resolve_binary_op(cast(BinaryExprNode*)node, state); break;
+		case expr_un_op: name_resolve_unary_op(cast(UnaryExprNode*)node, state); break;
+		case expr_call: name_resolve_call(cast(CallExprNode*)node, state); break;
+		case expr_index: name_resolve_index(cast(IndexExprNode*)node, state); break;
+		case expr_type_conv: name_resolve_type_conv(cast(TypeConvExprNode*)node, state); break;
+
+		case literal_int: assert(false);
+		case literal_string: assert(false);
+		case literal_null: assert(false);
+		case literal_bool: assert(false);
+
+		case type_basic: assert(false);
+		case type_ptr: name_resolve_ptr(cast(PtrTypeNode*)node, state); break;
+		case type_static_array: name_resolve_static_array(cast(StaticArrayTypeNode*)node, state); break;
+		case type_slice: name_resolve_slice(cast(SliceTypeNode*)node, state); break;
 	}
 }
 
@@ -276,154 +355,176 @@ LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl
 	}
 }
 
-/// Resolves all symbol references (variable/type/function uses)
-/// using information collected on previous pass
-struct PassNamesResolve
-{
-	mixin AstVisitorMixin;
+void name_resolve_module(ModuleDeclNode* node, ref AstWalkState state) {
+	state.pushScope(node._scope);
+	foreach (decl; node.declarations) require_name_resolve(decl, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve;
+}
 
-	CompilationContext* context;
+void name_resolve_func(FunctionDeclNode* node, ref AstWalkState state) {
+	state.pushScope(node._scope);
+	require_name_resolve(node.returnType, state);
+	foreach (param; node.parameters) require_name_resolve(param.as_node, state);
+	if (node.block_stmt) require_name_resolve(node.block_stmt.as_node, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve;
+}
 
-	Scope* curScope;
+void name_resolve_var(VariableDeclNode* node, ref AstWalkState state) {
+	require_name_resolve(node.type, state);
+	if (node.initializer) require_name_resolve(node.initializer, state);
+	node.state = AstNodeState.name_resolve;
+}
 
-	void pushCompleteScope(Scope* newScope)
+void name_resolve_struct(StructDeclNode* node, ref AstWalkState state) {
+	state.pushScope(node._scope);
+	foreach (decl; node.declarations) require_name_resolve(decl, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_enum(EnumDeclaration* node, ref AstWalkState state) {
+	if (node.isAnonymous)
 	{
-		curScope = newScope;
+		foreach (decl; node.declarations) require_name_resolve(decl, state);
 	}
-
-	void popScope()
+	else
 	{
-		assert(curScope);
+		state.pushScope(node._scope);
+		foreach (decl; node.declarations) require_name_resolve(decl, state);
+		state.popScope;
+	}
+	node.state = AstNodeState.name_resolve;
+}
 
-		if (curScope.parentScope)
-			curScope = curScope.parentScope;
-		else
-			curScope = null;
-	}
+void name_resolve_enum_member(EnumMemberDecl* node, ref AstWalkState state) {
+	require_name_resolve(node.type, state);
+	if (node.initializer) require_name_resolve(node.initializer, state);
+	node.state = AstNodeState.name_resolve;
+}
 
-	void visit(ModuleDeclNode* m) {
-		pushCompleteScope(m._scope);
-		foreach (decl; m.declarations) _visit(decl);
-		popScope;
+void name_resolve_block(BlockStmtNode* node, ref AstWalkState state) {
+	state.pushScope(node._scope);
+	foreach(stmt; node.statements) require_name_resolve(stmt, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_if(IfStmtNode* node, ref AstWalkState state) {
+	require_name_resolve(node.condition, state);
+	state.pushScope(node.then_scope);
+	require_name_resolve(node.thenStatement, state);
+	state.popScope;
+	if (node.elseStatement) {
+		state.pushScope(node.else_scope);
+		require_name_resolve(node.elseStatement, state);
+		state.popScope;
 	}
-	void visit(ImportDeclNode* i) {}
-	void visit(FunctionDeclNode* f) {
-		pushCompleteScope(f._scope);
-		_visit(f.returnType);
-		foreach (param; f.parameters) visit(param);
-		if (f.block_stmt) visit(f.block_stmt);
-		popScope;
-	}
-	void visit(VariableDeclNode* v) {
-		_visit(v.type);
-		if (v.initializer) _visit(v.initializer);
-	}
-	void visit(StructDeclNode* s) {
-		pushCompleteScope(s._scope);
-		foreach (decl; s.declarations) _visit(decl);
-		popScope;
-	}
-	void visit(EnumDeclaration* e) {
-		if (e.isAnonymous)
-		{
-			foreach (decl; e.declarations) _visit(decl);
-		}
-		else
-		{
-			pushCompleteScope(e._scope);
-			foreach (decl; e.declarations) _visit(decl);
-			popScope;
-		}
-	}
-	void visit(EnumMemberDecl* m) {
-		_visit(m.type);
-		if (m.initializer) _visit(m.initializer);
-	}
-	void visit(BlockStmtNode* b) {
-		pushCompleteScope(b._scope);
-		foreach(stmt; b.statements) _visit(stmt);
-		popScope;
-	}
-	void visit(IfStmtNode* i) {
-		_visit(i.condition);
-		pushCompleteScope(i.then_scope);
-		_visit(i.thenStatement);
-		popScope;
-		if (i.elseStatement) {
-			pushCompleteScope(i.else_scope);
-			_visit(i.elseStatement);
-			popScope;
-		}
-	}
-	void visit(WhileStmtNode* w) {
-		_visit(w.condition);
-		pushCompleteScope(w._scope);
-		_visit(w.statement);
-		popScope;
-	}
-	void visit(DoWhileStmtNode* d) {
-		pushCompleteScope(d._scope);
-		_visit(d.statement);
-		popScope;
-		_visit(d.condition);
-	}
-	void visit(ForStmtNode* n) {
-		pushCompleteScope(n._scope);
-		foreach(stmt; n.init_statements) _visit(stmt);
-		if (n.condition) _visit(n.condition);
-		foreach(stmt; n.increment_statements) _visit(stmt);
-		_visit(n.statement);
-		popScope;
-	}
-	void visit(ReturnStmtNode* r) {
-		if (r.expression) _visit(r.expression);
-	}
-	void visit(BreakStmtNode* r) {}
-	void visit(ContinueStmtNode* r) {}
-	void visit(NameUseExprNode* v) {
-		v.resolve = lookup(curScope, v.id, v.loc, context);
-		if (v.entity !is null)
-		{
-			switch(v.entity.astType) with(AstType) {
-				case decl_function:
-					v.astType = expr_func_name_use; break;
-				case decl_var:
-					v.astType = expr_var_name_use; break;
-				case decl_struct:
-					v.astType = expr_type_name_use; break;
-				case decl_enum_member:
-					v.astType = expr_var_name_use; break;
-				case decl_enum:
-					v.astType = expr_type_name_use; break;
-				case error:
-					v.astType = expr_var_name_use; break;
-				default:
-					context.internal_error("Unknown entity %s", v.entity.astType);
-			}
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_while(WhileStmtNode* node, ref AstWalkState state) {
+	require_name_resolve(node.condition, state);
+	state.pushScope(node._scope);
+	require_name_resolve(node.statement, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_do(DoWhileStmtNode* node, ref AstWalkState state) {
+	state.pushScope(node._scope);
+	require_name_resolve(node.statement, state);
+	state.popScope;
+	require_name_resolve(node.condition, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_for(ForStmtNode* node, ref AstWalkState state) {
+	state.pushScope(node._scope);
+	foreach(stmt; node.init_statements) require_name_resolve(stmt, state);
+	if (node.condition) require_name_resolve(node.condition, state);
+	foreach(stmt; node.increment_statements) require_name_resolve(stmt, state);
+	require_name_resolve(node.statement, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_return(ReturnStmtNode* node, ref AstWalkState state) {
+	if (node.expression) require_name_resolve(node.expression, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_name_use(NameUseExprNode* node, ref AstWalkState state) {
+	node.resolve = lookup(state.curScope, node.id, node.loc, state.context);
+	if (node.entity !is null)
+	{
+		switch(node.entity.astType) with(AstType) {
+			case decl_function:
+				node.astType = expr_func_name_use; break;
+			case decl_var:
+				node.astType = expr_var_name_use; break;
+			case decl_struct:
+				node.astType = expr_type_name_use; break;
+			case decl_enum_member:
+				node.astType = expr_var_name_use; break;
+			case decl_enum:
+				node.astType = expr_type_name_use; break;
+			case error:
+				node.astType = expr_var_name_use; break;
+			default:
+				state.context.internal_error("Unknown entity %s", node.entity.astType);
 		}
 	}
-	void visit(MemberExprNode* m) {
-		_visit(m.aggregate);
-	}
-	void visit(IntLiteralExprNode* c) {}
-	void visit(StringLiteralExprNode* c) {}
-	void visit(NullLiteralExprNode* c) {}
-	void visit(BoolLiteralExprNode* c) {}
-	void visit(BinaryExprNode* b) {
-		_visit(b.left);
-		_visit(b.right);
-	}
-	void visit(UnaryExprNode* u) { _visit(u.child); }
-	void visit(CallExprNode* c) {
-		_visit(c.callee);
-		foreach (arg; c.args) _visit(arg); }
-	void visit(IndexExprNode* i) {
-		_visit(i.array);
-		_visit(i.index);
-	}
-	void visit(TypeConvExprNode* t) { _visit(t.type); _visit(t.expr); }
-	void visit(BasicTypeNode* t) {}
-	void visit(PtrTypeNode* t) { _visit(t.base); }
-	void visit(StaticArrayTypeNode* t) { _visit(t.base); }
-	void visit(SliceTypeNode* t) { _visit(t.base); }
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_member(MemberExprNode* node, ref AstWalkState state) {
+	// name resolution is done in type check pass
+	require_name_resolve(node.aggregate, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_binary_op(BinaryExprNode* node, ref AstWalkState state) {
+	require_name_resolve(node.left, state);
+	require_name_resolve(node.right, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_unary_op(UnaryExprNode* node, ref AstWalkState state) {
+	require_name_resolve(node.child, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_call(CallExprNode* node, ref AstWalkState state) {
+	require_name_resolve(node.callee, state);
+	foreach (arg; node.args) require_name_resolve(arg, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_index(IndexExprNode* node, ref AstWalkState state) {
+	require_name_resolve(node.array, state);
+	require_name_resolve(node.index, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_type_conv(TypeConvExprNode* node, ref AstWalkState state) {
+	require_name_resolve(node.type, state);
+	require_name_resolve(node.expr, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_ptr(PtrTypeNode* node, ref AstWalkState state) {
+	require_name_resolve(node.base, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_static_array(StaticArrayTypeNode* node, ref AstWalkState state) {
+	require_name_resolve(node.base, state);
+	node.state = AstNodeState.name_resolve;
+}
+
+void name_resolve_slice(SliceTypeNode* node, ref AstWalkState state) {
+	require_name_resolve(node.base, state);
+	node.state = AstNodeState.name_resolve;
 }
