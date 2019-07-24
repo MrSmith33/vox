@@ -9,10 +9,9 @@ import std.stdio;
 
 import all;
 
-public import fe.ast.declaration;
-public import fe.ast.decl.scope_;
+public import fe.ast.decl;
 public import fe.ast.dump;
-public import fe.ast.expression;
+public import fe.ast.expr;
 public import fe.ast.lexer;
 public import fe.ast.parser;
 public import fe.ast.statement;
