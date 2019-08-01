@@ -32,6 +32,14 @@
 - inline instructions in IR for representing memory operands in x86 LIR
 
 - function call without parentesis
+- foreach
+	- over slice
+	- over static array
+	- over numeric range a..b
+	- over D style range
+- ref 
+	- ref parameters
+	- ref in foreach
 - empty string
 
 - multi-indexing operator x[1, 2, 3]

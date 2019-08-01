@@ -14,7 +14,7 @@ public import fe.ast.dump;
 public import fe.ast.expr;
 public import fe.ast.lexer;
 public import fe.ast.parser;
-public import fe.ast.statement;
+public import fe.ast.stmt;
 public import fe.ast.type;
 public import fe.ast.visitor;
 
