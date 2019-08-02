@@ -11,3 +11,10 @@ struct IndexExprNode {
 	ExpressionNode* array;
 	ExpressionNode* index;
 }
+
+void name_resolve_index(IndexExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.array.as_node, state);
+	require_name_resolve(node.index.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}

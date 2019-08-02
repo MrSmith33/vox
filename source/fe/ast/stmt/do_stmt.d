@@ -12,3 +12,21 @@ struct DoWhileStmtNode {
 	AstNode* statement;
 	Scope* _scope;
 }
+
+void name_register_do(DoWhileStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	node._scope = state.pushScope("While", Yes.ordered);
+	require_name_register(node.statement, state);
+	state.popScope;
+	require_name_register(node.condition.as_node, state);
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_do(DoWhileStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	state.pushScope(node._scope);
+	require_name_resolve(node.statement, state);
+	state.popScope;
+	require_name_resolve(node.condition.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}

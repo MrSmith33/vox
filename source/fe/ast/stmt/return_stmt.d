@@ -10,3 +10,9 @@ struct ReturnStmtNode {
 	mixin AstNodeData!(AstType.stmt_return, AstFlags.isStatement, AstNodeState.name_register_done);
 	ExpressionNode* expression; // Nullable
 }
+
+void name_resolve_return(ReturnStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	if (node.expression) require_name_resolve(node.expression.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}

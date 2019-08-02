@@ -387,6 +387,12 @@ struct PtrTypeNode {
 	bool isVoidPtr() { return base.isVoid; }
 }
 
+void name_resolve_ptr(PtrTypeNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.base.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}
+
 bool sameType(PtrTypeNode* t1, PtrTypeNode* t2)
 {
 	return sameType(t1.base, t2.base);
@@ -402,6 +408,12 @@ struct StaticArrayTypeNode {
 	uint alignment() { return base.alignment; }
 }
 
+void name_resolve_static_array(StaticArrayTypeNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.base.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}
+
 bool sameType(StaticArrayTypeNode* t1, StaticArrayTypeNode* t2)
 {
 	return sameType(t1.base, t2.base) && (t1.length == t2.length);
@@ -415,6 +427,12 @@ struct SliceTypeNode {
 
 	uint size() { return POINTER_SIZE * 2; }
 	uint alignment() { return POINTER_SIZE; }
+}
+
+void name_resolve_slice(SliceTypeNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.base.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
 }
 
 bool sameType(SliceTypeNode* t1, SliceTypeNode* t2)

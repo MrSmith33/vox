@@ -64,3 +64,23 @@ struct FunctionDeclNode {
 	bool isExternal() { return block_stmt is null; }
 	ref Identifier id() { return backendData.name; }
 }
+
+void name_register_func(FunctionDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	state.insert(node.id, node.as_node);
+	node._scope = state.pushScope(state.context.idString(node.id), Yes.ordered);
+	foreach (param; node.parameters) require_name_register(param.as_node, state);
+	if (node.block_stmt) require_name_register(node.block_stmt.as_node, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_func(FunctionDeclNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	state.pushScope(node._scope);
+	require_name_resolve(node.returnType.as_node, state);
+	foreach (param; node.parameters) require_name_resolve(param.as_node, state);
+	if (node.block_stmt) require_name_resolve(node.block_stmt.as_node, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve_done;
+}

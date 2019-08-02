@@ -14,3 +14,25 @@ struct ForStmtNode {
 	AstNode* statement;
 	Scope* _scope;
 }
+
+void name_register_for(ForStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	node._scope = state.pushScope("For", Yes.ordered);
+	foreach(stmt; node.init_statements) require_name_register(stmt, state);
+	if (node.condition) require_name_register(node.condition.as_node, state);
+	foreach(stmt; node.increment_statements) require_name_register(stmt, state);
+	require_name_register(node.statement, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_for(ForStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	state.pushScope(node._scope);
+	foreach(stmt; node.init_statements) require_name_resolve(stmt, state);
+	if (node.condition) require_name_resolve(node.condition.as_node, state);
+	foreach(stmt; node.increment_statements) require_name_resolve(stmt, state);
+	require_name_resolve(node.statement, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve_done;
+}

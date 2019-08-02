@@ -13,3 +13,10 @@ struct MemberExprNode {
 	NameUseExprNode* member; // member name
 	uint memberIndex; // resolved index of member being accessed
 }
+
+void name_resolve_member(MemberExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	// name resolution is done in type check pass
+	require_name_resolve(node.aggregate.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}

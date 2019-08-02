@@ -40,3 +40,18 @@ struct ModuleDeclNode {
 		return sym.cast_decl_function;
 	}
 }
+
+void name_register_module(ModuleDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	node._scope = state.pushScope("Module", No.ordered);
+	foreach (decl; node.declarations) require_name_register(decl, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_module(ModuleDeclNode* node, ref NameResolveState state) {
+	state.pushScope(node._scope);
+	foreach (decl; node.declarations) require_name_resolve(decl, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve_done;
+}

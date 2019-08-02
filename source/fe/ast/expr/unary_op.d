@@ -12,6 +12,12 @@ struct UnaryExprNode {
 	ExpressionNode* child;
 }
 
+void name_resolve_unary_op(UnaryExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.child.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}
+
 enum UnOp : ubyte {
 	plus, // +
 	minus, // -

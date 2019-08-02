@@ -43,3 +43,28 @@ struct NameUseExprNode {
 	alias enumDecl = get!(EnumDeclaration, AstType.decl_enum);
 	alias enumMember = get!(EnumMemberDecl, AstType.decl_enum_member);
 }
+
+void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	node.resolve = lookup(state.curScope, node.id, node.loc, state.context);
+	if (node.entity !is null)
+	{
+		switch(node.entity.astType) with(AstType) {
+			case decl_function:
+				node.astType = expr_func_name_use; break;
+			case decl_var:
+				node.astType = expr_var_name_use; break;
+			case decl_struct:
+				node.astType = expr_type_name_use; break;
+			case decl_enum_member:
+				node.astType = expr_var_name_use; break;
+			case decl_enum:
+				node.astType = expr_type_name_use; break;
+			case error:
+				node.astType = expr_var_name_use; break;
+			default:
+				state.context.internal_error("Unknown entity %s", node.entity.astType);
+		}
+	}
+	node.state = AstNodeState.name_resolve_done;
+}

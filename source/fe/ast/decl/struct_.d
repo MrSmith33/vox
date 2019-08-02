@@ -26,3 +26,20 @@ struct StructDeclNode {
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	bool isOpaque() { return cast(bool)(flags & AstFlags.user1); }
 }
+
+void name_register_struct(StructDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	state.insert(node.id, node.as_node);
+	node._scope = state.pushScope(state.context.idString(node.id), No.ordered);
+	foreach (decl; node.declarations) require_name_register(decl, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_struct(StructDeclNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	state.pushScope(node._scope);
+	foreach (decl; node.declarations) require_name_resolve(decl, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve_done;
+}

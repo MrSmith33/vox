@@ -10,3 +10,10 @@ struct CallExprNode {
 	ExpressionNode* callee;
 	Array!(ExpressionNode*) args;
 }
+
+void name_resolve_call(CallExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.callee.as_node, state);
+	foreach (arg; node.args) require_name_resolve(arg.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}

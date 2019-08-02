@@ -14,3 +14,31 @@ struct IfStmtNode {
 	Scope* then_scope;
 	Scope* else_scope;
 }
+
+void name_register_if(IfStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	require_name_register(node.condition.as_node, state);
+	node.then_scope = state.pushScope("Then", Yes.ordered);
+	require_name_register(node.thenStatement, state);
+	state.popScope;
+	if (node.elseStatement) {
+		node.else_scope = state.pushScope("Else", Yes.ordered);
+		require_name_register(node.elseStatement, state);
+		state.popScope;
+	}
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_if(IfStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.condition.as_node, state);
+	state.pushScope(node.then_scope);
+	require_name_resolve(node.thenStatement, state);
+	state.popScope;
+	if (node.elseStatement) {
+		state.pushScope(node.else_scope);
+		require_name_resolve(node.elseStatement, state);
+		state.popScope;
+	}
+	node.state = AstNodeState.name_resolve_done;
+}

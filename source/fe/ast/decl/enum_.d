@@ -36,6 +36,38 @@ struct EnumDeclaration
 	bool isAnonymous() { return cast(bool)(flags & AstFlags.user1); }
 }
 
+void name_register_enum(EnumDeclaration* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	if (node.isAnonymous)
+	{
+		foreach (decl; node.declarations) require_name_register(decl, state);
+	}
+	else
+	{
+		state.insert(node.id, node.as_node);
+		node._scope = state.pushScope(state.context.idString(node.id), No.ordered);
+		foreach (decl; node.declarations) require_name_register(decl, state);
+		state.popScope;
+	}
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_enum(EnumDeclaration* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	if (node.isAnonymous)
+	{
+		foreach (decl; node.declarations) require_name_resolve(decl, state);
+	}
+	else
+	{
+		state.pushScope(node._scope);
+		foreach (decl; node.declarations) require_name_resolve(decl, state);
+		state.popScope;
+	}
+	node.state = AstNodeState.name_resolve_done;
+}
+
+
 struct EnumMemberDecl
 {
 	mixin AstNodeData!(AstType.decl_enum_member, AstFlags.isDeclaration | AstFlags.isStatement);
@@ -43,4 +75,18 @@ struct EnumMemberDecl
 	ExpressionNode* initializer;
 	Identifier id;
 	ushort scopeIndex;
+}
+
+void name_register_enum_member(EnumMemberDecl* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	state.insert(node.id, node.as_node);
+	if (node.initializer) require_name_register(node.initializer.as_node, state);
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_enum_member(EnumMemberDecl* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.type.as_node, state);
+	if (node.initializer) require_name_resolve(node.initializer.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
 }

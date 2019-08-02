@@ -13,6 +13,13 @@ struct BinaryExprNode {
 	ExpressionNode* right;
 }
 
+void name_resolve_binary_op(BinaryExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.left.as_node, state);
+	require_name_resolve(node.right.as_node, state);
+	node.state = AstNodeState.name_resolve_done;
+}
+
 BinOp binOpAssignToRegularOp(BinOp op) {
 	switch(op) with(BinOp) {
 		case BITWISE_AND_ASSIGN: return BITWISE_AND;

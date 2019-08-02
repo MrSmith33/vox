@@ -12,3 +12,21 @@ struct WhileStmtNode {
 	AstNode* statement;
 	Scope* _scope;
 }
+
+void name_register_while(WhileStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	require_name_register(node.condition.as_node, state);
+	node._scope = state.pushScope("While", Yes.ordered);
+	require_name_register(node.statement, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_resolve_while(WhileStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.condition.as_node, state);
+	state.pushScope(node._scope);
+	require_name_resolve(node.statement, state);
+	state.popScope;
+	node.state = AstNodeState.name_resolve_done;
+}
