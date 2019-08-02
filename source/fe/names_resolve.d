@@ -15,14 +15,14 @@ import all;
 
 void pass_names_resolve(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
-	auto state = AstWalkState(&ctx);
+	auto state = NameResolveState(&ctx);
 
 	foreach (ref SourceFileInfo file; ctx.files.data) {
 		require_name_resolve(file.mod.as_node, state);
 	}
 }
 
-struct AstWalkState
+struct NameResolveState
 {
 	CompilationContext* context;
 	Scope* curScope;
@@ -40,17 +40,17 @@ struct AstWalkState
 	}
 }
 
-void require_name_resolve(TypeNode* node, ref AstWalkState state) {
+void require_name_resolve(TypeNode* node, ref NameResolveState state) {
 	require_name_resolve(node.as_node, state);
 }
 
-void require_name_resolve(ExpressionNode* node, ref AstWalkState state) {
+void require_name_resolve(ExpressionNode* node, ref NameResolveState state) {
 	require_name_resolve(node.as_node, state);
 }
 
-void require_name_resolve(AstNode* node, ref AstWalkState state)
+void require_name_resolve(AstNode* node, ref NameResolveState state)
 {
-	if (node.state >= AstNodeState.name_resolve) return;
+	if (node.state >= AstNodeState.name_resolve_done) return;
 
 	final switch(node.astType) with(AstType)
 	{
@@ -355,36 +355,40 @@ LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl
 	}
 }
 
-void name_resolve_module(ModuleDeclNode* node, ref AstWalkState state) {
+void name_resolve_module(ModuleDeclNode* node, ref NameResolveState state) {
 	state.pushScope(node._scope);
 	foreach (decl; node.declarations) require_name_resolve(decl, state);
 	state.popScope;
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_func(FunctionDeclNode* node, ref AstWalkState state) {
+void name_resolve_func(FunctionDeclNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	state.pushScope(node._scope);
 	require_name_resolve(node.returnType, state);
 	foreach (param; node.parameters) require_name_resolve(param.as_node, state);
 	if (node.block_stmt) require_name_resolve(node.block_stmt.as_node, state);
 	state.popScope;
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_var(VariableDeclNode* node, ref AstWalkState state) {
+void name_resolve_var(VariableDeclNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.type, state);
 	if (node.initializer) require_name_resolve(node.initializer, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_struct(StructDeclNode* node, ref AstWalkState state) {
+void name_resolve_struct(StructDeclNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	state.pushScope(node._scope);
 	foreach (decl; node.declarations) require_name_resolve(decl, state);
 	state.popScope;
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_enum(EnumDeclaration* node, ref AstWalkState state) {
+void name_resolve_enum(EnumDeclaration* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	if (node.isAnonymous)
 	{
 		foreach (decl; node.declarations) require_name_resolve(decl, state);
@@ -395,23 +399,26 @@ void name_resolve_enum(EnumDeclaration* node, ref AstWalkState state) {
 		foreach (decl; node.declarations) require_name_resolve(decl, state);
 		state.popScope;
 	}
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_enum_member(EnumMemberDecl* node, ref AstWalkState state) {
+void name_resolve_enum_member(EnumMemberDecl* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.type, state);
 	if (node.initializer) require_name_resolve(node.initializer, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_block(BlockStmtNode* node, ref AstWalkState state) {
+void name_resolve_block(BlockStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	state.pushScope(node._scope);
 	foreach(stmt; node.statements) require_name_resolve(stmt, state);
 	state.popScope;
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_if(IfStmtNode* node, ref AstWalkState state) {
+void name_resolve_if(IfStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.condition, state);
 	state.pushScope(node.then_scope);
 	require_name_resolve(node.thenStatement, state);
@@ -421,41 +428,46 @@ void name_resolve_if(IfStmtNode* node, ref AstWalkState state) {
 		require_name_resolve(node.elseStatement, state);
 		state.popScope;
 	}
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_while(WhileStmtNode* node, ref AstWalkState state) {
+void name_resolve_while(WhileStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.condition, state);
 	state.pushScope(node._scope);
 	require_name_resolve(node.statement, state);
 	state.popScope;
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_do(DoWhileStmtNode* node, ref AstWalkState state) {
+void name_resolve_do(DoWhileStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	state.pushScope(node._scope);
 	require_name_resolve(node.statement, state);
 	state.popScope;
 	require_name_resolve(node.condition, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_for(ForStmtNode* node, ref AstWalkState state) {
+void name_resolve_for(ForStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	state.pushScope(node._scope);
 	foreach(stmt; node.init_statements) require_name_resolve(stmt, state);
 	if (node.condition) require_name_resolve(node.condition, state);
 	foreach(stmt; node.increment_statements) require_name_resolve(stmt, state);
 	require_name_resolve(node.statement, state);
 	state.popScope;
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_return(ReturnStmtNode* node, ref AstWalkState state) {
+void name_resolve_return(ReturnStmtNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	if (node.expression) require_name_resolve(node.expression, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_name_use(NameUseExprNode* node, ref AstWalkState state) {
+void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	node.resolve = lookup(state.curScope, node.id, node.loc, state.context);
 	if (node.entity !is null)
 	{
@@ -476,55 +488,64 @@ void name_resolve_name_use(NameUseExprNode* node, ref AstWalkState state) {
 				state.context.internal_error("Unknown entity %s", node.entity.astType);
 		}
 	}
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_member(MemberExprNode* node, ref AstWalkState state) {
+void name_resolve_member(MemberExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	// name resolution is done in type check pass
 	require_name_resolve(node.aggregate, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_binary_op(BinaryExprNode* node, ref AstWalkState state) {
+void name_resolve_binary_op(BinaryExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.left, state);
 	require_name_resolve(node.right, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_unary_op(UnaryExprNode* node, ref AstWalkState state) {
+void name_resolve_unary_op(UnaryExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.child, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_call(CallExprNode* node, ref AstWalkState state) {
+void name_resolve_call(CallExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.callee, state);
 	foreach (arg; node.args) require_name_resolve(arg, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_index(IndexExprNode* node, ref AstWalkState state) {
+void name_resolve_index(IndexExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.array, state);
 	require_name_resolve(node.index, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_type_conv(TypeConvExprNode* node, ref AstWalkState state) {
+void name_resolve_type_conv(TypeConvExprNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.type, state);
 	require_name_resolve(node.expr, state);
-	node.state = AstNodeState.name_resolve;
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_ptr(PtrTypeNode* node, ref AstWalkState state) {
-	require_name_resolve(node.base, state);
+void name_resolve_ptr(PtrTypeNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.base, state);
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_static_array(StaticArrayTypeNode* node, ref AstWalkState state) {
-	require_name_resolve(node.base, state);
+void name_resolve_static_array(StaticArrayTypeNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.base, state);
+	node.state = AstNodeState.name_resolve_done;
 }
 
-void name_resolve_slice(SliceTypeNode* node, ref AstWalkState state) {
-	require_name_resolve(node.base, state);
+void name_resolve_slice(SliceTypeNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.base, state);
+	node.state = AstNodeState.name_resolve_done;
 }

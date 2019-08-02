@@ -98,18 +98,22 @@ enum AstFlags
 enum AstNodeState : ubyte
 {
 	// initial state
-	parse,
+	parse_done,
 	// is set after scope gathered all named entities
-	name_reg,
+	name_register,
+	name_register_done,
 	// is set after name uses resolved identifier
 	name_resolve,
+	name_resolve_done,
 	// is set after type checking
 	type_check,
+	type_check_done,
 	// is set after IR representation was created
-	ir_gen
+	ir_gen,
+	ir_gen_done,
 }
 
-mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse)
+mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse_done)
 {
 	this(Args...)(TokenIndex loc, Args args) {
 		this(loc);

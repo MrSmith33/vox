@@ -89,6 +89,7 @@ void pass_parser(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 struct Parser
 {
 	CompilationContext* context;
+	ModuleDeclNode* currentModule;
 	Token tok;
 	SourceLocation loc() {
 		return context.tokenLocationBuffer[tok.index];
@@ -159,6 +160,9 @@ struct Parser
 	// ------------------------------ PARSING ----------------------------------
 
 	void parseModule(ModuleDeclNode* mod, TokenIndex firstTokenIndex) { // <module> ::= <declaration>*
+		currentModule = mod;
+		scope(exit) currentModule = null;
+
 		version(print_parse) auto s1 = scop("parseModule");
 		tok.index = firstTokenIndex;
 		tok.type = context.tokenBuffer[tok.index];
@@ -282,7 +286,9 @@ struct Parser
 			}
 			else expect(TokenType.SEMICOLON); // external function
 
-			return cast(AstNode*)make!FunctionDeclNode(start, type, params, block, declarationId);
+			auto func = make!FunctionDeclNode(start, type, params, block, declarationId);
+			currentModule.addFunction(context.arrayArena, func);
+			return cast(AstNode*)func;
 		}
 		else
 		{

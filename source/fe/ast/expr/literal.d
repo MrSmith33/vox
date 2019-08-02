@@ -6,7 +6,7 @@ module fe.ast.expr.literal;
 import all;
 
 struct IntLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral, AstNodeState.name_resolve);
+	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 	ulong value;
 	bool isNegative() { return cast(bool)(flags & AstFlags.user1); }
 	IsSigned isSigned() { return cast(IsSigned)isNegative; }
@@ -27,15 +27,15 @@ struct IntLiteralExprNode {
 }
 
 struct NullLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_null, AstFlags.isLiteral, AstNodeState.name_resolve);
+	mixin ExpressionNodeData!(AstType.literal_null, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 }
 
 struct BoolLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_bool, AstFlags.isLiteral, AstNodeState.name_resolve);
+	mixin ExpressionNodeData!(AstType.literal_bool, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 	bool value;
 }
 
 struct StringLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral, AstNodeState.name_resolve);
+	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 	string value;
 }

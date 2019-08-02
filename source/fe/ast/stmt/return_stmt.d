@@ -7,6 +7,6 @@ import all;
 
 
 struct ReturnStmtNode {
-	mixin AstNodeData!(AstType.stmt_return, AstFlags.isStatement);
+	mixin AstNodeData!(AstType.stmt_return, AstFlags.isStatement, AstNodeState.name_register_done);
 	ExpressionNode* expression; // Nullable
 }

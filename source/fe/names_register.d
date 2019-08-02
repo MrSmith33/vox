@@ -1,8 +1,8 @@
-/**
-Copyright: Copyright (c) 2017-2019 Andrey Penechko.
-License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
-Authors: Andrey Penechko.
-*/
+/// Copyright: Copyright (c) 2017-2019 Andrey Penechko.
+/// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+/// Authors: Andrey Penechko.
+
+/// Register identifiers in scope tree
 module fe.names_register;
 
 import std.stdio;
@@ -11,22 +11,58 @@ import std.typecons : Flag, Yes, No;
 import all;
 
 
-void pass_names_register(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
+void pass_names_register(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
-	auto sem1 = PassNamesRegister(&ctx);
-	foreach (ref SourceFileInfo file; ctx.files.data) {
-		sem1.visit(file.mod);
+	auto state = NameRegisterState(&context);
+
+	foreach (ref SourceFileInfo file; context.files.data) {
+		require_name_register(file.mod.as_node, state);
 	}
 }
 
-/// Register identifiers in scope tree
-struct PassNamesRegister
-{
-	mixin AstVisitorMixin;
 
+void require_name_register(TypeNode* node, ref NameRegisterState state) {
+	require_name_register(node.as_node, state);
+}
+
+void require_name_register(ExpressionNode* node, ref NameRegisterState state) {
+	require_name_register(node.as_node, state);
+}
+
+void require_name_register(AstNode* node, ref NameRegisterState state)
+{
+	if (node.state >= AstNodeState.name_register_done) return;
+
+	switch(node.astType) with(AstType)
+	{
+		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
+		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
+
+		case decl_module: name_register_module(cast(ModuleDeclNode*)node, state); break;
+		case decl_import: name_register_import(cast(ImportDeclNode*)node, state); break;
+		case decl_function: name_register_func(cast(FunctionDeclNode*)node, state); break;
+		case decl_var: name_register_var(cast(VariableDeclNode*)node, state); break;
+		case decl_struct: name_register_struct(cast(StructDeclNode*)node, state); break;
+		case decl_enum: name_register_enum(cast(EnumDeclaration*)node, state); break;
+		case decl_enum_member: name_register_enum_member(cast(EnumMemberDecl*)node, state); break;
+
+		case stmt_block: name_register_block(cast(BlockStmtNode*)node, state); break;
+		case stmt_if: name_register_if(cast(IfStmtNode*)node, state); break;
+		case stmt_while: name_register_while(cast(WhileStmtNode*)node, state); break;
+		case stmt_do_while: name_register_do(cast(DoWhileStmtNode*)node, state); break;
+		case stmt_for: name_register_for(cast(ForStmtNode*)node, state); break;
+		case stmt_return: assert(false);
+		case stmt_break: assert(false);
+		case stmt_continue: assert(false);
+
+		default: state.context.internal_error(node.loc, "Visiting %s node", node.astType); break;
+	}
+}
+
+struct NameRegisterState
+{
 	CompilationContext* context;
 	Scope* currentScope;
-	ModuleDeclNode* mod;
 
 	Scope* pushScope(string name, Flag!"ordered" isOrdered)
 	{
@@ -60,107 +96,122 @@ struct PassNamesRegister
 		}
 		currentScope.symbols.put(context.arrayArena, id, node);
 	}
+}
 
-	void visit(ModuleDeclNode* m) {
-		mod = m;
-		mod._scope = pushScope("Module", No.ordered);
-		foreach (decl; mod.declarations) _visit(decl);
-		popScope;
+
+void name_register_module(ModuleDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	node._scope = state.pushScope("Module", No.ordered);
+	foreach (decl; node.declarations) require_name_register(decl, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_import(ImportDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	ModuleDeclNode* m = state.context.findModule(node.id);
+	state.currentScope.imports.put(state.context.arrayArena, m);
+	if (m is null)
+		state.context.error(node.loc, "Cannot find module `%s`", state.context.idString(node.id));
+	node.state = AstNodeState.name_resolve_done;
+}
+
+void name_register_func(FunctionDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	state.insert(node.id, node.as_node);
+	node._scope = state.pushScope(state.context.idString(node.id), Yes.ordered);
+	foreach (param; node.parameters) require_name_register(param.as_node, state);
+	if (node.block_stmt) require_name_register(node.block_stmt.as_node, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_var(VariableDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	state.insert(node.id, node.as_node);
+	if (node.initializer) require_name_register(node.initializer, state);
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_struct(StructDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	state.insert(node.id, node.as_node);
+	node._scope = state.pushScope(state.context.idString(node.id), No.ordered);
+	foreach (decl; node.declarations) require_name_register(decl, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_enum(EnumDeclaration* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	if (node.isAnonymous)
+	{
+		foreach (decl; node.declarations) require_name_register(decl, state);
 	}
-	void visit(ImportDeclNode* i) {
-		ModuleDeclNode* m = context.findModule(i.id);
-		currentScope.imports.put(context.arrayArena, m);
-		if (m is null)
-			context.error(i.loc, "Cannot find module `%s`", context.idString(i.id));
-		i.state = AstNodeState.name_resolve;
+	else
+	{
+		state.insert(node.id, node.as_node);
+		node._scope = state.pushScope(state.context.idString(node.id), No.ordered);
+		foreach (decl; node.declarations) require_name_register(decl, state);
+		state.popScope;
 	}
-	void visit(FunctionDeclNode* f) {
-		mod.addFunction(context.arrayArena, f);
-		insert(f.id, cast(AstNode*)f);
-		f._scope = pushScope(context.idString(f.id), Yes.ordered);
-		foreach (param; f.parameters) visit(param);
-		if (f.block_stmt) visit(f.block_stmt);
-		popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_enum_member(EnumMemberDecl* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	state.insert(node.id, node.as_node);
+	if (node.initializer) require_name_register(node.initializer, state);
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_block(BlockStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	node._scope = state.pushScope("Block", Yes.ordered);
+	foreach(stmt; node.statements) require_name_register(stmt, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_if(IfStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	require_name_register(node.condition, state);
+	node.then_scope = state.pushScope("Then", Yes.ordered);
+	require_name_register(node.thenStatement, state);
+	state.popScope;
+	if (node.elseStatement) {
+		node.else_scope = state.pushScope("Else", Yes.ordered);
+		require_name_register(node.elseStatement, state);
+		state.popScope;
 	}
-	void visit(VariableDeclNode* v) {
-		insert(v.id, cast(AstNode*)v);
-		if (v.initializer) _visit(v.initializer);
-	}
-	void visit(StructDeclNode* s) {
-		insert(s.id, cast(AstNode*)s);
-		s._scope = pushScope(context.idString(s.id), No.ordered);
-		foreach (decl; s.declarations) _visit(decl);
-		popScope;
-	}
-	void visit(EnumDeclaration* e) {
-		if (e.isAnonymous)
-		{
-			foreach (decl; e.declarations) _visit(decl);
-		}
-		else
-		{
-			insert(e.id, cast(AstNode*)e);
-			e._scope = pushScope(context.idString(e.id), No.ordered);
-			foreach (decl; e.declarations) _visit(decl);
-			popScope;
-		}
-	}
-	void visit(EnumMemberDecl* m) {
-		insert(m.id, cast(AstNode*)m);
-		if (m.initializer) _visit(m.initializer);
-	}
-	void visit(BlockStmtNode* b) {
-		b._scope = pushScope("Block", Yes.ordered);
-		foreach(stmt; b.statements) _visit(stmt);
-		popScope;
-	}
-	void visit(IfStmtNode* i) {
-		_visit(i.condition);
-		i.then_scope = pushScope("Then", Yes.ordered);
-		_visit(i.thenStatement);
-		popScope;
-		if (i.elseStatement) {
-			i.else_scope = pushScope("Else", Yes.ordered);
-			_visit(i.elseStatement);
-			popScope;
-		}
-	}
-	void visit(WhileStmtNode* w) {
-		_visit(w.condition);
-		w._scope = pushScope("While", Yes.ordered);
-		_visit(w.statement);
-		popScope;
-	}
-	void visit(DoWhileStmtNode* d) {
-		d._scope = pushScope("While", Yes.ordered);
-		_visit(d.statement);
-		popScope;
-		_visit(d.condition);
-	}
-	void visit(ForStmtNode* n) {
-		n._scope = pushScope("For", Yes.ordered);
-		foreach(stmt; n.init_statements) _visit(stmt);
-		if (n.condition) _visit(n.condition);
-		foreach(stmt; n.increment_statements) _visit(stmt);
-		_visit(n.statement);
-		popScope;
-	}
-	void visit(ReturnStmtNode* r) {}
-	void visit(BreakStmtNode* r) {}
-	void visit(ContinueStmtNode* r) {}
-	void visit(NameUseExprNode* v) {}
-	void visit(MemberExprNode* m) {}
-	void visit(IntLiteralExprNode* c) {}
-	void visit(StringLiteralExprNode* c) {}
-	void visit(NullLiteralExprNode* c) {}
-	void visit(BoolLiteralExprNode* c) {}
-	void visit(BinaryExprNode* b) {}
-	void visit(UnaryExprNode* u) {}
-	void visit(CallExprNode* c) {}
-	void visit(IndexExprNode* i) {}
-	void visit(TypeConvExprNode* c) {}
-	void visit(BasicTypeNode* t) {}
-	void visit(PtrTypeNode* t) {}
-	void visit(StaticArrayTypeNode* t) {}
-	void visit(SliceTypeNode* t) {}
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_while(WhileStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	require_name_register(node.condition, state);
+	node._scope = state.pushScope("While", Yes.ordered);
+	require_name_register(node.statement, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_do(DoWhileStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	node._scope = state.pushScope("While", Yes.ordered);
+	require_name_register(node.statement, state);
+	state.popScope;
+	require_name_register(node.condition, state);
+	node.state = AstNodeState.name_register_done;
+}
+
+void name_register_for(ForStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register;
+	node._scope = state.pushScope("For", Yes.ordered);
+	foreach(stmt; node.init_statements) require_name_register(stmt, state);
+	if (node.condition) require_name_register(node.condition, state);
+	foreach(stmt; node.increment_statements) require_name_register(stmt, state);
+	require_name_register(node.statement, state);
+	state.popScope;
+	node.state = AstNodeState.name_register_done;
 }

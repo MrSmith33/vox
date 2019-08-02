@@ -7,5 +7,5 @@ import all;
 
 
 struct BreakStmtNode {
-	mixin AstNodeData!(AstType.stmt_break, AstFlags.isStatement, AstNodeState.name_resolve);
+	mixin AstNodeData!(AstType.stmt_break, AstFlags.isStatement, AstNodeState.name_resolve_done);
 }

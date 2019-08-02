@@ -352,7 +352,7 @@ BasicTypeNode basicTypeNode(uint size, ulong minValue, ulong maxValue, BasicType
 }
 
 struct BasicTypeNode {
-	mixin AstNodeData!(AstType.type_basic, AstFlags.isType, AstNodeState.name_resolve);
+	mixin AstNodeData!(AstType.type_basic, AstFlags.isType, AstNodeState.name_resolve_done);
 	uint size;
 	uint alignment() { return size; }
 	ulong minValue;
