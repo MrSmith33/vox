@@ -78,7 +78,7 @@ void autoconvToBool(ref ExpressionNode* expr, CompilationContext* context)
 
 bool isConvertibleTo(TypeNode* fromType, TypeNode* toType, CompilationContext* context)
 {
-	if (sameType(fromType, toType)) return true;
+	if (same_type(fromType, toType)) return true;
 
 	if (fromType.astType == AstType.type_basic && toType.astType == AstType.type_basic)
 	{
@@ -101,7 +101,7 @@ bool isConvertibleTo(TypeNode* fromType, TypeNode* toType, CompilationContext* c
 /// Returns true if conversion was successful. False otherwise
 bool autoconvTo(ref ExpressionNode* expr, TypeNode* type, CompilationContext* context)
 {
-	if (sameType(expr.type, type)) return true;
+	if (same_type(expr.type, type)) return true;
 	string extraError;
 
 	if (expr.type.astType == AstType.type_basic && type.astType == AstType.type_basic)
@@ -155,7 +155,7 @@ bool autoconvTo(ref ExpressionNode* expr, TypeNode* type, CompilationContext* co
 	}
 	else if (expr.type.isStaticArray && type.isSlice)
 	{
-		if (sameType(expr.type.as_static_array.base, type.as_slice.base))
+		if (same_type(expr.type.as_static_array.base, type.as_slice.base))
 		{
 			expr = cast(ExpressionNode*)context.appendAst!UnaryExprNode(
 				expr.loc, type, IrIndex(), UnOp.staticArrayToSlice, expr);
@@ -197,7 +197,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 			if (b.left.type.isPointer && b.right.type.isPointer)
 			{
 				if (
-					sameType(b.left.type, b.right.type) ||
+					same_type(b.left.type, b.right.type) ||
 					b.left.type.as_ptr.isVoidPtr ||
 					b.right.type.as_ptr.isVoidPtr)
 				{
@@ -217,7 +217,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 		case MINUS:
 			if (b.left.type.isPointer && b.right.type.isPointer) // handle ptr - ptr
 			{
-				if (sameType(b.left.type, b.right.type))
+				if (same_type(b.left.type, b.right.type))
 				{
 					b.op = BinOp.PTR_DIFF;
 					resRype = context.basicTypeNodes(BasicType.t_i64);

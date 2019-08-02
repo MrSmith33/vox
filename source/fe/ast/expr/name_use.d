@@ -46,7 +46,7 @@ struct NameUseExprNode {
 
 void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	node.resolve = lookup(state.curScope, node.id, node.loc, state.context);
+	node.resolve = lookupScopeIdRecursive(state.curScope, node.id, node.loc, state.context);
 	if (node.entity !is null)
 	{
 		switch(node.entity.astType) with(AstType) {

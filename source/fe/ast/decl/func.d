@@ -84,3 +84,27 @@ void name_resolve_func(FunctionDeclNode* node, ref NameResolveState state) {
 	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
 }
+
+IrIndex gen_ir_type_func(FunctionDeclNode* f, CompilationContext* context)
+	out(res; res.isTypeFunction, "Not a function type")
+{
+	if (f.backendData.irType.isDefined) return f.backendData.irType;
+
+	uint numResults = 0;
+	if (!f.returnType.isVoid) numResults = 1;
+
+	f.backendData.irType = context.types.appendFuncSignature(numResults, f.parameters.length);
+	auto funcType = &context.types.get!IrTypeFunction(f.backendData.irType);
+
+	if (numResults == 1) {
+		IrIndex returnType = f.returnType.gen_ir_type(context);
+		funcType.resultTypes[0] = returnType;
+	}
+
+	IrIndex[] parameterTypes = funcType.parameterTypes;
+	foreach(i, VariableDeclNode* parameter; f.parameters) {
+		parameterTypes[i] = parameter.type.gen_ir_type(context);
+	}
+
+	return f.backendData.irType;
+}

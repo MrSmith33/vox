@@ -181,8 +181,8 @@ struct AstToIr
 		f.backendData.irData = ir;
 		ir.backendData = &f.backendData;
 
-		ir.backendData.returnType = f.returnType.genIrType(context);
-		ir.type = f.genIrType(context);
+		ir.backendData.returnType = f.returnType.gen_ir_type(context);
+		ir.type = f.gen_ir_type_func(context);
 		ir.instructionSet = IrInstructionSet.ir;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
@@ -391,7 +391,7 @@ struct AstToIr
 			v.irValue = context.globals.add();
 			IrGlobal* global = &context.globals.get(v.irValue);
 			global.flags |= IrGlobalFlags.isAllZero | IrGlobalFlags.isMutable;
-			IrIndex valueType = varType.genIrType(context);
+			IrIndex valueType = varType.gen_ir_type(context);
 			global.type = context.types.appendPtr(valueType);
 			uint valueSize = context.types.typeSize(valueType);
 			global.length = valueSize;
@@ -411,14 +411,14 @@ struct AstToIr
 		{
 			auto slotKind = v.isParameter ? StackSlotKind.parameter : StackSlotKind.local;
 			// allocate stack slot
-			v.irValue = fun.backendData.stackLayout.addStackItem(context, varType.genIrType(context), slotKind, v.scopeIndex);
+			v.irValue = fun.backendData.stackLayout.addStackItem(context, varType.gen_ir_type(context), slotKind, v.scopeIndex);
 		}
 		else
 		{
 			if (v.isParameter)
 			{
 				// register parameter input
-				IrIndex valueType = varType.genIrType(context);
+				IrIndex valueType = varType.gen_ir_type(context);
 				IrIndex type = valueType;
 				if (varType.isPassByPtr) // value is already passed as a pointer
 				{
@@ -446,7 +446,7 @@ struct AstToIr
 			else
 			{
 				// allocate new variable
-				v.irValue = builder.newIrVarIndex(varType.genIrType(context));
+				v.irValue = builder.newIrVarIndex(varType.gen_ir_type(context));
 			}
 		}
 
@@ -745,7 +745,7 @@ struct AstToIr
 					TypeNode* type = v.varDecl.type.foldAliases;
 					if (v.isArgument && type.isPassByPtr)
 					{
-						IrIndex irType = type.genIrType(context);
+						IrIndex irType = type.gen_ir_type(context);
 						uint size = context.types.typeSize(irType);
 						if (size == 1 || size == 2 || size == 4 || size == 8)
 						{
@@ -872,10 +872,10 @@ struct AstToIr
 			IrGlobal* global = &context.globals.get(c.irValue);
 			global.setInitializer(cast(ubyte[])c.value);
 			global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
-			global.type = context.u8Ptr.genIrType(context);
+			global.type = context.u8Ptr.gen_ir_type_ptr(context);
 			global.moduleSymIndex = mod.objectSymIndex;
 			IrIndex irValueLength = context.constants.add(c.value.length, IsSigned.no, IrArgSize.size64);
-			c.irValue = context.constants.addAggrecateConstant(c.type.genIrType(context), irValueLength, c.irValue);
+			c.irValue = context.constants.addAggrecateConstant(c.type.gen_ir_type(context), irValueLength, c.irValue);
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);
@@ -888,7 +888,7 @@ struct AstToIr
 				c.irValue = context.constants.add(0, IsSigned.no, SIZET_SIZE);
 			} else if (c.type.isSlice) {
 				IrIndex irValue = context.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
-				c.irValue = context.constants.addAggrecateConstant(c.type.genIrType(context), irValue, irValue);
+				c.irValue = context.constants.addAggrecateConstant(c.type.gen_ir_type(context), irValue, irValue);
 			} else context.internal_error(c.loc, "%s", c.type.printer(context));
 		}
 
@@ -1017,7 +1017,7 @@ struct AstToIr
 			{
 				case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op value %s", b.op);
-					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op), type : b.type.genIrType(context), argSize : b.left.type.argSize(context) };
+					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op), type : b.type.gen_ir_type(context), argSize : b.left.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_set_binary_cond(
 						currentBlock, extra, leftValue, rightValue).result;
 					break;
@@ -1030,7 +1030,7 @@ struct AstToIr
 				case PTR_DIFF:
 					assert(b.left.type.isPointer && b.right.type.isPointer);
 
-					ExtraInstrArgs extra = { type : b.type.genIrType(context), argSize : b.left.type.argSize(context) };
+					ExtraInstrArgs extra = { type : b.type.gen_ir_type(context), argSize : b.left.type.argSize(context) };
 					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result;
 
 					// divide by elem size
@@ -1047,7 +1047,7 @@ struct AstToIr
 				case PLUS, MINUS, DIV, REMAINDER, MULT, SHL, SHR, ASHR, XOR, BITWISE_AND, BITWISE_OR:
 					ExtraInstrArgs extra = {
 						opcode : binOpcode(b.op, b.left.type.isUnsigned, b.loc),
-						type : b.type.genIrType(context),
+						type : b.type.gen_ir_type(context),
 						argSize : b.type.argSize(context)
 					};
 					b.irValue = builder.emitInstr!IrInstr_any_binary_instr(
@@ -1241,7 +1241,7 @@ struct AstToIr
 				{
 					ExtraInstrArgs extra = {
 						opcode : binOpcode(b.op, b.left.type.isUnsigned, b.loc),
-						type : b.left.type.genIrType(context),
+						type : b.left.type.gen_ir_type(context),
 						argSize : b.left.type.argSize(context)
 					};
 					b.irValue = builder.emitInstr!IrInstr_any_binary_instr(
@@ -1287,7 +1287,7 @@ struct AstToIr
 				nextBlock = nextLabel.blockIndex;
 				builder.sealBlock(nextBlock);
 
-				IrIndex phiIndex = builder.addPhi(nextBlock, n.type.genIrType(context), IrIndex.init);
+				IrIndex phiIndex = builder.addPhi(nextBlock, n.type.gen_ir_type(context), IrIndex.init);
 				IrIndex trueValue = context.constants.add(1, IsSigned.no, n.type.argSize(context));
 				builder.addPhiArg(phiIndex, trueBlock, trueValue);
 				IrIndex falseValue = context.constants.add(0, IsSigned.no, n.type.argSize(context));
@@ -1328,7 +1328,7 @@ struct AstToIr
 				IrLabel afterChild = IrLabel(currentBlock);
 				visitExprValue(u.child, currentBlock, afterChild);
 				currentBlock = afterChild.blockIndex;
-				ExtraInstrArgs extra = {type : u.type.genIrType(context), argSize : u.type.argSize(context) };
+				ExtraInstrArgs extra = {type : u.type.gen_ir_type(context), argSize : u.type.argSize(context) };
 				u.irValue = builder.emitInstr!IrInstr_not(currentBlock, extra, u.child.irValue).result;
 				break;
 			case logicalNot:
@@ -1340,7 +1340,7 @@ struct AstToIr
 				IrLabel afterChild = IrLabel(currentBlock);
 				visitExprValue(u.child, currentBlock, afterChild);
 				currentBlock = afterChild.blockIndex;
-				ExtraInstrArgs extra = {type : u.type.genIrType(context), argSize : u.type.argSize(context) };
+				ExtraInstrArgs extra = {type : u.type.gen_ir_type(context), argSize : u.type.argSize(context) };
 				u.irValue = builder.emitInstr!IrInstr_neg(currentBlock, extra, u.child.irValue).result;
 				break;
 			case preIncrement, postIncrement, preDecrement, postDecrement:
@@ -1363,7 +1363,7 @@ struct AstToIr
 				IrIndex rval = load(currentBlock, u.child.irValue);
 				ExtraInstrArgs extra = {
 					opcode : opcode,
-					type : u.child.type.genIrType(context),
+					type : u.child.type.gen_ir_type(context),
 					argSize : argSize
 				};
 				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
@@ -1398,7 +1398,7 @@ struct AstToIr
 				IrIndex length = context.constants.add(u.child.type.as_static_array.length, IsSigned.no, IrArgSize.size64);
 
 				// combine into slice {i64, T*}
-				IrIndex resType = u.type.genIrType(context);
+				IrIndex resType = u.type.gen_ir_type(context);
 				ExtraInstrArgs extra = { type : resType };
 				InstrWithResult res = builder.emitInstr!IrInstr_create_aggregate(currentBlock, extra, length, ptr);
 				u.irValue = res.result;
@@ -1461,7 +1461,7 @@ struct AstToIr
 		}
 		else
 		{
-			callee.backendData.returnType = callee.returnType.genIrType(context);
+			callee.backendData.returnType = callee.returnType.gen_ir_type(context);
 
 			ExtraInstrArgs extra = {hasResult : true, type : callee.backendData.returnType};
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, extra, args);
@@ -1477,7 +1477,7 @@ struct AstToIr
 
 	void visitConstructor(CallExprNode* c, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
-		IrIndex structType = s.genIrType(context);
+		IrIndex structType = s.gen_ir_type_struct(context);
 		uint numStructMembers = context.types.get!IrTypeStruct(structType).numMembers;
 		IrIndex[] args = context.allocateTempArray!IrIndex(numStructMembers);
 		scope(exit) context.freeTempArray(args);
@@ -1583,7 +1583,7 @@ struct AstToIr
 		visitExprValue(t.expr, currentBlock, afterExpr);
 		currentBlock = afterExpr.blockIndex;
 
-		IrIndex from = t.expr.type.genIrType(context);
+		IrIndex from = t.expr.type.gen_ir_type(context);
 
 		if (t.expr.irValue.isConstant ||
 			from == makeBasicTypeIndex(IrValueType.i8) ||
@@ -1608,8 +1608,8 @@ struct AstToIr
 		visitExprValue(t.expr, currentBlock, afterExpr);
 		currentBlock = afterExpr.blockIndex;
 
-		IrIndex to = t.type.genIrType(context);
-		IrIndex from = t.expr.type.genIrType(context);
+		IrIndex to = t.type.gen_ir_type(context);
+		IrIndex from = t.expr.type.gen_ir_type(context);
 		if (t.expr.irValue.isConstant || (from == makeBasicTypeIndex(IrValueType.i32) && to == makeBasicTypeIndex(IrValueType.i64)))
 		{
 			t.irValue = t.expr.irValue;

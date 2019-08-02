@@ -212,7 +212,7 @@ struct CompilationContext
 
 	void initialize()
 	{
-		commonIds = collectIdentifiers(&this);
+		commonIds = collectIdentifiers(this);
 	}
 
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)

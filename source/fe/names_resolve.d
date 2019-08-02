@@ -6,7 +6,6 @@ Authors: Andrey Penechko.
 
 /// Resolve all symbol references (variable/type/function/enum name uses)
 /// using information collected on previous pass
-
 module fe.names_resolve;
 
 import std.stdio;
@@ -96,7 +95,7 @@ enum LookupResult : ubyte {
 }
 
 /// Look up symbol by Identifier. Searches the stack of scopes.
-AstNode* lookup(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
+AstNode* lookupScopeIdRecursive(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
 {
 	Scope* sc = scop;
 
@@ -171,23 +170,6 @@ AstNode* lookupImports(Scope* scop, const Identifier id, TokenIndex from, Compil
 		scop = scop.parentScope;
 	}
 	return null;
-}
-
-struct CommonIdentifiers
-{
-	Identifier id_ptr;
-	Identifier id_length;
-	Identifier id_min;
-	Identifier id_max;
-}
-
-CommonIdentifiers collectIdentifiers(CompilationContext* context) {
-	CommonIdentifiers res;
-	res.id_ptr = context.idMap.getOrRegNoDup("ptr");
-	res.id_length = context.idMap.getOrRegNoDup("length");
-	res.id_min = context.idMap.getOrRegNoDup("min");
-	res.id_max = context.idMap.getOrRegNoDup("max");
-	return res;
 }
 
 /// Look up member by Identifier. Searches aggregate scope for identifier.

@@ -6,6 +6,7 @@ Authors: Andrey Penechko.
 module fe.identifier;
 
 import utils : Buffer, Arena;
+import context;
 
 struct Identifier {
 	uint index = uint.max;
@@ -61,4 +62,21 @@ struct IdentifierMap {
 		}
 		return Identifier(id);
 	}
+}
+
+struct CommonIdentifiers
+{
+	Identifier id_ptr;
+	Identifier id_length;
+	Identifier id_min;
+	Identifier id_max;
+}
+
+CommonIdentifiers collectIdentifiers(ref CompilationContext context) {
+	CommonIdentifiers res;
+	res.id_ptr = context.idMap.getOrRegNoDup("ptr");
+	res.id_length = context.idMap.getOrRegNoDup("length");
+	res.id_min = context.idMap.getOrRegNoDup("min");
+	res.id_max = context.idMap.getOrRegNoDup("max");
+	return res;
 }

@@ -43,3 +43,41 @@ void name_resolve_struct(StructDeclNode* node, ref NameResolveState state) {
 	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
 }
+
+IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
+	out(res; res.isTypeStruct, "Not a struct type")
+{
+	if (s.irType.isDefined) return s.irType;
+
+	uint numFields = 0;
+	foreach(AstNode* member; s.declarations) {
+		if (member.astType == AstType.decl_var)
+			++numFields;
+	}
+
+	s.irType = context.types.appendStruct(numFields);
+	IrTypeStruct* structType = &context.types.get!IrTypeStruct(s.irType);
+	IrTypeStructMember[] members = structType.members;
+
+	uint memberIndex;
+	uint memberOffset;
+	uint maxAlignment = 1;
+	foreach(AstNode* member; s.declarations)
+	{
+		if (member.astType == AstType.decl_var)
+		{
+			IrIndex type = (cast(VariableDeclNode*)member).type.gen_ir_type(context);
+			uint memberSize = context.types.typeSize(type);
+			uint memberAlignment = context.types.typeAlignment(type);
+			maxAlignment = max(maxAlignment, memberAlignment);
+			memberOffset = alignValue!uint(memberOffset, memberAlignment);
+			members[memberIndex++] = IrTypeStructMember(type, memberOffset);
+			memberOffset += memberSize;
+		}
+	}
+
+	memberOffset = alignValue!uint(memberOffset, maxAlignment);
+	structType.size = memberOffset;
+	structType.alignment = maxAlignment;
+	return s.irType;
+}
