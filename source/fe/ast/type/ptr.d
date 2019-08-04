@@ -6,7 +6,7 @@ module fe.ast.type.ptr;
 import all;
 
 struct PtrTypeNode {
-	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType);
+	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType, AstNodeState.name_register_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	TypeNode* base;
 	IrIndex irType;

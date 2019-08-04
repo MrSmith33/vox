@@ -6,7 +6,7 @@ module fe.ast.type.slice;
 import all;
 
 struct SliceTypeNode {
-	mixin AstNodeData!(AstType.type_slice, AstFlags.isType);
+	mixin AstNodeData!(AstType.type_slice, AstFlags.isType, AstNodeState.name_register_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	TypeNode* base;
 	IrIndex irType;

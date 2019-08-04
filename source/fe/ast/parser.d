@@ -546,13 +546,9 @@ struct Parser
 					}
 					else // '[' <expression> ']' static array
 					{
-						ExpressionNode* e = expr();
-						if (e.astType != AstType.literal_int)
-							context.unrecoverable_error(e.loc, "Expected int constant, while got '%s'",
-								context.getTokenString(e.loc));
+						ExpressionNode* length_expr = expr();
 						expectAndConsume(TokenType.RBRACKET);
-						uint length = cast(uint)(cast(IntLiteralExprNode*)e).value; // TODO check overflow
-						base = cast(TypeNode*)make!StaticArrayTypeNode(start, base, length);
+						base = cast(TypeNode*)make!StaticArrayTypeNode(start, base, length_expr);
 					}
 				}
 				else break;
@@ -984,7 +980,18 @@ ExpressionNode* nullLiteral(ref Parser p, Token token, int rbp) {
 		case STRING_LITERAL:
 			// omit " at the start and end of token
 			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
-			return p.makeExpr!StringLiteralExprNode(token.index, value);
+			TypeNode* type = p.context.u8Slice.typeNode;
+
+			IrIndex irValue = p.context.globals.add();
+			IrGlobal* global = &p.context.globals.get(irValue);
+			global.setInitializer(cast(ubyte[])value);
+			global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
+			global.type = p.context.u8Ptr.gen_ir_type_ptr(p.context);
+			global.moduleSymIndex = p.currentModule.objectSymIndex;
+			IrIndex irValueLength = p.context.constants.add(value.length, IsSigned.no, IrArgSize.size64);
+			irValue = p.context.constants.addAggrecateConstant(type.gen_ir_type(p.context), irValueLength, irValue);
+
+			return cast(ExpressionNode*)p.make!StringLiteralExprNode(token.index, type, irValue, value);
 		case CHAR_LITERAL:
 			// omit ' at the start and end of token
 			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];

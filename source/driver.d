@@ -282,7 +282,7 @@ struct Driver
 	void beginCompilation()
 	{
 		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
-		context.clear;
+		context.beginCompilation;
 		foreach(ref pass; passes) pass.clear;
 		addSections();
 	}

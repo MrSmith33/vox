@@ -48,7 +48,7 @@ immutable fail5 = r"
 --- fail5
 	int[ a;
 --- <error>
-fail5(1, 7): Error: Expected int constant, while got 'a'
+fail5(1, 8): Error: Expected `RBRACKET` token, while got `SEMICOLON` token ';'
 ";
 
 

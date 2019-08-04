@@ -6,9 +6,10 @@ module fe.ast.type.static_array;
 import all;
 
 struct StaticArrayTypeNode {
-	mixin AstNodeData!(AstType.type_static_array, AstFlags.isType);
+	mixin AstNodeData!(AstType.type_static_array, AstFlags.isType, AstNodeState.name_register_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	TypeNode* base;
+	ExpressionNode* length_expr;
 	uint length;
 	IrIndex irType;
 	uint size() { return cast(uint)(base.size * length); } // TODO check overflow
@@ -18,6 +19,7 @@ struct StaticArrayTypeNode {
 void name_resolve_static_array(StaticArrayTypeNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.base.as_node, state);
+	require_name_resolve(node.length_expr.as_node, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 

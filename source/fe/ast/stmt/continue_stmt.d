@@ -7,5 +7,5 @@ import all;
 
 
 struct ContinueStmtNode {
-	mixin AstNodeData!(AstType.stmt_continue, AstFlags.isStatement, AstNodeState.name_resolve_done);
+	mixin AstNodeData!(AstType.stmt_continue, AstFlags.isStatement, AstNodeState.type_check_done);
 }

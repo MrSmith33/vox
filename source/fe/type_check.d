@@ -12,18 +12,85 @@ import all;
 
 void pass_type_check(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
-	auto sem3 = PassTypeCheck(&ctx);
-	ctx.u8Ptr = ctx.appendAst!PtrTypeNode(TokenIndex(), ctx.basicTypeNodes(BasicType.t_u8));
-	ctx.u8Slice = ctx.appendAst!SliceTypeNode(TokenIndex(), ctx.basicTypeNodes(BasicType.t_u8));
+	auto state = TypeCheckState(&ctx);
 
 	foreach (ref SourceFileInfo file; ctx.files.data) {
-		sem3.visit(file.mod);
+		require_type_check(file.mod.as_node, state);
 
 		if (ctx.printAstSema && file.mod !is null) {
 			auto astPrinter = AstPrinter(&ctx, 2);
 			writefln("// AST typed `%s`", file.name);
 			astPrinter.printAst(cast(AstNode*)file.mod);
 		}
+	}
+}
+
+struct TypeCheckState
+{
+	CompilationContext* context;
+	FunctionDeclNode* curFunc;
+}
+
+/// Type checking for static context
+void require_type_check(AstNode* node, CompilationContext* context)
+{
+	auto state = TypeCheckState(context);
+	require_type_check(node, state);
+}
+
+/// Annotates all expression nodes with their type
+/// Type checking, casting
+void require_type_check(AstNode* node, ref TypeCheckState state)
+{
+	switch(node.state) with(AstNodeState)
+	{
+		case name_register, name_resolve, type_check: state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
+		case name_resolve_done: break; // all requirement are done
+		case type_check_done: return; // already type checked
+		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
+	}
+
+	final switch(node.astType) with(AstType)
+	{
+		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
+		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
+
+		case decl_module: type_check_module(cast(ModuleDeclNode*)node, state); break;
+		case decl_import: assert(false);
+		case decl_function: type_check_func(cast(FunctionDeclNode*)node, state); break;
+		case decl_var: type_check_var(cast(VariableDeclNode*)node, state); break;
+		case decl_struct: type_check_struct(cast(StructDeclNode*)node, state); break;
+		case decl_enum: type_check_enum(cast(EnumDeclaration*)node, state); break;
+		case decl_enum_member: type_check_enum_member(cast(EnumMemberDecl*)node, state); break;
+
+		case stmt_block: type_check_block(cast(BlockStmtNode*)node, state); break;
+		case stmt_if: type_check_if(cast(IfStmtNode*)node, state); break;
+		case stmt_while: type_check_while(cast(WhileStmtNode*)node, state); break;
+		case stmt_do_while: type_check_do(cast(DoWhileStmtNode*)node, state); break;
+		case stmt_for: type_check_for(cast(ForStmtNode*)node, state); break;
+		case stmt_return: type_check_return(cast(ReturnStmtNode*)node, state); break;
+		case stmt_break: assert(false);
+		case stmt_continue: assert(false);
+
+		case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
+			type_check_name_use(cast(NameUseExprNode*)node, state); break;
+		case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
+			type_check_member(cast(MemberExprNode*)node, state); break;
+		case expr_bin_op: type_check_binary_op(cast(BinaryExprNode*)node, state); break;
+		case expr_un_op: type_check_unary_op(cast(UnaryExprNode*)node, state); break;
+		case expr_call: type_check_call(cast(CallExprNode*)node, state); break;
+		case expr_index: type_check_index(cast(IndexExprNode*)node, state); break;
+		case expr_type_conv: type_check_type_conv(cast(TypeConvExprNode*)node, state); break;
+
+		case literal_int: type_check_literal_int(cast(IntLiteralExprNode*)node, state); break;
+		case literal_string: type_check_literal_string(cast(StringLiteralExprNode*)node, state); break;
+		case literal_null: type_check_literal_null(cast(NullLiteralExprNode*)node, state); break;
+		case literal_bool: type_check_literal_bool(cast(BoolLiteralExprNode*)node, state); break;
+
+		case type_basic: assert(false);
+		case type_ptr: type_check_ptr(cast(PtrTypeNode*)node, state); break;
+		case type_static_array: type_check_static_array(cast(StaticArrayTypeNode*)node, state); break;
+		case type_slice: type_check_slice(cast(SliceTypeNode*)node, state); break;
 	}
 }
 
@@ -306,310 +373,404 @@ void calcType(BinaryExprNode* b, CompilationContext* context)
 	setResultType(b, context);
 }
 
-/// Annotates all expression nodes with their type
-/// Type checking, casting
-struct PassTypeCheck
+
+void type_check_module(ModuleDeclNode* node, ref TypeCheckState state)
 {
-	mixin AstVisitorMixin;
+	node.state = AstNodeState.type_check;
+	foreach (decl; node.declarations) require_type_check(decl, state);
+	node.state = AstNodeState.type_check_done;
+}
 
-	CompilationContext* context;
-	FunctionDeclNode* curFunc;
+void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	auto prevFunc = state.curFunc;
+	state.curFunc = node;
+	node.backendData.callingConvention = &win64_call_conv;
 
-	void visit(ModuleDeclNode* m) {
-		foreach (decl; m.declarations) _visit(decl);
+	if (node.returnType.isOpaqueStruct) {
+		state.context.error(node.returnType.loc,
+			"function cannot return opaque type `%s`",
+			node.returnType.printer(state.context));
 	}
-	void visit(ImportDeclNode* i) {}
-	void visit(FunctionDeclNode* f) {
-		auto prevFunc = curFunc;
-		curFunc = f;
-		f.backendData.callingConvention = &win64_call_conv;
 
-		if (f.returnType.isOpaqueStruct) {
-			context.error(f.returnType.loc,
-				"function cannot return opaque type `%s`",
-				f.returnType.printer(context));
-		}
+	foreach (VariableDeclNode* param; node.parameters) {
+		require_type_check(param.as_node, state);
+	}
 
-		foreach (VariableDeclNode* param; f.parameters) {
-			visit(param);
-		}
+	if (node.block_stmt)
+	{
+		require_type_check(node.block_stmt.as_node, state);
+	}
+	state.curFunc = prevFunc;
+	node.state = AstNodeState.type_check_done;
+}
 
-		if (f.block_stmt)
+void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	TypeNode* type = node.type.foldAliases;
+	require_type_check(type.as_node, state);
+
+	if (type.isOpaqueStruct) {
+		string msg = node.isParameter ?
+			"cannot declare parameter of opaque type `%2$s`" :
+			"cannot declare variable `%s` of opaque type `%s`";
+
+		state.context.error(node.type.loc,
+			msg,
+			state.context.idString(node.id),
+			type.printer(state.context));
+	}
+
+	if (node.initializer) {
+		require_type_check(node.initializer.as_node, state);
+		autoconvTo(node.initializer, type, state.context);
+	}
+
+	if (!node.isParameter)
+	switch (type.astType) with(AstType)
+	{
+		case type_static_array, decl_struct, type_slice:
+			node.varFlags |= VariableFlags.forceMemoryStorage;
+			break;
+
+		default: break;
+	}
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_struct(StructDeclNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach (decl; node.declarations) require_type_check(decl, state);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach (decl; node.declarations) require_type_check(decl, state);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.type.as_node, state);
+
+	if (node.initializer !is null) {
+		require_type_check(node.initializer.as_node, state);
+		autoconvTo(node.initializer, node.type, state.context);
+	}
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_block(BlockStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach(stmt; node.statements) require_type_check(stmt, state);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_if(IfStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.condition.as_node, state);
+	autoconvToBool(node.condition, state.context);
+	require_type_check(node.thenStatement, state);
+	if (node.elseStatement) {
+		require_type_check(node.elseStatement, state);
+	}
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_while(WhileStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.condition.as_node, state);
+	autoconvToBool(node.condition, state.context);
+	require_type_check(node.statement, state);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_do(DoWhileStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.statement, state);
+	require_type_check(node.condition.as_node, state);
+	autoconvToBool(node.condition, state.context);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_for(ForStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach(stmt; node.init_statements) require_type_check(stmt, state);
+	if (node.condition) {
+		require_type_check(node.condition.as_node, state);
+		autoconvToBool(node.condition, state.context);
+	}
+	foreach(stmt; node.increment_statements) require_type_check(stmt, state);
+	require_type_check(node.statement, state);
+	node.state = AstNodeState.type_check_done;
+}
+
+// Check return type and function return type
+void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	if (!state.curFunc)
+	{
+		state.context.error(node.loc,
+			"Return statement is not inside function");
+		return;
+	}
+
+	if (node.expression)
+	{
+		require_type_check(node.expression.as_node, state);
+		if (state.curFunc.returnType.isVoid)
 		{
-			visit(f.block_stmt);
-		}
-		curFunc = prevFunc;
-	}
-	void visit(VariableDeclNode* v) {
-		TypeNode* type = v.type.foldAliases;
-		_visit(type);
-
-		if (type.isOpaqueStruct) {
-			string msg = v.isParameter ?
-				"cannot declare parameter of opaque type `%2$s`" :
-				"cannot declare variable `%s` of opaque type `%s`";
-
-			context.error(v.type.loc,
-				msg,
-				context.idString(v.id),
-				type.printer(context));
-		}
-
-		if (v.initializer) {
-			_visit(v.initializer);
-			autoconvTo(v.initializer, type, context);
-		}
-
-		if (!v.isParameter)
-		switch (type.astType) with(AstType)
-		{
-			case type_static_array, decl_struct, type_slice:
-				v.varFlags |= VariableFlags.forceMemoryStorage;
-				break;
-
-			default: break;
-		}
-	}
-	void visit(StructDeclNode* s) {
-		foreach (decl; s.declarations) _visit(decl);
-	}
-	void visit(EnumDeclaration* e) {
-		foreach (decl; e.declarations) _visit(decl);
-	}
-	void visit(EnumMemberDecl* m) {
-		_visit(m.type);
-
-		if (m.initializer !is null) {
-			if (!m.initializer.isLiteral) {
-				context.error(m.initializer.loc, "enum members must be initialized with literals");
-				return;
-			}
-
-			_visit(m.initializer);
-			autoconvTo(m.initializer, m.type, context);
-		}
-	}
-	void visit(BlockStmtNode* b) {
-		foreach(stmt; b.statements) _visit(stmt);
-	}
-	void visit(IfStmtNode* i) {
-		_visit(i.condition);
-		autoconvToBool(i.condition, context);
-		_visit(i.thenStatement);
-		if (i.elseStatement) {
-			_visit(i.elseStatement);
-		}
-	}
-	void visit(WhileStmtNode* w) {
-		_visit(w.condition);
-		autoconvToBool(w.condition, context);
-		_visit(w.statement);
-	}
-	void visit(DoWhileStmtNode* d) {
-		_visit(d.statement);
-		_visit(d.condition);
-		autoconvToBool(d.condition, context);
-	}
-	void visit(ForStmtNode* n) {
-		foreach(stmt; n.init_statements) _visit(stmt);
-		if (n.condition) {
-			_visit(n.condition);
-			autoconvToBool(n.condition, context);
-		}
-		foreach(stmt; n.increment_statements) _visit(stmt);
-		_visit(n.statement);
-	}
-	// Check return type and function return type
-	void visit(ReturnStmtNode* r) {
-		if (!curFunc)
-		{
-			context.error(r.loc,
-				"Return statement is not inside function");
-			return;
-		}
-
-		if (r.expression)
-		{
-			_visit(r.expression);
-			if (curFunc.returnType.isVoid)
-			{
-				context.error(r.expression.loc,
-					"Cannot return expression of type `%s` from void function",
-					r.expression.type.typeName(context));
-			}
-			else
-			{
-				autoconvTo(r.expression, curFunc.returnType, context);
-			}
+			state.context.error(node.expression.loc,
+				"Cannot return expression of type `%s` from void function",
+				node.expression.type.typeName(state.context));
 		}
 		else
 		{
-			if (!curFunc.returnType.isVoid)
-				context.error(r.loc,
-					"Cannot return void from non-void function",
-					r.expression.type.typeName(context));
+			autoconvTo(node.expression, state.curFunc.returnType, state.context);
 		}
 	}
-	void visit(BreakStmtNode* r) {}
-	void visit(ContinueStmtNode* r) {}
+	else
+	{
+		if (!state.curFunc.returnType.isVoid)
+			state.context.error(node.loc,
+				"Cannot return void from non-void function",
+				node.expression.type.typeName(state.context));
+	}
+	node.state = AstNodeState.type_check_done;
+}
 
-	// Get type from variable declaration
-	void visit(NameUseExprNode* v) {
-		v.type = v.entity.get_node_type;
-	}
-	void visit(MemberExprNode* m) {
-		_visit(m.aggregate);
-		lookupMember(m, context);
-	}
-	void visit(IntLiteralExprNode* c) {
-		if (c.isSigned)
-			c.type = context.basicTypeNodes(minSignedIntType(c.value));
-		else
-			c.type = context.basicTypeNodes(minUnsignedIntType(c.value));
-	}
-	void visit(StringLiteralExprNode* c) {
-		c.type = cast(TypeNode*)context.u8Slice;
-	}
-	void visit(NullLiteralExprNode* c) {
-		c.type = context.basicTypeNodes(BasicType.t_null);
-	}
-	void visit(BoolLiteralExprNode* c) {
-		c.type = context.basicTypeNodes(BasicType.t_bool);
-	}
-	void visit(BinaryExprNode* b) {
-		_visit(b.left);
-		_visit(b.right);
-		calcType(b, context);
-	}
-	void visit(UnaryExprNode* u) {
-		_visit(u.child);
-		assert(u.child.type, format("child(%s).type: is null", u.child.astType));
-		switch(u.op) with(UnOp)
-		{
-			case addrOf:
-				// make sure that variable gets stored in memory
-				switch(u.child.astType)
-				{
-					case AstType.expr_var_name_use:
-						(cast(AstNode*)u.child).cast_expr_name_use.varDecl.varFlags |= VariableFlags.isAddressTaken;
-						break;
-					case AstType.expr_index:
-						break;
-					default:
-						context.internal_error(u.loc, "Cannot take address of %s", u.child.astType);
-				}
-				u.type = cast(TypeNode*) context.appendAst!PtrTypeNode(u.child.loc, u.child.type);
-				break;
-			case bitwiseNot:
-				u.type = u.child.type;
-				break;
-			case logicalNot:
-				autoconvToBool(u.child, context);
-				u.type = context.basicTypeNodes(BasicType.t_bool);
-				break;
-			case minus:
-				u.type = u.child.type;
-				break;
-			case preIncrement, postIncrement, preDecrement, postDecrement:
-				u.type = u.child.type;
-				break;
-			case deref:
-				if (u.child.type.isError) {
-					u.type = u.child.type;
+// Get type from variable declaration
+void type_check_name_use(NameUseExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	node.type = node.entity.get_node_type;
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_member(MemberExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.aggregate.as_node, state);
+	lookupMember(node, state.context);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_literal_int(IntLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	if (node.isSigned)
+		node.type = state.context.basicTypeNodes(minSignedIntType(node.value));
+	else
+		node.type = state.context.basicTypeNodes(minUnsignedIntType(node.value));
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_literal_string(StringLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	// done in parser
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_literal_null(NullLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	node.type = state.context.basicTypeNodes(BasicType.t_null);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	node.type = state.context.basicTypeNodes(BasicType.t_bool);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_binary_op(BinaryExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.left.as_node, state);
+	require_type_check(node.right.as_node, state);
+	calcType(node, state.context);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.child.as_node, state);
+	assert(node.child.type, format("child(%s).type: is null", node.child.astType));
+	switch(node.op) with(UnOp)
+	{
+		case addrOf:
+			// make sure that variable gets stored in memory
+			switch(node.child.astType)
+			{
+				case AstType.expr_var_name_use:
+					(cast(AstNode*)node.child).cast_expr_name_use.varDecl.varFlags |= VariableFlags.isAddressTaken;
 					break;
-				}
-				if (!u.child.type.isPointer) {
-					context.unrecoverable_error(u.loc, "Cannot dereference %s", u.child.type.printer(context));
-				}
-				u.type = u.child.type.as_ptr.base;
-				break;
-			default:
-				context.internal_error("un op %s not implemented", u.op);
-				u.type = u.child.type;
-		}
-	}
-	// Get type from function declaration
-	void visit(CallExprNode* c) {
-		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-		context.assertf(c.callee.astType == AstType.expr_func_name_use ||
-			c.callee.astType == AstType.expr_type_name_use,
-			c.loc, "Only direct function calls are supported right now");
-		AstNode* callee = c.callee.as_name_use.entity;
-
-		switch (callee.astType)
-		{
-			case AstType.decl_function: return visitCall(c, callee.cast_decl_function);
-			case AstType.decl_struct: return visitConstructor(c, callee.cast_decl_struct);
-			default:
-				c.type = context.basicTypeNodes(BasicType.t_error);
-				context.error(c.loc, "Cannot call %s", callee.astType);
-		}
-
-	}
-	void visitCall(CallExprNode* c, FunctionDeclNode* funcDecl) {
-		Array!(VariableDeclNode*) params = funcDecl.parameters;
-		auto numParams = params.length;
-		auto numArgs = c.args.length;
-
-		if (numArgs < numParams)
-			context.error(c.loc, "Insufficient parameters to '%s', got %s, expected %s",
-				context.idString(funcDecl.id), numArgs, numParams);
-		else if (numArgs > numParams)
-			context.error(c.loc, "Too much parameters to '%s', got %s, expected %s",
-				context.idString(funcDecl.id), numArgs, numParams);
-
-		foreach (i, ref ExpressionNode* arg; c.args)
-		{
-			_visit(arg);
-			bool success = autoconvTo(arg, params[i].type, context);
-			if (!success)
-				context.error(arg.loc,
-					"Argument %s, must have type %s, not %s", i+1,
-					params[i].type.printer(context),
-					arg.type.printer(context));
-		}
-		c.type = funcDecl.returnType;
-	}
-	void visitConstructor(CallExprNode* c, StructDeclNode* s) {
-		size_t numStructMembers;
-		foreach(AstNode* member; s.declarations)
-		{
-			if (member.astType != AstType.decl_var) continue;
-
-			ExpressionNode* initializer;
-			if (c.args.length > numStructMembers) { // init from constructor argument
-				_visit(c.args[numStructMembers]);
-				autoconvTo(c.args[numStructMembers], member.cast_decl_var.type.foldAliases, context);
-			} else { // init with initializer from struct definition
-				context.internal_error(c.loc, "Not implemented");
+				case AstType.expr_index:
+					break;
+				default:
+					state.context.internal_error(node.loc, "Cannot take address of %s", node.child.astType);
 			}
-			++numStructMembers;
-		}
-		c.type = s.as_node.cast_type_node;
+			node.type = cast(TypeNode*) state.context.appendAst!PtrTypeNode(node.child.loc, node.child.type);
+			break;
+		case bitwiseNot:
+			node.type = node.child.type;
+			break;
+		case logicalNot:
+			autoconvToBool(node.child, state.context);
+			node.type = state.context.basicTypeNodes(BasicType.t_bool);
+			break;
+		case minus:
+			node.type = node.child.type;
+			break;
+		case preIncrement, postIncrement, preDecrement, postDecrement:
+			node.type = node.child.type;
+			break;
+		case deref:
+			if (node.child.type.isError) {
+				node.type = node.child.type;
+				break;
+			}
+			if (!node.child.type.isPointer) {
+				state.context.unrecoverable_error(node.loc, "Cannot dereference %s", node.child.type.printer(state.context));
+			}
+			node.type = node.child.type.as_ptr.base;
+			break;
+		default:
+			state.context.internal_error("un op %s not implemented", node.op);
+			node.type = node.child.type;
 	}
-	void visit(IndexExprNode* i) {
-		_visit(i.array);
-		_visit(i.index);
-		autoconvTo(i.index, context.basicTypeNodes(BasicType.t_i64), context);
-		switch (i.array.type.astType) with(AstType)
-		{
-			case type_ptr, type_static_array, type_slice: break; // valid
-			default: context.internal_error("Cannot index value of type `%s`", i.array.type.printer(context));
-		}
-		i.type = i.array.type.getElementType(context);
+	node.state = AstNodeState.type_check_done;
+}
+
+// Get type from function declaration
+void type_check_call(CallExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
+	state.context.assertf(node.callee.astType == AstType.expr_func_name_use ||
+		node.callee.astType == AstType.expr_type_name_use,
+		node.loc, "Only direct function calls are supported right now");
+	AstNode* callee = node.callee.as_name_use.entity;
+
+	switch (callee.astType)
+	{
+		case AstType.decl_function: return type_check_func_call(node, callee.cast_decl_function, state);
+		case AstType.decl_struct: return type_check_constructor_call(node, callee.cast_decl_struct, state);
+		default:
+			node.type = state.context.basicTypeNodes(BasicType.t_error);
+			state.context.error(node.loc, "Cannot call %s", callee.astType);
 	}
-	void visit(TypeConvExprNode* t) {
-		_visit(t.expr);
-		if (!isConvertibleTo(t.expr.type, t.type, context))
-		{
-			context.error(t.loc,
-				"Cannot auto-convert expression of type `%s` to `%s`",
-				t.expr.type.printer(context),
-				t.type.printer(context));
-		}
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_func_call(CallExprNode* node, FunctionDeclNode* funcDecl, ref TypeCheckState state)
+{
+	Array!(VariableDeclNode*) params = funcDecl.parameters;
+	auto numParams = params.length;
+	auto numArgs = node.args.length;
+
+	if (numArgs < numParams)
+		state.context.error(node.loc, "Insufficient parameters to '%s', got %s, expected %s",
+			state.context.idString(funcDecl.id), numArgs, numParams);
+	else if (numArgs > numParams)
+		state.context.error(node.loc, "Too much parameters to '%s', got %s, expected %s",
+			state.context.idString(funcDecl.id), numArgs, numParams);
+
+	foreach (i, ref ExpressionNode* arg; node.args)
+	{
+		require_type_check(arg.as_node, state);
+		bool success = autoconvTo(arg, params[i].type, state.context);
+		if (!success)
+			state.context.error(arg.loc,
+				"Argument %s, must have type %s, not %s", i+1,
+				params[i].type.printer(state.context),
+				arg.type.printer(state.context));
 	}
-	void visit(BasicTypeNode* t) {}
-	void visit(PtrTypeNode* t) {}
-	void visit(StaticArrayTypeNode* t) {}
-	void visit(SliceTypeNode* t) {}
+	node.type = funcDecl.returnType;
+}
+
+void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref TypeCheckState state)
+{
+	size_t numStructMembers;
+	foreach(AstNode* member; s.declarations)
+	{
+		if (member.astType != AstType.decl_var) continue;
+
+		ExpressionNode* initializer;
+		if (node.args.length > numStructMembers) { // init from constructor argument
+			require_type_check(node.args[numStructMembers].as_node, state);
+			autoconvTo(node.args[numStructMembers], member.cast_decl_var.type.foldAliases, state.context);
+		} else { // init with initializer from struct definition
+			state.context.internal_error(node.loc, "Not implemented");
+		}
+		++numStructMembers;
+	}
+	node.type = s.as_node.cast_type_node;
+}
+
+void type_check_index(IndexExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.array.as_node, state);
+	require_type_check(node.index.as_node, state);
+	autoconvTo(node.index, state.context.basicTypeNodes(BasicType.t_i64), state.context);
+	switch (node.array.type.astType) with(AstType)
+	{
+		case type_ptr, type_static_array, type_slice: break; // valid
+		default: state.context.internal_error("Cannot index value of type `%s`", node.array.type.printer(state.context));
+	}
+	node.type = node.array.type.getElementType(state.context);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.expr.as_node, state);
+	if (!isConvertibleTo(node.expr.type, node.type, state.context))
+	{
+		state.context.error(node.loc,
+			"Cannot auto-convert expression of type `%s` to `%s`",
+			node.expr.type.printer(state.context),
+			node.type.printer(state.context));
+	}
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_ptr(PtrTypeNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.base.as_node, state);
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_static_array(StaticArrayTypeNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	IrIndex val = eval_static_expr(node.length_expr.as_node, state.context);
+	node.length = state.context.constants.get(val).i64.to!uint;
+	node.state = AstNodeState.type_check_done;
+}
+
+void type_check_slice(SliceTypeNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.base.as_node, state);
+	node.state = AstNodeState.type_check_done;
 }

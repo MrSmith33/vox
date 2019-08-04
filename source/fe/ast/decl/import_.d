@@ -17,5 +17,5 @@ void name_register_import(ImportDeclNode* node, ref NameRegisterState state) {
 	state.currentScope.imports.put(state.context.arrayArena, m);
 	if (m is null)
 		state.context.error(node.loc, "Cannot find module `%s`", state.context.idString(node.id));
-	node.state = AstNodeState.name_resolve_done;
+	node.state = AstNodeState.type_check_done;
 }

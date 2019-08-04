@@ -1721,3 +1721,52 @@ immutable test82 = q{--- test82
 	}
 };
 
+@TestInfo(&tester83)
+immutable test83 = q{--- test83
+	// using enum as array size
+	// constant folding in static expressions
+	// test forward references too
+
+	// use static array length in constant folded expression
+	enum combined_enums = cast(u64)arr_size3 + arrBackref.length;
+	i32[combined_enums] arrBackrefX;
+	u64 combinedEnums() { return arrBackrefX.length; } // 160
+
+	enum arr_size = 40;
+	i32[arr_size] arrBackref;
+	u64 getSize1() { return arrBackref.length; } // 40
+
+	u64 testBackref() {
+		i32[arr_size] local_arr;
+		return local_arr.length; // 40
+	}
+
+	i32[arr_size2] arrForwardref;
+	u64 getSize2() { return arrForwardref.length; } // 100
+
+	u64 testForwardref() {
+		i32[arr_size2] local_arr;
+		return local_arr.length; // 100
+	}
+
+	enum arr_size2 = 100;
+
+	i32[arr_size3 + 4] arrForwardref2;
+	u64 getSize3() { return arrForwardref2.length; } // 124
+
+	u64 testForwardref2() {
+		i32[arr_size3 + 10] local_arr;
+		return local_arr.length; // 130
+	}
+
+	enum arr_size3 = 120;
+};
+void tester83(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!ulong("combinedEnums")() == 160);
+	assert(ctx.getFunctionPtr!ulong("getSize1")() == 40);
+	assert(ctx.getFunctionPtr!ulong("testBackref")() == 40);
+	assert(ctx.getFunctionPtr!ulong("getSize2")() == 100);
+	assert(ctx.getFunctionPtr!ulong("testForwardref")() == 100);
+	assert(ctx.getFunctionPtr!ulong("getSize3")() == 124);
+	assert(ctx.getFunctionPtr!ulong("testForwardref2")() == 130);
+}

@@ -9,6 +9,8 @@ import std.string : format;
 import std.typecons : Flag, Yes, No;
 import all;
 
+enum IrArgSize SIZET_SIZE = IrArgSize.size64;
+
 // The order is the same as in TokenType enum
 enum BasicType : ubyte {
 	t_error,

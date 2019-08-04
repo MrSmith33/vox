@@ -210,11 +210,6 @@ struct CompilationContext
 
 	TypeNode* basicTypeNodes(BasicType basicType) { return cast(TypeNode*)&basicTypes[basicType]; }
 
-	void initialize()
-	{
-		commonIds = collectIdentifiers(this);
-	}
-
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
 		size_t startLen = sink.data.length;
@@ -543,7 +538,12 @@ struct CompilationContext
 		printArena(binaryBuffer, "binary");
 	}
 
-	void clear()
+	void initialize()
+	{
+		commonIds = collectIdentifiers(this);
+	}
+
+	void beginCompilation()
 	{
 		hasErrors = false;
 		sourceBuffer.clear;
@@ -569,5 +569,8 @@ struct CompilationContext
 		errorSink.clear;
 
 		externalSymbols.clear();
+
+		u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
+		u8Slice = appendAst!SliceTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
 	}
 }

@@ -6,7 +6,7 @@ module fe.ast.type.basic;
 import all;
 
 struct BasicTypeNode {
-	mixin AstNodeData!(AstType.type_basic, AstFlags.isType, AstNodeState.name_resolve_done);
+	mixin AstNodeData!(AstType.type_basic, AstFlags.isType, AstNodeState.type_check_done);
 	uint size;
 	uint alignment() { return size; }
 	ulong minValue;

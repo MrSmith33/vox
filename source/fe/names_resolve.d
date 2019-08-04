@@ -41,7 +41,13 @@ struct NameResolveState
 
 void require_name_resolve(AstNode* node, ref NameResolveState state)
 {
-	if (node.state >= AstNodeState.name_resolve_done) return;
+	switch(node.state) with(AstNodeState)
+	{
+		case name_register, name_resolve, type_check: state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
+		case name_register_done: break; // all requirement are done
+		case name_resolve_done, type_check_done: return; // already name resolved
+		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
+	}
 
 	final switch(node.astType) with(AstType)
 	{
