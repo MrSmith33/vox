@@ -1770,3 +1770,13 @@ void tester83(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!ulong("getSize3")() == 124);
 	assert(ctx.getFunctionPtr!ulong("testForwardref2")() == 130);
 }
+
+@TestInfo(&tester84)
+immutable test84 = q{--- test84
+	// check nested array length is set correctly
+	i32[40][30] arr;
+	u64 nestedArrLen() { return arr[0].length; } // 40
+};
+void tester84(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!ulong("nestedArrLen")() == 40);
+}

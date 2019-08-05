@@ -81,6 +81,8 @@ o dll linking
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
++ constant folding of expressions in enum initializers and static array length
++ allow arbitrary expressions used as static array length
 + .min, .max properties of numeric types
 + null to empty slice
 + for loop

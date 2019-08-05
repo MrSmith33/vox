@@ -168,6 +168,7 @@ bool isConvertibleTo(TypeNode* fromType, TypeNode* toType, CompilationContext* c
 /// Returns true if conversion was successful. False otherwise
 bool autoconvTo(ref ExpressionNode* expr, TypeNode* type, CompilationContext* context)
 {
+
 	if (same_type(expr.type, type)) return true;
 	string extraError;
 
@@ -694,6 +695,7 @@ void type_check_func_call(CallExprNode* node, FunctionDeclNode* funcDecl, ref Ty
 
 	foreach (i, ref ExpressionNode* arg; node.args)
 	{
+		require_type_check(params[i].type.as_node, state);
 		require_type_check(arg.as_node, state);
 		bool success = autoconvTo(arg, params[i].type, state.context);
 		if (!success)
@@ -763,6 +765,7 @@ void type_check_ptr(PtrTypeNode* node, ref TypeCheckState state)
 void type_check_static_array(StaticArrayTypeNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
+	require_type_check(node.base.as_node, state);
 	IrIndex val = eval_static_expr(node.length_expr.as_node, state.context);
 	node.length = state.context.constants.get(val).i64.to!uint;
 	node.state = AstNodeState.type_check_done;
