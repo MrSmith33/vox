@@ -8,14 +8,14 @@ import all;
 
 struct WhileStmtNode {
 	mixin AstNodeData!(AstType.stmt_while, AstFlags.isStatement);
-	ExpressionNode* condition;
-	AstNode* statement;
-	Scope* _scope;
+	AstIndex condition;
+	AstIndex statement;
+	AstIndex _scope;
 }
 
 void name_register_while(WhileStmtNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register;
-	require_name_register(node.condition.as_node, state);
+	require_name_register(node.condition, state);
 	node._scope = state.pushScope("While", Yes.ordered);
 	require_name_register(node.statement, state);
 	state.popScope;
@@ -24,7 +24,7 @@ void name_register_while(WhileStmtNode* node, ref NameRegisterState state) {
 
 void name_resolve_while(WhileStmtNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.condition.as_node, state);
+	require_name_resolve(node.condition, state);
 	state.pushScope(node._scope);
 	require_name_resolve(node.statement, state);
 	state.popScope;

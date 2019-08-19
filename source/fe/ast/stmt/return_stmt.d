@@ -8,11 +8,11 @@ import all;
 
 struct ReturnStmtNode {
 	mixin AstNodeData!(AstType.stmt_return, AstFlags.isStatement, AstNodeState.name_register_done);
-	ExpressionNode* expression; // Nullable
+	AstIndex expression; // Nullable
 }
 
 void name_resolve_return(ReturnStmtNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	if (node.expression) require_name_resolve(node.expression.as_node, state);
+	if (node.expression) require_name_resolve(node.expression, state);
 	node.state = AstNodeState.name_resolve_done;
 }

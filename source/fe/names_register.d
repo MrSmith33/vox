@@ -16,12 +16,15 @@ void pass_names_register(ref CompilationContext context, CompilePassPerModule[] 
 	auto state = NameRegisterState(&context);
 
 	foreach (ref SourceFileInfo file; context.files.data) {
-		require_name_register(file.mod.as_node, state);
+		AstIndex modIndex = file.mod.get_ast_index(&context);
+		require_name_register(modIndex, state);
 	}
 }
 
-void require_name_register(AstNode* node, ref NameRegisterState state)
+void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 {
+	AstNode* node = state.context.getAstNode(nodeIndex);
+
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register, name_resolve, type_check: state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
@@ -37,11 +40,11 @@ void require_name_register(AstNode* node, ref NameRegisterState state)
 
 		case decl_module: name_register_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: name_register_import(cast(ImportDeclNode*)node, state); break;
-		case decl_function: name_register_func(cast(FunctionDeclNode*)node, state); break;
-		case decl_var: name_register_var(cast(VariableDeclNode*)node, state); break;
-		case decl_struct: name_register_struct(cast(StructDeclNode*)node, state); break;
-		case decl_enum: name_register_enum(cast(EnumDeclaration*)node, state); break;
-		case decl_enum_member: name_register_enum_member(cast(EnumMemberDecl*)node, state); break;
+		case decl_function: name_register_func(nodeIndex, cast(FunctionDeclNode*)node, state); break;
+		case decl_var: name_register_var(nodeIndex, cast(VariableDeclNode*)node, state); break;
+		case decl_struct: name_register_struct(nodeIndex, cast(StructDeclNode*)node, state); break;
+		case decl_enum: name_register_enum(nodeIndex, cast(EnumDeclaration*)node, state); break;
+		case decl_enum_member: name_register_enum_member(nodeIndex, cast(EnumMemberDecl*)node, state); break;
 
 		case stmt_block: name_register_block(cast(BlockStmtNode*)node, state); break;
 		case stmt_if: name_register_if(cast(IfStmtNode*)node, state); break;
@@ -61,36 +64,38 @@ struct NameRegisterState
 	CompilationContext* context;
 	Scope* currentScope;
 
-	Scope* pushScope(string name, Flag!"ordered" isOrdered)
+	AstIndex pushScope(string name, Flag!"ordered" isOrdered)
 	{
-		Scope* newScope = context.appendAst!Scope;
+		AstIndex newScopeIndex = context.appendAst!Scope;
+		Scope* newScope = context.getAst!Scope(newScopeIndex);
 		newScope.debugName = name;
 		newScope.isOrdered = isOrdered;
 
 		if (currentScope)
-			newScope.parentScope = currentScope;
+			newScope.parentScope = currentScope.get_ast_index(context);
 		currentScope = newScope;
 
-		return currentScope;
+		return newScopeIndex;
 	}
 
 	void popScope()
 	{
 		if (currentScope.parentScope)
-			currentScope = currentScope.parentScope;
+			currentScope = currentScope.parentScope.get_scope(context);
 		else
 			currentScope = null;
 	}
 
 	/// Constructs and inserts symbol with id
-	void insert(Identifier id, AstNode* node)
+	void insert(Identifier id, AstIndex nodeIndex)
 	{
+		AstNode* node = context.getAstNode(nodeIndex);
 		node.flags |= currentScope.isOrdered ? AstFlags.isInOrderedScope : 0;
-		if (auto s = currentScope.symbols.get(id, null))
+		if (auto s = currentScope.symbols.get(id, AstIndex.init))
 		{
 			context.error(node.loc,
-				"declaration `%s` is already defined at %s", context.idString(id), FmtSrcLoc(s.loc, context));
+				"declaration `%s` is already defined at %s", context.idString(id), FmtSrcLoc(s.get_node(context).loc, context));
 		}
-		currentScope.symbols.put(context.arrayArena, id, node);
+		currentScope.symbols.put(context.arrayArena, id, nodeIndex);
 	}
 }

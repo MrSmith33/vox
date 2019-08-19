@@ -7,13 +7,13 @@ import all;
 
 struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
-	ExpressionNode* callee;
-	Array!(ExpressionNode*) args;
+	AstIndex callee;
+	Array!AstIndex args;
 }
 
 void name_resolve_call(CallExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.callee.as_node, state);
-	foreach (arg; node.args) require_name_resolve(arg.as_node, state);
+	require_name_resolve(node.callee, state);
+	foreach (ref arg; node.args) require_name_resolve(arg, state);
 	node.state = AstNodeState.name_resolve_done;
 }

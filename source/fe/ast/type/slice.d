@@ -8,7 +8,7 @@ import all;
 struct SliceTypeNode {
 	mixin AstNodeData!(AstType.type_slice, AstFlags.isType, AstNodeState.name_register_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
-	TypeNode* base;
+	AstIndex base;
 	IrIndex irType;
 
 	uint size() { return POINTER_SIZE * 2; }
@@ -17,13 +17,13 @@ struct SliceTypeNode {
 
 void name_resolve_slice(SliceTypeNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.base.as_node, state);
+	require_name_resolve(node.base, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
-bool same_type_slice(SliceTypeNode* t1, SliceTypeNode* t2)
+bool same_type_slice(SliceTypeNode* t1, SliceTypeNode* t2, CompilationContext* context)
 {
-	return same_type(t1.base, t2.base);
+	return same_type(t1.base, t2.base, context);
 }
 
 // slice is lowered into struct with two members

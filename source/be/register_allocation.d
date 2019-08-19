@@ -29,7 +29,10 @@ void pass_linear_scan(ref CompilationContext context, ref ModuleDeclNode mod, re
 
 	if (func.isExternal) return;
 	linearScan.scanFun(&func);
-	if (context.printLirRA && context.printDumpOf(&func)) dumpFunction(*func.backendData.lirData, context);
+	if (context.printLirRA && context.printDumpOf(&func)) {
+		IrFunction* lirData = context.getAst!IrFunction(func.backendData.lirData);
+		dumpFunction(*lirData, context);
+	}
 }
 
 struct RegisterState
@@ -149,7 +152,7 @@ struct LinearScan
 	{
 		import std.container.binaryheap;
 
-		lir = fun.backendData.lirData;
+		lir = context.getAst!IrFunction(fun.backendData.lirData);
 		builder.beginDup(lir, context);
 		livePtr = &fun.backendData.liveIntervals;
 		physRegs.setup(fun, context.machineInfo);

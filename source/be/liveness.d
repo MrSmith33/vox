@@ -58,7 +58,8 @@ void pass_live_intervals(ref CompilationContext context, ref ModuleDeclNode mod,
 	LiveBitmap liveBitmap;
 	if (fun.isExternal) return;
 
-	pass_live_intervals_func(context, fun.backendData.liveIntervals, *fun.backendData.lirData, liveBitmap);
+	IrFunction* lirData = context.getAst!IrFunction(fun.backendData.lirData);
+	pass_live_intervals_func(context, fun.backendData.liveIntervals, *lirData, liveBitmap);
 
 	if (context.printLiveIntervals && context.printDumpOf(&fun))
 	{

@@ -25,12 +25,16 @@ struct IrToLir
 		if (func.isExternal) return;
 
 		func.backendData.lirData = context.appendAst!IrFunction;
-		func.backendData.lirData.backendData = &func.backendData;
+		IrFunction* lirData = context.getAst!IrFunction(func.backendData.lirData);
 
-		mod.lirModule.addFunction(*context, func.backendData.lirData);
-		processFunc(*func.backendData.irData, *func.backendData.lirData);
-		if (context.validateIr) validateIrFunction(*context, *func.backendData.lirData);
-		if (context.printLir && context.printDumpOf(&func)) dumpFunction(*func.backendData.lirData, *context);
+		lirData.backendData = &func.backendData;
+
+		mod.lirModule.addFunction(*context, lirData);
+		IrFunction* irData = context.getAst!IrFunction(func.backendData.irData);
+		processFunc(*irData, *lirData);
+
+		if (context.validateIr) validateIrFunction(*context, *lirData);
+		if (context.printLir && context.printDumpOf(&func)) dumpFunction(*lirData, *context);
 	}
 
 	void processFunc(ref IrFunction ir, ref IrFunction lir)
@@ -98,8 +102,9 @@ struct IrToLir
 		void genStore(IrIndex lirPtr, uint offset, IrIndex irValue, uint fromOffset, IrIndex valueType, IrIndex lirBlockIndex, ref IrFunction ir)
 		{
 			//writefln("genStore %s %s %s %s %s", lirPtr, offset, irValue, fromOffset, IrIndexDump(valueType, *context, ir));
-			IrIndex srcType = getValueType(irValue, ir, *context);
 			IrIndex dstType = getValueType(lirPtr, lir, *context);
+			IrIndex srcType = getValueType(irValue, ir, *context);
+			//writefln("  %s %s <- %s %s", IrTypeDump(dstType, *context), dstType, IrTypeDump(srcType, *context), srcType);
 			context.assertf(dstType.isTypePointer, "%s", IrIndexDump(dstType, *context, lir));
 			IrIndex ptrType = context.types.appendPtr(valueType);
 

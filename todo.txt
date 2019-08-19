@@ -31,6 +31,8 @@
 - context format/writefln
 - inline instructions in IR for representing memory operands in x86 LIR
 
+- UFCS
+	+ without parentesis
 - function call without parentesis
 - foreach
 	- over slice
@@ -40,10 +42,12 @@
 - ref 
 	- ref parameters
 	- ref in foreach
+	- this is ref in methods
 - empty string
 
 - multi-indexing operator x[1, 2, 3]
-- AST Index
++ AST Index
+	- in passes with state pass context separately
 - small pointer type when basic type is store inline + pointer level for more than 1 indirection level
 o dll linking
 	- @dllimport("lz4.dll") attribute on externals

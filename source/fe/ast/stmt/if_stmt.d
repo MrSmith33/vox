@@ -8,16 +8,16 @@ import all;
 
 struct IfStmtNode {
 	mixin AstNodeData!(AstType.stmt_if, AstFlags.isStatement);
-	ExpressionNode* condition;
-	AstNode* thenStatement;
-	AstNode* elseStatement; // Nullable
-	Scope* then_scope;
-	Scope* else_scope;
+	AstIndex condition;
+	AstIndex thenStatement;
+	AstIndex elseStatement; // Nullable
+	AstIndex then_scope;
+	AstIndex else_scope;
 }
 
 void name_register_if(IfStmtNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register;
-	require_name_register(node.condition.as_node, state);
+	require_name_register(node.condition, state);
 	node.then_scope = state.pushScope("Then", Yes.ordered);
 	require_name_register(node.thenStatement, state);
 	state.popScope;
@@ -31,7 +31,7 @@ void name_register_if(IfStmtNode* node, ref NameRegisterState state) {
 
 void name_resolve_if(IfStmtNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.condition.as_node, state);
+	require_name_resolve(node.condition, state);
 	state.pushScope(node.then_scope);
 	require_name_resolve(node.thenStatement, state);
 	state.popScope;

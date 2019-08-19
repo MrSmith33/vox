@@ -68,7 +68,7 @@ struct CompilationContext
 	/// Token locations in source code
 	Arena!SourceLocation tokenLocationBuffer;
 	/// For AST nodes
-	Arena!ubyte astBuffer;
+	Arena!uint astBuffer;
 	/// For arrays and hashmaps used in AST nodes
 	ArrayArena arrayArena;
 	/// Identifier interning/deduplication
@@ -101,6 +101,11 @@ struct CompilationContext
 	ObjectSymbolTable objSymTab;
 
 	Arena!ubyte binaryBuffer;
+
+	// Stores astBuffer.length after initialize() call
+	// to be reset on beginCompilation()
+	private size_t initializedAstBufSize;
+	private size_t initializedIrTypeBufSize; // ditto, types.buffer.length
 
 	// sections
 	LinkIndex hostSectionIndex;
@@ -180,35 +185,14 @@ struct CompilationContext
 	///
 	string idString(const Identifier id) { return idMap.get(id); }
 
-	static __gshared ErrorAstNode errorNode = ErrorAstNode();
-
-	PtrTypeNode* u8Ptr;
-	SliceTypeNode* u8Slice;
+	AstIndex errorNode;
+	AstIndex u8Ptr;
+	AstIndex u8Slice;
 	CommonIdentifiers commonIds;
 
-	static __gshared BasicTypeNode[] basicTypes = [
-		basicTypeNode(0, 0, 0, BasicType.t_error),
-		basicTypeNode(0, 0, 0, BasicType.t_void),
-		basicTypeNode(1, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean),
-		basicTypeNode(8, 0, 0, BasicType.t_null),
+	private AstIndex[BasicType.max + 1] basicTypes;
 
-		basicTypeNode(1, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger),
-		basicTypeNode(2, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger),
-		basicTypeNode(4, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger),
-		basicTypeNode(8, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger),
-		//basicTypeNode(1, BasicType.t_isize, BasicTypeFlag.isInteger), // this is alias
-
-		basicTypeNode(1, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-		basicTypeNode(2, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-		basicTypeNode(4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-		basicTypeNode(8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-		//basicTypeNode(1, BasicType.t_usize, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned), // this is alias
-
-		basicTypeNode(4, 0, 0, BasicType.t_f32  , BasicTypeFlag.isFloat),
-		basicTypeNode(8, 0, 0, BasicType.t_f64  , BasicTypeFlag.isFloat),
-	];
-
-	TypeNode* basicTypeNodes(BasicType basicType) { return cast(TypeNode*)&basicTypes[basicType]; }
+	AstIndex basicTypeNodes(BasicType basicType) { return basicTypes[basicType]; }
 
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
@@ -335,7 +319,7 @@ struct CompilationContext
 
 	IrIndex appendTemp(T)(uint howMany = 1)
 	{
-		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
+		static assert(T.alignof <= 4, "Can only store types aligned to 4 bytes");
 
 		IrIndex result;
 		result.storageUintIndex = tempBuffer.uintLength;
@@ -374,11 +358,39 @@ struct CompilationContext
 		tempBuffer.free(buf);
 	}
 
-	T* appendAst(T, Args...)(Args args) {
-		T* result = cast(T*)astBuffer.nextPtr;
-		astBuffer.voidPut(T.sizeof);
-		*result = T(args);
-		return result;
+	AstIndex appendAst(T, Args...)(Args args) {
+		uint resIndex = astBuffer.uintLength;
+		T* obj = cast(T*)astBuffer.nextPtr;
+		enum size_t numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
+		astBuffer.voidPut(numAllocatedSlots);
+		*obj = T(args);
+		return AstIndex(resIndex);
+	}
+
+	T* getAst(T)(AstIndex index) {
+		if (!index) return null;
+		return cast(T*)(&astBuffer.bufPtr[index.storageIndex]);
+	}
+
+	AstIndex getAstNodeIndex(T)(T* node) {
+		uint* ptr = cast(uint*)node;
+		ptrdiff_t diff = ptr - astBuffer.bufPtr;
+		assert(diff > 0, "<= 0");
+		assert(diff < astBuffer.length, "> length");
+		return AstIndex(cast(uint)diff);
+	}
+
+	Scope* getAstScope(AstIndex index) { return getAst!Scope(index); }
+	AstNode* getAstNode(AstIndex index) { return getAst!AstNode(index); }
+	TypeNode* getAstType(AstIndex index) {
+		TypeNode* t = getAst!TypeNode(index);
+		assertf(t.isType, "node is %s", t.astType);
+		return t;
+	}
+	ExpressionNode* getAstExpr(AstIndex index) {
+		ExpressionNode* t = getAst!ExpressionNode(index);
+		assertf(t.isExpression, "node is %s", t.astType);
+		return t;
 	}
 
 	ModuleDeclNode* getModuleFromToken(TokenIndex tokIndex)
@@ -415,8 +427,10 @@ struct CompilationContext
 	ModuleDeclNode* findModule(const Identifier moduleId)
 	{
 		foreach(ref SourceFileInfo file; files.data)
+		{
 			if (file.mod.id == moduleId)
 				return file.mod;
+		}
 		return null;
 	}
 
@@ -427,7 +441,7 @@ struct CompilationContext
 
 	FunctionDeclNode* getFunction(FunctionIndex index)
 	{
-		return files[index.moduleIndex.fileIndex].mod.functions[index.functionIndex];
+		return getAst!FunctionDeclNode(files[index.moduleIndex.fileIndex].mod.functions[index.functionIndex]);
 	}
 
 	FunctionDeclNode* findFunction(string moduleName, string funcName)
@@ -446,8 +460,8 @@ struct CompilationContext
 
 		foreach (ref SourceFileInfo file; files.data)
 		{
-			FunctionDeclNode* fun = file.mod.findFunction(funcId);
-			if (fun !is null) onFunction(file.mod, fun);
+			FunctionDeclNode* fun = file.mod.findFunction(funcId, &this);
+			if (fun) onFunction(file.mod, fun);
 		}
 	}
 
@@ -541,6 +555,42 @@ struct CompilationContext
 	void initialize()
 	{
 		commonIds = collectIdentifiers(this);
+
+		astBuffer.voidPut(1); // 0th slot is reserved for undefined index
+
+		// add basic types
+		AstIndex makeBasic(uint size, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
+		{
+			return appendAst!BasicTypeNode(TokenIndex(), size, minValue, maxValue, basicType, cast(ubyte)typeFlags);
+		}
+
+		basicTypes = [
+			makeBasic(0, 0, 0, BasicType.t_error),
+			makeBasic(0, 0, 0, BasicType.t_void),
+			makeBasic(1, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean),
+			makeBasic(8, 0, 0, BasicType.t_null),
+
+			makeBasic(1, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger),
+			makeBasic(2, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger),
+			makeBasic(4, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger),
+			makeBasic(8, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger),
+
+			makeBasic(1, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+			makeBasic(2, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+			makeBasic(4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+			makeBasic(8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+
+			makeBasic(4, 0, 0, BasicType.t_f32  , BasicTypeFlag.isFloat),
+			makeBasic(8, 0, 0, BasicType.t_f64  , BasicTypeFlag.isFloat),
+		];
+		errorNode = appendAst!ErrorAstNode();
+		u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
+		u8Ptr.gen_ir_type(&this); // we need to cache IR types too
+		u8Slice = appendAst!SliceTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
+		u8Slice.gen_ir_type(&this); // we need to cache IR types too
+
+		initializedAstBufSize = astBuffer.length;
+		initializedIrTypeBufSize = types.buffer.length;
 	}
 
 	void beginCompilation()
@@ -554,7 +604,7 @@ struct CompilationContext
 		tokenLocationBuffer.clear;
 		binaryBuffer.clear;
 		irBuffer.clear;
-		types.buffer.clear;
+		types.buffer.length = initializedIrTypeBufSize;
 		tempBuffer.clear;
 		staticDataBuffer.clear;
 		objSymTab.buffer.clear;
@@ -562,15 +612,12 @@ struct CompilationContext
 		globals.buffer.clear;
 		constants.buffer.clear;
 		constants.aggregateBuffer.clear;
-		astBuffer.clear;
+		astBuffer.length = initializedAstBufSize;
 		arrayArena.clear;
 		entryPoint = null;
 		sink.clear;
 		errorSink.clear;
 
 		externalSymbols.clear();
-
-		u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
-		u8Slice = appendAst!SliceTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
 	}
 }

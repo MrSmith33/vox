@@ -3,22 +3,23 @@ Copyright: Copyright (c) 2017-2019 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
-module fe.semantics;
+module fe.type_check;
 
 import std.stdio;
 import std.string : format;
 import std.typecons : Flag, Yes, No;
 import all;
 
-void pass_type_check(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
+void pass_type_check(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
-	auto state = TypeCheckState(&ctx);
+	auto state = TypeCheckState(&context);
 
-	foreach (ref SourceFileInfo file; ctx.files.data) {
-		require_type_check(file.mod.as_node, state);
+	foreach (ref SourceFileInfo file; context.files.data) {
+		AstIndex modIndex = file.mod.get_ast_index(&context);
+		require_type_check(modIndex, state);
 
-		if (ctx.printAstSema && file.mod !is null) {
-			auto astPrinter = AstPrinter(&ctx, 2);
+		if (context.printAstSema && modIndex) {
+			auto astPrinter = AstPrinter(&context, 2);
 			writefln("// AST typed `%s`", file.name);
 			astPrinter.printAst(cast(AstNode*)file.mod);
 		}
@@ -32,16 +33,18 @@ struct TypeCheckState
 }
 
 /// Type checking for static context
-void require_type_check(AstNode* node, CompilationContext* context)
+void require_type_check(ref AstIndex nodeIndex, CompilationContext* context)
 {
 	auto state = TypeCheckState(context);
-	require_type_check(node, state);
+	require_type_check(nodeIndex, state);
 }
 
 /// Annotates all expression nodes with their type
 /// Type checking, casting
-void require_type_check(AstNode* node, ref TypeCheckState state)
+void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 {
+	AstNode* node = state.context.getAstNode(nodeIndex);
+
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register, name_resolve, type_check: state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
@@ -75,7 +78,7 @@ void require_type_check(AstNode* node, ref TypeCheckState state)
 		case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
 			type_check_name_use(cast(NameUseExprNode*)node, state); break;
 		case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
-			type_check_member(cast(MemberExprNode*)node, state); break;
+			type_check_member(nodeIndex, cast(MemberExprNode*)node, state); break;
 		case expr_bin_op: type_check_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: type_check_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: type_check_call(cast(CallExprNode*)node, state); break;
@@ -102,28 +105,30 @@ bool isBool(TypeNode* type)
 }
 
 /// Returns true if types are equal or were converted to common type. False otherwise
-bool autoconvToCommonType(ref ExpressionNode* left, ref ExpressionNode* right, CompilationContext* context)
+bool autoconvToCommonType(ref AstIndex leftIndex, ref AstIndex rightIndex, CompilationContext* context)
 {
-	if (left.type.astType == AstType.type_basic && right.type.astType == AstType.type_basic)
-	{
-		BasicTypeNode* leftType = left.type.as_basic;
-		BasicTypeNode* rightType = right.type.as_basic;
+	ExpressionNode* left = leftIndex.get_expr(context);
+	ExpressionNode* right = rightIndex.get_expr(context);
+	TypeNode* leftType = left.type.get_type(context);
+	TypeNode* rightType = right.type.get_type(context);
 
-		BasicType commonType = commonBasicType[leftType.basicType][rightType.basicType];
+	if (leftType.astType == AstType.type_basic && rightType.astType == AstType.type_basic)
+	{
+		BasicType commonType = commonBasicType[leftType.as_basic.basicType][rightType.as_basic.basicType];
 		if (commonType != BasicType.t_error)
 		{
-			TypeNode* type = context.basicTypeNodes(commonType);
-			bool successLeft = autoconvTo(left, type, context);
-			bool successRight = autoconvTo(right, type, context);
+			AstIndex type = context.basicTypeNodes(commonType);
+			bool successLeft = autoconvTo(leftIndex, type, context);
+			bool successRight = autoconvTo(rightIndex, type, context);
 			if(successLeft && successRight)
 				return true;
 		}
 	}
-	else if (left.type.isPointer && right.type.isTypeofNull) {
+	else if (leftType.isPointer && rightType.isTypeofNull) {
 		right.type = left.type;
 		return true;
 	}
-	else if (left.type.isTypeofNull && right.type.isPointer) {
+	else if (leftType.isTypeofNull && rightType.isPointer) {
 		left.type = right.type;
 		return true;
 	}
@@ -135,17 +140,21 @@ bool autoconvToCommonType(ref ExpressionNode* left, ref ExpressionNode* right, C
 	return false;
 }
 
-void autoconvToBool(ref ExpressionNode* expr, CompilationContext* context)
+void autoconvToBool(ref AstIndex exprIndex, CompilationContext* context)
 {
-	if (expr.type.isError) return;
-	if (!autoconvTo(expr, context.basicTypeNodes(BasicType.t_bool), context))
+	ExpressionNode* expr = exprIndex.get_expr(context);
+	if (expr.type.get_type(context).isError) return;
+	if (!autoconvTo(exprIndex, context.basicTypeNodes(BasicType.t_bool), context))
 		context.error(expr.loc, "Cannot implicitly convert `%s` to bool",
 			expr.type.typeName(context));
 }
 
-bool isConvertibleTo(TypeNode* fromType, TypeNode* toType, CompilationContext* context)
+bool isConvertibleTo(AstIndex fromTypeIndex, AstIndex toTypeIndex, CompilationContext* context)
 {
-	if (same_type(fromType, toType)) return true;
+	TypeNode* fromType = fromTypeIndex.get_type(context);
+	TypeNode* toType = toTypeIndex.get_type(context);
+
+	if (same_type(fromTypeIndex, toTypeIndex, context)) return true;
 
 	if (fromType.astType == AstType.type_basic && toType.astType == AstType.type_basic)
 	{
@@ -166,24 +175,28 @@ bool isConvertibleTo(TypeNode* fromType, TypeNode* toType, CompilationContext* c
 }
 
 /// Returns true if conversion was successful. False otherwise
-bool autoconvTo(ref ExpressionNode* expr, TypeNode* type, CompilationContext* context)
+bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* context)
 {
+	ExpressionNode* expr = exprIndex.get_expr(context);
+	TypeNode* type = typeIndex.get_type(context).foldAliases(context);
+	TypeNode* exprType = expr.type.get_type(context);
 
-	if (same_type(expr.type, type)) return true;
+	if (same_type(expr.type, typeIndex, context)) return true;
 	string extraError;
 
-	if (expr.type.astType == AstType.type_basic && type.astType == AstType.type_basic)
+	if (exprType.astType == AstType.type_basic && type.astType == AstType.type_basic)
 	{
-		BasicType fromType = expr.type.as_basic.basicType;
+		BasicType fromType = exprType.as_basic.basicType;
 		BasicType toType = type.as_basic.basicType;
 		bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
 		if (canConvert)
 		{
 			if (expr.astType == AstType.literal_int) {
 				//writefln("int %s %s -> %s", expr.loc, expr.type.printer(context), type.printer(context));
-				expr.type = type;
+				// change type of int literal inline
+				expr.type = typeIndex;
 			} else {
-				expr = cast(ExpressionNode*) context.appendAst!TypeConvExprNode(expr.loc, type, IrIndex(), expr);
+				exprIndex = context.appendAst!TypeConvExprNode(expr.loc, typeIndex, IrIndex(), exprIndex);
 			}
 			return true;
 		}
@@ -191,12 +204,12 @@ bool autoconvTo(ref ExpressionNode* expr, TypeNode* type, CompilationContext* co
 			auto lit = cast(IntLiteralExprNode*) expr;
 			if (lit.isSigned) {
 				if (numSignedBytesForInt(lit.value) <= integerSize(toType)) {
-					expr.type = type;
+					expr.type = typeIndex;
 					return true;
 				}
 			} else {
 				if (numUnsignedBytesForInt(lit.value) <= integerSize(toType)) {
-					expr.type = type;
+					expr.type = typeIndex;
 					return true;
 				}
 			}
@@ -211,31 +224,34 @@ bool autoconvTo(ref ExpressionNode* expr, TypeNode* type, CompilationContext* co
 	// auto cast from string literal to c_char*
 	else if (expr.astType == AstType.literal_string)
 	{
-		if (type.astType == AstType.type_ptr &&
-			type.as_ptr.base.astType == AstType.type_basic &&
-			type.as_ptr.base.as_basic.basicType == BasicType.t_u8)
+		if (type.astType == AstType.type_ptr)
 		{
-			auto memberExpr = context.appendAst!MemberExprNode(expr.loc, type, IrIndex(), expr, null, 1);
-			memberExpr.astType = AstType.expr_slice_member;
-			expr = cast(ExpressionNode*)memberExpr;
-			return true;
+			TypeNode* ptrBaseType = type.as_ptr.base.get_type(context);
+			if (ptrBaseType.astType == AstType.type_basic &&
+				ptrBaseType.as_basic.basicType == BasicType.t_u8)
+			{
+				auto memberExpr = context.appendAst!MemberExprNode(expr.loc, typeIndex, IrIndex(), exprIndex, AstIndex.init, 1);
+				memberExpr.get_node(context).astType = AstType.expr_slice_member;
+				exprIndex = memberExpr;
+				return true;
+			}
 		}
 	}
-	else if (expr.type.isStaticArray && type.isSlice)
+	else if (exprType.isStaticArray && type.isSlice)
 	{
-		if (same_type(expr.type.as_static_array.base, type.as_slice.base))
+		if (same_type(exprType.as_static_array.base, type.as_slice.base, context))
 		{
-			expr = cast(ExpressionNode*)context.appendAst!UnaryExprNode(
-				expr.loc, type, IrIndex(), UnOp.staticArrayToSlice, expr);
+			exprIndex = context.appendAst!UnaryExprNode(
+				expr.loc, typeIndex, IrIndex(), UnOp.staticArrayToSlice, exprIndex);
 			return true;
 		}
 	}
 	else if (expr.astType == AstType.literal_null) {
 		if (type.isPointer) {
-			expr.type = type;
+			expr.type = typeIndex;
 			return true;
 		} else if (type.isSlice) {
-			expr.type = type;
+			expr.type = typeIndex;
 			return true;
 		}
 	}
@@ -249,8 +265,13 @@ bool autoconvTo(ref ExpressionNode* expr, TypeNode* type, CompilationContext* co
 
 void setResultType(BinaryExprNode* b, CompilationContext* context)
 {
-	TypeNode* resRype = context.basicTypeNodes(BasicType.t_error);
-	if (b.left.type.isError || b.right.type.isError) return;
+	AstIndex resRype = context.basicTypeNodes(BasicType.t_error);
+	AstIndex leftTypeIndex = b.left.get_expr(context).type;
+	TypeNode* leftType = leftTypeIndex.get_type(context);
+	AstIndex rightTypeIndex = b.right.get_expr(context).type;
+	TypeNode* rightType = rightTypeIndex.get_type(context);
+
+	if (leftType.isError || rightType.isError) return;
 
 	switch(b.op) with(BinOp)
 	{
@@ -262,12 +283,12 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 			break;
 		// logic ops. Requires both operands to be of the same type
 		case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
-			if (b.left.type.isPointer && b.right.type.isPointer)
+			if (leftType.isPointer && rightType.isPointer)
 			{
 				if (
-					same_type(b.left.type, b.right.type) ||
-					b.left.type.as_ptr.isVoidPtr ||
-					b.right.type.as_ptr.isVoidPtr)
+					same_type(leftTypeIndex, rightTypeIndex, context) ||
+					leftType.as_ptr.isVoidPtr(context) ||
+					rightType.as_ptr.isVoidPtr(context))
 				{
 					resRype = context.basicTypeNodes(BasicType.t_bool);
 					break;
@@ -277,15 +298,15 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 			if (autoconvToCommonType(b.left, b.right, context))
 				resRype = context.basicTypeNodes(BasicType.t_bool);
 			else
-				context.error(b.left.loc, "Cannot compare `%s` and `%s`",
-					b.left.type.typeName(context),
-					b.right.type.typeName(context));
+				context.error(b.left.get_node(context).loc, "Cannot compare `%s` and `%s`",
+					leftType.typeName(context),
+					rightType.typeName(context));
 			break;
 
 		case MINUS:
-			if (b.left.type.isPointer && b.right.type.isPointer) // handle ptr - ptr
+			if (leftType.isPointer && rightType.isPointer) // handle ptr - ptr
 			{
-				if (same_type(b.left.type, b.right.type))
+				if (same_type(leftTypeIndex, rightTypeIndex, context))
 				{
 					b.op = BinOp.PTR_DIFF;
 					resRype = context.basicTypeNodes(BasicType.t_i64);
@@ -294,28 +315,28 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 				else
 				{
 					context.error(b.loc, "cannot subtract pointers to different types: `%s` and `%s`",
-						b.left.type.printer(context), b.right.type.printer(context));
+						leftType.printer(context), rightType.printer(context));
 					break;
 				}
-			} else if (b.left.type.isPointer && b.right.type.isInteger) { // handle ptr - int
+			} else if (leftType.isPointer && rightType.isInteger) { // handle ptr - int
 				b.op = BinOp.PTR_PLUS_INT;
-				(cast(IntLiteralExprNode*)b.right).negate(b.loc, *context);
-				resRype = b.left.type;
+				(cast(IntLiteralExprNode*)b.right.get_node(context)).negate(b.loc, *context);
+				resRype = leftTypeIndex;
 				break;
 			}
 			goto case DIV;
 
 		case PLUS:
 			// handle int + ptr and ptr + int
-			if (b.left.type.isPointer && b.right.type.isInteger) {
+			if (leftType.isPointer && rightType.isInteger) {
 				b.op = BinOp.PTR_PLUS_INT;
-				resRype = b.left.type;
+				resRype = leftTypeIndex;
 				break;
-			} else if (b.left.type.isInteger && b.right.type.isPointer) {
+			} else if (leftType.isInteger && rightType.isPointer) {
 				b.op = BinOp.PTR_PLUS_INT;
 				// canonicalize
 				swap(b.left, b.right);
-				resRype = b.left.type;
+				resRype = leftTypeIndex;
 				break;
 			}
 
@@ -324,39 +345,41 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 		// arithmetic op int float
 		case DIV, REMAINDER, MULT, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
 			if (autoconvToCommonType(b.left, b.right, context))
-				resRype = b.left.type;
+			{
+				resRype = b.left.get_node_type(context);
+			}
 			else
 			{
 				context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
-					b.left.type.typeName(context), binOpStrings[b.op],
-					b.right.type.typeName(context));
+					leftType.typeName(context), binOpStrings[b.op],
+					rightType.typeName(context));
 			}
 			break;
 
 		case MINUS_ASSIGN:
-			if (b.left.type.isPointer && b.right.type.isInteger) {
+			if (leftType.isPointer && rightType.isInteger) {
 				b.op = BinOp.PTR_PLUS_INT_ASSIGN;
-				(cast(IntLiteralExprNode*)b.right).negate(b.loc, *context);
-				resRype = b.left.type;
+				(cast(IntLiteralExprNode*)b.right.get_node(context)).negate(b.loc, *context);
+				resRype = leftTypeIndex;
 				break;
 			}
 			goto case BITWISE_AND_ASSIGN;
 
 		case PLUS_ASSIGN:
-			if (b.left.type.isPointer && b.right.type.isInteger) {
+			if (leftType.isPointer && rightType.isInteger) {
 				b.op = BinOp.PTR_PLUS_INT_ASSIGN;
-				resRype = b.left.type;
+				resRype = leftTypeIndex;
 				break;
 			}
 			goto case BITWISE_AND_ASSIGN;
 
 		case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN, SHL_ASSIGN, SHR_ASSIGN,
 			ASHR_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
-			bool success = autoconvTo(b.right, b.left.type, context);
+			bool success = autoconvTo(b.right, leftTypeIndex, context);
 			if (!success)
 				context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
-					b.left.type.typeName(context), binOpStrings[b.op],
-					b.right.type.typeName(context));
+					leftType.typeName(context), binOpStrings[b.op],
+					rightType.typeName(context));
 			break;
 
 		default:
@@ -368,8 +391,8 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 
 void calcType(BinaryExprNode* b, CompilationContext* context)
 {
-	assert(b.left.type, format("left(%s).type: is null", b.left.astType));
-	assert(b.right.type, format("right(%s).type: is null", b.right.astType));
+	assert(b.left.get_expr(context).type, format("left(%s).type: is null", b.left.get_node(context).astType));
+	assert(b.right.get_expr(context).type, format("right(%s).type: is null", b.right.get_node(context).astType));
 
 	setResultType(b, context);
 }
@@ -378,30 +401,33 @@ void calcType(BinaryExprNode* b, CompilationContext* context)
 void type_check_module(ModuleDeclNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	foreach (decl; node.declarations) require_type_check(decl, state);
+	foreach (ref AstIndex decl; node.declarations) require_type_check(decl, state);
 	node.state = AstNodeState.type_check_done;
 }
 
 void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.type_check;
 	auto prevFunc = state.curFunc;
 	state.curFunc = node;
 	node.backendData.callingConvention = &win64_call_conv;
 
-	if (node.returnType.isOpaqueStruct) {
-		state.context.error(node.returnType.loc,
+	TypeNode* returnType = node.returnType.get_type(c);
+	if (returnType.isOpaqueStruct(c)) {
+		c.error(node.loc,
 			"function cannot return opaque type `%s`",
-			node.returnType.printer(state.context));
+			returnType.printer(c));
 	}
 
-	foreach (VariableDeclNode* param; node.parameters) {
-		require_type_check(param.as_node, state);
+	foreach (ref AstIndex param; node.parameters) {
+		require_type_check(param, state);
 	}
 
 	if (node.block_stmt)
 	{
-		require_type_check(node.block_stmt.as_node, state);
+		require_type_check(node.block_stmt, state);
 	}
 	state.curFunc = prevFunc;
 	node.state = AstNodeState.type_check_done;
@@ -409,34 +435,40 @@ void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
 
 void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
+	TypeNode* type = node.type.get_type(c);
 	node.state = AstNodeState.type_check;
-	TypeNode* type = node.type.foldAliases;
-	require_type_check(type.as_node, state);
+	require_type_check(node.type, state);
 
-	if (type.isOpaqueStruct) {
-		string msg = node.isParameter ?
-			"cannot declare parameter of opaque type `%2$s`" :
-			"cannot declare variable `%s` of opaque type `%s`";
-
-		state.context.error(node.type.loc,
-			msg,
-			state.context.idString(node.id),
-			type.printer(state.context));
+	if (type.isOpaqueStruct(c)) {
+		if (node.isParameter) {
+			c.error(node.loc,
+				"cannot declare parameter of opaque type `%s`",
+				type.printer(c));
+		} else {
+			c.error(node.loc,
+				"cannot declare variable `%s` of opaque type `%s`",
+				c.idString(node.id),
+				type.printer(c));
+		}
 	}
 
 	if (node.initializer) {
-		require_type_check(node.initializer.as_node, state);
-		autoconvTo(node.initializer, type, state.context);
+		require_type_check(node.initializer, state);
+		autoconvTo(node.initializer, node.type, c);
 	}
 
 	if (!node.isParameter)
-	switch (type.astType) with(AstType)
 	{
-		case type_static_array, decl_struct, type_slice:
-			node.varFlags |= VariableFlags.forceMemoryStorage;
-			break;
+		switch (type.astType) with(AstType)
+		{
+			case type_static_array, decl_struct, type_slice:
+				node.varFlags |= VariableFlags.forceMemoryStorage;
+				break;
 
-		default: break;
+			default: break;
+		}
 	}
 	node.state = AstNodeState.type_check_done;
 }
@@ -458,10 +490,10 @@ void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	require_type_check(node.type.as_node, state);
+	require_type_check(node.type, state);
 
-	if (node.initializer !is null) {
-		require_type_check(node.initializer.as_node, state);
+	if (node.initializer) {
+		require_type_check(node.initializer, state);
 		autoconvTo(node.initializer, node.type, state.context);
 	}
 	node.state = AstNodeState.type_check_done;
@@ -477,7 +509,7 @@ void type_check_block(BlockStmtNode* node, ref TypeCheckState state)
 void type_check_if(IfStmtNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	require_type_check(node.condition.as_node, state);
+	require_type_check(node.condition, state);
 	autoconvToBool(node.condition, state.context);
 	require_type_check(node.thenStatement, state);
 	if (node.elseStatement) {
@@ -489,7 +521,7 @@ void type_check_if(IfStmtNode* node, ref TypeCheckState state)
 void type_check_while(WhileStmtNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	require_type_check(node.condition.as_node, state);
+	require_type_check(node.condition, state);
 	autoconvToBool(node.condition, state.context);
 	require_type_check(node.statement, state);
 	node.state = AstNodeState.type_check_done;
@@ -499,7 +531,7 @@ void type_check_do(DoWhileStmtNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
 	require_type_check(node.statement, state);
-	require_type_check(node.condition.as_node, state);
+	require_type_check(node.condition, state);
 	autoconvToBool(node.condition, state.context);
 	node.state = AstNodeState.type_check_done;
 }
@@ -509,7 +541,7 @@ void type_check_for(ForStmtNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 	foreach(stmt; node.init_statements) require_type_check(stmt, state);
 	if (node.condition) {
-		require_type_check(node.condition.as_node, state);
+		require_type_check(node.condition, state);
 		autoconvToBool(node.condition, state.context);
 	}
 	foreach(stmt; node.increment_statements) require_type_check(stmt, state);
@@ -520,34 +552,36 @@ void type_check_for(ForStmtNode* node, ref TypeCheckState state)
 // Check return type and function return type
 void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.type_check;
 	if (!state.curFunc)
 	{
-		state.context.error(node.loc,
+		c.error(node.loc,
 			"Return statement is not inside function");
 		return;
 	}
 
 	if (node.expression)
 	{
-		require_type_check(node.expression.as_node, state);
-		if (state.curFunc.returnType.isVoid)
+		require_type_check(node.expression, state);
+		if (state.curFunc.returnType.get_type(c).isVoid)
 		{
-			state.context.error(node.expression.loc,
+			c.error(node.expression.get_expr(c).loc,
 				"Cannot return expression of type `%s` from void function",
-				node.expression.type.typeName(state.context));
+				node.expression.get_expr(c).type.typeName(c));
 		}
 		else
 		{
-			autoconvTo(node.expression, state.curFunc.returnType, state.context);
+			autoconvTo(node.expression, state.curFunc.returnType, c);
 		}
 	}
 	else
 	{
-		if (!state.curFunc.returnType.isVoid)
-			state.context.error(node.loc,
+		if (!state.curFunc.returnType.get_type(c).isVoid)
+			c.error(node.loc,
 				"Cannot return void from non-void function",
-				node.expression.type.typeName(state.context));
+				node.expression.get_expr(c).type.typeName(c));
 	}
 	node.state = AstNodeState.type_check_done;
 }
@@ -556,15 +590,49 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 void type_check_name_use(NameUseExprNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	node.type = node.entity.get_node_type;
+	node.type = node.entity.get_node_type(state.context);
 	node.state = AstNodeState.type_check_done;
 }
 
-void type_check_member(MemberExprNode* node, ref TypeCheckState state)
+void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
 	node.state = AstNodeState.type_check;
-	require_type_check(node.aggregate.as_node, state);
-	lookupMember(node, state.context);
+
+	// try member
+	NameUseExprNode* member = node.member.get_expr_name_use(c);
+	require_type_check(node.aggregate, state);
+	LookupResult res = lookupMember(node, c);
+	if (res == LookupResult.success) {
+		node.state = AstNodeState.type_check_done;
+		return;
+	}
+
+	// try UFCS
+	AstIndex ufcsNodeIndex = lookupScopeIdRecursive(node.curScope.get_scope(c), member.id(c), node.loc, c);
+	if (ufcsNodeIndex)
+	{
+		AstNode* ufcsNode = c.getAstNode(ufcsNodeIndex);
+		if (ufcsNode.astType == AstType.decl_function)
+		{
+			// rewrite as call
+			member.resolve = ufcsNodeIndex;
+			member.astType = AstType.expr_func_name_use;
+			Array!AstIndex args;
+			args.put(c.arrayArena, node.aggregate);
+			nodeIndex = c.appendAst!CallExprNode(member.loc, AstIndex(), IrIndex(), node.member, args);
+			nodeIndex.get_node(c).state = AstNodeState.name_resolve_done;
+			// type check call
+			require_type_check(nodeIndex, state);
+			return;
+		}
+	}
+
+	// nothing found
+	node.type = c.basicTypeNodes(BasicType.t_error);
+	AstIndex objType = node.aggregate.get_node_type(c);
+	c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(member.id(c)));
+
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -602,59 +670,62 @@ void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state
 void type_check_binary_op(BinaryExprNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	require_type_check(node.left.as_node, state);
-	require_type_check(node.right.as_node, state);
+	require_type_check(node.left, state);
+	require_type_check(node.right, state);
 	calcType(node, state.context);
 	node.state = AstNodeState.type_check_done;
 }
 
 void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.type_check;
-	require_type_check(node.child.as_node, state);
-	assert(node.child.type, format("child(%s).type: is null", node.child.astType));
+	require_type_check(node.child, state);
+	ExpressionNode* child = node.child.get_expr(c);
+	assert(child.type, format("child(%s).type: is null", child.astType));
 	switch(node.op) with(UnOp)
 	{
 		case addrOf:
 			// make sure that variable gets stored in memory
-			switch(node.child.astType)
+			switch(child.astType)
 			{
 				case AstType.expr_var_name_use:
-					(cast(AstNode*)node.child).cast_expr_name_use.varDecl.varFlags |= VariableFlags.isAddressTaken;
+					child.as_name_use.varDecl(c).varFlags |= VariableFlags.isAddressTaken;
 					break;
 				case AstType.expr_index:
 					break;
 				default:
-					state.context.internal_error(node.loc, "Cannot take address of %s", node.child.astType);
+					c.internal_error(node.loc, "Cannot take address of %s", child.astType);
 			}
-			node.type = cast(TypeNode*) state.context.appendAst!PtrTypeNode(node.child.loc, node.child.type);
+			node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
 			break;
 		case bitwiseNot:
-			node.type = node.child.type;
+			node.type = child.type;
 			break;
 		case logicalNot:
-			autoconvToBool(node.child, state.context);
-			node.type = state.context.basicTypeNodes(BasicType.t_bool);
+			autoconvToBool(node.child, c);
+			node.type = c.basicTypeNodes(BasicType.t_bool);
 			break;
 		case minus:
-			node.type = node.child.type;
+			node.type = child.type;
 			break;
 		case preIncrement, postIncrement, preDecrement, postDecrement:
-			node.type = node.child.type;
+			node.type = child.type;
 			break;
 		case deref:
-			if (node.child.type.isError) {
-				node.type = node.child.type;
+			if (child.type.get_type(c).isError) {
+				node.type = child.type;
 				break;
 			}
-			if (!node.child.type.isPointer) {
-				state.context.unrecoverable_error(node.loc, "Cannot dereference %s", node.child.type.printer(state.context));
+			if (!child.type.get_type(c).isPointer) {
+				c.unrecoverable_error(node.loc, "Cannot dereference %s", child.type.printer(c));
 			}
-			node.type = node.child.type.as_ptr.base;
+			node.type = child.type.get_type(c).as_ptr.base;
 			break;
 		default:
-			state.context.internal_error("un op %s not implemented", node.op);
-			node.type = node.child.type;
+			c.internal_error("un op %s not implemented", node.op);
+			node.type = node.child.expr_type(c);
 	}
 	node.state = AstNodeState.type_check_done;
 }
@@ -662,95 +733,108 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 // Get type from function declaration
 void type_check_call(CallExprNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.type_check;
 	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-	state.context.assertf(node.callee.astType == AstType.expr_func_name_use ||
-		node.callee.astType == AstType.expr_type_name_use,
+	c.assertf(node.callee.astType(c) == AstType.expr_func_name_use ||
+		node.callee.astType(c) == AstType.expr_type_name_use,
 		node.loc, "Only direct function calls are supported right now");
-	AstNode* callee = node.callee.as_name_use.entity;
+	AstNode* callee = node.callee.get_name_use(c).entity.get_node(c);
 
 	switch (callee.astType)
 	{
 		case AstType.decl_function: return type_check_func_call(node, callee.cast_decl_function, state);
 		case AstType.decl_struct: return type_check_constructor_call(node, callee.cast_decl_struct, state);
 		default:
-			node.type = state.context.basicTypeNodes(BasicType.t_error);
-			state.context.error(node.loc, "Cannot call %s", callee.astType);
+			node.type = c.basicTypeNodes(BasicType.t_error);
+			c.error(node.loc, "Cannot call %s", callee.astType);
 	}
 	node.state = AstNodeState.type_check_done;
 }
 
 void type_check_func_call(CallExprNode* node, FunctionDeclNode* funcDecl, ref TypeCheckState state)
 {
-	Array!(VariableDeclNode*) params = funcDecl.parameters;
+	CompilationContext* c = state.context;
+
+	Array!AstIndex params = funcDecl.parameters;
 	auto numParams = params.length;
 	auto numArgs = node.args.length;
 
 	if (numArgs < numParams)
-		state.context.error(node.loc, "Insufficient parameters to '%s', got %s, expected %s",
-			state.context.idString(funcDecl.id), numArgs, numParams);
+		c.error(node.loc, "Insufficient parameters to '%s', got %s, expected %s",
+			c.idString(funcDecl.id), numArgs, numParams);
 	else if (numArgs > numParams)
-		state.context.error(node.loc, "Too much parameters to '%s', got %s, expected %s",
-			state.context.idString(funcDecl.id), numArgs, numParams);
+		c.error(node.loc, "Too much parameters to '%s', got %s, expected %s",
+			c.idString(funcDecl.id), numArgs, numParams);
 
-	foreach (i, ref ExpressionNode* arg; node.args)
+	foreach (i, ref AstIndex arg; node.args)
 	{
-		require_type_check(params[i].type.as_node, state);
-		require_type_check(arg.as_node, state);
-		bool success = autoconvTo(arg, params[i].type, state.context);
+		VariableDeclNode* param = c.getAst!VariableDeclNode(params[i]);
+
+		require_type_check(param.type, state);
+		require_type_check(arg, state);
+		bool success = autoconvTo(arg, param.type, c);
 		if (!success)
-			state.context.error(arg.loc,
+			c.error(arg.loc(c),
 				"Argument %s, must have type %s, not %s", i+1,
-				params[i].type.printer(state.context),
-				arg.type.printer(state.context));
+				param.type.printer(c),
+				arg.expr_type(c).printer(c));
 	}
 	node.type = funcDecl.returnType;
 }
 
 void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	size_t numStructMembers;
-	foreach(AstNode* member; s.declarations)
+	foreach(AstIndex memberIndex; s.declarations)
 	{
+		AstNode* member = memberIndex.get_node(c);
 		if (member.astType != AstType.decl_var) continue;
 
 		ExpressionNode* initializer;
 		if (node.args.length > numStructMembers) { // init from constructor argument
-			require_type_check(node.args[numStructMembers].as_node, state);
-			autoconvTo(node.args[numStructMembers], member.cast_decl_var.type.foldAliases, state.context);
+			require_type_check(node.args[numStructMembers], state);
+			autoconvTo(node.args[numStructMembers], member.cast_decl_var.type, c);
 		} else { // init with initializer from struct definition
-			state.context.internal_error(node.loc, "Not implemented");
+			c.internal_error(node.loc, "Not implemented");
 		}
 		++numStructMembers;
 	}
-	node.type = s.as_node.cast_type_node;
+	node.type = c.getAstNodeIndex(s);
 }
 
 void type_check_index(IndexExprNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.type_check;
-	require_type_check(node.array.as_node, state);
-	require_type_check(node.index.as_node, state);
-	autoconvTo(node.index, state.context.basicTypeNodes(BasicType.t_i64), state.context);
-	switch (node.array.type.astType) with(AstType)
+	require_type_check(node.array, state);
+	require_type_check(node.index, state);
+	autoconvTo(node.index, c.basicTypeNodes(BasicType.t_i64), c);
+	switch (node.array.expr_type(c).astType(c)) with(AstType)
 	{
 		case type_ptr, type_static_array, type_slice: break; // valid
-		default: state.context.internal_error("Cannot index value of type `%s`", node.array.type.printer(state.context));
+		default: c.internal_error("Cannot index value of type `%s`", node.array.expr_type(c).printer(c));
 	}
-	node.type = node.array.type.getElementType(state.context);
+	node.type = node.array.expr_type(c).get_type(c).getElementType(c);
 	node.state = AstNodeState.type_check_done;
 }
 
 void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.type_check;
-	require_type_check(node.expr.as_node, state);
-	if (!isConvertibleTo(node.expr.type, node.type, state.context))
+	require_type_check(node.expr, state);
+	if (!isConvertibleTo(node.expr.expr_type(c), node.type, c))
 	{
-		state.context.error(node.loc,
+		c.error(node.loc,
 			"Cannot auto-convert expression of type `%s` to `%s`",
-			node.expr.type.printer(state.context),
-			node.type.printer(state.context));
+			node.expr.expr_type(c).printer(c),
+			node.type.printer(c));
 	}
 	node.state = AstNodeState.type_check_done;
 }
@@ -758,22 +842,24 @@ void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
 void type_check_ptr(PtrTypeNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	require_type_check(node.base.as_node, state);
+	require_type_check(node.base, state);
 	node.state = AstNodeState.type_check_done;
 }
 
 void type_check_static_array(StaticArrayTypeNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.type_check;
-	require_type_check(node.base.as_node, state);
-	IrIndex val = eval_static_expr(node.length_expr.as_node, state.context);
-	node.length = state.context.constants.get(val).i64.to!uint;
+	require_type_check(node.base, state);
+	IrIndex val = eval_static_expr(node.length_expr, c);
+	node.length = c.constants.get(val).i64.to!uint;
 	node.state = AstNodeState.type_check_done;
 }
 
 void type_check_slice(SliceTypeNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	require_type_check(node.base.as_node, state);
+	require_type_check(node.base, state);
 	node.state = AstNodeState.type_check_done;
 }

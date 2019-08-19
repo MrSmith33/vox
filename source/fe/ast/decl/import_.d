@@ -14,7 +14,7 @@ struct ImportDeclNode
 void name_register_import(ImportDeclNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register;
 	ModuleDeclNode* m = state.context.findModule(node.id);
-	state.currentScope.imports.put(state.context.arrayArena, m);
+	state.currentScope.imports.put(state.context.arrayArena, state.context.getAstNodeIndex(m));
 	if (m is null)
 		state.context.error(node.loc, "Cannot find module `%s`", state.context.idString(node.id));
 	node.state = AstNodeState.type_check_done;

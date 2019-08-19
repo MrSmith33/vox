@@ -23,7 +23,8 @@ struct AstPrinter {
 		writeln(i, args);
 	}
 
-	void pr_node(AstNode* node) { // print node
+	void pr_node(AstIndex nodeIndex) { // print node
+		AstNode* node = context.getAstNode(nodeIndex);
 		indent += indentSize; _visit(node); indent -= indentSize;
 	}
 
@@ -36,12 +37,12 @@ struct AstPrinter {
 	}
 	void visit(FunctionDeclNode* f) {
 		print("FUNC ", f.returnType.printer(context), " ", context.idString(f.id));
-		foreach (param; f.parameters) pr_node(cast(AstNode*)param);
-		if (f.block_stmt) pr_node(cast(AstNode*)f.block_stmt);
+		foreach (param; f.parameters) pr_node(param);
+		if (f.block_stmt) pr_node(f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
 		print(v.isParameter ? "PARAM " : "VAR ", v.type.printer(context), " ", context.idString(v.id));
-		if (v.initializer) pr_node(cast(AstNode*)v.initializer);
+		if (v.initializer) pr_node(v.initializer);
 	}
 	void visit(StructDeclNode* s) {
 		print("STRUCT ", context.idString(s.id));
@@ -55,48 +56,48 @@ struct AstPrinter {
 	}
 	void visit(EnumMemberDecl* m) {
 		print("ENUM MEMBER ", m.type.printer(context), " ", context.idString(m.id));
-		if (m.initializer) pr_node(cast(AstNode*)m.initializer);
+		if (m.initializer) pr_node(m.initializer);
 	}
 	void visit(BlockStmtNode* b) {
 		print("BLOCK");
 		foreach(stmt; b.statements) pr_node(stmt); }
 	void visit(IfStmtNode* i) {
-		print("IF"); pr_node(cast(AstNode*)i.condition);
+		print("IF"); pr_node(i.condition);
 		print("THEN"); pr_node(i.thenStatement);
 		if (i.elseStatement) { print("ELSE"); pr_node(i.elseStatement); }
 	}
 	void visit(WhileStmtNode* w) {
 		print("WHILE");
-		pr_node(cast(AstNode*)w.condition);
-		pr_node(cast(AstNode*)w.statement); }
+		pr_node(w.condition);
+		pr_node(w.statement); }
 	void visit(DoWhileStmtNode* d) {
 		print("DO");
-		pr_node(cast(AstNode*)d.condition);
+		pr_node(d.condition);
 		print("WHILE");
-		pr_node(cast(AstNode*)d.statement); }
+		pr_node(d.statement); }
 	void visit(ForStmtNode* n) {
 		print("FOR");
 		foreach (stmt; n.init_statements) pr_node(stmt);
 		print("COND");
-		if (n.condition) pr_node(cast(AstNode*)n.condition);
+		if (n.condition) pr_node(n.condition);
 		print("INC");
 		foreach (stmt; n.increment_statements) pr_node(stmt);
 		pr_node(n.statement); }
 	void visit(ReturnStmtNode* r) {
 		print("RETURN");
-		if (r.expression) pr_node(cast(AstNode*)r.expression); }
+		if (r.expression) pr_node(r.expression); }
 	void visit(BreakStmtNode* r) { print("BREAK"); }
 	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
 	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
-			print("NAME_USE ", v.entity.get_node_type.printer(context), " ", context.idString(v.id));
+			print("NAME_USE ", v.entity.get_node_type(context).printer(context), " ", context.idString(v.id(context)));
 		else
-			print("NAME_USE ", context.idString(v.id));
+			print("NAME_USE ", context.idString(v.id(context)));
 	}
 	void visit(MemberExprNode* m) {
 		print("MEMBER ", m.memberIndex, " ", m.type.printer(context));
-		pr_node(cast(AstNode*)m.aggregate);
-		if(m.member) pr_node(cast(AstNode*)m.member);
+		pr_node(m.aggregate);
+		if(m.member) pr_node(m.member);
 	}
 	void visit(IntLiteralExprNode* lit) {
 		if (lit.isSigned)
@@ -112,21 +113,21 @@ struct AstPrinter {
 	void visit(BinaryExprNode* b) {
 		if (b.type) print("BINOP ", b.type.printer(context), " ", b.op);
 		else print("BINOP ", b.op);
-		pr_node(cast(AstNode*)b.left);
-		pr_node(cast(AstNode*)b.right); }
+		pr_node(b.left);
+		pr_node(b.right); }
 	void visit(UnaryExprNode* u) {
 		if (u.type) print("UNOP ", u.type.printer(context), " ", u.op);
 		else print("UNOP ", u.op);
-		pr_node(cast(AstNode*)u.child); }
+		pr_node(u.child); }
 	void visit(CallExprNode* c) {
 		print("CALL");
-		pr_node(cast(AstNode*)c.callee);
-		foreach (arg; c.args) pr_node(cast(AstNode*)arg); }
+		pr_node(c.callee);
+		foreach (arg; c.args) pr_node(arg); }
 	void visit(IndexExprNode* i) {
-		print("INDEX"); pr_node(cast(AstNode*)i.array); pr_node(cast(AstNode*)i.index); }
+		print("INDEX"); pr_node(i.array); pr_node(i.index); }
 	void visit(TypeConvExprNode* t) {
 		print("CAST to ", t.type.printer(context));
-		pr_node(cast(AstNode*)t.expr); }
+		pr_node(t.expr); }
 	void visit(BasicTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(PtrTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
@@ -136,7 +137,7 @@ struct AstPrinter {
 	{
 		indent = -indentSize;
 		if (!n) return;
-		pr_node(n);
+		pr_node(context.getAstNodeIndex(n));
 	}
 }
 
@@ -154,9 +155,10 @@ struct AstDotPrinter {
 		writeln(`"];`);
 	}
 
-	void pr_node_edge(N1, N2)(N1* parent, N2* node) { // print node
+	void pr_node_edge(N)(N* parent, AstIndex nodeIndex) { // print node
+		AstNode* node = context.getAstNode(nodeIndex);
 		writeln(`  node_`, cast(void*)parent, ` -> node_`, cast(void*)node);
-		_visit(cast(AstNode*)node);
+		_visit(node);
 	}
 
 	void visit(ModuleDeclNode* m) {
@@ -208,7 +210,7 @@ struct AstDotPrinter {
 	void visit(ForStmtNode* n) {
 		printLabel(n, "FOR");
 		foreach (stmt; n.init_statements) pr_node_edge(n, stmt);
-		if (n.condition) pr_node_edge(n, cast(AstNode*)n.condition);
+		if (n.condition) pr_node_edge(n, n.condition);
 		foreach (stmt; n.increment_statements) pr_node_edge(n, stmt);
 		pr_node_edge(n, n.statement); }
 	void visit(ReturnStmtNode* r) {
@@ -218,12 +220,12 @@ struct AstDotPrinter {
 	void visit(ContinueStmtNode* r) { printLabel(r, "CONTINUE"); }
 	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
-			printLabel(v, `NAME_USE\n%s %s`, v.entity.get_node_type.printer(context), context.idString(v.id));
+			printLabel(v, `NAME_USE\n%s %s`, v.entity.get_node_type(context).printer(context), context.idString(v.id(context)));
 		else
-			printLabel(v, `NAME_USE\n%s`, context.idString(v.id));
+			printLabel(v, `NAME_USE\n%s`, context.idString(v.id(context)));
 	}
 	void visit(MemberExprNode* m) {
-		printLabel(m, "MEMBER %s", context.idString(m.member.id));
+		printLabel(m, "MEMBER %s", context.idString(m.member.get_node_id(context)));
 		pr_node_edge(m, m.aggregate);
 	}
 	void visit(IntLiteralExprNode* lit) { printLabel(lit, `Int LITERAL\n%s %s`, lit.type.printer(context), lit.value); }

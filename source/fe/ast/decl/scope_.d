@@ -9,11 +9,11 @@ import all;
 struct Scope
 {
 	///
-	HashMap!(Identifier, AstNode*, Identifier.init) symbols;
+	HashMap!(Identifier, AstIndex, Identifier.init) symbols;
 	/// Imported modules
-	Array!(ModuleDeclNode*) imports;
+	Array!AstIndex imports;
 	///
-	Scope* parentScope;
+	AstIndex parentScope;
 	///
 	string debugName;
 	/// Ordered scope is in function body, requires declaration above use
@@ -24,5 +24,5 @@ struct Scope
 mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0) {
 	mixin AstNodeData!(_astType, default_flags | AstFlags.isScope | AstFlags.isDeclaration);
 	/// Each node can be struct, function or variable
-	Array!(AstNode*) declarations;
+	Array!AstIndex declarations;
 }

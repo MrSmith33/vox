@@ -14,9 +14,9 @@ struct ModuleIndex
 ///
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
-	Scope* _scope;
+	AstIndex _scope;
 	/// Linear list of all functions of a module (including nested and methods and externals)
-	Array!(FunctionDeclNode*) functions;
+	Array!AstIndex functions;
 	IrModule irModule;
 	IrModule lirModule;
 	LinkIndex objectSymIndex;
@@ -24,20 +24,20 @@ struct ModuleDeclNode {
 	/// module identifier. Used by import declaration.
 	Identifier id;
 
-	void addFunction(ref ArrayArena arrayArena, FunctionDeclNode* func) {
-		func.backendData.index = FunctionIndex(cast(uint)functions.length, moduleIndex);
-		functions.put(arrayArena, func);
+	void addFunction(AstIndex func, CompilationContext* context) {
+		context.getAst!FunctionDeclNode(func).backendData.index = FunctionIndex(cast(uint)functions.length, moduleIndex);
+		functions.put(context.arrayArena, func);
 	}
 
-	FunctionDeclNode* findFunction(string idStr, CompilationContext* ctx) {
-		Identifier id = ctx.idMap.find(idStr);
+	FunctionDeclNode* findFunction(string idStr, CompilationContext* context) {
+		Identifier id = context.idMap.find(idStr);
 		if (id.isUndefined) return null;
-		return findFunction(id);
+		return findFunction(id, context);
 	}
-	FunctionDeclNode* findFunction(Identifier id) {
-		AstNode* sym = _scope.symbols.get(id, null);
-		if (sym is null) return null;
-		return sym.cast_decl_function;
+	FunctionDeclNode* findFunction(Identifier id, CompilationContext* context) {
+		AstIndex sym = context.getAst!Scope(_scope).symbols.get(id, AstIndex.init);
+		if (sym.isUndefined) return null;
+		return context.getAstNode(sym).cast_decl_function;
 	}
 }
 

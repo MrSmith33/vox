@@ -9,8 +9,8 @@ import all;
 struct BlockStmtNode {
 	mixin AstNodeData!(AstType.stmt_block, AstFlags.isStatement);
 	/// Each node can be expression, declaration or expression
-	Array!(AstNode*) statements;
-	Scope* _scope;
+	Array!AstIndex statements;
+	AstIndex _scope;
 }
 
 void name_register_block(BlockStmtNode* node, ref NameRegisterState state) {

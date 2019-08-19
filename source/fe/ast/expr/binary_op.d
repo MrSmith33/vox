@@ -9,14 +9,14 @@ import all;
 struct BinaryExprNode {
 	mixin ExpressionNodeData!(AstType.expr_bin_op, 0, AstNodeState.name_register_done);
 	BinOp op;
-	ExpressionNode* left;
-	ExpressionNode* right;
+	AstIndex left;
+	AstIndex right;
 }
 
 void name_resolve_binary_op(BinaryExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.left.as_node, state);
-	require_name_resolve(node.right.as_node, state);
+	require_name_resolve(node.left, state);
+	require_name_resolve(node.right, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 

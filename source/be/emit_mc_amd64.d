@@ -109,8 +109,9 @@ void addStaticDataSymbols(ref CompilationContext context)
 
 void addFunctionSymbols(ref CompilationContext context, ref ModuleDeclNode mod)
 {
-	foreach(FunctionDeclNode* f; mod.functions)
+	foreach(AstIndex funcIndex; mod.functions)
 	{
+		FunctionDeclNode* f = context.getAst!FunctionDeclNode(funcIndex);
 		LinkIndex symbolIndex;
 
 		if (f.isExternal)
@@ -161,7 +162,9 @@ struct CodeEmitter
 		ubyte* codeStart = context.codeBuffer.nextPtr;
 		gen.encoder.setBuffer(&context.codeBuffer);
 
-		foreach(f; mod.functions) {
+		foreach(funcIndex; mod.functions) {
+			FunctionDeclNode* f = context.getAst!FunctionDeclNode(funcIndex);
+
 			if (f.isExternal) continue;
 			compileFunction(f);
 		}
@@ -178,7 +181,7 @@ struct CodeEmitter
 	void compileFunction(FunctionDeclNode* f)
 	{
 		fun = f;
-		lir = fun.backendData.lirData;
+		lir = context.getAst!IrFunction(fun.backendData.lirData);
 		fun.backendData.funcPtr = gen.pc;
 
 		ObjectSymbol* funcSym = &context.objSymTab.getSymbol(fun.backendData.objectSymIndex);

@@ -120,8 +120,10 @@ void run_global_pass(ref CompilationContext context, CompilePassPerModule[] subP
 
 void run_module_pass(ref CompilationContext context, ref ModuleDeclNode mod, CompilePassPerFunction[] subPasses)
 {
-	foreach (FunctionDeclNode* func; mod.functions)
+	foreach (AstIndex funcIndex; mod.functions)
 	{
+		FunctionDeclNode* func = context.getAst!FunctionDeclNode(funcIndex);
+
 		foreach(ref CompilePassPerFunction subPass; subPasses)
 		{
 			auto time1 = currTime;
@@ -297,7 +299,8 @@ struct Driver
 			kind : ObjectModuleKind.isLocal,
 			id : context.idMap.getOrRegNoDup(":local")
 		};
-		file.mod = context.appendAst!ModuleDeclNode();
+		auto mod = context.appendAst!ModuleDeclNode();
+		file.mod = context.getAst!ModuleDeclNode(mod);
 		file.mod.moduleIndex = ModuleIndex(fileIndex);
 		file.mod.objectSymIndex = context.objSymTab.addModule(localModule);
 	}

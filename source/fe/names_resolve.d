@@ -12,35 +12,38 @@ import std.stdio;
 import std.string : format;
 import all;
 
-void pass_names_resolve(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
+void pass_names_resolve(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
-	auto state = NameResolveState(&ctx);
+	auto state = NameResolveState(&context);
 
-	foreach (ref SourceFileInfo file; ctx.files.data) {
-		require_name_resolve(file.mod.as_node, state);
+	foreach (ref SourceFileInfo file; context.files.data) {
+		AstIndex modIndex = file.mod.get_ast_index(&context);
+		require_name_resolve(modIndex, state);
 	}
 }
 
 struct NameResolveState
 {
 	CompilationContext* context;
-	Scope* curScope;
+	Scope* currentScope;
 
-	void pushScope(Scope* scope_)
+	void pushScope(AstIndex scopeIndex)
 	{
-		assert(scope_);
-		curScope = scope_;
+		assert(scopeIndex);
+		currentScope = context.getAst!Scope(scopeIndex);
 	}
 
 	void popScope()
 	{
-		assert(curScope);
-		curScope = curScope.parentScope;
+		assert(currentScope);
+		currentScope = currentScope.parentScope.get_scope(context);
 	}
 }
 
-void require_name_resolve(AstNode* node, ref NameResolveState state)
+void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 {
+	AstNode* node = state.context.getAstNode(nodeIndex);
+
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register, name_resolve, type_check: state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
@@ -101,104 +104,108 @@ enum LookupResult : ubyte {
 }
 
 /// Look up symbol by Identifier. Searches the stack of scopes.
-AstNode* lookupScopeIdRecursive(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
+AstIndex lookupScopeIdRecursive(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
 {
 	Scope* sc = scop;
 
 	// first phase
 	while(sc)
 	{
-		AstNode* sym = sc.symbols.get(id, null);
+		AstIndex symIndex = sc.symbols.get(id, AstIndex.init);
 
-		if (sym)
+		if (symIndex)
 		{
+			AstNode* symNode = context.getAstNode(symIndex);
 			// forward reference allowed for unordered scope
-			if (!sym.isInOrderedScope) {
-				return sym;
+			if (!symNode.isInOrderedScope) {
+				return symIndex;
 			} else { // ordered scope
 				// we need to skip forward references in ordered scope
 				uint fromStart = context.tokenLocationBuffer[from].start;
-				uint toStart = context.tokenLocationBuffer[sym.loc].start;
+				uint toStart = context.tokenLocationBuffer[symNode.loc].start;
 				// backward reference
 				if (fromStart > toStart) {
-					return sym;
+					return symIndex;
 				}
 			}
 		}
 
-		sc = sc.parentScope;
+		sc = sc.parentScope.get_scope(context);
 	}
 
 	// second phase
-	AstNode* sym = lookupImports(scop, id, from, context);
+	AstIndex symIndex = lookupImports(scop, id, from, context);
 
-	if (sym) {
-		return sym;
+	if (symIndex) {
+		return symIndex;
 	} else {
 		context.error(from, "undefined identifier `%s`", context.idString(id));
-		return cast(AstNode*)&context.errorNode;
+		return context.errorNode;
 	}
 }
 
-AstNode* lookupImports(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
+AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
 {
 	while (scop)
 	{
-		AstNode* sym;
+		AstIndex symIndex;
 		ModuleDeclNode* symMod;
 
-		foreach (ModuleDeclNode* imp; scop.imports)
+		foreach (AstIndex impIndex; scop.imports)
 		{
+			ModuleDeclNode* imp = context.getAst!ModuleDeclNode(impIndex);
 			// TODO: check that import is higher in ordered scopes
-			AstNode* scopeSym = imp._scope.symbols.get(id, null);
+			AstIndex scopeSym = imp._scope.get_scope(context).symbols.get(id, AstIndex.init);
 			if (!scopeSym) continue;
 
-			if (scopeSym && sym && scopeSym != sym)
+			if (scopeSym && symIndex && scopeSym != symIndex)
 			{
 				string mod1Id = context.idString(symMod.id);
-				string sym1Id = context.idString(sym.get_node_id);
+				string sym1Id = context.idString(symIndex.get_node_id(context));
 
 				string mod2Id = context.idString(imp.id);
-				string sym2Id = context.idString(scopeSym.get_node_id);
+				string sym2Id = context.idString(scopeSym.get_node_id(context));
 
 				context.error(from,
 					"`%s.%s` at %s conflicts with `%s.%s` at %s",
-					mod1Id, sym1Id, FmtSrcLoc(sym.loc, context),
-					mod2Id, sym2Id, FmtSrcLoc(scopeSym.loc, context));
+					mod1Id, sym1Id, FmtSrcLoc(context.getAstNode(symIndex).loc, context),
+					mod2Id, sym2Id, FmtSrcLoc(context.getAstNode(scopeSym).loc, context));
 			}
 
-			sym = scopeSym;
+			symIndex = scopeSym;
 			symMod = imp;
 		}
 
-		if (sym) return sym;
+		if (symIndex) return symIndex;
 
-		scop = scop.parentScope;
+		scop = scop.parentScope.get_scope(context);
 	}
-	return null;
+
+	return AstIndex.init;
 }
 
 /// Look up member by Identifier. Searches aggregate scope for identifier.
-void lookupMember(MemberExprNode* expr, CompilationContext* context)
+LookupResult lookupMember(MemberExprNode* expr, CompilationContext* context)
 {
-	TypeNode* obj = expr.aggregate.as_node.get_node_type;
+	NameUseExprNode* memberNode = context.getAst!NameUseExprNode(expr.member);
+	TypeNode* obj = expr.aggregate.get_type(context);
 
 	// Allow member access for pointers to structs
 	if (obj.isPointer)
-		obj = obj.as_ptr.base.as_node.get_node_type;
+		obj = obj.as_ptr.base.get_type(context);
 
-	expr.member.astType = AstType.expr_member_name_use;
+	memberNode.astType = AstType.expr_member_name_use;
 	switch(obj.astType)
 	{
-		case AstType.type_slice: lookupSliceMember(expr, obj.as_slice, expr.member.id, context); break;
-		case AstType.type_static_array: lookupStaticArrayMember(expr, obj.as_static_array, expr.member.id, context); break;
-			case AstType.decl_struct: lookupStructMember(expr, obj.as_struct, expr.member.id, context); break;
-		case AstType.decl_enum: lookupEnumMember(expr, obj.as_enum, expr.member.id, context); break;
-		case AstType.type_basic: lookupBasicMember(expr, obj.as_basic, expr.member.id, context); break;
+		case AstType.type_slice: return lookupSliceMember(expr, obj.as_slice, memberNode.id(context), context);
+		case AstType.type_static_array: return lookupStaticArrayMember(expr, obj.as_static_array, memberNode.id(context), context);
+			case AstType.decl_struct: return lookupStructMember(expr, obj.as_struct, memberNode.id(context), context);
+		case AstType.decl_enum: return lookupEnumMember(expr, obj.as_enum, memberNode.id(context), context);
+		case AstType.type_basic: return lookupBasicMember(expr, obj.as_basic, memberNode.id(context), context);
 		default:
-			context.unrecoverable_error(expr.loc, "Cannot resolve `%s` for %s", context.idString(expr.member.id), obj.astType);
+			context.unrecoverable_error(expr.loc, "Cannot resolve `%s` for %s", context.idString(memberNode.id(context)), obj.astType);
 			expr.type = context.basicTypeNodes(BasicType.t_error);
-			return;
+			return LookupResult.error;
 	}
 }
 
@@ -208,18 +215,15 @@ LookupResult lookupEnumMember(MemberExprNode* expr, EnumDeclaration* enumDecl, I
 		"Trying to get member from anonymous enum defined at %s",
 		context.tokenLoc(enumDecl.loc));
 
-	AstNode* memberNode = enumDecl._scope.symbols.get(id, null);
-	if (memberNode is null)
-	{
-		context.error(expr.loc, "Enum `%s` has no member `%s`",
-			context.idString(enumDecl.id), context.idString(id));
-		return LookupResult.failure;
-	}
+	AstIndex memberIndex = enumDecl._scope.get_scope(context).symbols.get(id, AstIndex.init);
+	if (!memberIndex) return LookupResult.failure;
+
+	AstNode* memberNode = memberIndex.get_node(context);
 
 	context.assertf(memberNode.astType == AstType.decl_enum_member, expr.loc,
 		"Unexpected enum member %s", memberNode.astType);
 
-	expr.member.resolve = memberNode;
+	expr.member.get_name_use(context).resolve = memberIndex;
 
 	EnumMemberDecl* enumMember = memberNode.cast_decl_enum_member;
 	expr.type = enumMember.type;
@@ -235,18 +239,17 @@ LookupResult lookupBasicMember(MemberExprNode* expr, BasicTypeNode* basicType, I
 		if (id == context.commonIds.id_min)
 		{
 			expr.memberIndex = BuiltinMemberIndex.MEMBER_MIN;
-			expr.type = basicType.typeNode;
+			expr.type = basicType.get_ast_index(context);
 			return LookupResult.success;
 		}
 		else if (id == context.commonIds.id_max)
 		{
 			expr.memberIndex = BuiltinMemberIndex.MEMBER_MAX;
-			expr.type = basicType.typeNode;
+			expr.type = basicType.get_ast_index(context);
 			return LookupResult.success;
 		}
 	}
 
-	context.error(expr.loc, "%s has no `%s` property", basicType.typeNode.printer(context), context.idString(id));
 	return LookupResult.failure;
 }
 
@@ -257,7 +260,7 @@ LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, I
 	if (id == context.commonIds.id_ptr)
 	{
 		expr.memberIndex = 1; // ptr
-		expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
+		expr.type = context.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
 		return LookupResult.success;
 	}
 	else if (id == context.commonIds.id_length)
@@ -267,7 +270,6 @@ LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, I
 		return LookupResult.success;
 	}
 
-	context.error(expr.loc, "Slice `%s` has no member `%s`", sliceType.typeNode.printer(context), context.idString(id));
 	return LookupResult.failure;
 }
 
@@ -277,7 +279,7 @@ LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* 
 	if (id == context.commonIds.id_ptr)
 	{
 		expr.memberIndex = BuiltinMemberIndex.MEMBER_PTR;
-		expr.type = cast(TypeNode*) context.appendAst!PtrTypeNode(arrType.loc, arrType.base);
+		expr.type = context.appendAst!PtrTypeNode(arrType.loc, arrType.base);
 		return LookupResult.success;
 	}
 	else if (id == context.commonIds.id_length)
@@ -287,30 +289,31 @@ LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* 
 		return LookupResult.success;
 	}
 
-	context.error(expr.loc, "Static array `%s` has no member `%s`", arrType.typeNode.printer(context), context.idString(id));
 	return LookupResult.failure;
 }
 
 LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl, Identifier id, CompilationContext* context)
 {
-	AstNode* memberSym = structDecl._scope.symbols.get(id, null);
+	AstIndex memberSym = context.getAstScope(structDecl._scope).symbols.get(id, AstIndex.init);
 	if (!memberSym) {
-		context.error(expr.loc, "Struct `%s` has no member `%s`", structDecl.typeNode.printer(context), context.idString(id));
 		return LookupResult.failure;
 	}
 
-	expr.member.resolve = memberSym;
+	NameUseExprNode* memberNode = context.getAst!NameUseExprNode(expr.member);
+	AstNode* memberSymNode = context.getAstNode(memberSym);
+
+	memberNode.resolve = memberSym;
 	expr.astType = AstType.expr_struct_member;
 
-	switch(memberSym.astType)
+	switch(memberSymNode.astType)
 	{
 		case AstType.decl_function:
 			context.internal_error("member functions/UFCS calls are not implemented");
 			assert(false);
 
 		case AstType.decl_var:
-			VariableDeclNode* memberVar = expr.member.varDecl;
-			expr.type = memberVar.type.foldAliases;
+			VariableDeclNode* memberVar = memberNode.varDecl(context);
+			expr.type = memberVar.type.get_type(context).foldAliases(context).get_ast_index(context);
 			expr.memberIndex = memberVar.scopeIndex;
 			return LookupResult.success;
 
@@ -323,14 +326,14 @@ LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl
 			assert(false);
 
 		case AstType.decl_enum_member:
-			EnumMemberDecl* enumMember = memberSym.cast_decl_enum_member;
+			EnumMemberDecl* enumMember = memberSymNode.cast_decl_enum_member;
 			expr.type = enumMember.type;
 			expr.memberIndex = enumMember.scopeIndex;
 			expr.astType = AstType.expr_enum_member;
 			return LookupResult.success;
 
 		default:
-			context.internal_error("Unexpected struct member %s", memberSym.astType);
+			context.internal_error("Unexpected struct member %s", memberSymNode.astType);
 			assert(false);
 	}
 }

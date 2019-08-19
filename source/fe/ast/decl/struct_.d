@@ -9,11 +9,11 @@ struct StructDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_struct, AstFlags.isType);
 	Identifier id;
 	IrIndex irType;
-	Scope* _scope;
+	AstIndex _scope;
 	uint size = 1;
 	uint alignment = 1;
 
-	this(TokenIndex loc, Array!(AstNode*) members, Identifier id, bool _isOpaque)
+	this(TokenIndex loc, Array!AstIndex members, Identifier id, bool _isOpaque)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_struct;
@@ -27,9 +27,9 @@ struct StructDeclNode {
 	bool isOpaque() { return cast(bool)(flags & AstFlags.user1); }
 }
 
-void name_register_struct(StructDeclNode* node, ref NameRegisterState state) {
+void name_register_struct(AstIndex nodeIndex, StructDeclNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register;
-	state.insert(node.id, node.as_node);
+	state.insert(node.id, nodeIndex);
 	node._scope = state.pushScope(state.context.idString(node.id), No.ordered);
 	foreach (decl; node.declarations) require_name_register(decl, state);
 	state.popScope;
@@ -50,7 +50,9 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
 	if (s.irType.isDefined) return s.irType;
 
 	uint numFields = 0;
-	foreach(AstNode* member; s.declarations) {
+	foreach(AstIndex memberIndex; s.declarations)
+	{
+		AstNode* member = context.getAstNode(memberIndex);
 		if (member.astType == AstType.decl_var)
 			++numFields;
 	}
@@ -62,8 +64,9 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
 	uint memberIndex;
 	uint memberOffset;
 	uint maxAlignment = 1;
-	foreach(AstNode* member; s.declarations)
+	foreach(AstIndex memberAstIndex; s.declarations)
 	{
+		AstNode* member = context.getAstNode(memberAstIndex);
 		if (member.astType == AstType.decl_var)
 		{
 			IrIndex type = (cast(VariableDeclNode*)member).type.gen_ir_type(context);

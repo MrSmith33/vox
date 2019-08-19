@@ -154,6 +154,7 @@ struct IrTypeStorage
 
 	IrIndex appendPtr(IrIndex baseType)
 	{
+		assert(baseType.isDefined);
 		IrIndex result = append!IrTypePointer;
 		get!IrTypePointer(result).baseType = baseType;
 		return result;
@@ -161,6 +162,7 @@ struct IrTypeStorage
 
 	IrIndex appendArray(IrIndex elemType, uint size)
 	{
+		assert(elemType.isDefined);
 		IrIndex result = append!IrTypeArray;
 		IrTypeArray* array = &get!IrTypeArray(result);
 		array.elemType = elemType;
@@ -175,8 +177,9 @@ struct IrTypeStorage
 		static assert(getIrValueKind!T == IrValueKind.type, "Can only add types");
 		enum typeKind = getIrTypeKind!T;
 
+		//uint len = buffer.uintLength;
 		IrIndex typeIndex;
-		typeIndex.typeIndex = cast(uint)buffer.length;
+		typeIndex.typeIndex = buffer.uintLength;
 		typeIndex.typeKind = typeKind;
 		typeIndex.kind = getIrValueKind!T;
 
@@ -184,6 +187,7 @@ struct IrTypeStorage
 		size_t numAllocatedSlots = allocSize * howMany;
 		T* type = cast(T*)buffer.voidPut(numAllocatedSlots).ptr;
 		*type = T.init;
+		//writefln("append %s %s->%s %s", T.stringof, len, buffer.uintLength, typeIndex);
 
 		if (lastType.isDefined)
 		{
@@ -286,6 +290,7 @@ struct IrTypeStorage
 	}
 
 	bool isSameType(IrIndex a, IrIndex b) {
+		//writefln("isSameType %s %s", a, b);
 		assert(a.isType, format("not a type (%s)", a));
 		assert(b.isType, format("not a type (%s)", b));
 
@@ -295,7 +300,11 @@ struct IrTypeStorage
 			case IrTypeKind.basic:
 				return b.typeKind == IrTypeKind.basic && a.typeIndex == b.typeIndex;
 			case IrTypeKind.pointer:
-				return b.typeKind == IrTypeKind.pointer && isSameType(getPointerBaseType(a), getPointerBaseType(b));
+				if (b.typeKind != IrTypeKind.pointer) return false;
+				auto baseA = getPointerBaseType(a);
+				auto baseB = getPointerBaseType(b);
+				//writefln("  ptr %s %s", baseA, baseB);
+				return isSameType(baseA, baseB);
 			case IrTypeKind.array:
 				if (b.typeKind != IrTypeKind.array) return false;
 				IrTypeArray* arrayA = &get!IrTypeArray(a);

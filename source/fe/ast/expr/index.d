@@ -8,13 +8,13 @@ import all;
 
 struct IndexExprNode {
 	mixin ExpressionNodeData!(AstType.expr_index);
-	ExpressionNode* array;
-	ExpressionNode* index;
+	AstIndex array;
+	AstIndex index;
 }
 
 void name_resolve_index(IndexExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.array.as_node, state);
-	require_name_resolve(node.index.as_node, state);
+	require_name_resolve(node.array, state);
+	require_name_resolve(node.index, state);
 	node.state = AstNodeState.name_resolve_done;
 }

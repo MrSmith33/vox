@@ -9,12 +9,12 @@ import all;
 struct UnaryExprNode {
 	mixin ExpressionNodeData!(AstType.expr_un_op);
 	UnOp op;
-	ExpressionNode* child;
+	AstIndex child;
 }
 
 void name_resolve_unary_op(UnaryExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.child.as_node, state);
+	require_name_resolve(node.child, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 

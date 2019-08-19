@@ -9,11 +9,11 @@ struct NameUseExprNode {
 	mixin ExpressionNodeData!(AstType.expr_name_use);
 	union
 	{
-		private AstNode* _entity; // used when resolved, node contains Identifier internally
+		private AstIndex _entity; // used when resolved, node contains Identifier internally
 		private Identifier _id; // used when not yet resolved
 	}
 
-	this(TokenIndex loc, Identifier id, TypeNode* type = null, IrIndex irValue = IrIndex.init)
+	this(TokenIndex loc, Identifier id, AstIndex type = AstIndex.init, IrIndex irValue = IrIndex.init)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_name_use;
@@ -23,18 +23,21 @@ struct NameUseExprNode {
 		this.irValue = irValue;
 	}
 
-	void resolve(AstNode* n) {
+	void resolve(AstIndex n) {
 		assert(n);
 		_entity = n;
 		flags |= AstFlags.isSymResolved;
 	}
-	AstNode* entity() { return isSymResolved ? _entity : null; }
-	Identifier id() { return isSymResolved ? _entity.get_node_id : _id; }
+	AstIndex entity() { return isSymResolved ? _entity : AstIndex(); }
+	Identifier id(CompilationContext* context) {
+		return isSymResolved ? _entity.get_node_id(context) : _id;
+	}
 
-	T* get(T, AstType _astType)() {
+	T* get(T, AstType _astType)(CompilationContext* context) {
 		assert(isSymResolved);
-		assert(_entity.astType == _astType, format("%s used on %s", _astType, _entity.astType));
-		return cast(T*)_entity;
+		AstNode* entityNode = context.getAstNode(_entity);
+		assert(entityNode.astType == _astType, format("%s used on %s", _astType, entityNode.astType));
+		return cast(T*)entityNode;
 	}
 
 	alias varDecl = get!(VariableDeclNode, AstType.decl_var);
@@ -46,24 +49,29 @@ struct NameUseExprNode {
 
 void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	node.resolve = lookupScopeIdRecursive(state.curScope, node.id, node.loc, state.context);
-	if (node.entity !is null)
+	node.resolve = lookupScopeIdRecursive(state.currentScope, node.id(state.context), node.loc, state.context);
+	if (node.entity)
 	{
-		switch(node.entity.astType) with(AstType) {
+		AstNode* entityNode = state.context.getAstNode(node.entity);
+		switch(entityNode.astType) with(AstType) {
 			case decl_function:
 				node.astType = expr_func_name_use; break;
 			case decl_var:
 				node.astType = expr_var_name_use; break;
 			case decl_struct:
-				node.astType = expr_type_name_use; break;
+				node.astType = expr_type_name_use;
+				node.flags |= AstFlags.isType;
+				break;
 			case decl_enum_member:
 				node.astType = expr_var_name_use; break;
 			case decl_enum:
-				node.astType = expr_type_name_use; break;
+				node.astType = expr_type_name_use;
+				node.flags |= AstFlags.isType;
+				break;
 			case error:
 				node.astType = expr_var_name_use; break;
 			default:
-				state.context.internal_error("Unknown entity %s", node.entity.astType);
+				state.context.internal_error("Unknown entity %s", entityNode.astType);
 		}
 	}
 	node.state = AstNodeState.name_resolve_done;

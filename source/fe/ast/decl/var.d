@@ -14,8 +14,8 @@ enum VariableFlags : ubyte {
 struct VariableDeclNode
 {
 	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);
-	TypeNode* type;
-	ExpressionNode* initializer; // may be null
+	AstIndex type;
+	AstIndex initializer; // may be null
 	Identifier id;
 	ubyte varFlags; // VariableFlags
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
@@ -25,16 +25,16 @@ struct VariableDeclNode
 	bool isAddressTaken() { return cast(bool)(varFlags & VariableFlags.isAddressTaken); }
 }
 
-void name_register_var(VariableDeclNode* node, ref NameRegisterState state) {
+void name_register_var(AstIndex nodeIndex, VariableDeclNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register;
-	state.insert(node.id, node.as_node);
-	if (node.initializer) require_name_register(node.initializer.as_node, state);
+	state.insert(node.id, nodeIndex);
+	if (node.initializer) require_name_register(node.initializer, state);
 	node.state = AstNodeState.name_register_done;
 }
 
 void name_resolve_var(VariableDeclNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.type.as_node, state);
-	if (node.initializer) require_name_resolve(node.initializer.as_node, state);
+	require_name_resolve(node.type, state);
+	if (node.initializer) require_name_resolve(node.initializer, state);
 	node.state = AstNodeState.name_resolve_done;
 }

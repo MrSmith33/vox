@@ -9,6 +9,7 @@ import std.stdio;
 
 import all;
 
+public import fe.ast.ast_index;
 public import fe.ast.decl;
 public import fe.ast.dump;
 public import fe.ast.expr;
@@ -161,51 +162,61 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	void endVisit() { flags &= ~AstFlags.isBeingVisited; }
 }
 
-Identifier get_node_id(AstNode* n) {
-	switch(n.astType) with(AstType)
+Identifier get_node_id(AstIndex nodeIndex, CompilationContext* context)
+{
+	AstNode* node = context.getAstNode(nodeIndex);
+	switch(node.astType) with(AstType)
 	{
-		case decl_module: return n.cast_decl_module.id;
-		case decl_struct: return n.cast_decl_struct.id;
-		case decl_function: return n.cast_decl_function.id;
-		case decl_var: return n.cast_decl_var.id;
-		case decl_enum: return n.cast_decl_enum.id;
-		case decl_enum_member: return n.cast_decl_enum_member.id;
+		case decl_module: return node.cast_decl_module.id;
+		case decl_struct: return node.cast_decl_struct.id;
+		case decl_function: return node.cast_decl_function.id;
+		case decl_var: return node.cast_decl_var.id;
+		case decl_enum: return node.cast_decl_enum.id;
+		case decl_enum_member: return node.cast_decl_enum_member.id;
 		case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
-			return n.cast_expr_name_use.id;
-		default: assert(false, format("got %s", n.astType));
+			return node.cast_expr_name_use.id(context);
+		default: assert(false, format("got %s", node.astType));
 	}
 }
 
-TypeNode* get_node_type(AstNode* n) {
-	AstNode* type;
-	switch(n.astType) with(AstType)
+AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* context)
+{
+	AstNode* node = context.getAstNode(nodeIndex);
+	AstIndex typeIndex;
+	switch(node.astType) with(AstType)
 	{
-		case decl_struct: type = n; break;
-		case decl_function: type = n.cast_decl_function.returnType.as_node; break;
-		case decl_var:
-			type = n.cast_decl_var.type.as_node; break;
-		case decl_enum: type = n; break;
-		case decl_enum_member: type = n.cast_decl_enum_member.type.as_node; break;
-		case type_basic, type_ptr, type_slice, type_static_array: type = n; break;
-		case expr_var_name_use: type = n.cast_expr_name_use.entity.cast_decl_var.type.as_node; break;
+		case decl_struct: return nodeIndex;
+		case decl_function: typeIndex = node.cast_decl_function.returnType; break;
+		case decl_var: typeIndex = node.cast_decl_var.type; break;
+		case decl_enum: typeIndex = nodeIndex; break;
+		case decl_enum_member: typeIndex = node.cast_decl_enum_member.type; break;
+		case type_basic, type_ptr, type_slice, type_static_array: return nodeIndex;
+		case expr_var_name_use:
+			return node.cast_expr_name_use.entity.get_node_type(context);
 		case expr_type_name_use:
-			type = n.cast_expr_name_use.entity;
+			typeIndex = node.cast_expr_name_use.entity;
 			break;
 
 		case literal_int, literal_string, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv:
 		case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
-			type = n.as_expr.type.as_node;
+			typeIndex = node.as_expr.type;
 			break;
 
-		default: assert(false, format("get_node_type used on %s", n.astType));
+		default: assert(false, format("get_node_type used on %s", node.astType));
 	}
+	AstNode* type = context.getAstNode(typeIndex);
 	if (type.astType == AstType.expr_type_name_use)
 	{
-		type = type.cast_expr_name_use.entity;
-		return type.cast_type_node;
+		return type.cast_expr_name_use.entity;
 	}
-	return cast(TypeNode*)type;
+	return typeIndex;
 }
+
+AstIndex get_ast_index(T)(T* node, CompilationContext* context)
+{
+	return context.getAstNodeIndex(node);
+}
+
 
 struct AstNode
 {
@@ -217,4 +228,4 @@ struct ErrorAstNode
 	mixin AstNodeData!(AstType.error);
 }
 
-alias AstNodes = Array!(AstNode*);
+alias AstNodes = Array!AstIndex;

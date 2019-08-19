@@ -1780,3 +1780,15 @@ immutable test84 = q{--- test84
 void tester84(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!ulong("nestedArrLen")() == 40);
 }
+
+@TestInfo(&tester85)
+immutable test85 = q{--- test85
+	// UFCS without parenthesis
+	i32 static_func(i32 num) { return num; }
+	i32 test(i32 num) {
+		return num.static_func;
+	}
+};
+void tester85(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int, int)("test")(42) == 42);
+}

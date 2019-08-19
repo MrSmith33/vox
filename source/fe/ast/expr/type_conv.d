@@ -8,12 +8,12 @@ import all;
 
 struct TypeConvExprNode {
 	mixin ExpressionNodeData!(AstType.expr_type_conv);
-	ExpressionNode* expr;
+	AstIndex expr;
 }
 
 void name_resolve_type_conv(TypeConvExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.type.as_node, state);
-	require_name_resolve(node.expr.as_node, state);
+	require_name_resolve(node.type, state);
+	require_name_resolve(node.expr, state);
 	node.state = AstNodeState.name_resolve_done;
 }

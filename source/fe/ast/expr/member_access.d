@@ -9,14 +9,16 @@ import all;
 // member access of aggregate.member form
 struct MemberExprNode {
 	mixin ExpressionNodeData!(AstType.expr_member);
-	ExpressionNode* aggregate;
-	NameUseExprNode* member; // member name
+	AstIndex aggregate;
+	AstIndex member; // member name (NameUseExprNode)
 	uint memberIndex; // resolved index of member being accessed
+	AstIndex curScope; // set in name resolve pass
 }
 
 void name_resolve_member(MemberExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
+	node.curScope = state.context.getAstNodeIndex(state.currentScope);
 	// name resolution is done in type check pass
-	require_name_resolve(node.aggregate.as_node, state);
+	require_name_resolve(node.aggregate, state);
 	node.state = AstNodeState.name_resolve_done;
 }

@@ -8,9 +8,9 @@ import all;
 
 struct DoWhileStmtNode {
 	mixin AstNodeData!(AstType.stmt_do_while, AstFlags.isStatement);
-	ExpressionNode* condition;
-	AstNode* statement;
-	Scope* _scope;
+	AstIndex condition;
+	AstIndex statement;
+	AstIndex _scope;
 }
 
 void name_register_do(DoWhileStmtNode* node, ref NameRegisterState state) {
@@ -18,7 +18,7 @@ void name_register_do(DoWhileStmtNode* node, ref NameRegisterState state) {
 	node._scope = state.pushScope("While", Yes.ordered);
 	require_name_register(node.statement, state);
 	state.popScope;
-	require_name_register(node.condition.as_node, state);
+	require_name_register(node.condition, state);
 	node.state = AstNodeState.name_register_done;
 }
 
@@ -27,6 +27,6 @@ void name_resolve_do(DoWhileStmtNode* node, ref NameResolveState state) {
 	state.pushScope(node._scope);
 	require_name_resolve(node.statement, state);
 	state.popScope;
-	require_name_resolve(node.condition.as_node, state);
+	require_name_resolve(node.condition, state);
 	node.state = AstNodeState.name_resolve_done;
 }

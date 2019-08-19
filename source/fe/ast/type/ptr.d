@@ -8,22 +8,24 @@ import all;
 struct PtrTypeNode {
 	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType, AstNodeState.name_register_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
-	TypeNode* base;
+	AstIndex base;
 	IrIndex irType;
 	uint size() { return POINTER_SIZE; }
 	uint alignment() { return POINTER_SIZE; }
-	bool isVoidPtr() { return base.isVoid; }
+	bool isVoidPtr(CompilationContext* context) {
+		return context.getAstType(base).isVoid;
+	}
 }
 
 void name_resolve_ptr(PtrTypeNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.base.as_node, state);
+	require_name_resolve(node.base, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
-bool same_type_ptr(PtrTypeNode* t1, PtrTypeNode* t2)
+bool same_type_ptr(PtrTypeNode* t1, PtrTypeNode* t2, CompilationContext* context)
 {
-	return same_type(t1.base, t2.base);
+	return same_type(t1.base, t2.base, context);
 }
 
 IrIndex gen_ir_type_ptr(PtrTypeNode* t, CompilationContext* context)

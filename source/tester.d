@@ -14,7 +14,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(tests.passing.test66);
+	Test test = makeTest!(test40);
 	string filterFuncName;
 
 	Driver driver;
@@ -34,12 +34,12 @@ void runDevTests()
 	driver.context.printSource = true;
 	//driver.context.printLexemes = true;
 	//driver.context.printAstFresh = true;
-	//driver.context.printAstSema = true;
+	driver.context.printAstSema = true;
 	//driver.context.runTesters = false;
 
-	//driver.context.printIr = true;
+	driver.context.printIr = true;
 	//driver.context.printIrOpt = true;
-	driver.context.printLir = true;
+	//driver.context.printLir = true;
 	//driver.context.printLirRA = true;
 	//driver.context.printLiveIntervals = true;
 	//driver.context.printStaticData = true;
@@ -68,6 +68,7 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	driver.context.buildType = BuildType.jit;
 	driver.context.buildDebug = false;
 	driver.context.validateIr = true;
+	//driver.context.printAstSema = true;
 	// Is slow when doing failing tests
 	//driver.context.printTraceOnError = true;
 	auto endInitTime = currTime;
@@ -77,6 +78,7 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	Test[] jitTests = tests.passing.passingTests ~ tests.failing.failingTests;
 	Test[] exeTests = tests.exe.exeTests;
+	//jitTests = jitTests[19..$];
 
 	size_t numTests = jitTests.length + exeTests.length;
 	size_t numSuccessfulTests;

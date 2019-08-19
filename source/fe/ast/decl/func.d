@@ -16,9 +16,9 @@ struct FunctionIndex
 struct FunctionBackendData
 {
 	/// Machine-independent IR
-	IrFunction* irData;
+	AstIndex irData; // IrFunction
 	/// Machine-level IR
-	IrFunction* lirData;
+	AstIndex lirData; // IrFunction
 	///
 	FunctionLiveIntervals liveIntervals;
 	/// Executable machine-code bytes
@@ -43,13 +43,13 @@ struct FunctionBackendData
 
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
-	TypeNode* returnType;
-	Array!(VariableDeclNode*) parameters;
-	BlockStmtNode* block_stmt; // null if external
-	Scope* _scope;
+	AstIndex returnType;
+	Array!AstIndex parameters; // array of var declarations
+	AstIndex block_stmt; // null if external
+	AstIndex _scope;
 	FunctionBackendData backendData;
 
-	this(TokenIndex loc, TypeNode* retType, Array!(VariableDeclNode*) parameters, BlockStmtNode* block, Identifier id)
+	this(TokenIndex loc, AstIndex retType, Array!AstIndex parameters, AstIndex block, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_function;
@@ -61,16 +61,16 @@ struct FunctionDeclNode {
 	}
 
 	/// External functions have no body
-	bool isExternal() { return block_stmt is null; }
+	bool isExternal() { return block_stmt.isUndefined; }
 	ref Identifier id() { return backendData.name; }
 }
 
-void name_register_func(FunctionDeclNode* node, ref NameRegisterState state) {
+void name_register_func(AstIndex nodeIndex, FunctionDeclNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register;
-	state.insert(node.id, node.as_node);
+	state.insert(node.id, nodeIndex);
 	node._scope = state.pushScope(state.context.idString(node.id), Yes.ordered);
-	foreach (param; node.parameters) require_name_register(param.as_node, state);
-	if (node.block_stmt) require_name_register(node.block_stmt.as_node, state);
+	foreach (ref param; node.parameters) require_name_register(param, state);
+	if (node.block_stmt) require_name_register(node.block_stmt, state);
 	state.popScope;
 	node.state = AstNodeState.name_register_done;
 }
@@ -78,9 +78,9 @@ void name_register_func(FunctionDeclNode* node, ref NameRegisterState state) {
 void name_resolve_func(FunctionDeclNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	state.pushScope(node._scope);
-	require_name_resolve(node.returnType.as_node, state);
-	foreach (param; node.parameters) require_name_resolve(param.as_node, state);
-	if (node.block_stmt) require_name_resolve(node.block_stmt.as_node, state);
+	require_name_resolve(node.returnType, state);
+	foreach (ref param; node.parameters) require_name_resolve(param, state);
+	if (node.block_stmt) require_name_resolve(node.block_stmt, state);
 	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
 }
@@ -91,7 +91,7 @@ IrIndex gen_ir_type_func(FunctionDeclNode* f, CompilationContext* context)
 	if (f.backendData.irType.isDefined) return f.backendData.irType;
 
 	uint numResults = 0;
-	if (!f.returnType.isVoid) numResults = 1;
+	if (!context.getAst!TypeNode(f.returnType).isVoid) numResults = 1;
 
 	f.backendData.irType = context.types.appendFuncSignature(numResults, f.parameters.length);
 	auto funcType = &context.types.get!IrTypeFunction(f.backendData.irType);
@@ -102,8 +102,8 @@ IrIndex gen_ir_type_func(FunctionDeclNode* f, CompilationContext* context)
 	}
 
 	IrIndex[] parameterTypes = funcType.parameterTypes;
-	foreach(i, VariableDeclNode* parameter; f.parameters) {
-		parameterTypes[i] = parameter.type.gen_ir_type(context);
+	foreach(i, AstIndex parameter; f.parameters) {
+		parameterTypes[i] = parameter.get_node_type(context).gen_ir_type(context);
 	}
 
 	return f.backendData.irType;

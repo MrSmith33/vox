@@ -29,12 +29,13 @@ void pass_optimize_ir(ref CompilationContext context, ref ModuleDeclNode mod, re
 	FuncPassIr[] passes = [&func_pass_invert_conditions, &func_pass_remove_dead_code, &func_pass_lower_gep];
 	IrBuilder builder;
 
-	builder.beginDup(func.backendData.irData, &context);
+	IrFunction* irData = context.getAst!IrFunction(func.backendData.irData);
+	builder.beginDup(irData, &context);
 	foreach (FuncPassIr pass; passes) {
-		pass(context, *func.backendData.irData, builder);
+		pass(context, *irData, builder);
 		if (context.validateIr)
-			validateIrFunction(context, *func.backendData.irData);
-		if (context.printIrOpt) dumpFunction(*func.backendData.irData, context);
+			validateIrFunction(context, *irData);
+		if (context.printIrOpt) dumpFunction(*irData, context);
 	}
 }
 
