@@ -28,3 +28,10 @@ void name_resolve_block(BlockStmtNode* node, ref NameResolveState state) {
 	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
 }
+
+void type_check_block(BlockStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach(stmt; node.statements) require_type_check(stmt, state);
+	node.state = AstNodeState.type_check_done;
+}

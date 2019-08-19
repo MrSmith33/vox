@@ -26,8 +26,25 @@ struct IntLiteralExprNode {
 	}
 }
 
+void type_check_literal_int(IntLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	if (node.isSigned)
+		node.type = state.context.basicTypeNodes(minSignedIntType(node.value));
+	else
+		node.type = state.context.basicTypeNodes(minUnsignedIntType(node.value));
+	node.state = AstNodeState.type_check_done;
+}
+
 struct NullLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_null, AstFlags.isLiteral, AstNodeState.name_resolve_done);
+}
+
+void type_check_literal_null(NullLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	node.type = state.context.basicTypeNodes(BasicType.t_null);
+	node.state = AstNodeState.type_check_done;
 }
 
 struct BoolLiteralExprNode {
@@ -35,7 +52,21 @@ struct BoolLiteralExprNode {
 	bool value;
 }
 
+void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	node.type = state.context.basicTypeNodes(BasicType.t_bool);
+	node.state = AstNodeState.type_check_done;
+}
+
 struct StringLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 	string value;
+}
+
+void type_check_literal_string(StringLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	// done in parser
+	node.state = AstNodeState.type_check_done;
 }

@@ -36,3 +36,16 @@ void name_resolve_for(ForStmtNode* node, ref NameResolveState state) {
 	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
 }
+
+void type_check_for(ForStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach(stmt; node.init_statements) require_type_check(stmt, state);
+	if (node.condition) {
+		require_type_check(node.condition, state);
+		autoconvToBool(node.condition, state.context);
+	}
+	foreach(stmt; node.increment_statements) require_type_check(stmt, state);
+	require_type_check(node.statement, state);
+	node.state = AstNodeState.type_check_done;
+}

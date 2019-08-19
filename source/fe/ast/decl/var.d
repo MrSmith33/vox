@@ -38,3 +38,43 @@ void name_resolve_var(VariableDeclNode* node, ref NameResolveState state) {
 	if (node.initializer) require_name_resolve(node.initializer, state);
 	node.state = AstNodeState.name_resolve_done;
 }
+
+void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+
+	TypeNode* type = node.type.get_type(c);
+	node.state = AstNodeState.type_check;
+	require_type_check(node.type, state);
+
+	if (type.isOpaqueStruct(c)) {
+		if (node.isParameter) {
+			c.error(node.loc,
+				"cannot declare parameter of opaque type `%s`",
+				type.printer(c));
+		} else {
+			c.error(node.loc,
+				"cannot declare variable `%s` of opaque type `%s`",
+				c.idString(node.id),
+				type.printer(c));
+		}
+	}
+
+	if (node.initializer) {
+		require_type_check(node.initializer, state);
+		autoconvTo(node.initializer, node.type, c);
+	}
+
+	if (!node.isParameter)
+	{
+		switch (type.astType) with(AstType)
+		{
+			case type_static_array, decl_struct, type_slice:
+				node.varFlags |= VariableFlags.forceMemoryStorage;
+				break;
+
+			default: break;
+		}
+	}
+	node.state = AstNodeState.type_check_done;
+}

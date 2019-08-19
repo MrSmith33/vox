@@ -66,6 +66,13 @@ void name_resolve_enum(EnumDeclaration* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve_done;
 }
 
+void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach (decl; node.declarations) require_type_check(decl, state);
+	node.state = AstNodeState.type_check_done;
+}
+
 
 struct EnumMemberDecl
 {
@@ -88,4 +95,16 @@ void name_resolve_enum_member(EnumMemberDecl* node, ref NameResolveState state) 
 	require_name_resolve(node.type, state);
 	if (node.initializer) require_name_resolve(node.initializer, state);
 	node.state = AstNodeState.name_resolve_done;
+}
+
+void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.type, state);
+
+	if (node.initializer) {
+		require_type_check(node.initializer, state);
+		autoconvTo(node.initializer, node.type, state.context);
+	}
+	node.state = AstNodeState.type_check_done;
 }

@@ -108,3 +108,31 @@ IrIndex gen_ir_type_func(FunctionDeclNode* f, CompilationContext* context)
 
 	return f.backendData.irType;
 }
+
+void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+
+	node.state = AstNodeState.type_check;
+	auto prevFunc = state.curFunc;
+	state.curFunc = node;
+	node.backendData.callingConvention = &win64_call_conv;
+
+	TypeNode* returnType = node.returnType.get_type(c);
+	if (returnType.isOpaqueStruct(c)) {
+		c.error(node.loc,
+			"function cannot return opaque type `%s`",
+			returnType.printer(c));
+	}
+
+	foreach (ref AstIndex param; node.parameters) {
+		require_type_check(param, state);
+	}
+
+	if (node.block_stmt)
+	{
+		require_type_check(node.block_stmt, state);
+	}
+	state.curFunc = prevFunc;
+	node.state = AstNodeState.type_check_done;
+}

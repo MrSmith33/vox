@@ -84,3 +84,10 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
 	structType.alignment = maxAlignment;
 	return s.irType;
 }
+
+void type_check_struct(StructDeclNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach (decl; node.declarations) require_type_check(decl, state);
+	node.state = AstNodeState.type_check_done;
+}

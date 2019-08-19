@@ -55,3 +55,10 @@ void name_resolve_module(ModuleDeclNode* node, ref NameResolveState state) {
 	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
 }
+
+void type_check_module(ModuleDeclNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	foreach (ref AstIndex decl; node.declarations) require_type_check(decl, state);
+	node.state = AstNodeState.type_check_done;
+}

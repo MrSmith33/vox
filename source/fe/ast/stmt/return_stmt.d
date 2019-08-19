@@ -16,3 +16,40 @@ void name_resolve_return(ReturnStmtNode* node, ref NameResolveState state) {
 	if (node.expression) require_name_resolve(node.expression, state);
 	node.state = AstNodeState.name_resolve_done;
 }
+
+// Check return type and function return type
+void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+
+	node.state = AstNodeState.type_check;
+	if (!state.curFunc)
+	{
+		c.error(node.loc,
+			"Return statement is not inside function");
+		return;
+	}
+
+	if (node.expression)
+	{
+		require_type_check(node.expression, state);
+		if (state.curFunc.returnType.get_type(c).isVoid)
+		{
+			c.error(node.expression.get_expr(c).loc,
+				"Cannot return expression of type `%s` from void function",
+				node.expression.get_expr(c).type.typeName(c));
+		}
+		else
+		{
+			autoconvTo(node.expression, state.curFunc.returnType, c);
+		}
+	}
+	else
+	{
+		if (!state.curFunc.returnType.get_type(c).isVoid)
+			c.error(node.loc,
+				"Cannot return void from non-void function",
+				node.expression.get_expr(c).type.typeName(c));
+	}
+	node.state = AstNodeState.type_check_done;
+}

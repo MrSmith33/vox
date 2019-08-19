@@ -17,3 +17,19 @@ void name_resolve_type_conv(TypeConvExprNode* node, ref NameResolveState state) 
 	require_name_resolve(node.expr, state);
 	node.state = AstNodeState.name_resolve_done;
 }
+
+void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+
+	node.state = AstNodeState.type_check;
+	require_type_check(node.expr, state);
+	if (!isConvertibleTo(node.expr.expr_type(c), node.type, c))
+	{
+		c.error(node.loc,
+			"Cannot auto-convert expression of type `%s` to `%s`",
+			node.expr.expr_type(c).printer(c),
+			node.type.printer(c));
+	}
+	node.state = AstNodeState.type_check_done;
+}

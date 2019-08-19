@@ -18,6 +18,60 @@ void name_resolve_unary_op(UnaryExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve_done;
 }
 
+void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+
+	node.state = AstNodeState.type_check;
+	require_type_check(node.child, state);
+	ExpressionNode* child = node.child.get_expr(c);
+	assert(child.type, format("child(%s).type: is null", child.astType));
+	switch(node.op) with(UnOp)
+	{
+		case addrOf:
+			// make sure that variable gets stored in memory
+			switch(child.astType)
+			{
+				case AstType.expr_var_name_use:
+					child.as_name_use.varDecl(c).varFlags |= VariableFlags.isAddressTaken;
+					break;
+				case AstType.expr_index:
+					break;
+				default:
+					c.internal_error(node.loc, "Cannot take address of %s", child.astType);
+			}
+			node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
+			break;
+		case bitwiseNot:
+			node.type = child.type;
+			break;
+		case logicalNot:
+			autoconvToBool(node.child, c);
+			node.type = c.basicTypeNodes(BasicType.t_bool);
+			break;
+		case minus:
+			node.type = child.type;
+			break;
+		case preIncrement, postIncrement, preDecrement, postDecrement:
+			node.type = child.type;
+			break;
+		case deref:
+			if (child.type.get_type(c).isError) {
+				node.type = child.type;
+				break;
+			}
+			if (!child.type.get_type(c).isPointer) {
+				c.unrecoverable_error(node.loc, "Cannot dereference %s", child.type.printer(c));
+			}
+			node.type = child.type.get_type(c).as_ptr.base;
+			break;
+		default:
+			c.internal_error("un op %s not implemented", node.op);
+			node.type = node.child.expr_type(c);
+	}
+	node.state = AstNodeState.type_check_done;
+}
+
 enum UnOp : ubyte {
 	plus, // +
 	minus, // -

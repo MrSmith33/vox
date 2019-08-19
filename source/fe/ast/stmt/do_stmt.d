@@ -30,3 +30,12 @@ void name_resolve_do(DoWhileStmtNode* node, ref NameResolveState state) {
 	require_name_resolve(node.condition, state);
 	node.state = AstNodeState.name_resolve_done;
 }
+
+void type_check_do(DoWhileStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.statement, state);
+	require_type_check(node.condition, state);
+	autoconvToBool(node.condition, state.context);
+	node.state = AstNodeState.type_check_done;
+}

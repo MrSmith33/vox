@@ -76,3 +76,11 @@ void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
 	}
 	node.state = AstNodeState.name_resolve_done;
 }
+
+// Get type from variable declaration
+void type_check_name_use(NameUseExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	node.type = node.entity.get_node_type(state.context);
+	node.state = AstNodeState.type_check_done;
+}

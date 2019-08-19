@@ -22,3 +22,45 @@ void name_resolve_member(MemberExprNode* node, ref NameResolveState state) {
 	require_name_resolve(node.aggregate, state);
 	node.state = AstNodeState.name_resolve_done;
 }
+
+void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+	node.state = AstNodeState.type_check;
+
+	// try member
+	NameUseExprNode* member = node.member.get_expr_name_use(c);
+	require_type_check(node.aggregate, state);
+	LookupResult res = lookupMember(node, c);
+	if (res == LookupResult.success) {
+		node.state = AstNodeState.type_check_done;
+		return;
+	}
+
+	// try UFCS
+	AstIndex ufcsNodeIndex = lookupScopeIdRecursive(node.curScope.get_scope(c), member.id(c), node.loc, c);
+	if (ufcsNodeIndex)
+	{
+		AstNode* ufcsNode = c.getAstNode(ufcsNodeIndex);
+		if (ufcsNode.astType == AstType.decl_function)
+		{
+			// rewrite as call
+			member.resolve = ufcsNodeIndex;
+			member.astType = AstType.expr_func_name_use;
+			Array!AstIndex args;
+			args.put(c.arrayArena, node.aggregate);
+			nodeIndex = c.appendAst!CallExprNode(member.loc, AstIndex(), IrIndex(), node.member, args);
+			nodeIndex.get_node(c).state = AstNodeState.name_resolve_done;
+			// type check call
+			require_type_check(nodeIndex, state);
+			return;
+		}
+	}
+
+	// nothing found
+	node.type = c.basicTypeNodes(BasicType.t_error);
+	AstIndex objType = node.aggregate.get_node_type(c);
+	c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(member.id(c)));
+
+	node.state = AstNodeState.type_check_done;
+}

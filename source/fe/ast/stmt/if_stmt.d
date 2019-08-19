@@ -42,3 +42,15 @@ void name_resolve_if(IfStmtNode* node, ref NameResolveState state) {
 	}
 	node.state = AstNodeState.name_resolve_done;
 }
+
+void type_check_if(IfStmtNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.condition, state);
+	autoconvToBool(node.condition, state.context);
+	require_type_check(node.thenStatement, state);
+	if (node.elseStatement) {
+		require_type_check(node.elseStatement, state);
+	}
+	node.state = AstNodeState.type_check_done;
+}

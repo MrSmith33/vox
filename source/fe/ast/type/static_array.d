@@ -23,6 +23,17 @@ void name_resolve_static_array(StaticArrayTypeNode* node, ref NameResolveState s
 	node.state = AstNodeState.name_resolve_done;
 }
 
+void type_check_static_array(StaticArrayTypeNode* node, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+
+	node.state = AstNodeState.type_check;
+	require_type_check(node.base, state);
+	IrIndex val = eval_static_expr(node.length_expr, c);
+	node.length = c.constants.get(val).i64.to!uint;
+	node.state = AstNodeState.type_check_done;
+}
+
 bool same_type_static_array(StaticArrayTypeNode* t1, StaticArrayTypeNode* t2, CompilationContext* context)
 {
 	return (t1.length == t2.length) && same_type(t1.base, t2.base, context);
