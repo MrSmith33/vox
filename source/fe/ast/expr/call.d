@@ -25,8 +25,7 @@ void type_check_call(CallExprNode* node, ref TypeCheckState state)
 
 	node.state = AstNodeState.type_check;
 	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-	c.assertf(node.callee.astType(c) == AstType.expr_func_name_use ||
-		node.callee.astType(c) == AstType.expr_type_name_use,
+	c.assertf(node.callee.astType(c) == AstType.expr_name_use,
 		node.loc, "Only direct function calls are supported right now");
 	AstNode* callee = node.callee.get_name_use(c).entity.get_node(c);
 

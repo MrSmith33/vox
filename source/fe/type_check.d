@@ -75,10 +75,8 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case stmt_break: assert(false);
 		case stmt_continue: assert(false);
 
-		case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
-			type_check_name_use(cast(NameUseExprNode*)node, state); break;
-		case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
-			type_check_member(nodeIndex, cast(MemberExprNode*)node, state); break;
+		case expr_name_use: type_check_name_use(cast(NameUseExprNode*)node, state); break;
+		case expr_member: type_check_member(nodeIndex, cast(MemberExprNode*)node, state); break;
 		case expr_bin_op: type_check_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: type_check_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: type_check_call(cast(CallExprNode*)node, state); break;
@@ -224,7 +222,7 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 				ptrBaseType.as_basic.basicType == BasicType.t_u8)
 			{
 				auto memberExpr = context.appendAst!MemberExprNode(expr.loc, typeIndex, IrIndex(), exprIndex, AstIndex.init, 1);
-				memberExpr.get_node(context).astType = AstType.expr_slice_member;
+				memberExpr.get_node(context).subType = MemberSubType.slice_member;
 				exprIndex = memberExpr;
 				return true;
 			}

@@ -5,10 +5,10 @@ module fe.ast.decl.var;
 
 import all;
 
-enum VariableFlags : ubyte {
-	forceMemoryStorage = 1 << 0,
-	isParameter        = 1 << 1,
-	isAddressTaken     = 1 << 2,
+enum VariableFlags : ushort {
+	forceMemoryStorage = AstFlags.userFlag << 0,
+	isParameter        = AstFlags.userFlag << 1,
+	isAddressTaken     = AstFlags.userFlag << 2,
 }
 
 struct VariableDeclNode
@@ -17,12 +17,11 @@ struct VariableDeclNode
 	AstIndex type;
 	AstIndex initializer; // may be null
 	Identifier id;
-	ubyte varFlags; // VariableFlags
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
 	IrIndex irValue; // kind is variable or stackSlot, unique id of variable within a function
-	bool forceMemoryStorage() { return cast(bool)(varFlags & VariableFlags.forceMemoryStorage); }
-	bool isParameter() { return cast(bool)(varFlags & VariableFlags.isParameter); }
-	bool isAddressTaken() { return cast(bool)(varFlags & VariableFlags.isAddressTaken); }
+	bool forceMemoryStorage() { return cast(bool)(flags & VariableFlags.forceMemoryStorage); }
+	bool isParameter() { return cast(bool)(flags & VariableFlags.isParameter); }
+	bool isAddressTaken() { return cast(bool)(flags & VariableFlags.isAddressTaken); }
 }
 
 void name_register_var(AstIndex nodeIndex, VariableDeclNode* node, ref NameRegisterState state) {
@@ -70,7 +69,7 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 		switch (type.astType) with(AstType)
 		{
 			case type_static_array, decl_struct, type_slice:
-				node.varFlags |= VariableFlags.forceMemoryStorage;
+				node.flags |= VariableFlags.forceMemoryStorage;
 				break;
 
 			default: break;

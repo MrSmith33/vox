@@ -13,7 +13,7 @@ struct AstIndex
 
 	bool opCast(T : bool)() const {
 		return storageIndex != 0;
-    }
+	}
 
 	AstNode* get_node(CompilationContext* c) { return c.getAstNode(this); }
 	ExpressionNode* get_expr(CompilationContext* c) { return c.getAstExpr(this); }
@@ -23,7 +23,7 @@ struct AstIndex
 
 	ref TokenIndex loc(CompilationContext* c) { return c.getAstNode(this).loc; }
 	ref AstType astType(CompilationContext* c) { return c.getAstNode(this).astType; }
-	ref AstNodeState state(CompilationContext* c) { return c.getAstNode(this).state; }
+	AstNodeState state(CompilationContext* c) { return c.getAstNode(this).state; }
 	ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
 
 	ref AstIndex expr_type(CompilationContext* c) { return get_expr(c).type; }
@@ -33,7 +33,6 @@ struct AstIndex
 	bool isExpression(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isExpression); }
 	bool isStatement(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isStatement); }
 	bool isType(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isType); }
-	bool isSymResolved(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isSymResolved); }
 	bool isLvalue(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLvalue); }
 	bool isLiteral(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLiteral); }
 	bool isAssignment(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isAssignment); }
@@ -43,6 +42,8 @@ struct AstIndex
 
 	// type functions
 	AstIndex getElementType(CompilationContext* c) { return get_type(c).getElementType(c); }
+	bool isErrorType(CompilationContext* c) { return get_type(c).isError; }
+	bool isPointerType(CompilationContext* c) { return get_type(c).isPointer; }
 }
 
 

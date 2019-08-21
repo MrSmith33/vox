@@ -42,17 +42,7 @@ enum AstType : ubyte
 	stmt_continue,
 
 	expr_name_use,
-	expr_var_name_use, // var name
-	expr_func_name_use, // function name
-	expr_member_name_use, // struct member name
-	expr_type_name_use, // type name
-
 	expr_member,
-	expr_struct_member,
-	expr_enum_member,
-	expr_slice_member,
-	expr_static_array_member,
-
 	expr_call,
 	expr_index,
 	expr_bin_op,
@@ -70,29 +60,26 @@ enum AstType : ubyte
 	type_slice,
 }
 
-enum AstFlags
+enum AstFlags : ushort
 {
-	isDeclaration = 1 <<  0,
-	isScope       = 1 <<  1,
-	isExpression  = 1 <<  2,
+	isDeclaration    = 1 <<  0,
+	isScope          = 1 <<  1,
+	isExpression     = 1 <<  2,
 	/// Can be applied to expression if it is in place of stmt
-	isStatement   = 1 <<  3,
-	isType        = 1 <<  4,
-	isSymResolved = 1 <<  5,
+	isStatement      = 1 <<  3,
+	isType           = 1 <<  4,
 	/// Is added to expression nodes that are being assigned to
-	isLvalue      = 1 <<  6,
-	isLiteral     = 1 <<  7,
-	isAssignment  = 1 <<  8,
+	isLvalue         = 1 <<  5,
+	isLiteral        = 1 <<  6, // unused
+	isAssignment     = 1 <<  7,
 	/// Marks expression that is used as func argument.
 	/// Needed to handle calling conventions properly.
-	isArgument    = 1 <<  9,
+	isArgument       = 1 <<  8,
 	/// Declaration at module level
-	isGlobal      = 1 << 10,
-	isInOrderedScope = 1 << 11,
-	// used to find cyclic dependencies
-	isBeingVisited = 1 << 12,
-	user1         = 1 << 13,
-	user2         = 1 << 14,
+	isGlobal         = 1 <<  9,
+	isInOrderedScope = 1 << 10,
+	// used for node specific flags
+	userFlag         = 1 << 11,
 }
 
 /// Invariant: child.state >= parent.state
@@ -113,9 +100,12 @@ enum AstNodeState : ubyte
 	ir_gen,
 	ir_gen_done,
 }
+static assert(AstNodeState.max <= 15, "Assumed to fit in 4 bits");
 
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse_done)
 {
+	import std.bitmanip : bitfields;
+
 	this(Args...)(TokenIndex loc, Args args) {
 		this(loc);
 		enum len = this.tupleof.length - 4;
@@ -128,11 +118,16 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		this.loc = loc;
 		this.astType = _astType;
 		this.flags = cast(ushort)default_flags;
+		this.state = _init_state;
 	}
 
 	TokenIndex loc;
 	AstType astType = _astType;
-	AstNodeState state = _init_state;
+
+	mixin(bitfields!(
+		AstNodeState,  "state",     4,
+		uint,          "subType",   4,
+	));
 	ushort flags = cast(ushort)default_flags;
 
 	AstNode* as_node() {
@@ -149,17 +144,12 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isExpression() { return cast(bool)(flags & AstFlags.isExpression); }
 	bool isStatement() { return cast(bool)(flags & AstFlags.isStatement); }
 	bool isType() { return cast(bool)(flags & AstFlags.isType); }
-	bool isSymResolved() { return cast(bool)(flags & AstFlags.isSymResolved); }
 	bool isLvalue() { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool isLiteral() { return cast(bool)(flags & AstFlags.isLiteral); }
 	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
 	bool isArgument() { return cast(bool)(flags & AstFlags.isArgument); }
 	bool isGlobal() { return cast(bool)(flags & AstFlags.isGlobal); }
 	bool isInOrderedScope() { return cast(bool)(flags & AstFlags.isInOrderedScope); }
-
-	bool isBeingVisited() { return cast(bool)(flags & AstFlags.isBeingVisited); }
-	void beginVisit() { flags |= AstFlags.isBeingVisited; }
-	void endVisit() { flags &= ~AstFlags.isBeingVisited; }
 }
 
 Identifier get_node_id(AstIndex nodeIndex, CompilationContext* context)
@@ -173,8 +163,7 @@ Identifier get_node_id(AstIndex nodeIndex, CompilationContext* context)
 		case decl_var: return node.cast_decl_var.id;
 		case decl_enum: return node.cast_decl_enum.id;
 		case decl_enum_member: return node.cast_decl_enum_member.id;
-		case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
-			return node.cast_expr_name_use.id(context);
+		case expr_name_use: return node.cast_expr_name_use.id(context);
 		default: assert(false, format("got %s", node.astType));
 	}
 }
@@ -182,34 +171,21 @@ Identifier get_node_id(AstIndex nodeIndex, CompilationContext* context)
 AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* context)
 {
 	AstNode* node = context.getAstNode(nodeIndex);
-	AstIndex typeIndex;
+
 	switch(node.astType) with(AstType)
 	{
 		case decl_struct: return nodeIndex;
-		case decl_function: typeIndex = node.cast_decl_function.returnType; break;
-		case decl_var: typeIndex = node.cast_decl_var.type; break;
-		case decl_enum: typeIndex = nodeIndex; break;
-		case decl_enum_member: typeIndex = node.cast_decl_enum_member.type; break;
+		case decl_function: return node.cast_decl_function.returnType.get_node_type(context);
+		case decl_var: return node.cast_decl_var.type.get_node_type(context);
+		case decl_enum: return nodeIndex;
+		case decl_enum_member: return node.cast_decl_enum_member.type.get_node_type(context);
 		case type_basic, type_ptr, type_slice, type_static_array: return nodeIndex;
-		case expr_var_name_use:
-			return node.cast_expr_name_use.entity.get_node_type(context);
-		case expr_type_name_use:
-			typeIndex = node.cast_expr_name_use.entity;
-			break;
-
-		case literal_int, literal_string, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv:
-		case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
-			typeIndex = node.as_expr.type;
-			break;
+		case expr_name_use: return node.cast_expr_name_use.entity.get_node_type(context);
+		case literal_int, literal_string, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+			return node.as_expr.type.get_node_type(context);
 
 		default: assert(false, format("get_node_type used on %s", node.astType));
 	}
-	AstNode* type = context.getAstNode(typeIndex);
-	if (type.astType == AstType.expr_type_name_use)
-	{
-		return type.cast_expr_name_use.entity;
-	}
-	return typeIndex;
 }
 
 AstIndex get_ast_index(T)(T* node, CompilationContext* context)

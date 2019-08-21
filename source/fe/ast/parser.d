@@ -275,7 +275,7 @@ struct Parser
 
 				AstIndex param = make!VariableDeclNode(paramStart, paramType, AstIndex.init, paramId);
 				VariableDeclNode* paramNode = context.getAst!VariableDeclNode(param);
-				paramNode.varFlags |= VariableFlags.isParameter;
+				paramNode.flags |= VariableFlags.isParameter;
 				paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
 				params.put(context.arrayArena, param);
 				if (tok.type == TokenType.COMMA) nextToken; // skip ","

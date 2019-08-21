@@ -29,8 +29,11 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 	switch (node.astType) with(AstType)
 	{
 		case decl_enum_member: return eval_static_expr_enum_member(cast(EnumMemberDecl*)node, context);
-		case expr_var_name_use: return eval_static_expr_var_name_use(cast(NameUseExprNode*)node, context);
-		case expr_static_array_member: return eval_static_expr_static_array_member(cast(MemberExprNode*)node, context);
+		case expr_name_use: return eval_static_expr_name_use(cast(NameUseExprNode*)node, context);
+		case expr_member:
+			if (node.subType == MemberSubType.static_array_member)
+				return eval_static_expr_static_array_member(cast(MemberExprNode*)node, context);
+			goto default;
 		case expr_bin_op: return eval_static_expr_bin_op(cast(BinaryExprNode*)node, context);
 		case expr_type_conv: return eval_static_expr_type_conv(cast(TypeConvExprNode*)node, context);
 		case literal_int: return eval_static_expr_literal_int(cast(IntLiteralExprNode*)node, context);
@@ -48,7 +51,7 @@ IrIndex eval_static_expr_enum_member(EnumMemberDecl* node, CompilationContext* c
 	return eval_static_expr(node.initializer, context);
 }
 
-IrIndex eval_static_expr_var_name_use(NameUseExprNode* node, CompilationContext* context)
+IrIndex eval_static_expr_name_use(NameUseExprNode* node, CompilationContext* context)
 {
 	return eval_static_expr(node.entity, context);
 }

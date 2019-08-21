@@ -41,10 +41,9 @@ struct AstToIr
 		context.assertf(node.isExpression, node.loc, "Expected expression, not %s", node.astType);
 		switch(node.astType) with(AstType)
 		{
-			case expr_var_name_use:
+			case expr_name_use:
 				visitExprValue(cast(NameUseExprNode*)node, currentBlock, nextStmt); break;
-			case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
-				visitExprValue(cast(MemberExprNode*)node, currentBlock, nextStmt); break;
+			case expr_member: visitExprValue(cast(MemberExprNode*)node, currentBlock, nextStmt); break;
 			case expr_call: visitExprValue(cast(CallExprNode*)node, currentBlock, nextStmt); break;
 			case expr_index: visitExprValue(cast(IndexExprNode*)node, currentBlock, nextStmt); break;
 			case expr_bin_op: visitExprValue(cast(BinaryExprNode*)node, currentBlock, nextStmt); break;
@@ -66,15 +65,13 @@ struct AstToIr
 			case literal_int, literal_string, expr_index: // TODO: expr_index may return bool
 				context.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", node.astType);
 				break;
-			case expr_var_name_use: visitExprBranch(cast(NameUseExprNode*)node, currentBlock, trueExit, falseExit); break;
+			case expr_name_use: visitExprBranch(cast(NameUseExprNode*)node, currentBlock, trueExit, falseExit); break;
 			case expr_bin_op: visitExprBranch(cast(BinaryExprNode*)node, currentBlock, trueExit, falseExit); break;
 			case expr_type_conv: visitExprBranch(cast(TypeConvExprNode*)node, currentBlock, trueExit, falseExit); break;
 			case expr_un_op: visitExprBranch(cast(UnaryExprNode*)node, currentBlock, trueExit, falseExit); break;
 			case expr_call: visitExprBranch(cast(CallExprNode*)node, currentBlock, trueExit, falseExit); break;
 			case literal_bool: visitExprBranch(cast(BoolLiteralExprNode*)node, currentBlock, trueExit, falseExit); break;
-
-			case expr_member, expr_struct_member, expr_enum_member, expr_slice_member, expr_static_array_member:
-				visitExprBranch(cast(MemberExprNode*)node, currentBlock, trueExit, falseExit); break;
+			case expr_member: visitExprBranch(cast(MemberExprNode*)node, currentBlock, trueExit, falseExit); break;
 
 			default: context.internal_error("%s", node.astType); assert(false);
 		}
@@ -408,7 +405,7 @@ struct AstToIr
 		}
 
 		if (context.buildDebug)
-			v.varFlags |= VariableFlags.forceMemoryStorage;
+			v.flags |= VariableFlags.forceMemoryStorage;
 
 		// Allocate stack slot for parameter that is passed via stack
 		bool isParamWithSlot = v.isParameter && ir.backendData.callingConvention.isParamOnStack(v.scopeIndex);
@@ -733,7 +730,7 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] var expr value (%s) begin", v.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] var expr value (%s) end", v.loc);
 
-		AstNode* entity = context.getAstNode(v.entity);
+		AstNode* entity = v.entity.get_node(context);
 		switch (entity.astType) with(AstType)
 		{
 			case decl_enum_member:
@@ -786,38 +783,40 @@ struct AstToIr
 		version(CfgGenPrint) writefln("[CFG GEN] beg MEMBER cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end MEMBER cur %s next %s", currentBlock, nextStmt);
 
-		switch(m.astType) with(AstType)
+		CompilationContext* c = context;
+
+		switch(m.subType) with(MemberSubType)
 		{
-			case expr_static_array_member:
+			case static_array_member:
 				if (m.isLvalue) {
-					context.internal_error(m.loc, "cannot assign static array member");
+					c.internal_error(m.loc, "cannot assign static array member");
 				}
 				if (m.memberIndex == BuiltinMemberIndex.MEMBER_LENGTH) // length
 				{
-					StaticArrayTypeNode* arr = m.aggregate.get_node_type(context).cast_type_static_array(context);
-					m.irValue = context.constants.add(arr.length, IsSigned.no, IrArgSize.size64);
+					StaticArrayTypeNode* arr = m.aggregate.get_node_type(c).cast_type_static_array(c);
+					m.irValue = c.constants.add(arr.length, IsSigned.no, IrArgSize.size64);
 				}
 				else if (m.memberIndex == BuiltinMemberIndex.MEMBER_PTR) // ptr
 				{
 					IrLabel afterAggr = IrLabel(currentBlock);
-					m.aggregate.get_node(context).flags |= AstFlags.isLvalue;
+					m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
 					visitExprValue(m.aggregate, currentBlock, afterAggr);
 					currentBlock = afterAggr.blockIndex;
-					m.irValue = buildGEP(currentBlock, m.aggregate.get_expr(context).irValue, context.constants.ZERO, context.constants.ZERO);
+					m.irValue = buildGEP(currentBlock, m.aggregate.get_expr(c).irValue, c.constants.ZERO, c.constants.ZERO);
 				}
 				break;
-			case expr_struct_member, expr_slice_member:
+			case nonstatic_struct_member, slice_member:
 				IrLabel afterAggr = IrLabel(currentBlock);
-				m.aggregate.get_node(context).flags |= AstFlags.isLvalue;
+				m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
 				visitExprValue(m.aggregate, currentBlock, afterAggr);
 				currentBlock = afterAggr.blockIndex;
 
-				IrIndex memberIndex = context.constants.add(m.memberIndex, IsSigned.no);
-				LRValue rlVal = getMember(currentBlock, m.aggregate.get_expr(context).irValue, memberIndex);
+				IrIndex memberIndex = c.constants.add(m.memberIndex, IsSigned.no);
+				LRValue rlVal = getMember(currentBlock, m.aggregate.get_expr(c).irValue, memberIndex);
 
 				if (m.isLvalue) {
 					if (rlVal.isLvalue) m.irValue = rlVal.value;
-					else context.internal_error(m.loc, "member expression is not an l-value");
+					else c.internal_error(m.loc, "member expression is not an l-value");
 				}
 				else {
 					if (rlVal.isLvalue)
@@ -825,35 +824,38 @@ struct AstToIr
 					else m.irValue = rlVal.value;
 				}
 				break;
-			case expr_enum_member:
-				EnumMemberDecl* member = m.member.get_name_use(context).enumMember(context);
+			case static_struct_member:
+				context.unreachable("Not implemented");
+				break;
+			case enum_member:
+				EnumMemberDecl* member = m.member.get_name_use(c).enumMember(c);
 				IrLabel afterAggr = IrLabel(currentBlock);
 				visitExprValue(member.initializer, currentBlock, afterAggr);
 				currentBlock = afterAggr.blockIndex;
-				m.irValue = member.initializer.get_expr(context).irValue;
+				m.irValue = member.initializer.get_expr(c).irValue;
 				break;
-			case expr_member:
-				TypeNode* obj = m.aggregate.get_node_type(context).get_type(context);
+			case basic_member:
+				TypeNode* obj = m.aggregate.get_node_type(c).get_type(c);
 				if (auto b = obj.as_basic)
 				{
 					if (b.isInteger)
 					{
 						if (m.memberIndex == BuiltinMemberIndex.MEMBER_MIN)
 						{
-							m.irValue = context.constants.add(b.minValue, b.isSigned, obj.argSize(context));
+							m.irValue = c.constants.add(b.minValue, b.isSigned, obj.argSize(c));
 							break;
 						}
 						else if (m.memberIndex == BuiltinMemberIndex.MEMBER_MAX)
 						{
-							m.irValue = context.constants.add(b.maxValue, b.isSigned, obj.argSize(context));
+							m.irValue = c.constants.add(b.maxValue, b.isSigned, obj.argSize(c));
 							break;
 						}
 					}
 				}
-				context.internal_error(m.loc, "Unexpected node type %s", m.astType);
+				c.internal_error(m.loc, "Unexpected node type %s", m.astType);
 				break;
 			default:
-				context.internal_error(m.loc, "Unexpected node type %s", m.astType);
+				c.internal_error(m.loc, "Unexpected node type %s", m.astType);
 		}
 
 		builder.addJumpToLabel(currentBlock, nextStmt);

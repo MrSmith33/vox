@@ -12,6 +12,11 @@ struct EnumDeclaration
 	AstIndex _scope;
 	Identifier id;
 
+	private enum Flags
+	{
+		isAnonymous = AstFlags.userFlag
+	}
+
 	this(TokenIndex loc, Array!AstIndex members, AstIndex memberType, Identifier id)
 	{
 		this.loc = loc;
@@ -27,12 +32,12 @@ struct EnumDeclaration
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
-		this.flags = AstFlags.isType | AstFlags.isScope | AstFlags.isDeclaration | AstFlags.user1;
+		this.flags = AstFlags.isType | AstFlags.isScope | AstFlags.isDeclaration | Flags.isAnonymous;
 		this.declarations = members;
 		this.memberType = memberType;
 	}
 
-	bool isAnonymous() { return cast(bool)(flags & AstFlags.user1); }
+	bool isAnonymous() { return cast(bool)(flags & Flags.isAnonymous); }
 }
 
 void name_register_enum(AstIndex nodeIndex, EnumDeclaration* node, ref NameRegisterState state) {

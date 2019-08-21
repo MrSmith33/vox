@@ -26,14 +26,31 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 	require_type_check(node.child, state);
 	ExpressionNode* child = node.child.get_expr(c);
 	assert(child.type, format("child(%s).type: is null", child.astType));
+
+	if (child.type.isErrorType(c))
+	{
+		node.type = child.type;
+		node.state = AstNodeState.type_check_done;
+		return;
+	}
+
 	switch(node.op) with(UnOp)
 	{
 		case addrOf:
 			// make sure that variable gets stored in memory
 			switch(child.astType)
 			{
-				case AstType.expr_var_name_use:
-					child.as_name_use.varDecl(c).varFlags |= VariableFlags.isAddressTaken;
+				case AstType.expr_name_use:
+					AstNode* entity = child.as_name_use.entity.get_node(c);
+
+					switch (entity.astType)
+					{
+						case AstType.decl_var:
+							entity.flags |= VariableFlags.isAddressTaken; // mark variable
+							break;
+						default:
+							c.internal_error(node.loc, "Cannot take address of %s", entity.astType);
+					}
 					break;
 				case AstType.expr_index:
 					break;
@@ -56,11 +73,11 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 			node.type = child.type;
 			break;
 		case deref:
-			if (child.type.get_type(c).isError) {
+			if (child.type.isErrorType(c)) {
 				node.type = child.type;
 				break;
 			}
-			if (!child.type.get_type(c).isPointer) {
+			if (!child.type.isPointerType(c)) {
 				c.unrecoverable_error(node.loc, "Cannot dereference %s", child.type.printer(c));
 			}
 			node.type = child.type.get_type(c).as_ptr.base;

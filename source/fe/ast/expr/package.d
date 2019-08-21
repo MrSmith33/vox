@@ -15,11 +15,10 @@ public import fe.ast.expr.unary_op;
 import all;
 
 NameUseExprNode* cast_expr_name_use(AstNode* t) {
-	switch(t.astType) with(AstType) {
-		case expr_name_use, expr_var_name_use, expr_func_name_use, expr_member_name_use, expr_type_name_use:
-			return cast(NameUseExprNode*)t;
-		default: return null;
+	if (t.astType == AstType.expr_name_use) {
+		return cast(NameUseExprNode*)t;
 	}
+	return null;
 }
 
 NameUseExprNode* get_expr_name_use(AstIndex index, CompilationContext* context) {

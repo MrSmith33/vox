@@ -13,6 +13,11 @@ struct StructDeclNode {
 	uint size = 1;
 	uint alignment = 1;
 
+	private enum Flags
+	{
+		isOpaque = AstFlags.userFlag
+	}
+
 	this(TokenIndex loc, Array!AstIndex members, Identifier id, bool _isOpaque)
 	{
 		this.loc = loc;
@@ -20,11 +25,11 @@ struct StructDeclNode {
 		this.flags = AstFlags.isScope | AstFlags.isDeclaration | AstFlags.isType;
 		this.declarations = members;
 		this.id = id;
-		if (_isOpaque) flags |= AstFlags.user1;
+		if (_isOpaque) flags |= Flags.isOpaque;
 	}
 
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
-	bool isOpaque() { return cast(bool)(flags & AstFlags.user1); }
+	bool isOpaque() { return cast(bool)(flags & Flags.isOpaque); }
 }
 
 void name_register_struct(AstIndex nodeIndex, StructDeclNode* node, ref NameRegisterState state) {

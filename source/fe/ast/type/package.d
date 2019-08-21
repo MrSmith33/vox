@@ -40,11 +40,11 @@ struct TypeNode
 	SliceTypeNode* as_slice() { if (astType == AstType.type_slice) return cast(SliceTypeNode*)&this; return null; }
 	StaticArrayTypeNode* as_static_array() { if (astType == AstType.type_static_array) return cast(StaticArrayTypeNode*)&this; return null; }
 	StructDeclNode* as_struct() { if (astType == AstType.decl_struct) return cast(StructDeclNode*)&this; return null; }
-	NameUseExprNode* as_name_use() { if (astType == AstType.expr_type_name_use) return cast(NameUseExprNode*)&this; return null; }
+	NameUseExprNode* as_name_use() { if (astType == AstType.expr_name_use) return cast(NameUseExprNode*)&this; return null; }
 	EnumDeclaration* as_enum() { if (astType == AstType.decl_enum) return cast(EnumDeclaration*)&this; return null; }
 
 	TypeNode* foldAliases(CompilationContext* context) {
-		if (astType == AstType.expr_type_name_use) return context.getAstNode(as_name_use.entity).cast_type_node;
+		if (astType == AstType.expr_name_use) return context.getAstNode(as_name_use.entity).cast_type_node;
 		return &this;
 	}
 
@@ -65,7 +65,7 @@ struct TypeNode
 
 	bool isOpaqueStruct(CompilationContext* context) {
 		TypeNode* t = foldAliases(context);
-		if (t.astType == AstType.expr_type_name_use) t = context.getAstNode(t.as_name_use.entity).cast_type_node;
+		if (t.astType == AstType.expr_name_use) t = context.getAstNode(t.as_name_use.entity).cast_type_node;
 		return t.astType == AstType.decl_struct && t.as_struct.isOpaque;
 	}
 
@@ -128,7 +128,7 @@ uint typeSize(TypeNode* type, CompilationContext* context)
 		case AstType.type_static_array: return type.as_static_array.size(context);
 		case AstType.type_slice: return type.as_slice.size;
 		case AstType.decl_struct: return type.as_struct.size;
-		case AstType.expr_type_name_use: return context.getAstNode(type.as_name_use.entity).cast_type_node.size(context);
+		case AstType.expr_name_use: return context.getAstNode(type.as_name_use.entity).cast_type_node.size(context);
 		default: assert(false, format("got %s", type.astType));
 	}
 }
@@ -147,7 +147,7 @@ uint typeAlignment(TypeNode* type, CompilationContext* context)
 		case AstType.type_static_array: return type.as_static_array.alignment(context);
 		case AstType.type_slice: return type.as_slice.alignment;
 		case AstType.decl_struct: return type.as_struct.alignment;
-		case AstType.expr_type_name_use: return context.getAstNode(type.as_name_use.entity).cast_type_node.alignment(context);
+		case AstType.expr_name_use: return context.getAstNode(type.as_name_use.entity).cast_type_node.alignment(context);
 		default: assert(false, format("got %s", type.astType));
 	}
 }
@@ -173,7 +173,7 @@ string typeName(TypeNode* type, CompilationContext* context)
 		case AstType.type_static_array: return "[num]";
 		case AstType.type_slice: return "[]";
 		case AstType.decl_struct: return context.idString(type.as_struct.id);
-		case AstType.expr_type_name_use: return context.idString(type.as_name_use.id(context));
+		case AstType.expr_name_use: return context.idString(type.as_name_use.id(context));
 		default: assert(false, format("got %s", type.astType));
 	}
 }
@@ -217,11 +217,8 @@ void printType(TypeNode* t, scope void delegate(const(char)[]) sink, Compilation
 		case AstType.decl_struct:
 			sink(ctx.idString(t.as_struct.id));
 			break;
-		case AstType.expr_type_name_use:
-			sink(ctx.idString(t.as_name_use.id(ctx)));
-			break;
 		case AstType.expr_name_use:
-			sink(ctx.idString(t.as_node.cast_expr_name_use.id(ctx)));
+			sink(ctx.idString(t.as_name_use.id(ctx)));
 			break;
 		default: assert(false, format("%s is not type", t.astType));
 	}
@@ -266,7 +263,7 @@ IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* context)
 		case AstType.type_static_array: return gen_ir_type_static_array(typeNode.as_static_array, context);
 		case AstType.type_slice: return gen_ir_type_slice(typeNode.as_slice, context);
 		case AstType.decl_struct: return gen_ir_type_struct(typeNode.as_struct, context);
-		case AstType.expr_type_name_use: return gen_ir_type(typeNode.as_name_use.entity.get_node_type(context), context);
+		case AstType.expr_name_use: return gen_ir_type(typeNode.as_name_use.entity.get_node_type(context), context);
 		default:
 			context.internal_error(typeNode.loc, "Cannot convert `%s` to ir type", typeNode.astType);
 			assert(false);

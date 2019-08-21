@@ -8,16 +8,22 @@ import all;
 struct IntLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 	ulong value;
-	bool isNegative() { return cast(bool)(flags & AstFlags.user1); }
+
+	private enum Flags : ushort
+	{
+		isNegative = AstFlags.userFlag
+	}
+	bool isNegative() { return cast(bool)(flags & Flags.isNegative); }
 	IsSigned isSigned() { return cast(IsSigned)isNegative; }
+
 	void negate(TokenIndex pos, ref CompilationContext context) {
 		if (isNegative) {
 			value = -(cast(long)value);
-			flags &= ~AstFlags.user1;
+			flags &= ~cast(int)Flags.isNegative;
 		} else {
 			if (value <= 0x8000_0000_0000_0000) {
 				value = -(cast(long)value);
-				flags |= AstFlags.user1;
+				flags |= Flags.isNegative;
 			}
 			else {
 				context.error(pos, "`-%s` results in signed integer overflow", value);
