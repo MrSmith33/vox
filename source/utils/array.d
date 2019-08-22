@@ -11,7 +11,7 @@ struct Array(T)
 	import utils : isPowerOfTwo, nextPOT, divCeil, min, max, writefln, ArrayArena, format;
 
 	// Can be 0
-	enum uint NUM_INLINE_ITEMS = 8 / T.sizeof;
+	enum uint NUM_INLINE_ITEMS = size_t.sizeof / T.sizeof;
 	enum uint MIN_EXTERNAL_BYTES = max(ArrayArena.MIN_BLOCK_BYTES, nextPOT((NUM_INLINE_ITEMS + 1) * T.sizeof));
 	enum uint MIN_EXTERNAL_ITEMS = MIN_EXTERNAL_BYTES / T.sizeof;
 	enum uint ARRAY_PAGE_BYTES = ArrayArena.MAX_BLOCK_BYTES;
@@ -66,6 +66,19 @@ struct Array(T)
 		if (_length == _capacity) extend(arena, 1);
 
 		this[_length] = item;
+		++_length;
+	}
+
+	void putFront(ref ArrayArena arena, T item)
+	{
+		if (_length == _capacity) extend(arena, 1);
+
+		foreach_reverse(i; 0.._length)
+		{
+			this[i+1] = this[i];
+		}
+		this[0] = item;
+
 		++_length;
 	}
 

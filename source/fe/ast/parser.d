@@ -934,7 +934,7 @@ private TokenLookups cexp_parser()
 	suffix(310, &leftIncDec, ["++", "--"]);
 	infixL(310, &leftFuncCall, "(");
 	infixL(310, &leftIndex, "[");
-	infixL(310, &leftBinaryOp, ".");
+	infixL(310, &leftOpDot, ".");
 	//infixL(310, &leftBinaryOp, "->");
 
 	// 29 -- binds to everything except function call, indexing, postfix ops
@@ -1092,6 +1092,26 @@ AstIndex leftIndex(ref Parser p, Token token, int rbp, AstIndex array) {
 	return p.makeExpr!IndexExprNode(token.index, array, index);
 }
 
+// member access <expr> . <expr>
+AstIndex leftOpDot(ref Parser p, Token token, int rbp, AstIndex left)
+{
+	AstIndex name;
+	if (p.tok.type == TokenType.IDENTIFIER)
+	{
+		Identifier id = p.makeIdentifier(p.tok.index);
+		AstIndex right = p.make!NameUseExprNode(p.tok.index, id);
+		p.nextToken;
+		name = right;
+	}
+	else
+	{
+		p.context.error(token.index,
+			"Expected identifier after '.', while got '%s'",
+			p.context.getTokenString(p.tok.index));
+	}
+	return p.makeExpr!MemberExprNode(token.index, left, name);
+}
+
 // Normal binary operator <expr> op <expr>
 AstIndex leftBinaryOp(ref Parser p, Token token, int rbp, AstIndex left) {
 	AstIndex right = p.expr(rbp);
@@ -1120,19 +1140,6 @@ AstIndex leftBinaryOp(ref Parser p, Token token, int rbp, AstIndex left) {
 		case SLASH: op = BinOp.DIV; break;                        // /
 		case STAR: op = BinOp.MULT; break;                        // *
 		case XOR: op = BinOp.XOR; break;                          // ^
-
-		// member access
-		case DOT:                                                 // .
-			AstIndex name;
-			AstNode* rightNode = p.context.getAstNode(right);
-			if (rightNode.astType != AstType.expr_name_use) {
-				p.context.error(token.index,
-					"Expected identifier after '.', while got '%s'",
-					p.context.getTokenString(token.index));
-			}
-			else
-				name = right;
-			return p.makeExpr!MemberExprNode(token.index, left, name);
 
 		default:
 			p.context.internal_error(token.index, "parse leftBinaryOp %s", token.type);

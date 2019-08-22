@@ -75,11 +75,11 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case stmt_break: assert(false);
 		case stmt_continue: assert(false);
 
-		case expr_name_use: type_check_name_use(cast(NameUseExprNode*)node, state); break;
+		case expr_name_use: type_check_name_use(nodeIndex, cast(NameUseExprNode*)node, state); break;
 		case expr_member: type_check_member(nodeIndex, cast(MemberExprNode*)node, state); break;
 		case expr_bin_op: type_check_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: type_check_unary_op(cast(UnaryExprNode*)node, state); break;
-		case expr_call: type_check_call(cast(CallExprNode*)node, state); break;
+		case expr_call: type_check_call(nodeIndex, cast(CallExprNode*)node, state); break;
 		case expr_index: type_check_index(cast(IndexExprNode*)node, state); break;
 		case expr_type_conv: type_check_type_conv(cast(TypeConvExprNode*)node, state); break;
 

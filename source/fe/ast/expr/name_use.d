@@ -69,30 +69,49 @@ struct NameUseExprNode {
 }
 
 void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
+	CompilationContext* c = state.context;
 	node.state = AstNodeState.name_resolve;
-	AstIndex entity = lookupScopeIdRecursive(state.currentScope, node.id(state.context), node.loc, state.context);
-	if (entity)
+	scope(exit) node.state = AstNodeState.name_resolve_done;
+
+	Identifier id = node.id(c);
+	AstIndex entity = lookupScopeIdRecursive(state.currentScope, id, node.loc, c);
+
+	if (entity == c.errorNode)
 	{
-		node.resolve(entity);
-		AstNode* entityNode = state.context.getAstNode(entity);
-		switch(entityNode.astType) with(AstType) {
-			case decl_function, decl_var, decl_enum_member, error:
-				// valid expr
-				break;
-			case decl_struct, decl_enum:
-				node.flags |= AstFlags.isType;
-				break;
-			default:
-				state.context.internal_error("Unknown entity %s", entityNode.astType);
-		}
+		c.error(node.loc, "undefined identifier `%s`", c.idString(id));
+		return;
 	}
-	node.state = AstNodeState.name_resolve_done;
+
+	node.resolve(entity);
+	AstNode* entityNode = entity.get_node(c);
+
+	switch(entityNode.astType) with(AstType) {
+		case decl_function, decl_var, decl_enum_member, error:
+			// valid expr
+			break;
+		case decl_struct, decl_enum:
+			node.flags |= AstFlags.isType;
+			break;
+		default:
+			c.internal_error("Unknown entity %s", entityNode.astType);
+	}
 }
 
 // Get type from variable declaration
-void type_check_name_use(NameUseExprNode* node, ref TypeCheckState state)
+void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.type_check;
 	node.type = node.entity.get_node_type(state.context);
 	node.state = AstNodeState.type_check_done;
+
+	if (node.entity.astType(c) == AstType.decl_function)
+	{
+		// Call without parenthesis
+		// rewrite as call
+		nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), IrIndex(), nodeIndex);
+		nodeIndex.setState(c, AstNodeState.name_resolve_done);
+		require_type_check(nodeIndex, state);
+	}
 }

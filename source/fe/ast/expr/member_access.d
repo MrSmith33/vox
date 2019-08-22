@@ -37,43 +37,69 @@ void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeChe
 {
 	CompilationContext* c = state.context;
 	node.state = AstNodeState.type_check;
+	scope(exit) nodeIndex.get_node(c).state = AstNodeState.type_check_done;
 
 	// try member
-	NameUseExprNode* member = node.member.get_expr_name_use(c);
 	require_type_check(node.aggregate, state);
 
 	LookupResult res = lookupMember(node, c);
 
 	if (res == LookupResult.success) {
-		nodeIndex.get_node(c).state = AstNodeState.name_resolve_done;
 		return;
 	}
 
 	// try UFCS
-	AstIndex ufcsNodeIndex = lookupScopeIdRecursive(node.curScope.get_scope(c), member.id(c), node.loc, c);
-	if (ufcsNodeIndex)
-	{
-		AstNode* ufcsNode = c.getAstNode(ufcsNodeIndex);
-		if (ufcsNode.astType == AstType.decl_function)
-		{
-			// rewrite as call
-			member.resolve(ufcsNodeIndex);
-			Array!AstIndex args;
-			args.put(c.arrayArena, node.aggregate);
-			nodeIndex = c.appendAst!CallExprNode(member.loc, AstIndex(), IrIndex(), node.member, args);
-			nodeIndex.get_node(c).state = AstNodeState.name_resolve_done;
-			// type check call
-			require_type_check(nodeIndex, state);
-			return;
-		}
+	AstIndex callIndex;
+	LookupResult ufcsRes = tryUFCSCall(callIndex, node, state);
+	nodeIndex = callIndex;
+
+	if (ufcsRes == LookupResult.success) {
+		return;
 	}
+
+	NameUseExprNode* member = node.member.get_expr_name_use(c);
 
 	// nothing found
 	node.type = c.basicTypeNodes(BasicType.t_error);
 	AstIndex objType = node.aggregate.get_node_type(c);
 	c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(member.id(c)));
+}
 
-	node.state = AstNodeState.type_check_done;
+// Creates call node if it is undefined (only creates when lookup is successfull)
+LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+	NameUseExprNode* member = memberNode.member.get_expr_name_use(c);
+	AstIndex ufcsNodeIndex = lookupScopeIdRecursive(memberNode.curScope.get_scope(c), member.id(c), memberNode.loc, c);
+
+	if (ufcsNodeIndex == c.errorNode)
+	{
+		return LookupResult.failure;
+	}
+
+	AstNode* ufcsNode = c.getAstNode(ufcsNodeIndex);
+
+	if (ufcsNode.astType == AstType.decl_function)
+	{
+		// rewrite as call
+		member.resolve(ufcsNodeIndex);
+
+		if (callIndex.isUndefined)
+			callIndex = c.appendAst!CallExprNode(member.loc);
+
+		auto call = callIndex.get!CallExprNode(c);
+		call.state = AstNodeState.name_resolve_done;
+		call.callee = memberNode.member;
+		call.args.putFront(c.arrayArena, memberNode.aggregate);
+
+		// type check call
+		require_type_check(callIndex, state);
+		return LookupResult.success;
+	}
+	else
+		c.internal_error("call of %s is not supported", ufcsNode.astType);
+
+	return LookupResult.failure;
 }
 
 /// Look up member by Identifier. Searches aggregate scope for identifier.

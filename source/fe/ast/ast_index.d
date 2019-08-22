@@ -15,6 +15,7 @@ struct AstIndex
 		return storageIndex != 0;
 	}
 
+	T* get(T)(CompilationContext* c) { return c.getAst!T(this); }
 	AstNode* get_node(CompilationContext* c) { return c.getAstNode(this); }
 	ExpressionNode* get_expr(CompilationContext* c) { return c.getAstExpr(this); }
 	TypeNode* get_type(CompilationContext* c) { return c.getAstType(get_node_type(this, c)); }
@@ -24,6 +25,7 @@ struct AstIndex
 	ref TokenIndex loc(CompilationContext* c) { return c.getAstNode(this).loc; }
 	ref AstType astType(CompilationContext* c) { return c.getAstNode(this).astType; }
 	AstNodeState state(CompilationContext* c) { return c.getAstNode(this).state; }
+	void setState(CompilationContext* c, AstNodeState newState) { return c.getAstNode(this).state = newState; }
 	ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
 
 	ref AstIndex expr_type(CompilationContext* c) { return get_expr(c).type; }

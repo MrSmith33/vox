@@ -1784,11 +1784,21 @@ void tester84(ref TestContext ctx) {
 @TestInfo(&tester85)
 immutable test85 = q{--- test85
 	// UFCS without parenthesis
-	i32 static_func(i32 num) { return num; }
-	i32 test(i32 num) {
-		return num.static_func;
+	i32 static_func0() { return 42; }
+	i32 static_func1(i32 num) { return num; }
+	i32 static_func2(i32 num, i32 num2) { return num + num2; }
+	i32 test0() {
+		return static_func0;
+	}
+	i32 test1(i32 num) {
+		return num.static_func1;
+	}
+	i32 test2(i32 num, i32 num2) {
+		return num.static_func2(num2);
 	}
 };
 void tester85(ref TestContext ctx) {
-	assert(ctx.getFunctionPtr!(int, int)("test")(42) == 42);
+	assert(ctx.getFunctionPtr!(int)("test0")() == 42);
+	assert(ctx.getFunctionPtr!(int, int)("test1")(42) == 42);
+	assert(ctx.getFunctionPtr!(int, int, int)("test2")(42, 24) == 66);
 }

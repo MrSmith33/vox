@@ -11,6 +11,7 @@
 - struct
 	- struct methods
 	+ struct literal
+	+ UFCS functions
 - pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 +- all register subtypes 8/16/32/64 bit registers, !!! QWORD is forced rn everywhere
 - optimize pointer arithmetic into lea
@@ -31,9 +32,6 @@
 - context format/writefln
 - inline instructions in IR for representing memory operands in x86 LIR
 
-- UFCS
-	+ without parentesis
-- function call without parentesis
 - foreach
 	- over slice
 	- over static array
@@ -85,6 +83,9 @@ o dll linking
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
++ UFCS
+	+ without parentesis
++ function call without parentesis
 + constant folding of expressions in enum initializers and static array length
 + allow arbitrary expressions used as static array length
 + .min, .max properties of numeric types

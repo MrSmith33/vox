@@ -102,6 +102,7 @@ enum LookupResult : ubyte {
 }
 
 /// Look up symbol by Identifier. Searches the stack of scopes.
+// Returns errorNode if not found or error occured
 AstIndex lookupScopeIdRecursive(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
 {
 	Scope* sc = scop;
@@ -132,16 +133,10 @@ AstIndex lookupScopeIdRecursive(Scope* scop, const Identifier id, TokenIndex fro
 	}
 
 	// second phase
-	AstIndex symIndex = lookupImports(scop, id, from, context);
-
-	if (symIndex) {
-		return symIndex;
-	} else {
-		context.error(from, "undefined identifier `%s`", context.idString(id));
-		return context.errorNode;
-	}
+	return lookupImports(scop, id, from, context);
 }
 
+// Returns errorNode if not found or error occured
 AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
 {
 	while (scop)
@@ -168,6 +163,7 @@ AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, Compil
 					"`%s.%s` at %s conflicts with `%s.%s` at %s",
 					mod1Id, sym1Id, FmtSrcLoc(context.getAstNode(symIndex).loc, context),
 					mod2Id, sym2Id, FmtSrcLoc(context.getAstNode(scopeSym).loc, context));
+				return context.errorNode;
 			}
 
 			symIndex = scopeSym;
@@ -179,6 +175,6 @@ AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, Compil
 		scop = scop.parentScope.get_scope(context);
 	}
 
-	return AstIndex.init;
+	return context.errorNode;
 }
 
