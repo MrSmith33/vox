@@ -1,6 +1,8 @@
 - opaque IR type (void?)
 - function pointers
 	- call by pointer
+- default parameters
+- named parameters
 - char literal / type
 	+ literal (for now generates int literal expression)
 - escape sequences in string/char literals (\n)

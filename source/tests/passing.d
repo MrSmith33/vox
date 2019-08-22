@@ -1785,9 +1785,11 @@ void tester84(ref TestContext ctx) {
 immutable test85 = q{--- test85
 	// UFCS without parenthesis
 	i32 static_func0() { return 42; }
+	void static_func_void() {}
 	i32 static_func1(i32 num) { return num; }
 	i32 static_func2(i32 num, i32 num2) { return num + num2; }
 	i32 test0() {
+		static_func_void;
 		return static_func0;
 	}
 	i32 test1(i32 num) {
