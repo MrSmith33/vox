@@ -1804,3 +1804,17 @@ void tester85(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int, int)("test1")(42) == 42);
 	assert(ctx.getFunctionPtr!(int, int, int)("test2")(42, 24) == 66);
 }
+
+@TestInfo()
+immutable test86 = q{--- test86
+	// alias type
+	alias T = i32;
+	struct S { i32 member; }
+	alias U = S;
+	T test(T t) { return t; }
+	void test2() {
+		U s;
+		s.member = 10;
+	}
+	T num = 2;
+};

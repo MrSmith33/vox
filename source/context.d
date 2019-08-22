@@ -106,6 +106,8 @@ struct CompilationContext
 	// to be reset on beginCompilation()
 	private size_t initializedAstBufSize;
 	private size_t initializedIrTypeBufSize; // ditto, types.buffer.length
+	private size_t initializedSourceBufSize; // ditto, sourceBuffer.length
+	size_t initializedTokenLocBufSize; // ditto, tokenLocationBuffer.length
 
 	// sections
 	LinkIndex hostSectionIndex;
@@ -561,7 +563,14 @@ struct CompilationContext
 		// add basic types
 		AstIndex makeBasic(uint size, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
 		{
-			return appendAst!BasicTypeNode(TokenIndex(), size, minValue, maxValue, basicType, cast(ubyte)typeFlags);
+			uint startPos = sourceBuffer.uintLength;
+			string str = basicTypeNames[basicType];
+			uint endPos = cast(uint)(startPos + str.length);
+			sourceBuffer.put(str);
+			TokenIndex tokIndex = TokenIndex(tokenLocationBuffer.uintLength);
+			tokenLocationBuffer.put(SourceLocation(startPos, endPos, 0, 0));
+			tokenBuffer.voidPut(1); // bump token buf too
+			return appendAst!BasicTypeNode(tokIndex, size, minValue, maxValue, basicType, cast(ubyte)typeFlags);
 		}
 
 		basicTypes = [
@@ -580,9 +589,10 @@ struct CompilationContext
 			makeBasic(4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
 			makeBasic(8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
 
-			makeBasic(4, 0, 0, BasicType.t_f32  , BasicTypeFlag.isFloat),
-			makeBasic(8, 0, 0, BasicType.t_f64  , BasicTypeFlag.isFloat),
+			makeBasic(4, 0, 0, BasicType.t_f32, BasicTypeFlag.isFloat),
+			makeBasic(8, 0, 0, BasicType.t_f64, BasicTypeFlag.isFloat),
 		];
+
 		errorNode = appendAst!ErrorAstNode();
 		u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
 		u8Ptr.gen_ir_type(&this); // we need to cache IR types too
@@ -591,17 +601,21 @@ struct CompilationContext
 
 		initializedAstBufSize = astBuffer.length;
 		initializedIrTypeBufSize = types.buffer.length;
+
+		// cache buitin type strings for error reporting
+		initializedSourceBufSize = sourceBuffer.length;
+		initializedTokenLocBufSize = tokenLocationBuffer.length;
 	}
 
 	void beginCompilation()
 	{
 		hasErrors = false;
-		sourceBuffer.clear;
+		sourceBuffer.length = initializedSourceBufSize;
 		files.clear;
 		codeBuffer.clear;
 		importBuffer.clear;
-		tokenBuffer.clear;
-		tokenLocationBuffer.clear;
+		tokenBuffer.length = initializedTokenLocBufSize; // same size as tok loc buf
+		tokenLocationBuffer.length = initializedTokenLocBufSize;
 		binaryBuffer.clear;
 		irBuffer.clear;
 		types.buffer.length = initializedIrTypeBufSize;

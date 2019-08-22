@@ -23,8 +23,9 @@ import all;
 // Grammar
 /**
 	<module> = <declaration>* EOF
-	<declaration> = <func_decl> / <var_decl> / <struct_decl> / <enum_decl>
+	<declaration> = <alias_decl> / <func_decl> / <var_decl> / <struct_decl> / <enum_decl>
 
+	<alias_decl> = "alias" <id> "=" <expr> ";"
 	<func_decl> = <type> <identifier> "(" <param_list> ")" (<block_statement> / ';')
 	<param_list> = <parameter> "," <parameter_list> / <parameter>?
 	<parameter> = <type> <identifier>?
@@ -187,7 +188,11 @@ struct Parser
 	AstIndex parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
-		if (tok.type == TokenType.STRUCT_SYM) // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
+		if (tok.type == TokenType.ALIAS_SYM) // <alias_decl> ::= "alias" <id> "=" <expr> ";"
+		{
+			return parse_alias();
+		}
+		else if (tok.type == TokenType.STRUCT_SYM) // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
 		{
 			return parse_struct();
 		}
@@ -211,6 +216,21 @@ struct Parser
 			}
 			return funcIndex;
 		}
+	}
+
+	/// <alias_decl> ::= "alias" <id> "=" <expr> ";"
+	AstIndex parse_alias()
+	{
+		TokenIndex start = tok.index;
+		nextToken; // skip "alias"
+
+		Identifier aliasId = expectIdentifier();
+		expectAndConsume(TokenType.EQUAL);
+
+		AstIndex initializerIndex = expr();
+		expectAndConsume(TokenType.SEMICOLON);
+
+		return make!AliasDeclNode(start, aliasId, initializerIndex);
 	}
 
 	/// var_terminator can be ";" or ",". Used to parse regular var/func declaration

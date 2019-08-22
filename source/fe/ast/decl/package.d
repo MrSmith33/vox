@@ -4,6 +4,7 @@
 module fe.ast.decl;
 
 public import fe.ast.decl.builtin;
+public import fe.ast.decl.alias_;
 public import fe.ast.decl.enum_;
 public import fe.ast.decl.func;
 public import fe.ast.decl.import_;
@@ -14,6 +15,7 @@ public import fe.ast.decl.var;
 
 import fe.ast;
 
+AliasDeclNode* cast_decl_alias(AstNode* n) { if (n.astType == AstType.decl_alias) return cast(AliasDeclNode*)n; return null; }
 ModuleDeclNode* cast_decl_module(AstNode* n) { if (n.astType == AstType.decl_module) return cast(ModuleDeclNode*)n; return null; }
 StructDeclNode* cast_decl_struct(AstNode* n) { if (n.astType == AstType.decl_struct) return cast(StructDeclNode*)n; return null; }
 FunctionDeclNode* cast_decl_function(AstNode* n) { if (n.astType == AstType.decl_function) return cast(FunctionDeclNode*)n; return null; }

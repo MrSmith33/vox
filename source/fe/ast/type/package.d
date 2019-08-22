@@ -40,6 +40,7 @@ struct TypeNode
 	SliceTypeNode* as_slice() { if (astType == AstType.type_slice) return cast(SliceTypeNode*)&this; return null; }
 	StaticArrayTypeNode* as_static_array() { if (astType == AstType.type_static_array) return cast(StaticArrayTypeNode*)&this; return null; }
 	StructDeclNode* as_struct() { if (astType == AstType.decl_struct) return cast(StructDeclNode*)&this; return null; }
+	AliasDeclNode* as_alias() { if (astType == AstType.decl_alias) return cast(AliasDeclNode*)&this; return null; }
 	NameUseExprNode* as_name_use() { if (astType == AstType.expr_name_use) return cast(NameUseExprNode*)&this; return null; }
 	EnumDeclaration* as_enum() { if (astType == AstType.decl_enum) return cast(EnumDeclaration*)&this; return null; }
 
@@ -258,6 +259,7 @@ IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* context)
 {
 	switch (typeNode.astType)
 	{
+		case AstType.decl_alias: return gen_ir_type(typeNode.as_alias.initializer.get_node_type(context), context);
 		case AstType.type_basic: return gen_ir_type_basic(typeNode.as_basic, context);
 		case AstType.type_ptr: return gen_ir_type_ptr(typeNode.as_ptr, context);
 		case AstType.type_static_array: return gen_ir_type_static_array(typeNode.as_static_array, context);

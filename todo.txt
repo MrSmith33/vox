@@ -1,5 +1,5 @@
 - opaque IR type (void?)
-- function pointers
+- function pointer type <ret> function(<args>)
 	- call by pointer
 - default parameters
 - named parameters
@@ -10,6 +10,7 @@
 - float double
 - union
 - alias
+	+ type aliases
 - struct
 	- struct methods
 	+ struct literal

@@ -50,6 +50,7 @@ void name_register_module(ModuleDeclNode* node, ref NameRegisterState state) {
 }
 
 void name_resolve_module(ModuleDeclNode* node, ref NameResolveState state) {
+	node.state = AstNodeState.name_resolve;
 	state.pushScope(node._scope);
 	foreach (decl; node.declarations) require_name_resolve(decl, state);
 	state.popScope;

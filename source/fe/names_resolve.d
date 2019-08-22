@@ -57,6 +57,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
 		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
 
+		case decl_alias: name_resolve_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_module: name_resolve_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: assert(false);
 		case decl_function: name_resolve_func(cast(FunctionDeclNode*)node, state); break;

@@ -92,6 +92,11 @@ void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
 		case decl_struct, decl_enum:
 			node.flags |= AstFlags.isType;
 			break;
+		case decl_alias:
+			require_name_resolve(entity, state);
+			if (entityNode.isType)
+				node.flags |= AstFlags.isType;
+			break;
 		default:
 			c.internal_error("Unknown entity %s", entityNode.astType);
 	}

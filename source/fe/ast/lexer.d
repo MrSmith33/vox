@@ -83,6 +83,7 @@ enum TokenType : ubyte {
 	@("}")    RCURLY,
 
 
+	@("alias")    ALIAS_SYM,
 	@("break")    BREAK_SYM,
 	@("continue") CONTINUE_SYM,
 	@("do")       DO_SYM,
@@ -198,8 +199,9 @@ struct FmtSrcLoc
 	void toString(scope void delegate(const(char)[]) sink) {
 		if (tok.index == uint.max) return;
 		auto loc = ctx.tokenLoc(tok);
-		sink.formattedWrite("%s(%s, %s)",
-			ctx.idString(ctx.getModuleFromToken(tok).id), loc.line+1, loc.col+1);
+		if (tok.index >= ctx.initializedTokenLocBufSize)
+			sink.formattedWrite("%s(%s, %s)",
+				ctx.idString(ctx.getModuleFromToken(tok).id), loc.line+1, loc.col+1);
 	}
 }
 
@@ -208,11 +210,12 @@ enum char SOI_CHAR = '\2';
 /// End of input
 enum char EOI_CHAR = '\3';
 
-immutable string[] keyword_strings = ["bool","true","false","break","continue","do","else",
+immutable string[] keyword_strings = ["bool","true","false","alias","break","continue","do","else",
 	"f32","f64","i16","i32","i64","i8","if","import","isize","return","struct","u16","u32",
 	"u64","u8","usize","void","while","for","cast","enum","null"];
 enum NUM_KEYWORDS = keyword_strings.length;
 immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.TRUE_LITERAL,TT.FALSE_LITERAL,
+	TT.ALIAS_SYM,
 	TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,TT.ELSE_SYM,TT.TYPE_F32,TT.TYPE_F64,TT.TYPE_I16,
 	TT.TYPE_I32,TT.TYPE_I64,TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.TYPE_ISIZE,TT.RETURN_SYM,
 	TT.STRUCT_SYM,TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
@@ -231,7 +234,7 @@ void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
 	foreach (ref SourceFileInfo file; ctx.files.data)
 	{
-		file.firstTokenIndex = TokenIndex(cast(uint)ctx.tokenLocationBuffer.length);
+		file.firstTokenIndex = TokenIndex(ctx.tokenLocationBuffer.uintLength);
 
 		Lexer lexer = Lexer(&ctx, ctx.sourceBuffer.data, &ctx.tokenBuffer, &ctx.tokenLocationBuffer);
 		lexer.position = file.start;
@@ -606,6 +609,8 @@ struct Lexer
 	{
 		switch (c)
 		{
+			case 'a':
+				if (match("alias")) return TT.ALIAS_SYM; break;
 			case 'b':
 				nextChar;
 				if (c == 'o' && match("ool")) return TT.TYPE_BOOL;

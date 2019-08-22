@@ -24,6 +24,7 @@ enum AstType : ubyte
 	error,
 	abstract_node,
 
+	decl_alias,
 	decl_module,
 	decl_import,
 	decl_function,
@@ -157,6 +158,7 @@ Identifier get_node_id(AstIndex nodeIndex, CompilationContext* context)
 	AstNode* node = context.getAstNode(nodeIndex);
 	switch(node.astType) with(AstType)
 	{
+		case decl_alias: return node.cast_decl_alias.id;
 		case decl_module: return node.cast_decl_module.id;
 		case decl_struct: return node.cast_decl_struct.id;
 		case decl_function: return node.cast_decl_function.id;
@@ -174,6 +176,7 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* context)
 
 	switch(node.astType) with(AstType)
 	{
+		case decl_alias: return node.cast_decl_alias.initializer.get_node_type(context);
 		case decl_struct: return nodeIndex;
 		case decl_function: return node.cast_decl_function.returnType.get_node_type(context);
 		case decl_var: return node.cast_decl_var.type.get_node_type(context);

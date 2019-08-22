@@ -35,7 +35,7 @@ void pass_optimize_ir(ref CompilationContext context, ref ModuleDeclNode mod, re
 		pass(context, *irData, builder);
 		if (context.validateIr)
 			validateIrFunction(context, *irData);
-		if (context.printIrOpt) dumpFunction(*irData, context);
+		if (context.printIrOpt && context.printDumpOf(&func)) dumpFunction(*irData, context);
 	}
 }
 

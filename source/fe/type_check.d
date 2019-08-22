@@ -58,6 +58,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
 		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
 
+		case decl_alias: type_check_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_module: type_check_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: assert(false);
 		case decl_function: type_check_func(cast(FunctionDeclNode*)node, state); break;

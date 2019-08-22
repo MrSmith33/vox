@@ -38,6 +38,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
 		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
 
+		case decl_alias: name_register_alias(nodeIndex, cast(AliasDeclNode*)node, state); break;
 		case decl_module: name_register_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: name_register_import(cast(ImportDeclNode*)node, state); break;
 		case decl_function: name_register_func(nodeIndex, cast(FunctionDeclNode*)node, state); break;

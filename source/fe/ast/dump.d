@@ -28,6 +28,10 @@ struct AstPrinter {
 		indent += indentSize; _visit(node); indent -= indentSize;
 	}
 
+	void visit(AliasDeclNode* n) {
+		print("ALIAS ", context.idString(n.id));
+		pr_node(n.initializer);
+	}
 	void visit(ModuleDeclNode* m) {
 		print("MODULE ", context.files[m.moduleIndex.fileIndex].name);
 		foreach (decl; m.declarations) pr_node(decl);
@@ -161,6 +165,10 @@ struct AstDotPrinter {
 		_visit(node);
 	}
 
+	void visit(AliasDeclNode* n) {
+		printLabel(n, `ALIAS\n%s`, context.idString(n.id));
+		pr_node_edge(n, n.initializer);
+	}
 	void visit(ModuleDeclNode* m) {
 		printLabel(m, "Module");
 		foreach (decl; m.declarations) pr_node_edge(m, decl);
