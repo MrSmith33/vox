@@ -1,9 +1,12 @@
 /doc/webassembly
 /asm
 .vs
+.vscode
+*.code-workspace
 *.pdb
 *.ilk
 *.obj
+*.o
 *.exe
 *.sublime-project
 *.sublime-workspace
