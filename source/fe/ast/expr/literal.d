@@ -5,6 +5,7 @@ module fe.ast.expr.literal;
 
 import all;
 
+@(AstType.literal_int)
 struct IntLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 	ulong value;
@@ -42,6 +43,7 @@ void type_check_literal_int(IntLiteralExprNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
+@(AstType.literal_null)
 struct NullLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_null, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 }
@@ -53,6 +55,7 @@ void type_check_literal_null(NullLiteralExprNode* node, ref TypeCheckState state
 	node.state = AstNodeState.type_check_done;
 }
 
+@(AstType.literal_bool)
 struct BoolLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_bool, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 	bool value;
@@ -65,6 +68,7 @@ void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state
 	node.state = AstNodeState.type_check_done;
 }
 
+@(AstType.literal_string)
 struct StringLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral, AstNodeState.name_resolve_done);
 	string value;

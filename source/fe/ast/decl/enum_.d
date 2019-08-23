@@ -5,6 +5,7 @@ module fe.ast.decl.enum_;
 
 import all;
 
+@(AstType.decl_enum)
 struct EnumDeclaration
 {
 	mixin ScopeDeclNodeData!(AstType.decl_enum, AstFlags.isType);
@@ -79,6 +80,7 @@ void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 }
 
 
+@(AstType.decl_enum_member)
 struct EnumMemberDecl
 {
 	mixin AstNodeData!(AstType.decl_enum_member, AstFlags.isDeclaration | AstFlags.isStatement);

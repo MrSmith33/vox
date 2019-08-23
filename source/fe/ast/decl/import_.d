@@ -5,6 +5,7 @@ module fe.ast.decl.import_;
 
 import all;
 
+@(AstType.decl_import)
 struct ImportDeclNode
 {
 	mixin AstNodeData!(AstType.decl_import, AstFlags.isDeclaration);

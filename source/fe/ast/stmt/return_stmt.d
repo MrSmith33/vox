@@ -6,6 +6,7 @@ module fe.ast.stmt.return_stmt;
 import all;
 
 
+@(AstType.stmt_return)
 struct ReturnStmtNode {
 	mixin AstNodeData!(AstType.stmt_return, AstFlags.isStatement, AstNodeState.name_register_done);
 	AstIndex expression; // Nullable

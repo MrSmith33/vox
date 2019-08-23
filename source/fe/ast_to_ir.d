@@ -481,7 +481,7 @@ struct AstToIr
 	void visit(StructDeclNode* s) {}
 	void visit(BlockStmtNode* b, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
-		genBlock(b.as_node, b.statements, currentBlock, nextStmt);
+		genBlock(b.as!AstNode(context), b.statements, currentBlock, nextStmt);
 	}
 	void genBlock(AstNode* parent, ref Array!AstIndex statements, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
@@ -641,7 +641,7 @@ struct AstToIr
 
 		// init statements
 		IrLabel afterInitLabel = IrLabel(currentBlock);
-		genBlock(n.as_node, n.init_statements, currentBlock, afterInitLabel);
+		genBlock(n.as!AstNode(context), n.init_statements, currentBlock, afterInitLabel);
 		currentBlock = afterInitLabel.blockIndex;
 
 		// loop header
@@ -693,7 +693,7 @@ struct AstToIr
 			if (incrementLabel.numPredecessors > 0)
 			{
 				builder.sealBlock(incrementLabel.blockIndex);
-				genBlock(n.as_node, n.increment_statements, incrementLabel.blockIndex, loopHeaderLabel);
+				genBlock(n.as!AstNode(context), n.increment_statements, incrementLabel.blockIndex, loopHeaderLabel);
 			}
 		}
 
@@ -710,7 +710,7 @@ struct AstToIr
 			IrLabel afterExpr = IrLabel(currentBlock);
 			visitExprValue(r.expression, currentBlock, afterExpr);
 			currentBlock = afterExpr.blockIndex;
-			builder.addReturn(currentBlock, context.getAstExpr(r.expression).irValue);
+			builder.addReturn(currentBlock, r.expression.get_expr(context).irValue);
 		}
 		else builder.addReturn(currentBlock);
 	}
@@ -735,7 +735,7 @@ struct AstToIr
 		{
 			case decl_enum_member:
 			{
-				EnumMemberDecl* member = entity.cast_decl_enum_member;
+				EnumMemberDecl* member = entity.as!EnumMemberDecl(context);
 				IrLabel after = IrLabel(currentBlock);
 				visitExprValue(member.initializer, currentBlock, after);
 				currentBlock = after.blockIndex;
@@ -787,31 +787,13 @@ struct AstToIr
 
 		switch(m.subType) with(MemberSubType)
 		{
-			case static_array_member:
-				if (m.isLvalue) {
-					c.internal_error(m.loc, "cannot assign static array member");
-				}
-				if (m.memberIndex == BuiltinMemberIndex.MEMBER_LENGTH) // length
-				{
-					StaticArrayTypeNode* arr = m.aggregate.get_node_type(c).cast_type_static_array(c);
-					m.irValue = c.constants.add(arr.length, IsSigned.no, IrArgSize.size64);
-				}
-				else if (m.memberIndex == BuiltinMemberIndex.MEMBER_PTR) // ptr
-				{
-					IrLabel afterAggr = IrLabel(currentBlock);
-					m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
-					visitExprValue(m.aggregate, currentBlock, afterAggr);
-					currentBlock = afterAggr.blockIndex;
-					m.irValue = buildGEP(currentBlock, m.aggregate.get_expr(c).irValue, c.constants.ZERO, c.constants.ZERO);
-				}
-				break;
 			case nonstatic_struct_member, slice_member:
 				IrLabel afterAggr = IrLabel(currentBlock);
 				m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
 				visitExprValue(m.aggregate, currentBlock, afterAggr);
 				currentBlock = afterAggr.blockIndex;
 
-				IrIndex memberIndex = c.constants.add(m.memberIndex, IsSigned.no);
+				IrIndex memberIndex = c.constants.add(m.memberIndex(c), IsSigned.no);
 				LRValue rlVal = getMember(currentBlock, m.aggregate.get_expr(c).irValue, memberIndex);
 
 				if (m.isLvalue) {
@@ -828,31 +810,31 @@ struct AstToIr
 				context.unreachable("Not implemented");
 				break;
 			case enum_member:
-				EnumMemberDecl* member = m.member.get_name_use(c).enumMember(c);
+				EnumMemberDecl* enumMember = m.member(c).get!EnumMemberDecl(c);
 				IrLabel afterAggr = IrLabel(currentBlock);
-				visitExprValue(member.initializer, currentBlock, afterAggr);
+				visitExprValue(enumMember.initializer, currentBlock, afterAggr);
 				currentBlock = afterAggr.blockIndex;
-				m.irValue = member.initializer.get_expr(c).irValue;
+				m.irValue = enumMember.initializer.get_expr(c).irValue;
 				break;
-			case basic_member:
-				TypeNode* obj = m.aggregate.get_node_type(c).get_type(c);
-				if (auto b = obj.as_basic)
+			case builtin_member:
+				BuiltinId builtin = m.member(c).get!BuiltinNode(c).builtin;
+				switch(builtin) with(BuiltinId)
 				{
-					if (b.isInteger)
-					{
-						if (m.memberIndex == BuiltinMemberIndex.MEMBER_MIN)
-						{
-							m.irValue = c.constants.add(b.minValue, b.isSigned, obj.argSize(c));
-							break;
+					case array_ptr:
+						if (m.isLvalue) {
+							c.internal_error(m.loc, "cannot assign static array member");
 						}
-						else if (m.memberIndex == BuiltinMemberIndex.MEMBER_MAX)
-						{
-							m.irValue = c.constants.add(b.maxValue, b.isSigned, obj.argSize(c));
-							break;
-						}
-					}
+
+						IrLabel afterAggr = IrLabel(currentBlock);
+						m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
+						visitExprValue(m.aggregate, currentBlock, afterAggr);
+						currentBlock = afterAggr.blockIndex;
+						m.irValue = buildGEP(currentBlock, m.aggregate.get_expr(c).irValue, c.constants.ZERO, c.constants.ZERO);
+						break;
+					default:
+						if (m.isLvalue) { c.internal_error(m.loc, "not an l-value"); }
+						m.irValue = eval_builtin(builtin, m.aggregate, m.loc, c);
 				}
-				c.internal_error(m.loc, "Unexpected node type %s", m.astType);
 				break;
 			default:
 				c.internal_error(m.loc, "Unexpected node type %s", m.astType);
@@ -1368,12 +1350,12 @@ struct AstToIr
 		version(IrGenPrint) writefln("[IR GEN] call value (%s) begin", c.loc);
 		version(IrGenPrint) scope(success) writefln("[IR GEN] call value (%s) end", c.loc);
 
-		AstNode* callee = c.callee.get_expr(context).as_name_use.entity.get_node(context);
+		AstNode* callee = c.callee.get_effective_node(context).get_node(context);
 
 		switch (callee.astType)
 		{
-			case AstType.decl_function: return visitCall(c, callee.cast_decl_function, currentBlock, nextStmt);
-			case AstType.decl_struct: return visitConstructor(c, callee.cast_decl_struct, currentBlock, nextStmt);
+			case AstType.decl_function: return visitCall(c, callee.as!FunctionDeclNode(context), currentBlock, nextStmt);
+			case AstType.decl_struct: return visitConstructor(c, callee.as!StructDeclNode(context), currentBlock, nextStmt);
 			default:
 				c.type = context.basicTypeNodes(BasicType.t_error);
 				context.error(c.loc, "Cannot call %s", callee.astType);

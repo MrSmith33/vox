@@ -5,6 +5,7 @@ module fe.ast.expr.call;
 
 import all;
 
+@(AstType.expr_call)
 struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
 	AstIndex callee;
@@ -24,36 +25,28 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 	CompilationContext* c = state.context;
 
 	node.state = AstNodeState.type_check;
+	AstNode* callee = node.callee.get_effective_node(c).get_node(c);
 	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-	switch (node.callee.astType(c))
+	switch (callee.astType)
 	{
-		case AstType.expr_name_use:
-			// static function call
-			AstNode* callee = node.callee.get_name_use(c).entity.get_node(c);
-
-			switch (callee.astType)
-			{
-				case AstType.decl_function: return type_check_func_call(node, callee.cast_decl_function, state);
-				case AstType.decl_struct: return type_check_constructor_call(node, callee.cast_decl_struct, state);
-				default:
-					node.type = c.basicTypeNodes(BasicType.t_error);
-					c.error(node.loc, "Cannot call %s", callee.astType);
-			}
-			break;
-
+		// static function call
+		case AstType.decl_function: return type_check_func_call(node, callee.as!FunctionDeclNode(c), state);
+		case AstType.decl_struct: return type_check_constructor_call(node, callee.as!StructDeclNode(c), state);
 		case AstType.expr_member:
 			// UFCS call
-			MemberExprNode* member = node.callee.get!MemberExprNode(c);
-			NameUseExprNode* calleeName = member.member.get_name_use(c);
+			MemberExprNode* member = callee.as!MemberExprNode(c);
+			Identifier calleeName = member.memberId(c);
 			LookupResult ufcsRes = tryUFCSCall(callIndex, member, state);
 			if (ufcsRes == LookupResult.failure) {
 				AstIndex objType = member.aggregate.get_node_type(c);
 				node.type = c.basicTypeNodes(BasicType.t_error);
-				c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(calleeName.id(c)));
+				c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(calleeName));
 				return;
 			}
 			break;
 		default:
+			node.type = c.basicTypeNodes(BasicType.t_error);
+			c.error(node.loc, "Cannot call %s", callee.astType);
 			c.internal_error(node.loc,
 				"Only direct function calls are supported right now");
 
@@ -112,7 +105,7 @@ void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref Type
 		ExpressionNode* initializer;
 		if (node.args.length > numStructMembers) { // init from constructor argument
 			require_type_check(node.args[numStructMembers], state);
-			autoconvTo(node.args[numStructMembers], member.cast_decl_var.type, c);
+			autoconvTo(node.args[numStructMembers], member.as!VariableDeclNode(c).type, c);
 		} else { // init with initializer from struct definition
 			c.internal_error(node.loc, "Not implemented");
 		}

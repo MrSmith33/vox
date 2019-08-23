@@ -6,6 +6,7 @@ module fe.ast.stmt.for_stmt;
 import all;
 
 
+@(AstType.stmt_for)
 struct ForStmtNode {
 	mixin AstNodeData!(AstType.stmt_for, AstFlags.isStatement);
 	Array!AstIndex init_statements;

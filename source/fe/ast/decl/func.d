@@ -41,6 +41,7 @@ struct FunctionBackendData
 	LinkIndex objectSymIndex;
 }
 
+@(AstType.decl_function)
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
 	AstIndex returnType;

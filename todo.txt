@@ -9,8 +9,6 @@
 	+ in char literals
 - float double
 - union
-- alias
-	+ type aliases
 - struct
 	- struct methods
 	+ struct literal
@@ -86,8 +84,16 @@ o dll linking
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
++ alias
+	+ type aliases
+	+ variable aliases
+	+ function aliases
+	+ enum member alias
+	+ alias of alias
 + UFCS
 	+ without parentesis
+	+ with parentesis
+	+ with parameters
 + function call without parentesis
 + constant folding of expressions in enum initializers and static array length
 + allow arbitrary expressions used as static array length

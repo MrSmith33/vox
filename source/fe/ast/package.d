@@ -5,6 +5,7 @@ Authors: Andrey Penechko.
 */
 module fe.ast;
 
+import std.traits : getUDAs;
 import std.stdio;
 
 import all;
@@ -25,6 +26,7 @@ enum AstType : ubyte
 	abstract_node,
 
 	decl_alias,
+	decl_builtin,
 	decl_module,
 	decl_import,
 	decl_function,
@@ -83,6 +85,9 @@ enum AstFlags : ushort
 	userFlag         = 1 << 11,
 }
 
+enum hasAstNodeType(T) = getUDAs!(T, AstType).length > 0;
+enum getAstNodeType(T) = getUDAs!(T, AstType)[0];
+
 /// Invariant: child.state >= parent.state
 enum AstNodeState : ubyte
 {
@@ -131,13 +136,17 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	));
 	ushort flags = cast(ushort)default_flags;
 
-	AstNode* as_node() {
-		return cast(AstNode*)&this;
+	T* as(T)(CompilationContext* c) {
+		static if (hasAstNodeType!T)
+		{
+			c.assertf(astType == getAstNodeType!T, "as(%s) got %s", T.stringof, astType);
+		}
+		return cast(T*)&this;
 	}
 
-	ExpressionNode* as_expr() {
-		if (isExpression) return cast(ExpressionNode*)&this;
-		return null;
+	TypeNode* as_type(CompilationContext* c) {
+		c.assertf(isType, loc, "as_type(%s)", astType);
+		return cast(TypeNode*)&this;
 	}
 
 	bool isDeclaration() { return cast(bool)(flags & AstFlags.isDeclaration); }
@@ -153,39 +162,66 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isInOrderedScope() { return cast(bool)(flags & AstFlags.isInOrderedScope); }
 }
 
-Identifier get_node_id(AstIndex nodeIndex, CompilationContext* context)
+Identifier get_node_id(AstIndex nodeIndex, CompilationContext* c)
 {
-	AstNode* node = context.getAstNode(nodeIndex);
+	AstNode* node = c.getAstNode(nodeIndex);
 	switch(node.astType) with(AstType)
 	{
-		case decl_alias: return node.cast_decl_alias.id;
-		case decl_module: return node.cast_decl_module.id;
-		case decl_struct: return node.cast_decl_struct.id;
-		case decl_function: return node.cast_decl_function.id;
-		case decl_var: return node.cast_decl_var.id;
-		case decl_enum: return node.cast_decl_enum.id;
-		case decl_enum_member: return node.cast_decl_enum_member.id;
-		case expr_name_use: return node.cast_expr_name_use.id(context);
+		case decl_alias: return node.as!AliasDeclNode(c).id;
+		case decl_builtin: return node.as!BuiltinNode(c).id;
+		case decl_module: return node.as!ModuleDeclNode(c).id;
+		case decl_struct: return node.as!StructDeclNode(c).id;
+		case decl_function: return node.as!FunctionDeclNode(c).id;
+		case decl_var: return node.as!VariableDeclNode(c).id;
+		case decl_enum: return node.as!EnumDeclaration(c).id;
+		case decl_enum_member: return node.as!EnumMemberDecl(c).id;
+		case expr_name_use: return node.as!NameUseExprNode(c).id(c);
+		case expr_member: return node.as!MemberExprNode(c).memberId(c);
 		default: assert(false, format("got %s", node.astType));
 	}
 }
 
-AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* context)
+AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 {
-	AstNode* node = context.getAstNode(nodeIndex);
+	if (nodeIndex.isUndefined) return nodeIndex;
+
+	AstNode* node = c.getAstNode(nodeIndex);
 
 	switch(node.astType) with(AstType)
 	{
-		case decl_alias: return node.cast_decl_alias.initializer.get_node_type(context);
+		case decl_alias: return node.as!AliasDeclNode(c).initializer.get_node_type(c);
 		case decl_struct: return nodeIndex;
-		case decl_function: return node.cast_decl_function.returnType.get_node_type(context);
-		case decl_var: return node.cast_decl_var.type.get_node_type(context);
+		case decl_function: return node.as!FunctionDeclNode(c).returnType.get_node_type(c);
+		case decl_var: return node.as!VariableDeclNode(c).type.get_node_type(c);
 		case decl_enum: return nodeIndex;
-		case decl_enum_member: return node.cast_decl_enum_member.type.get_node_type(context);
+		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
 		case type_basic, type_ptr, type_slice, type_static_array: return nodeIndex;
-		case expr_name_use: return node.cast_expr_name_use.entity.get_node_type(context);
+		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_type(c);
 		case literal_int, literal_string, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
-			return node.as_expr.type.get_node_type(context);
+			return node.as!ExpressionNode(c).type.get_node_type(c);
+
+		default: assert(false, format("get_node_type used on %s", node.astType));
+	}
+}
+
+AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
+{
+	if (nodeIndex.isUndefined) return nodeIndex;
+
+	AstNode* node = c.getAstNode(nodeIndex);
+
+	switch(node.astType) with(AstType)
+	{
+		case decl_alias: return node.as!AliasDeclNode(c).initializer.get_effective_node(c);
+		case decl_struct: return nodeIndex;
+		case decl_function: return nodeIndex;
+		case decl_var: return nodeIndex;
+		case decl_enum: return nodeIndex;
+		case decl_enum_member: return nodeIndex;
+		case type_basic, type_ptr, type_slice, type_static_array: return nodeIndex;
+		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_effective_node(c);
+		case literal_int, literal_string, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+			return nodeIndex;
 
 		default: assert(false, format("get_node_type used on %s", node.astType));
 	}
@@ -194,6 +230,36 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* context)
 AstIndex get_ast_index(T)(T* node, CompilationContext* context)
 {
 	return context.getAstNodeIndex(node);
+}
+
+string get_node_kind_name(AstIndex nodeIndex, CompilationContext* c)
+{
+	AstNode* node = c.getAstNode(nodeIndex);
+
+	switch(node.astType) with(AstType)
+	{
+		case decl_alias: return "alias";
+		case decl_struct: return "struct";
+		case decl_function: return "function";
+		case decl_var: return "variable";
+		case decl_enum: return "enum";
+		case decl_enum_member: return "enum member";
+		case type_basic: return "basic type";
+		case type_ptr: return "pointer type";
+		case type_slice: return "slice type";
+		case type_static_array: return "static array type";
+		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_kind_name(c);
+		case literal_int: return "int literal";
+		case literal_string: return "string literal";
+		case expr_call: return "call expression";
+		case expr_index: return "index expression";
+		case expr_bin_op: return "binary expression";
+		case expr_un_op: return "unary expression";
+		case expr_type_conv: return "type conversion expression";
+		case expr_member: return "member access expression";
+
+		default: return node.astType.to!string;
+	}
 }
 
 

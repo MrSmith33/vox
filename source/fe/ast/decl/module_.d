@@ -12,6 +12,7 @@ struct ModuleIndex
 }
 
 ///
+@(AstType.decl_module)
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module);
 	AstIndex _scope;
@@ -25,7 +26,7 @@ struct ModuleDeclNode {
 	Identifier id;
 
 	void addFunction(AstIndex func, CompilationContext* context) {
-		context.getAst!FunctionDeclNode(func).backendData.index = FunctionIndex(cast(uint)functions.length, moduleIndex);
+		func.get!FunctionDeclNode(context).backendData.index = FunctionIndex(cast(uint)functions.length, moduleIndex);
 		functions.put(context.arrayArena, func);
 	}
 
@@ -37,7 +38,7 @@ struct ModuleDeclNode {
 	FunctionDeclNode* findFunction(Identifier id, CompilationContext* context) {
 		AstIndex sym = context.getAst!Scope(_scope).symbols.get(id, AstIndex.init);
 		if (sym.isUndefined) return null;
-		return context.getAstNode(sym).cast_decl_function;
+		return sym.get!FunctionDeclNode(context);
 	}
 }
 

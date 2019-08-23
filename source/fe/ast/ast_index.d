@@ -65,6 +65,6 @@ struct AstNodePrinter
 			return;
 		}
 		AstNode* node = context.getAstNode(nodeIndex);
-		if (node.isType) node.cast_type_node.printType(sink, context);
+		if (node.isType) node.as_type(context).printType(sink, context);
 	}
 }

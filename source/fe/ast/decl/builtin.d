@@ -6,17 +6,22 @@ module fe.ast.decl.builtin;
 import all;
 
 enum BuiltinId : ubyte {
-	int_min,
-	int_max,
-	slice_length,
-	slice_ptr,
-	array_length,
-	array_ptr,
-	type_sizeof
+	@("min")    int_min,
+	@("max")    int_max,
+	@("length") slice_length,
+	@("ptr")    slice_ptr,
+	@("length") array_length,
+	@("ptr")    array_ptr,
+	@("sizeof") type_sizeof
 }
 
-//struct BuiltinNode
-//{
-//	mixin AstNodeData!(AstType.decl_builtin, AstFlags.isDeclaration);
-//	BuiltinId id;
-//}
+immutable string[] builtinIdStrings = gatherEnumStrings!BuiltinId();
+
+
+@(AstType.decl_builtin)
+struct BuiltinNode
+{
+	mixin AstNodeData!(AstType.decl_builtin, AstFlags.isDeclaration, AstNodeState.type_check_done);
+	Identifier id;
+	BuiltinId builtin;
+}

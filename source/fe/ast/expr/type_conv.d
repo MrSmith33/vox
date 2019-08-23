@@ -6,6 +6,7 @@ module fe.ast.expr.type_conv;
 import all;
 
 
+@(AstType.expr_type_conv)
 struct TypeConvExprNode {
 	mixin ExpressionNodeData!(AstType.expr_type_conv);
 	AstIndex expr;

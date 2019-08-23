@@ -6,6 +6,7 @@ module fe.ast.stmt.break_stmt;
 import all;
 
 
+@(AstType.stmt_break)
 struct BreakStmtNode {
 	mixin AstNodeData!(AstType.stmt_break, AstFlags.isStatement, AstNodeState.type_check_done);
 }

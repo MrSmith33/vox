@@ -70,6 +70,7 @@ struct CommonIdentifiers
 	Identifier id_length;
 	Identifier id_min;
 	Identifier id_max;
+	Identifier id_sizeof;
 }
 
 CommonIdentifiers collectIdentifiers(ref CompilationContext context) {
@@ -78,5 +79,6 @@ CommonIdentifiers collectIdentifiers(ref CompilationContext context) {
 	res.id_length = context.idMap.getOrRegNoDup("length");
 	res.id_min = context.idMap.getOrRegNoDup("min");
 	res.id_max = context.idMap.getOrRegNoDup("max");
+	res.id_sizeof = context.idMap.getOrRegNoDup("sizeof");
 	return res;
 }

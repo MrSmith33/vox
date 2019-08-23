@@ -6,6 +6,7 @@ module fe.ast.stmt.if_stmt;
 import all;
 
 
+@(AstType.stmt_if)
 struct IfStmtNode {
 	mixin AstNodeData!(AstType.stmt_if, AstFlags.isStatement);
 	AstIndex condition;

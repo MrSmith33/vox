@@ -13,23 +13,6 @@ public import fe.ast.type.static_array;
 
 enum POINTER_SIZE = 8;
 
-BasicTypeNode* cast_type_basic(AstNode* t) { if (t.astType == AstType.type_basic) return cast(BasicTypeNode*)t; return null; }
-PtrTypeNode* cast_type_ptr(AstNode* t) { if (t.astType == AstType.type_ptr) return cast(PtrTypeNode*)t; return null; }
-SliceTypeNode* cast_type_slice(AstNode* t) { if (t.astType == AstType.type_slice) return cast(SliceTypeNode*)t; return null; }
-StaticArrayTypeNode* cast_type_static_array(AstNode* t) { if (t.astType == AstType.type_static_array) return cast(StaticArrayTypeNode*)t; return null; }
-
-BasicTypeNode* cast_type_basic(AstIndex nodeIndex, CompilationContext* context) { return cast_type_basic(context.getAstNode(nodeIndex)); }
-PtrTypeNode* cast_type_ptr(AstIndex nodeIndex, CompilationContext* context) { return cast_type_ptr(context.getAstNode(nodeIndex)); }
-SliceTypeNode* cast_type_slice(AstIndex nodeIndex, CompilationContext* context) { return cast_type_slice(context.getAstNode(nodeIndex)); }
-StaticArrayTypeNode* cast_type_static_array(AstIndex nodeIndex, CompilationContext* context) { return cast_type_static_array(context.getAstNode(nodeIndex)); }
-
-
-TypeNode* cast_type_node(AstNode* node) {
-	assert(node);
-	assert(node.isType, format("%s", node.astType));
-	return cast(TypeNode*)node;
-}
-
 struct TypeNode
 {
 	AstNode base;
@@ -44,34 +27,34 @@ struct TypeNode
 	NameUseExprNode* as_name_use() { if (astType == AstType.expr_name_use) return cast(NameUseExprNode*)&this; return null; }
 	EnumDeclaration* as_enum() { if (astType == AstType.decl_enum) return cast(EnumDeclaration*)&this; return null; }
 
-	TypeNode* foldAliases(CompilationContext* context) {
-		if (astType == AstType.expr_name_use) return context.getAstNode(as_name_use.entity).cast_type_node;
+	TypeNode* foldAliases(CompilationContext* c) {
+		if (astType == AstType.expr_name_use) return as_name_use.entity.get_type(c);
 		return &this;
 	}
 
-	uint alignment(CompilationContext* context)
+	uint alignment(CompilationContext* c)
 	{
-		return typeAlignment(&this, context);
+		return typeAlignment(&this, c);
 	}
 
-	uint size(CompilationContext* context)
+	uint size(CompilationContext* c)
 	{
-		return typeSize(&this, context);
+		return typeSize(&this, c);
 	}
 
-	IrArgSize argSize(CompilationContext* context)
+	IrArgSize argSize(CompilationContext* c)
 	{
-		return sizeToIrArgSize(size(context), context);
+		return size(c).sizeToIrArgSize(c);
 	}
 
-	bool isOpaqueStruct(CompilationContext* context) {
-		TypeNode* t = foldAliases(context);
-		if (t.astType == AstType.expr_name_use) t = context.getAstNode(t.as_name_use.entity).cast_type_node;
+	bool isOpaqueStruct(CompilationContext* c) {
+		TypeNode* t = foldAliases(c);
+		if (t.astType == AstType.expr_name_use) t = c.getAstNode(t.as_name_use.entity).as_type(c);
 		return t.astType == AstType.decl_struct && t.as_struct.isOpaque;
 	}
 
-	TypePrinter printer(CompilationContext* context) {
-		return TypePrinter(&this, context);
+	TypePrinter printer(CompilationContext* c) {
+		return TypePrinter(&this, c);
 	}
 
 	bool isPassByPtr() {
@@ -99,71 +82,72 @@ struct TypeNode
 	bool isInteger() { return astType == AstType.type_basic && as_basic.isInteger; }
 	bool isBool() { return astType == AstType.type_basic &&
 			as_basic.basicType == BasicType.t_bool; }
+	bool isStruct() { return astType == AstType.decl_struct; }
 
 	bool isUnsigned() {
 		return astType == AstType.type_basic && as_basic.isUnsigned;
 	}
 
-	AstIndex getElementType(CompilationContext* context) {
+	AstIndex getElementType(CompilationContext* c) {
 		switch(astType)
 		{
 			case AstType.type_ptr: return as_ptr.base;
 			case AstType.type_static_array: return as_static_array.base;
 			case AstType.type_slice: return as_slice.base;
-			default: context.internal_error(loc, "%s is not indexable", astType); assert(false);
+			default: c.internal_error(loc, "%s is not indexable", astType); assert(false);
 		}
 	}
 }
 
-uint typeSize(AstIndex typeIndex, CompilationContext* context)
+uint typeSize(AstIndex typeIndex, CompilationContext* c)
 {
-	return typeSize(context.getAstType(typeIndex), context);
+	return typeIndex.get_type(c).typeSize(c);
 }
 
-uint typeSize(TypeNode* type, CompilationContext* context)
+uint typeSize(TypeNode* type, CompilationContext* c)
 {
 	switch(type.astType)
 	{
 		case AstType.type_basic: return type.as_basic.size;
 		case AstType.type_ptr: return type.as_ptr.size;
-		case AstType.type_static_array: return type.as_static_array.size(context);
+		case AstType.type_static_array: return type.as_static_array.size(c);
 		case AstType.type_slice: return type.as_slice.size;
 		case AstType.decl_struct: return type.as_struct.size;
-		case AstType.expr_name_use: return context.getAstNode(type.as_name_use.entity).cast_type_node.size(context);
+		case AstType.expr_name_use: return type.as_name_use.entity.typeSize(c);
 		default: assert(false, format("got %s", type.astType));
 	}
 }
 
-uint typeAlignment(AstIndex typeIndex, CompilationContext* context)
+uint typeAlignment(AstIndex typeIndex, CompilationContext* c)
 {
-	return typeAlignment(context.getAstType(typeIndex), context);
+	return typeIndex.get_type(c).typeAlignment(c);
 }
 
-uint typeAlignment(TypeNode* type, CompilationContext* context)
+uint typeAlignment(TypeNode* type, CompilationContext* c)
 {
 	switch(type.astType)
 	{
 		case AstType.type_basic: return type.as_basic.alignment;
 		case AstType.type_ptr: return type.as_ptr.alignment;
-		case AstType.type_static_array: return type.as_static_array.alignment(context);
+		case AstType.type_static_array: return type.as_static_array.alignment(c);
 		case AstType.type_slice: return type.as_slice.alignment;
 		case AstType.decl_struct: return type.as_struct.alignment;
-		case AstType.expr_name_use: return context.getAstNode(type.as_name_use.entity).cast_type_node.alignment(context);
+		case AstType.expr_name_use: return type.as_name_use.entity.typeAlignment(c);
 		default: assert(false, format("got %s", type.astType));
 	}
 }
 
-IrArgSize typeArgSize(AstIndex typeIndex, CompilationContext* context)
+IrArgSize typeArgSize(AstIndex typeIndex, CompilationContext* c)
 {
-	return sizeToIrArgSize(typeSize(typeIndex, context), context);
+	return typeIndex.typeSize(c).sizeToIrArgSize(c);
 }
 
-string typeName(AstIndex typeIndex, CompilationContext* context)
+string typeName(AstIndex typeIndex, CompilationContext* c)
 {
-	return typeName(context.getAstType(typeIndex), context);
+	return typeIndex.get_type(c).typeName(c);
 }
 
-string typeName(TypeNode* type, CompilationContext* context)
+string typeName(TypeNode* type, CompilationContext* c)
 {
 	switch(type.astType)
 	{
@@ -173,18 +157,10 @@ string typeName(TypeNode* type, CompilationContext* context)
 			return "ptr";
 		case AstType.type_static_array: return "[num]";
 		case AstType.type_slice: return "[]";
-		case AstType.decl_struct: return context.idString(type.as_struct.id);
-		case AstType.expr_name_use: return context.idString(type.as_name_use.id(context));
+		case AstType.decl_struct: return c.idString(type.as_struct.id);
+		case AstType.expr_name_use: return c.idString(type.as_name_use.id(c));
 		default: assert(false, format("got %s", type.astType));
 	}
-}
-
-/// Used inside MemberExprNode.memberIndex
-enum BuiltinMemberIndex : uint {
-	MEMBER_MIN,
-	MEMBER_MAX,
-	MEMBER_PTR,
-	MEMBER_LENGTH,
 }
 
 struct TypePrinter
@@ -204,15 +180,30 @@ void printType(TypeNode* t, scope void delegate(const(char)[]) sink, Compilation
 			sink(basicTypeNames[t.as_basic.basicType]);
 			break;
 		case AstType.type_ptr:
-			ctx.getAstType(t.as_ptr.base).printType(sink, ctx);
+			AstIndex type = t.as_ptr.base.get_node_type(ctx);
+			if (type.isUndefined) {
+				sink("?");
+			} else {
+				type.get_type(ctx).printType(sink, ctx);
+			}
 			sink("*");
 			break;
 		case AstType.type_static_array:
-			ctx.getAstType(t.as_static_array.base).printType(sink, ctx);
-			formattedWrite(sink, "[%s]", t.as_static_array.length);
+			AstIndex type = t.as_static_array.base.get_node_type(ctx);
+			if (type.isUndefined) {
+				sink("?[?]");
+			} else {
+				type.get_type(ctx).printType(sink, ctx);
+				formattedWrite(sink, "[%s]", t.as_static_array.length);
+			}
 			break;
 		case AstType.type_slice:
-			ctx.getAstType(t.as_slice.base).printType(sink, ctx);
+			AstIndex type = t.as_slice.base.get_node_type(ctx);
+			if (type.isUndefined) {
+				sink("?");
+			} else {
+				type.get_type(ctx).printType(sink, ctx);
+			}
 			sink("[]");
 			break;
 		case AstType.decl_struct:
@@ -225,9 +216,9 @@ void printType(TypeNode* t, scope void delegate(const(char)[]) sink, Compilation
 	}
 }
 
-bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* context) {
-	TypeNode* t1 = context.getAstType(_t1).foldAliases(context);
-	TypeNode* t2 = context.getAstType(_t2).foldAliases(context);
+bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* c) {
+	TypeNode* t1 = c.getAstType(_t1).foldAliases(c);
+	TypeNode* t2 = c.getAstType(_t2).foldAliases(c);
 	assert(t1.isType, format("t1 is %s, not type", t1.astType));
 	assert(t2.isType, format("t2 is %s, not type", t2.astType));
 
@@ -239,10 +230,10 @@ bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* context) {
 	{
 		case type_basic:
 			return t1.as_basic.basicType == t2.as_basic.basicType;
-		case type_ptr: return same_type_ptr(t1.as_ptr, t2.as_ptr, context);
-		case type_static_array: return same_type_static_array(t1.as_static_array, t2.as_static_array, context);
+		case type_ptr: return same_type_ptr(t1.as_ptr, t2.as_ptr, c);
+		case type_static_array: return same_type_static_array(t1.as_static_array, t2.as_static_array, c);
 		case type_slice:
-			return same_type_slice(t1.as_slice, t2.as_slice, context);
+			return same_type_slice(t1.as_slice, t2.as_slice, c);
 		case decl_struct:
 			return t1 == t2;
 		default:
@@ -250,24 +241,23 @@ bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* context) {
 	}
 }
 
-IrIndex gen_ir_type(AstIndex typeIndex, CompilationContext* context)
+IrIndex gen_ir_type(AstIndex typeIndex, CompilationContext* c)
 {
-	return gen_ir_type(context.getAst!TypeNode(typeIndex), context);
+	return gen_ir_type(c.getAst!TypeNode(typeIndex), c);
 }
 
-IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* context)
+IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* c)
 {
 	switch (typeNode.astType)
 	{
-		case AstType.decl_alias: return gen_ir_type(typeNode.as_alias.initializer.get_node_type(context), context);
-		case AstType.type_basic: return gen_ir_type_basic(typeNode.as_basic, context);
-		case AstType.type_ptr: return gen_ir_type_ptr(typeNode.as_ptr, context);
-		case AstType.type_static_array: return gen_ir_type_static_array(typeNode.as_static_array, context);
-		case AstType.type_slice: return gen_ir_type_slice(typeNode.as_slice, context);
-		case AstType.decl_struct: return gen_ir_type_struct(typeNode.as_struct, context);
-		case AstType.expr_name_use: return gen_ir_type(typeNode.as_name_use.entity.get_node_type(context), context);
+		case AstType.type_basic: return gen_ir_type_basic(typeNode.as_basic, c);
+		case AstType.type_ptr: return gen_ir_type_ptr(typeNode.as_ptr, c);
+		case AstType.type_static_array: return gen_ir_type_static_array(typeNode.as_static_array, c);
+		case AstType.type_slice: return gen_ir_type_slice(typeNode.as_slice, c);
+		case AstType.decl_struct: return gen_ir_type_struct(typeNode.as_struct, c);
+		case AstType.expr_name_use: return gen_ir_type(typeNode.as_name_use.entity.get_node_type(c), c);
 		default:
-			context.internal_error(typeNode.loc, "Cannot convert `%s` to ir type", typeNode.astType);
+			c.internal_error(typeNode.loc, "Cannot convert `%s` to ir type", typeNode.astType);
 			assert(false);
 	}
 }

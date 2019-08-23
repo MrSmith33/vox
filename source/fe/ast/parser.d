@@ -177,7 +177,7 @@ struct Parser
 
 			AstNode* declNode = context.getAstNode(declIndex);
 			if (declNode.astType == AstType.decl_var) {
-				declNode.cast_decl_var.scopeIndex = varIndex++;
+				declNode.as!VariableDeclNode(context).scopeIndex = varIndex++;
 			}
 			declarations.put(context.arrayArena, declIndex);
 		}
@@ -210,7 +210,7 @@ struct Parser
 			AstNode* node = context.getAstNode(funcIndex);
 			if (node) {
 				bool needSemicolon = node.astType == AstType.decl_var ||
-					node.cast_decl_function.isExternal;
+					node.as!FunctionDeclNode(context).isExternal;
 
 				if (needSemicolon) expectAndConsume(TokenType.SEMICOLON);
 			}
@@ -961,7 +961,8 @@ private TokenLookups cexp_parser()
 	prefix(290, &nullPrefixOp, ["+", "-", "!", "~", "*", "&", "++", "--"]);
 	prefix(290, &nullCast, "cast");
 
-	infixL(250, &leftBinaryOp, ["*", "/", "%"]);
+	infixL(250, &leftStarOp, ["*"]);
+	infixL(250, &leftBinaryOp, ["/", "%"]);
 
 	infixL(230, &leftBinaryOp, ["+", "-"]);
 	infixL(210, &leftBinaryOp, ["<<", ">>", ">>>"]);
@@ -1115,13 +1116,11 @@ AstIndex leftIndex(ref Parser p, Token token, int rbp, AstIndex array) {
 // member access <expr> . <expr>
 AstIndex leftOpDot(ref Parser p, Token token, int rbp, AstIndex left)
 {
-	AstIndex name;
+	Identifier id;
 	if (p.tok.type == TokenType.IDENTIFIER)
 	{
-		Identifier id = p.makeIdentifier(p.tok.index);
-		AstIndex right = p.make!NameUseExprNode(p.tok.index, id);
-		p.nextToken;
-		name = right;
+		id = p.makeIdentifier(p.tok.index);
+		p.nextToken; // skip id
 	}
 	else
 	{
@@ -1129,7 +1128,30 @@ AstIndex leftOpDot(ref Parser p, Token token, int rbp, AstIndex left)
 			"Expected identifier after '.', while got '%s'",
 			p.context.getTokenString(p.tok.index));
 	}
-	return p.makeExpr!MemberExprNode(token.index, left, name);
+	return p.make!MemberExprNode(token.index, left, id);
+}
+
+// multiplication or pointer type
+// <expr> * <expr> or <expr>*
+AstIndex leftStarOp(ref Parser p, Token token, int rbp, AstIndex left) {
+	switch (p.tok.type) with(TokenType)
+	{
+		case STAR, COMMA, RPAREN, SEMICOLON /*,SYM_FUNCTION,SYM_DELEGATE*/:
+			// pointer
+			return p.make!PtrTypeNode(token.index, left);
+		case DOT:
+			// hack for postfix star followed by dot
+			AstIndex ptr = p.make!PtrTypeNode(token.index, left);
+			Token tok = p.tok;
+			p.nextToken; // skip dot
+			return leftOpDot(p, tok, 0, ptr);
+		default:
+			// otherwise it is multiplication
+			break;
+	}
+	AstIndex right = p.expr(rbp);
+	BinOp op = BinOp.MULT;
+	return p.makeExpr!BinaryExprNode(token.index, op, left, right);
 }
 
 // Normal binary operator <expr> op <expr>
@@ -1158,7 +1180,6 @@ AstIndex leftBinaryOp(ref Parser p, Token token, int rbp, AstIndex left) {
 		case MINUS: op = BinOp.MINUS; break;                      // -
 		case PLUS: op = BinOp.PLUS; break;                        // +
 		case SLASH: op = BinOp.DIV; break;                        // /
-		case STAR: op = BinOp.MULT; break;                        // *
 		case XOR: op = BinOp.XOR; break;                          // ^
 
 		default:

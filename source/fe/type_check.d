@@ -59,6 +59,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
 
 		case decl_alias: type_check_alias(cast(AliasDeclNode*)node, state); break;
+		case decl_builtin: assert(false);
 		case decl_module: type_check_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: assert(false);
 		case decl_function: type_check_func(cast(FunctionDeclNode*)node, state); break;
@@ -169,11 +170,13 @@ bool isConvertibleTo(AstIndex fromTypeIndex, AstIndex toTypeIndex, CompilationCo
 /// Returns true if conversion was successful. False otherwise
 bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* context)
 {
-	ExpressionNode* expr = exprIndex.get_expr(context);
-	TypeNode* type = typeIndex.get_type(context).foldAliases(context);
-	TypeNode* exprType = expr.type.get_type(context);
+	CompilationContext* c = context;
 
-	if (same_type(expr.type, typeIndex, context)) return true;
+	ExpressionNode* expr = exprIndex.get_expr(c);
+	TypeNode* type = typeIndex.get_type(c);
+	TypeNode* exprType = expr.type.get_type(c);
+
+	if (same_type(expr.type, typeIndex, c)) return true;
 	string extraError;
 
 	if (exprType.astType == AstType.type_basic && type.astType == AstType.type_basic)
@@ -184,11 +187,12 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 		if (canConvert)
 		{
 			if (expr.astType == AstType.literal_int) {
-				//writefln("int %s %s -> %s", expr.loc, expr.type.printer(context), type.printer(context));
+				//writefln("int %s %s -> %s", expr.loc, expr.type.printer(c), type.printer(c));
 				// change type of int literal inline
 				expr.type = typeIndex;
 			} else {
-				exprIndex = context.appendAst!TypeConvExprNode(expr.loc, typeIndex, IrIndex(), exprIndex);
+				exprIndex = c.appendAst!TypeConvExprNode(expr.loc, typeIndex, IrIndex(), exprIndex);
+				exprIndex.setState(c, AstNodeState.type_check_done);
 			}
 			return true;
 		}
@@ -206,10 +210,10 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 				}
 			}
 
-			context.error(expr.loc, "Cannot auto-convert integer `0x%X` of type %s to `%s`",
+			c.error(expr.loc, "Cannot auto-convert integer `0x%X` of type %s to `%s`",
 				lit.value,
-				expr.type.printer(context),
-				type.printer(context));
+				expr.type.printer(c),
+				type.printer(c));
 			return false;
 		}
 	}
@@ -218,12 +222,14 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 	{
 		if (type.astType == AstType.type_ptr)
 		{
-			TypeNode* ptrBaseType = type.as_ptr.base.get_type(context);
+			TypeNode* ptrBaseType = type.as_ptr.base.get_type(c);
 			if (ptrBaseType.astType == AstType.type_basic &&
 				ptrBaseType.as_basic.basicType == BasicType.t_u8)
 			{
-				auto memberExpr = context.appendAst!MemberExprNode(expr.loc, typeIndex, IrIndex(), exprIndex, AstIndex.init, 1);
-				memberExpr.get_node(context).subType = MemberSubType.slice_member;
+				auto memberExpr = c.appendAst!MemberExprNode(expr.loc, exprIndex, Identifier(), typeIndex);
+				auto node = memberExpr.get!MemberExprNode(c);
+				node.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_ptr), 1, c);
+				node.state = AstNodeState.type_check;
 				exprIndex = memberExpr;
 				return true;
 			}
@@ -231,9 +237,9 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 	}
 	else if (exprType.isStaticArray && type.isSlice)
 	{
-		if (same_type(exprType.as_static_array.base, type.as_slice.base, context))
+		if (same_type(exprType.as_static_array.base, type.as_slice.base, c))
 		{
-			exprIndex = context.appendAst!UnaryExprNode(
+			exprIndex = c.appendAst!UnaryExprNode(
 				expr.loc, typeIndex, IrIndex(), UnOp.staticArrayToSlice, exprIndex);
 			return true;
 		}

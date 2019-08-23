@@ -29,6 +29,16 @@ public import utils.textsink;
 enum PAGE_SIZE = 4096;
 enum ulong GiB = 1024UL*1024*1024;
 
+string[] gatherEnumStrings(E)()
+{
+	string[] res = new string[__traits(allMembers, E).length];
+	foreach (i, m; __traits(allMembers, E))
+	{
+		res[i] = __traits(getAttributes, __traits(getMember, E, m))[0];
+	}
+	return res;
+}
+
 void printHex(ubyte[] buffer, size_t lineLength)
 {
 	import std.stdio;

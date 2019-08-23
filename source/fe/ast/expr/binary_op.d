@@ -6,6 +6,7 @@ module fe.ast.expr.binary_op;
 import all;
 
 
+@(AstType.expr_bin_op)
 struct BinaryExprNode {
 	mixin ExpressionNodeData!(AstType.expr_bin_op, 0, AstNodeState.name_register_done);
 	BinOp op;

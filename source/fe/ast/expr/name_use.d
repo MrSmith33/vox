@@ -5,6 +5,7 @@ module fe.ast.expr.name_use;
 
 import all;
 
+@(AstType.expr_name_use)
 struct NameUseExprNode {
 	mixin ExpressionNodeData!(AstType.expr_name_use);
 	union
@@ -31,9 +32,9 @@ struct NameUseExprNode {
 		this.irValue = irValue;
 	}
 
-	void resolve(AstIndex n) {
-		assert(n);
+	void resolve(AstIndex n, CompilationContext* c) {
 		_entity = n;
+		assert(_entity);
 		this.flags |= Flags.isSymResolved;
 	}
 	AstIndex entity() { return isSymResolved ? _entity : AstIndex(); }
@@ -68,7 +69,7 @@ struct NameUseExprNode {
 	alias tryEnumMember = tryGet!(EnumMemberDecl, AstType.decl_enum_member);
 }
 
-void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
+void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref NameResolveState state) {
 	CompilationContext* c = state.context;
 	node.state = AstNodeState.name_resolve;
 	scope(exit) node.state = AstNodeState.name_resolve_done;
@@ -82,7 +83,7 @@ void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
 		return;
 	}
 
-	node.resolve(entity);
+	node.resolve(entity, c);
 	AstNode* entityNode = entity.get_node(c);
 
 	switch(entityNode.astType) with(AstType) {
@@ -94,8 +95,8 @@ void name_resolve_name_use(NameUseExprNode* node, ref NameResolveState state) {
 			break;
 		case decl_alias:
 			require_name_resolve(entity, state);
-			if (entityNode.isType)
-				node.flags |= AstFlags.isType;
+			// replace current node with aliased entity
+			nodeIndex = entity.get!AliasDeclNode(c).initializer;
 			break;
 		default:
 			c.internal_error("Unknown entity %s", entityNode.astType);

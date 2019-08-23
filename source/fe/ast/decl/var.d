@@ -11,6 +11,7 @@ enum VariableFlags : ushort {
 	isAddressTaken     = AstFlags.userFlag << 2,
 }
 
+@(AstType.decl_var)
 struct VariableDeclNode
 {
 	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);

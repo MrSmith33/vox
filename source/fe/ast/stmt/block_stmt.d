@@ -6,6 +6,7 @@ module fe.ast.stmt.block_stmt;
 import all;
 
 
+@(AstType.stmt_block)
 struct BlockStmtNode {
 	mixin AstNodeData!(AstType.stmt_block, AstFlags.isStatement);
 	/// Each node can be expression, declaration or expression

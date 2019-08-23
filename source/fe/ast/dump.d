@@ -94,14 +94,13 @@ struct AstPrinter {
 	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
 	void visit(NameUseExprNode* v) {
 		if (v.isSymResolved)
-			print("NAME_USE ", v.entity.get_node_type(context).printer(context), " ", context.idString(v.id(context)));
+			print("NAME_USE ", v.type.printer(context), " ", context.idString(v.id(context)));
 		else
 			print("NAME_USE ", context.idString(v.id(context)));
 	}
 	void visit(MemberExprNode* m) {
-		print("MEMBER ", m.memberIndex, " ", m.type.printer(context));
+		print("MEMBER ", m.type.printer(context), " ", context.idString(m.memberId(context)));
 		pr_node(m.aggregate);
-		if(m.member) pr_node(m.member);
 	}
 	void visit(IntLiteralExprNode* lit) {
 		if (lit.isSigned)
@@ -233,7 +232,7 @@ struct AstDotPrinter {
 			printLabel(v, `NAME_USE\n%s`, context.idString(v.id(context)));
 	}
 	void visit(MemberExprNode* m) {
-		printLabel(m, "MEMBER %s", context.idString(m.member.get_node_id(context)));
+		printLabel(m, "MEMBER %s", context.idString(m.memberId(context)));
 		pr_node_edge(m, m.aggregate);
 	}
 	void visit(IntLiteralExprNode* lit) { printLabel(lit, `Int LITERAL\n%s %s`, lit.type.printer(context), lit.value); }

@@ -1809,12 +1809,39 @@ void tester85(ref TestContext ctx) {
 immutable test86 = q{--- test86
 	// alias type
 	alias T = i32;
+	T num = 2;
+	T test(T t) { return t; }
+
 	struct S { i32 member; }
 	alias U = S;
-	T test(T t) { return t; }
 	void test2() {
 		U s;
 		s.member = 10;
 	}
-	T num = 2;
+
+	alias funcAlias = test; // function alias
+	T test3() { return funcAlias(30); }
+
+	alias varAlias = num; // variable alias
+	T test4() { return varAlias; }
+
+	alias aliasOfAlias = varAlias; // alias of alias
+	T test5() { return aliasOfAlias; }
+
+	enum enumVal = 42;
+	alias enumAlias = enumVal; // enum alias
+	T test6() { return enumAlias; }
+
+	alias Ptr = i32*;
+	enum ptrsize = i32*.sizeof;
+	enum u8min = u8.max;
+	u8[u8min] arr;
+	u8[ptrsize] arr2;
+};
+
+@TestInfo()
+immutable test87 = q{--- test87
+	// pointer type expr parsing
+	enum ptrsize = i32*.sizeof;
+	enum ptrsize2 = i32**.sizeof;
 };

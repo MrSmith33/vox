@@ -5,6 +5,7 @@ module fe.ast.type.static_array;
 
 import all;
 
+@(AstType.type_static_array)
 struct StaticArrayTypeNode {
 	mixin AstNodeData!(AstType.type_static_array, AstFlags.isType, AstNodeState.name_register_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }

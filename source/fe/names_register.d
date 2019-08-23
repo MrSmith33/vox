@@ -90,7 +90,7 @@ struct NameRegisterState
 	/// Constructs and inserts symbol with id
 	void insert(Identifier id, AstIndex nodeIndex)
 	{
-		AstNode* node = context.getAstNode(nodeIndex);
+		AstNode* node = nodeIndex.get_node(context);
 		node.flags |= currentScope.isOrdered ? AstFlags.isInOrderedScope : 0;
 		if (auto s = currentScope.symbols.get(id, AstIndex.init))
 		{

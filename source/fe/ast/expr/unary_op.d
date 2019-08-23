@@ -6,6 +6,7 @@ module fe.ast.expr.unary_op;
 import all;
 
 
+@(AstType.expr_un_op)
 struct UnaryExprNode {
 	mixin ExpressionNodeData!(AstType.expr_un_op);
 	UnOp op;
@@ -41,7 +42,7 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 			switch(child.astType)
 			{
 				case AstType.expr_name_use:
-					AstNode* entity = child.as_name_use.entity.get_node(c);
+					AstNode* entity = child.as!NameUseExprNode(c).entity.get_node(c);
 
 					switch (entity.astType)
 					{

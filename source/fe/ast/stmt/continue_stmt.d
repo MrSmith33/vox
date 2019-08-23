@@ -6,6 +6,7 @@ module fe.ast.stmt.continue_stmt;
 import all;
 
 
+@(AstType.stmt_continue)
 struct ContinueStmtNode {
 	mixin AstNodeData!(AstType.stmt_continue, AstFlags.isStatement, AstNodeState.type_check_done);
 }

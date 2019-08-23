@@ -6,6 +6,7 @@ module fe.ast.stmt.while_stmt;
 import all;
 
 
+@(AstType.stmt_while)
 struct WhileStmtNode {
 	mixin AstNodeData!(AstType.stmt_while, AstFlags.isStatement);
 	AstIndex condition;

@@ -5,6 +5,7 @@ module fe.ast.type.basic;
 
 import all;
 
+@(AstType.type_basic)
 struct BasicTypeNode {
 	mixin AstNodeData!(AstType.type_basic, AstFlags.isType, AstNodeState.type_check_done);
 	uint size;

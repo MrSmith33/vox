@@ -193,8 +193,10 @@ struct CompilationContext
 	CommonIdentifiers commonIds;
 
 	private AstIndex[BasicType.max + 1] basicTypes;
+	private AstIndex[BuiltinId.max + 1] builtins;
 
 	AstIndex basicTypeNodes(BasicType basicType) { return basicTypes[basicType]; }
+	AstIndex builtinNodes(BuiltinId builtinId) { return builtins[builtinId]; }
 
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
@@ -371,7 +373,19 @@ struct CompilationContext
 
 	T* getAst(T)(AstIndex index) {
 		if (!index) return null;
-		return cast(T*)(&astBuffer.bufPtr[index.storageIndex]);
+		T* result = cast(T*)(&astBuffer.bufPtr[index.storageIndex]);
+		static if (hasAstNodeType!T)
+			//!(
+			//	is(T == Scope) ||          // no astType field
+			//	is(T == IrFunction) ||     // no astType field
+			//	is(T == AstNode) ||        // abstract node
+			//	is(T == ExpressionNode) || // abstract node
+			//	is(T == TypeNode)          // abstract node
+			//))
+		{
+			assertf(result.astType == getAstNodeType!T, "getAst(%s) got %s", T.stringof, result.astType);
+		}
+		return result;
 	}
 
 	AstIndex getAstNodeIndex(T)(T* node) {
@@ -591,6 +605,20 @@ struct CompilationContext
 
 			makeBasic(4, 0, 0, BasicType.t_f32, BasicTypeFlag.isFloat),
 			makeBasic(8, 0, 0, BasicType.t_f64, BasicTypeFlag.isFloat),
+		];
+
+		AstIndex makeBuiltin(Identifier id, BuiltinId builtin) {
+			return appendAst!BuiltinNode(TokenIndex(), id, builtin);
+		}
+
+		builtins = [
+			makeBuiltin(commonIds.id_min, BuiltinId.int_min),
+			makeBuiltin(commonIds.id_max, BuiltinId.int_max),
+			makeBuiltin(commonIds.id_length, BuiltinId.slice_length),
+			makeBuiltin(commonIds.id_ptr, BuiltinId.slice_ptr),
+			makeBuiltin(commonIds.id_length, BuiltinId.array_length),
+			makeBuiltin(commonIds.id_ptr, BuiltinId.array_ptr),
+			makeBuiltin(commonIds.id_sizeof, BuiltinId.type_sizeof),
 		];
 
 		errorNode = appendAst!ErrorAstNode();

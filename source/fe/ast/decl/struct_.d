@@ -5,6 +5,7 @@ module fe.ast.decl.struct_;
 
 import all;
 
+@(AstType.decl_struct)
 struct StructDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_struct, AstFlags.isType);
 	Identifier id;

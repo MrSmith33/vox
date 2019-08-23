@@ -58,6 +58,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
 
 		case decl_alias: name_resolve_alias(cast(AliasDeclNode*)node, state); break;
+		case decl_builtin: assert(false);
 		case decl_module: name_resolve_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: assert(false);
 		case decl_function: name_resolve_func(cast(FunctionDeclNode*)node, state); break;
@@ -75,7 +76,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case stmt_break: assert(false);
 		case stmt_continue: assert(false);
 
-		case expr_name_use: name_resolve_name_use(cast(NameUseExprNode*)node, state); break;
+		case expr_name_use: name_resolve_name_use(nodeIndex, cast(NameUseExprNode*)node, state); break;
 		case expr_member: name_resolve_member(cast(MemberExprNode*)node, state); break;
 		case expr_bin_op: name_resolve_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: name_resolve_unary_op(cast(UnaryExprNode*)node, state); break;

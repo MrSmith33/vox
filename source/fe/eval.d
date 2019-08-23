@@ -30,10 +30,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 	{
 		case decl_enum_member: return eval_static_expr_enum_member(cast(EnumMemberDecl*)node, context);
 		case expr_name_use: return eval_static_expr_name_use(cast(NameUseExprNode*)node, context);
-		case expr_member:
-			if (node.subType == MemberSubType.static_array_member)
-				return eval_static_expr_static_array_member(cast(MemberExprNode*)node, context);
-			goto default;
+		case expr_member: return eval_static_expr_member(cast(MemberExprNode*)node, context);
 		case expr_bin_op: return eval_static_expr_bin_op(cast(BinaryExprNode*)node, context);
 		case expr_type_conv: return eval_static_expr_type_conv(cast(TypeConvExprNode*)node, context);
 		case literal_int: return eval_static_expr_literal_int(cast(IntLiteralExprNode*)node, context);
@@ -56,24 +53,52 @@ IrIndex eval_static_expr_name_use(NameUseExprNode* node, CompilationContext* con
 	return eval_static_expr(node.entity, context);
 }
 
-IrIndex eval_static_expr_static_array_member(MemberExprNode* node, CompilationContext* context)
+IrIndex eval_static_expr_member(MemberExprNode* node, CompilationContext* c)
 {
 	if (!node.irValue.isDefined)
 	{
-		if (node.memberIndex == BuiltinMemberIndex.MEMBER_LENGTH) // length
+		switch(node.subType) with(MemberSubType)
 		{
-			AstIndex arr = node.aggregate.get_node_type(context);
-			require_type_check(arr, context);
-			node.irValue = context.constants.add(arr.cast_type_static_array(context).length, IsSigned.no, IrArgSize.size64);
+			case enum_member:
+				node.irValue = eval_static_expr(node.member(c), c);
+				break;
+			case builtin_member:
+				node.irValue = eval_builtin(node.member(c).get!BuiltinNode(c).builtin, node.aggregate, node.loc, c);
+				break;
+			default:
+				AstIndex nodeIndex = get_ast_index(node, c);
+				c.unrecoverable_error(node.loc,
+					"Cannot access .%s member of %s while in CTFE",
+					get_node_id(nodeIndex, c),
+					get_node_kind_name(nodeIndex, c));
 		}
-		else if (node.memberIndex == BuiltinMemberIndex.MEMBER_PTR) // ptr
-		{
-			context.unrecoverable_error(node.loc, "Cannot access static array .ptr member while in CTFE. Not implemented");
-		}
-		else
-			context.unreachable;
 	}
 	return node.irValue;
+}
+
+IrIndex eval_builtin(BuiltinId builtin, AstIndex obj, TokenIndex loc, CompilationContext* c)
+{
+	AstIndex objType = obj.get_node_type(c);
+	switch(builtin) with(BuiltinId)
+	{
+		case int_min:
+			auto b = objType.get!BasicTypeNode(c);
+			return c.constants.add(b.minValue, b.isSigned, objType.get_type(c).argSize(c));
+		case int_max:
+			auto b = objType.get!BasicTypeNode(c);
+			return c.constants.add(b.maxValue, b.isSigned, objType.get_type(c).argSize(c));
+		case array_length:
+			require_type_check(objType, c);
+			return c.constants.add(objType.get!StaticArrayTypeNode(c).length, IsSigned.no, IrArgSize.size64);
+		case type_sizeof:
+			return c.constants.add(objType.get_type(c).size(c), IsSigned.no, IrArgSize.size64);
+		default:
+			c.unrecoverable_error(loc,
+				"Cannot access .%s member of %s while in CTFE",
+				builtinIdStrings[builtin],
+				get_node_kind_name(objType, c));
+			assert(false);
+	}
 }
 
 IrIndex eval_static_expr_bin_op(BinaryExprNode* node, CompilationContext* context)

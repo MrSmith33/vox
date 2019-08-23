@@ -136,17 +136,7 @@ enum TokenType : ubyte {
 	@("#comm") COMMENT,                 // // /*
 }
 
-immutable string[] tokStrings = gatherInfos();
-
-private string[] gatherInfos()
-{
-	string[] res = new string[__traits(allMembers, TokenType).length];
-	foreach (i, m; __traits(allMembers, TokenType))
-	{
-		res[i] = __traits(getAttributes, mixin("TokenType."~m))[0];
-	}
-	return res;
-}
+immutable string[] tokStrings = gatherEnumStrings!TokenType();
 
 enum TokenType TYPE_TOKEN_FIRST = TokenType.TYPE_VOID;
 enum TokenType TYPE_TOKEN_LAST = TokenType.TYPE_F64;

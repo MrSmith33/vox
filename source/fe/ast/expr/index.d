@@ -6,6 +6,7 @@ module fe.ast.expr.index;
 import all;
 
 
+@(AstType.expr_index)
 struct IndexExprNode {
 	mixin ExpressionNodeData!(AstType.expr_index);
 	AstIndex array;
