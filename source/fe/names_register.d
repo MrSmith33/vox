@@ -56,6 +56,8 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case stmt_break: assert(false);
 		case stmt_continue: assert(false);
 
+		case type_func_sig: name_register_func_sig(cast(FunctionSignatureNode*)node, state); break;
+
 		default: state.context.internal_error(node.loc, "Visiting %s node", node.astType); break;
 	}
 }

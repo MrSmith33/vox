@@ -16,6 +16,19 @@ struct UnaryExprNode {
 void name_resolve_unary_op(UnaryExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.child, state);
+	switch(node.op) with(UnOp)
+	{
+		case addrOf:
+			AstNode* child = node.child.get_node(state.context);
+			child.flags |= AstFlags.isLvalue;
+			if (child.astType == AstType.expr_name_use)
+			{
+				child.flags |= NameUseFlags.isAddressTaken;
+			}
+			break;
+		default:
+			break;
+	}
 	node.state = AstNodeState.name_resolve_done;
 }
 
@@ -48,17 +61,21 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 					{
 						case AstType.decl_var:
 							entity.flags |= VariableFlags.isAddressTaken; // mark variable
+							node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
+							break;
+						case AstType.decl_function:
+							node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
 							break;
 						default:
 							c.internal_error(node.loc, "Cannot take address of %s", entity.astType);
 					}
 					break;
 				case AstType.expr_index:
+					node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
 					break;
 				default:
 					c.internal_error(node.loc, "Cannot take address of %s", child.astType);
 			}
-			node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
 			break;
 		case bitwiseNot:
 			node.type = child.type;

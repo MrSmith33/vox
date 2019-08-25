@@ -32,6 +32,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 		case expr_name_use: return eval_static_expr_name_use(cast(NameUseExprNode*)node, context);
 		case expr_member: return eval_static_expr_member(cast(MemberExprNode*)node, context);
 		case expr_bin_op: return eval_static_expr_bin_op(cast(BinaryExprNode*)node, context);
+		case expr_un_op: return eval_static_expr_un_op(cast(UnaryExprNode*)node, context);
 		case expr_type_conv: return eval_static_expr_type_conv(cast(TypeConvExprNode*)node, context);
 		case literal_int: return eval_static_expr_literal_int(cast(IntLiteralExprNode*)node, context);
 		case literal_string: return eval_static_expr_literal_string(cast(StringLiteralExprNode*)node, context);
@@ -108,6 +109,41 @@ IrIndex eval_static_expr_bin_op(BinaryExprNode* node, CompilationContext* contex
 		IrIndex leftVal = eval_static_expr(node.left, context);
 		IrIndex rightVal = eval_static_expr(node.right, context);
 		node.irValue = calcBinOp(node.op, leftVal, rightVal, node.type.typeArgSize(context), context);
+	}
+	return node.irValue;
+}
+
+IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
+{
+	if (!node.irValue.isDefined)
+	{
+		ExpressionNode* child = node.child.get_expr(c);
+		switch (node.op) with(UnOp)
+		{
+			case addrOf:
+				switch(child.astType)
+				{
+					case AstType.expr_name_use:
+						AstNode* entity = child.as!NameUseExprNode(c).entity.get_node(c);
+
+						switch (entity.astType)
+						{
+							// TODO: force IR gen for global var when address is taken
+							case AstType.decl_function:
+								// type is not pointer to function sig, but sig itself
+								node.irValue = entity.as!FunctionDeclNode(c).getIrIndex(c);
+								break;
+							default:
+								c.internal_error(node.loc, "Cannot take address of %s while in CTFE", entity.astType);
+						}
+						break;
+					default:
+						c.internal_error(node.loc, "Cannot take address of %s while in CTFE", child.astType);
+				}
+				break;
+			default:
+				c.internal_error(node.loc, "%s not implemented in CTFE", node.op);
+		}
 	}
 	return node.irValue;
 }

@@ -1,6 +1,8 @@
 - opaque IR type (void?)
-- function pointer type <ret> function(<args>)
-	- call by pointer
++ function pointer type <ret> function(<args>)
+	+ call by pointer
+	+ take address of function
+	- check member variable func ptr
 - default parameters
 - named parameters
 - char literal / type
@@ -32,6 +34,7 @@
 - Allocate argument stack slots for multiple calls from the same space
 - context format/writefln
 - inline instructions in IR for representing memory operands in x86 LIR
+- globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
 
 - foreach
 	- over slice
@@ -43,6 +46,7 @@
 	- ref in foreach
 	- this is ref in methods
 - empty string
+- member alias
 
 - multi-indexing operator x[1, 2, 3]
 + AST Index

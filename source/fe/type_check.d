@@ -91,6 +91,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case literal_bool: type_check_literal_bool(cast(BoolLiteralExprNode*)node, state); break;
 
 		case type_basic: assert(false);
+		case type_func_sig: type_check_func_sig(cast(FunctionSignatureNode*)node, state); break;
 		case type_ptr: type_check_ptr(cast(PtrTypeNode*)node, state); break;
 		case type_static_array: type_check_static_array(cast(StaticArrayTypeNode*)node, state); break;
 		case type_slice: type_check_slice(cast(SliceTypeNode*)node, state); break;
@@ -175,7 +176,6 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 	ExpressionNode* expr = exprIndex.get_expr(c);
 	TypeNode* type = typeIndex.get_type(c);
 	TypeNode* exprType = expr.type.get_type(c);
-
 	if (same_type(expr.type, typeIndex, c)) return true;
 	string extraError;
 

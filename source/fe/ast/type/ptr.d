@@ -18,7 +18,8 @@ struct PtrTypeNode {
 	}
 }
 
-void name_resolve_ptr(PtrTypeNode* node, ref NameResolveState state) {
+void name_resolve_ptr(PtrTypeNode* node, ref NameResolveState state)
+{
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.base, state);
 	node.state = AstNodeState.name_resolve_done;

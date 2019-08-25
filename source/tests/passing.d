@@ -1845,3 +1845,32 @@ immutable test87 = q{--- test87
 	enum ptrsize = i32*.sizeof;
 	enum ptrsize2 = i32**.sizeof;
 };
+
+@TestInfo(&tester88)
+immutable test88 = q{--- test88
+	// function pointer
+	alias i32_funType = i32 function();
+	alias i32ptr_funType = i32* function();
+	enum i32_funType funPtrEnum = &i32Fun;
+	enum i32 function() inlinefunPtrEnum = &i32Fun;
+	// i32_funType funPtrGlobal = &i32Fun; // TODO: globals are uninitialized now
+	// i32 function() inlinefunPtrGlobal = &i32Fun; // TODO: globals are uninitialized now
+	i32 i32Fun() {
+		return 42;
+	}
+	i32_funType retFuncPtr() {
+		return &i32Fun;
+	}
+	i32 test() {
+		i32_funType funPtr = retFuncPtr(); // call by ptr (may be optimized to direct call later)
+		i32 function() inlinefunPtr = &i32Fun; // direct call
+		return funPtr() + inlinefunPtr();
+	}
+	i32 test2() {
+		return funPtrEnum() + inlinefunPtrEnum(); // direct call is performed
+	}
+};
+void tester88(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("test")() == 84);
+	assert(ctx.getFunctionPtr!(int)("test2")() == 84);
+}

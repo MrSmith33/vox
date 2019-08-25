@@ -199,7 +199,7 @@ struct CodeEmitter
 			context.entryPoint = fun;
 		}
 
-		stackPointer = fun.backendData.callingConvention.stackPointer;
+		stackPointer = fun.backendData.getCallConv(context).stackPointer;
 
 		blockStarts = cast(PC[])context.tempBuffer.voidPut(lir.numBasicBlocks * (PC.sizeof / uint.sizeof));
 
@@ -379,23 +379,34 @@ struct CodeEmitter
 						gen.neg(dst, cast(ArgType)instrHeader.args[0].physRegSize);
 						break;
 					case Amd64Opcode.call:
-						FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
-						FunctionDeclNode* callee = context.getFunction(calleeIndex);
-						ObjectSymbol* sym = &context.objSymTab.getSymbol(callee.backendData.objectSymIndex);
+						IrIndex calleeIndex = instrHeader.args[0];
 
-						if (sym.isIndirect)
-							gen.call(memAddrRipDisp32(0));
+						if (calleeIndex.isFunction)
+						{
+							// direct call by name
+							FunctionDeclNode* callee = context.getFunction(calleeIndex);
+							ObjectSymbol* sym = &context.objSymTab.getSymbol(callee.backendData.objectSymIndex);
+
+							if (sym.isIndirect)
+								gen.call(memAddrRipDisp32(0)); // read address from import section
+							else
+								gen.call(Imm32(0)); // call relative to next instruction
+
+							ObjectSymbolReference r = {
+								fromSymbol : fun.backendData.objectSymIndex,
+								referencedSymbol : callee.backendData.objectSymIndex,
+								refOffset : referenceOffset() - 4,
+								4,
+								ObjectSymbolRefKind.relative32,
+							};
+							context.objSymTab.addReference(r);
+						}
 						else
-							gen.call(Imm32(0));
-
-						ObjectSymbolReference r = {
-							fromSymbol : fun.backendData.objectSymIndex,
-							referencedSymbol : callee.backendData.objectSymIndex,
-							refOffset : referenceOffset() - 4,
-							4,
-							ObjectSymbolRefKind.relative32,
-						};
-						context.objSymTab.addReference(r);
+						{
+							// call by ptr
+							Register calleePtr = indexToRegister(calleeIndex);
+							gen.call(calleePtr);
+						}
 						break;
 
 					case Amd64Opcode.jmp:
@@ -629,6 +640,23 @@ struct CodeEmitter
 				context.objSymTab.addReference(r);
 				break;
 
+			// copy address of function into register
+			case MoveType.func_to_reg:
+				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
+				MemAddress addr = memAddrRipDisp32(0);
+				gen.lea(dstReg, addr, ArgType.QWORD);
+
+				FunctionDeclNode* func = context.getFunction(src);
+				ObjectSymbolReference r = {
+					fromSymbol : fun.backendData.objectSymIndex,
+					referencedSymbol : func.backendData.objectSymIndex,
+					refOffset : referenceOffset() - 4,
+					4,
+					ObjectSymbolRefKind.relative32,
+				};
+				context.objSymTab.addReference(r);
+				break;
+
 			case MoveType.reg_to_reg:
 				version(emit_mc_print) writefln("  move.%s reg:%s, reg:%s", argType, dstReg, srcReg);
 				if (dstReg == srcReg) return; // skip if same register
@@ -802,6 +830,7 @@ MoveType calcMoveType(IrValueKind dst, IrValueKind src)
 				case global: return MoveType.global_to_reg;
 				case physicalRegister: return MoveType.reg_to_reg;
 				case stackSlot: return MoveType.stack_to_reg;
+				case func: return MoveType.func_to_reg;
 				default: return MoveType.invalid;
 			}
 		case stackSlot:
@@ -834,4 +863,5 @@ enum MoveType
 	const_to_mem,
 	reg_to_mem,
 	mem_to_reg,
+	func_to_reg,
 }

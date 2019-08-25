@@ -121,6 +121,14 @@ struct CallConv
 	}
 }
 
+enum CallConvention : ubyte {
+	win64
+}
+
+__gshared CallConv*[] callConventions = [
+	&win64_call_conv,
+];
+
 __gshared CallConv win64_call_conv = CallConv
 (
 	// parameters in registers
@@ -249,7 +257,7 @@ alias LirAmd64Instr_neg = IrGenericInstr!(Amd64Opcode.neg, 1, IFLG.hasResult | I
 // call layout
 // - header
 // - result (if callee is non-void)
-// - arg0
+// - arg0 (function or function pointer)
 // - arg1
 // - ...
 // - argN
@@ -274,9 +282,6 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 {
 	switch(p.instrHeader.op)
 	{
-		case Amd64Opcode.call:
-			dumpCall(p);
-			break;
 		case Amd64Opcode.bin_branch:
 			dumpBinBranch(p);
 			break;

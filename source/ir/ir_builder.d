@@ -78,9 +78,10 @@ struct IrBuilder
 
 		setupEntryExitBlocks();
 
-		if (!context.types.isVoid(ir.backendData.returnType))
+		IrIndex returnType = context.types.getReturnType(ir.type, *context);
+		if (!returnType.isTypeVoid)
 		{
-			returnVar = newIrVarIndex(ir.backendData.returnType);
+			returnVar = newIrVarIndex(returnType);
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
 			emitInstr!IrInstr_return_value(ir.exitBasicBlock, retValue);
 		}
@@ -240,6 +241,7 @@ struct IrBuilder
 	void writeVariable(IrIndex blockIndex, IrIndex var, IrIndex value) {
 		context.assertf(var.kind == IrValueKind.variable, "Variable kind is %s", var.kind);
 		context.assertf(
+			value.kind == IrValueKind.func ||
 			value.kind == IrValueKind.constant ||
 			value.kind == IrValueKind.constantAggregate ||
 			value.kind == IrValueKind.global ||
@@ -570,7 +572,8 @@ struct IrBuilder
 	void addReturn(IrIndex blockIndex, IrIndex returnValue)
 	{
 		context.assertf(returnValue.isDefined, "addReturn %s", returnValue);
-		context.assertf(!context.types.isVoid(ir.backendData.returnType), "Trying to return value from void function");
+		IrIndex returnType = context.types.getReturnType(ir.type, *context);
+		context.assertf(!returnType.isTypeVoid, "Trying to return value from void function");
 		writeVariable(blockIndex, returnVar, returnValue);
 		addJump(blockIndex);
 		addBlockTarget(blockIndex, ir.exitBasicBlock);
@@ -578,7 +581,8 @@ struct IrBuilder
 
 	void addReturn(IrIndex blockIndex)
 	{
-		context.assertf(context.types.isVoid(ir.backendData.returnType), "Trying to return void from non-void function");
+		IrIndex returnType = context.types.getReturnType(ir.type, *context);
+		context.assertf(returnType.isTypeVoid, "Trying to return void from non-void function");
 		addJump(blockIndex);
 		addBlockTarget(blockIndex, ir.exitBasicBlock);
 	}
@@ -1016,7 +1020,7 @@ struct IrBuilder
 			case virtualRegister: return replaceVregUser(ir.getVirtReg(used));
 			case type: return; // no user tracking
 			case variable: assert(false);
-			case func: assert(false);
+			case func: return; // no user tracking
 		}
 	}
 }

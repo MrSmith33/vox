@@ -25,16 +25,22 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 	CompilationContext* c = state.context;
 
 	node.state = AstNodeState.type_check;
-	AstNode* callee = node.callee.get_effective_node(c).get_node(c);
-	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-	switch (callee.astType)
+	scope(exit) node.state = AstNodeState.type_check_done;
+
+	AstIndex callee = node.callee.get_effective_node(c);
+
+	switch (callee.astType(c))
 	{
 		// static function call
-		case AstType.decl_function: return type_check_func_call(node, callee.as!FunctionDeclNode(c), state);
-		case AstType.decl_struct: return type_check_constructor_call(node, callee.as!StructDeclNode(c), state);
+		case AstType.decl_function:
+			auto func = callee.get!FunctionDeclNode(c);
+			auto signature = func.signature.get!FunctionSignatureNode(c);
+			return type_check_func_call(node, signature, func.id, state);
+		case AstType.decl_struct:
+			return type_check_constructor_call(node, callee.get!StructDeclNode(c), state);
 		case AstType.expr_member:
 			// UFCS call
-			MemberExprNode* member = callee.as!MemberExprNode(c);
+			MemberExprNode* member = callee.get!MemberExprNode(c);
 			Identifier calleeName = member.memberId(c);
 			LookupResult ufcsRes = tryUFCSCall(callIndex, member, state);
 			if (ufcsRes == LookupResult.failure) {
@@ -44,35 +50,47 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 				return;
 			}
 			break;
+		case AstType.decl_var, AstType.decl_enum_member:
+			// check if func ptr
+			TypeNode* varType = callee.get_node_type(c).get_type(c);
+			if (varType.isPointer)
+			{
+				TypeNode* base = varType.as_ptr.base.get_type(c);
+				if (base.isFuncSignature)
+				{
+					auto signature = base.as_func_sig;
+					return type_check_func_call(node, signature, callee.get_node_id(c), state);
+				}
+			}
+			goto default;
 		default:
 			node.type = c.basicTypeNodes(BasicType.t_error);
-			c.error(node.loc, "Cannot call %s", callee.astType);
+			c.error(node.loc, "Cannot call %s", callee.astType(c));
 			c.internal_error(node.loc,
 				"Only direct function calls are supported right now");
 
 	}
-	node.state = AstNodeState.type_check_done;
 }
 
 
-void type_check_func_call(CallExprNode* node, FunctionDeclNode* funcDecl, ref TypeCheckState state)
+void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, Identifier id, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
 
-	node.type = c.basicTypeNodes(BasicType.t_error);
+	node.type = signature.returnType;
 
-	Array!AstIndex params = funcDecl.parameters;
+	Array!AstIndex params = signature.parameters;
 	auto numParams = params.length;
 	auto numArgs = node.args.length;
 
 	if (numArgs < numParams) {
 		c.error(node.loc, "Insufficient parameters to '%s', got %s, expected %s",
-			c.idString(funcDecl.id), numArgs, numParams);
+			c.idString(id), numArgs, numParams);
 		return;
 	}
 	else if (numArgs > numParams) {
 		c.error(node.loc, "Too much parameters to '%s', got %s, expected %s",
-			c.idString(funcDecl.id), numArgs, numParams);
+			c.idString(id), numArgs, numParams);
 		return;
 	}
 
@@ -89,7 +107,6 @@ void type_check_func_call(CallExprNode* node, FunctionDeclNode* funcDecl, ref Ty
 				param.type.printer(c),
 				arg.expr_type(c).printer(c));
 	}
-	node.type = funcDecl.returnType;
 }
 
 void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref TypeCheckState state)

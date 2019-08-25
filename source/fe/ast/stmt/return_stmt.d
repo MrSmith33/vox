@@ -31,10 +31,13 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 		return;
 	}
 
+	AstIndex retTypeIndex = state.curFunc.signature.get!FunctionSignatureNode(c).returnType;
+	bool isVoidFunc = retTypeIndex.isVoidType(c);
+
 	if (node.expression)
 	{
 		require_type_check(node.expression, state);
-		if (state.curFunc.returnType.get_type(c).isVoid)
+		if (isVoidFunc)
 		{
 			c.error(node.expression.get_expr(c).loc,
 				"Cannot return expression of type `%s` from void function",
@@ -42,12 +45,12 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 		}
 		else
 		{
-			autoconvTo(node.expression, state.curFunc.returnType, c);
+			autoconvTo(node.expression, retTypeIndex, c);
 		}
 	}
 	else
 	{
-		if (!state.curFunc.returnType.get_type(c).isVoid)
+		if (!isVoidFunc)
 			c.error(node.loc,
 				"Cannot return void from non-void function",
 				node.expression.get_expr(c).type.typeName(c));

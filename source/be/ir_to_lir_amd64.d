@@ -261,7 +261,7 @@ struct IrToLir
 
 		if (irFuncType.numResults == 0)
 		{
-			lir.type = context.types.appendFuncSignature(0, irFuncType.numParameters);
+			lir.type = context.types.appendFuncSignature(0, irFuncType.numParameters, irFuncType.callConv);
 			auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
 			paramTypes = lirFuncType.parameterTypes;
 		}
@@ -270,7 +270,7 @@ struct IrToLir
 			IrIndex resType = irFuncType.resultTypes[0];
 			if (isPassByValue(resType))
 			{
-				lir.type = context.types.appendFuncSignature(1, irFuncType.numParameters);
+				lir.type = context.types.appendFuncSignature(1, irFuncType.numParameters, irFuncType.callConv);
 				auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
 				lirFuncType.resultTypes[0] = resType;
 				paramTypes = lirFuncType.parameterTypes;
@@ -278,7 +278,7 @@ struct IrToLir
 			else
 			{
 				numHiddenParams = 1;
-				lir.type = context.types.appendFuncSignature(1, irFuncType.numParameters + 1);
+				lir.type = context.types.appendFuncSignature(1, irFuncType.numParameters + 1, irFuncType.callConv);
 				auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
 				paramTypes = lirFuncType.parameterTypes[1..$];
 				IrIndex retType = context.types.appendPtr(resType);
@@ -323,7 +323,7 @@ struct IrToLir
 			{
 				auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
 				IrIndex type = lirFuncType.parameterTypes[0];
-				IrIndex paramReg = lir.backendData.callingConvention.paramsInRegs[0];
+				IrIndex paramReg = lir.backendData.getCallConv(context).paramsInRegs[0];
 				paramReg.physRegSize = typeToRegSize(type, context);
 				ExtraInstrArgs extra = { type : type };
 				InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, paramReg);
@@ -366,10 +366,10 @@ struct IrToLir
 				{
 					case IrOpcode.parameter:
 						uint paramIndex = ir.get!IrInstr_parameter(instrIndex).index + numHiddenParams;
-						context.assertf(paramIndex < lir.backendData.callingConvention.paramsInRegs.length,
+						context.assertf(paramIndex < lir.backendData.getCallConv(context).paramsInRegs.length,
 							"Only parameters passed through registers are implemented");
 
-						IrIndex paramReg = lir.backendData.callingConvention.paramsInRegs[paramIndex];
+						IrIndex paramReg = lir.backendData.getCallConv(context).paramsInRegs[paramIndex];
 						IrIndex type = ir.getVirtReg(instrHeader.result).type;
 						paramReg.physRegSize = typeToRegSize(type, context);
 						ExtraInstrArgs extra = { type : type, argSize : instrHeader.argSize };
@@ -391,24 +391,30 @@ struct IrToLir
 
 						lir.backendData.stackLayout.numCalls += 1;
 
+						IrIndex callee = instrHeader.args[0];
+						CallConv* callConv = context.types.getCalleeCallConv(callee, ir, context);
+						argBuffer[0] = getFixedIndex(callee);
+						IrIndex[] args = instrHeader.args[1..$];
+						IrIndex[] localArgBuffer = argBuffer[1..$];
+
 						enum STACK_ITEM_SIZE = 8;
-						size_t numArgs = instrHeader.args.length;
-						size_t numParamsInRegs = lir.backendData.callingConvention.paramsInRegs.length;
+						size_t numArgs = args.length;
+						size_t numParamsInRegs = callConv.paramsInRegs.length;
 						// how many bytes are allocated on the stack before func call
 						size_t stackReserve = max(numArgs, numParamsInRegs) * STACK_ITEM_SIZE;
-						IrIndex stackPtrReg = lir.backendData.callingConvention.stackPointer;
+						IrIndex stackPtrReg = callConv.stackPointer;
 
 						// Copy args to stack if necessary (big structs or doesn't fit into regs)
-						foreach (i, IrIndex irArg; instrHeader.args)
+						foreach (i, IrIndex irArg; args)
 						{
 							IrIndex type = ir.getValueType(*context, irArg);
 
 							if (isPassByValue(type)) {
-								argBuffer[i] = getFixedIndex(irArg);
+								localArgBuffer[i] = getFixedIndex(irArg);
 							} else {
 								//allocate stack slot, store value there and use slot pointer as argument
-								argBuffer[i] = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
-								genStore(argBuffer[i], 0, irArg, 0, type, lirBlockIndex, ir);
+								localArgBuffer[i] = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
+								genStore(localArgBuffer[i], 0, irArg, 0, type, lirBlockIndex, ir);
 							}
 						}
 
@@ -425,7 +431,7 @@ struct IrToLir
 							}
 
 							// push args to stack
-							foreach_reverse (IrIndex lirArg; argBuffer[numParamsInRegs..numArgs])
+							foreach_reverse (IrIndex lirArg; localArgBuffer[numParamsInRegs..numArgs])
 							{
 								if (lirArg.isStackSlot) {
 									ExtraInstrArgs extra = { addUsers : false, type : lir.getValueType(*context, lirArg) };
@@ -440,12 +446,12 @@ struct IrToLir
 
 						// move args to registers
 						size_t numPhysRegs = min(numParamsInRegs, numArgs);
-						foreach_reverse (i, IrIndex lirArg; argBuffer[0..numPhysRegs])
+						foreach_reverse (i, IrIndex lirArg; localArgBuffer[0..numPhysRegs])
 						{
 							IrIndex type = lir.getValueType(*context, lirArg);
-							IrIndex argRegister = lir.backendData.callingConvention.paramsInRegs[i];
+							IrIndex argRegister = callConv.paramsInRegs[i];
 							argRegister.physRegSize = typeToRegSize(type, context);
-							argBuffer[i] = argRegister;
+							localArgBuffer[i] = argRegister;
 							ExtraInstrArgs extra = {addUsers : false, result : argRegister};
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, lirArg);
 						}
@@ -461,13 +467,11 @@ struct IrToLir
 							ExtraInstrArgs callExtra = {
 								addUsers : false,
 								hasResult : instrHeader.hasResult,
-								result : lir.backendData.callingConvention.returnReg // will be used if function has result
+								result : callConv.returnReg // will be used if function has result
 							};
 
-							FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
-							builder.emitInstrPreheader(IrInstrPreheader_call(calleeIndex));
 							InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
-								lirBlockIndex, callExtra, argBuffer[0..numPhysRegs]);
+								lirBlockIndex, callExtra, argBuffer[0..numPhysRegs+1]); // include callee
 							recordIndex(instrIndex, callInstr.instruction);
 
 							{	// Deallocate stack after call
@@ -481,7 +485,7 @@ struct IrToLir
 								// mov result to virt reg
 								ExtraInstrArgs extra = { type : ir.getVirtReg(instrHeader.result).type };
 								InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
-									lirBlockIndex, extra, lir.backendData.callingConvention.returnReg);
+									lirBlockIndex, extra, callConv.returnReg);
 								recordIndex(instrHeader.result, movInstr.result);
 							}
 						}
@@ -631,7 +635,7 @@ struct IrToLir
 						break;
 
 					case IrOpcode.block_exit_return_value:
-						IrIndex result = lir.backendData.callingConvention.returnReg;
+						IrIndex result = lir.backendData.getCallConv(context).returnReg;
 						auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
 						IrIndex type = lirFuncType.resultTypes[0];
 						result.physRegSize = typeToRegSize(type, context);

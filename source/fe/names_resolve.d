@@ -90,6 +90,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case literal_bool: assert(false);
 
 		case type_basic: assert(false);
+		case type_func_sig: name_resolve_func_sig(cast(FunctionSignatureNode*)node, state); break;
 		case type_ptr: name_resolve_ptr(cast(PtrTypeNode*)node, state); break;
 		case type_static_array: name_resolve_static_array(cast(StaticArrayTypeNode*)node, state); break;
 		case type_slice: name_resolve_slice(cast(SliceTypeNode*)node, state); break;

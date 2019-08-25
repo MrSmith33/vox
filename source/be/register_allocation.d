@@ -54,9 +54,10 @@ struct PhysRegisters
 		return gpr[reg.physRegIndex];
 	}
 
-	void setup(FunctionDeclNode* fun, MachineInfo* machineInfo)
+	void setup(CompilationContext* c, FunctionDeclNode* fun, MachineInfo* machineInfo)
 	{
-		allocatableRegs = fun.backendData.callingConvention.allocatableRegs;
+		CallConv* callConv = fun.backendData.getCallConv(c);
+		allocatableRegs = callConv.allocatableRegs;
 		gpr.length = machineInfo.registers.length;
 
 		foreach(i, ref RegisterState reg; gpr)
@@ -69,7 +70,7 @@ struct PhysRegisters
 			opIndex(reg).isAllocatable = true;
 		}
 
-		foreach(i, reg; fun.backendData.callingConvention.calleeSaved)
+		foreach(i, reg; callConv.calleeSaved)
 		{
 			opIndex(reg).isCalleeSaved = true;
 		}
@@ -155,7 +156,7 @@ struct LinearScan
 		lir = context.getAst!IrFunction(fun.backendData.lirData);
 		builder.beginDup(lir, context);
 		livePtr = &fun.backendData.liveIntervals;
-		physRegs.setup(fun, context.machineInfo);
+		physRegs.setup(context, fun, context.machineInfo);
 
 		scope(exit) {
 			lir = null;

@@ -5,6 +5,13 @@ module fe.ast.expr.name_use;
 
 import all;
 
+enum NameUseFlags : ushort
+{
+	isSymResolved = AstFlags.userFlag << 0,
+	// used to prevent parent-less call when function address is taken
+	isAddressTaken = AstFlags.userFlag << 1,
+}
+
 @(AstType.expr_name_use)
 struct NameUseExprNode {
 	mixin ExpressionNodeData!(AstType.expr_name_use);
@@ -14,12 +21,8 @@ struct NameUseExprNode {
 		private Identifier _id; // used when not yet resolved
 	}
 
-	private enum Flags : ushort
-	{
-		isSymResolved = AstFlags.userFlag
-	}
-
-	bool isSymResolved() { return cast(bool)(flags & Flags.isSymResolved); }
+	bool isSymResolved() { return cast(bool)(flags & NameUseFlags.isSymResolved); }
+	bool isAddressTaken() { return cast(bool)(flags & NameUseFlags.isAddressTaken); }
 
 	this(TokenIndex loc, Identifier id, AstIndex type = AstIndex.init, IrIndex irValue = IrIndex.init)
 	{
@@ -35,7 +38,7 @@ struct NameUseExprNode {
 	void resolve(AstIndex n, CompilationContext* c) {
 		_entity = n;
 		assert(_entity);
-		this.flags |= Flags.isSymResolved;
+		this.flags |= NameUseFlags.isSymResolved;
 	}
 	AstIndex entity() { return isSymResolved ? _entity : AstIndex(); }
 	Identifier id(CompilationContext* context) {
@@ -112,7 +115,8 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 	node.type = node.entity.get_node_type(state.context);
 	node.state = AstNodeState.type_check_done;
 
-	if (node.entity.astType(c) == AstType.decl_function)
+	// check isAddressTaken to prevent call on func address take
+	if (node.entity.astType(c) == AstType.decl_function && !node.isAddressTaken)
 	{
 		// Call without parenthesis
 		// rewrite as call

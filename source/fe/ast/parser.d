@@ -59,7 +59,7 @@ import all;
 	<identifier> = [_a-zA-Z] [_a-zA-Z0-9]*
 
 	<type> = (<type_basic> / <type_struct>) <type_specializer>*
-	<type_specializer> = "*" / "[" <expression> "]" / "[" "]"
+	<type_specializer> = "*" / "[" <expression> "]" / "[" "]" / "function" "(" <param_list> ")"
 	<type_basic> = ("i8" | "i16" | "i32" | "i64" |
 		"u8" | "u16" | "u32" | "u64" | "void" | "f32" | "f64")
 
@@ -272,36 +272,8 @@ struct Parser
 		else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 		{
 			version(print_parse) auto s3 = scop("<func_declaration> %s", start);
-			expectAndConsume(TokenType.LPAREN);
-
 			Array!AstIndex params;
-
-			while (tok.type != TokenType.RPAREN)
-			{
-				if (tok.type == TokenType.EOI) break;
-
-				// <param> ::= <type> <identifier>?
-				TokenIndex paramStart = tok.index;
-				AstIndex paramType = parse_type_expected();
-				Identifier paramId;
-				size_t paramIndex = params.length;
-
-				if (tok.type == TokenType.IDENTIFIER) // named parameter
-					paramId = expectIdentifier();
-				else // anon parameter
-				{
-					paramId = context.idMap.getOrRegWithSuffix("__param_", paramIndex);
-				}
-
-				AstIndex param = make!VariableDeclNode(paramStart, paramType, AstIndex.init, paramId);
-				VariableDeclNode* paramNode = context.getAst!VariableDeclNode(param);
-				paramNode.flags |= VariableFlags.isParameter;
-				paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
-				params.put(context.arrayArena, param);
-				if (tok.type == TokenType.COMMA) nextToken; // skip ","
-				else break;
-			}
-			expectAndConsume(TokenType.RPAREN);
+			parseParameters(params);
 
 			AstIndex block;
 			if (tok.type != TokenType.SEMICOLON)
@@ -310,7 +282,8 @@ struct Parser
 			}
 			else expect(TokenType.SEMICOLON); // external function
 
-			auto func = make!FunctionDeclNode(start, typeIndex, params, block, declarationId);
+			AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
+			AstIndex func = make!FunctionDeclNode(start, signature, block, declarationId);
 			currentModule.addFunction(func, context);
 			return func;
 		}
@@ -319,6 +292,39 @@ struct Parser
 			context.unrecoverable_error(tok.index, "Expected '(' or ';', while got '%s'", context.getTokenString(tok.index));
 			assert(false);
 		}
+	}
+
+	void parseParameters(ref Array!AstIndex params)
+	{
+		expectAndConsume(TokenType.LPAREN);
+
+		while (tok.type != TokenType.RPAREN)
+		{
+			if (tok.type == TokenType.EOI) break;
+
+			// <param> ::= <type> <identifier>?
+			TokenIndex paramStart = tok.index;
+			AstIndex paramType = parse_type_expected();
+			Identifier paramId;
+			size_t paramIndex = params.length;
+
+			if (tok.type == TokenType.IDENTIFIER) // named parameter
+				paramId = expectIdentifier();
+			else // anon parameter
+			{
+				paramId = context.idMap.getOrRegWithSuffix("__param_", paramIndex);
+			}
+
+			AstIndex param = make!VariableDeclNode(paramStart, paramType, AstIndex.init, paramId);
+			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
+			paramNode.flags |= VariableFlags.isParameter;
+			paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
+			params.put(context.arrayArena, param);
+			if (tok.type == TokenType.COMMA) nextToken; // skip ","
+			else break;
+		}
+
+		expectAndConsume(TokenType.RPAREN);
 	}
 
 	// <struct_declaration> ::= "struct" <id> "{" <declaration>* "}" /
@@ -557,26 +563,36 @@ struct Parser
 
 		if (base) // <type_specializer> = '*' / '[' <expression> ']'
 		{
-			while (true)
+			loop: while (true)
 			{
-				if (tok.type == TokenType.STAR) { // '*' pointer
-					nextToken;
-					base = make!PtrTypeNode(start, base);
-				} else if (tok.type == TokenType.LBRACKET) {
-					nextToken;
-					if (tok.type == TokenType.RBRACKET) // '[' ']' slice
-					{
-						nextToken; // skip ']'
-						base = make!SliceTypeNode(start, base);
-					}
-					else // '[' <expression> ']' static array
-					{
-						AstIndex length_expr = expr();
-						expectAndConsume(TokenType.RBRACKET);
-						base = make!StaticArrayTypeNode(start, base, length_expr);
-					}
+				switch(tok.type) with(TokenType)
+				{
+					case STAR: // '*' pointer
+						nextToken;
+						base = make!PtrTypeNode(start, base);
+						break;
+					case LBRACKET:
+						nextToken;
+						if (tok.type == TokenType.RBRACKET) // '[' ']' slice
+						{
+							nextToken; // skip ']'
+							base = make!SliceTypeNode(start, base);
+						}
+						else // '[' <expression> ']' static array
+						{
+							AstIndex length_expr = expr();
+							expectAndConsume(TokenType.RBRACKET);
+							base = make!StaticArrayTypeNode(start, base, length_expr);
+						}
+						break;
+					case FUNCTION_SYM:
+						Token token = tok;
+						nextToken; // skip "function"
+						base = leftFunctionOp(this, token, 0, base);
+						break;
+					default:
+						break loop;
 				}
-				else break;
 			}
 		}
 
@@ -779,7 +795,7 @@ struct Parser
 
 	// scans forward to check if current token starts new declarator
 	// doesn't restore in a case of failure
-	// [], *, [expr]
+	// [], *, [expr], function(expr)
 	private bool is_declarator()
 	{
 		if (tok.type == TokenType.STAR) { // *
@@ -790,11 +806,20 @@ struct Parser
 			skip_brackets;
 			return true;
 		}
+		if (tok.type == TokenType.FUNCTION_SYM) { // function
+			nextToken;
+			skip_parenths;
+			return true;
+		}
 		return false;
 	}
 
 	void skip_brackets() {
 		skip!(TokenType.LBRACKET, TokenType.RBRACKET, '[')();
+	}
+
+	void skip_parenths() {
+		skip!(TokenType.LPAREN, TokenType.RPAREN, '(')();
 	}
 
 	void skip(TokenType Open, TokenType Close, char sym)() {
@@ -961,6 +986,7 @@ private TokenLookups cexp_parser()
 	prefix(290, &nullPrefixOp, ["+", "-", "!", "~", "*", "&", "++", "--"]);
 	prefix(290, &nullCast, "cast");
 
+	infixL(250, &leftFunctionOp, ["function"]);
 	infixL(250, &leftStarOp, ["*"]);
 	infixL(250, &leftBinaryOp, ["/", "%"]);
 
@@ -1131,12 +1157,21 @@ AstIndex leftOpDot(ref Parser p, Token token, int rbp, AstIndex left)
 	return p.make!MemberExprNode(token.index, left, id);
 }
 
+AstIndex leftFunctionOp(ref Parser p, Token token, int rbp, AstIndex returnType) {
+	Array!AstIndex params;
+	p.parseParameters(params);
+	auto sig = p.make!FunctionSignatureNode(token.index, returnType, params);
+	// we don't have to register parameter names, since we have no body
+	sig.setState(p.context, AstNodeState.name_register_done);
+	return p.make!PtrTypeNode(token.index, sig);
+}
+
 // multiplication or pointer type
 // <expr> * <expr> or <expr>*
 AstIndex leftStarOp(ref Parser p, Token token, int rbp, AstIndex left) {
 	switch (p.tok.type) with(TokenType)
 	{
-		case STAR, COMMA, RPAREN, SEMICOLON /*,SYM_FUNCTION,SYM_DELEGATE*/:
+		case STAR, COMMA, RPAREN, SEMICOLON, FUNCTION_SYM /*,DELEGATE_SYM*/:
 			// pointer
 			return p.make!PtrTypeNode(token.index, left);
 		case DOT:

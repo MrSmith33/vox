@@ -186,15 +186,15 @@ struct AstToIr
 		ir = context.getAst!IrFunction(irIndex);
 		ir.backendData = &f.backendData;
 
-		ir.backendData.returnType = f.returnType.gen_ir_type(context);
-		ir.type = f.gen_ir_type_func(context);
+		auto signature = f.signature.get!FunctionSignatureNode(context);
+		ir.type = f.signature.gen_ir_type(context);
 		ir.instructionSet = IrInstructionSet.ir;
 
 		version(IrGenPrint) writefln("[IR GEN] function 1");
 		builder.begin(ir, context);
 
 		version(IrGenPrint) writefln("[IR GEN] function parameters");
-		foreach (AstIndex param; f.parameters)
+		foreach (AstIndex param; signature.parameters)
 		{
 			IrLabel dummy;
 			visitDecl(param, ir.entryBasicBlock, dummy);
@@ -218,14 +218,14 @@ struct AstToIr
 		builder.sealBlock(currentBlock);
 
 		version(IrGenPrint) writefln("[IR GEN] function return");
-		if (!context.types.isVoid(ir.backendData.returnType))
+		if (!signature.returnType.isVoidType(context))
 		{
 			// currentBlock must be finished with retVal
 			if (!ir.getBlock(currentBlock).isFinished)
 			{
 				context.error(f.loc,
 					"function `%s` has no return statement, but is expected to return a value of type %s",
-					context.idString(f.id), f.returnType.typeName(context));
+					context.idString(f.id), signature.returnType.typeName(context));
 			}
 		}
 		else
@@ -408,7 +408,7 @@ struct AstToIr
 			v.flags |= VariableFlags.forceMemoryStorage;
 
 		// Allocate stack slot for parameter that is passed via stack
-		bool isParamWithSlot = v.isParameter && ir.backendData.callingConvention.isParamOnStack(v.scopeIndex);
+		bool isParamWithSlot = v.isParameter && fun.backendData.getCallConv(context).isParamOnStack(v.scopeIndex);
 		bool needsStackSlot = v.forceMemoryStorage || isParamWithSlot || v.isAddressTaken;
 
 		IrIndex initializer;
@@ -772,6 +772,9 @@ struct AstToIr
 				}
 				break;
 			}
+			case decl_function:
+				v.irValue = entity.as!FunctionDeclNode(context).getIrIndex(context);
+				break;
 			default:
 				writefln("visitExprValue %s", entity.astType);
 				context.unreachable; assert(false);
@@ -1247,7 +1250,6 @@ struct AstToIr
 		switch(u.op) with(UnOp)
 		{
 			case addrOf:
-				u.child.get_node(context).flags |= AstFlags.isLvalue;
 				IrLabel afterChild = IrLabel(currentBlock);
 				visitExprValue(u.child, currentBlock, afterChild);
 				currentBlock = afterChild.blockIndex;
@@ -1343,32 +1345,57 @@ struct AstToIr
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 
-	void visitExprValue(CallExprNode* c, IrIndex currentBlock, ref IrLabel nextStmt)
+	void visitExprValue(CallExprNode* node, IrIndex currentBlock, ref IrLabel nextStmt)
 	{
+		CompilationContext* c = context;
 		version(CfgGenPrint) writefln("[CFG GEN] beg CALL VAL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end CALL VAL cur %s next %s", currentBlock, nextStmt);
-		version(IrGenPrint) writefln("[IR GEN] call value (%s) begin", c.loc);
-		version(IrGenPrint) scope(success) writefln("[IR GEN] call value (%s) end", c.loc);
+		version(IrGenPrint) writefln("[IR GEN] call value (%s) begin", node.loc);
+		version(IrGenPrint) scope(success) writefln("[IR GEN] call value (%s) end", node.loc);
 
-		AstNode* callee = c.callee.get_effective_node(context).get_node(context);
+		AstIndex callee = node.callee.get_effective_node(c);
 
-		switch (callee.astType)
+		switch (callee.astType(c))
 		{
-			case AstType.decl_function: return visitCall(c, callee.as!FunctionDeclNode(context), currentBlock, nextStmt);
-			case AstType.decl_struct: return visitConstructor(c, callee.as!StructDeclNode(context), currentBlock, nextStmt);
+			case AstType.decl_function:
+				auto func = callee.get!FunctionDeclNode(c);
+				AstIndex returnType = func.signature.get!FunctionSignatureNode(c).returnType;
+				IrIndex irIndex = func.getIrIndex(c);
+				return visitCall(node, returnType, irIndex, currentBlock, nextStmt);
+			case AstType.decl_struct: return visitConstructor(node, callee.get!StructDeclNode(c), currentBlock, nextStmt);
+			case AstType.decl_enum_member:
+				// TODO: clean up
+				TypeNode* varType = callee.get_node_type(c).get_type(c);
+				if (!varType.isPointer) goto default;
+				TypeNode* base = varType.as_ptr.base.get_type(c);
+				if (!base.isFuncSignature) goto default;
+				AstIndex returnType = base.as_func_sig.returnType;
+				IrIndex irIndex = eval_static_expr(callee, c);
+				return visitCall(node, returnType, irIndex, currentBlock, nextStmt);
+			case AstType.decl_var:
+				VariableDeclNode* var = callee.get!VariableDeclNode(c);
+				TypeNode* varType = var.type.get_type(c);
+				if (!varType.isPointer) goto default;
+				TypeNode* base = varType.as_ptr.base.get_type(c);
+				if (!base.isFuncSignature) goto default;
+				AstIndex returnType = base.as_func_sig.returnType;
+				IrIndex irIndex = load(currentBlock, var.irValue);
+				return visitCall(node, returnType, irIndex, currentBlock, nextStmt);
+				goto default;
 			default:
-				c.type = context.basicTypeNodes(BasicType.t_error);
-				context.error(c.loc, "Cannot call %s", callee.astType);
+				c.error(node.loc, "Cannot call %s", callee.get_node_type(c).get_type(c).printer(c));
 		}
 	}
 
-	void visitCall(CallExprNode* c, FunctionDeclNode* callee, IrIndex currentBlock, ref IrLabel nextStmt) {
-		context.assertf(c.args.length <= IrInstrHeader.MAX_ARGS,
+	void visitCall(CallExprNode* c, AstIndex returnType, IrIndex callee, IrIndex currentBlock, ref IrLabel nextStmt) {
+		context.assertf(c.args.length+1 <= IrInstrHeader.MAX_ARGS,
 			"Cannot generate a call with %s arguments, max args is %s",
-			c.args.length, IrInstrHeader.MAX_ARGS);
+			c.args.length, IrInstrHeader.MAX_ARGS-1);
 
-		IrIndex[] args = context.allocateTempArray!IrIndex(c.args.length);
+		IrIndex[] args = context.allocateTempArray!IrIndex(c.args.length + 1); // first is callee
 		scope(exit) context.freeTempArray(args);
+
+		args[0] = callee;
 
 		foreach (i, AstIndex arg; c.args)
 		{
@@ -1377,26 +1404,25 @@ struct AstToIr
 			node.flags |= AstFlags.isArgument;
 			visitExprValue(arg, currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
-			args[i] = node.irValue;
+			args[i+1] = node.irValue;
 			debug context.assertf(node.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, node.astType, context.tokenLoc(node.loc));
 		}
 
 		// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
-		// need handling of function pointers, need function types in IR for that
+		// need handling of function pointers
 
-		version(IrGenPrint) writefln("[IR GEN] call args %s, callee %s", args, callee.backendData.index);
-		builder.emitInstrPreheader(IrInstrPreheader_call(callee.backendData.index));
+		version(IrGenPrint) writefln("[IR GEN] call %s", args);
 
-		if (callee.returnType.get_type(context).isVoid)
+		if (returnType.isVoidType(context))
 		{
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, args);
 			context.assertf(!res.result.isDefined, "Call has result");
 		}
 		else
 		{
-			callee.backendData.returnType = callee.returnType.gen_ir_type(context);
+			IrIndex callResultType = returnType.gen_ir_type(context);
 
-			ExtraInstrArgs extra = {hasResult : true, type : callee.backendData.returnType};
+			ExtraInstrArgs extra = { hasResult : true, type : callResultType };
 			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, extra, args);
 			c.irValue = res.result;
 		}

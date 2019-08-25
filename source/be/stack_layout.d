@@ -83,7 +83,8 @@ void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, r
 		baseReg = func.callingConvention.framePointer;
 	}*/
 
-	IrIndex baseReg = func.backendData.callingConvention.stackPointer;
+	CallConv* callConv = func.backendData.getCallConv(&context);
+	IrIndex baseReg = callConv.stackPointer;
 
 	// 1, 2, 4, 8, 16
 	uint[5] numAlignments;
@@ -116,7 +117,7 @@ void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, r
 
 	if (context.useFramePointer)
 	{
-		baseReg = func.backendData.callingConvention.framePointer;
+		baseReg = callConv.framePointer;
 		// frame pointer is stored together with locals
 		layout.reservedBytes += STACK_ITEM_SIZE;
 	}

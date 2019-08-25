@@ -142,12 +142,17 @@ struct IrIndex
 	bool isStackSlot() { return kind == IrValueKind.stackSlot; }
 	bool isType() { return kind == IrValueKind.type; }
 	bool isVariable() { return kind == IrValueKind.variable; }
+	bool isFunction() { return kind == IrValueKind.func; }
 
 	bool isTypeBasic() { return kind == IrValueKind.type && typeKind == IrTypeKind.basic; }
 	bool isTypePointer() { return kind == IrValueKind.type && typeKind == IrTypeKind.pointer; }
 	bool isTypeArray() { return kind == IrValueKind.type && typeKind == IrTypeKind.array; }
 	bool isTypeStruct() { return kind == IrValueKind.type && typeKind == IrTypeKind.struct_t; }
 	bool isTypeFunction() { return kind == IrValueKind.type && typeKind == IrTypeKind.func_t; }
+	bool isTypeVoid()
+	{
+		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrValueType.void_t;
+	}
 
 	bool isSignedConstant() {
 		return kind == IrValueKind.constant &&

@@ -21,44 +21,52 @@ struct FunctionBackendData
 	AstIndex lirData; // IrFunction
 	///
 	FunctionLiveIntervals liveIntervals;
+
+	// TODO: use objectSymIndex -> ObjectSymbol to get the code ptr for JIT
 	/// Executable machine-code bytes
 	ubyte[] code;
 	/// Position in buffer or in memory
 	void* funcPtr;
-	///
+
+	// TODO: move into IrFunction
 	StackLayout stackLayout;
-	///
-	CallConv* callingConvention;
-	/// Callers will use this index to call this function.
+	/// obsolete. Use FunctionDeclNode.getIrIndex
 	FunctionIndex index;
-	/// Index of IrValueKind.type kind
-	IrIndex returnType; // TODO: remove in favor of `type`
-	/// Index of function type
-	IrIndex irType;
 	///
 	Identifier name;
 	///
 	LinkIndex objectSymIndex;
+
+	// Copy of FunctionDeclNode.signature. TODO
+	AstIndex signature;
+
+	CallConv* getCallConv(CompilationContext* c) {
+		return callConventions[signature.get!FunctionSignatureNode(c).callConvention];
+	}
 }
 
 @(AstType.decl_function)
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
-	AstIndex returnType;
-	Array!AstIndex parameters; // array of var declarations
+	AstIndex signature; // FunctionSignatureNode
 	AstIndex block_stmt; // null if external
 	AstIndex _scope;
 	FunctionBackendData backendData;
 
-	this(TokenIndex loc, AstIndex retType, Array!AstIndex parameters, AstIndex block, Identifier id)
+	this(TokenIndex loc, AstIndex signature, AstIndex block, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_function;
 		this.flags = AstFlags.isDeclaration;
-		this.returnType = retType;
-		this.parameters = parameters;
+		this.signature = signature;
 		this.block_stmt = block;
 		this.backendData.name = id;
+		this.backendData.signature = signature;
+	}
+
+	IrIndex getIrIndex(CompilationContext* c) {
+		AstIndex index = get_ast_index(&this, c);
+		return IrIndex(index.storageIndex, IrValueKind.func);
 	}
 
 	/// External functions have no body
@@ -70,44 +78,28 @@ void name_register_func(AstIndex nodeIndex, FunctionDeclNode* node, ref NameRegi
 	node.state = AstNodeState.name_register;
 	state.insert(node.id, nodeIndex);
 	node._scope = state.pushScope(state.context.idString(node.id), Yes.ordered);
-	foreach (ref param; node.parameters) require_name_register(param, state);
-	if (node.block_stmt) require_name_register(node.block_stmt, state);
+	require_name_register(node.signature, state);
+	if (node.block_stmt)
+	{
+		// TODO: we don't need to register parameters on function without body
+		require_name_register(node.block_stmt, state);
+	}
 	state.popScope;
 	node.state = AstNodeState.name_register_done;
 }
 
 void name_resolve_func(FunctionDeclNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
+	// TODO: parameters don't need to see each other (including default param value expr)
 	state.pushScope(node._scope);
-	require_name_resolve(node.returnType, state);
-	foreach (ref param; node.parameters) require_name_resolve(param, state);
-	if (node.block_stmt) require_name_resolve(node.block_stmt, state);
+	require_name_resolve(node.signature, state);
+	if (node.block_stmt)
+	{
+		// TODO: we don't need to register parameters on function without body
+		require_name_resolve(node.block_stmt, state);
+	}
 	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
-}
-
-IrIndex gen_ir_type_func(FunctionDeclNode* f, CompilationContext* context)
-	out(res; res.isTypeFunction, "Not a function type")
-{
-	if (f.backendData.irType.isDefined) return f.backendData.irType;
-
-	uint numResults = 0;
-	if (!context.getAst!TypeNode(f.returnType).isVoid) numResults = 1;
-
-	f.backendData.irType = context.types.appendFuncSignature(numResults, f.parameters.length);
-	auto funcType = &context.types.get!IrTypeFunction(f.backendData.irType);
-
-	if (numResults == 1) {
-		IrIndex returnType = f.returnType.gen_ir_type(context);
-		funcType.resultTypes[0] = returnType;
-	}
-
-	IrIndex[] parameterTypes = funcType.parameterTypes;
-	foreach(i, AstIndex parameter; f.parameters) {
-		parameterTypes[i] = parameter.get_node_type(context).gen_ir_type(context);
-	}
-
-	return f.backendData.irType;
 }
 
 void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
@@ -117,18 +109,8 @@ void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 	auto prevFunc = state.curFunc;
 	state.curFunc = node;
-	node.backendData.callingConvention = &win64_call_conv;
 
-	TypeNode* returnType = node.returnType.get_type(c);
-	if (returnType.isOpaqueStruct(c)) {
-		c.error(node.loc,
-			"function cannot return opaque type `%s`",
-			returnType.printer(c));
-	}
-
-	foreach (ref AstIndex param; node.parameters) {
-		require_type_check(param, state);
-	}
+	require_type_check(node.signature, state);
 
 	if (node.block_stmt)
 	{

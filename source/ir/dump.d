@@ -400,7 +400,6 @@ void dumpIrInstr(ref InstrPrintInfo p)
 {
 	switch(p.instrHeader.op)
 	{
-		case IrOpcode.call: dumpCall(p); break;
 		case IrOpcode.block_exit_unary_branch: dumpUnBranch(p); break;
 		case IrOpcode.block_exit_binary_branch: dumpBinBranch(p); break;
 		case IrOpcode.block_exit_jump: dumpJmp(p); break;
@@ -449,15 +448,6 @@ void dumpOptionalResult(ref InstrPrintInfo p)
 	}
 }
 
-void dumpCall(ref InstrPrintInfo p)
-{
-	FunctionIndex calleeIndex = p.instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
-	FunctionDeclNode* callee = p.context.getFunction(calleeIndex);
-	dumpOptionalResult(p);
-	p.sink.putf("call %s", p.context.idString(callee.id));
-	dumpArgs(p);
-}
-
 void dumpArgs(ref InstrPrintInfo p)
 {
 	foreach (i, IrIndex arg; p.instrHeader.args)
@@ -472,6 +462,11 @@ void dumpArg(IrIndex arg, ref InstrPrintInfo p)
 	if (arg.isPhysReg)
 	{
 		p.sink.putf(" %s", IrIndexDump(arg, p));
+	}
+	else if (arg.isFunction)
+	{
+		FunctionDeclNode* func = p.context.getFunction(arg);
+		p.sink.putf(" %s", p.context.idString(func.id));
 	}
 	else
 	{

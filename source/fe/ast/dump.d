@@ -40,8 +40,9 @@ struct AstPrinter {
 		print("IMPORT ", context.idString(i.id));
 	}
 	void visit(FunctionDeclNode* f) {
-		print("FUNC ", f.returnType.printer(context), " ", context.idString(f.id));
-		foreach (param; f.parameters) pr_node(param);
+		auto sig = f.signature.get!FunctionSignatureNode(context);
+		print("FUNC ", sig.returnType.printer(context), " ", context.idString(f.id));
+		//foreach (param; f.parameters) pr_node(param);
 		if (f.block_stmt) pr_node(f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
@@ -132,6 +133,7 @@ struct AstPrinter {
 		print("CAST to ", t.type.printer(context));
 		pr_node(t.expr); }
 	void visit(BasicTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
+	void visit(FunctionSignatureNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(PtrTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
 	void visit(SliceTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
@@ -176,8 +178,9 @@ struct AstDotPrinter {
 		printLabel(i, `IMPORT\n%s`, context.idString(i.id));
 	}
 	void visit(FunctionDeclNode* f) {
-		printLabel(f, `FUNC\n%s %s`, f.returnType.printer(context), context.idString(f.id));
-		foreach (param; f.parameters) pr_node_edge(f, param);
+		auto sig = f.signature.get!FunctionSignatureNode(context);
+		printLabel(f, `FUNC\n%s %s`, sig.returnType.printer(context), context.idString(f.id));
+		//foreach (param; f.parameters) pr_node_edge(f, param);
 		if (f.block_stmt) pr_node_edge(f, f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
@@ -258,6 +261,7 @@ struct AstDotPrinter {
 		printLabel(t, `CAST\n%s`, t.type.printer(context));
 		pr_node_edge(t, t.expr); }
 	void visit(BasicTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
+	void visit(FunctionSignatureNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(PtrTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(StaticArrayTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
 	void visit(SliceTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }

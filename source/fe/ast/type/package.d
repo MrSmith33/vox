@@ -6,6 +6,7 @@ module fe.ast.type;
 import all;
 
 public import fe.ast.type.basic;
+public import fe.ast.type.func_sig;
 public import fe.ast.type.ptr;
 public import fe.ast.type.slice;
 public import fe.ast.type.static_array;
@@ -19,6 +20,7 @@ struct TypeNode
 	alias base this;
 
 	BasicTypeNode* as_basic() { if (astType == AstType.type_basic) return cast(BasicTypeNode*)&this; return null; }
+	FunctionSignatureNode* as_func_sig() { if (astType == AstType.type_func_sig) return cast(FunctionSignatureNode*)&this; return null; }
 	PtrTypeNode* as_ptr() { if (astType == AstType.type_ptr) return cast(PtrTypeNode*)&this; return null; }
 	SliceTypeNode* as_slice() { if (astType == AstType.type_slice) return cast(SliceTypeNode*)&this; return null; }
 	StaticArrayTypeNode* as_static_array() { if (astType == AstType.type_static_array) return cast(StaticArrayTypeNode*)&this; return null; }
@@ -83,6 +85,7 @@ struct TypeNode
 	bool isBool() { return astType == AstType.type_basic &&
 			as_basic.basicType == BasicType.t_bool; }
 	bool isStruct() { return astType == AstType.decl_struct; }
+	bool isFuncSignature() { return astType == AstType.type_func_sig; }
 
 	bool isUnsigned() {
 		return astType == AstType.type_basic && as_basic.isUnsigned;
@@ -173,37 +176,46 @@ struct TypePrinter
 	}
 }
 
+void printType(AstIndex t, scope void delegate(const(char)[]) sink, CompilationContext* ctx) {
+	if (t.isUndefined) {
+		sink("?");
+		return;
+	}
+	printType(t.get_type(ctx), sink, ctx);
+}
+
 void printType(TypeNode* t, scope void delegate(const(char)[]) sink, CompilationContext* ctx) {
+	if (t is null) {
+		sink("?");
+		return;
+	}
+
 	switch(t.astType)
 	{
 		case AstType.type_basic:
 			sink(basicTypeNames[t.as_basic.basicType]);
 			break;
-		case AstType.type_ptr:
-			AstIndex type = t.as_ptr.base.get_node_type(ctx);
-			if (type.isUndefined) {
-				sink("?");
-			} else {
-				type.get_type(ctx).printType(sink, ctx);
+		case AstType.type_func_sig:
+			FunctionSignatureNode* func_sig = t.as_func_sig;
+			func_sig.returnType.get_node_type(ctx).printType(sink, ctx);
+			sink(" function(");
+			foreach(i, param; func_sig.parameters)
+			{
+				if (i > 0) sink(", ");
+				param.get_node_type(ctx).printType(sink, ctx);
 			}
+			sink(")");
+			break;
+		case AstType.type_ptr:
+			t.as_ptr.base.get_node_type(ctx).printType(sink, ctx);
 			sink("*");
 			break;
 		case AstType.type_static_array:
-			AstIndex type = t.as_static_array.base.get_node_type(ctx);
-			if (type.isUndefined) {
-				sink("?[?]");
-			} else {
-				type.get_type(ctx).printType(sink, ctx);
-				formattedWrite(sink, "[%s]", t.as_static_array.length);
-			}
+			t.as_static_array.base.get_node_type(ctx).printType(sink, ctx);
+			formattedWrite(sink, "[%s]", t.as_static_array.length);
 			break;
 		case AstType.type_slice:
-			AstIndex type = t.as_slice.base.get_node_type(ctx);
-			if (type.isUndefined) {
-				sink("?");
-			} else {
-				type.get_type(ctx).printType(sink, ctx);
-			}
+			t.as_slice.base.get_node_type(ctx).printType(sink, ctx);
 			sink("[]");
 			break;
 		case AstType.decl_struct:
@@ -230,6 +242,7 @@ bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* c) {
 	{
 		case type_basic:
 			return t1.as_basic.basicType == t2.as_basic.basicType;
+		case type_func_sig: return same_type_func_sig(t1.as_func_sig, t2.as_func_sig, c);
 		case type_ptr: return same_type_ptr(t1.as_ptr, t2.as_ptr, c);
 		case type_static_array: return same_type_static_array(t1.as_static_array, t2.as_static_array, c);
 		case type_slice:
@@ -255,6 +268,7 @@ IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* c)
 		case AstType.type_static_array: return gen_ir_type_static_array(typeNode.as_static_array, c);
 		case AstType.type_slice: return gen_ir_type_slice(typeNode.as_slice, c);
 		case AstType.decl_struct: return gen_ir_type_struct(typeNode.as_struct, c);
+		case AstType.type_func_sig: return gen_ir_type_func_sig(typeNode.as_func_sig, c);
 		case AstType.expr_name_use: return gen_ir_type(typeNode.as_name_use.entity.get_node_type(c), c);
 		default:
 			c.internal_error(typeNode.loc, "Cannot convert `%s` to ir type", typeNode.astType);

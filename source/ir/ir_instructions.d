@@ -249,6 +249,7 @@ alias IrInstr_any_binary_instr =  IrGenericInstr!(IrOpcode.invalid,  2, IFLG.has
 
 alias IrInstr_conv = IrGenericInstr!(IrOpcode.conv, 1, IFLG.hasResult);
 alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0, IFLG.isBlockExit);
+// first argument is function or function pointer
 alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);
 
 /// args: aggregate pointer, 1 or more index
@@ -330,9 +331,4 @@ struct IrInstr_parameter
 	IrInstrHeader header;
 	IrIndex result;
 	uint index;
-}
-
-struct IrInstrPreheader_call
-{
-	FunctionIndex calleeIndex;
 }

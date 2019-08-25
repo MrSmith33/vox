@@ -460,6 +460,13 @@ struct CompilationContext
 		return getAst!FunctionDeclNode(files[index.moduleIndex.fileIndex].mod.functions[index.functionIndex]);
 	}
 
+	FunctionDeclNode* getFunction(IrIndex index)
+	{
+		assertf(index.isFunction, "index is %s", index);
+		AstIndex astIndex = AstIndex(index.storageUintIndex);
+		return getAst!FunctionDeclNode(astIndex);
+	}
+
 	FunctionDeclNode* findFunction(string moduleName, string funcName)
 	{
 		ModuleDeclNode* mod = findModule(moduleName);
@@ -468,7 +475,6 @@ struct CompilationContext
 		return mod.findFunction(funcName, &this);
 	}
 
-	/// Will throw exception if function exists in more than 1 module
 	void findFunction(string funcName, void delegate(ModuleDeclNode*, FunctionDeclNode*) onFunction)
 	{
 		Identifier funcId = idMap.find(funcName);
@@ -514,7 +520,7 @@ struct CompilationContext
 		//assert(funcDecl.returnType.isSameTypeAs!ParamType, "wrong result type");
 
 		auto numRequestedParams = ParamTypes.length;
-		auto numParams = funcDecl.parameters.length;
+		auto numParams = funcDecl.signature.get!FunctionSignatureNode(&this).parameters.length;
 
 		Identifier funcId = funcDecl.id;
 

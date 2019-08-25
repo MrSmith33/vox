@@ -23,5 +23,6 @@ enum IrValueKind : ubyte
 	physicalRegister,
 	type,
 	variable, /// Represents variable index while converting into SSA-form
+	// temporarily IrIndex.storageUintIndex contains AstIndex of FunctionDeclNode
 	func
 }

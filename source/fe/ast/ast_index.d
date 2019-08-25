@@ -46,6 +46,7 @@ struct AstIndex
 	AstIndex getElementType(CompilationContext* c) { return get_type(c).getElementType(c); }
 	bool isErrorType(CompilationContext* c) { return get_type(c).isError; }
 	bool isPointerType(CompilationContext* c) { return get_type(c).isPointer; }
+	bool isVoidType(CompilationContext* c) { return get_type(c).isVoid; }
 }
 
 

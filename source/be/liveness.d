@@ -71,8 +71,6 @@ void pass_live_intervals(ref CompilationContext context, ref ModuleDeclNode mod,
 
 void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIntervals liveIntervals, ref IrFunction ir, ref LiveBitmap liveBitmap)
 {
-	context.assertf(ir.backendData.callingConvention !is null, "Calling convention is null");
-
 	size_t numVregs = ir.numVirtualRegisters;
 	size_t numBucketsPerBlock = divCeil(numVregs, size_t.sizeof * 8);
 	liveBitmap.allocSets(numBucketsPerBlock, ir.numBasicBlocks);
@@ -288,9 +286,8 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			// add fixed intervals fo function calls
 			if (instrInfo.isCall)
 			{
-				FunctionIndex calleeIndex = instrHeader.preheader!IrInstrPreheader_call.calleeIndex;
-				FunctionDeclNode* callee = context.getFunction(calleeIndex);
-				CallConv* cc = callee.backendData.callingConvention;
+				IrIndex callee = instrHeader.args[0];
+				CallConv* cc = context.types.getCalleeCallConv(callee, ir, &context);
 				IrIndex[] volatileRegs = cc.volatileRegs;
 				foreach(IrIndex reg; volatileRegs) {
 					IntervalIndex interval = liveIntervals.intervalIndex(PregIntervalIndex(reg));

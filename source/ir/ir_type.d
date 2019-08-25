@@ -103,6 +103,7 @@ struct IrTypeFunction
 	IrTypeHeader header;
 	uint numResults;
 	uint numParameters;
+	CallConvention callConv;
 
 	// Prevent type from copying because members will not be copied. Need to use ptr.
 	@disable this(this);
@@ -135,7 +136,7 @@ struct IrTypeStorage
 		return result;
 	}
 
-	IrIndex appendFuncSignature(uint numResults, uint numParameters)
+	IrIndex appendFuncSignature(uint numResults, uint numParameters, CallConvention callConv)
 	{
 		IrIndex result = append!IrTypeFunction;
 
@@ -149,6 +150,7 @@ struct IrTypeStorage
 		auto func = &get!IrTypeFunction(result);
 		func.numResults = numResults;
 		func.numParameters = numParameters;
+		func.callConv = callConv;
 		return result;
 	}
 
@@ -211,13 +213,6 @@ struct IrTypeStorage
 		static if (!is(T == IrTypeHeader))
 			assert(index.typeKind == getIrTypeKind!T, format("%s != %s", index.typeKind, getIrTypeKind!T));
 		return *cast(T*)(&buffer.bufPtr[index.typeIndex]);
-	}
-
-	bool isVoid(IrIndex type)
-	{
-		assert(type.isDefined, "null index");
-		assert(type.isType, "not a type");
-		return type.typeKind == IrTypeKind.basic && type.typeIndex == IrValueType.void_t;
 	}
 
 	uint typeSize(IrIndex type) {
@@ -287,6 +282,38 @@ struct IrTypeStorage
 
 		IrTypeStructMember member = members[memberIndex];
 		return member.type;
+	}
+
+	IrIndex getReturnType(IrIndex funcSigType, ref CompilationContext c)
+	{
+		auto func = &get!IrTypeFunction(funcSigType);
+		if (func.numResults == 0)
+			return makeBasicTypeIndex(IrValueType.void_t);
+		c.assertf(func.numResults == 1, "getFuncSignatureReturnType on func with %s results", func.numResults);
+		return func.resultTypes[0];
+	}
+
+	CallConv* getCalleeCallConv(IrIndex callee, ref IrFunction ir, CompilationContext* c)
+	{
+		if (callee.isFunction)
+		{
+			return c.getFunction(callee).backendData.getCallConv(c);
+		}
+		else
+		{
+			IrIndex type = getValueType(callee, ir, *c);
+			if (type.isTypePointer)
+			{
+				IrIndex base = getPointerBaseType(type);
+				if (base.isTypeFunction)
+				{
+					CallConvention callConv = get!IrTypeFunction(base).callConv;
+					return callConventions[callConv];
+				}
+			}
+		}
+		c.internal_error("cannot get call convention %s", callee);
+		assert(false);
 	}
 
 	bool isSameType(IrIndex a, IrIndex b) {

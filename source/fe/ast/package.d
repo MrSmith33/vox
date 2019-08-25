@@ -61,6 +61,7 @@ enum AstType : ubyte
 	type_ptr,
 	type_static_array,
 	type_slice,
+	type_func_sig,
 }
 
 enum AstFlags : ushort
@@ -191,11 +192,11 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 	{
 		case decl_alias: return node.as!AliasDeclNode(c).initializer.get_node_type(c);
 		case decl_struct: return nodeIndex;
-		case decl_function: return node.as!FunctionDeclNode(c).returnType.get_node_type(c);
+		case decl_function: return node.as!FunctionDeclNode(c).signature.get_node_type(c);
 		case decl_var: return node.as!VariableDeclNode(c).type.get_node_type(c);
 		case decl_enum: return nodeIndex;
 		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
-		case type_basic, type_ptr, type_slice, type_static_array: return nodeIndex;
+		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return nodeIndex;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_type(c);
 		case literal_int, literal_string, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return node.as!ExpressionNode(c).type.get_node_type(c);
@@ -268,6 +269,7 @@ struct AstNode
 	mixin AstNodeData;
 }
 
+@(AstType.error)
 struct ErrorAstNode
 {
 	mixin AstNodeData!(AstType.error);

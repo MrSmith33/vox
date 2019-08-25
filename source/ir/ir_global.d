@@ -30,6 +30,8 @@ struct IrGlobal
 		if (initializerPtr is null) return null;
 		return initializerPtr[0..length];
 	}
+	// TODO: add IrIndex of data for initializer
+
 	/// Type of global. Must be a pointer type
 	IrIndex type;
 	/// set of IrGlobalFlags
@@ -45,7 +47,7 @@ struct IrGlobal
 	uint numUsers;
 	///
 	LinkIndex objectSymIndex;
-	LinkIndex moduleSymIndex;
+	LinkIndex moduleSymIndex; // remove this since object already has module index
 
 	bool isMutable() { return (flags & IrGlobalFlags.isMutable) != 0; }
 	bool isAllZero() { return (flags & IrGlobalFlags.isAllZero) != 0; }

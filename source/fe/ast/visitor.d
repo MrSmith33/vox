@@ -50,6 +50,7 @@ mixin template AstVisitorMixin() {
 			case literal_bool: auto l = cast(BoolLiteralExprNode*)n; visit(l); break;
 
 			case type_basic: auto t = cast(BasicTypeNode*)n; visit(t); break;
+			case type_func_sig: auto f = cast(FunctionSignatureNode*)n; visit(f); break;
 			case type_ptr: auto t = cast(PtrTypeNode*)n; visit(t); break;
 			case type_static_array: auto t = cast(StaticArrayTypeNode*)n; visit(t); break;
 			case type_slice: auto t = cast(SliceTypeNode*)n; visit(t); break;
