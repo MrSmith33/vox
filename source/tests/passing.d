@@ -1839,12 +1839,25 @@ immutable test86 = q{--- test86
 	u8[ptrsize] arr2;
 };
 
-@TestInfo()
+@TestInfo(&tester87)
 immutable test87 = q{--- test87
 	// pointer type expr parsing
 	enum ptrsize = i32*.sizeof;
 	enum ptrsize2 = i32**.sizeof;
+	enum arrsize = i32[4].sizeof;
+	struct S { i64 var; } // 8
+	enum S_ptrsize = S*.sizeof;
+	enum S_ptrsize2 = S**.sizeof;
+	enum S_arrsize = S[4].sizeof; // 32
+	S[S_arrsize] arr; // 256
+	u64 S_sizeof() { return S.sizeof; } // 8
+	u64 arr_sizeof() { return arr.sizeof; } // 256
 };
+
+void tester87(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("S_sizeof")() == 8);
+	assert(ctx.getFunctionPtr!(ulong)("arr_sizeof")() == 256);
+}
 
 @TestInfo(&tester88)
 immutable test88 = q{--- test88
@@ -1874,3 +1887,11 @@ void tester88(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("test")() == 84);
 	assert(ctx.getFunctionPtr!(int)("test2")() == 84);
 }
+
+@TestInfo()
+immutable test89 = q{--- test89
+	// function pointer as parameter
+	void tran_thong(i32 xstart, i32 ystart, i32 xend, i32 yend, void function(void*, i32, i32) callback)
+	{}
+};
+

@@ -88,6 +88,8 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
 	memberOffset = alignValue!uint(memberOffset, maxAlignment);
 	structType.size = memberOffset;
 	structType.alignment = maxAlignment;
+	s.size = memberOffset;
+	s.alignment = maxAlignment;
 	return s.irType;
 }
 
@@ -95,5 +97,6 @@ void type_check_struct(StructDeclNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
 	foreach (decl; node.declarations) require_type_check(decl, state);
+	gen_ir_type_struct(node, state.context);
 	node.state = AstNodeState.type_check_done;
 }

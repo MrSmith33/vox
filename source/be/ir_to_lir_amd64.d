@@ -73,6 +73,7 @@ struct IrToLir
 			assert(index.isDefined);
 			if (index.isBasicBlock || index.isVirtReg || index.isPhi || index.isInstruction) {
 				//writefln("%s -> %s", index, mirror[index]);
+				assert(mirror[index].isDefined);
 				index = mirror[index];
 			}
 		}
@@ -559,10 +560,15 @@ struct IrToLir
 						break;
 
 					case IrOpcode.shl, IrOpcode.lshr, IrOpcode.ashr:
-						// TODO: check if right operand is constant and pass it as is. Recognize constants in codegen
-						IrIndex rightArg = amd64_reg.cx;
-						rightArg.physRegSize = ArgType.BYTE;
-						makeMov(rightArg, instrHeader.args[1], instrHeader.argSize);
+						IrIndex rightArg;
+						if (instrHeader.args[1].isConstant)
+							rightArg = instrHeader.args[1];
+						else
+						{
+							rightArg = amd64_reg.cx;
+							rightArg.physRegSize = ArgType.BYTE;
+							makeMov(rightArg, instrHeader.args[1], instrHeader.argSize);
+						}
 						IrIndex type = ir.getVirtReg(instrHeader.result).type;
 						ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
 						InstrWithResult res;
@@ -587,6 +593,7 @@ struct IrToLir
 						genStore(getFixedIndex(instrHeader.args[0]), 0, instrHeader.args[1], 0, type, lirBlockIndex, ir);
 						break;
 					case IrOpcode.conv:
+						// Incomplete implementation
 						IrIndex typeFrom = getValueType(instrHeader.args[0], ir, *context);
 						IrIndex typeTo = ir.getVirtReg(instrHeader.result).type;
 						uint typeSizeFrom = context.types.typeSize(typeFrom);

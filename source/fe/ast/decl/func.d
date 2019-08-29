@@ -21,17 +21,8 @@ struct FunctionBackendData
 	AstIndex lirData; // IrFunction
 	///
 	FunctionLiveIntervals liveIntervals;
-
-	// TODO: use objectSymIndex -> ObjectSymbol to get the code ptr for JIT
-	/// Executable machine-code bytes
-	ubyte[] code;
-	/// Position in buffer or in memory
-	void* funcPtr;
-
 	// TODO: move into IrFunction
 	StackLayout stackLayout;
-	/// obsolete. Use FunctionDeclNode.getIrIndex
-	FunctionIndex index;
 	///
 	Identifier name;
 	///

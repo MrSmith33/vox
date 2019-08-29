@@ -503,10 +503,10 @@ struct Lexer
 		switch(c)
 		{
 			case '\'':
-			case '\"':
-			case '\?':
+			case '"':
+			case '?':
 			case '\\':
-			case '\0':
+			case '0':
 			case 'a':
 			case 'b':
 			case 'f':
@@ -740,10 +740,10 @@ dchar escapeToChar(const(char)[] strRepr) {
 	import std.conv : to;
 	switch (strRepr[0]) {
 		case '\'': return '\'';
-		case '\"': return '\"';
-		case '\?': return '\?';
+		case '"': return '\"';
+		case '?': return '\?';
 		case '\\': return '\\';
-		case '\0': return '\0';
+		case '0': return '\0';
 		case 'a': return '\a';
 		case 'b': return '\b';
 		case 'f': return '\f';

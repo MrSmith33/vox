@@ -26,7 +26,6 @@ struct ModuleDeclNode {
 	Identifier id;
 
 	void addFunction(AstIndex func, CompilationContext* context) {
-		func.get!FunctionDeclNode(context).backendData.index = FunctionIndex(cast(uint)functions.length, moduleIndex);
 		functions.put(context.arrayArena, func);
 	}
 

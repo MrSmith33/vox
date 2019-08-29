@@ -273,7 +273,7 @@ struct Parser
 		{
 			version(print_parse) auto s3 = scop("<func_declaration> %s", start);
 			Array!AstIndex params;
-			parseParameters(params);
+			parseParameters(params, NeedRegNames.yes); // functions need to register their param names
 
 			AstIndex block;
 			if (tok.type != TokenType.SEMICOLON)
@@ -294,7 +294,9 @@ struct Parser
 		}
 	}
 
-	void parseParameters(ref Array!AstIndex params)
+	enum NeedRegNames : bool { no, yes }
+	// nameReg can put parameters in name_register_done state
+	void parseParameters(ref Array!AstIndex params, NeedRegNames nameReg)
 	{
 		expectAndConsume(TokenType.LPAREN);
 
@@ -319,6 +321,9 @@ struct Parser
 			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
 			paramNode.flags |= VariableFlags.isParameter;
 			paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
+			if (nameReg == NeedRegNames.no)
+				paramNode.state = AstNodeState.name_register_done;
+
 			params.put(context.arrayArena, param);
 			if (tok.type == TokenType.COMMA) nextToken; // skip ","
 			else break;
@@ -1159,7 +1164,7 @@ AstIndex leftOpDot(ref Parser p, Token token, int rbp, AstIndex left)
 
 AstIndex leftFunctionOp(ref Parser p, Token token, int rbp, AstIndex returnType) {
 	Array!AstIndex params;
-	p.parseParameters(params);
+	p.parseParameters(params, p.NeedRegNames.no); // function types don't need to register their param names
 	auto sig = p.make!FunctionSignatureNode(token.index, returnType, params);
 	// we don't have to register parameter names, since we have no body
 	sig.setState(p.context, AstNodeState.name_register_done);

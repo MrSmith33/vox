@@ -327,6 +327,7 @@ struct Encoder
 		sink_put(opcode);                                                       // Opcode
 		sink_put(imm);                                                          // Imm8/16/32/64
 	}
+	// <opcode> /regOpcode
 	void putInstrUnaryReg1(ArgType argType, O)(O opcode, ubyte regOpcode, Register dst_rm) if (isAnyOpcode!O) {
 		static if (argType == ArgType.WORD) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
 		putRexByte_regB!argType(dst_rm);                                        // REX
@@ -499,6 +500,13 @@ struct CodeGen_x86_64
 	mixin unaryInstr_RM!("div", [0xF6,0xF7], 6);
 	mixin unaryInstr_RM!("idiv", [0xF6,0xF7], 7);
 	mixin unaryInstr_RM!("not", [0xF6,0xF7], 2); // One's Complement Negation
+
+	mixin shift_RM_Imm8!("shli", [0xC0,0xC1], 4); // shl dst, imm8
+	mixin shift_RM_Imm8!("shri", [0xC0,0xC1], 5); // shr dst, imm8
+	mixin shift_RM_Imm8!("sari", [0xC0,0xC1], 7); // sar dst, imm8
+	mixin unaryInstr_RM!("shl1", [0xD0,0xD1], 4); // shl dst, 1
+	mixin unaryInstr_RM!("shr1", [0xD0,0xD1], 5); // shr dst, 1
+	mixin unaryInstr_RM!("sar1", [0xD0,0xD1], 7); // sar dst, 1
 	mixin unaryInstr_RM!("shl", [0xD2,0xD3], 4); // shl dst, cl
 	mixin unaryInstr_RM!("shr", [0xD2,0xD3], 5); // shr dst, cl
 	mixin unaryInstr_RM!("sar", [0xD2,0xD3], 7); // sar dst, cl
@@ -749,4 +757,17 @@ mixin template unaryInstr_RM(string name, ubyte[2] opcodes, ubyte extraOpcode) {
 	mixin(format("void %sw(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.WORD) (OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
 	mixin(format("void %sd(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.DWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
 	mixin(format("void %sq(MemAddress dst) { encoder.putInstrUnaryMem!(ArgType.QWORD)(OP1(%s), %s, dst); }", name, opcodes[1], extraOpcode));
+}
+
+// TODO: duplicate with binaryInstr_RM_Imm
+mixin template shift_RM_Imm8(string name, ubyte[2] opcodes, ubyte extraOpcode) {
+	mixin(format("void %sb(Register dst, Imm8 src) { encoder.putInstrBinaryRegImm2!(ArgType.BYTE) (OP1(%s), %s, dst, src); }", name, opcodes[0], extraOpcode));
+	mixin(format("void %sw(Register dst, Imm8 src) { encoder.putInstrBinaryRegImm2!(ArgType.WORD) (OP1(%s), %s, dst, src); }", name, opcodes[1], extraOpcode));
+	mixin(format("void %sd(Register dst, Imm8 src) { encoder.putInstrBinaryRegImm2!(ArgType.DWORD)(OP1(%s), %s, dst, src); }", name, opcodes[1], extraOpcode));
+	mixin(format("void %sq(Register dst, Imm8 src) { encoder.putInstrBinaryRegImm2!(ArgType.QWORD)(OP1(%s), %s, dst, src); }", name, opcodes[1], extraOpcode));
+
+	mixin(format("void %sb(MemAddress dst, Imm8 src) { encoder.putInstrBinaryMemImm!(ArgType.BYTE) (OP1(%s), %s, dst, src); }", name, opcodes[0], extraOpcode));
+	mixin(format("void %sw(MemAddress dst, Imm8 src) { encoder.putInstrBinaryMemImm!(ArgType.WORD) (OP1(%s), %s, dst, src); }", name, opcodes[1], extraOpcode));
+	mixin(format("void %sd(MemAddress dst, Imm8 src) { encoder.putInstrBinaryMemImm!(ArgType.DWORD)(OP1(%s), %s, dst, src); }", name, opcodes[1], extraOpcode));
+	mixin(format("void %sq(MemAddress dst, Imm8 src) { encoder.putInstrBinaryMemImm!(ArgType.QWORD)(OP1(%s), %s, dst, src); }", name, opcodes[1], extraOpcode));
 }

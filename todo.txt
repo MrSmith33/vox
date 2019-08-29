@@ -78,6 +78,7 @@ o dll linking
 
 - improve parser to detect all declaration kinds in statements (add slice and static array)
 - attributes
+- test escape sequences
 - test all implicit conversions
 - test parsing errors
 - test all integer size code gen
@@ -102,6 +103,7 @@ o dll linking
 + constant folding of expressions in enum initializers and static array length
 + allow arbitrary expressions used as static array length
 + .min, .max properties of numeric types
++ static array type expr `i32[4].sizeof`
 + null to empty slice
 + for loop
 + function signature IR type (needed to allow changing signature for ABI handling in IR to LIR pass)

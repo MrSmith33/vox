@@ -64,8 +64,11 @@ struct FuncDumpSettings
 	bool printBlockOuts = false;
 	bool printBlockRefs = false;
 	bool printInstrIndexEnabled = true;
+	bool printLivenessLinearIndex = false;
+	bool printVregLiveness = false;
+	bool printPregLiveness = false;
 	bool printUses = true;
-	bool printLive = true;
+	bool printLiveness = false;
 	bool escapeForDot = false;
 }
 
@@ -125,6 +128,43 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 	sink.put(")");
 	sink.putfln(` %s bytes ir:"%s" {`, ir.storage.length * uint.sizeof, instr_set_names[ir.instructionSet]);
 	int indexPadding = numDigitsInNumber10(ir.storage.length);
+	int liveIndexPadding = numDigitsInNumber10(ir.backendData.liveIntervals.maxLinearIndex);
+
+	void printInstrLiveness(IrIndex linearKeyIndex, IrIndex instrIndex) {
+		if (!settings.printLiveness) return;
+		uint linearInstrIndex = ir.backendData.liveIntervals.linearIndicies[linearKeyIndex];
+
+		if (settings.printPregLiveness)
+		{
+			foreach(ref interval; ir.backendData.liveIntervals.physicalIntervals)
+			{
+				if (ir.backendData.liveIntervals.intervalCoversPosition(interval.first, linearInstrIndex))
+					sink.put("#");
+				else
+					sink.put(" ");
+			}
+			if (settings.printVregLiveness) sink.put("|");
+		}
+
+		if (settings.printVregLiveness)
+		foreach(ref interval; ir.backendData.liveIntervals.virtualIntervals)
+		{
+			if (ir.backendData.liveIntervals.intervalCoversPosition(interval.first, linearInstrIndex))
+			{
+				if (ir.getVirtReg(interval.definition).definition == instrIndex)
+					sink.put("D");
+				else
+					sink.put("#");
+			}
+			else
+				sink.put(" ");
+		}
+
+		if (settings.printLivenessLinearIndex)
+		{
+			sink.putf(" %*s| ", liveIndexPadding, linearInstrIndex);
+		}
+	}
 
 	void printInstrIndex(IrIndex someIndex) {
 		if (!settings.printInstrIndexEnabled) return;
@@ -161,6 +201,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		printer.blockIndex = blockIndex;
 		printer.block = block;
 
+		printInstrLiveness(blockIndex, blockIndex);
 		printInstrIndex(blockIndex);
 		sink.putf("  %s", IrIndexDump(blockIndex, printer));
 
@@ -210,6 +251,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 			phi = &ir.getPhi(phiIndex);
 			scope(exit) phiIndex = phi.nextPhi;
 
+			printInstrLiveness(blockIndex, phiIndex);
 			printInstrIndex(phiIndex);
 			sink.putf("    %s %s = %s(",
 				IrIndexDump(phi.result, printer),
@@ -229,6 +271,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		// instrs
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
 		{
+			printInstrLiveness(instrIndex, instrIndex);
 			printInstrIndex(instrIndex);
 
 			// print instr

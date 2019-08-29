@@ -184,7 +184,7 @@ struct LinearScan
 			if (!it.first.isNull)
 				inactive.put(it.first);
 
-		version(RAPrint) writefln("intervals %s", live.intervals.data[live.numFixedIntervals..$]);
+		version(RAPrint) writefln("intervals %s", live.intervals[live.numFixedIntervals..$]);
 
 		// while unhandled != { } do
 		while (!unhandled.empty)
@@ -512,7 +512,7 @@ struct LinearScan
 		}
 		// physRegs.markAsUsed(reg);
 
-		context.unreachable;
+		context.internal_error("%s", currentIt.definition);
 		assert(false);
 	}
 
@@ -593,13 +593,14 @@ struct LinearScan
 						IrIndex r1 = instrHeader.result;
 						IrIndex r2 = instrHeader.args[0];
 						IrIndex r3 = instrHeader.args[1];
-						if (r2 != r3)
+
+						if ( !sameIndexOrPhysReg(r2, r3) ) // r2 != r3
 						{
-							if (r1 == r2)
+							if ( sameIndexOrPhysReg(r1, r2) ) // r1 == r2
 							{
 								// "r1 = op r1 r3", noop
 							}
-							else if (r1 == r3) // r1 = op r2 r1
+							else if ( sameIndexOrPhysReg(r1, r3) ) // r1 = op r2 r1
 							{
 								if (instrInfo.isCommutative) // r1 = op r1 r2
 								{
@@ -614,7 +615,7 @@ struct LinearScan
 							else // r1 = op r2 r3; all different
 							{
 								// mov r1 r2
-								ExtraInstrArgs extra = {addUsers : false, result : r1, argSize : IrArgSize.size64 };
+								ExtraInstrArgs extra = {addUsers : false, result : r1};
 								InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
 								builder.insertBeforeInstr(vreg.definition, instr.instruction);
 								// r1 = op r1 r3
@@ -623,17 +624,19 @@ struct LinearScan
 						}
 						else // r2 == r3
 						{
-							if (r1 != r2)
+							if ( !sameIndexOrPhysReg(r1, r2) )
 							{
-								ExtraInstrArgs extra = {addUsers : false, result : r1, argSize : IrArgSize.size64};
+								// mov r1 r2
+								ExtraInstrArgs extra = {addUsers : false, result : r1};
 								InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
 								builder.insertBeforeInstr(vreg.definition, instr.instruction);
 							}
+							// r1 = op r1 r1
 							instrHeader.args[0] = r1;
 						}
 
 						// validation
-						context.assertf(instrHeader.result == instrHeader.args[0],
+						context.assertf(sameIndexOrPhysReg(instrHeader.result, instrHeader.args[0]),
 							"two-operand form not ensured res(%s) != arg0(%s)", instrHeader.result, instrHeader.args[0]);
 					}
 
@@ -648,9 +651,9 @@ struct LinearScan
 						IrIndex r1 = instrHeader.result;
 						IrIndex r2 = instrHeader.args[0];
 
-						if (r1 != r2)
+						if ( !sameIndexOrPhysReg(r1, r2) )
 						{
-							ExtraInstrArgs extra = {addUsers : false, result : r1, argSize : IrArgSize.size64};
+							ExtraInstrArgs extra = {addUsers : false, result : r1};
 							InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
 							builder.insertBeforeInstr(vreg.definition, instr.instruction);
 						}

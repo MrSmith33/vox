@@ -42,7 +42,7 @@ struct AstPrinter {
 	void visit(FunctionDeclNode* f) {
 		auto sig = f.signature.get!FunctionSignatureNode(context);
 		print("FUNC ", sig.returnType.printer(context), " ", context.idString(f.id));
-		//foreach (param; f.parameters) pr_node(param);
+		foreach (param; sig.parameters) pr_node(param);
 		if (f.block_stmt) pr_node(f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
@@ -180,7 +180,7 @@ struct AstDotPrinter {
 	void visit(FunctionDeclNode* f) {
 		auto sig = f.signature.get!FunctionSignatureNode(context);
 		printLabel(f, `FUNC\n%s %s`, sig.returnType.printer(context), context.idString(f.id));
-		//foreach (param; f.parameters) pr_node_edge(f, param);
+		foreach (param; sig.parameters) pr_node_edge(f, param);
 		if (f.block_stmt) pr_node_edge(f, f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {

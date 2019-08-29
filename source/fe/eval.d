@@ -92,6 +92,7 @@ IrIndex eval_builtin(BuiltinId builtin, AstIndex obj, TokenIndex loc, Compilatio
 			require_type_check(objType, c);
 			return c.constants.add(objType.get!StaticArrayTypeNode(c).length, IsSigned.no, IrArgSize.size64);
 		case type_sizeof:
+			require_type_check(objType, c);
 			return c.constants.add(objType.get_type(c).size(c), IsSigned.no, IrArgSize.size64);
 		default:
 			c.unrecoverable_error(loc,

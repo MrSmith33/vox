@@ -182,7 +182,6 @@ struct CodeEmitter
 	{
 		fun = f;
 		lir = context.getAst!IrFunction(fun.backendData.lirData);
-		fun.backendData.funcPtr = gen.pc;
 
 		ObjectSymbol* funcSym = &context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
 		funcSym.dataPtr = gen.pc;
@@ -256,7 +255,8 @@ struct CodeEmitter
 
 	uint referenceOffset()
 	{
-		ptrdiff_t diff = cast(void*)gen.pc - fun.backendData.funcPtr;
+		ObjectSymbol* funcSym = &context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
+		ptrdiff_t diff = gen.pc - funcSym.dataPtr;
 		assert(diff >= 0, "Negative buffer position");
 		assert(diff <= uint.max, "Function is bigger than uint.max");
 		return cast(uint)diff;
@@ -360,15 +360,42 @@ struct CodeEmitter
 						break;
 					case Amd64Opcode.shl:
 						Register dst = indexToRegister(instrHeader.args[0]);
-						gen.shl(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						IrIndex src = instrHeader.args[1];
+						if (src.isConstant) {
+							IrConstant con = context.constants.get(instrHeader.args[1]);
+							if (con.i8 == 1)
+								gen.shl1(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+							else
+								gen.shli(dst, Imm8(con.i8), cast(ArgType)instrHeader.args[0].physRegSize);
+						}
+						else
+							gen.shl(dst, cast(ArgType)instrHeader.args[0].physRegSize);
 						break;
 					case Amd64Opcode.shr:
 						Register dst = indexToRegister(instrHeader.args[0]);
-						gen.shr(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						IrIndex src = instrHeader.args[1];
+						if (src.isConstant) {
+							IrConstant con = context.constants.get(instrHeader.args[1]);
+							if (con.i8 == 1)
+								gen.shr1(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+							else
+								gen.shri(dst, Imm8(con.i8), cast(ArgType)instrHeader.args[0].physRegSize);
+						}
+						else
+							gen.shr(dst, cast(ArgType)instrHeader.args[0].physRegSize);
 						break;
 					case Amd64Opcode.sar:
 						Register dst = indexToRegister(instrHeader.args[0]);
-						gen.sar(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						IrIndex src = instrHeader.args[1];
+						if (src.isConstant) {
+							IrConstant con = context.constants.get(instrHeader.args[1]);
+							if (con.i8 == 1)
+								gen.sar1(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+							else
+								gen.sari(dst, Imm8(con.i8), cast(ArgType)instrHeader.args[0].physRegSize);
+						}
+						else
+							gen.sar(dst, cast(ArgType)instrHeader.args[0].physRegSize);
 						break;
 					case Amd64Opcode.not:
 						Register dst = indexToRegister(instrHeader.args[0]);
@@ -579,7 +606,7 @@ struct CodeEmitter
 		gen.encodeRegular(argDst, argSrc, param);
 	}
 
-	/// Generate move from src operand to dst operand. argType describes the size of operands.
+	/// Generate move from src operand to dst operand. Size of destination is used
 	void genMove(IrIndex dst, IrIndex src)
 	{
 		ArgType argType = cast(ArgType)dst.physRegSize;

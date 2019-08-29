@@ -160,3 +160,17 @@ struct IrIndex
 			constantKind == IrConstantKind.intSignedBig);
 	}
 }
+
+// compares physical registers size agnostically
+// if not physical register compares as usual
+bool sameIndexOrPhysReg(IrIndex a, IrIndex b) pure @nogc
+{
+	if (a.asUint == b.asUint) return true;
+	if (a.kind == IrValueKind.physicalRegister)
+	{
+		a.physRegSize = 0;
+		b.physRegSize = 0;
+		return a.asUint == b.asUint;
+	}
+	return false;
+}

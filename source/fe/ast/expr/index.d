@@ -13,10 +13,25 @@ struct IndexExprNode {
 	AstIndex index;
 }
 
-void name_resolve_index(IndexExprNode* node, ref NameResolveState state) {
+void name_resolve_index(IndexExprNode* node, ref NameResolveState state)
+{
+	CompilationContext* c = state.context;
+
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.array, state);
 	require_name_resolve(node.index, state);
+
+	if (node.array.isType(c))
+	{
+		// convert to static array type inplace
+
+		// if this fires allocate new node instead of repurposing this one
+		static assert(IndexExprNode.sizeof == StaticArrayTypeNode.sizeof, "IndexExprNode.sizeof != StaticArrayTypeNode.sizeof");
+
+		IndexExprNode copy = *node;
+		auto arrayType = cast(StaticArrayTypeNode*)node;
+		*arrayType = StaticArrayTypeNode(copy.loc, copy.array, copy.index);
+	}
 	node.state = AstNodeState.name_resolve_done;
 }
 

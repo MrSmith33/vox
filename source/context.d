@@ -455,11 +455,6 @@ struct CompilationContext
 		return files[index.fileIndex].mod;
 	}
 
-	FunctionDeclNode* getFunction(FunctionIndex index)
-	{
-		return getAst!FunctionDeclNode(files[index.moduleIndex.fileIndex].mod.functions[index.functionIndex]);
-	}
-
 	FunctionDeclNode* getFunction(IrIndex index)
 	{
 		assertf(index.isFunction, "index is %s", index);
@@ -537,7 +532,8 @@ struct CompilationContext
 		//}
 
 		alias JittedFunc = extern(C) ResultType function(ParamTypes);
-		return cast(JittedFunc)funcDecl.backendData.funcPtr;
+		ObjectSymbol* funcSym = &objSymTab.getSymbol(funcDecl.backendData.objectSymIndex);
+		return cast(JittedFunc)funcSym.dataPtr;
 	}
 
 	void printMemSize() {

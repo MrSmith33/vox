@@ -66,6 +66,13 @@ void pass_live_intervals(ref CompilationContext context, ref ModuleDeclNode mod,
 		TextSink sink;
 		fun.backendData.liveIntervals.dump(sink, context);
 		writeln(sink.text);
+
+		FuncDumpSettings set;
+		set.printLiveness = true;
+		set.printVregLiveness = true;
+		set.printPregLiveness = true;
+		set.printLivenessLinearIndex = true;
+		dumpFunction(*lirData, context, set);
 	}
 }
 
@@ -97,6 +104,7 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			enumerationIndex += ENUM_STEP;
 		}
 	}
+	liveIntervals.maxLinearIndex = enumerationIndex;
 
 	void liveAdd(IrIndex someOperand)
 	{
@@ -259,13 +267,19 @@ void pass_live_intervals_func(ref CompilationContext context, ref FunctionLiveIn
 			{
 				IrIndex arg0 = instrHeader.args[0];
 				IrIndex arg1 = instrHeader.args[1];
-				if (arg1.isVirtReg)
-				if (arg0 != arg1)
+				if ( !sameIndexOrPhysReg(arg0, arg1) )
 				{
-					auto vii = VregIntervalIndex(ir.getVirtReg(arg1).seqIndex);
-					IntervalIndex interval = liveIntervals.intervalIndex(vii);
-					liveIntervals.addRange(context, interval, blockFromPos, linearInstrIndex+1);
-					version(LivePrint) writefln("[LIVE] addRange +1 %s", arg1);
+					if (arg1.isVirtReg) {
+						auto vii = VregIntervalIndex(ir.getVirtReg(arg1).seqIndex);
+						IntervalIndex interval = liveIntervals.intervalIndex(vii);
+						liveIntervals.addRange(context, interval, blockFromPos, linearInstrIndex+1);
+						version(LivePrint) writefln("[LIVE] addRange +1 %s", arg1);
+					} else if (arg1.isPhysReg) {
+						auto pii = PregIntervalIndex(arg1);
+						IntervalIndex interval = liveIntervals.intervalIndex(pii);
+						liveIntervals.addRange(context, interval, blockFromPos, linearInstrIndex+1);
+						version(LivePrint) writefln("[LIVE] addRange +1 %s", arg1);
+					}
 				}
 			}
 
@@ -389,6 +403,7 @@ struct FunctionLiveIntervals
 	/// instructionIndex -> seqIndex
 	/// blockIndex -> seqIndex
 	IrMirror!uint linearIndicies;
+	uint maxLinearIndex; // max value stored in linearIndicies
 
 	auto virtualIntervals() { return intervals[numFixedIntervals..intervals.length]; }
 	auto physicalIntervals() { return intervals[0..numFixedIntervals]; }
