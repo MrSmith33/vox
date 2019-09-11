@@ -198,3 +198,30 @@ immutable fail18 = q{
 --- <error>
 fail18(4, 10): Error: undefined identifier `i`
 };
+
+@TestInfo()
+immutable fail19 = q{
+--- fail19
+	enum enumT : u32 {
+	}
+	// Test access to non-existing enum member
+	u32 test() {
+		return enumT.ESCAPE;
+	}
+--- <error>
+fail19(5, 15): Error: `enumT` has no member `ESCAPE`
+};
+
+@TestInfo()
+immutable fail20 = q{
+--- fail20
+	enum enumT : u32 {
+	}
+	// Test access to non-existing enum member that is used in expression
+	void test() {
+		if (enumT.ESCAPE == 0) {
+		}
+	}
+--- <error>
+fail20(5, 12): Error: `enumT` has no member `ESCAPE`
+};

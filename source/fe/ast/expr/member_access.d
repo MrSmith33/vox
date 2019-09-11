@@ -85,26 +85,31 @@ void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeChe
 	CompilationContext* c = state.context;
 
 	node.state = AstNodeState.type_check;
-	scope(exit) nodeIndex.get_node(c).state = AstNodeState.type_check_done;
 
 	// try member
 	require_type_check(node.aggregate, state);
 
 	LookupResult res = lookupMember(node, c);
 
-	if (res == LookupResult.success) return;
+	if (res == LookupResult.success) {
+		nodeIndex.get_node(c).state = AstNodeState.type_check_done;
+		return;
+	}
 
 	// try UFCS
 	AstIndex callIndex;
 	LookupResult ufcsRes = tryUFCSCall(callIndex, node, state);
-	nodeIndex = callIndex;
 
-	if (ufcsRes == LookupResult.success) return;
+	if (ufcsRes == LookupResult.success) {
+		nodeIndex = callIndex;
+		return;
+	}
 
 	// nothing found
 	node.type = c.basicTypeNodes(BasicType.t_error);
 	AstIndex objType = node.aggregate.get_node_type(c);
 	c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(node.memberId(c)));
+	nodeIndex.get_node(c).state = AstNodeState.type_check_done;
 }
 
 // Creates call node if it is undefined (only creates when lookup is successfull)

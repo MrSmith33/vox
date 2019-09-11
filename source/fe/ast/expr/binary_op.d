@@ -38,6 +38,7 @@ void type_check_binary_op(BinaryExprNode* node, ref TypeCheckState state)
 void setResultType(BinaryExprNode* b, CompilationContext* context)
 {
 	AstIndex resRype = context.basicTypeNodes(BasicType.t_error);
+	b.type = resRype;
 	AstIndex leftTypeIndex = b.left.get_expr(context).type;
 	TypeNode* leftType = leftTypeIndex.get_type(context);
 	AstIndex rightTypeIndex = b.right.get_expr(context).type;

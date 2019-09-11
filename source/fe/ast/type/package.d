@@ -225,6 +225,9 @@ void printType(TypeNode* t, scope void delegate(const(char)[]) sink, Compilation
 		case AstType.expr_name_use:
 			sink(ctx.idString(t.as_name_use.id(ctx)));
 			break;
+		case AstType.decl_enum:
+			sink(ctx.idString(t.as_enum.id));
+			break;
 		default: assert(false, format("%s is not type", t.astType));
 	}
 }
