@@ -170,16 +170,27 @@ struct IrInstrHeader
 
 	enum MAX_ARGS = 255;
 
-	// Prevent type from copying because members will not be copied. Need to use ptr.
+	// Prevent type from copying because args will not be copied. Need to use ptr.
 	@disable this(this);
 
-	mixin(bitfields!(
-		bool,       "hasResult", 1,
-		ubyte,      "cond",      4,
-		// Not always possible to infer arg size from arguments (like in store ptr, imm)
-		IrArgSize,  "argSize",   2,
-		uint, "",                1
-	));
+	union {
+		mixin(bitfields!(
+			bool,       "hasResult", 1,
+			ubyte,      "cond",      4,
+			// Not always possible to infer arg size from arguments (like in store ptr, imm)
+			IrArgSize,  "argSize",   2,
+			uint, "",                1
+		));
+
+		mixin(bitfields!(
+			uint, "",                       1, // hasResult
+			// marks instruction that has non-mov instruction between argument movs and itself
+			bool, "extendFixedArgRange",    1,
+			// marks instruction that has non-mov instruction between result movs and itself
+			bool, "extendFixedResultRange", 1,
+			uint, "",                       5
+		));
+	}
 
 	static assert(IrBinaryCondition.max <= 0b1111, "4 bits are reserved");
 	static assert(IrUnaryCondition.max <= 0b1111, "4 bits are reserved");

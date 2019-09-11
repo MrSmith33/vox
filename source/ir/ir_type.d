@@ -375,3 +375,10 @@ IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext co
 			assert(false);
 	}
 }
+
+IrArgSize getValueTypeArgSize(IrIndex value, IrFunction* ir, CompilationContext* context)
+{
+	if (value.isPhysReg) return cast(IrArgSize)value.physRegSize;
+	IrIndex type = getValueType(value, *ir, *context);
+	return sizeToIrArgSize(context.types.typeSize(type), context);
+}

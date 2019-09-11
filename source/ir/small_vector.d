@@ -62,6 +62,15 @@ struct SmallVector
 		}
 	}
 
+	bool contains(ref IrFunction ir, IrIndex what)
+	{
+		foreach (IrIndex item; range(ir))
+		{
+			if (item == what) return true;
+		}
+		return false;
+	}
+
 	/// Returns true if replacement was performed
 	bool replaceFirst(ref IrFunction ir, IrIndex what, IrIndex byWhat)
 	{

@@ -8,7 +8,7 @@ module fe.eval;
 
 import all;
 
-/// Eval only literals for now
+/// Eval only expressions now. No CTFE yet
 /// Returns integer constant
 IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 {

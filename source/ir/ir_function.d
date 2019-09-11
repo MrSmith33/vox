@@ -91,6 +91,39 @@ struct IrFunction
 		return *cast(T*)(&storage[index.storageUintIndex]);
 	}
 
+	// In correct code there must be no dangling basic blocks left
+	// But if there were, they would appear after exit block
+	void orderBlocks()
+	{
+		IrIndex first;
+		IrIndex firstLink;
+
+		void walk(IrIndex node)
+		{
+			IrBasicBlock* block = &getBlock(node);
+			block.visitFlag = true;
+			foreach(ref IrIndex succ; block.successors.range(this))
+				if (!getBlock(succ).visitFlag)
+					walk(succ);
+			if (first.isDefined)
+				linkBlockBefore(&this, node, first);
+			else
+				firstLink = node;
+			first = node;
+		}
+
+		walk(entryBasicBlock);
+
+		// bring exit block to the end of function
+		linkBlockAfter(&this, exitBasicBlock, firstLink);
+
+		// clear all flags
+		foreach (idx, ref IrBasicBlock block; blocks)
+		{
+			block.visitFlag = false;
+		}
+	}
+
 	void assignSequentialBlockIndices()
 	{
 		uint index;

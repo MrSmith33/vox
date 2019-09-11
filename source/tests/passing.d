@@ -1895,3 +1895,169 @@ immutable test89 = q{--- test89
 	{}
 };
 
+@TestInfo(&tester90)
+immutable test90 = q{--- test90
+	void setRangeu8(u8* slice, u64 from, u64 to, u8 value) {
+		while(from < to) {
+			slice[from] = value;
+			++from;
+		}
+	}
+	void formatInt(i64 i, u8[21]* output, u32 minSize, u8[]* result)
+	{
+		u32 numDigits = 0;
+		if (i == 0)
+		{
+			if (minSize == 0)
+				minSize = 1;
+			setRangeu8((*output).ptr, 21 - minSize, 21, '0');
+			(*output)[20] = '0';
+			numDigits = minSize;
+		}
+		else
+		{
+			bool neg = i < 0;
+			if (neg) {
+				i = -i;
+			}
+			bool overflow = i < 0;
+			if (overflow)
+				i = i64.max;
+
+			while (i)
+			{
+				u8 c = cast(u8)('0' + i % 10);
+				(*output)[21 - ++numDigits] = c;
+				i /= 10;
+			}
+
+			while (numDigits < minSize) {
+				(*output)[21 - ++numDigits] = '0';
+			}
+
+			if (neg) {
+				(*output)[21 - ++numDigits] = '-';
+			}
+			if (overflow) {
+				++(*output)[20];
+			}
+		}
+		(*result).ptr = (*output).ptr + (21 - numDigits);
+		(*result).length = numDigits;
+	}
+};
+void tester90(ref TestContext ctx) {
+	auto setRangeu8 = ctx.getFunctionPtr!(void, char*, ulong, ulong, char)("setRangeu8");
+
+	char[23] buf;
+	buf[] = 'z';
+
+	setRangeu8(&buf[1], 0, 21, 'x');
+	setRangeu8(&buf[1], 0, 1, '0');
+	setRangeu8(&buf[1], 20, 21, '1');
+	assert(buf == "z0xxxxxxxxxxxxxxxxxxx1z");
+
+	auto formatInt = ctx.getFunctionPtr!(void, long, char*, uint, Slice!char*)("formatInt");
+
+	void testFormatInt(long num, string expectedBuf, string expectedResult) {
+		buf[] = 'x';
+		Slice!char result;
+		formatInt(num, &buf[1], 0, &result);
+		//writefln("buf ptr %s len %s ptr %s %s", buf.ptr, result.length, result.ptr, buf);
+		assert(buf == expectedBuf);
+		assert(result.slice == expectedResult);
+	}
+
+	testFormatInt(  0,      "xxxxxxxxxxxxxxxxxxxxx0x", "0");
+	testFormatInt(  1,      "xxxxxxxxxxxxxxxxxxxxx1x", "1");
+	testFormatInt( 10,      "xxxxxxxxxxxxxxxxxxxx10x", "10");
+	testFormatInt(-10,      "xxxxxxxxxxxxxxxxxxx-10x", "-10");
+	testFormatInt(long.min, "xx-9223372036854775808x", "-9223372036854775808");
+	testFormatInt(long.max, "xxx9223372036854775807x", "9223372036854775807");
+}
+
+@TestInfo(&tester91)
+immutable test91 = q{--- test91
+	// splitting and spilling
+	void tran_thong(i32 xstart, i32 ystart, i32 xend, i32 yend, void function(void*, i32, i32) callback, void* userData)
+	{
+		i32 x = xstart;
+		i32 y = ystart;
+
+		i32 deltax;
+		i32 signdx;
+		if (xend >= xstart) {
+			deltax = xend - xstart;
+			signdx = 1;
+		} else {
+			deltax = xstart - xend;
+			signdx = -1;
+		}
+
+		i32 deltay;
+		i32 signdy;
+		if (yend >= ystart) {
+			deltay = yend - ystart;
+			signdy = 1;
+		} else {
+			deltay = ystart - yend;
+			signdy = -1;
+		}
+
+		callback(userData, x, y);
+
+		i32 test;
+		if (signdy == -1)
+			test = -1;
+		else
+			test = 0;
+
+		if (deltax >= deltay) {
+			test = (deltax + test) >> 1;
+			for (i32 i = 1; i < deltax; ++i) {
+				test -= deltay;
+				x += signdx;
+				if (test < 0) {
+					y += signdy;
+					test += deltax;
+				}
+				callback(userData, x, y);
+			}
+		} else {
+			test = (deltay + test) >> 1;
+			for (i32 i = 1; i < deltay; ++i) {
+				test -= deltax;
+				y += signdy;
+				if (test < 0) {
+					x += signdx;
+					test += deltay;
+				}
+				callback(userData, x, y);
+			}
+		}
+		callback(userData, xend, yend);
+	}
+};
+void tester91(ref TestContext ctx) {
+	static struct test91_user_data {
+		string text;
+		size_t i;
+	}
+	static extern(C) void external_print_coords_func(void* userData, int x, int y) {
+		auto data = cast(test91_user_data*)userData;
+		if (data.i > 0) testSink.put(", ");
+		formattedWrite(testSink, "(%s %s %s)", data.text, x, y);
+		++data.i;
+	}
+	alias func_T = extern(C) void function(void*, int, int);
+	auto tran_thong = ctx.getFunctionPtr!(void, int, int, int, int, func_T, void*)("tran_thong");
+
+	test91_user_data data = {
+		text : "hi"
+	};
+
+	tran_thong(0, 0, 2, 2, &external_print_coords_func, &data);
+
+	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
+	testSink.clear;
+}

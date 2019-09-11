@@ -85,9 +85,10 @@ o dll linking
 - test bools
 - test constant folding of all operators
 - test mismatched number of args/params to call/constructor
-- reg alloc performance regression 1.9s -> 6.2s
+- reg alloc performance regression 1.9s -> 6.2s (Probably due to not reusing liveness info)
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
+- test declarations that have cyclic dependency (compiler must detect them through AstNode.state)
 
 + alias
 	+ type aliases

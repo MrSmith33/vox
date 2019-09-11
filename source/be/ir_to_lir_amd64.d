@@ -434,6 +434,7 @@ struct IrToLir
 							// push args to stack
 							foreach_reverse (IrIndex lirArg; localArgBuffer[numParamsInRegs..numArgs])
 							{
+								// TODO: push can use mem address
 								if (lirArg.isStackSlot) {
 									ExtraInstrArgs extra = { addUsers : false, type : lir.getValueType(*context, lirArg) };
 									InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, lirArg);
@@ -447,7 +448,7 @@ struct IrToLir
 
 						// move args to registers
 						size_t numPhysRegs = min(numParamsInRegs, numArgs);
-						foreach_reverse (i, IrIndex lirArg; localArgBuffer[0..numPhysRegs])
+						foreach (i, IrIndex lirArg; localArgBuffer[0..numPhysRegs])
 						{
 							IrIndex type = lir.getValueType(*context, lirArg);
 							IrIndex argRegister = callConv.paramsInRegs[i];
@@ -473,6 +474,8 @@ struct IrToLir
 
 							InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
 								lirBlockIndex, callExtra, argBuffer[0..numPhysRegs+1]); // include callee
+							lir.get!IrInstrHeader(callInstr.instruction).extendFixedArgRange = true;
+							if (callExtra.hasResult) lir.get!IrInstrHeader(callInstr.instruction).extendFixedResultRange = true;
 							recordIndex(instrIndex, callInstr.instruction);
 
 							{	// Deallocate stack after call

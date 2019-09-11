@@ -611,7 +611,6 @@ struct AstToIr
 		currentBlock = loopHeaderBlock;
 
 		//writefln("loop head %s", loopHeaderBlock);
-		ir.getBlock(loopHeaderBlock).isLoopHeader = true;
 
 		IrLabel bodyLabel = IrLabel(currentBlock);
 		//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
@@ -630,6 +629,9 @@ struct AstToIr
 			assert(!block.isFinished);
 			visitStmt(n.statement, currentBlock, loopHeaderLabel);
 		}
+
+		if (loopHeaderLabel.numPredecessors > 1)
+			ir.getBlock(loopHeaderBlock).isLoopHeader = true;
 
 		builder.sealBlock(loopHeaderBlock);
 	}
@@ -668,7 +670,6 @@ struct AstToIr
 		currentBlock = loopHeaderBlock;
 
 		//writefln("loop head %s", loopHeaderBlock);
-		ir.getBlock(loopHeaderBlock).isLoopHeader = true;
 
 		IrLabel bodyLabel = IrLabel(currentBlock);
 		//writefln("loop body %s, next %s", bodyLabel.blockIndex, nextStmt.blockIndex);
@@ -696,6 +697,9 @@ struct AstToIr
 				genBlock(n.as!AstNode(context), n.increment_statements, incrementLabel.blockIndex, loopHeaderLabel);
 			}
 		}
+
+		if (loopHeaderLabel.numPredecessors > 1)
+			ir.getBlock(loopHeaderBlock).isLoopHeader = true;
 
 		builder.sealBlock(loopHeaderBlock);
 	}

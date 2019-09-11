@@ -138,26 +138,46 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		{
 			foreach(ref interval; ir.backendData.liveIntervals.physicalIntervals)
 			{
-				if (ir.backendData.liveIntervals.intervalCoversPosition(interval.first, linearInstrIndex))
-					sink.put("#");
+				if (interval.coversPosition_dump(linearInstrIndex))
+					sink.put("┃");
 				else
 					sink.put(" ");
 			}
-			if (settings.printVregLiveness) sink.put("|");
+			if (settings.printVregLiveness) sink.put("┇");
+		}
+
+		import std.bitmanip : BitArray;
+		BitArray blockLiveIn;
+		if (instrIndex.isBasicBlock)
+		{
+			blockLiveIn = ir.backendData.liveBitmap.blockLiveInBits(instrIndex, &ir);
 		}
 
 		if (settings.printVregLiveness)
-		foreach(ref interval; ir.backendData.liveIntervals.virtualIntervals)
+		foreach(ref LiveInterval interval; ir.backendData.liveIntervals.virtualIntervals)
 		{
-			if (ir.backendData.liveIntervals.intervalCoversPosition(interval.first, linearInstrIndex))
+			auto vreg = &ir.getVirtReg(interval.definition);
+
+			if (vreg.users.contains(ir, instrIndex))
 			{
-				if (ir.getVirtReg(interval.definition).definition == instrIndex)
-					sink.put("D");
+				sink.put("U");
+			}
+			else if (interval.coversPosition_dump(linearInstrIndex))
+			{
+				if (vreg.definition == instrIndex)
+					sink.put("D"); // virtual register is defined by this instruction / phi
 				else
-					sink.put("#");
+				{
+					if (instrIndex.isBasicBlock && blockLiveIn[vreg.seqIndex])
+						sink.put("┏"); // virtual register is in "live in" of basic block
+					else
+						sink.put("┃"); // virtual register is live in this position
+				}
 			}
 			else
+			{
 				sink.put(" ");
+			}
 		}
 
 		if (settings.printLivenessLinearIndex)

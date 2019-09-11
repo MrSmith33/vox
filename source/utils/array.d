@@ -37,6 +37,7 @@ struct Array(T)
 	uint length() { return _length; }
 	uint opDollar() { return _length; }
 	alias capacity = _capacity;
+	ref T front() { return this[0]; }
 	ref T back() { return this[$-1]; }
 	void clear() { _length = 0; }
 
@@ -71,13 +72,19 @@ struct Array(T)
 
 	void putFront(ref ArrayArena arena, T item)
 	{
+		putAt(arena, item, 0);
+	}
+
+	// shifts items to the right
+	void putAt(ref ArrayArena arena, T item, size_t at)
+	{
 		if (_length == _capacity) extend(arena, 1);
 
-		foreach_reverse(i; 0.._length)
+		foreach_reverse(i; at.._length)
 		{
 			this[i+1] = this[i];
 		}
-		this[0] = item;
+		this[at] = item;
 
 		++_length;
 	}
@@ -90,6 +97,38 @@ struct Array(T)
 	void reserve(ref ArrayArena arena, uint howMany)
 	{
 		if (_length + howMany > _capacity) extend(arena, howMany);
+	}
+
+	// returns memory to arena
+	void free(ref ArrayArena arena) {
+		static if (NUM_INLINE_ITEMS > 0)
+			if (_capacity == NUM_INLINE_ITEMS)
+				return; // noop
+
+		if (capacity <= NUM_ITEMS_PER_PAGE) {
+			size_t byteCapacity = nextPOT(_capacity * T.sizeof);
+			ubyte[] oldBlock = (cast(ubyte*)externalArray)[0..byteCapacity];
+			arena.freeBlock(oldBlock);
+			return;
+		}
+
+		size_t numPages = _capacity / NUM_ITEMS_PER_PAGE;
+		foreach(T* chunk; chunkedArray[0..numPages])
+		{
+			// free each page
+			ubyte* chunkPtr = cast(ubyte*)chunk;
+			ubyte[] page = chunkPtr[0..ARRAY_PAGE_BYTES];
+			arena.freeBlock(page);
+		}
+
+		// free page array
+		ubyte* arrayPtr = cast(ubyte*)chunkedArray;
+		size_t pageArrayCapacity = nextPOT(numPages);
+		ubyte[] pageArray = arrayPtr[0..pageArrayCapacity * (ubyte*).sizeof];
+		arena.freeBlock(pageArray);
+
+		_length = 0;
+		_capacity = NUM_INLINE_ITEMS;
 	}
 
 	// extend the storage
@@ -236,6 +275,40 @@ struct Array(T)
 	auto opSlice(size_t from, size_t to)
 	{
 		return this[][from..to];
+	}
+
+	void removeInPlace(size_t at)
+	{
+		if (at+1 != _length)
+		{
+			this[at] = this[_length-1];
+		}
+		--_length;
+	}
+
+	void removeByShift(size_t at, size_t numToRemove = 1)
+	{
+		size_t to = at;
+		size_t from = at + numToRemove;
+		while(from < _length)
+		{
+			this[to] = this[from];
+			++to;
+			++from;
+		}
+		_length -= numToRemove;
+	}
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		import std.format : formattedWrite;
+		sink("[");
+		size_t i;
+		foreach(ref T item; opSlice()) {
+			if (i > 0) sink(", ");
+			sink.formattedWrite("%s", item);
+			++i;
+		}
+		sink("]");
 	}
 }
 

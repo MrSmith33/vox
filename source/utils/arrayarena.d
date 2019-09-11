@@ -25,7 +25,7 @@ struct FreeList
 struct ArrayArena
 {
 	import core.stdc.stdlib : malloc, free;
-	import utils : Arena, bsr, isPowerOfTwo, PAGE_SIZE, writefln, format;
+	import utils : max, nextPOT, Arena, bsr, isPowerOfTwo, PAGE_SIZE, writefln, format;
 
 	// arenas for buffers from 16 to 65536 bytes
 	enum NUM_ARENAS = 13;
@@ -59,6 +59,19 @@ struct ArrayArena
 		return total;
 	}
 
+	T[] allocArray(T)(size_t length) {
+		size_t blockSize = max(nextPOT(length * T.sizeof), MIN_BLOCK_BYTES);
+		ubyte[] newBlock = allocBlock(blockSize);
+		size_t capacity = newBlock.length / T.sizeof;
+		return (cast(T*)newBlock.ptr)[0..length];
+	}
+
+	void freeArray(T)(ref T[] array) {
+		size_t blockSize = max(nextPOT(array.length * T.sizeof), MIN_BLOCK_BYTES);
+		ubyte* ptr = cast(ubyte*)array.ptr;
+		freeBlock(ptr[0..blockSize]);
+		array = null;
+	}
 
 	ubyte[] allocBlock(size_t size) {
 		assert(isPowerOfTwo(size));

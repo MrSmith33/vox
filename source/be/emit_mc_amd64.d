@@ -202,7 +202,7 @@ struct CodeEmitter
 
 		blockStarts = cast(PC[])context.tempBuffer.voidPut(lir.numBasicBlocks * (PC.sizeof / uint.sizeof));
 
-		uint[] buf = context.tempBuffer.voidPut(lir.numBasicBlocks * 2 * (PC.sizeof / uint.sizeof));
+		uint[] buf = context.tempBuffer.voidPut(lir.numBasicBlocks * 2 * (PC.sizeof / uint.sizeof)); // TODO: free mem
 		buf[] = 0;
 		jumpFixups = cast(PC[2][])buf;
 
@@ -754,6 +754,7 @@ struct CodeEmitter
 	}
 
 	// dst must be of pointer type
+	// dst is pointer of unknown type (that's why we need explicit argType)
 	void genStore(IrIndex dst, IrIndex src, ArgType argType)
 	{
 		context.assertf(!src.isGlobal,

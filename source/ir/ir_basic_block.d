@@ -38,7 +38,11 @@ struct IrBasicBlock
 		bool, "isFinished",   1,
 		// if true, block is loop header and has incoming back edges
 		bool, "isLoopHeader", 1,
-		uint, "",             5
+		// true if block was created to split critial edge
+		bool, "replacesCriticalEdge", 1,
+		// used for block ordering
+		bool, "visitFlag", 1,
+		uint, "",             3
 	));
 
 	IrName name;
@@ -53,6 +57,71 @@ void removeAllPhis(ref IrBasicBlock block)
 bool isCriticalEdge(ref IrBasicBlock predBlock, ref IrBasicBlock succBlock)
 {
 	return predBlock.successors.length > 1 && succBlock.predecessors.length > 1;
+}
+
+void removeBlockFromChain(IrFunction* ir, IrBasicBlock* block)
+{
+	if (block.prevBlock.isDefined)
+	{
+		IrBasicBlock* left = &ir.getBlock(block.prevBlock);
+		left.nextBlock = block.nextBlock;
+	}
+
+	if (block.nextBlock.isDefined)
+	{
+		IrBasicBlock* right = &ir.getBlock(block.nextBlock);
+		right.prevBlock = block.prevBlock;
+	}
+}
+
+// blockIndex must not be start block, but may be exit block of IrFunction
+// used for block ordering
+void linkBlockBefore(IrFunction* ir, IrIndex blockIndex, IrIndex beforeIndex)
+{
+	IrBasicBlock* before = &ir.getBlock(beforeIndex);
+	IrBasicBlock* block = &ir.getBlock(blockIndex);
+
+	// check if already in correct order
+	if (before.prevBlock == blockIndex) return;
+
+	removeBlockFromChain(ir, block);
+
+	// insert before 'before' block
+	{
+		block.prevBlock = before.prevBlock;
+		if (before.prevBlock.isDefined)
+		{
+			IrBasicBlock* left = &ir.getBlock(before.prevBlock);
+			left.nextBlock = blockIndex;
+		}
+		before.prevBlock = blockIndex;
+		block.nextBlock = beforeIndex;
+	}
+}
+
+// blockIndex must not be start block, but may be exit block of IrFunction
+// used for block ordering
+void linkBlockAfter(IrFunction* ir, IrIndex blockIndex, IrIndex afterIndex)
+{
+	IrBasicBlock* after = &ir.getBlock(afterIndex);
+	IrBasicBlock* block = &ir.getBlock(blockIndex);
+
+	// check if already in correct order
+	if (after.nextBlock == blockIndex) return;
+
+	removeBlockFromChain(ir, block);
+
+	// insert after 'after' block
+	{
+		block.nextBlock = after.nextBlock;
+		if (after.nextBlock.isDefined)
+		{
+			IrBasicBlock* right = &ir.getBlock(after.nextBlock);
+			right.prevBlock = blockIndex;
+		}
+		after.nextBlock = blockIndex;
+		block.prevBlock = afterIndex;
+	}
 }
 
 struct PhiIterator
