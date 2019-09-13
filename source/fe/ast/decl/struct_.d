@@ -5,6 +5,11 @@ module fe.ast.decl.struct_;
 
 import all;
 
+enum StructFlags
+{
+	isOpaque = AstFlags.userFlag
+}
+
 @(AstType.decl_struct)
 struct StructDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_struct, AstFlags.isType);
@@ -14,23 +19,17 @@ struct StructDeclNode {
 	uint size = 1;
 	uint alignment = 1;
 
-	private enum Flags
-	{
-		isOpaque = AstFlags.userFlag
-	}
 
-	this(TokenIndex loc, Array!AstIndex members, Identifier id, bool _isOpaque)
+	this(TokenIndex loc, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_struct;
 		this.flags = AstFlags.isScope | AstFlags.isDeclaration | AstFlags.isType;
-		this.declarations = members;
 		this.id = id;
-		if (_isOpaque) flags |= Flags.isOpaque;
 	}
 
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
-	bool isOpaque() { return cast(bool)(flags & Flags.isOpaque); }
+	bool isOpaque() { return cast(bool)(flags & StructFlags.isOpaque); }
 }
 
 void name_register_struct(AstIndex nodeIndex, StructDeclNode* node, ref NameRegisterState state) {

@@ -17,7 +17,7 @@ struct BlockStmtNode {
 void name_register_block(BlockStmtNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register;
 	node._scope = state.pushScope("Block", Yes.ordered);
-	foreach(stmt; node.statements) require_name_register(stmt, state);
+	foreach(ref stmt; node.statements) require_name_register(stmt, state);
 	state.popScope;
 	node.state = AstNodeState.name_register_done;
 }
@@ -25,7 +25,7 @@ void name_register_block(BlockStmtNode* node, ref NameRegisterState state) {
 void name_resolve_block(BlockStmtNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	state.pushScope(node._scope);
-	foreach(stmt; node.statements) require_name_resolve(stmt, state);
+	foreach(ref stmt; node.statements) require_name_resolve(stmt, state);
 	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
 }

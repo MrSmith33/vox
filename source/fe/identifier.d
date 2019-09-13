@@ -5,6 +5,7 @@ Authors: Andrey Penechko.
 */
 module fe.identifier;
 
+import std.stdio;
 import utils : Buffer, Arena;
 import context;
 
@@ -27,10 +28,12 @@ struct IdentifierMap {
 	}
 
 	Identifier find(const(char)[] str) {
+		assert(str.length > 0);
 		return Identifier(map.get(cast(string)str, uint.max));
 	}
 
 	Identifier getOrRegWithSuffix(const(char)[] str, size_t suffix) {
+		assert(str.length > 0);
 		import std.format : formattedWrite;
 		tempBuf.clear;
 		tempBuf.put(cast(string)str);
@@ -40,6 +43,7 @@ struct IdentifierMap {
 	}
 
 	Identifier getOrReg(const(char)[] str) {
+		assert(str.length > 0);
 		uint id = map.get(cast(string)str, uint.max);
 		if (id == uint.max) {
 			char[] buf = stringDataBuffer.voidPut(str.length);
@@ -48,16 +52,19 @@ struct IdentifierMap {
 			assert(strings.length < uint.max, "Id map overflow");
 			id = cast(uint)strings.length;
 			map[duppedKey] = id;
+			//writefln("getOrReg %s %s", id, duppedKey);
 			strings.put(duppedKey);
 		}
 		return Identifier(id);
 	}
 
 	Identifier getOrRegNoDup(const(char)[] str) {
+		assert(str.length > 0);
 		uint id = map.get(cast(string)str, uint.max);
 		if (id == uint.max) {
 			id = cast(uint)strings.length;
 			map[str] = id;
+			//writefln("getOrRegNoDup %s %s", id, str);
 			strings.put(str);
 		}
 		return Identifier(id);
@@ -71,6 +78,7 @@ struct CommonIdentifiers
 	Identifier id_min;
 	Identifier id_max;
 	Identifier id_sizeof;
+	Identifier id_this;
 }
 
 CommonIdentifiers collectIdentifiers(ref CompilationContext context) {
@@ -80,5 +88,6 @@ CommonIdentifiers collectIdentifiers(ref CompilationContext context) {
 	res.id_min = context.idMap.getOrRegNoDup("min");
 	res.id_max = context.idMap.getOrRegNoDup("max");
 	res.id_sizeof = context.idMap.getOrRegNoDup("sizeof");
+	res.id_this = context.idMap.getOrRegNoDup("this");
 	return res;
 }

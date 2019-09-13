@@ -10,7 +10,7 @@ enum MemberSubType
 	unresolved,
 	builtin_member, // member is decl_builtin
 	nonstatic_struct_member,
-	static_struct_member,
+	static_struct_member, // including methods
 	enum_member,
 	slice_member,
 }
@@ -70,10 +70,24 @@ struct MemberExprNode {
 		this.type = type;
 		this.irValue = irValue;
 	}
+
+	// produce already resolved node
+	this(TokenIndex loc, AstIndex aggregate, AstIndex member, uint memberIndex, MemberSubType subType)
+	{
+		this.loc = loc;
+		this.astType = AstType.expr_member;
+		this.flags = AstFlags.isExpression;
+		this.state = AstNodeState.name_register_done;
+		this.aggregate = aggregate;
+		this._member = member;
+		this.subType = subType;
+		this._memberIndex = memberIndex;
+	}
 }
 
 void name_resolve_member(MemberExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
+	assert(!node.isSymResolved);
 	node._curScope = state.context.getAstNodeIndex(state.currentScope);
 	// name resolution is done in type check pass
 	require_name_resolve(node.aggregate, state);
@@ -92,6 +106,14 @@ void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeChe
 	LookupResult res = lookupMember(node, c);
 
 	if (res == LookupResult.success) {
+		if (node.member(c).astType(c) == AstType.decl_function)
+		{
+			// parentheses-less method call
+			AstIndex callIndex;
+			createMethodCall(callIndex, node.loc, node.aggregate, node.member(c), node.memberId(c), state);
+			nodeIndex = callIndex;
+			return;
+		}
 		nodeIndex.get_node(c).state = AstNodeState.type_check_done;
 		return;
 	}
@@ -118,7 +140,6 @@ LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref
 	CompilationContext* c = state.context;
 
 	AstIndex ufcsNodeIndex = lookupScopeIdRecursive(memberNode._curScope.get_scope(c), memberNode.memberId(c), memberNode.loc, c);
-
 	if (ufcsNodeIndex == c.errorNode) return LookupResult.failure;
 
 	AstType ufcsAstType = ufcsNodeIndex.astType(c);
@@ -126,16 +147,7 @@ LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref
 	if (ufcsAstType == AstType.decl_function)
 	{
 		// rewrite as call
-		if (callIndex.isUndefined)
-			callIndex = c.appendAst!CallExprNode(memberNode.loc);
-
-		auto call = callIndex.get!CallExprNode(c);
-		call.state = AstNodeState.name_resolve_done;
-		call.callee = ufcsNodeIndex;
-		call.args.putFront(c.arrayArena, memberNode.aggregate);
-
-		// type check call
-		require_type_check(callIndex, state);
+		createMethodCall(callIndex, memberNode.loc, memberNode.aggregate, ufcsNodeIndex, memberNode.memberId(c), state);
 		return LookupResult.success;
 	}
 	else
@@ -144,9 +156,40 @@ LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref
 	return LookupResult.failure;
 }
 
+void createMethodCall(ref AstIndex callIndex, TokenIndex loc, AstIndex aggregate, AstIndex member, Identifier calleeId, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+
+	if (callIndex.isUndefined)
+		callIndex = c.appendAst!CallExprNode(loc);
+
+	auto call = callIndex.get!CallExprNode(c);
+	call.state = AstNodeState.name_resolve_done;
+	call.callee = member;
+	if (call.callee.get!FunctionDeclNode(c).isMember)
+	{
+		if (aggregate.get_node_id(c) != c.commonIds.id_this)
+		{
+			aggregate.flags(c) |= AstFlags.isLvalue;
+			aggregate = c.appendAst!UnaryExprNode(loc, AstIndex.init, IrIndex.init, UnOp.addrOf, aggregate);
+		}
+		aggregate.get_node(c).state = AstNodeState.name_resolve_done;
+	}
+	call.args.putFront(c.arrayArena, aggregate);
+
+	// type check call
+	auto signature = call.callee.get_type(c).as_func_sig;
+	type_check_func_call(call, signature, calleeId, state);
+}
+
 /// Look up member by Identifier. Searches aggregate scope for identifier.
 LookupResult lookupMember(MemberExprNode* expr, CompilationContext* c)
 {
+	if (expr.isSymResolved) {
+		expr.type = expr.member(c).get_node_type(c);
+		return LookupResult.success;
+	}
+
 	TypeNode* objType = expr.aggregate.get_type(c);
 
 	Identifier memberId = expr.memberId(c);
@@ -270,8 +313,8 @@ LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl
 	{
 		case AstType.decl_function:
 			expr.resolve(MemberSubType.static_struct_member, entity, 0, c);
-			c.internal_error("member functions/UFCS calls are not implemented");
-			assert(false);
+			expr.type = entity.get_node_type(c);
+			return LookupResult.success;
 
 		case AstType.decl_var:
 			auto memberVar = entity.get!VariableDeclNode(c);

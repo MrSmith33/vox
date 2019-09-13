@@ -38,6 +38,14 @@ struct FunctionBackendData
 	}
 }
 
+enum FunctionAndVarFlags : ushort {
+	isMember = AstFlags.userFlag << 0,
+}
+
+enum FunctionFlags : ushort {
+	isMember = FunctionAndVarFlags.isMember,
+}
+
 @(AstType.decl_function)
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
@@ -64,6 +72,7 @@ struct FunctionDeclNode {
 
 	/// External functions have no body
 	bool isExternal() { return block_stmt.isUndefined; }
+	bool isMember() { return cast(bool)(flags & FunctionFlags.isMember); }
 	ref Identifier id() { return backendData.name; }
 }
 

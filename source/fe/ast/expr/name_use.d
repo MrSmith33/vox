@@ -90,7 +90,15 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 	AstNode* entityNode = entity.get_node(c);
 
 	switch(entityNode.astType) with(AstType) {
-		case decl_function, decl_var, decl_enum_member, error:
+		case decl_var:
+			auto var = entityNode.as!VariableDeclNode(c);
+			if (var.isMember) lowerToMember(nodeIndex, node, var.scopeIndex, state);
+			break;
+		case decl_function:
+			auto func = entityNode.as!FunctionDeclNode(c);
+			if (func.isMember) lowerToMember(nodeIndex, node, 0, state);
+			break;
+		case decl_enum_member, error:
 			// valid expr
 			break;
 		case decl_struct, decl_enum:
@@ -104,6 +112,21 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 		default:
 			c.internal_error("Unknown entity %s", entityNode.astType);
 	}
+}
+
+private void lowerToMember(ref AstIndex nodeIndex, NameUseExprNode* node, uint scopeIndex, ref NameResolveState state)
+{
+	CompilationContext* c = state.context;
+	// rewrite as this.entity
+	// let member_access handle everything else
+	AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, c.commonIds.id_this);
+	require_name_resolve(thisName, state);
+	AstIndex member = c.appendAst!MemberExprNode(node.loc, thisName, nodeIndex, scopeIndex, MemberSubType.nonstatic_struct_member);
+	if (node.isLvalue)
+		member.flags(c) |= AstFlags.isLvalue;
+	nodeIndex = member;
+	auto memberNode = member.get!MemberExprNode(c);
+	memberNode.state = AstNodeState.name_resolve_done;
 }
 
 // Get type from variable declaration

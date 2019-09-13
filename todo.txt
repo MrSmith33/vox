@@ -89,6 +89,8 @@ o dll linking
 - stack layout per IR (use alloca?)
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 - test declarations that have cyclic dependency (compiler must detect them through AstNode.state)
+- test all expressions that compile with error being used inside other expressions (semantic check must correctly assign error type and check it when necessary)
+- make sure that `this` is being used outside methods
 
 + alias
 	+ type aliases

@@ -6,9 +6,10 @@ module fe.ast.decl.var;
 import all;
 
 enum VariableFlags : ushort {
-	forceMemoryStorage = AstFlags.userFlag << 0,
-	isParameter        = AstFlags.userFlag << 1,
-	isAddressTaken     = AstFlags.userFlag << 2,
+	isMember           = FunctionAndVarFlags.isMember,
+	forceMemoryStorage = AstFlags.userFlag << 1,
+	isParameter        = AstFlags.userFlag << 2,
+	isAddressTaken     = AstFlags.userFlag << 3,
 }
 
 @(AstType.decl_var)
@@ -23,6 +24,7 @@ struct VariableDeclNode
 	bool forceMemoryStorage() { return cast(bool)(flags & VariableFlags.forceMemoryStorage); }
 	bool isParameter() { return cast(bool)(flags & VariableFlags.isParameter); }
 	bool isAddressTaken() { return cast(bool)(flags & VariableFlags.isAddressTaken); }
+	bool isMember() { return cast(bool)(flags & VariableFlags.isMember); }
 }
 
 void name_register_var(AstIndex nodeIndex, VariableDeclNode* node, ref NameRegisterState state) {

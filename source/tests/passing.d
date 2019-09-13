@@ -2061,3 +2061,46 @@ void tester91(ref TestContext ctx) {
 	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
 	testSink.clear;
 }
+
+@TestInfo(&tester92)
+immutable test92 = q{--- test92
+	// struct methods
+	struct Struct {
+		i32 member;
+		void set42() {
+			this.member += 42;
+			member = 42;
+		}
+		void set(i32 par) {
+			member = par;
+			this.member = par;
+		}
+		void set2() {
+			set42(); // pass this
+			set42; // pass this
+			this.set42; // explicit this
+			this.set42(); // explicit this
+			set(42); // pass this
+		}
+	}
+	i32 testMethod1() {
+		Struct s;
+		s.set42(); // take address
+		return s.member;
+	}
+	i32 testMethod2(i32 val) {
+		Struct s;
+		s.set(val); // take address
+		return s.member;
+	}
+	i32 testMethod3() {
+		Struct s;
+		s.set42; // take address
+		return s.member;
+	}
+};
+void tester92(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("testMethod1")() == 42);
+	assert(ctx.getFunctionPtr!(int, int)("testMethod2")(60) == 60);
+	assert(ctx.getFunctionPtr!(int)("testMethod3")() == 42);
+}

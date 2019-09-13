@@ -91,6 +91,9 @@ struct Parser
 {
 	CompilationContext* context;
 	ModuleDeclNode* currentModule;
+	/// For member functions
+	AstIndex currentStruct;
+
 	Token tok;
 	SourceLocation loc() {
 		return context.tokenLocationBuffer[tok.index];
@@ -142,8 +145,9 @@ struct Parser
 
 	Identifier expectIdentifier()
 	{
-		Identifier id = makeIdentifier(tok.index);
+		TokenIndex index = tok.index;
 		expectAndConsume(TokenType.IDENTIFIER);
+		Identifier id = makeIdentifier(index);
 		return id;
 	}
 
@@ -177,7 +181,10 @@ struct Parser
 
 			AstNode* declNode = context.getAstNode(declIndex);
 			if (declNode.astType == AstType.decl_var) {
-				declNode.as!VariableDeclNode(context).scopeIndex = varIndex++;
+				auto var = declNode.as!VariableDeclNode(context);
+				var.scopeIndex = varIndex++;
+				if (currentStruct)
+					var.flags |= VariableFlags.isMember;
 			}
 			declarations.put(context.arrayArena, declIndex);
 		}
@@ -273,6 +280,25 @@ struct Parser
 		{
 			version(print_parse) auto s3 = scop("<func_declaration> %s", start);
 			Array!AstIndex params;
+			bool isMember = false;
+
+			// add this pointer
+			if (currentStruct)
+			{
+				AstIndex structName = make!NameUseExprNode(start, currentStruct.get!StructDeclNode(context).id);
+				NameUseExprNode* name = structName.get_name_use(context);
+				name.resolve(currentStruct, context);
+				name.flags |= AstFlags.isType;
+				name.state = AstNodeState.name_resolve_done;
+				AstIndex thisType = make!PtrTypeNode(start, structName);
+
+				AstIndex param = make!VariableDeclNode(start, thisType, AstIndex.init, context.commonIds.id_this, ushort(0));
+				VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
+				paramNode.flags |= VariableFlags.isParameter;
+				params.put(context.arrayArena, param);
+				isMember = true;
+			}
+
 			parseParameters(params, NeedRegNames.yes); // functions need to register their param names
 
 			AstIndex block;
@@ -284,6 +310,10 @@ struct Parser
 
 			AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
 			AstIndex func = make!FunctionDeclNode(start, signature, block, declarationId);
+			if (isMember)
+			{
+				func.get!FunctionDeclNode(context).flags |= FunctionFlags.isMember;
+			}
 			currentModule.addFunction(func, context);
 			return func;
 		}
@@ -341,16 +371,27 @@ struct Parser
 		nextToken; // skip "struct"
 		Identifier structId = expectIdentifier();
 
+		AstIndex structIndex = make!StructDeclNode(start, structId);
+		StructDeclNode* s = structIndex.get!StructDeclNode(context);
+
 		if (tok.type == TokenType.SEMICOLON)
 		{
 			nextToken; // skip semicolon
-			return make!StructDeclNode(start, AstNodes(), structId, true);
+			s.flags |= StructFlags.isOpaque;
+			return structIndex;
 		}
 
 		expectAndConsume(TokenType.LCURLY);
-		AstNodes declarations = parse_declarations(TokenType.RCURLY);
+
+		AstIndex prevStruct = currentStruct;
+		currentStruct = structIndex;
+		scope(exit) currentStruct = prevStruct;
+
+		s.declarations = parse_declarations(TokenType.RCURLY);
+
 		expectAndConsume(TokenType.RCURLY);
-		return make!StructDeclNode(start, declarations, structId, false);
+
+		return structIndex;
 	}
 
 	// <enum_decl> = <enum_decl_single> / <enum_decl_multi>

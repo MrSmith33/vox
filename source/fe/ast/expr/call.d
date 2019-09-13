@@ -1,6 +1,15 @@
 /// Copyright: Copyright (c) 2017-2019 Andrey Penechko.
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
+
+// inside struct method supported:
+// foo;
+// foo();
+// this.foo;
+// this.foo();
+// in static function:
+// s.foo;
+// s.foo();
 module fe.ast.expr.call;
 
 import all;
@@ -39,8 +48,22 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 		case AstType.decl_struct:
 			return type_check_constructor_call(node, callee.get!StructDeclNode(c), state);
 		case AstType.expr_member:
-			// UFCS call
 			MemberExprNode* member = callee.get!MemberExprNode(c);
+			// Method call
+			LookupResult res = lookupMember(member, c);
+			if (res == LookupResult.success) {
+				node.callee = member.member(c);
+				if (member.aggregate.get_node_id(c) != c.commonIds.id_this)
+				{
+					member.aggregate.flags(c) |= AstFlags.isLvalue;
+					member.aggregate = c.appendAst!UnaryExprNode(node.loc, AstIndex.init, IrIndex.init, UnOp.addrOf, member.aggregate);
+				}
+				member.aggregate.get_node(c).state = AstNodeState.name_resolve_done;
+				node.args.putFront(c.arrayArena, member.aggregate);
+				auto signature = node.callee.get_type(c).as_func_sig;
+				return type_check_func_call(node, signature, member.memberId(c), state);
+			}
+			// UFCS call
 			Identifier calleeName = member.memberId(c);
 			LookupResult ufcsRes = tryUFCSCall(callIndex, member, state);
 			if (ufcsRes == LookupResult.failure) {
@@ -68,7 +91,6 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			c.error(node.loc, "Cannot call %s", callee.astType(c));
 			c.internal_error(node.loc,
 				"Only direct function calls are supported right now");
-
 	}
 }
 

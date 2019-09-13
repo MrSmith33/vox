@@ -26,7 +26,7 @@ struct AstIndex
 	ref AstType astType(CompilationContext* c) { return c.getAstNode(this).astType; }
 	AstNodeState state(CompilationContext* c) { return c.getAstNode(this).state; }
 	void setState(CompilationContext* c, AstNodeState newState) { return c.getAstNode(this).state = newState; }
-	ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
+	ref ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
 
 	ref AstIndex expr_type(CompilationContext* c) { return get_expr(c).type; }
 
