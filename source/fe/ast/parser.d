@@ -1089,12 +1089,21 @@ AstIndex nullLiteral(ref Parser p, Token token, int rbp) {
 			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
 			AstIndex type = p.context.u8Slice;
 
-			IrIndex irValue = p.context.globals.add();
-			IrGlobal* global = &p.context.globals.get(irValue);
-			global.setInitializer(cast(ubyte[])value);
-			global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
-			global.type = p.context.u8Ptr.gen_ir_type(p.context);
-			global.moduleSymIndex = p.currentModule.objectSymIndex;
+			IrIndex irValue;
+			// dont create empty global for empty string. Globalsare required to have non-zero length
+			if (value.length == 0)
+			{
+				irValue = p.context.constants.add(0, IsSigned.no, IrArgSize.size64); // null ptr
+			}
+			else
+			{
+				irValue = p.context.globals.add();
+				IrGlobal* global = &p.context.globals.get(irValue);
+				global.setInitializer(cast(ubyte[])value);
+				global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
+				global.type = p.context.u8Ptr.gen_ir_type(p.context);
+				global.moduleSymIndex = p.currentModule.objectSymIndex;
+			}
 			IrIndex irValueLength = p.context.constants.add(value.length, IsSigned.no, IrArgSize.size64);
 			irValue = p.context.constants.addAggrecateConstant(type.gen_ir_type(p.context), irValueLength, irValue);
 

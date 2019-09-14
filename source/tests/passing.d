@@ -2119,3 +2119,12 @@ void tester92(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("testMethod4")() == 42);
 	assert(ctx.getFunctionPtr!(int)("testMethod5")() == 42);
 }
+
+@TestInfo()
+immutable test93 = q{--- test93
+	// empty string literal
+	void print(u8[]){}
+	void run(){
+		print("");
+	}
+};
