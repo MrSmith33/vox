@@ -92,7 +92,8 @@ struct Parser
 	CompilationContext* context;
 	ModuleDeclNode* currentModule;
 	/// For member functions
-	AstIndex currentStruct;
+	/// mmodule, struct or function
+	AstIndex declarationOwner;
 
 	Token tok;
 	SourceLocation loc() {
@@ -162,6 +163,7 @@ struct Parser
 		tok.type = context.tokenBuffer[tok.index];
 		expectAndConsume(TokenType.SOI);
 		mod.loc = tok.index;
+		declarationOwner = context.getAstNodeIndex(mod);
 		mod.declarations = parse_declarations(TokenType.EOI);
 	}
 
@@ -183,7 +185,7 @@ struct Parser
 			if (declNode.astType == AstType.decl_var) {
 				auto var = declNode.as!VariableDeclNode(context);
 				var.scopeIndex = varIndex++;
-				if (currentStruct)
+				if (declarationOwner.astType(context) == AstType.decl_struct)
 					var.flags |= VariableFlags.isMember;
 			}
 			declarations.put(context.arrayArena, declIndex);
@@ -283,11 +285,11 @@ struct Parser
 			bool isMember = false;
 
 			// add this pointer
-			if (currentStruct)
+			if (declarationOwner.astType(context) == AstType.decl_struct)
 			{
-				AstIndex structName = make!NameUseExprNode(start, currentStruct.get!StructDeclNode(context).id);
+				AstIndex structName = make!NameUseExprNode(start, declarationOwner.get!StructDeclNode(context).id);
 				NameUseExprNode* name = structName.get_name_use(context);
-				name.resolve(currentStruct, context);
+				name.resolve(declarationOwner, context);
 				name.flags |= AstFlags.isType;
 				name.state = AstNodeState.name_resolve_done;
 				AstIndex thisType = make!PtrTypeNode(start, structName);
@@ -301,20 +303,24 @@ struct Parser
 
 			parseParameters(params, NeedRegNames.yes); // functions need to register their param names
 
-			AstIndex block;
-			if (tok.type != TokenType.SEMICOLON)
-			{
-				block = block_stmt();
-			}
-			else expect(TokenType.SEMICOLON); // external function
-
 			AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
-			AstIndex func = make!FunctionDeclNode(start, signature, block, declarationId);
+			AstIndex func = make!FunctionDeclNode(start, signature, declarationId);
 			if (isMember)
 			{
 				func.get!FunctionDeclNode(context).flags |= FunctionFlags.isMember;
 			}
 			currentModule.addFunction(func, context);
+
+			AstIndex block;
+			if (tok.type != TokenType.SEMICOLON)
+			{
+				AstIndex prevOwner = declarationOwner;
+				declarationOwner = func;
+				scope(exit) declarationOwner = prevOwner;
+				func.get!FunctionDeclNode(context).block_stmt = block_stmt();
+			}
+			else expect(TokenType.SEMICOLON); // external function
+
 			return func;
 		}
 		else
@@ -383,9 +389,9 @@ struct Parser
 
 		expectAndConsume(TokenType.LCURLY);
 
-		AstIndex prevStruct = currentStruct;
-		currentStruct = structIndex;
-		scope(exit) currentStruct = prevStruct;
+		AstIndex prevOwner = declarationOwner;
+		declarationOwner = structIndex;
+		scope(exit) declarationOwner = prevOwner;
 
 		s.declarations = parse_declarations(TokenType.RCURLY);
 

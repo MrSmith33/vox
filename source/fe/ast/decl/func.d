@@ -54,13 +54,12 @@ struct FunctionDeclNode {
 	AstIndex _scope;
 	FunctionBackendData backendData;
 
-	this(TokenIndex loc, AstIndex signature, AstIndex block, Identifier id)
+	this(TokenIndex loc, AstIndex signature, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_function;
 		this.flags = AstFlags.isDeclaration;
 		this.signature = signature;
-		this.block_stmt = block;
 		this.backendData.name = id;
 		this.backendData.signature = signature;
 	}

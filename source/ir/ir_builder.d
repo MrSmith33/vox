@@ -246,7 +246,8 @@ struct IrBuilder
 			value.kind == IrValueKind.constantAggregate ||
 			value.kind == IrValueKind.global ||
 			value.kind == IrValueKind.virtualRegister ||
-			value.kind == IrValueKind.physicalRegister,
+			value.kind == IrValueKind.physicalRegister ||
+			value.kind == IrValueKind.stackSlot,
 			"writeVariable(block %s, variable %s, value %s)",
 			blockIndex, var, value);
 

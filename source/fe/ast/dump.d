@@ -124,10 +124,12 @@ struct AstPrinter {
 		else print("UNOP ", u.op);
 		pr_node(u.child); }
 	void visit(CallExprNode* c) {
-		if (c.callee)
+		if (c.callee && c.callee.astType(context) == AstType.decl_function)
 			print("CALL ", context.idString(c.callee.get_node_id(context)));
-		else
+		else {
 			print("CALL");
+			pr_node(c.callee);
+		}
 		foreach (arg; c.args) pr_node(arg); }
 	void visit(IndexExprNode* i) {
 		print("INDEX"); pr_node(i.array); pr_node(i.index); }

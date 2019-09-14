@@ -2098,9 +2098,24 @@ immutable test92 = q{--- test92
 		s.set42; // take address
 		return s.member;
 	}
+	i32 testMethod4() {
+		Struct s;
+		Struct* sptr = &s;
+		sptr.set42; // call method on pointer
+		return sptr.member;
+	}
+	i32 testMethod5() {
+		Struct[1] s;
+		s[0].set42; // call method on index expr
+		s[0].set42();
+		s[0].set(42);
+		return s[0].member;
+	}
 };
 void tester92(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("testMethod1")() == 42);
 	assert(ctx.getFunctionPtr!(int, int)("testMethod2")(60) == 60);
 	assert(ctx.getFunctionPtr!(int)("testMethod3")() == 42);
+	assert(ctx.getFunctionPtr!(int)("testMethod4")() == 42);
+	assert(ctx.getFunctionPtr!(int)("testMethod5")() == 42);
 }

@@ -44,6 +44,7 @@ void require_type_check(ref AstIndex nodeIndex, CompilationContext* context)
 void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 {
 	AstNode* node = state.context.getAstNode(nodeIndex);
+	//writefln("require_type_check %s %s", node.astType, node.state);
 
 	switch(node.state) with(AstNodeState)
 	{

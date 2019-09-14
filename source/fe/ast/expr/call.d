@@ -50,17 +50,12 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 		case AstType.expr_member:
 			MemberExprNode* member = callee.get!MemberExprNode(c);
 			// Method call
-			LookupResult res = lookupMember(member, c);
+			LookupResult res = lookupMember(member, state);
 			if (res == LookupResult.success) {
 				node.callee = member.member(c);
-				if (member.aggregate.get_node_id(c) != c.commonIds.id_this)
-				{
-					member.aggregate.flags(c) |= AstFlags.isLvalue;
-					member.aggregate = c.appendAst!UnaryExprNode(node.loc, AstIndex.init, IrIndex.init, UnOp.addrOf, member.aggregate);
-				}
-				member.aggregate.get_node(c).state = AstNodeState.name_resolve_done;
-				node.args.putFront(c.arrayArena, member.aggregate);
 				auto signature = node.callee.get_type(c).as_func_sig;
+				lowerThisArgument(signature, member.aggregate, member.loc, c);
+				node.args.putFront(c.arrayArena, member.aggregate);
 				return type_check_func_call(node, signature, member.memberId(c), state);
 			}
 			// UFCS call

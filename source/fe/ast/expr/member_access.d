@@ -103,7 +103,7 @@ void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeChe
 	// try member
 	require_type_check(node.aggregate, state);
 
-	LookupResult res = lookupMember(node, c);
+	LookupResult res = lookupMember(node, state);
 
 	if (res == LookupResult.success) {
 		if (node.member(c).astType(c) == AstType.decl_function)
@@ -166,30 +166,39 @@ void createMethodCall(ref AstIndex callIndex, TokenIndex loc, AstIndex aggregate
 	auto call = callIndex.get!CallExprNode(c);
 	call.state = AstNodeState.name_resolve_done;
 	call.callee = member;
-	if (call.callee.get!FunctionDeclNode(c).isMember)
-	{
-		if (aggregate.get_node_id(c) != c.commonIds.id_this)
-		{
-			aggregate.flags(c) |= AstFlags.isLvalue;
-			aggregate = c.appendAst!UnaryExprNode(loc, AstIndex.init, IrIndex.init, UnOp.addrOf, aggregate);
-		}
-		aggregate.get_node(c).state = AstNodeState.name_resolve_done;
-	}
+	auto method = call.callee.get!FunctionDeclNode(c);
+	auto signature = method.signature.get!FunctionSignatureNode(c);
+	if (method.isMember) lowerThisArgument(signature, aggregate, loc, c);
 	call.args.putFront(c.arrayArena, aggregate);
 
 	// type check call
-	auto signature = call.callee.get_type(c).as_func_sig;
 	type_check_func_call(call, signature, calleeId, state);
 }
 
-/// Look up member by Identifier. Searches aggregate scope for identifier.
-LookupResult lookupMember(MemberExprNode* expr, CompilationContext* c)
+/// Makes sure that aggregate is of pointer type
+void lowerThisArgument(FunctionSignatureNode* signature, ref AstIndex aggregate, TokenIndex loc, CompilationContext* c)
 {
+	auto thisType = signature.parameters[0].get_node_type(c); // Struct*
+	auto structType = thisType.get!PtrTypeNode(c).base.get_node_type(c); // Struct
+	auto aggType = aggregate.get_node_type(c); // Struct or Struct*
+	if (aggregate.get_node_type(c) == structType) // rewrite Struct as Struct*
+	{
+		aggregate.flags(c) |= AstFlags.isLvalue;
+		aggregate = c.appendAst!UnaryExprNode(loc, AstIndex.init, IrIndex.init, UnOp.addrOf, aggregate);
+	}
+	aggregate.get_node(c).state = AstNodeState.name_resolve_done;
+}
+
+/// Look up member by Identifier. Searches aggregate scope for identifier.
+LookupResult lookupMember(MemberExprNode* expr, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
 	if (expr.isSymResolved) {
 		expr.type = expr.member(c).get_node_type(c);
 		return LookupResult.success;
 	}
 
+	require_type_check(expr.aggregate, state);
 	TypeNode* objType = expr.aggregate.get_type(c);
 
 	Identifier memberId = expr.memberId(c);
