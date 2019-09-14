@@ -2128,3 +2128,23 @@ immutable test93 = q{--- test93
 		print("");
 	}
 };
+
+@TestInfo(&tester94)
+immutable test94 = q{--- test94
+	// return small struct
+	struct Small {
+		i32 a;
+		i32 b;
+	}
+	Small glue(i32 a, i32 b)
+	{
+		return Small(a, b);
+	}
+};
+void tester94(ref TestContext ctx) {
+	static struct Small {
+		int a;
+		int b;
+	}
+	assert(ctx.getFunctionPtr!(Small, int, int)("glue")(42, 100) == Small(42, 100));
+}

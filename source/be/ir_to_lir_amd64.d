@@ -651,13 +651,31 @@ struct IrToLir
 						result.physRegSize = typeToRegSize(type, context);
 						ExtraInstrArgs extra = { addUsers : false, result : result };
 
+						// simple way of returning multi-member structs. Store to memory, then load into register
+						IrIndex tryMovComplexStruct()
+						{
+							if (type.isTypeStruct)
+							{
+								IrTypeStruct* structRes = &context.types.get!IrTypeStruct(type);
+								if (structRes.numMembers > 1)
+								{
+									IrIndex slot = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
+									IrIndex slotType = lir.backendData.stackLayout[slot].type;
+									genStore(slot, 0, instrHeader.args[0], 0, type, lirBlockIndex, ir);
+									return genLoad(slot, 0, slotType, lirBlockIndex);
+								}
+							}
+							return getFixedIndex(instrHeader.args[0]);
+						}
+
 						if (numHiddenParams == 1) {
 							// store struct into pointer, then return pointer
 							IrIndex valType = context.types.getPointerBaseType(type);
 							genStore(hiddenParameter, 0, instrHeader.args[0], 0, valType, lirBlockIndex, ir);
 							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, hiddenParameter);
 						} else {
-							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
+							IrIndex itemToReturn = tryMovComplexStruct;
+							builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, itemToReturn);
 						}
 
 						IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);

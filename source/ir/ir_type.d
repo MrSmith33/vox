@@ -354,7 +354,7 @@ struct IrTypeStorage
 
 /// Returns type of value
 IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext context)
-	out (res; res.isType, "Not a type")
+	out (res; res.isType, format("Not a type %s -> %s", value, res))
 {
 	switch(value.kind) with(IrValueKind)
 	{
