@@ -60,7 +60,7 @@ bool same_type_func_sig(FunctionSignatureNode* t1, FunctionSignatureNode* t2, Co
 	foreach (i, AstIndex paramA; t1.parameters)
 	{
 		AstIndex paramB = t2.parameters[i];
-		if (!same_type(paramA, paramB, c)) return false;
+		if (!same_type(paramA.get_node_type(c), paramB.get_node_type(c), c)) return false;
 	}
 	return true;
 }

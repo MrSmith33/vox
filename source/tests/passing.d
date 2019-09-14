@@ -1882,10 +1882,19 @@ immutable test88 = q{--- test88
 	i32 test2() {
 		return funPtrEnum() + inlinefunPtrEnum(); // direct call is performed
 	}
+	i32 sum(i32 a, i32 b) { return a + b; }
+	// pass ptr to function with parameters
+	i32 callFunc(i32 function(i32, i32) func, i32 a, i32 b) {
+		return func(a, b);
+	}
+	i32 test3() {
+		return callFunc(&sum, 10, 40);
+	}
 };
 void tester88(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("test")() == 84);
 	assert(ctx.getFunctionPtr!(int)("test2")() == 84);
+	assert(ctx.getFunctionPtr!(int)("test3")() == 50);
 }
 
 @TestInfo()

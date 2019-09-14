@@ -370,6 +370,8 @@ IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext co
 			return ir.backendData.stackLayout[value].type;
 		case virtualRegister:
 			return ir.getVirtReg(value).type;
+		case func:
+			return context.types.appendPtr(context.getFunction(value).signature.get!FunctionSignatureNode(&context).irType);
 		default:
 			context.internal_error("Cannot get type of %s", value.kind);
 			assert(false);
