@@ -18,8 +18,13 @@ struct IrModule
 		functions.put(context.arrayArena, fun);
 	}
 
-	void dump(ref TextSink sink, ref CompilationContext context, ref FuncDumpSettings settings)
+	// sink and settings may be null
+	void dump(CompilationContext* context, FuncDumpSettings* settings = null, TextSink* sink = null)
 	{
-		foreach (func; functions) dumpFunction(*func, sink, context, settings);
+		IrDumpContext dumpCtx = { context : context, settings : settings, sink : sink };
+		foreach (func; functions) {
+			dumpCtx.ir = func;
+			dumpFunction(&dumpCtx);
+		}
 	}
 }

@@ -162,7 +162,7 @@ struct AstToIr
 			{
 				m.irModule.addFunction(*context, irData);
 				if (context.validateIr) validateIrFunction(*context, *irData);
-				if (context.printIr && context.printDumpOf(func)) dumpFunction(*irData, *context);
+				if (context.printIr && context.printDumpOf(func)) dumpFunction(context, irData);
 			}
 		}
 

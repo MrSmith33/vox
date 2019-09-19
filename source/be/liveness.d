@@ -53,18 +53,18 @@ for each block b in reverse order do
 	b.liveIn = live
 */
 //version = LivePrint;
-void pass_live_intervals(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode fun)
+void pass_live_intervals(CompilationContext* context, ModuleDeclNode* mod, FunctionDeclNode* fun, LivenessInfo* liveness)
 {
 	if (fun.isExternal) return;
 
 	IrFunction* lirData = context.getAst!IrFunction(fun.backendData.lirData);
 	//lirData.orderBlocks;
 	lirData.assignSequentialBlockIndices;
-	pass_live_intervals_func(&context, fun.backendData.liveIntervals, lirData, fun.backendData.liveBitmap);
+	pass_live_intervals_func(context, lirData, liveness);
 
-	if (context.printLiveIntervals && context.printDumpOf(&fun))
+	if (context.printLiveIntervals && context.printDumpOf(fun))
 	{
-		fun.backendData.liveIntervals.dump(&context, &fun);
+		liveness.dump(context, fun);
 
 		FuncDumpSettings set;
 		set.printLiveness = true;
@@ -72,23 +72,20 @@ void pass_live_intervals(ref CompilationContext context, ref ModuleDeclNode mod,
 		set.printPregLiveness = true;
 		set.printLivenessLinearIndex = true;
 		set.printBlockFlags = true;
-		dumpFunction(*lirData, context, set);
+
+		IrDumpContext dumpCtx = {
+			context : context,
+			ir : lirData,
+			settings : &set,
+			liveness : liveness
+		};
+		dumpFunction(&dumpCtx);
 	}
 }
 
-void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveIntervals liveIntervals, IrFunction* ir, ref LiveBitmap liveBitmap)
+void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, LivenessInfo* liveness)
 {
-	size_t numVregs = ir.numVirtualRegisters;
-	size_t numBucketsPerBlock = divCeil(numVregs, size_t.sizeof * 8);
-	liveBitmap.allocSets(context, numBucketsPerBlock, ir.numBasicBlocks);
-
-	size_t[] liveBuckets = context.arrayArena.allocArray!size_t(numBucketsPerBlock);
-	scope(exit) context.arrayArena.freeArray(liveBuckets);
-	liveBuckets[] = 0;
-	BitArray live = BitArray(liveBuckets, numBucketsPerBlock * size_t.sizeof * 8);
-
-	liveIntervals.initIntervals(context, ir);
-	liveIntervals.linearIndicies.create(context, ir);
+	liveness.initStorage(context, ir);
 
 	// enumerate all basic blocks, instructions
 	// phi functions use index of the block
@@ -99,30 +96,30 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 	{
 		version(LivePrint) writefln("[LIVE] %s %s", enumerationIndex, blockIndex);
 		// Allocate index for block start
-		liveIntervals.linearIndicies[blockIndex] = enumerationIndex;
+		liveness.linearIndicies[blockIndex] = enumerationIndex;
 		enumerationIndex += ENUM_STEP;
 		// enumerate instructions
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(*ir))
 		{
 			version(LivePrint) writefln("[LIVE]   %s %s", enumerationIndex, instrIndex);
-			liveIntervals.linearIndicies[instrIndex] = enumerationIndex;
+			liveness.linearIndicies[instrIndex] = enumerationIndex;
 			enumerationIndex += ENUM_STEP;
 		}
 	}
-	liveIntervals.maxLinearIndex = enumerationIndex;
+	liveness.maxLinearIndex = enumerationIndex;
 
 	void liveAdd(IrIndex someOperand)
 	{
 		context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
 		version(LivePrint) writefln("[LIVE] liveAdd %s #%s", someOperand, ir.getVirtReg(someOperand).seqIndex);
-		live[ir.getVirtReg(someOperand).seqIndex] = true;
+		liveness.bitmap.live[ir.getVirtReg(someOperand).seqIndex] = true;
 	}
 
 	void liveRemove(IrIndex someOperand)
 	{
 		context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
 		version(LivePrint) writefln("[LIVE] liveRemove %s #%s", someOperand, ir.getVirtReg(someOperand).seqIndex);
-		live[ir.getVirtReg(someOperand).seqIndex] = false;
+		liveness.bitmap.live[ir.getVirtReg(someOperand).seqIndex] = false;
 	}
 
 	// algorithm start
@@ -130,15 +127,15 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
 		// Is also where phi functions are located
-		uint blockFromPos = liveIntervals.linearIndicies[blockIndex];
+		uint blockFromPos = liveness.linearIndicies[blockIndex];
 		version(LivePrint) writefln("[LIVE] % 3s %s", blockFromPos, blockIndex);
 
 		// live = union of successor.liveIn for each successor of block
-		liveBuckets[] = 0;
+		liveness.bitmap.liveBuckets[] = 0;
 		foreach (IrIndex succIndex; block.successors.range(*ir))
 		{
-			foreach (size_t i, size_t bucket; liveBitmap.blockLiveInBuckets(succIndex, ir))
-				liveBuckets[i] |= bucket;
+			foreach (size_t i, size_t bucket; liveness.bitmap.blockLiveInBuckets(succIndex, ir))
+				liveness.bitmap.liveBuckets[i] |= bucket;
 		}
 
 		// for each phi function phi of successors of block do
@@ -150,24 +147,24 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 						if (arg.value.isVirtReg)
 							liveAdd(arg.value);
 
-		//writef("in @%s live:", liveIntervals.linearIndicies[blockIndex]);
+		//writef("in @%s live:", liveness.linearIndicies[blockIndex]);
 		//foreach (size_t index; live.bitsSet)
 		//	writef(" %s", index);
 		//writeln;
 
 		// for each opd in live do
-		foreach (size_t index; live.bitsSet)
+		foreach (size_t index; liveness.bitmap.live.bitsSet)
 		{
 			// intervals[opd].addRange(block.from, block.to)
-			liveIntervals.vint(index).addRange(context, blockFromPos, liveIntervals.linearIndicies[block.lastInstr]);
+			liveness.vint(index).addRange(context, blockFromPos, liveness.linearIndicies[block.lastInstr]);
 			version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)", index,
-				blockFromPos, liveIntervals.linearIndicies[block.lastInstr]);
+				blockFromPos, liveness.linearIndicies[block.lastInstr]);
 		}
 
 		// for each operation op of b in reverse order do
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(*ir))
 		{
-			uint linearInstrIndex = liveIntervals.linearIndicies[instrIndex];
+			uint linearInstrIndex = liveness.linearIndicies[instrIndex];
 			version(LivePrint) writefln("[LIVE]   % 3s %s", linearInstrIndex, instrIndex);
 
 			// -------------- Assign interval hints --------------
@@ -190,16 +187,16 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 				IrIndex from = instrHeader.args[0];
 				IrIndex to = instrHeader.result;
 				if (from.isPhysReg && to.isVirtReg) {
-					liveIntervals.vint(ir.getVirtReg(to).seqIndex).storageHint = from;
+					liveness.vint(ir.getVirtReg(to).seqIndex).storageHint = from;
 				} else if (from.isVirtReg && to.isPhysReg) {
-					liveIntervals.vint(ir.getVirtReg(from).seqIndex).storageHint = to;
+					liveness.vint(ir.getVirtReg(from).seqIndex).storageHint = to;
 				}
 			}
 
 			// for each output operand opd of op do
 			if (instrHeader.hasResult) {
 				if (instrHeader.result.isVirtReg) {
-					liveIntervals.get(ir, instrHeader.result).setFrom(context, instrHeader.result, linearInstrIndex);
+					liveness.get(ir, instrHeader.result).setFrom(context, instrHeader.result, linearInstrIndex);
 					liveRemove(instrHeader.result);
 				} else if (instrHeader.result.isPhysReg && !instrInfo.isMov) {
 					int physRegResultOffset = linearInstrIndex+ENUM_STEP;
@@ -207,14 +204,14 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 					if (instrHeader.extendFixedResultRange)
 						physRegResultOffset += ENUM_STEP;
 					// non-mov, extend fixed interval to the next instr (which must be mov from that phys reg)
-					liveIntervals.pint(instrHeader.result).addRange(context, linearInstrIndex, physRegResultOffset);
+					liveness.pint(instrHeader.result).addRange(context, linearInstrIndex, physRegResultOffset);
 				}
 			}
 
 			int physRegArgsOffset = 0;
 			foreach(IrIndex arg; instrHeader.args) {
 				if (arg.isVirtReg) {
-					liveIntervals.get(ir, arg).addRange(context, blockFromPos, linearInstrIndex);
+					liveness.get(ir, arg).addRange(context, blockFromPos, linearInstrIndex);
 					liveAdd(arg);
 				}
 				else if (arg.isPhysReg) {
@@ -239,7 +236,7 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 				IrIndex arg1 = instrHeader.args[1];
 				if ( !sameIndexOrPhysReg(arg0, arg1) ) {
 					if (arg1.isVirtReg || arg1.isPhysReg) {
-						liveIntervals.get(ir, arg1).addRange(context, blockFromPos, linearInstrIndex+1);
+						liveness.get(ir, arg1).addRange(context, blockFromPos, linearInstrIndex+1);
 					}
 				}
 			}
@@ -251,7 +248,7 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 					if (arg.isPhysReg)
 					{
 						// non-mov, extend fixed interval to the preceding mov instr
-						liveIntervals.pint(arg).addRange(context, linearInstrIndex - physRegArgsOffset, linearInstrIndex);
+						liveness.pint(arg).addRange(context, linearInstrIndex - physRegArgsOffset, linearInstrIndex);
 						physRegArgsOffset -= ENUM_STEP;
 					}
 				}
@@ -264,7 +261,7 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 				CallConv* cc = context.types.getCalleeCallConv(callee, *ir, context);
 				IrIndex[] volatileRegs = cc.volatileRegs;
 				foreach(IrIndex reg; volatileRegs) {
-					liveIntervals.pint(reg).addRange(context, linearInstrIndex, linearInstrIndex+1);
+					liveness.pint(reg).addRange(context, linearInstrIndex, linearInstrIndex+1);
 				}
 			}
 		}
@@ -275,7 +272,7 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 			// live.remove(phi.output)
 			if (phi.result.isVirtReg) {
 				liveRemove(phi.result);
-				liveIntervals.get(ir, phi.result).setFrom(context, phi.result, blockFromPos);
+				liveness.get(ir, phi.result).setFrom(context, phi.result, blockFromPos);
 			}
 		}
 
@@ -284,11 +281,11 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 		{
 			// We need to find the loop block with the max position
 			// Use loop header as starting block in case it is in max position
-			uint maxPos = liveIntervals.linearIndicies[block.lastInstr];
+			uint maxPos = liveness.linearIndicies[block.lastInstr];
 			IrIndex loopEnd = blockIndex;
 			//     loopEnd = last block of the loop starting at b
 			foreach(IrIndex pred; block.predecessors.range(*ir)) {
-				uint blockEndPos = liveIntervals.linearIndicies[ir.getBlock(pred).lastInstr];
+				uint blockEndPos = liveness.linearIndicies[ir.getBlock(pred).lastInstr];
 				if (blockEndPos > maxPos) {
 					maxPos = blockEndPos;
 					loopEnd = pred;
@@ -299,26 +296,26 @@ void pass_live_intervals_func(CompilationContext* context, ref FunctionLiveInter
 			for (IrIndex loopBlockIndex = block.nextBlock;;)
 			{
 				IrBasicBlock* loopBlock = &ir.getBlock(loopBlockIndex);
-				size_t[] liveIns = liveBitmap.blockLiveInBuckets(loopBlockIndex, ir);
+				size_t[] liveIns = liveness.bitmap.blockLiveInBuckets(loopBlockIndex, ir);
 				// add live in of loop header to all blocks of the loop
 				foreach(i, ref size_t bucket; liveIns)
-					bucket |= liveBuckets[i];
+					bucket |= liveness.bitmap.liveBuckets[i];
 				if (loopBlockIndex == loopEnd) break;
 				loopBlockIndex = loopBlock.nextBlock;
 			}
 
 			//     for each opd in live do
 			//         intervals[opd].addRange(b.from, loopEnd.to)
-			foreach (size_t index; live.bitsSet)
+			foreach (size_t index; liveness.bitmap.live.bitsSet)
 			{
-				liveIntervals.vint(index).addRange(context, blockFromPos, maxPos);
+				liveness.vint(index).addRange(context, blockFromPos, maxPos);
 			}
 		}
 
 		// b.liveIn = live
-		size_t[] liveIns = liveBitmap.blockLiveInBuckets(blockIndex, ir);
-		liveIns[] = liveBuckets;
-		//writefln("liveBuckets %s %s %s", blockIndex, liveIns.ptr, liveBitmap.blockLiveInBits(blockIndex, ir));
+		size_t[] liveIns = liveness.bitmap.blockLiveInBuckets(blockIndex, ir);
+		liveIns[] = liveness.bitmap.liveBuckets;
+		//writefln("liveBuckets %s %s %s", blockIndex, liveIns.ptr, liveness.bitmap.blockLiveInBits(blockIndex, ir));
 	}
 }
 
@@ -335,12 +332,18 @@ struct LiveBitmap
 	size_t[] liveInBuckets;
 
 	// [vreg index..., padding]
+	size_t[] liveBuckets;
+	BitArray live;
 
-	void allocSets(CompilationContext* c, size_t numBucketsPerBlock, size_t numBlocks) {
+	void allocSets(CompilationContext* c, uint numBucketsPerBlock, uint numBlocks) {
 		this.numBucketsPerBlock = numBucketsPerBlock;
-		size_t numBucketsTotal = numBucketsPerBlock * numBlocks;
-		liveInBuckets = c.arrayArena.allocArray!size_t(numBucketsTotal);
+		uint numBucketsTotal = numBucketsPerBlock * numBlocks;
+		liveInBuckets = c.allocateTempArray!size_t(numBucketsTotal);
 		liveInBuckets[] = 0;
+
+		liveBuckets = c.allocateTempArray!size_t(numBucketsPerBlock);
+		liveBuckets[] = 0;
+		live = BitArray(liveBuckets, numBucketsPerBlock * size_t.sizeof * 8);
 	}
 
 	size_t[] blockLiveInBuckets(IrIndex blockIndex, IrFunction* ir)
@@ -360,8 +363,10 @@ struct LiveBitmap
 
 
 ///
-struct FunctionLiveIntervals
+struct LivenessInfo
 {
+	LiveBitmap bitmap;
+
 	// invariant: all ranges of one interval are sorted by `from` and do not intersect
 	Array!LiveInterval intervals;
 	uint numFixedIntervals;
@@ -376,9 +381,16 @@ struct FunctionLiveIntervals
 	LiveInterval* vint(size_t virtSeqIndex) { return &intervals[numFixedIntervals+virtSeqIndex]; }
 	LiveInterval* pint(IrIndex physReg) { return &intervals[physReg.physRegIndex]; }
 
-	void initIntervals(CompilationContext* context, IrFunction* ir) {
+	void initStorage(CompilationContext* context, IrFunction* ir) {
+
+		uint numVregs = ir.numVirtualRegisters;
+		uint numBucketsPerBlock = cast(uint)divCeil(numVregs, size_t.sizeof * 8);
+		bitmap.allocSets(context, numBucketsPerBlock, ir.numBasicBlocks);
+
+		intervals.clear;
 		numFixedIntervals = cast(uint)context.machineInfo.registers.length;
 		intervals.voidPut(context.arrayArena, numFixedIntervals + ir.numVirtualRegisters);
+
 		size_t i;
 		foreach (ref LiveInterval it; physicalIntervals)
 		{
@@ -389,6 +401,8 @@ struct FunctionLiveIntervals
 		}
 		foreach (ref LiveInterval it; virtualIntervals)
 			it = LiveInterval();
+
+		linearIndicies.create(context, ir);
 	}
 
 	IntervalIndex indexOf(LiveInterval* it) {
@@ -438,6 +452,7 @@ struct FunctionLiveIntervals
 
 	IntervalIndex splitBefore(CompilationContext* context, IntervalIndex parentInterval, int before, LiveRangeIndex rightIndex)
 	{
+		//writefln("splitBefore %s %s", parentInterval, before);
 		LiveInterval* it = &intervals[parentInterval];
 		auto right = &it.ranges[rightIndex];
 

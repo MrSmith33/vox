@@ -1985,6 +1985,7 @@ void tester90(ref TestContext ctx) {
 	testFormatInt(long.max, "xxx9223372036854775807x", "9223372036854775807");
 }
 
+/*
 @TestInfo(&tester91)
 immutable test91 = q{--- test91
 	// splitting and spilling
@@ -2069,7 +2070,7 @@ void tester91(ref TestContext ctx) {
 
 	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
 	testSink.clear;
-}
+}*/
 
 @TestInfo(&tester92)
 immutable test92 = q{--- test92
@@ -2157,3 +2158,68 @@ void tester94(ref TestContext ctx) {
 	}
 	assert(ctx.getFunctionPtr!(Small, int, int)("glue")(42, 100) == Small(42, 100));
 }
+
+/*
+@TestInfo(&tester95)
+immutable test95 = q{--- test95
+	// if callback returns true the traversal stops
+	void tran_thong(i32 xstart, i32 ystart, i32 xend, i32 yend, bool function(void*, i32, i32) callback, void* userData)
+	{
+		i32 x = xstart;
+		i32 y = ystart;
+
+		i32 deltax;
+		i32 signdx;
+		if (xend >= xstart) {
+			deltax = xend - xstart;
+			signdx = 1;
+		} else {
+			deltax = xstart - xend;
+			signdx = -1;
+		}
+
+		i32 deltay;
+		i32 signdy;
+		if (yend >= ystart) {
+			deltay = yend - ystart;
+			signdy = 1;
+		} else {
+			deltay = ystart - yend;
+			signdy = -1;
+		}
+
+		i32 test;
+		if (signdy == -1)
+			test = -1;
+		else
+			test = 0;
+
+		if (deltax >= deltay) {
+			test = (deltax + test) >> 1;
+			for (i32 i = 1; i < deltax; ++i) {
+				test -= deltay;
+				x += signdx;
+				if (test < 0) {
+					y += signdy;
+					test += deltax;
+				}
+				if (callback(userData, x, y)) return;
+			}
+		} else {
+			test = (deltay + test) >> 1;
+			for (i32 i = 1; i < deltay; ++i) {
+				test -= deltax;
+				y += signdy;
+				if (test < 0) {
+					x += signdx;
+					test += deltay;
+				}
+				if (callback(userData, x, y)) return;
+			}
+		}
+		if (callback(userData, xend, yend)) return;
+	}
+};
+void tester95(ref TestContext ctx) {
+}
+*/

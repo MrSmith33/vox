@@ -19,10 +19,6 @@ struct FunctionBackendData
 	AstIndex irData; // IrFunction
 	/// Machine-level IR
 	AstIndex lirData; // IrFunction
-	///
-	FunctionLiveIntervals liveIntervals;
-	///
-	LiveBitmap liveBitmap;
 	// TODO: move into IrFunction
 	StackLayout stackLayout;
 	///

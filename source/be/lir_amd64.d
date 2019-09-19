@@ -179,16 +179,16 @@ immutable InstrInfo[] amd64InstrInfos = gatherInstrInfos!Amd64Opcode;
 private alias _ii = InstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	@_ii(0,2,IFLG.isResultInDst) add,
+	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) add,
 	@_ii(0,2,IFLG.isResultInDst) sub,
-	@_ii(0,2,IFLG.isResultInDst) mul,
-	@_ii(0,2,IFLG.isResultInDst) imul,
+	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) mul,
+	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) imul,
 	@_ii(0,2) div,
 	@_ii(0,2) idiv,
 	@_ii(0,0) divsx,
-	@_ii(0,2,IFLG.isResultInDst) or,
-	@_ii(0,2,IFLG.isResultInDst) and,
-	@_ii(0,2,IFLG.isResultInDst) xor,
+	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) or,
+	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) and,
+	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) xor,
 	@_ii(0,1,IFLG.isResultInDst) shl,
 	@_ii(0,1,IFLG.isResultInDst) shr,
 	@_ii(0,1,IFLG.isResultInDst) sar,

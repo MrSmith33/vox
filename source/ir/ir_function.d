@@ -229,7 +229,7 @@ struct BlockReverseIterator
 
 void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 {
-	scope(failure) dumpFunction(ir, context);
+	scope(failure) dumpFunction(&context, &ir);
 
 	auto funcInstrInfos = allInstrInfos[ir.instructionSet];
 

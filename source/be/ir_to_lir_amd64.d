@@ -34,7 +34,7 @@ struct IrToLir
 		processFunc(*irData, *lirData);
 
 		if (context.validateIr) validateIrFunction(*context, *lirData);
-		if (context.printLir && context.printDumpOf(&func)) dumpFunction(*lirData, *context);
+		if (context.printLir && context.printDumpOf(&func)) dumpFunction(context, lirData);
 	}
 
 	void processFunc(ref IrFunction ir, ref IrFunction lir)
@@ -465,11 +465,16 @@ struct IrToLir
 								lirBlockIndex, extra, stackPtrReg, const_32);
 						}
 
-						{	// call
+						{
+							IrIndex returnReg = callConv.returnReg;
+							if (instrHeader.hasResult) {
+								returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result).type, context);
+							}
+							// call
 							ExtraInstrArgs callExtra = {
 								addUsers : false,
 								hasResult : instrHeader.hasResult,
-								result : callConv.returnReg // will be used if function has result
+								result : returnReg // will be used if function has result
 							};
 
 							InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
@@ -489,7 +494,7 @@ struct IrToLir
 								// mov result to virt reg
 								ExtraInstrArgs extra = { type : ir.getVirtReg(instrHeader.result).type };
 								InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
-									lirBlockIndex, extra, callConv.returnReg);
+									lirBlockIndex, extra, returnReg);
 								recordIndex(instrHeader.result, movInstr.result);
 							}
 						}
@@ -714,7 +719,7 @@ struct IrToLir
 			}
 		}
 
-		//dumpFunction(lir, *context); // uncomment to see generated LIR before fixing
+		//dumpFunction(context, lir); // uncomment to see generated LIR before fixing
 
 		foreach (IrIndex blockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{

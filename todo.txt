@@ -1,4 +1,3 @@
-- opaque IR type (void?)
 + function pointer type <ret> function(<args>)
 	+ call by pointer
 	+ take address of function
@@ -24,7 +23,6 @@
 	- lower aggregates in IR by replacing phis taking in aggregates with scalar phis. Only non-phi users must remain.
 - pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 +- all register subtypes 8/16/32/64 bit registers, !!! QWORD is forced rn everywhere
-- optimize pointer arithmetic into lea
 - array literal
 - slices (need better structs)
 	+ assign string literal
@@ -37,11 +35,7 @@
 		- ptr[a..b] -> slice(b-a, ptr+a)
 	- slice assign: slice[] = 42; and slice[] = slice2;
 	- static array to slice (implicit conversion, slicing)
-- IrBuilder must prevent adding instructions from wrong instruction set
-- Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
 - context format/writefln
-- inline instructions in IR for representing memory operands in x86 LIR
-- globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
 
 - foreach
 	- over slice
@@ -55,9 +49,7 @@
 - member alias
 
 - multi-indexing operator x[1, 2, 3]
-+ AST Index
-	- in passes with state pass context separately
-- small pointer type when basic type is store inline + pointer level for more than 1 indirection level
+- in passes with state pass context separately
 o dll linking
 	- @dllimport("lz4.dll") attribute on externals
 	- @dllimport("lz4.dll") attribute on module
@@ -72,16 +64,11 @@ o dll linking
 - -run option
 - in error on unexpected EOF show unterminated ([{ symbol
 - constant folding << >> >>> shifts needs to know type of left operand to mask the shift size
-- store virtual registers, phi functions with arguments in separate arenas
-	vreg will shrink from 7 slots to 4 slots
-	phi will shrink from 5 slots to 2 slots
-	- need array arena for IR with per-function slices
-- don't store self-reference arguments in phi functions
+- globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
 - mutable globals need their own read-write section
 - globals need to be initialized
 - need assignment visitors
 
-- improve parser to detect all declaration kinds in statements (add slice and static array)
 - attributes
 - test escape sequences
 - test all implicit conversions
@@ -90,13 +77,37 @@ o dll linking
 - test bools
 - test constant folding of all operators
 - test mismatched number of args/params to call/constructor
-- reg alloc performance regression 1.9s -> 6.2s (Probably due to not reusing liveness info)
-- stack layout per IR (use alloca?)
-- optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 - test declarations that have cyclic dependency (compiler must detect them through AstNode.state)
 - test all expressions that compile with error being used inside other expressions (semantic check must correctly assign error type and check it when necessary)
 - make sure that `this` is being used outside methods
 
+[Optimizations]
+- optimize pointer arithmetic into lea
+- optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
+
+[IR]
+- Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
+- IrBuilder must prevent adding instructions from wrong instruction set
+- inline instructions in IR for representing memory operands in x86 LIR
+- small pointer type when basic type is store inline + pointer level for more than 1 indirection level
+- stack layout per IR (use alloca?)
+- don't store self-reference arguments in phi functions
+- store virtual registers, phi functions with arguments in separate arenas
+	vreg will shrink from 7 slots to 4 slots
+	phi will shrink from 5 slots to 2 slots
+	- need array arena for IR with per-function slices
+
+[Register allocator]
+- Do liveness + RA together on each function
+- reg alloc performance regression 1.9s -> 6.2s (Probably due to not reusing liveness info)
+- store use arrays in liveness info
+- store fixed intervals separately from virtual register intervals while doing RA
+- Use array for unhandled list
+- Add special machine description for testing RA
+- Write RA test suite
+
++ AST Index
++ improve parser to detect all declaration kinds in statements (add slice and static array)
 + check if right operand of << >> >>> is constant and pass it as is. Recognize constants in codegen
 + empty string
 + alias

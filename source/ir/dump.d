@@ -12,6 +12,15 @@ import std.format : formattedWrite;
 
 import all;
 
+struct IrDumpContext
+{
+	CompilationContext* context;
+	IrFunction* ir;
+	FuncDumpSettings* settings; // nullable, uses default if null
+	TextSink* sink; // nullable, writes to stdout if null
+	LivenessInfo* liveness; // nullable, doesn't print liveness if null
+}
+
 struct InstrPrintInfo
 {
 	CompilationContext* context;
@@ -87,27 +96,49 @@ void dumpTypes(ref TextSink sink, ref CompilationContext ctx)
 	}
 }
 
-void dumpFunction(ref IrFunction ir, ref CompilationContext ctx)
+void dumpFunction(CompilationContext* context, IrFunction* ir)
 {
-	FuncDumpSettings settings;
-	dumpFunction(ir, ctx, settings);
+	IrDumpContext dumpCtx = { context : context, ir : ir };
+	dumpFunction(&dumpCtx);
 }
 
-void dumpFunction(ref IrFunction ir, ref CompilationContext ctx, ref FuncDumpSettings settings)
+void dumpFunction(IrDumpContext* c)
 {
+	assert(c.context, "context is null");
+	assert(c.ir, "ir is null");
+
+	bool defaultSink = false;
 	TextSink sink;
-	dumpFunction(ir, sink, ctx, settings);
-	writeln(sink.text);
+	FuncDumpSettings settings;
+
+	if (c.sink is null) {
+		defaultSink = true;
+		c.sink = &sink;
+	}
+
+	if (c.settings is null) {
+		c.settings = &settings;
+	}
+
+	dumpFunctionImpl(c);
+
+	if (defaultSink) writeln(sink.text);
 }
 
-void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext ctx, ref FuncDumpSettings settings)
+void dumpFunctionImpl(IrDumpContext* c)
 {
+	IrFunction* ir = c.ir;
+	TextSink* sink = c.sink;
+	CompilationContext* ctx = c.context;
+	FuncDumpSettings* settings = c.settings;
+	LivenessInfo* liveness = c.liveness;
+
 	InstrPrintInfo printer;
-	printer.context = &ctx;
-	printer.sink = &sink;
-	printer.ir = &ir;
+	printer.context = ctx;
+	printer.sink = sink;
+	printer.ir = ir;
 	printer.handlers = &instrSetDumpHandlers[ir.instructionSet];
-	printer.settings = &settings;
+	printer.settings = settings;
 
 	sink.put("func ");
 	// results
@@ -128,15 +159,18 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 	sink.put(")");
 	sink.putfln(` %s bytes ir:"%s" {`, ir.storage.length * uint.sizeof, instr_set_names[ir.instructionSet]);
 	int indexPadding = numDigitsInNumber10(ir.storage.length);
-	int liveIndexPadding = numDigitsInNumber10(ir.backendData.liveIntervals.maxLinearIndex);
+	int liveIndexPadding = 0;
+	if (liveness) liveIndexPadding = numDigitsInNumber10(liveness.maxLinearIndex);
 
 	void printInstrLiveness(IrIndex linearKeyIndex, IrIndex instrIndex) {
 		if (!settings.printLiveness) return;
-		uint linearInstrIndex = ir.backendData.liveIntervals.linearIndicies[linearKeyIndex];
+		if (liveness is null) return;
+
+		uint linearInstrIndex = liveness.linearIndicies[linearKeyIndex];
 
 		if (settings.printPregLiveness)
 		{
-			foreach(ref interval; ir.backendData.liveIntervals.physicalIntervals)
+			foreach(ref interval; liveness.physicalIntervals)
 			{
 				if (interval.coversPosition_dump(linearInstrIndex))
 					sink.put("┃");
@@ -150,15 +184,15 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		BitArray blockLiveIn;
 		if (instrIndex.isBasicBlock)
 		{
-			blockLiveIn = ir.backendData.liveBitmap.blockLiveInBits(instrIndex, &ir);
+			blockLiveIn = liveness.bitmap.blockLiveInBits(instrIndex, ir);
 		}
 
 		if (settings.printVregLiveness)
-		foreach(ref LiveInterval interval; ir.backendData.liveIntervals.virtualIntervals)
+		foreach(ref LiveInterval interval; liveness.virtualIntervals)
 		{
 			auto vreg = &ir.getVirtReg(interval.definition);
 
-			if (vreg.users.contains(ir, instrIndex))
+			if (vreg.users.contains(*ir, instrIndex))
 			{
 				sink.put("U");
 			}
@@ -197,7 +231,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 
 		auto vreg = &ir.getVirtReg(result);
 		sink.put(" users [");
-		foreach (i, index; vreg.users.range(ir))
+		foreach (i, index; vreg.users.range(*ir))
 		{
 			if (i > 0) sink.put(", ");
 			sink.putf("%s", IrIndexDump(index, printer));
@@ -240,7 +274,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		if (settings.printBlockIns && block.predecessors.length > 0)
 		{
 			sink.putf(" in(");
-			foreach(i, predIndex; block.predecessors.range(ir)) {
+			foreach(i, predIndex; block.predecessors.range(*ir)) {
 				if (i > 0) sink.put(", ");
 				sink.putf("%s", IrIndexDump(predIndex, printer));
 			}
@@ -249,7 +283,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		if (settings.printBlockOuts && block.successors.length > 0)
 		{
 			sink.putf(" out(");
-			foreach(i, succIndex; block.successors.range(ir)) {
+			foreach(i, succIndex; block.successors.range(*ir)) {
 				if (i > 0) sink.put(", ");
 				sink.putf("%s", IrIndexDump(succIndex, printer));
 			}
@@ -277,7 +311,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 				IrIndexDump(phi.result, printer),
 				IrIndexDump(ir.getVirtReg(phi.result).type, printer),
 				IrIndexDump(phiIndex, printer));
-			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(*ir))
 			{
 				if (arg_i > 0) sink.put(", ");
 				sink.putf("%s", IrIndexDump(phiArg.basicBlock, printer));
@@ -289,7 +323,7 @@ void dumpFunction(ref IrFunction ir, ref TextSink sink, ref CompilationContext c
 		}
 
 		// instrs
-		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(*ir))
 		{
 			printInstrLiveness(instrIndex, instrIndex);
 			printInstrIndex(instrIndex);

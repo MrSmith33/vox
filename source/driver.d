@@ -74,16 +74,21 @@ immutable CompilePassGlobal[] commonPasses = [
 	global_pass("Optimize", &pass_optimize_ir),
 	global_pass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
 
-	// IR liveness
-	global_pass("Live intervals", &pass_live_intervals),
-	// IR regalloc
-	global_pass("Linear scan", &pass_linear_scan),
+	global_pass(null, &run_liveness_and_reg_alloc, [
+		// IR liveness
+		CompilePassPerFunction("Live intervals", null),
+		// IR regalloc
+		CompilePassPerFunction("Linear scan", null)
+	]),
 	// Stack layout
 	global_pass("Stack layout", &pass_stack_layout),
 
 	// LIR -> machine code
 	global_pass("Code gen", &pass_emit_mc_amd64),
 ];
+
+
+
 
 immutable CompilePassGlobal[] extraJitPasses = [
 	CompilePassGlobal("Link JIT", &pass_link_jit),
@@ -140,9 +145,53 @@ void run_module_pass(ref CompilationContext context, ref ModuleDeclNode mod, Com
 	}
 }
 
+void run_liveness_and_reg_alloc(ref CompilationContext context, CompilePassPerModule[] subPasses)
+{
+	CompilePassPerFunction* livenessPass = &subPasses[0].subPasses[0];
+	CompilePassPerFunction* raPass = &subPasses[0].subPasses[1];
+
+	// gets reused for all functions
+	LivenessInfo liveness;
+
+	foreach (ref SourceFileInfo file; context.files.data)
+	{
+		foreach (AstIndex funcIndex; file.mod.functions)
+		{
+			FunctionDeclNode* func = context.getAst!FunctionDeclNode(funcIndex);
+			context.tempBuffer.clear;
+
+			auto time1 = currTime;
+			// throws immediately on unrecoverable error or ICE
+			pass_live_intervals(&context, file.mod, func, &liveness);
+			auto time2 = currTime;
+			livenessPass.duration += time2-time1;
+			// throws if there were recoverable error in the pass
+			context.throwOnErrors;
+
+			time1 = currTime;
+			// throws immediately on unrecoverable error or ICE
+			pass_linear_scan(&context, file.mod, func, &liveness);
+			time2 = currTime;
+			raPass.duration += time2-time1;
+			// throws if there were recoverable error in the pass
+			context.throwOnErrors;
+		}
+	}
+}
+
 CompilePassGlobal global_pass(string name, GlobalPassFun run, CompilePassPerModule[] subPasses = null)
 {
 	return CompilePassGlobal(name, run, subPasses);
+}
+
+CompilePassGlobal global_pass(string name, ModulePassFun run, CompilePassPerFunction[] subPasses = null)
+{
+	return CompilePassGlobal(null, &run_global_pass, [CompilePassPerModule(null, run, subPasses)]);
+}
+
+CompilePassGlobal global_pass(string name, GlobalPassFun run, CompilePassPerFunction[] subPasses)
+{
+	return CompilePassGlobal(name, run, [CompilePassPerModule(null, &run_module_pass, subPasses)]);
 }
 
 CompilePassGlobal global_pass(string name, FunctionPassFun run)
@@ -189,12 +238,6 @@ struct CompilePassPerFunction
 	void clear() {
 		duration = Duration.init;
 	}
-}
-
-struct PassMeta
-{
-	string name;
-	Duration duration;
 }
 
 struct PassMetaIterator
