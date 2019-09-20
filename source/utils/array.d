@@ -99,8 +99,13 @@ struct Array(T)
 		if (_length + howMany > _capacity) extend(arena, howMany);
 	}
 
-	// returns memory to arena
+	// returns memory to arena and zeroes the length
 	void free(ref ArrayArena arena) {
+		scope(exit) {
+			externalArray = null;
+			_length = 0;
+			_capacity = NUM_INLINE_ITEMS;
+		}
 		static if (NUM_INLINE_ITEMS > 0)
 			if (_capacity == NUM_INLINE_ITEMS)
 				return; // noop
@@ -126,9 +131,6 @@ struct Array(T)
 		size_t pageArrayCapacity = nextPOT(numPages);
 		ubyte[] pageArray = arrayPtr[0..pageArrayCapacity * (ubyte*).sizeof];
 		arena.freeBlock(pageArray);
-
-		_length = 0;
-		_capacity = NUM_INLINE_ITEMS;
 	}
 
 	// extend the storage

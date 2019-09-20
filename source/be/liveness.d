@@ -361,6 +361,149 @@ struct LiveBitmap
 	}
 }
 
+struct LiveInterval
+{
+	Array!LiveRange ranges;
+	int from() {
+		if (ranges.length > 0) return ranges[0].from;
+		return int.max;
+	}
+	int to() {
+		if (ranges.length > 0) return ranges.back.to;
+		return int.max;
+	}
+	IrIndex reg;
+	IrIndex definition; // null if isFixed
+	//RegClass regClass;
+	bool isFixed;
+	IrIndex storageHint;
+	IntervalIndex parent; // null if is original interval (leftmost), otherwise points to original interval
+	IntervalIndex child; // next split interval to the right
+
+	bool isSplitChild() { return !parent.isNull; }
+	bool isSplit() { return !child.isNull; }
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		import std.format : formattedWrite;
+		sink.formattedWrite("int(");
+		if (definition.isDefined) sink.formattedWrite("%s, ", definition);
+		sink.formattedWrite("%s", ranges);
+		if (!parent.isNull) sink.formattedWrite(", par %s", parent);
+		if (!child.isNull) sink.formattedWrite(", child %s", child);
+		sink(")");
+	}
+
+	/// Set hint for register allocator
+	void setVirtRegHint(IrIndex hint) {
+		storageHint = hint;
+	}
+
+	// returns rangeId pointing to range covering position or one to the right of pos.
+	// returns NULL if no ranges left after pos.
+	LiveRangeIndex getRightRange(int position)
+	{
+		foreach(i, range; ranges) {
+			if (position < range.to)
+				return LiveRangeIndex(i);
+		}
+		return LiveRangeIndex.NULL;
+	}
+
+	// returns rangeId pointing to range covering position or one to the left of pos.
+	// returns NULL if empty interval or no ranges to the left
+	LiveRangeIndex getLeftRange(int position)
+	{
+		LiveRangeIndex result = LiveRangeIndex.NULL;
+		foreach(i, range; ranges) {
+			if (position >= range.from)
+				return result;
+			result = LiveRangeIndex(i);
+		}
+		return result;
+	}
+
+	// sets the definition position
+	void setFrom(CompilationContext* context, IrIndex virtReg, int from) {
+		version(LivePrint) writefln("[LIVE] setFrom vreg.%s from %s", virtReg, from);
+		definition = virtReg;
+
+		if (ranges.empty) { // can happen if vreg had no uses (it is probably dead or used in phi above definition)
+			addRange(context, from, from);
+		} else {
+			ranges[0].from = from;
+		}
+	}
+
+	// bounds are from block start to block end of the same block
+	// from is always == to block start for virtual intervals
+	void addRange(CompilationContext* context, int from, int to)
+	{
+		version(LivePrint) writefln("[LIVE] addRange %s [%s; %s)", definition, from, to);
+		LiveRange newRange = LiveRange(from, to);
+
+		size_t cur = 0;
+		size_t len = ranges.length;
+
+		while (cur < len)
+		{
+			LiveRange* r = &ranges[cur];
+
+			if (r.canBeMergedWith(newRange))
+			{
+				// merge all intersecting ranges into one
+				r.merge(newRange);
+
+				++cur;
+				size_t firstToRemove = cur;
+
+				while (cur < len && r.canBeMergedWith(ranges[cur])) {
+					r.merge(ranges[cur]);
+					++cur;
+				}
+				ranges.removeByShift(firstToRemove, cur-firstToRemove);
+
+				return;
+			}
+			else if (to < r.from)
+			{
+				// we found insertion point before cur
+				ranges.putAt(context.arrayArena, newRange, cur);
+				return;
+			}
+
+			++cur;
+		}
+
+		// insert after last, no merge/insertion was made
+		ranges.put(context.arrayArena, newRange);
+	}
+
+	bool coversPosition(int position)
+	{
+		foreach(range; ranges) {
+			if (position < range.from)
+				return false;
+			else if (position < range.to)
+				return true;
+			// position >= to
+		}
+		return false;
+	}
+
+	// internal. Returns true for exclusive end too
+	bool coversPosition_dump(int position)
+	{
+		foreach(range; ranges) {
+			if (position < range.from)
+				return false;
+			else if (position <= range.to)
+				return true;
+			// position >= to
+		}
+		return false;
+	}
+}
+
 
 ///
 struct LivenessInfo
@@ -532,149 +675,6 @@ struct LivenessInfo
 			//	writefln("  % 2s %s", j, r);
 			//}
 		}
-	}
-}
-
-struct LiveInterval
-{
-	Array!LiveRange ranges;
-	int from() {
-		if (ranges.length > 0) return ranges[0].from;
-		return int.max;
-	}
-	int to() {
-		if (ranges.length > 0) return ranges.back.to;
-		return int.max;
-	}
-	IrIndex reg;
-	IrIndex definition; // null if isFixed
-	//RegClass regClass;
-	bool isFixed;
-	IrIndex storageHint;
-	IntervalIndex parent; // null if is original interval (leftmost), otherwise points to original interval
-	IntervalIndex child; // next split interval to the right
-
-	bool isSplitChild() { return !parent.isNull; }
-	bool isSplit() { return !child.isNull; }
-
-	void toString(scope void delegate(const(char)[]) sink) {
-		import std.format : formattedWrite;
-		sink.formattedWrite("int(");
-		if (definition.isDefined) sink.formattedWrite("%s, ", definition);
-		sink.formattedWrite("%s", ranges);
-		if (!parent.isNull) sink.formattedWrite(", par %s", parent);
-		if (!child.isNull) sink.formattedWrite(", child %s", child);
-		sink(")");
-	}
-
-	/// Set hint for register allocator
-	void setVirtRegHint(IrIndex hint) {
-		storageHint = hint;
-	}
-
-	// returns rangeId pointing to range covering position or one to the right of pos.
-	// returns NULL if no ranges left after pos.
-	LiveRangeIndex getRightRange(int position)
-	{
-		foreach(i, range; ranges) {
-			if (position < range.to)
-				return LiveRangeIndex(i);
-		}
-		return LiveRangeIndex.NULL;
-	}
-
-	// returns rangeId pointing to range covering position or one to the left of pos.
-	// returns NULL if empty interval or no ranges to the left
-	LiveRangeIndex getLeftRange(int position)
-	{
-		LiveRangeIndex result = LiveRangeIndex.NULL;
-		foreach(i, range; ranges) {
-			if (position >= range.from)
-				return result;
-			result = LiveRangeIndex(i);
-		}
-		return result;
-	}
-
-	// sets the definition position
-	void setFrom(CompilationContext* context, IrIndex virtReg, int from) {
-		version(LivePrint) writefln("[LIVE] setFrom vreg.%s from %s", virtReg, from);
-		definition = virtReg;
-
-		if (ranges.empty) { // can happen if vreg had no uses (it is probably dead or used in phi above definition)
-			addRange(context, from, from);
-		} else {
-			ranges[0].from = from;
-		}
-	}
-
-	// bounds are from block start to block end of the same block
-	// from is always == to block start for virtual intervals
-	void addRange(CompilationContext* context, int from, int to)
-	{
-		version(LivePrint) writefln("[LIVE] addRange %s [%s; %s)", definition, from, to);
-		LiveRange newRange = LiveRange(from, to);
-
-		size_t cur = 0;
-		size_t len = ranges.length;
-
-		while (cur < len)
-		{
-			LiveRange* r = &ranges[cur];
-
-			if (r.canBeMergedWith(newRange))
-			{
-				// merge all intersecting ranges into one
-				r.merge(newRange);
-
-				++cur;
-				size_t firstToRemove = cur;
-
-				while (cur < len && r.canBeMergedWith(ranges[cur])) {
-					r.merge(ranges[cur]);
-					++cur;
-				}
-				ranges.removeByShift(firstToRemove, cur-firstToRemove);
-
-				return;
-			}
-			else if (to < r.from)
-			{
-				// we found insertion point before cur
-				ranges.putAt(context.arrayArena, newRange, cur);
-				return;
-			}
-
-			++cur;
-		}
-
-		// insert after last, no merge/insertion was made
-		ranges.put(context.arrayArena, newRange);
-	}
-
-	bool coversPosition(int position)
-	{
-		foreach(range; ranges) {
-			if (position < range.from)
-				return false;
-			else if (position < range.to)
-				return true;
-			// position >= to
-		}
-		return false;
-	}
-
-	// internal. Returns true for exclusive end too
-	bool coversPosition_dump(int position)
-	{
-		foreach(range; ranges) {
-			if (position < range.from)
-				return false;
-			else if (position <= range.to)
-				return true;
-			// position >= to
-		}
-		return false;
 	}
 }
 

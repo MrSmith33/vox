@@ -27,19 +27,18 @@ import all;
 
 /// Does linear scan register allocation.
 /// Uses live intervals produced by pass_live_intervals
-void pass_linear_scan(CompilationContext* context, ModuleDeclNode* mod, FunctionDeclNode* func, LivenessInfo* liveness)
+void pass_linear_scan(LinearScan* linearScan)
 {
-	LinearScan linearScan;
-	linearScan.context = context;
+	CompilationContext* c = linearScan.context;
+	assert(!linearScan.fun.isExternal);
 
-	if (func.isExternal) return;
-	linearScan.scanFun(func, liveness);
-	if (context.printLirRA && context.printDumpOf(func)) {
-		IrFunction* lirData = context.getAst!IrFunction(func.backendData.lirData);
-		dumpFunction(context, lirData);
-		liveness.dump(context, func);
+	linearScan.scanFun();
+
+	if (c.printLirRA && c.printDumpOf(linearScan.fun)) {
+		IrFunction* lirData = c.getAst!IrFunction(linearScan.fun.backendData.lirData);
+		dumpFunction(c, lirData);
+		linearScan.livePtr.dump(c, linearScan.fun);
 	}
-	linearScan.freeMem;
 }
 
 struct RegisterState
@@ -121,11 +120,12 @@ struct LinearScan
 	Array!IntervalIndex inactive;
 	PhysRegisters physRegs;
 	CompilationContext* context;
+	IrBuilder* builder;
+	FunctionDeclNode* fun;
 
 	LivenessInfo* livePtr;
 	ref LivenessInfo live() { return *livePtr; }
 	IrFunction* lir;
-	IrBuilder builder;
 
 	void freeMem() {
 		active.free(context.arrayArena);
@@ -161,18 +161,15 @@ struct LinearScan
 
 			if current has a register assigned then add current to active
 	*/
-	void scanFun(FunctionDeclNode* fun, LivenessInfo* liveness)
+	void scanFun()
 	{
 		import std.container.binaryheap;
 		lir = context.getAst!IrFunction(fun.backendData.lirData);
-		builder.beginDup(lir, context);
-		livePtr = liveness;
 		physRegs.setup(context, fun, context.machineInfo);
 
 		//writefln("\nstart scan of %s", context.idString(lir.backendData.name));
 		scope(exit) {
 			lir = null;
-			livePtr = null;
 		}
 
 		int cmp(IntervalIndex a, IntervalIndex b) {
@@ -876,7 +873,7 @@ struct LinearScan
 	{
 		version(RAPrint_resolve) writefln("resolve");
 
-		MoveSolver moveSolver = MoveSolver(&builder, context, fun);
+		MoveSolver moveSolver = MoveSolver(builder, context, fun);
 		moveSolver.setup();
 		scope(exit) moveSolver.release();
 
@@ -907,8 +904,8 @@ struct LinearScan
 						break;
 					}
 				}
-				lir.getBlock(newBlock).predecessors.append(&builder, predIndex);
-				lir.getBlock(newBlock).successors.append(&builder, succIndex);
+				lir.getBlock(newBlock).predecessors.append(builder, predIndex);
+				lir.getBlock(newBlock).successors.append(builder, succIndex);
 				lir.getBlock(newBlock).isSealed = true;
 				builder.emitInstr!LirAmd64Instr_jmp(newBlock);
 				lir.getBlock(newBlock).isFinished = true;

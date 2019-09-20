@@ -72,9 +72,9 @@ immutable CompilePassGlobal[] commonPasses = [
 	global_pass("IR gen", &pass_ir_gen),
 
 	global_pass("Optimize", &pass_optimize_ir),
-	global_pass("IR to LIR AMD64", &pass_ir_to_lir_amd64),
 
-	global_pass(null, &run_liveness_and_reg_alloc, [
+	global_pass(null, &run_ir_to_lir_liveness_and_reg_alloc, [
+		CompilePassPerFunction("IR to LIR AMD64", null),
 		// IR liveness
 		CompilePassPerFunction("Live intervals", null),
 		// IR regalloc
@@ -145,36 +145,60 @@ void run_module_pass(ref CompilationContext context, ref ModuleDeclNode mod, Com
 	}
 }
 
-void run_liveness_and_reg_alloc(ref CompilationContext context, CompilePassPerModule[] subPasses)
+void run_ir_to_lir_liveness_and_reg_alloc(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
-	CompilePassPerFunction* livenessPass = &subPasses[0].subPasses[0];
-	CompilePassPerFunction* raPass = &subPasses[0].subPasses[1];
+	CompilePassPerFunction* ir_to_lir_pass = &subPasses[0].subPasses[0];
+	CompilePassPerFunction* liveness_pass = &subPasses[0].subPasses[1];
+	CompilePassPerFunction* ra_pass = &subPasses[0].subPasses[2];
 
 	// gets reused for all functions
 	LivenessInfo liveness;
+	LinearScan linearScan;
+	linearScan.context = &context;
+	linearScan.livePtr = &liveness;
+	scope(exit) linearScan.freeMem;
+
+	scope(exit) context.tempBuffer.clear;
 
 	foreach (ref SourceFileInfo file; context.files.data)
 	{
 		foreach (AstIndex funcIndex; file.mod.functions)
 		{
 			FunctionDeclNode* func = context.getAst!FunctionDeclNode(funcIndex);
+
+			if (func.isExternal) continue;
+
 			context.tempBuffer.clear;
 
-			auto time1 = currTime;
-			// throws immediately on unrecoverable error or ICE
-			pass_live_intervals(&context, file.mod, func, &liveness);
-			auto time2 = currTime;
-			livenessPass.duration += time2-time1;
-			// throws if there were recoverable error in the pass
-			context.throwOnErrors;
+			IrBuilder builder;
 
-			time1 = currTime;
-			// throws immediately on unrecoverable error or ICE
-			pass_linear_scan(&context, file.mod, func, &liveness);
-			time2 = currTime;
-			raPass.duration += time2-time1;
-			// throws if there were recoverable error in the pass
-			context.throwOnErrors;
+			{
+				auto time1 = currTime;
+				pass_ir_to_lir_amd64(&context, &builder, file.mod, func); // throws immediately on unrecoverable error or ICE
+				auto time2 = currTime;
+				ir_to_lir_pass.duration += time2-time1;
+				context.throwOnErrors; // throws if there were recoverable error in the pass
+			}
+
+			{
+				auto time1 = currTime;
+				pass_live_intervals(&context, file.mod, func, &liveness); // throws immediately on unrecoverable error or ICE
+				auto time2 = currTime;
+				liveness_pass.duration += time2-time1;
+				context.throwOnErrors; // throws if there were recoverable error in the pass
+			}
+
+			{
+				auto time1 = currTime;
+
+				linearScan.builder = &builder;
+				linearScan.fun = func;
+				pass_linear_scan(&linearScan); // throws immediately on unrecoverable error or ICE
+
+				auto time2 = currTime;
+				ra_pass.duration += time2-time1;
+				context.throwOnErrors; // throws if there were recoverable error in the pass
+			}
 		}
 	}
 }
