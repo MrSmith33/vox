@@ -11,6 +11,12 @@ struct Arena(T)
 	import utils : alignValue, max, format, to, PAGE_SIZE;
 	import std.range : isInputRange;
 
+	// Profiling stats:
+	//    4k - 10.00% usage (12.9s)
+	//   64k -  0.95% usage (11.6s)
+	//  256k -  0.28% usage (11.5s)
+	enum COMMIT_PAGE_SIZE = 65536;
+
 	T* bufPtr;
 	/// How many items can be stored without commiting more memory (committed items)
 	size_t capacity;
@@ -19,7 +25,7 @@ struct Arena(T)
 	/// Total reserved bytes
 	size_t reservedBytes;
 
-	size_t committedBytes() { return alignValue(capacity * T.sizeof, PAGE_SIZE); }
+	size_t committedBytes() { return alignValue(capacity * T.sizeof, COMMIT_PAGE_SIZE); }
 
 	uint uintLength() { return length.to!uint; }
 	size_t byteLength() { return length * T.sizeof; }
@@ -91,8 +97,8 @@ struct Arena(T)
 		assert(items > (capacity - length));
 		size_t _committedBytes = committedBytes;
 		size_t itemsToCommit = items - (capacity - length);
-		size_t bytesToCommit = alignValue((items - (capacity - length)) * T.sizeof, PAGE_SIZE);
-		bytesToCommit = max(bytesToCommit, PAGE_SIZE);
+		size_t bytesToCommit = alignValue((items - (capacity - length)) * T.sizeof, COMMIT_PAGE_SIZE);
+		bytesToCommit = max(bytesToCommit, COMMIT_PAGE_SIZE);
 
 		if (_committedBytes + bytesToCommit > reservedBytes) {
 			assert(false, format("Arena.makeSpace() out of memory: reserved %s, committed bytes %s, requested %s",
