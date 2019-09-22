@@ -192,7 +192,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 		{
 			auto vreg = &ir.getVirtReg(interval.definition);
 
-			if (vreg.users.contains(*ir, instrIndex))
+			if (interval.hasUseAt(linearInstrIndex))
 			{
 				sink.put("U");
 			}

@@ -87,7 +87,7 @@ struct PhysRegisters
 	{
 		foreach (ref reg; gpr) {
 			if (reg.isAllocatable)
-				reg.freeUntilPos = int.max;
+				reg.freeUntilPos = MAX_USE_POS;
 			else
 				reg.freeUntilPos = 0; // prevent allocation
 		}
@@ -97,7 +97,7 @@ struct PhysRegisters
 	{
 		foreach (ref reg; gpr) {
 			if (reg.isAllocatable)
-				reg.nextUsePos = int.max;
+				reg.nextUsePos = MAX_USE_POS;
 			else
 				reg.nextUsePos = 0; // prevent allocation
 		}
@@ -340,7 +340,7 @@ struct LinearScan
 		static struct FreeUntilPos {
 			int num;
 			void toString(scope void delegate(const(char)[]) sink) {
-				if (num == int.max) formattedWrite(sink, "max");
+				if (num == MAX_USE_POS) formattedWrite(sink, "max");
 				else formattedWrite(sink, "%s", num);
 			}
 		}
@@ -378,7 +378,7 @@ struct LinearScan
 					continue;
 				}
 
-				// in case there is no intersection will return int.max (noop)
+				// in case there is no intersection will return MAX_USE_POS (noop)
 				int inactiveIntersection = firstIntersection(currentIt, it);
 				// Register may be already occupied by active or inactive interval, so preserve it's use pos
 				physRegs[it.reg].freeUntilPos = min(physRegs[it.reg].freeUntilPos, inactiveIntersection);
@@ -456,56 +456,6 @@ struct LinearScan
 		}
 	}
 
-	int nextUseAfter(LiveInterval* it, int after)
-	{
-		int closest = int.max;
-		foreach(IrIndex user; lir.getVirtReg(it.definition).users.range(*lir))
-		{
-			int pos = usePosition(user, it.definition);
-			if (pos > after && pos < closest)
-			{
-				closest = pos;
-			}
-		}
-		return closest;
-	}
-
-	int usePosition(IrIndex user, IrIndex usedValue)
-	{
-		if (user.isPhi)
-		{
-			foreach(i, ref IrPhiArg arg; lir.getPhi(user).args(*lir))
-			{
-				if (arg.value == usedValue)
-				{
-					IrIndex lastInstr = lir.getBlock(arg.basicBlock).lastInstr;
-					return live.linearIndicies[lastInstr];
-				}
-			}
-		}
-		else
-			return live.linearIndicies[user];
-		return int.max;
-	}
-
-	int firstUse(LiveInterval* it)
-	{
-		int first = int.max;
-		int start = it.from;
-		//writefln("first use %s", it.definition);
-		foreach(IrIndex user; lir.getVirtReg(it.definition).users.range(*lir))
-		{
-			int pos = usePosition(user, it.definition);
-			//writefln("  %s %s", user, pos);
-			if (pos >= start && pos < first)
-			{
-				first = pos;
-			}
-		}
-		return first;
-	}
-
-
 	/*
 	ALLOCATEBLOCKEDREG
 		set nextUsePos of all physical registers to maxInt
@@ -561,11 +511,11 @@ struct LinearScan
 				use = currentStart;
 			}
 			else
-				use = nextUseAfter(it, currentStart);
+				use = it.nextUseAfter(currentStart);
 
 			physRegs[it.reg].nextUsePos = use;
 			physRegs[it.reg].activeInterval = activeId;
-			if (use > maxUsePos && use != int.max) {
+			if (use > maxUsePos && use != MAX_USE_POS) {
 				maxUsePos = use;
 				maxUseIntervalIndex = activeId;
 			}
@@ -592,7 +542,7 @@ struct LinearScan
 				use = min(intersection, physRegs[it.reg].nextUsePos);
 
 				physRegs[it.reg].nextUsePos = use;
-				if (use > maxUsePos && use != int.max) {
+				if (use > maxUsePos && use != MAX_USE_POS) {
 					maxUsePos = use;
 					maxUseIntervalIndex = inactiveId;
 				}
@@ -603,7 +553,7 @@ struct LinearScan
 
 		// reg = register with highest nextUsePos
 		IrIndex reg = maxUseInterval.reg;
-		int currentFirstUse = firstUse(currentIt);
+		int currentFirstUse = currentIt.firstUse;
 
 		version(RAPrint) writefln("cur %s %s firstUse %s, reg %s maxUse %s",
 			currentId, currentIt.definition, currentFirstUse, maxUseInterval.definition, maxUsePos);
@@ -659,7 +609,7 @@ struct LinearScan
 		//	split current before this intersection
 		int intersection = firstIntersection(currentIt, live.pint(reg));
 
-		if (intersection != int.max)
+		if (intersection != MAX_USE_POS)
 			splitBefore(currentId, intersection, unhandled);
 	}
 

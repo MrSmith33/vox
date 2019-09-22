@@ -5,6 +5,7 @@ Authors: Andrey Penechko.
 */
 
 /// Liveness info analisys
+/// Phi functions use their arguments at the last instruction of corresponding basic block
 module be.liveness;
 
 import std.algorithm : min, max, sort, swap;
@@ -86,27 +87,8 @@ void pass_live_intervals(CompilationContext* context, ModuleDeclNode* mod, Funct
 void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, LivenessInfo* liveness)
 {
 	liveness.initStorage(context, ir);
-
-	// enumerate all basic blocks, instructions
-	// phi functions use index of the block
-	// we can assume all blocks to have at least single instruction (exit instruction)
-	uint enumerationIndex = 0;
-	enum ENUM_STEP = 2;
-	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
-	{
-		version(LivePrint) writefln("[LIVE] %s %s", enumerationIndex, blockIndex);
-		// Allocate index for block start
-		liveness.linearIndicies[blockIndex] = enumerationIndex;
-		enumerationIndex += ENUM_STEP;
-		// enumerate instructions
-		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(*ir))
-		{
-			version(LivePrint) writefln("[LIVE]   %s %s", enumerationIndex, instrIndex);
-			liveness.linearIndicies[instrIndex] = enumerationIndex;
-			enumerationIndex += ENUM_STEP;
-		}
-	}
-	liveness.maxLinearIndex = enumerationIndex;
+	liveness.assignSequentialIndices(context, ir);
+	liveness.setIntervalUsesLength(context, ir);
 
 	void liveAdd(IrIndex someOperand)
 	{
@@ -128,6 +110,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 	{
 		// Is also where phi functions are located
 		uint blockFromPos = liveness.linearIndicies[blockIndex];
+		uint blockToPos = liveness.linearIndicies[block.lastInstr];
 		version(LivePrint) writefln("[LIVE] % 3s %s", blockFromPos, blockIndex);
 
 		// live = union of successor.liveIn for each successor of block
@@ -156,9 +139,9 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		foreach (size_t index; liveness.bitmap.live.bitsSet)
 		{
 			// intervals[opd].addRange(block.from, block.to)
-			liveness.vint(index).addRange(context, blockFromPos, liveness.linearIndicies[block.lastInstr]);
+			liveness.vint(index).addRange(context, blockFromPos, blockToPos);
 			version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)", index,
-				blockFromPos, liveness.linearIndicies[block.lastInstr]);
+				blockFromPos, blockToPos);
 		}
 
 		// for each operation op of b in reverse order do
@@ -196,7 +179,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			// for each output operand opd of op do
 			if (instrHeader.hasResult) {
 				if (instrHeader.result.isVirtReg) {
-					liveness.get(ir, instrHeader.result).setFrom(context, instrHeader.result, linearInstrIndex);
+					liveness.get(ir, instrHeader.result).setFrom(context, linearInstrIndex);
 					liveRemove(instrHeader.result);
 				} else if (instrHeader.result.isPhysReg && !instrInfo.isMov) {
 					int physRegResultOffset = linearInstrIndex+ENUM_STEP;
@@ -211,7 +194,9 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			int physRegArgsOffset = 0;
 			foreach(IrIndex arg; instrHeader.args) {
 				if (arg.isVirtReg) {
-					liveness.get(ir, arg).addRange(context, blockFromPos, linearInstrIndex);
+					LiveInterval* it = liveness.vint(ir, arg);
+					it.addRange(context, blockFromPos, linearInstrIndex);
+					it.prependUse(UsePosition(linearInstrIndex, UseKind.instruction));
 					liveAdd(arg);
 				}
 				else if (arg.isPhysReg) {
@@ -272,7 +257,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			// live.remove(phi.output)
 			if (phi.result.isVirtReg) {
 				liveRemove(phi.result);
-				liveness.get(ir, phi.result).setFrom(context, phi.result, blockFromPos);
+				liveness.get(ir, phi.result).setFrom(context, blockFromPos);
 			}
 		}
 
@@ -281,7 +266,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		{
 			// We need to find the loop block with the max position
 			// Use loop header as starting block in case it is in max position
-			uint maxPos = liveness.linearIndicies[block.lastInstr];
+			uint maxPos = blockToPos;
 			IrIndex loopEnd = blockIndex;
 			//     loopEnd = last block of the loop starting at b
 			foreach(IrIndex pred; block.predecessors.range(*ir)) {
@@ -317,6 +302,9 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		liveIns[] = liveness.bitmap.liveBuckets;
 		//writefln("liveBuckets %s %s %s", blockIndex, liveIns.ptr, liveness.bitmap.blockLiveInBits(blockIndex, ir));
 	}
+
+	// Reset length from 0 to actual length
+	liveness.setIntervalUsesLength(context, ir);
 }
 
 struct LiveBitmap
@@ -361,17 +349,42 @@ struct LiveBitmap
 	}
 }
 
+enum MAX_USE_POS = int.max;
+enum ENUM_STEP = 2;
+
+enum UseKind : ubyte {
+	instruction,
+	phi
+}
+
+struct UsePosition
+{
+	this(uint _pos, UseKind _kind)
+	{
+		pos = _pos;
+		kind = _kind;
+	}
+
+	mixin(bitfields!(
+		uint,    "pos",  28,
+		UseKind, "kind",  4
+	));
+}
+
 struct LiveInterval
 {
 	Array!LiveRange ranges;
+	Array!UsePosition uses;
+
 	int from() {
 		if (ranges.length > 0) return ranges[0].from;
-		return int.max;
+		return MAX_USE_POS;
 	}
 	int to() {
 		if (ranges.length > 0) return ranges.back.to;
-		return int.max;
+		return MAX_USE_POS;
 	}
+
 	IrIndex reg;
 	IrIndex definition; // null if isFixed
 	//RegClass regClass;
@@ -423,15 +436,19 @@ struct LiveInterval
 	}
 
 	// sets the definition position
-	void setFrom(CompilationContext* context, IrIndex virtReg, int from) {
+	void setFrom(CompilationContext* context, int from) {
 		version(LivePrint) writefln("[LIVE] setFrom vreg.%s from %s", virtReg, from);
-		definition = virtReg;
 
 		if (ranges.empty) { // can happen if vreg had no uses (it is probably dead or used in phi above definition)
 			addRange(context, from, from);
 		} else {
 			ranges[0].from = from;
 		}
+	}
+
+	void prependUse(UsePosition use) {
+		uses[$-1] = use;
+		uses.unput(1);
 	}
 
 	// bounds are from block start to block end of the same block
@@ -478,6 +495,29 @@ struct LiveInterval
 		ranges.put(context.arrayArena, newRange);
 	}
 
+	bool hasUseAt(uint pos) {
+		foreach (UsePosition use; uses) {
+			if (use.pos == pos) return true;
+		}
+		return false;
+	}
+
+	uint firstUse() {
+		if (uses.length == 0) return MAX_USE_POS;
+		return uses[0].pos;
+	}
+
+	uint nextUseAfter(uint after)
+	{
+		uint closest = MAX_USE_POS;
+		foreach_reverse (UsePosition use; uses)
+		{
+			if (use.pos <= after) break;
+			closest = use.pos;
+		}
+		return closest;
+	}
+
 	bool coversPosition(int position)
 	{
 		foreach(range; ranges) {
@@ -522,6 +562,7 @@ struct LivenessInfo
 	auto physicalIntervals() { return intervals[0..numFixedIntervals]; }
 
 	LiveInterval* vint(size_t virtSeqIndex) { return &intervals[numFixedIntervals+virtSeqIndex]; }
+	LiveInterval* vint(IrFunction* ir, IrIndex index) { return &intervals[numFixedIntervals + ir.getVirtReg(index).seqIndex]; }
 	LiveInterval* pint(IrIndex physReg) { return &intervals[physReg.physRegIndex]; }
 
 	void initStorage(CompilationContext* context, IrFunction* ir) {
@@ -542,10 +583,46 @@ struct LivenessInfo
 			it.isFixed = true;
 			++i;
 		}
-		foreach (ref LiveInterval it; virtualIntervals)
-			it = LiveInterval();
+		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegsiters) {
+			LiveInterval it = { definition : vregIndex };
+			*vint(vreg.seqIndex) = it;
+		}
 
 		linearIndicies.create(context, ir);
+	}
+
+	void assignSequentialIndices(CompilationContext* context, IrFunction* ir) {
+		// enumerate all basic blocks, instructions
+		// phi functions use index of the block
+		// we can assume all blocks to have at least single instruction (exit instruction)
+		uint enumerationIndex = 0;
+		foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
+		{
+			version(LivePrint) writefln("[LIVE] %s %s", enumerationIndex, blockIndex);
+			// Allocate index for block start
+			linearIndicies[blockIndex] = enumerationIndex;
+			enumerationIndex += ENUM_STEP;
+			// enumerate instructions
+			foreach (IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(*ir))
+			{
+				version(LivePrint) writefln("[LIVE]   %s %s", enumerationIndex, instrIndex);
+				linearIndicies[instrIndex] = enumerationIndex;
+				enumerationIndex += ENUM_STEP;
+			}
+		}
+		maxLinearIndex = enumerationIndex;
+	}
+
+	// First we set length
+	// Then we assign last element for each use and decrement the length
+	// At the end we set the length one more time
+	// This way uses are in correct order
+	void setIntervalUsesLength(CompilationContext* context, IrFunction* ir) {
+		foreach (ref LiveInterval it; virtualIntervals)
+		{
+			IrVirtualRegister* vreg = &ir.getVirtReg(it.definition);
+			it.uses.voidPut(context.arrayArena, vreg.users.length);
+		}
 	}
 
 	IntervalIndex indexOf(LiveInterval* it) {
@@ -681,10 +758,10 @@ struct LivenessInfo
 int firstIntersection(LiveInterval* a, LiveInterval* b)
 {
 	size_t len_a = a.ranges.length;
-	if (len_a == 0) return int.max;
+	if (len_a == 0) return MAX_USE_POS;
 
 	size_t len_b = b.ranges.length;
-	if (len_b == 0) return int.max;
+	if (len_b == 0) return MAX_USE_POS;
 
 	size_t i_a = 0;
 	size_t i_b = 0;
@@ -697,11 +774,11 @@ int firstIntersection(LiveInterval* a, LiveInterval* b)
 		if (r_a.intersectsWith(r_b)) {
 			return max(r_a.from, r_b.from);
 		} else if (r_a.from < r_b.from) {
-			if (i_a == len_a) return int.max;
+			if (i_a == len_a) return MAX_USE_POS;
 			r_a = a.ranges[i_a];
 			++i_a;
 		} else { // r_b.from > r_a.from
-			if (i_b == len_b) return int.max;
+			if (i_b == len_b) return MAX_USE_POS;
 			r_b = b.ranges[i_b];
 			++i_b;
 		}
