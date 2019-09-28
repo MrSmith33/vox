@@ -60,7 +60,8 @@ void pass_live_intervals(CompilationContext* context, ModuleDeclNode* mod, Funct
 
 	IrFunction* lirData = context.getAst!IrFunction(fun.backendData.lirData);
 	//lirData.orderBlocks;
-	lirData.assignSequentialBlockIndices;
+	//lirData.assignSequentialBlockIndices;
+	//dumpFunction(context, lirData);
 	pass_live_intervals_func(context, lirData, liveness);
 
 	if (context.printLiveIntervals && context.printDumpOf(fun))
@@ -93,15 +94,15 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 	void liveAdd(IrIndex someOperand)
 	{
 		context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
-		version(LivePrint) writefln("[LIVE] liveAdd %s #%s", someOperand, ir.getVirtReg(someOperand).seqIndex);
-		liveness.bitmap.live[ir.getVirtReg(someOperand).seqIndex] = true;
+		version(LivePrint) writefln("[LIVE] liveAdd %s #%s", someOperand, someOperand.storageUintIndex);
+		liveness.bitmap.live[someOperand.storageUintIndex] = true;
 	}
 
 	void liveRemove(IrIndex someOperand)
 	{
 		context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
-		version(LivePrint) writefln("[LIVE] liveRemove %s #%s", someOperand, ir.getVirtReg(someOperand).seqIndex);
-		liveness.bitmap.live[ir.getVirtReg(someOperand).seqIndex] = false;
+		version(LivePrint) writefln("[LIVE] liveRemove %s #%s", someOperand, someOperand.storageUintIndex);
+		liveness.bitmap.live[someOperand.storageUintIndex] = false;
 	}
 
 	// algorithm start
@@ -109,13 +110,13 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
 		// Is also where phi functions are located
-		uint blockFromPos = liveness.linearIndicies[blockIndex];
-		uint blockToPos = liveness.linearIndicies[block.lastInstr];
+		uint blockFromPos = liveness.linearIndicies.basicBlock(blockIndex);
+		uint blockToPos = liveness.linearIndicies.instr(block.lastInstr);
 		version(LivePrint) writefln("[LIVE] % 3s %s", blockFromPos, blockIndex);
 
 		// live = union of successor.liveIn for each successor of block
 		liveness.bitmap.liveBuckets[] = 0;
-		foreach (IrIndex succIndex; block.successors.range(*ir))
+		foreach (IrIndex succIndex; block.successors.range(ir))
 		{
 			foreach (size_t i, size_t bucket; liveness.bitmap.blockLiveInBuckets(succIndex, ir))
 				liveness.bitmap.liveBuckets[i] |= bucket;
@@ -123,15 +124,19 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 
 		// for each phi function phi of successors of block do
 		//     live.add(phi.inputOf(block))
-		foreach (IrIndex succIndex; block.successors.range(*ir))
-			foreach (IrIndex phiIndex, ref IrPhi phi; ir.getBlock(succIndex).phis(*ir))
-				foreach (i, ref IrPhiArg arg; phi.args(*ir))
+		foreach (IrIndex succIndex; block.successors.range(ir))
+			foreach (IrIndex phiIndex, ref IrPhi phi; ir.getBlock(succIndex).phis(ir))
+				foreach (i, ref IrPhiArg arg; phi.args(ir))
 					if (arg.basicBlock == blockIndex)
 						if (arg.value.isVirtReg)
+						{
 							liveAdd(arg.value);
+							LiveInterval* it = liveness.vint(arg.value);
+							it.prependUse(UsePosition(blockToPos, UseKind.phi));
+						}
 
-		//writef("in @%s live:", liveness.linearIndicies[blockIndex]);
-		//foreach (size_t index; live.bitsSet)
+		//writef("in %s %s live:", blockIndex, liveness.linearIndicies.basicBlock(blockIndex));
+		//foreach (size_t index; liveness.bitmap.live.bitsSet)
 		//	writef(" %s", index);
 		//writeln;
 
@@ -145,9 +150,12 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		}
 
 		// for each operation op of b in reverse order do
-		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(*ir))
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
 		{
-			uint linearInstrIndex = liveness.linearIndicies[instrIndex];
+			IrIndex result = instrHeader.tryGetResult(ir); // nullable
+			IrIndex[] args = instrHeader.args(ir);
+
+			uint linearInstrIndex = liveness.linearIndicies.instr(instrIndex);
 			version(LivePrint) writefln("[LIVE]   % 3s %s", linearInstrIndex, instrIndex);
 
 			// -------------- Assign interval hints --------------
@@ -167,34 +175,34 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
 			//writefln("isMov %s %s", cast(Amd64Opcode)instrHeader.op, instrInfo.isMov);
 			if (instrInfo.isMov) {
-				IrIndex from = instrHeader.args[0];
-				IrIndex to = instrHeader.result;
+				IrIndex from = args[0];
+				IrIndex to = result;
 				if (from.isPhysReg && to.isVirtReg) {
-					liveness.vint(ir.getVirtReg(to).seqIndex).storageHint = from;
+					liveness.vint(to).storageHint = from;
 				} else if (from.isVirtReg && to.isPhysReg) {
-					liveness.vint(ir.getVirtReg(from).seqIndex).storageHint = to;
+					liveness.vint(from).storageHint = to;
 				}
 			}
 
 			// for each output operand opd of op do
 			if (instrHeader.hasResult) {
-				if (instrHeader.result.isVirtReg) {
-					liveness.get(ir, instrHeader.result).setFrom(context, linearInstrIndex);
-					liveRemove(instrHeader.result);
-				} else if (instrHeader.result.isPhysReg && !instrInfo.isMov) {
+				if (result.isVirtReg) {
+					liveness.get(result).setFrom(context, linearInstrIndex);
+					liveRemove(result);
+				} else if (result.isPhysReg && !instrInfo.isMov) {
 					int physRegResultOffset = linearInstrIndex+ENUM_STEP;
 					// needed to account for sub/add rsp instructions around call
 					if (instrHeader.extendFixedResultRange)
 						physRegResultOffset += ENUM_STEP;
 					// non-mov, extend fixed interval to the next instr (which must be mov from that phys reg)
-					liveness.pint(instrHeader.result).addRange(context, linearInstrIndex, physRegResultOffset);
+					liveness.pint(result).addRange(context, linearInstrIndex, physRegResultOffset);
 				}
 			}
 
 			int physRegArgsOffset = 0;
-			foreach(IrIndex arg; instrHeader.args) {
+			foreach(IrIndex arg; args) {
 				if (arg.isVirtReg) {
-					LiveInterval* it = liveness.vint(ir, arg);
+					LiveInterval* it = liveness.vint(arg);
 					it.addRange(context, blockFromPos, linearInstrIndex);
 					it.prependUse(UsePosition(linearInstrIndex, UseKind.instruction));
 					liveAdd(arg);
@@ -217,18 +225,18 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			//   see more info in register allocator
 			if (instrInfo.isResultInDst && instrHeader.numArgs == 2 && !instrInfo.isCommutative)
 			{
-				IrIndex arg0 = instrHeader.args[0];
-				IrIndex arg1 = instrHeader.args[1];
+				IrIndex arg0 = args[0];
+				IrIndex arg1 = args[1];
 				if ( !sameIndexOrPhysReg(arg0, arg1) ) {
 					if (arg1.isVirtReg || arg1.isPhysReg) {
-						liveness.get(ir, arg1).addRange(context, blockFromPos, linearInstrIndex+1);
+						liveness.get(arg1).addRange(context, blockFromPos, linearInstrIndex+1);
 					}
 				}
 			}
 
 			if (!instrInfo.isMov)
 			{
-				foreach(IrIndex arg; instrHeader.args)
+				foreach(IrIndex arg; args)
 				{
 					if (arg.isPhysReg)
 					{
@@ -242,8 +250,8 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			// add fixed intervals fo function calls
 			if (instrInfo.isCall)
 			{
-				IrIndex callee = instrHeader.args[0];
-				CallConv* cc = context.types.getCalleeCallConv(callee, *ir, context);
+				IrIndex callee = args[0];
+				CallConv* cc = context.types.getCalleeCallConv(callee, ir, context);
 				IrIndex[] volatileRegs = cc.volatileRegs;
 				foreach(IrIndex reg; volatileRegs) {
 					liveness.pint(reg).addRange(context, linearInstrIndex, linearInstrIndex+1);
@@ -252,12 +260,12 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		}
 
 		// for each phi function phi of b do
-		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(*ir))
+		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
 			// live.remove(phi.output)
 			if (phi.result.isVirtReg) {
 				liveRemove(phi.result);
-				liveness.get(ir, phi.result).setFrom(context, blockFromPos);
+				liveness.get(phi.result).setFrom(context, blockFromPos);
 			}
 		}
 
@@ -269,7 +277,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			uint maxPos = blockToPos;
 			IrIndex loopEnd = blockIndex;
 			//     loopEnd = last block of the loop starting at b
-			foreach(IrIndex pred; block.predecessors.range(*ir)) {
+			foreach(IrIndex pred; block.predecessors.range(ir)) {
 				uint blockEndPos = liveness.linearIndicies[ir.getBlock(pred).lastInstr];
 				if (blockEndPos > maxPos) {
 					maxPos = blockEndPos;
@@ -336,14 +344,14 @@ struct LiveBitmap
 
 	size_t[] blockLiveInBuckets(IrIndex blockIndex, IrFunction* ir)
 	{
-		size_t from = ir.getBlock(blockIndex).seqIndex * numBucketsPerBlock;
+		size_t from = blockIndex.storageUintIndex * numBucketsPerBlock;
 		size_t to = from + numBucketsPerBlock;
 		return liveInBuckets[from..to];
 	}
 
 	BitArray blockLiveInBits(IrIndex blockIndex, IrFunction* ir)
 	{
-		size_t from = ir.getBlock(blockIndex).seqIndex * numBucketsPerBlock;
+		size_t from = blockIndex.storageUintIndex * numBucketsPerBlock;
 		size_t to = from + numBucketsPerBlock;
 		return BitArray(liveInBuckets[from..to], numBucketsPerBlock * size_t.sizeof * 8);
 	}
@@ -369,6 +377,14 @@ struct UsePosition
 		uint,    "pos",  28,
 		UseKind, "kind",  4
 	));
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		import std.format : formattedWrite;
+		final switch (kind) {
+			case UseKind.instruction: sink.formattedWrite("(%s instr)", pos); break;
+			case UseKind.phi: sink.formattedWrite("(%s phi)", pos); break;
+		}
+	}
 }
 
 struct LiveInterval
@@ -386,13 +402,12 @@ struct LiveInterval
 	}
 
 	IrIndex reg;
-	IrIndex definition; // null if isFixed
-	//RegClass regClass;
-	bool isFixed;
+	IrIndex definition; // phys or virt reg
 	IrIndex storageHint;
 	IntervalIndex parent; // null if is original interval (leftmost), otherwise points to original interval
 	IntervalIndex child; // next split interval to the right
 
+	bool isFixed() { return definition.isPhysReg; }
 	bool isSplitChild() { return !parent.isNull; }
 	bool isSplit() { return !child.isNull; }
 
@@ -447,6 +462,7 @@ struct LiveInterval
 	}
 
 	void prependUse(UsePosition use) {
+		//writefln("prependUse %s %s", definition, use);
 		uses[$-1] = use;
 		uses.unput(1);
 	}
@@ -562,7 +578,7 @@ struct LivenessInfo
 	auto physicalIntervals() { return intervals[0..numFixedIntervals]; }
 
 	LiveInterval* vint(size_t virtSeqIndex) { return &intervals[numFixedIntervals+virtSeqIndex]; }
-	LiveInterval* vint(IrFunction* ir, IrIndex index) { return &intervals[numFixedIntervals + ir.getVirtReg(index).seqIndex]; }
+	LiveInterval* vint(IrIndex index) { return &intervals[numFixedIntervals + index.storageUintIndex]; }
 	LiveInterval* pint(IrIndex physReg) { return &intervals[physReg.physRegIndex]; }
 
 	void initStorage(CompilationContext* context, IrFunction* ir) {
@@ -579,16 +595,16 @@ struct LivenessInfo
 		foreach (ref LiveInterval it; physicalIntervals)
 		{
 			it = LiveInterval();
-			it.reg = context.machineInfo.registers[i].index;
-			it.isFixed = true;
+			it.reg = it.definition = context.machineInfo.registers[i].index;
 			++i;
 		}
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegsiters) {
 			LiveInterval it = { definition : vregIndex };
-			*vint(vreg.seqIndex) = it;
+			*vint(vregIndex.storageUintIndex) = it;
 		}
 
-		linearIndicies.create(context, ir);
+		linearIndicies.createBasicBlockMirror(context, ir);
+		linearIndicies.createInstrMirror(context, ir);
 	}
 
 	void assignSequentialIndices(CompilationContext* context, IrFunction* ir) {
@@ -600,13 +616,13 @@ struct LivenessInfo
 		{
 			version(LivePrint) writefln("[LIVE] %s %s", enumerationIndex, blockIndex);
 			// Allocate index for block start
-			linearIndicies[blockIndex] = enumerationIndex;
+			linearIndicies.basicBlock(blockIndex) = enumerationIndex;
 			enumerationIndex += ENUM_STEP;
 			// enumerate instructions
-			foreach (IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(*ir))
+			foreach (IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
 			{
 				version(LivePrint) writefln("[LIVE]   %s %s", enumerationIndex, instrIndex);
-				linearIndicies[instrIndex] = enumerationIndex;
+				linearIndicies.instr(instrIndex) = enumerationIndex;
 				enumerationIndex += ENUM_STEP;
 			}
 		}
@@ -621,6 +637,7 @@ struct LivenessInfo
 		foreach (ref LiveInterval it; virtualIntervals)
 		{
 			IrVirtualRegister* vreg = &ir.getVirtReg(it.definition);
+			context.assertf(it.uses.length == 0, "non empty uses %s of %s; %s", it.uses.length, it.definition, it.uses);
 			it.uses.voidPut(context.arrayArena, vreg.users.length);
 		}
 	}
@@ -629,11 +646,11 @@ struct LivenessInfo
 		return IntervalIndex(it - &intervals.front());
 	}
 
-	IrIndex getRegFor(IrIndex index, int pos, IrFunction* ir)
+	IrIndex getRegFor(IrIndex index, int pos)
 	{
 		if (index.isVirtReg)
 		{
-			IntervalIndex intIndex = numFixedIntervals + ir.getVirtReg(index).seqIndex;
+			IntervalIndex intIndex = numFixedIntervals + index.storageUintIndex;
 			LiveInterval* it = &intervals[intIndex];
 			while (it.to < pos) {
 				if (it.child.isNull) return IrIndex.init;
@@ -649,11 +666,11 @@ struct LivenessInfo
 		assert(false);
 	}
 
-	LiveInterval* get(IrFunction* ir, IrIndex index)
+	LiveInterval* get(IrIndex index)
 	{
 		if (index.isVirtReg)
 		{
-			return &intervals[numFixedIntervals + ir.getVirtReg(index).seqIndex];
+			return &intervals[numFixedIntervals + index.storageUintIndex];
 		}
 		else if (index.isPhysReg)
 		{
@@ -727,6 +744,10 @@ struct LivenessInfo
 				foreach(rIndex, range; it.ranges) {
 					if (rIndex > 0) sink.put(" ");
 					sink.putf(" [%s; %s)", range.from, range.to);
+				}
+
+				foreach(UsePosition use; it.uses) {
+					sink.putf(" (%s %s)", use.pos, use.kind);
 				}
 				if (!it.parent.isNull) sink.putf(" parent: v %s", it.parent);
 				if (!it.child.isNull) sink.putf(" child: v %s", it.child);

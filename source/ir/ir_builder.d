@@ -22,16 +22,16 @@ struct InstrWithResult
 
 struct ExtraInstrArgs
 {
-	IrOpcode opcode; // used when opcode is IrOpcode.invalid
+	IrOpcode opcode; // used when `InstrInfo.opcode` is IrOpcode.invalid
 	ubyte cond; // used when IrInstrFlags.hasCondition is set
 	IrArgSize argSize;
 
 	bool addUsers = true;
 
 	/// Is checked when instruction has variadic result (IrInstrFlags.hasVariadicResult).
-	/// If 'hasResult' is false, no result is allocated and 'result' value is ignored.
-	/// If 'hasResult' is true, then 'result' is checked:
-	///    If 'result' is defined:
+	/// If `hasResult` is false, no result is allocated and `result` value is ignored.
+	/// If `hasResult` is true, then `result` is checked:
+	///    If `result` is defined:
 	///       then instrHeader.result is set to its value.
 	///       or else a new virtual register is created.
 	bool hasResult;
@@ -60,21 +60,39 @@ struct IrBuilder
 	private uint nextIrVarIndex;
 
 	private IrIndex returnVar;
+	private uint numRemovedVregs;
 
 	void free() {
 		blockVarDef.free(context.arrayArena);
 		blockToIrIncompletePhi.free(context.arrayArena);
 	}
 
-	/// Must be called before compilation of each function. Allows reusing temp buffers.
-	/// Sets up entry and exit basic blocks.
-	void begin(IrFunction* ir, CompilationContext* context) {
+	private void setPointers(IrFunction* ir, CompilationContext* context)
+	{
 		this.context = context;
 		this.ir = ir;
 
-		ir.storage = context.irBuffer.nextPtr[0..0];
+		ir.instrPtr = context.irStorage.instrHeaderBuffer.nextPtr;
+		ir.instrPayloadPtr = context.irStorage.instrPayloadBuffer.nextPtr;
+		ir.instrNextPtr = context.irStorage.instrNextBuffer.nextPtr;
+		ir.instrPrevPtr = context.irStorage.instrPrevBuffer.nextPtr;
+		ir.phiPtr = context.irStorage.phiBuffer.nextPtr;
+		ir.arrayPtr = context.irStorage.arrayBuffer.nextPtr;
+		ir.vregPtr = context.irStorage.vregBuffer.nextPtr;
+		ir.basicBlockPtr = context.irStorage.basicBlockBuffer.nextPtr;
+	}
 
+	private void reset() {
 		blockVarDef.clear();
+		numRemovedVregs = 0;
+	}
+
+	/// Must be called before compilation of each function. Allows reusing temp buffers.
+	/// Sets up entry and exit basic blocks.
+	void begin(IrFunction* ir, CompilationContext* context)
+	{
+		setPointers(ir, context);
+		reset();
 
 		setupEntryExitBlocks();
 
@@ -93,13 +111,10 @@ struct IrBuilder
 	}
 
 	/// Must be called before IR to LIR pass
-	void beginLir(IrFunction* lir, IrFunction* oldIr, CompilationContext* context) {
-		this.context = context;
-		this.ir = lir;
-
-		ir.storage = context.irBuffer.nextPtr[0..0];
-
-		blockVarDef.clear();
+	void beginLir(IrFunction* ir, IrFunction* oldIr, CompilationContext* context)
+	{
+		setPointers(ir, context);
+		reset();
 	}
 
 	/// Copies ir data to the end of IR buffer, to allow for modification
@@ -107,72 +122,141 @@ struct IrBuilder
 		this.context = context;
 		this.ir = ir;
 
-		// IR is already at the end of buffer
-		if (context.irBuffer.nextPtr == ir.storage.ptr + ir.storage.length)
-		{
-			// noop
-		}
-		else
-		{
-			uint[] buf = context.irBuffer.voidPut(ir.storage.length);
-			buf[] = ir.storage[0..ir.storage.length]; // copy
-			ir.storage = buf;
-		}
-		ir.lastBasicBlock = ir.getBlock(ir.exitBasicBlock).prevBlock;
+		dupIrStorage(ir, context);
+		reset();
+	}
 
-		blockVarDef.clear();
+	/// perfoms GC of removed entities
+	void finalizeIr() {
+		version(IrPrint) writefln("[IR] finalizeIr removed %s", numRemovedVregs);
+
+		// --------------- GC REMOVED VREGS ---------------
+		IrIndex lastUsedReg = ir.lastVirtReg;
+		IrIndex firstRemovedReg = ir.firstVirtReg;
+
+		// if zero registers exists, this must not be called
+		// if only removed registers exist, then `lastUsedReg` becomes null
+		// otherwise it's last used register
+		void updateLastUsedReg() {
+			if (lastUsedReg.isUndefined) return; // already no used regs left
+
+			while(ir.getVirtReg(lastUsedReg).isRemoved)
+			{
+				if (lastUsedReg.storageUintIndex == 0) {
+					// we reached the start of array of vregs. No used regs can be found anymore
+					lastUsedReg = IrIndex();
+					return;
+				}
+				// get prev register
+				lastUsedReg.storageUintIndex = lastUsedReg.storageUintIndex - 1;
+			}
+			// `lastUsedReg` is not removed
+		}
+
+		// called once per number of removed regs
+		void updateFirstRemovedReg() {
+			while(!ir.getVirtReg(firstRemovedReg).isRemoved)
+			{
+				// get next register
+				firstRemovedReg.storageUintIndex = firstRemovedReg.storageUintIndex + 1;
+			}
+		}
+
+		uint numProcessedVregs = 0;
+
+		// max loop iterations == min(numUsedRegs, numRemovedVregs)
+		// Actual time complexity is O(numVirtualRegisters)
+		// 0 times in best case, were all removed regs are already at the end
+		while (numProcessedVregs < numRemovedVregs)
+		{
+			updateLastUsedReg;
+
+			// no used regs left
+			if (lastUsedReg.isUndefined) break;
+
+			updateFirstRemovedReg;
+
+			// all removed regs are already at the end
+			if (firstRemovedReg.storageUintIndex > lastUsedReg.storageUintIndex) break;
+
+			// move last used reg into the place of first removed register
+			moveVreg(lastUsedReg, firstRemovedReg);
+			// mark as removed for updateLastUsedReg
+			ir.getVirtReg(lastUsedReg).type = lastUsedReg;
+
+			++numProcessedVregs;
+		}
+
+		// all removed regs were moved to the end of array
+		ir.numVirtualRegisters -= numRemovedVregs;
+		context.irStorage.vregBuffer.unput(numRemovedVregs);
 	}
 
 	void setupEntryExitBlocks()
 	{
 		assert(ir.numBasicBlocks == 0);
 		// Canonical function CFG has entry block, and single exit block.
-		ir.numBasicBlocks = 2;
-
-		ir.entryBasicBlock = append!IrBasicBlock;
-		ir.exitBasicBlock = append!IrBasicBlock;
+		appendBasicBlockSlot; // entry block at index 0
+		appendBasicBlockSlot; // exit block at index 1
 
 		ir.getBlock(ir.entryBasicBlock).nextBlock = ir.exitBasicBlock;
 		sealBlock(ir.entryBasicBlock);
 		ir.getBlock(ir.exitBasicBlock).prevBlock = ir.entryBasicBlock;
-		ir.lastBasicBlock = ir.entryBasicBlock;
 	}
 
-	/// Returns index to allocated item
-	/// Allocates howMany items. By default allocates single item.
-	/// If howMany > 1 - returns index of first item, access other items via IrIndex.indexOf
-	/// T must have UDA of IrValueKind value
-	IrIndex append(T)(uint howMany = 1)
-	{
-		IrIndex index = appendVoid!T(howMany);
-		(&ir.get!T(index))[0..howMany] = T.init;
-		return index;
+	// memory is not initialized
+	void appendInstructionSlots(uint numSlots) {
+		ir.numInstructions += numSlots;
+		context.irStorage.instrHeaderBuffer.voidPut(numSlots);
+		context.irStorage.instrNextBuffer.voidPut(numSlots);
+		context.irStorage.instrPrevBuffer.voidPut(numSlots);
 	}
 
-	/// Returns index to uninitialized memory for all requested items.
-	/// Allocates howMany items. By default allocates single item.
-	/// If howMany > 1 - resultIndex has index of first item, access other items via IrIndex.indexOf
-	/// T must have UDA of IrValueKind value
-	IrIndex appendVoid(T)(uint howMany = 1)
+	// memory is not initialized
+	// slots for instruction result and arguments
+	void appendPayloadSlots(uint numSlots) {
+		ir.numPayloadSlots += numSlots;
+		context.irStorage.instrPayloadBuffer.voidPut(numSlots);
+	}
+
+	// memory is initialized
+	IrIndex appendPhiSlot() {
+		IrIndex result = IrIndex(ir.numPhis, IrValueKind.phi);
+		ir.numPhis += 1;
+		context.irStorage.phiBuffer.put(IrPhi());
+		return result;
+	}
+
+	// memory is not initialized
+	IrIndex appendVirtRegSlot() {
+		IrIndex result = IrIndex(ir.numVirtualRegisters, IrValueKind.virtualRegister);
+		ir.numVirtualRegisters += 1;
+		context.irStorage.vregBuffer.voidPut(1);
+		return result;
+	}
+
+	// memory is initialized
+	IrIndex appendBasicBlockSlot() {
+		IrIndex result = IrIndex(ir.numBasicBlocks, IrValueKind.basicBlock);
+		ir.numBasicBlocks += 1;
+		context.irStorage.basicBlockBuffer.put(IrBasicBlock());
+		return result;
+	}
+
+	IrIndex appendListItem(T)(uint numItems)
 	{
 		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
+		static assert(getIrValueKind!T == IrValueKind.listItem, "Can only store list types");
 
-		IrIndex resultIndex = IrIndex(cast(uint)ir.storage.length, getIrValueKind!T);
+		IrIndex result = IrIndex(ir.arrayLength, IrValueKind.listItem);
 
-		enum allocSize = divCeil(T.sizeof, uint.sizeof);
-		size_t numAllocatedSlots = allocSize * howMany;
-		ir.storage = ir.storage.ptr[0..ir.storage.length + numAllocatedSlots]; // extend slice
-		context.irBuffer.voidPut(numAllocatedSlots);
+		enum uint allocSize = divCeil(T.sizeof, uint.sizeof);
+		uint numSlots = numItems * allocSize;
+		context.irStorage.arrayBuffer.voidPut(numSlots);
+		ir.get!T(result) = T.init;
+		ir.arrayLength += numSlots;
 
-		return resultIndex;
-	}
-
-	/// appendVoid + appendBlockInstr
-	IrIndex appendVoidToBlock(T)(IrIndex blockIndex, uint howMany = 1)
-	{
-		IrIndex instr = appendVoid!T(howMany);
-		appendBlockInstr(blockIndex, instr);
-		return instr;
+		return result;
 	}
 
 	/// Adds control-flow edge pointing `fromBlock` -> `toBlock`.
@@ -184,14 +268,13 @@ struct IrBuilder
 	/// Creates new block and inserts it after lastBasicBlock and sets lastBasicBlock
 	IrIndex addBasicBlock() {
 		assert(ir.lastBasicBlock.isDefined);
-		++ir.numBasicBlocks;
-		IrIndex newBlock = append!IrBasicBlock;
-		ir.getBlock(newBlock).nextBlock = ir.getBlock(ir.lastBasicBlock).nextBlock;
-		ir.getBlock(newBlock).prevBlock = ir.lastBasicBlock;
-		ir.getBlock(ir.getBlock(ir.lastBasicBlock).nextBlock).prevBlock = newBlock;
-		ir.getBlock(ir.lastBasicBlock).nextBlock = newBlock;
-		ir.lastBasicBlock = newBlock;
-		return ir.lastBasicBlock;
+		IrIndex lastBasicBlock = ir.lastBasicBlock;
+		IrIndex newBlock = appendBasicBlockSlot;
+		ir.getBlock(newBlock).nextBlock = ir.exitBasicBlock;
+		ir.getBlock(newBlock).prevBlock = lastBasicBlock;
+		ir.getBlock(ir.exitBasicBlock).prevBlock = newBlock;
+		ir.getBlock(lastBasicBlock).nextBlock = newBlock;
+		return newBlock;
 	}
 
 	/// Does not remove its instructions/phis
@@ -290,17 +373,6 @@ struct IrBuilder
 		}
 	}
 
-	/// Used to place data after variadic members.
-	/// Can be accessed via IrInstrHeader.preheader!T.
-	void emitInstrPreheader(T)(T preheaderData)
-	{
-		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
-		T* preheader = cast(T*)(&ir.storage.ptr[ir.storage.length]);
-		ir.storage = ir.storage.ptr[0..ir.storage.length + numAllocatedSlots]; // extend slice
-		context.irBuffer.voidPut(numAllocatedSlots);
-		*preheader = preheaderData;
-	}
-
 	/// Returns InstrWithResult (if instr has result) or IrIndex instruction otherwise
 	/// Always returns InstrWithResult when instruction has variadic result
 	///   in this case result can be null if no result is requested
@@ -325,11 +397,15 @@ struct IrBuilder
 		}
 	}
 
+	/// ditto
 	/// Only creates instruction, doesn't add to basic block
 	auto emitInstr(I)(ExtraInstrArgs extra, IrIndex[] args ...)
 	{
-		IrIndex instr = append!I;
+		IrIndex instr = IrIndex(ir.numInstructions, IrValueKind.instruction);
+		appendInstructionSlots(1);
+
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+		*instrHeader = IrInstrHeader.init;
 
 		// opcode
 		static if (getInstrInfo!I.opcode == IrOpcode.invalid)
@@ -339,27 +415,45 @@ struct IrBuilder
 
 		instrHeader.argSize = extra.argSize;
 
+		// payload offset must points to first argument
+		instrHeader._payloadOffset = ir.numPayloadSlots;
+
 		// result
-		static if (getInstrInfo!I.hasVariadicResult)
-		{
-			if (extra.hasResult)
-			{
-				appendVoid!IrIndex;
+		static if (getInstrInfo!I.hasVariadicResult) {
+			if (extra.hasResult) {
+				appendPayloadSlots(1);
 				instrHeader.hasResult = true;
-			}
-			else
-			{
+			} else {
 				instrHeader.hasResult = false;
 			}
-		}
-		else static if (getInstrInfo!I.hasResult)
-		{
-			appendVoid!IrIndex;
+		} else static if (getInstrInfo!I.hasResult) {
+			appendPayloadSlots(1);
 			instrHeader.hasResult = true;
-		}
-		else
-		{
+		} else {
 			instrHeader.hasResult = false;
+		}
+
+		// set result
+		static if (getInstrInfo!I.mayHaveResult)
+		{
+			if (instrHeader.hasResult)
+			{
+				// advance pointer to point to arguments
+				++instrHeader._payloadOffset;
+
+				if (extra.result.isDefined) {
+					instrHeader.result(ir) = extra.result;
+					// fix definition
+					if (extra.result.isVirtReg) {
+						IrVirtualRegister* virtReg = &ir.getVirtReg(extra.result);
+						virtReg.definition = instr;
+						assert(extra.type.isType, format("Invalid extra.type (%s)", extra.type));
+						virtReg.type = extra.type;
+					}
+				} else {
+					instrHeader.result(ir) = addVirtualRegister(instr, extra.type);
+				}
+			}
 		}
 
 		// condition
@@ -384,7 +478,7 @@ struct IrBuilder
 			instrHeader.numArgs = cast(typeof(instrHeader.numArgs))args.length;
 
 			// allocate argument slots after optional result
-			appendVoid!IrIndex(cast(uint)args.length);
+			appendPayloadSlots(cast(uint)args.length);
 		}
 		else
 		{
@@ -393,10 +487,14 @@ struct IrBuilder
 				I.stringof, getInstrInfo!I.numArgs, args.length);
 
 			instrHeader.numArgs = getInstrInfo!I.numArgs;
+			appendPayloadSlots(getInstrInfo!I.numArgs);
 		}
 
+		// allocate hidden args
+		appendPayloadSlots(getInstrInfo!I.numHiddenArgs);
+
 		// set arguments
-		instrHeader.args[] = args;
+		instrHeader.args(ir)[] = args;
 
 		// Instruction uses its arguments
 		if (extra.addUsers) {
@@ -407,35 +505,11 @@ struct IrBuilder
 
 		static if (getInstrInfo!I.mayHaveResult)
 		{
-			// set result
-			// need to add virt reg after arguments, because virt reg allocation
-			// will interfere with argument slot allocation
 			if (instrHeader.hasResult)
-			{
-				if (extra.result.isDefined) {
-					instrHeader.result = extra.result;
-					// fix definition
-					if (extra.result.isVirtReg) {
-						IrVirtualRegister* virtReg = &ir.getVirtReg(extra.result);
-						virtReg.definition = instr;
-						assert(extra.type.isType, format("Invalid extra.type (%s)", extra.type));
-						virtReg.type = extra.type;
-					}
-				}
-				else
-				{
-					instrHeader.result = addVirtualRegister(instr, extra.type);
-				}
-
-				return InstrWithResult(instr, instrHeader.result);
-			}
+				return InstrWithResult(instr, instrHeader.result(ir));
 			else
-			{
 				return InstrWithResult(instr, IrIndex());
-			}
-		}
-		else
-		{
+		} else {
 			return instr;
 		}
 	}
@@ -445,18 +519,17 @@ struct IrBuilder
 	void appendBlockInstr(IrIndex blockIndex, IrIndex instr)
 	{
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
 
-		instrHeader.nextInstr = blockIndex;
+		ir.nextInstr(instr) = blockIndex;
 
-		if (!block.firstInstr.isDefined) {
-			instrHeader.prevInstr = blockIndex;
-			block.firstInstr = instr;
+		if (block.firstInstr.isDefined) {
+			// points to prev instruction
+			ir.prevInstr(instr) = block.lastInstr;
+			ir.nextInstr(block.lastInstr) = instr;
 			block.lastInstr = instr;
 		} else {
-			// points to prev instruction
-			instrHeader.prevInstr = block.lastInstr;
-			ir.get!IrInstrHeader(block.lastInstr).nextInstr = instr;
+			ir.prevInstr(instr) = blockIndex;
+			block.firstInstr = instr;
 			block.lastInstr = instr;
 		}
 	}
@@ -466,18 +539,17 @@ struct IrBuilder
 	void prependBlockInstr(IrIndex blockIndex, IrIndex instr)
 	{
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
 
-		instrHeader.prevInstr = blockIndex;
+		ir.prevInstr(instr) = blockIndex;
 
-		if (!block.lastInstr.isDefined) {
-			instrHeader.nextInstr = blockIndex;
-			block.lastInstr = instr;
+		if (block.lastInstr.isDefined) {
+			// points to next instruction
+			ir.nextInstr(instr) = block.firstInstr;
+			ir.prevInstr(block.firstInstr) = instr;
 			block.firstInstr = instr;
 		} else {
-			// points to next instruction
-			instrHeader.nextInstr = block.firstInstr;
-			ir.get!IrInstrHeader(block.firstInstr).prevInstr = instr;
+			ir.nextInstr(instr) = blockIndex;
+			block.lastInstr = instr;
 			block.firstInstr = instr;
 		}
 	}
@@ -485,20 +557,17 @@ struct IrBuilder
 	/// Inserts 'instr' after 'afterInstr'
 	void insertAfterInstr(IrIndex afterInstr, IrIndex instr)
 	{
-		IrInstrHeader* afterInstrHeader = &ir.get!IrInstrHeader(afterInstr);
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+		ir.prevInstr(instr) = afterInstr;
+		ir.nextInstr(instr) = ir.nextInstr(afterInstr);
 
-		instrHeader.prevInstr = afterInstr;
-		instrHeader.nextInstr = afterInstrHeader.nextInstr;
-
-		if (afterInstrHeader.nextInstr.isBasicBlock) {
+		if (ir.nextInstr(afterInstr).isBasicBlock) {
 			// 'afterInstr' is the last instr in the block
-			ir.getBlock(afterInstrHeader.nextInstr).lastInstr = instr;
+			ir.getBlock(ir.nextInstr(afterInstr)).lastInstr = instr;
 		} else {
 			// There must be instr after 'afterInstr'
-			ir.get!IrInstrHeader(afterInstrHeader.nextInstr).prevInstr = instr;
+			ir.prevInstr(ir.nextInstr(afterInstr)) = instr;
 		}
-		afterInstrHeader.nextInstr = instr;
+		ir.nextInstr(afterInstr) = instr;
 	}
 
 	/// Inserts 'instr' before lastInstr of basic block 'blockIndex'
@@ -516,20 +585,19 @@ struct IrBuilder
 	void insertBeforeInstr(IrIndex beforeInstr, IrIndex instr)
 	{
 		IrInstrHeader* beforeInstrHeader = &ir.get!IrInstrHeader(beforeInstr);
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
 
-		instrHeader.nextInstr = beforeInstr;
-		instrHeader.prevInstr = beforeInstrHeader.prevInstr;
+		ir.nextInstr(instr) = beforeInstr;
+		ir.prevInstr(instr) = ir.prevInstr(beforeInstr);
 
-		if (beforeInstrHeader.prevInstr.isBasicBlock) {
+		if (ir.prevInstr(beforeInstr).isBasicBlock) {
 			// 'beforeInstr' is the first instr in the block
-			ir.getBlock(beforeInstrHeader.prevInstr).firstInstr = instr;
+			ir.getBlock(ir.prevInstr(beforeInstr)).firstInstr = instr;
 		} else {
 			// There must be instr before 'beforeInstr'
-			ir.get!IrInstrHeader(beforeInstrHeader.prevInstr).nextInstr = instr;
+			ir.nextInstr(ir.prevInstr(beforeInstr)) = instr;
 		}
 
-		beforeInstrHeader.prevInstr = instr;
+		ir.prevInstr(beforeInstr) = instr;
 	}
 
 	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrArgSize argSize, IrIndex arg0, IrIndex arg1, ref IrLabel trueExit, ref IrLabel falseExit)
@@ -674,47 +742,46 @@ struct IrBuilder
 	/// `definition` is phi/instruction that produces a value
 	IrIndex addVirtualRegister(IrIndex definition, IrIndex type)
 	{
-		uint seqIndex = ir.numVirtualRegisters;
-		++ir.numVirtualRegisters;
+		IrIndex virtRegIndex = appendVirtRegSlot();
 
-		IrIndex virtRegIndex = append!IrVirtualRegister;
-		IrVirtualRegister* virtReg = &ir.getVirtReg(virtRegIndex);
-		virtReg.definition = definition;
-		virtReg.seqIndex = seqIndex;
 		assert(type.isType, format("Invalid type (%s)", type));
-		virtReg.type = type;
-		if (ir.lastVirtualReg.isDefined) {
-			ir.getVirtReg(ir.lastVirtualReg).nextVirtReg = virtRegIndex;
-		} else {
-			ir.firstVirtualReg = virtRegIndex;
-		}
-		virtReg.prevVirtReg = ir.lastVirtualReg;
-		ir.lastVirtualReg = virtRegIndex;
+		ir.getVirtReg(virtRegIndex) = IrVirtualRegister(definition, type);
+
 		return virtRegIndex;
 	}
 
 	// ignores null opdId
 	private void removeVirtualRegister(IrIndex virtRegIndex)
 	{
-		// TODO: freelist?
-		IrVirtualRegister* virtReg = &ir.getVirtReg(virtRegIndex);
-		if (virtRegIndex == ir.firstVirtualReg)
-			ir.firstVirtualReg = virtReg.nextVirtReg;
-		if (virtRegIndex == ir.lastVirtualReg)
-			ir.lastVirtualReg = virtReg.prevVirtReg;
-		if (virtReg.prevVirtReg.isDefined)
-			ir.getVirtReg(virtReg.prevVirtReg).nextVirtReg = virtReg.nextVirtReg;
-		if (virtReg.nextVirtReg.isDefined)
-			ir.getVirtReg(virtReg.nextVirtReg).prevVirtReg = virtReg.prevVirtReg;
-		--ir.numVirtualRegisters;
-		if (ir.lastVirtualReg.isDefined)
-			ir.getVirtReg(ir.lastVirtualReg).seqIndex = virtReg.seqIndex;
+		version(IrPrint) writefln("[IR] remove vreg %s", virtRegIndex);
+		// note: removing register while blockVarDef table contains values of this register is difficult
+		// postpone removal until the end of IR construction
+		// also, this way we can return memory from removed registers to arena
+		// we will do removal after IR construction in `finalizeIr`
+		ir.getVirtReg(virtRegIndex).type = virtRegIndex; // mark as removed
+		++numRemovedVregs;
+	}
+
+	private void moveVreg(IrIndex fromSlot, IrIndex toSlot) {
+		// redirect users
+		redirectVregUsersTo(fromSlot, toSlot);
+		// redirect definition (phi or instr)
+		IrIndex definition = ir.getVirtReg(fromSlot).definition;
+		switch (definition.kind) {
+			case IrValueKind.phi: ir.getPhi(definition).result = toSlot; break;
+			case IrValueKind.instruction: ir.get!IrInstrHeader(definition).result(ir) = toSlot; break;
+			default: context.internal_error("Invalid definition %s of %s", definition.kind, fromSlot);
+		}
+		// move data
+		version(IrPrint) writefln("[IR] moveVreg %s -> %s", fromSlot, toSlot);
+		ir.getVirtReg(toSlot) = ir.getVirtReg(fromSlot);
 	}
 
 	// Adds phi function to specified block
 	IrIndex addPhi(IrIndex blockIndex, IrIndex type, IrIndex var)
 	{
-		IrIndex phiIndex = append!IrPhi;
+		IrIndex phiIndex = appendPhiSlot;
+
 		IrIndex vreg = addVirtualRegister(phiIndex, type);
 		version(IrPrint) writefln("[IR] add %s %s", vreg, phiIndex);
 		ir.get!IrPhi(phiIndex) = IrPhi(blockIndex, vreg, var);
@@ -733,7 +800,7 @@ struct IrBuilder
 		IrPhi* phi = &ir.get!IrPhi(phiIndex);
 		IrBasicBlock* block = &ir.getBlock(phi.blockIndex);
 		version(IrPrint) {
-			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(*ir)) {
+			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
 			}
 		}
@@ -743,7 +810,7 @@ struct IrBuilder
 		if (phi.prevPhi.isDefined) ir.get!IrPhi(phi.prevPhi).nextPhi = phi.nextPhi;
 		version(IrPrint) writefln("[IR] after remove phi %s", phiIndex);
 		version(IrPrint) {
-			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(*ir)) {
+			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
 			}
 		}
@@ -773,7 +840,7 @@ struct IrBuilder
 			SmallVector preds = ir.getBlock(blockIndex).predecessors;
 			if (preds.length == 1) {
 				// Optimize the common case of one predecessor: No phi needed
-				value = readVariable(preds[0, *ir], variable);
+				value = readVariable(preds[0, ir], variable);
 			}
 			else
 			{
@@ -799,9 +866,10 @@ struct IrBuilder
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex addPhiOperands(IrIndex blockIndex, IrIndex variable, IrIndex phi)
 	{
-		version(IrPrint) writefln("[IR] addPhiOperands %s %s %s", blockIndex, variable, phi);
+		version(IrPrint) writefln("[IR] addPhiOperands %s %s %s %s", blockIndex, variable, phi, ir.get!IrPhi(phi).result);
+		//dumpFunction(context, ir);
 		// Determine operands from predecessors
-		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(*ir))
+		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(ir))
 		{
 			IrIndex value = readVariable(predIndex, variable);
 			version(IrPrint) writefln("[IR] phi operand %s %s", predIndex, value);
@@ -814,7 +882,7 @@ struct IrBuilder
 
 	void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
 	{
-		IrIndex phiArg = append!IrPhiArg;
+		IrIndex phiArg = appendListItem!IrPhiArg(1);
 		IrPhi* phi = &ir.get!IrPhi(phiIndex);
 		// try to set phi's type if parameter is not a self reference
 		if (value != phi.result)
@@ -830,7 +898,7 @@ struct IrBuilder
 			}
 			else
 			{
-				IrIndex argType = ir.getValueType(*context, value);
+				IrIndex argType = ir.getValueType(context, value);
 				context.assertf(argType.isType, "Invalid type (%s) of %s", argType, value);
 				resReg.type = argType;
 			}
@@ -845,7 +913,7 @@ struct IrBuilder
 	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex) {
 		IrPhiArg same;
 		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
-		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(*ir))
+		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(ir))
 		{
 			version(IrPrint) writefln("[IR] arg %s %s", phiArg.value, phiArg.basicBlock);
 			if (phiArg.value == same.value || phiArg.value == phiResultIndex) {
@@ -882,7 +950,7 @@ struct IrBuilder
 		removePhi(phiIndex);
 
 		// Try to recursively remove all phi users, which might have become trivial
-		foreach (i, index; users.range(*ir))
+		foreach (i, index; users.range(ir))
 			if (index.kind == IrValueKind.phi && index != phiIndex)
 				tryRemoveTrivialPhi(index);
 
@@ -892,6 +960,7 @@ struct IrBuilder
 
 	private void updatePhiVarDefs(IrIndex blockIndex, IrIndex var, IrIndex oldValue, IrIndex newValue)
 	{
+		version(IrPrint) writefln("[IR]   updatePhiVarDefs %s %s %s: %s", blockIndex, var, newValue, blockVarDef);
 		if (auto val = BlockVarPair(blockIndex, var) in blockVarDef)
 		{
 			if (*val == oldValue)
@@ -899,11 +968,12 @@ struct IrBuilder
 				version(IrPrint) writefln("[IR]   phi update blockVarDef %s %s %s -> %s", blockIndex, var, *val, newValue);
 				*val = newValue;
 
-				foreach (i, succIndex; ir.getBlock(blockIndex).successors.range(*ir)) {
+				foreach (i, succIndex; ir.getBlock(blockIndex).successors.range(ir)) {
 					updatePhiVarDefs(succIndex, var, oldValue, newValue);
 				}
 			}
 		}
+		version(IrPrint) writefln("[IR]   updatePhiVarDefs %s %s %s: %s", blockIndex, var, newValue, blockVarDef);
 	}
 
 	IrIndex definitionOf(IrIndex someIndex)
@@ -929,20 +999,21 @@ struct IrBuilder
 	/// Replaces all 'vreg' uses with `byWhat`
 	void redirectVregUsersTo(IrIndex vreg, IrIndex byWhat) {
 		context.assertf(vreg.isVirtReg, "'vreg' must be virtual register, not %s", vreg.kind);
+		version(IrPrint) writefln("[IR] redirectVregUsersTo %s -> %s", vreg, byWhat);
 
 		SmallVector users = ir.getVirtReg(vreg).users;
-		foreach (size_t i, IrIndex userIndex; users.range(*ir))
+		foreach (size_t i, IrIndex userIndex; users.range(ir))
 		{
 			switch (userIndex.kind) with(IrValueKind) {
 				case instruction:
-					foreach (ref IrIndex arg; ir.get!IrInstrHeader(userIndex).args)
+					foreach (ref IrIndex arg; ir.get!IrInstrHeader(userIndex).args(ir))
 						if (arg == vreg) {
 							arg = byWhat;
 							addUser(userIndex, byWhat);
 						}
 					break;
 				case phi:
-					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(*ir))
+					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(ir))
 						if (phiArg.value == vreg) {
 							phiArg.value = byWhat;
 							addUser(userIndex, byWhat);
@@ -959,7 +1030,7 @@ struct IrBuilder
 	private void replaceBy(IrIndex phiIndex, SmallVector phiUsers, IrIndex what, IrPhiArg byWhat) {
 		version(IrPrint) writefln("[IR]     replaceBy %s %s -> %s", phiIndex, what, byWhat);
 
-		foreach (size_t i, IrIndex phiUserIndex; phiUsers.range(*ir))
+		foreach (size_t i, IrIndex phiUserIndex; phiUsers.range(ir))
 		{
 			version(IrPrint) writefln("[IR]     user %s %s", i, phiUserIndex);
 
@@ -970,7 +1041,7 @@ struct IrBuilder
 				case none: assert(false);
 				case listItem: assert(false);
 				case instruction:
-					foreach (ref IrIndex arg; ir.get!IrInstrHeader(phiUserIndex).args)
+					foreach (ref IrIndex arg; ir.get!IrInstrHeader(phiUserIndex).args(ir))
 						if (arg == what)
 						{
 							arg = byWhat.value;
@@ -981,7 +1052,7 @@ struct IrBuilder
 				case constant, constantAggregate: assert(false);
 				case global: assert(false);
 				case phi:
-					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiUserIndex).args(*ir))
+					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiUserIndex).args(ir))
 					{
 						if (phiArg.value == what)
 						{
@@ -1008,12 +1079,12 @@ struct IrBuilder
 		// Other phi users will not find any users to replace.
 		// So add append users instead if no replacement was done.
 		void replaceVregUser(ref IrVirtualRegister vreg) {
-			bool replaced = vreg.users.replaceFirst(*ir, what, byWhat);
+			bool replaced = vreg.users.replaceFirst(ir, what, byWhat);
 			if (!replaced) vreg.users.append(&this, byWhat);
 		}
 		final switch (used.kind) with(IrValueKind) {
 			case none, listItem, basicBlock, physicalRegister: assert(false);
-			case instruction: return replaceVregUser(ir.getVirtReg(ir.get!IrInstrHeader(used).result));
+			case instruction: return replaceVregUser(ir.getVirtReg(ir.get!IrInstrHeader(used).result(ir)));
 			case constant, constantAggregate: return; // constants dont track individual users
 			case global: return; // globals dont track individual users
 			case phi: return replaceVregUser(ir.getVirtReg(ir.get!IrPhi(used).result));

@@ -77,7 +77,7 @@ struct CompilationContext
 	/// Buffer for intra-pass temporary data
 	Arena!uint tempBuffer;
 	/// Buffer for function IR generation
-	Arena!uint irBuffer;
+	IrFuncStorage irStorage;
 	///
 	IrTypeStorage types;
 	/// Global constant storage
@@ -155,6 +155,8 @@ struct CompilationContext
 	bool printSymbols = false;
 	bool printCodeHex = false;
 	bool printTimings = false;
+	// limit number of regs for allocation
+	bool debugRegAlloc = false;
 	Identifier printOnlyFun;
 
 	/// Check if printing of this function needed (including if all functions are requested)
@@ -543,13 +545,19 @@ struct CompilationContext
 	}
 	void printMemSize(ref TextSink sink)
 	{
+		size_t byteLength;
+		size_t committedBytes;
+		size_t reservedBytes;
 		sink.putfln("Arena sizes:       used  committed  reserved");
 		void printArena(A)(ref A arena, string name) {
-			sink.putfln("  %-14s%-6iB    %-6iB   %-6iB",
+			sink.putfln("  %-16s%-6iB    %-6iB   %-6iB",
 				name,
 				scaledNumberFmt(arena.byteLength),
 				scaledNumberFmt(arena.committedBytes),
 				scaledNumberFmt(arena.reservedBytes));
+			byteLength += arena.byteLength;
+			committedBytes += arena.committedBytes;
+			reservedBytes += arena.reservedBytes;
 		}
 		printArena(sourceBuffer, "source");
 		printArena(files, "files");
@@ -557,7 +565,17 @@ struct CompilationContext
 		printArena(tokenLocationBuffer, "token loc");
 		printArena(astBuffer, "AST");
 		printArena(arrayArena, "arrays");
-		printArena(irBuffer, "IR");
+
+		printArena(irStorage.instrHeaderBuffer, "IR instr header");
+		printArena(irStorage.instrPayloadBuffer, "IR instr payload");
+		printArena(irStorage.instrNextBuffer, "IR next ptr");
+		printArena(irStorage.instrPrevBuffer, "IR prev ptr");
+		printArena(irStorage.vregBuffer, "IR virt regs");
+		printArena(irStorage.phiBuffer, "IR phi");
+		printArena(irStorage.basicBlockBuffer, "IR basic blocks");
+		printArena(irStorage.arrayBuffer, "IR arrays");
+		irStorage.printMemSize(sink);
+
 		printArena(tempBuffer, "temp");
 		printArena(types.buffer, "types");
 		printArena(staticDataBuffer, "static data");
@@ -568,6 +586,12 @@ struct CompilationContext
 		printArena(objSymTab.buffer, "symbols");
 		printArena(codeBuffer, "machine code");
 		printArena(binaryBuffer, "binary");
+
+		sink.putfln("  %-16s%-6iB    %-6iB   %-6iB",
+			"  Total",
+			scaledNumberFmt(byteLength),
+			scaledNumberFmt(committedBytes),
+			scaledNumberFmt(reservedBytes));
 	}
 
 	void initialize()
@@ -647,7 +671,14 @@ struct CompilationContext
 		tokenBuffer.length = initializedTokenLocBufSize; // same size as tok loc buf
 		tokenLocationBuffer.length = initializedTokenLocBufSize;
 		binaryBuffer.clear;
-		irBuffer.clear;
+		irStorage.instrHeaderBuffer.clear;
+		irStorage.instrPayloadBuffer.clear;
+		irStorage.instrNextBuffer.clear;
+		irStorage.instrPrevBuffer.clear;
+		irStorage.vregBuffer.clear;
+		irStorage.phiBuffer.clear;
+		irStorage.basicBlockBuffer.clear;
+		irStorage.arrayBuffer.clear;
 		types.buffer.length = initializedIrTypeBufSize;
 		tempBuffer.clear;
 		staticDataBuffer.clear;

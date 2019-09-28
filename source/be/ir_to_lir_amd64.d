@@ -22,14 +22,14 @@ void pass_ir_to_lir_amd64(CompilationContext* context, IrBuilder* builder, Modul
 	IrFunction* irData = context.getAst!IrFunction(func.backendData.irData);
 
 	builder.beginLir(lirData, irData, context);
+	processFunc(context, builder, irData, lirData);
+	builder.finalizeIr;
 
-	processFunc(context, builder, *irData, *lirData);
-
-	if (context.validateIr) validateIrFunction(*context, *lirData);
+	if (context.validateIr) validateIrFunction(context, lirData);
 	if (context.printLir && context.printDumpOf(func)) dumpFunction(context, lirData);
 }
 
-void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction ir, ref IrFunction lir)
+void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir, IrFunction* lir)
 {
 	//writefln("IR to LIR %s", context.idString(ir.name));
 	lir.instructionSet = IrInstructionSet.lir_amd64;
@@ -37,20 +37,22 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 	// Mirror of original IR, we will put the new IrIndex of copied entities there
 	// and later use this info to rewire all connections between basic blocks
 	IrMirror!IrIndex mirror;
-	mirror.create(context, &ir);
+	mirror.createVirtRegMirror(context, ir);
 
 	// save map from old index to new index
 	void recordIndex(IrIndex oldIndex, IrIndex newIndex)
 	{
 		assert(oldIndex.isDefined);
 		assert(newIndex.isDefined);
+		assert(oldIndex.isVirtReg);
 		mirror[oldIndex] = newIndex;
 	}
 
 	IrIndex getFixedIndex(IrIndex index)
 	{
 		assert(index.isDefined);
-		if (index.isBasicBlock || index.isVirtReg || index.isPhi || index.isInstruction) {
+		assert(!(index.isBasicBlock || index.isPhi || index.isInstruction), format("%s", index));
+		if (index.isVirtReg) {
 			return mirror[index];
 		}
 		return index;
@@ -59,7 +61,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 	void fixIndex(ref IrIndex index)
 	{
 		assert(index.isDefined);
-		if (index.isBasicBlock || index.isVirtReg || index.isPhi || index.isInstruction) {
+		assert(!(index.isBasicBlock || index.isPhi || index.isInstruction));
+		if (index.isVirtReg) {
 			//writefln("%s -> %s", index, mirror[index]);
 			assert(mirror[index].isDefined);
 			index = mirror[index];
@@ -88,13 +91,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 	}
 
 	// fromOffset is used when irValue is pointer that needs deferencing
-	void genStore(IrIndex lirPtr, uint offset, IrIndex irValue, uint fromOffset, IrIndex valueType, IrIndex lirBlockIndex, ref IrFunction ir)
+	void genStore(IrIndex lirPtr, uint offset, IrIndex irValue, uint fromOffset, IrIndex valueType, IrIndex lirBlockIndex, IrFunction* ir)
 	{
-		//writefln("genStore %s %s %s %s %s", lirPtr, offset, irValue, fromOffset, IrIndexDump(valueType, *context, ir));
-		IrIndex dstType = getValueType(lirPtr, lir, *context);
-		IrIndex srcType = getValueType(irValue, ir, *context);
-		//writefln("  %s %s <- %s %s", IrTypeDump(dstType, *context), dstType, IrTypeDump(srcType, *context), srcType);
-		context.assertf(dstType.isTypePointer, "%s", IrIndexDump(dstType, *context, lir));
+		//writefln("genStore %s %s %s %s %s", lirPtr, offset, irValue, fromOffset, IrIndexDump(valueType, context, ir));
+		IrIndex dstType = getValueType(lirPtr, lir, context);
+		IrIndex srcType = getValueType(irValue, ir, context);
+		//writefln("  %s %s <- %s %s", IrTypeDump(dstType, context), dstType, IrTypeDump(srcType, context), srcType);
+		context.assertf(dstType.isTypePointer, "%s", IrIndexDump(dstType, context, lir));
 		IrIndex ptrType = context.types.appendPtr(valueType);
 
 		switch(valueType.typeKind) with(IrTypeKind) {
@@ -144,12 +147,12 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 							case IrOpcode.load_aggregate:
 								foreach (i, IrTypeStructMember member; structType.members)
 								{
-									genStore(lirPtr, offset + member.offset, instr.args[0], fromOffset + member.offset, member.type, lirBlockIndex, ir);
+									genStore(lirPtr, offset + member.offset, instr.arg(ir, 0), fromOffset + member.offset, member.type, lirBlockIndex, ir);
 								}
 								return;
 
 							case IrOpcode.create_aggregate:
-								members = instr.args;
+								members = instr.args(ir);
 								break;
 							default:
 								context.internal_error("%s", cast(IrOpcode)instr.op);
@@ -176,14 +179,12 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 		}
 	}
 
-	IrIndex prevBlock;
 	// dup basic blocks
-	foreach (IrIndex blockIndex, ref IrBasicBlock irBlock; ir.blocks)
+	// old and new blocks have the same indicies
+	foreach (size_t i, ref IrBasicBlock irBlock; ir.blocksArray)
 	{
-		++lir.numBasicBlocks;
-		IrIndex lirBlock = builder.append!IrBasicBlock;
-		lir.lastBasicBlock = lirBlock;
-		recordIndex(blockIndex, lirBlock);
+		IrIndex blockIndex = IrIndex(cast(uint)i, IrValueKind.basicBlock);
+		IrIndex lirBlock = builder.appendBasicBlockSlot;
 
 		lir.getBlock(lirBlock).name = irBlock.name;
 		lir.getBlock(lirBlock).isLoopHeader = irBlock.isLoopHeader;
@@ -195,26 +196,14 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 			lir.getBlock(lirBlock).successors.append(builder, succ);
 		}
 
-		// temporarily store link to old block
-		lir.getBlock(lirBlock).firstInstr = blockIndex;
-
-		if (blockIndex == ir.entryBasicBlock) {
-			lir.entryBasicBlock = lirBlock;
-		} else if (blockIndex == ir.exitBasicBlock) {
-			lir.exitBasicBlock = lirBlock;
-			lir.getBlock(lirBlock).prevBlock = prevBlock;
-			lir.getBlock(prevBlock).nextBlock = lirBlock;
-		} else {
-			lir.getBlock(lirBlock).prevBlock = prevBlock;
-			lir.getBlock(prevBlock).nextBlock = lirBlock;
-		}
+		lir.getBlock(lirBlock).prevBlock = irBlock.prevBlock;
+		lir.getBlock(lirBlock).nextBlock = irBlock.nextBlock;
 
 		// Add phis with old args
 		foreach(IrIndex phiIndex, ref IrPhi phi; irBlock.phis(ir))
 		{
 			IrVirtualRegister* oldReg = &ir.getVirtReg(phi.result);
 			IrIndex newPhi = builder.addPhi(lirBlock, oldReg.type, phi.var);
-			recordIndex(phiIndex, newPhi);
 			IrIndex newResult = lir.getPhi(newPhi).result;
 			IrVirtualRegister* newReg = &lir.getVirtReg(newResult);
 			newReg.type = oldReg.type;
@@ -225,8 +214,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 				builder.addPhiArg(newPhi, phiArg.basicBlock, phiArg.value);
 			}
 		}
-
-		prevBlock = lirBlock;
 	}
 
 	bool isPassByValue(IrIndex type) {
@@ -289,7 +276,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 			paramTypes[i] = context.types.appendPtr(irParamType);
 	}
 
-	//writefln("%s", IrIndexDump(lir.type, *context, lir));
+	//writefln("%s", IrIndexDump(lir.type, context, lir));
 
 	// buffer for call/instruction arguments
 	enum MAX_ARGS = 255;
@@ -301,12 +288,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 		lirBlock.isSealed = true;
 		lirBlock.isFinished = true;
 
-		foreach(ref pred; lirBlock.predecessors.range(lir)) fixIndex(pred);
-		foreach(ref succ; lirBlock.successors.range(lir)) fixIndex(succ);
-
-		// get link to the old block and null it
-		IrIndex irBlockIndex = lirBlock.firstInstr;
-		lirBlock.firstInstr = IrIndex();
+		// old and new blocks have the same indicies
+		IrIndex irBlockIndex = lirBlockIndex;
 
 		// Add hidden parameter(s) to first block
 		if (irBlockIndex == ir.entryBasicBlock && numHiddenParams == 1)
@@ -328,22 +311,20 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 				static assert(!getInstrInfo!I.hasVariadicArgs);
 				static assert(!getInstrInfo!I.hasVariadicResult);
 
-				IrIndex[getInstrInfo!I.numArgs] fixedArgs = instrHeader.args;
+				IrIndex[getInstrInfo!I.numArgs] fixedArgs = instrHeader.args(ir);
 				foreach(ref arg; fixedArgs) fixIndex(arg);
 
 				static if (getInstrInfo!I.hasResult)
 				{
-					IrIndex type = ir.getVirtReg(instrHeader.result).type;
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
 					InstrWithResult res = builder.emitInstr!I(lirBlockIndex, extra, fixedArgs);
-					recordIndex(instrIndex, res.instruction);
-					recordIndex(instrHeader.result, res.result);
+					recordIndex(instrHeader.result(ir), res.result);
 				}
 				else
 				{
 					ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize };
 					IrIndex res = builder.emitInstr!I(lirBlockIndex, extra, fixedArgs);
-					recordIndex(instrIndex, res);
 				}
 			}
 
@@ -355,17 +336,16 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 			switch(instrHeader.op)
 			{
 				case IrOpcode.parameter:
-					uint paramIndex = ir.get!IrInstr_parameter(instrIndex).index + numHiddenParams;
+					uint paramIndex = ir.get!IrInstrHeader(instrIndex).extraPayload(ir, 1)[0].asUint + numHiddenParams;
 					context.assertf(paramIndex < lir.backendData.getCallConv(context).paramsInRegs.length,
 						"Only parameters passed through registers are implemented");
 
 					IrIndex paramReg = lir.backendData.getCallConv(context).paramsInRegs[paramIndex];
-					IrIndex type = ir.getVirtReg(instrHeader.result).type;
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					paramReg.physRegSize = typeToRegSize(type, context);
 					ExtraInstrArgs extra = { type : type, argSize : instrHeader.argSize };
 					InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, paramReg);
-					recordIndex(instrIndex, instr.instruction);
-					recordIndex(instrHeader.result, instr.result);
+					recordIndex(instrHeader.result(ir), instr.result);
 					break;
 
 				case IrOpcode.create_aggregate:
@@ -381,10 +361,10 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 
 					lir.backendData.stackLayout.numCalls += 1;
 
-					IrIndex callee = instrHeader.args[0];
+					IrIndex callee = instrHeader.arg(ir, 0);
 					CallConv* callConv = context.types.getCalleeCallConv(callee, ir, context);
 					argBuffer[0] = getFixedIndex(callee);
-					IrIndex[] args = instrHeader.args[1..$];
+					IrIndex[] args = instrHeader.args(ir)[1..$];
 					IrIndex[] localArgBuffer = argBuffer[1..$];
 
 					enum STACK_ITEM_SIZE = 8;
@@ -397,7 +377,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 					// Copy args to stack if necessary (big structs or doesn't fit into regs)
 					foreach (i, IrIndex irArg; args)
 					{
-						IrIndex type = ir.getValueType(*context, irArg);
+						IrIndex type = ir.getValueType(context, irArg);
 
 						if (isPassByValue(type)) {
 							localArgBuffer[i] = getFixedIndex(irArg);
@@ -425,7 +405,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 						{
 							// TODO: push can use mem address
 							if (lirArg.isStackSlot) {
-								ExtraInstrArgs extra = { addUsers : false, type : lir.getValueType(*context, lirArg) };
+								ExtraInstrArgs extra = { addUsers : false, type : lir.getValueType(context, lirArg) };
 								InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, lirArg);
 								lirArg = movInstr.result;
 							}
@@ -439,7 +419,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 					size_t numPhysRegs = min(numParamsInRegs, numArgs);
 					foreach (i, IrIndex lirArg; localArgBuffer[0..numPhysRegs])
 					{
-						IrIndex type = lir.getValueType(*context, lirArg);
+						IrIndex type = lir.getValueType(context, lirArg);
 						IrIndex argRegister = callConv.paramsInRegs[i];
 						argRegister.physRegSize = typeToRegSize(type, context);
 						localArgBuffer[i] = argRegister;
@@ -457,7 +437,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 					{
 						IrIndex returnReg = callConv.returnReg;
 						if (instrHeader.hasResult) {
-							returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result).type, context);
+							returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result(ir)).type, context);
 						}
 						// call
 						ExtraInstrArgs callExtra = {
@@ -470,7 +450,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 							lirBlockIndex, callExtra, argBuffer[0..numPhysRegs+1]); // include callee
 						lir.get!IrInstrHeader(callInstr.instruction).extendFixedArgRange = true;
 						if (callExtra.hasResult) lir.get!IrInstrHeader(callInstr.instruction).extendFixedResultRange = true;
-						recordIndex(instrIndex, callInstr.instruction);
 
 						{	// Deallocate stack after call
 							IrIndex conReservedBytes = context.constants.add(stackReserve, IsSigned.no);
@@ -481,10 +460,10 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 
 						if (callExtra.hasResult) {
 							// mov result to virt reg
-							ExtraInstrArgs extra = { type : ir.getVirtReg(instrHeader.result).type };
+							ExtraInstrArgs extra = { type : ir.getVirtReg(instrHeader.result(ir)).type };
 							InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
 								lirBlockIndex, extra, returnReg);
-							recordIndex(instrHeader.result, movInstr.result);
+							recordIndex(instrHeader.result(ir), movInstr.result);
 						}
 					}
 
@@ -513,7 +492,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 					// copy bottom half of dividend
 					IrIndex dividendBottom = amd64_reg.ax;
 					dividendBottom.physRegSize = instrHeader.argSize;
-					makeMov(dividendBottom, instrHeader.args[0], instrHeader.argSize);
+					makeMov(dividendBottom, instrHeader.arg(ir, 0), instrHeader.argSize);
 
 					IrIndex dividendTop = amd64_reg.dx;
 					dividendTop.physRegSize = instrHeader.argSize;
@@ -534,9 +513,9 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 					}
 
 					// divisor must be in register
-					IrIndex divisor = instrHeader.args[1];
-					if (instrHeader.args[1].isConstant) {
-						ExtraInstrArgs extra = { addUsers : false, type : getValueType(divisor, ir, *context) };
+					IrIndex divisor = instrHeader.arg(ir, 1);
+					if (instrHeader.arg(ir, 1).isConstant) {
+						ExtraInstrArgs extra = { addUsers : false, type : getValueType(divisor, ir, context) };
 						divisor = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, divisor).result;
 					}
 					else fixIndex(divisor);
@@ -548,51 +527,49 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 						res = builder.emitInstr!LirAmd64Instr_idiv(lirBlockIndex, extra3, dividendTop, dividendBottom, divisor);
 					else
 						res = builder.emitInstr!LirAmd64Instr_div(lirBlockIndex, extra3, dividendTop, dividendBottom, divisor);
-					recordIndex(instrIndex, res.instruction);
 
 					// copy result (quotient)
-					ExtraInstrArgs extra4 = { addUsers : false, argSize : instrHeader.argSize, type : ir.getVirtReg(instrHeader.result).type };
+					ExtraInstrArgs extra4 = { addUsers : false, argSize : instrHeader.argSize, type : ir.getVirtReg(instrHeader.result(ir)).type };
 					InstrWithResult movResult = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra4, resultReg);
-					recordIndex(instrHeader.result, movResult.result);
+					recordIndex(instrHeader.result(ir), movResult.result);
 					break;
 
 				case IrOpcode.shl, IrOpcode.lshr, IrOpcode.ashr:
 					IrIndex rightArg;
-					if (instrHeader.args[1].isConstant)
-						rightArg = instrHeader.args[1];
+					if (instrHeader.arg(ir, 1).isConstant)
+						rightArg = instrHeader.arg(ir, 1);
 					else
 					{
 						rightArg = amd64_reg.cx;
 						rightArg.physRegSize = ArgType.BYTE;
-						makeMov(rightArg, instrHeader.args[1], instrHeader.argSize);
+						makeMov(rightArg, instrHeader.arg(ir, 1), instrHeader.argSize);
 					}
-					IrIndex type = ir.getVirtReg(instrHeader.result).type;
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
 					InstrWithResult res;
 					switch(instrHeader.op) {
 						case IrOpcode.shl:
-							res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
+							res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
 							break;
 						case IrOpcode.lshr:
-							res = builder.emitInstr!LirAmd64Instr_shr(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
+							res = builder.emitInstr!LirAmd64Instr_shr(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
 							break;
 						case IrOpcode.ashr:
-							res = builder.emitInstr!LirAmd64Instr_sar(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), rightArg);
+							res = builder.emitInstr!LirAmd64Instr_sar(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
 							break;
 						default: assert(false);
 					}
-					recordIndex(instrIndex, res.instruction);
-					recordIndex(instrHeader.result, res.result);
+					recordIndex(instrHeader.result(ir), res.result);
 					break;
 				case IrOpcode.load: emitLirInstr!LirAmd64Instr_load; break;
 				case IrOpcode.store:
-					IrIndex type = ir.getValueType(*context, instrHeader.args[1]);
-					genStore(getFixedIndex(instrHeader.args[0]), 0, instrHeader.args[1], 0, type, lirBlockIndex, ir);
+					IrIndex type = ir.getValueType(context, instrHeader.arg(ir, 1));
+					genStore(getFixedIndex(instrHeader.arg(ir, 0)), 0, instrHeader.arg(ir, 1), 0, type, lirBlockIndex, ir);
 					break;
 				case IrOpcode.conv:
 					// Incomplete implementation
-					IrIndex typeFrom = getValueType(instrHeader.args[0], ir, *context);
-					IrIndex typeTo = ir.getVirtReg(instrHeader.result).type;
+					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
 					uint typeSizeFrom = context.types.typeSize(typeFrom);
 					uint typeSizeTo = context.types.typeSize(typeTo);
 					context.assertf(typeSizeTo <= typeSizeFrom,
@@ -601,19 +578,17 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 					break;
 
 				case IrOpcode.set_unary_cond:
-					IrIndex type = ir.getVirtReg(instrHeader.result).type;
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize, type : type };
-					InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_unary_cond(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
-					recordIndex(instrIndex, res.instruction);
-					recordIndex(instrHeader.result, res.result);
+					InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_unary_cond(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)));
+					recordIndex(instrHeader.result(ir), res.result);
 					break;
 
 				case IrOpcode.set_binary_cond:
-					IrIndex type = ir.getVirtReg(instrHeader.result).type;
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize, type : type };
-					InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_binary_cond(lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), getFixedIndex(instrHeader.args[1]));
-					recordIndex(instrIndex, res.instruction);
-					recordIndex(instrHeader.result, res.result);
+					InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_binary_cond(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
+					recordIndex(instrHeader.result(ir), res.result);
 					break;
 
 				case IrOpcode.block_exit_jump:
@@ -623,15 +598,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 				case IrOpcode.block_exit_unary_branch:
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize };
 					IrIndex instruction = builder.emitInstr!LirAmd64Instr_un_branch(
-						lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]));
-					recordIndex(instrIndex, instruction);
+						lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)));
 					break;
 
 				case IrOpcode.block_exit_binary_branch:
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize };
 					IrIndex instruction = builder.emitInstr!LirAmd64Instr_bin_branch(
-						lirBlockIndex, extra, getFixedIndex(instrHeader.args[0]), getFixedIndex(instrHeader.args[1]));
-					recordIndex(instrIndex, instruction);
+						lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
 					break;
 
 				case IrOpcode.block_exit_return_void:
@@ -655,17 +628,17 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 							{
 								IrIndex slot = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
 								IrIndex slotType = lir.backendData.stackLayout[slot].type;
-								genStore(slot, 0, instrHeader.args[0], 0, type, lirBlockIndex, ir);
+								genStore(slot, 0, instrHeader.arg(ir, 0), 0, type, lirBlockIndex, ir);
 								return genLoad(slot, 0, slotType, lirBlockIndex);
 							}
 						}
-						return getFixedIndex(instrHeader.args[0]);
+						return getFixedIndex(instrHeader.arg(ir, 0));
 					}
 
 					if (numHiddenParams == 1) {
 						// store struct into pointer, then return pointer
 						IrIndex valType = context.types.getPointerBaseType(type);
-						genStore(hiddenParameter, 0, instrHeader.args[0], 0, valType, lirBlockIndex, ir);
+						genStore(hiddenParameter, 0, instrHeader.arg(ir, 0), 0, valType, lirBlockIndex, ir);
 						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, hiddenParameter);
 					} else {
 						IrIndex itemToReturn = tryMovComplexStruct;
@@ -673,7 +646,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 					}
 
 					IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
-					recordIndex(instrIndex, instruction);
 					break;
 
 				default:
@@ -687,7 +659,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 		// replace old args with new args and add users
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(lir))
 		{
-			foreach(ref IrIndex arg; instrHeader.args)
+			foreach(ref IrIndex arg; instrHeader.args(lir))
 			{
 				builder.addUser(instrIndex, arg);
 			}
@@ -701,7 +673,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 		{
 			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(lir))
 			{
-				fixIndex(phiArg.basicBlock);
 				fixIndex(phiArg.value);
 				builder.addUser(phiIndex, phiArg.value);
 			}
@@ -715,6 +686,4 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ref IrFunction
 		fixInstrs(blockIndex, lirBlock);
 		fixPhis(blockIndex, lirBlock);
 	}
-
-	lir.lastBasicBlock = lir.getBlock(lir.exitBasicBlock).prevBlock;
 }

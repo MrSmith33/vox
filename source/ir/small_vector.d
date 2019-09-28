@@ -49,12 +49,12 @@ struct SmallVector
 		return items[0].kind == IrValueKind.listItem;
 	}
 
-	SmallVectorIterator range(ref IrFunction ir)
+	SmallVectorIterator range(IrFunction* ir)
 	{
-		return SmallVectorIterator(&this, &ir);
+		return SmallVectorIterator(&this, ir);
 	}
 
-	void replaceAll(ref IrFunction ir, IrIndex what, IrIndex byWhat)
+	void replaceAll(IrFunction* ir, IrIndex what, IrIndex byWhat)
 	{
 		foreach (ref IrIndex item; range(ir))
 		{
@@ -62,7 +62,7 @@ struct SmallVector
 		}
 	}
 
-	bool contains(ref IrFunction ir, IrIndex what)
+	bool contains(IrFunction* ir, IrIndex what)
 	{
 		foreach (IrIndex item; range(ir))
 		{
@@ -72,7 +72,7 @@ struct SmallVector
 	}
 
 	/// Returns true if replacement was performed
-	bool replaceFirst(ref IrFunction ir, IrIndex what, IrIndex byWhat)
+	bool replaceFirst(IrFunction* ir, IrIndex what, IrIndex byWhat)
 	{
 		foreach (ref IrIndex item; range(ir))
 		{
@@ -85,7 +85,7 @@ struct SmallVector
 	}
 
 	/// Removes all occurences of what
-	void remove(ref IrFunction ir, IrIndex what)
+	void remove(IrFunction* ir, IrIndex what)
 	{
 		if (isBig) // linked list
 		{
@@ -128,7 +128,7 @@ struct SmallVector
 		}
 	}
 
-	ref IrIndex opIndex(size_t index, ref IrFunction ir)
+	ref IrIndex opIndex(size_t index, IrFunction* ir)
 	{
 		size_t len = length;
 		assert(index < len);
@@ -138,7 +138,7 @@ struct SmallVector
 	}
 
 	// second part of opIndex. Workaround bug https://issues.dlang.org/show_bug.cgi?id=19384
-	private ref IrIndex opIndexSecond(size_t index, ref IrFunction ir)
+	private ref IrIndex opIndexSecond(size_t index, IrFunction* ir)
 	{
 		foreach(i, ref val; range(ir))
 			if (i == index)
@@ -152,7 +152,7 @@ struct SmallVector
 		assert(itemData.kind != IrValueKind.none, "IrValueKind.none is not storable inside SmallVector");
 		if (isBig)
 		{
-			IrIndex newListItemIndex = builder.append!ListItem;
+			IrIndex newListItemIndex = builder.appendListItem!ListItem(1);
 			ListItem* listItem = &builder.ir.get!ListItem(newListItemIndex);
 			*listItem = ListItem(itemData, firstListItem);
 			firstListItem = newListItemIndex;
@@ -170,7 +170,7 @@ struct SmallVector
 			}
 			else
 			{
-				IrIndex arrayIndex = builder.append!ListItem(3);
+				IrIndex arrayIndex = builder.appendListItem!ListItem(3);
 				ListItem* itemArray = &builder.ir.get!ListItem(arrayIndex);
 				itemArray[2] = ListItem(itemData);
 				itemArray[1] = ListItem(items[1], arrayIndex.indexOf!ListItem(2));

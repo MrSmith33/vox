@@ -48,9 +48,9 @@ struct IrIndexDump
 		this.context = printInfo.context;
 		this.instrSet = printInfo.ir.instructionSet;
 	}
-	this(IrIndex index, ref CompilationContext context, ref IrFunction ir) {
+	this(IrIndex index, CompilationContext* context, IrFunction* ir) {
 		this.index = index;
-		this.context = &context;
+		this.context = context;
 		this.instrSet = ir.instructionSet;
 	}
 	IrIndex index;
@@ -157,10 +157,10 @@ void dumpFunctionImpl(IrDumpContext* c)
 		sink.putf("%s", IrIndexDump(param, printer));
 	}
 	sink.put(")");
-	sink.putfln(` %s bytes ir:"%s" {`, ir.storage.length * uint.sizeof, instr_set_names[ir.instructionSet]);
-	int indexPadding = numDigitsInNumber10(ir.storage.length);
+	sink.putfln(` %s bytes ir:"%s" {`, ir.byteLength, instr_set_names[ir.instructionSet]);
+	int indexPadding = max(ir.numBasicBlocks, ir.numInstructions).numDigitsInNumber10;
 	int liveIndexPadding = 0;
-	if (liveness) liveIndexPadding = numDigitsInNumber10(liveness.maxLinearIndex);
+	if (liveness) liveIndexPadding = liveness.maxLinearIndex.numDigitsInNumber10;
 
 	void printInstrLiveness(IrIndex linearKeyIndex, IrIndex instrIndex) {
 		if (!settings.printLiveness) return;
@@ -202,7 +202,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 					sink.put("D"); // virtual register is defined by this instruction / phi
 				else
 				{
-					if (instrIndex.isBasicBlock && blockLiveIn[vreg.seqIndex])
+					if (instrIndex.isBasicBlock && blockLiveIn[interval.definition.storageUintIndex])
 						sink.put("┏"); // virtual register is in "live in" of basic block
 					else
 						sink.put("┃"); // virtual register is live in this position
@@ -221,8 +221,12 @@ void dumpFunctionImpl(IrDumpContext* c)
 	}
 
 	void printInstrIndex(IrIndex someIndex) {
+		import std.range : repeat;
 		if (!settings.printInstrIndexEnabled) return;
-		sink.putf("%*s|", indexPadding, someIndex.storageUintIndex);
+		if (someIndex.isInstruction)
+			sink.putf("%*s|", indexPadding, someIndex.storageUintIndex);
+		else
+			sink.putf("%s|", ' '.repeat(indexPadding));
 	}
 
 	void printRegUses(IrIndex result) {
@@ -231,7 +235,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 
 		auto vreg = &ir.getVirtReg(result);
 		sink.put(" users [");
-		foreach (i, index; vreg.users.range(*ir))
+		foreach (i, index; vreg.users.range(ir))
 		{
 			if (i > 0) sink.put(", ");
 			sink.putf("%s", IrIndexDump(index, printer));
@@ -274,7 +278,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 		if (settings.printBlockIns && block.predecessors.length > 0)
 		{
 			sink.putf(" in(");
-			foreach(i, predIndex; block.predecessors.range(*ir)) {
+			foreach(i, predIndex; block.predecessors.range(ir)) {
 				if (i > 0) sink.put(", ");
 				sink.putf("%s", IrIndexDump(predIndex, printer));
 			}
@@ -283,7 +287,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 		if (settings.printBlockOuts && block.successors.length > 0)
 		{
 			sink.putf(" out(");
-			foreach(i, succIndex; block.successors.range(*ir)) {
+			foreach(i, succIndex; block.successors.range(ir)) {
 				if (i > 0) sink.put(", ");
 				sink.putf("%s", IrIndexDump(succIndex, printer));
 			}
@@ -311,7 +315,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 				IrIndexDump(phi.result, printer),
 				IrIndexDump(ir.getVirtReg(phi.result).type, printer),
 				IrIndexDump(phiIndex, printer));
-			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(*ir))
+			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
 			{
 				if (arg_i > 0) sink.put(", ");
 				sink.putf("%s", IrIndexDump(phiArg.basicBlock, printer));
@@ -323,7 +327,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 		}
 
 		// instrs
-		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(*ir))
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
 		{
 			printInstrLiveness(instrIndex, instrIndex);
 			printInstrIndex(instrIndex);
@@ -334,7 +338,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 
 			printer.dumpInstr();
 
-			if (settings.printUses && instrHeader.hasResult) printRegUses(instrHeader.result);
+			if (settings.printUses && instrHeader.hasResult) printRegUses(instrHeader.result(ir));
 			sink.putln;
 		}
 	}
@@ -342,19 +346,19 @@ void dumpFunctionImpl(IrDumpContext* c)
 	sink.putln("}");
 }
 
-void dumpFunctionCFG(ref IrFunction ir, ref TextSink sink, ref CompilationContext ctx, ref FuncDumpSettings settings)
+void dumpFunctionCFG(IrFunction* ir, ref TextSink sink, CompilationContext* ctx, ref FuncDumpSettings settings)
 {
 	settings.escapeForDot = true;
 	sink.put(`digraph "`);
 	sink.put("function ");
 	sink.put(ctx.idString(ir.backendData.name));
-	sink.putfln(`() %s bytes" {`, ir.storage.length * uint.sizeof);
-	int indexPadding = numDigitsInNumber10(ir.storage.length);
+	sink.putfln(`() %s bytes" {`, ir.byteLength * uint.sizeof);
+	int indexPadding = ir.numInstructions.numDigitsInNumber10;
 
 	InstrPrintInfo p;
-	p.context = &ctx;
+	p.context = ctx;
 	p.sink = &sink;
-	p.ir = &ir;
+	p.ir = ir;
 	p.settings = &settings;
 
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
@@ -424,14 +428,14 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref CompilationContext
 			}
 			sink("}");
 			break;
-		case global: sink.formattedWrite("g.%s", index.storageUintIndex); break;
-		case phi: sink.formattedWrite("phi.%s", index.storageUintIndex); break;
-		case stackSlot: sink.formattedWrite("s.%s", index.storageUintIndex); break;
-		case virtualRegister: sink.formattedWrite("v.%s", index.storageUintIndex); break;
-		case physicalRegister: sink.formattedWrite("p.%s", index.storageUintIndex); break;
+		case global: sink.formattedWrite("g%s", index.storageUintIndex); break;
+		case phi: sink.formattedWrite("phi%s", index.storageUintIndex); break;
+		case stackSlot: sink.formattedWrite("s%s", index.storageUintIndex); break;
+		case virtualRegister: sink.formattedWrite("v%s", index.storageUintIndex); break;
+		case physicalRegister: sink.formattedWrite("r%s", index.storageUintIndex); break;
 		case type: dumpIrType(sink, context, index); break;
 		case variable: assert(false);
-		case func: sink.formattedWrite("m.%s", index.storageUintIndex); break;
+		case func: sink.formattedWrite("f%s", index.storageUintIndex); break;
 	}
 }
 
@@ -502,7 +506,7 @@ void dumpIrInstr(ref InstrPrintInfo p)
 		case IrOpcode.block_exit_jump: dumpJmp(p); break;
 
 		case IrOpcode.parameter:
-			uint paramIndex = p.ir.get!IrInstr_parameter(p.instrIndex).index;
+			uint paramIndex = p.ir.get!IrInstr_parameter(p.instrIndex).index(p.ir);
 			dumpOptionalResult(p);
 			p.sink.putf("parameter%s", paramIndex);
 			break;
@@ -513,7 +517,7 @@ void dumpIrInstr(ref InstrPrintInfo p)
 
 		case IrOpcode.block_exit_return_value:
 			p.sink.put("    return");
-			dumpArg(p.instrHeader.args[0], p);
+			dumpArg(p.instrHeader.arg(p.ir, 0), p);
 			break;
 
 		default:
@@ -528,15 +532,15 @@ void dumpOptionalResult(ref InstrPrintInfo p)
 {
 	if (p.instrHeader.hasResult)
 	{
-		if (p.instrHeader.result.isVirtReg)
+		if (p.instrHeader.result(p.ir).isVirtReg)
 		{
 			p.sink.putf("    %s %s = ",
-				IrIndexDump(p.instrHeader.result, p),
-				IrIndexDump(p.ir.getVirtReg(p.instrHeader.result).type, p));
+				IrIndexDump(p.instrHeader.result(p.ir), p),
+				IrIndexDump(p.ir.getVirtReg(p.instrHeader.result(p.ir)).type, p));
 		}
 		else
 		{
-			p.sink.putf("    %s = ", IrIndexDump(p.instrHeader.result, p));
+			p.sink.putf("    %s = ", IrIndexDump(p.instrHeader.result(p.ir), p));
 		}
 	}
 	else
@@ -547,7 +551,7 @@ void dumpOptionalResult(ref InstrPrintInfo p)
 
 void dumpArgs(ref InstrPrintInfo p)
 {
-	foreach (i, IrIndex arg; p.instrHeader.args)
+	foreach (i, IrIndex arg; p.instrHeader.args(p.ir))
 	{
 		if (i > 0) p.sink.put(",");
 		dumpArg(arg, p);
@@ -569,7 +573,7 @@ void dumpArg(IrIndex arg, ref InstrPrintInfo p)
 	{
 		if (arg.isDefined)
 			p.sink.putf(" %s %s",
-				IrIndexDump(p.ir.getValueType(*p.context, arg), p),
+				IrIndexDump(p.ir.getValueType(p.context, arg), p),
 				IrIndexDump(arg, p));
 		else p.sink.put(" <null>");
 	}
@@ -579,7 +583,7 @@ void dumpJmp(ref InstrPrintInfo p)
 {
 	p.sink.put("    jmp ");
 	if (p.block.successors.length > 0)
-		p.sink.putf("%s", IrIndexDump(p.block.successors[0, *p.ir], p));
+		p.sink.putf("%s", IrIndexDump(p.block.successors[0, p.ir], p));
 	else
 		p.sink.put(p.settings.escapeForDot ? `\<null\>` : "<null>");
 }
@@ -587,7 +591,7 @@ void dumpJmp(ref InstrPrintInfo p)
 void dumpUnBranch(ref InstrPrintInfo p)
 {
 	p.sink.putf("    if %s", unaryCondStrings[p.instrHeader.cond]);
-	dumpArg(p.instrHeader.args[0], p);
+	dumpArg(p.instrHeader.arg(p.ir, 0), p);
 	p.sink.put(" then ");
 	dumpBranchTargets(p);
 }
@@ -596,9 +600,9 @@ void dumpBinBranch(ref InstrPrintInfo p)
 {
 	string[] opStrings = p.settings.escapeForDot ? binaryCondStringsEscapedForDot : binaryCondStrings;
 	p.sink.put("    if");
-	dumpArg(p.instrHeader.args[0], p);
+	dumpArg(p.instrHeader.arg(p.ir, 0), p);
 	p.sink.putf(" %s", opStrings[p.instrHeader.cond]);
-	dumpArg(p.instrHeader.args[1], p);
+	dumpArg(p.instrHeader.arg(p.ir, 1), p);
 	p.sink.put(" then ");
 
 	dumpBranchTargets(p);
@@ -612,12 +616,12 @@ void dumpBranchTargets(ref InstrPrintInfo p)
 			break;
 		case 1:
 			p.sink.putf(p.settings.escapeForDot ? `%s else \<null\>` : "%s else <null>",
-				IrIndexDump(p.block.successors[0, *p.ir], p));
+				IrIndexDump(p.block.successors[0, p.ir], p));
 			break;
 		default:
 			p.sink.putf("%s else %s",
-				IrIndexDump(p.block.successors[0, *p.ir], p),
-				IrIndexDump(p.block.successors[1, *p.ir], p));
+				IrIndexDump(p.block.successors[0, p.ir], p),
+				IrIndexDump(p.block.successors[1, p.ir], p));
 			break;
 	}
 }

@@ -264,7 +264,7 @@ struct CodeEmitter
 
 	void genJumpToSuccessor(ref IrBasicBlock fromBlock, ubyte successorIndex)
 	{
-		if (fromBlock.seqIndex + 1 != lir.getBlock(fromBlock.successors[successorIndex, *lir]).seqIndex)
+		if (fromBlock.seqIndex + 1 != lir.getBlock(fromBlock.successors[successorIndex, lir]).seqIndex)
 		{
 			gen.jmp(Imm32(0));
 			jumpFixups[fromBlock.seqIndex][successorIndex] = gen.pc;
@@ -278,77 +278,77 @@ struct CodeEmitter
 		foreach (IrIndex lirBlockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{
 			blockStarts[lirBlock.seqIndex] = gen.pc;
-			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(*lir))
+			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(lir))
 			{
 				switch(cast(Amd64Opcode)instrHeader.op)
 				{
 					case Amd64Opcode.mov:
-						genMove(instrHeader.result, instrHeader.args[0]);
+						genMove(instrHeader.result(lir), instrHeader.arg(lir, 0));
 						break;
 					case Amd64Opcode.xchg:
-						context.assertf(instrHeader.args[0].isPhysReg, "%s is not phys reg", instrHeader.args[0]);
-						context.assertf(instrHeader.args[1].isPhysReg, "%s is not phys reg", instrHeader.args[1]);
-						context.assertf(instrHeader.args[0].physRegSize == instrHeader.args[1].physRegSize,
+						context.assertf(instrHeader.arg(lir, 0).isPhysReg, "%s is not phys reg", instrHeader.arg(lir, 0));
+						context.assertf(instrHeader.arg(lir, 1).isPhysReg, "%s is not phys reg", instrHeader.arg(lir, 1));
+						context.assertf(instrHeader.arg(lir, 0).physRegSize == instrHeader.arg(lir, 1).physRegSize,
 							"reg size mismatch %s != %s",
-							instrHeader.args[0].physRegSize,
-							instrHeader.args[1].physRegSize);
-						Register dst = indexToRegister(instrHeader.args[0]);
-						Register src = indexToRegister(instrHeader.args[1]);
-						gen.xchg(dst, src, cast(ArgType)instrHeader.args[0].physRegSize);
+							instrHeader.arg(lir, 0).physRegSize,
+							instrHeader.arg(lir, 1).physRegSize);
+						Register dst = indexToRegister(instrHeader.arg(lir, 0));
+						Register src = indexToRegister(instrHeader.arg(lir, 1));
+						gen.xchg(dst, src, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.load:
-						genLoad(instrHeader.result, instrHeader.args[0]);
+						genLoad(instrHeader.result(lir), instrHeader.arg(lir, 0));
 						break;
 					case Amd64Opcode.store:
-						genStore(instrHeader.args[0], instrHeader.args[1], cast(ArgType)instrHeader.argSize);
+						genStore(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), cast(ArgType)instrHeader.argSize);
 						break;
 					case Amd64Opcode.add:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.add, cast(ArgType)instrHeader.args[0].physRegSize);
-						if (instrHeader.args[0] == stackPointer && instrHeader.args[1].isConstant)
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.add, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+						if (instrHeader.arg(lir, 0) == stackPointer && instrHeader.arg(lir, 1).isConstant)
 						{
-							stackPointerExtraOffset -= context.constants.get(instrHeader.args[1]).i64;
+							stackPointerExtraOffset -= context.constants.get(instrHeader.arg(lir, 1)).i64;
 						}
 						break;
 					case Amd64Opcode.sub:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.sub, cast(ArgType)instrHeader.args[0].physRegSize);
-						if (instrHeader.args[0] == stackPointer && instrHeader.args[1].isConstant)
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.sub, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+						if (instrHeader.arg(lir, 0) == stackPointer && instrHeader.arg(lir, 1).isConstant)
 						{
-							stackPointerExtraOffset += context.constants.get(instrHeader.args[1]).i64;
+							stackPointerExtraOffset += context.constants.get(instrHeader.arg(lir, 1)).i64;
 						}
 						break;
 					case Amd64Opcode.xor:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.xor, cast(ArgType)instrHeader.args[0].physRegSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.xor, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.or:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.or, cast(ArgType)instrHeader.args[0].physRegSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.or, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.and:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.and, cast(ArgType)instrHeader.args[0].physRegSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.and, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.imul:
-						context.assertf(instrHeader.args[0].isPhysReg, "%s is not phys reg", instrHeader.args[0]);
-						Register dst = indexToRegister(instrHeader.args[0]);
-						switch(instrHeader.args[1].kind) with(IrValueKind) {
+						context.assertf(instrHeader.arg(lir, 0).isPhysReg, "%s is not phys reg", instrHeader.arg(lir, 0));
+						Register dst = indexToRegister(instrHeader.arg(lir, 0));
+						switch(instrHeader.arg(lir, 1).kind) with(IrValueKind) {
 							case constant:
-								IrConstant con = context.constants.get(instrHeader.args[1]);
+								IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 								gen.imulq(dst, dst, Imm32(con.i32));
 								break;
 							case physicalRegister:
-								Register src = indexToRegister(instrHeader.args[1]);
-								gen.imul(dst, src, cast(ArgType)instrHeader.args[0].physRegSize);
+								Register src = indexToRegister(instrHeader.arg(lir, 1));
+								gen.imul(dst, src, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 								break;
 							default:
-								context.internal_error("imul %s not implemented", instrHeader.args);
+								context.internal_error("imul %s not implemented", instrHeader.args(lir));
 								assert(false);
 						}
 						break;
 					case Amd64Opcode.div:
-						Register divisor = indexToRegister(instrHeader.args[2]);
-						gen.div(divisor, cast(ArgType)instrHeader.args[2].physRegSize);
+						Register divisor = indexToRegister(instrHeader.arg(lir, 2));
+						gen.div(divisor, cast(ArgType)instrHeader.arg(lir, 2).physRegSize);
 						break;
 					case Amd64Opcode.idiv:
-						Register divisor = indexToRegister(instrHeader.args[2]);
-						gen.idiv(divisor, cast(ArgType)instrHeader.args[2].physRegSize);
+						Register divisor = indexToRegister(instrHeader.arg(lir, 2));
+						gen.idiv(divisor, cast(ArgType)instrHeader.arg(lir, 2).physRegSize);
 						break;
 					case Amd64Opcode.divsx:
 						final switch(instrHeader.argSize) {
@@ -359,54 +359,54 @@ struct CodeEmitter
 						}
 						break;
 					case Amd64Opcode.shl:
-						Register dst = indexToRegister(instrHeader.args[0]);
-						IrIndex src = instrHeader.args[1];
+						Register dst = indexToRegister(instrHeader.arg(lir, 0));
+						IrIndex src = instrHeader.arg(lir, 1);
 						if (src.isConstant) {
-							IrConstant con = context.constants.get(instrHeader.args[1]);
+							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
-								gen.shl1(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+								gen.shl1(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 							else
-								gen.shli(dst, Imm8(con.i8), cast(ArgType)instrHeader.args[0].physRegSize);
+								gen.shli(dst, Imm8(con.i8), cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						}
 						else
-							gen.shl(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+							gen.shl(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.shr:
-						Register dst = indexToRegister(instrHeader.args[0]);
-						IrIndex src = instrHeader.args[1];
+						Register dst = indexToRegister(instrHeader.arg(lir, 0));
+						IrIndex src = instrHeader.arg(lir, 1);
 						if (src.isConstant) {
-							IrConstant con = context.constants.get(instrHeader.args[1]);
+							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
-								gen.shr1(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+								gen.shr1(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 							else
-								gen.shri(dst, Imm8(con.i8), cast(ArgType)instrHeader.args[0].physRegSize);
+								gen.shri(dst, Imm8(con.i8), cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						}
 						else
-							gen.shr(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+							gen.shr(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.sar:
-						Register dst = indexToRegister(instrHeader.args[0]);
-						IrIndex src = instrHeader.args[1];
+						Register dst = indexToRegister(instrHeader.arg(lir, 0));
+						IrIndex src = instrHeader.arg(lir, 1);
 						if (src.isConstant) {
-							IrConstant con = context.constants.get(instrHeader.args[1]);
+							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
-								gen.sar1(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+								gen.sar1(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 							else
-								gen.sari(dst, Imm8(con.i8), cast(ArgType)instrHeader.args[0].physRegSize);
+								gen.sari(dst, Imm8(con.i8), cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						}
 						else
-							gen.sar(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+							gen.sar(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.not:
-						Register dst = indexToRegister(instrHeader.args[0]);
-						gen.not(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						Register dst = indexToRegister(instrHeader.arg(lir, 0));
+						gen.not(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.neg:
-						Register dst = indexToRegister(instrHeader.args[0]);
-						gen.neg(dst, cast(ArgType)instrHeader.args[0].physRegSize);
+						Register dst = indexToRegister(instrHeader.arg(lir, 0));
+						gen.neg(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
 					case Amd64Opcode.call:
-						IrIndex calleeIndex = instrHeader.args[0];
+						IrIndex calleeIndex = instrHeader.arg(lir, 0);
 
 						if (calleeIndex.isFunction)
 						{
@@ -440,8 +440,8 @@ struct CodeEmitter
 						genJumpToSuccessor(lirBlock, 0);
 						break;
 					case Amd64Opcode.bin_branch:
-						IrIndex arg0 = instrHeader.args[0];
-						IrIndex arg1 = instrHeader.args[1];
+						IrIndex arg0 = instrHeader.arg(lir, 0);
+						IrIndex arg1 = instrHeader.arg(lir, 1);
 						auto cond = cast(IrBinaryCondition)instrHeader.cond;
 
 						if (arg0.isConstant)
@@ -468,9 +468,9 @@ struct CodeEmitter
 						genJumpToSuccessor(lirBlock, 1);
 						break;
 					case Amd64Opcode.un_branch:
-						if (instrHeader.args[0].isConstant)
+						if (instrHeader.arg(lir, 0).isConstant)
 						{
-							IrConstant con = context.constants.get(instrHeader.args[0]).i64;
+							IrConstant con = context.constants.get(instrHeader.arg(lir, 0)).i64;
 							if (con.i64 && instrHeader.cond == IrUnaryCondition.not_zero ||
 								(!con.i64) && instrHeader.cond == IrUnaryCondition.zero)
 								genJumpToSuccessor(lirBlock, 0);
@@ -478,31 +478,31 @@ struct CodeEmitter
 								genJumpToSuccessor(lirBlock, 1);
 							break;
 						}
-						Register reg = indexToRegister(instrHeader.args[0]);
-						gen.test(reg, reg, cast(ArgType)instrHeader.args[0].physRegSize);
+						Register reg = indexToRegister(instrHeader.arg(lir, 0));
+						gen.test(reg, reg, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
 						genJumpToSuccessor(lirBlock, 1);
 						break;
 					case Amd64Opcode.set_unary_cond:
-						Register reg = indexToRegister(instrHeader.args[0]);
-						gen.test(reg, reg, cast(ArgType)instrHeader.args[0].physRegSize);
+						Register reg = indexToRegister(instrHeader.arg(lir, 0));
+						gen.test(reg, reg, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
-						Register dst = indexToRegister(instrHeader.result);
+						Register dst = indexToRegister(instrHeader.result(lir));
 						gen.setcc(cond, dst);
 						break;
 					case Amd64Opcode.set_binary_cond:
-						genRegular(instrHeader.args[0], instrHeader.args[1], AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
 						Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
-						Register dst = indexToRegister(instrHeader.result);
+						Register dst = indexToRegister(instrHeader.result(lir));
 						gen.setcc(cond, dst);
 						break;
 					case Amd64Opcode.ret:
 						compileFuncEpilog();
 						break;
 					case Amd64Opcode.push:
-						IrIndex src = instrHeader.args[0];
+						IrIndex src = instrHeader.arg(lir, 0);
 						switch (src.kind) with(IrValueKind)
 						{
 							case constant:
@@ -539,8 +539,8 @@ struct CodeEmitter
 		foreach (IrIndex lirBlockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{
 			PC[2] fixups = jumpFixups[lirBlock.seqIndex];
-			if (fixups[0] !is null) fixJump(fixups[0], lirBlock.successors[0, *lir]);
-			if (fixups[1] !is null) fixJump(fixups[1], lirBlock.successors[1, *lir]);
+			if (fixups[0] !is null) fixJump(fixups[0], lirBlock.successors[0, lir]);
+			if (fixups[1] !is null) fixJump(fixups[1], lirBlock.successors[1, lir]);
 		}
 	}
 

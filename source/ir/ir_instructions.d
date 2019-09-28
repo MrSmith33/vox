@@ -15,10 +15,21 @@ import ir.ir_index;
 
 struct InstrInfo
 {
+	this(ushort _opcode, ubyte _numArgs = 0, uint _flags = 0, ubyte _numHiddenArgs = 0) {
+		opcode = _opcode;
+		numArgs = _numArgs;
+		flags = _flags;
+		numHiddenArgs = _numHiddenArgs;
+	}
+
 	ushort opcode;
 	/// If hasVariadicArgs is set, then determines the minimum required number of arguments
 	/// Otherwise specifies exact number of arguments
-	uint numArgs;
+	/// Is copied to IrInstrHeader.numArgs
+	ubyte numArgs;
+	/// those are allocated after results and arguments
+	/// Doesn't affect IrInstrHeader.numArgs
+	ubyte numHiddenArgs;
 	/// Set of IrInstrFlags
 	uint flags;
 	static assert(IrInstrFlags.max <= uint.max, "Not enough bits for flags");
@@ -52,6 +63,7 @@ InstrInfo[] gatherInstrInfos(alias instrsEnum)()
 }
 
 enum IrInstrFlags : uint {
+	none = 0,
 	hasResult = 1 << 0,
 	isMov = 1 << 1,
 	isBranch = 1 << 2,
@@ -95,7 +107,7 @@ enum IrOpcode : ushort
 	@_ii(0, 0, IFLG.isBlockExit) block_exit_return_void,
 	@_ii(0, 1, IFLG.isBlockExit) block_exit_return_value,
 
-	@_ii(0) parameter,
+	@_ii(0, 0, IFLG.none, 1) parameter,
 	@_ii(0) call,
 
 	@_ii(0) set_binary_cond,
@@ -170,16 +182,13 @@ struct IrInstrHeader
 
 	enum MAX_ARGS = 255;
 
-	// Prevent type from copying because args will not be copied. Need to use ptr.
-	@disable this(this);
-
 	union {
 		mixin(bitfields!(
 			bool,       "hasResult", 1,
-			ubyte,      "cond",      4,
+			ubyte,      "cond",      3,
 			// Not always possible to infer arg size from arguments (like in store ptr, imm)
 			IrArgSize,  "argSize",   2,
-			uint, "",                1
+			uint, "",                2
 		));
 
 		mixin(bitfields!(
@@ -192,42 +201,54 @@ struct IrInstrHeader
 		));
 	}
 
-	static assert(IrBinaryCondition.max <= 0b1111, "4 bits are reserved");
-	static assert(IrUnaryCondition.max <= 0b1111, "4 bits are reserved");
+	static assert(IrBinaryCondition.max <= 0b111, "3 bits are reserved");
+	static assert(IrUnaryCondition.max <= 0b111, "3 bits are reserved");
+
+	// points to first argument (result is immediately before first arg)
+	uint _payloadOffset;
 
 	// points to basic block if first instruction of basic block
-	IrIndex prevInstr;
+	IrIndex prevInstr(IrFunction* ir, IrIndex instrIndex) {
+		return ir.instrPrevPtr[instrIndex.storageUintIndex];
+	}
 	// points to basic block if last instruction of basic block
-	IrIndex nextInstr;
+	IrIndex nextInstr(IrFunction* ir, IrIndex instrIndex) {
+		return ir.instrNextPtr[instrIndex.storageUintIndex];
+	}
 
-	IrIndex[0] _payload;
-
-	ref IrIndex result() {
+	ref IrIndex result(IrFunction* ir) {
 		assert(hasResult);
-		return _payload.ptr[0];
+		return ir.instrPayloadPtr[_payloadOffset-1];
 	}
 
-	IrIndex[] args() {
-		return _payload.ptr[cast(size_t)hasResult..cast(size_t)hasResult+numArgs];
+	// returns result or undefined
+	IrIndex tryGetResult(IrFunction* ir) {
+		if (hasResult) return ir.instrPayloadPtr[_payloadOffset-1];
+		return IrIndex();
 	}
 
-	/// Returns data before header (for variadic instructions)
-	ref T preheader(T)() {
-		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
-		return *cast(T*)(cast(uint*)(&this) - numAllocatedSlots);
+	IrIndex[] args(IrFunction* ir) {
+		return ir.instrPayloadPtr[_payloadOffset.._payloadOffset + numArgs];
+	}
+
+	ref IrIndex arg(IrFunction* ir, uint index) {
+		return ir.instrPayloadPtr[_payloadOffset + index];
+	}
+
+	IrIndex[] extraPayload(IrFunction* ir, uint numSlots) {
+		uint start = _payloadOffset + numArgs;
+		return ir.instrPayloadPtr[start..start+numSlots];
 	}
 }
 
-template IrGenericInstr(ushort opcode, uint numArgs, uint flags = 0)
+template IrGenericInstr(ushort opcode, ubyte numArgs, uint flags = 0, ubyte numExtraArgs = 0)
 {
 	enum hasResult = (flags & IFLG.hasResult) != 0;
 
-	@(IrValueKind.instruction) @InstrInfo(opcode, numArgs, flags)
+	@(IrValueKind.instruction) @InstrInfo(opcode, numArgs, flags, numExtraArgs)
 	struct IrGenericInstr
 	{
 		IrInstrHeader header;
-		static if (hasResult)   IrIndex result;
-		static if (numArgs > 0) IrIndex[numArgs] args;
 	}
 }
 
@@ -336,10 +357,11 @@ IrUnaryCondition invertUnaryCond(IrUnaryCondition cond)
 /// Uses header.cond
 alias IrInstr_unary_branch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, IFLG.hasCondition | IFLG.isBlockExit);
 
-@(IrValueKind.instruction) @InstrInfo(IrOpcode.parameter, 0, IFLG.hasResult)
+@(IrValueKind.instruction) @InstrInfo(IrOpcode.parameter, 0, IFLG.hasResult, 1)
 struct IrInstr_parameter
 {
 	IrInstrHeader header;
-	IrIndex result;
-	uint index;
+	ref uint index(IrFunction* ir) {
+		return header.extraPayload(ir, 1)[0].asUint;
+	}
 }

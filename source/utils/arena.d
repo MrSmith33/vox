@@ -81,6 +81,10 @@ struct Arena(T)
 		}
 	}
 
+	void unput(size_t numItems) {
+		length -= numItems;
+	}
+
 	static if (is(T == ubyte))
 	{
 		void put(V)(V value) {

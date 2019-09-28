@@ -11,25 +11,15 @@ import all;
 @(IrValueKind.virtualRegister)
 struct IrVirtualRegister
 {
-	/// Index of instruction that defines this register
+	/// Index of instruction or phi that defines this register
+	// When vreg is removed, this field is used for linked list of removed registers
 	IrIndex definition;
 	///
 	IrIndex type;
 	/// List of instruction indicies that use this register
 	SmallVector users;
-	IrIndex prevVirtReg; /// null only if this is firstVirtualReg
-	IrIndex nextVirtReg; /// null only if this is lastVirtualReg
-	/// Sequential index for random access
-	uint seqIndex;
-}
 
-/// Generates temporary array of all virtual register indicies
-IrIndex[] virtualRegArray(CompilationContext* context, IrFunction* ir)
-{
-	IrIndex[] result = cast(IrIndex[])context.tempBuffer.voidPut(ir.numVirtualRegisters);
-	for (IrIndex vreg = ir.firstVirtualReg; vreg.isDefined; vreg = ir.getVirtReg(vreg).nextVirtReg)
-	{
-		result[ir.getVirtReg(vreg).seqIndex] = vreg;
+	bool isRemoved() {
+		return type.kind == IrValueKind.virtualRegister;
 	}
-	return result;
 }

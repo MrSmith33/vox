@@ -19,7 +19,7 @@ struct IrPhi
 	IrIndex prevPhi;
 	IrIndex firstArgListItem;
 
-	PhiArgIterator args(ref IrFunction ir) { return PhiArgIterator(&ir, firstArgListItem); }
+	PhiArgIterator args(IrFunction* ir) { return PhiArgIterator(ir, firstArgListItem); }
 }
 
 struct PhiArgIterator

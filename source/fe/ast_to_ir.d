@@ -161,7 +161,7 @@ struct AstToIr
 			if (irData)
 			{
 				m.irModule.addFunction(*context, irData);
-				if (context.validateIr) validateIrFunction(*context, *irData);
+				if (context.validateIr) validateIrFunction(context, irData);
 				if (context.printIr && context.printDumpOf(func)) dumpFunction(context, irData);
 			}
 		}
@@ -239,8 +239,12 @@ struct AstToIr
 
 		version(IrGenPrint) writefln("[IR GEN] function seal exit");
 
+		//dumpFunction(context, ir);
+
 		// all blocks with return (exit's predecessors) already connected, seal exit block
 		builder.sealBlock(ir.exitBasicBlock);
+
+		builder.finalizeIr;
 	}
 
 	/// destination must be pointer or variable
@@ -271,7 +275,7 @@ struct AstToIr
 		switch (source.kind) with(IrValueKind)
 		{
 			case stackSlot, global, virtualRegister:
-				IrIndex resultType = context.types.getPointerBaseType(ir.getValueType(*context, source));
+				IrIndex resultType = context.types.getPointerBaseType(ir.getValueType(context, source));
 				ExtraInstrArgs extra = {type : resultType};
 				if (resultType.isTypeStruct)
 					return builder.emitInstr!IrInstr_load_aggregate(currentBlock, extra, source).result;
@@ -298,7 +302,7 @@ struct AstToIr
 			aggr = builder.readVariable(currentBlock, aggr);
 		}
 
-		IrIndex aggrType = ir.getValueType(*context, aggr);
+		IrIndex aggrType = ir.getValueType(context, aggr);
 
 		switch (aggrType.typeKind) {
 			case IrTypeKind.pointer: return LRValue(buildGEP(currentBlock, aggr, context.constants.ZERO, indicies), true);
@@ -311,7 +315,7 @@ struct AstToIr
 	// we need to have 2 functions: one for read, one for write
 	IrIndex getStructMember(IrIndex currentBlock, IrIndex aggr, IrIndex[] indicies...)
 	{
-		IrIndex aggrType = ir.getValueType(*context, aggr);
+		IrIndex aggrType = ir.getValueType(context, aggr);
 		context.assertf(aggr.isConstantAggregate, "%s", aggr.kind);
 		foreach (i, IrIndex memberIndex; indicies)
 		{
@@ -324,7 +328,7 @@ struct AstToIr
 					aggr = context.constants.getAggregateMember(aggr, memberIndexVal);
 					break;
 
-				default: context.internal_error("Cannot index %s", IrIndexDump(aggrType, *context, *ir)); assert(false);
+				default: context.internal_error("Cannot index %s", IrIndexDump(aggrType, context, ir)); assert(false);
 			}
 		}
 		assert(aggr.isDefined);
@@ -341,7 +345,7 @@ struct AstToIr
 			aggrPtr = builder.readVariable(currentBlock, aggrPtr);
 		}
 
-		IrIndex aggrPtrType = ir.getValueType(*context, aggrPtr);
+		IrIndex aggrPtrType = ir.getValueType(context, aggrPtr);
 		IrIndex aggrType = context.types.getPointerBaseType(aggrPtrType);
 
 		foreach (i, IrIndex memberIndex; indicies)
@@ -385,8 +389,8 @@ struct AstToIr
 	{
 		version(CfgGenPrint) writefln("[CFG GEN] beg VAR_DECL cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end VAR_DECL cur %s next %s", currentBlock, nextStmt);
-		version(IrGenPrint) writefln("[IR GEN] Var decl (%s) begin %s", v.loc, v.strId(context));
-		version(IrGenPrint) scope(success) writefln("[IR GEN] Var decl (%s) end %s", v.loc, v.strId(context));
+		version(IrGenPrint) writefln("[IR GEN] Var decl (%s) begin %s", v.loc, context.idString(v.id));
+		version(IrGenPrint) scope(success) writefln("[IR GEN] Var decl (%s) end %s", v.loc, context.idString(v.id));
 
 		TypeNode* varType = context.getAstType(v.type).foldAliases(context);
 
@@ -431,7 +435,7 @@ struct AstToIr
 					IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(type), context);
 					ExtraInstrArgs extra = {type : type, argSize : argSize};
 					InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
-					ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
+					ir.get!IrInstr_parameter(param.instruction).index(ir) = v.scopeIndex;
 					v.irValue = param.result;
 				}
 				else
@@ -443,7 +447,7 @@ struct AstToIr
 
 					ExtraInstrArgs extra = {type : type, argSize : argSize};
 					InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
-					ir.get!IrInstr_parameter(param.instruction).index = v.scopeIndex;
+					ir.get!IrInstr_parameter(param.instruction).index(ir) = v.scopeIndex;
 
 					store(currentBlock, v.irValue, param.result);
 				}
@@ -1327,7 +1331,7 @@ struct AstToIr
 				visitExprValue(u.child, currentBlock, afterChild);
 				currentBlock = afterChild.blockIndex;
 
-				IrIndex type = ir.getValueType(*context, childExpr.irValue);
+				IrIndex type = ir.getValueType(context, childExpr.irValue);
 				context.assertf(type.isTypePointer, "%s", type); // pointer to static array
 
 				// pointer to first element
@@ -1501,11 +1505,11 @@ struct AstToIr
 				i.irValue = buildGEP(currentBlock, arrayExpr.irValue, indexExpr.irValue);
 				break;
 			case type_static_array:
-				IrIndex type = ir.getValueType(*context, arrayExpr.irValue);
+				IrIndex type = ir.getValueType(context, arrayExpr.irValue);
 				if (type.isTypePointer)
 					i.irValue = buildGEP(currentBlock, arrayExpr.irValue, aggregateIndex, indexExpr.irValue);
 				else {
-					context.assertf(type.isTypeArray, "%s", IrIndexDump(type, *context, *ir));
+					context.assertf(type.isTypeArray, "%s", IrIndexDump(type, context, ir));
 					i.irValue = buildGEP(currentBlock, arrayExpr.irValue, indexExpr.irValue);
 				}
 				break;
@@ -1538,7 +1542,7 @@ struct AstToIr
 			return;
 		}
 
-		IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(ir.getValueType(*context, value)), context);
+		IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(ir.getValueType(context, value)), context);
 		builder.addUnaryBranch(currentBlock, IrUnaryCondition.not_zero, argSize, value, trueExit, falseExit);
 	}
 

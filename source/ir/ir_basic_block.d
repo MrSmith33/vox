@@ -21,9 +21,9 @@ struct IrBasicBlock
 	IrIndex nextBlock; // null only if this is exitBasicBlock
 	IrIndex firstPhi; // may be null
 
-	PhiIterator phis(ref IrFunction ir) { return PhiIterator(&ir, &this); }
-	InstrIterator instructions(ref IrFunction ir) { return InstrIterator(&ir, firstInstr); }
-	InstrReverseIterator instructionsReverse(ref IrFunction ir) { return InstrReverseIterator(&ir, lastInstr); }
+	PhiIterator phis(IrFunction* ir) { return PhiIterator(ir, &this); }
+	InstrIterator instructions(IrFunction* ir) { return InstrIterator(ir, firstInstr); }
+	InstrReverseIterator instructionsReverse(IrFunction* ir) { return InstrReverseIterator(ir, lastInstr); }
 	bool hasPhis() { return firstPhi.isDefined; }
 
 	SmallVector predecessors;
@@ -155,7 +155,7 @@ struct InstrIterator
 			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
 
 			// save current before invoking delegate, which can remove current instruction
-			current = header.nextInstr;
+			current = header.nextInstr(ir, indexCopy);
 
 			if (int res = dg(indexCopy, *header))
 				return res;
@@ -177,7 +177,7 @@ struct InstrReverseIterator
 			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
 
 			// save current before invoking delegate, which can remove current instruction
-			current = header.prevInstr;
+			current = header.prevInstr(ir, indexCopy);
 
 			if (int res = dg(indexCopy, *header))
 				return res;

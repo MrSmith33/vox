@@ -312,7 +312,7 @@ struct Driver
 		passes = passes_;
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		size_t irMemSize = GiB*113;
+		size_t irMemSize = GiB*161;
 		arenaPool.reserve(irMemSize);
 		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
@@ -327,7 +327,16 @@ struct Driver
 		context.tokenBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.tokenLocationBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.binaryBuffer.setBuffer(arenaPool.take(GiB), 0);
-		context.irBuffer.setBuffer(arenaPool.take(16*GiB), 0);
+
+		context.irStorage.instrHeaderBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+		context.irStorage.instrPayloadBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+		context.irStorage.instrNextBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+		context.irStorage.instrPrevBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+		context.irStorage.vregBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+		context.irStorage.phiBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+		context.irStorage.basicBlockBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+		context.irStorage.arrayBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+
 		context.types.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.tempBuffer.setBuffer(arenaPool.take(8*GiB), 0);
 		context.objSymTab.buffer.setBuffer(arenaPool.take(GiB), 0);

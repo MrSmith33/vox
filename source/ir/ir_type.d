@@ -293,7 +293,7 @@ struct IrTypeStorage
 		return func.resultTypes[0];
 	}
 
-	CallConv* getCalleeCallConv(IrIndex callee, ref IrFunction ir, CompilationContext* c)
+	CallConv* getCalleeCallConv(IrIndex callee, IrFunction* ir, CompilationContext* c)
 	{
 		if (callee.isFunction)
 		{
@@ -301,7 +301,7 @@ struct IrTypeStorage
 		}
 		else
 		{
-			IrIndex type = getValueType(callee, ir, *c);
+			IrIndex type = getValueType(callee, ir, c);
 			if (type.isTypePointer)
 			{
 				IrIndex base = getPointerBaseType(type);
@@ -353,7 +353,7 @@ struct IrTypeStorage
 }
 
 /// Returns type of value
-IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext context)
+IrIndex getValueType(IrIndex value, IrFunction* ir, CompilationContext* context)
 	out (res; res.isType, format("Not a type %s -> %s", value, res))
 {
 	switch(value.kind) with(IrValueKind)
@@ -371,7 +371,7 @@ IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext co
 		case virtualRegister:
 			return ir.getVirtReg(value).type;
 		case func:
-			return context.types.appendPtr(context.getFunction(value).signature.get!FunctionSignatureNode(&context).irType);
+			return context.types.appendPtr(context.getFunction(value).signature.get!FunctionSignatureNode(context).irType);
 		default:
 			context.internal_error("Cannot get type of %s", value.kind);
 			assert(false);
@@ -381,6 +381,6 @@ IrIndex getValueType(IrIndex value, ref IrFunction ir, ref CompilationContext co
 IrArgSize getValueTypeArgSize(IrIndex value, IrFunction* ir, CompilationContext* context)
 {
 	if (value.isPhysReg) return cast(IrArgSize)value.physRegSize;
-	IrIndex type = getValueType(value, *ir, *context);
+	IrIndex type = getValueType(value, ir, context);
 	return sizeToIrArgSize(context.types.typeSize(type), context);
 }

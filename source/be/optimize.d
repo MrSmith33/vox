@@ -9,16 +9,16 @@ module be.optimize;
 import std.stdio;
 import all;
 
-alias FuncPassIr = void function(ref CompilationContext, ref IrFunction, ref IrBuilder);
-alias FuncPass = void function(ref CompilationContext, ref IrFunction);
+alias FuncPassIr = void function(CompilationContext*, IrFunction*, ref IrBuilder);
+alias FuncPass = void function(CompilationContext*, IrFunction*);
 
-void apply_lir_func_pass(ref CompilationContext context, FuncPass pass)
+void apply_lir_func_pass(CompilationContext* context, FuncPass pass)
 {
 	foreach (ref SourceFileInfo file; context.files.data)
 	foreach (IrFunction* lir; file.mod.lirModule.functions) {
-		pass(context, *lir);
+		pass(context, lir);
 		if (context.validateIr)
-			validateIrFunction(context, *lir);
+			validateIrFunction(context, lir);
 	}
 }
 
@@ -32,14 +32,15 @@ void pass_optimize_ir(ref CompilationContext context, ref ModuleDeclNode mod, re
 	IrFunction* irData = context.getAst!IrFunction(func.backendData.irData);
 	builder.beginDup(irData, &context);
 	foreach (FuncPassIr pass; passes) {
-		pass(context, *irData, builder);
+		pass(&context, irData, builder);
 		if (context.validateIr)
-			validateIrFunction(context, *irData);
+			validateIrFunction(&context, irData);
 		if (context.printIrOpt && context.printDumpOf(&func)) dumpFunction(&context, irData);
 	}
+	builder.finalizeIr;
 }
 
-void func_pass_invert_conditions(ref CompilationContext context, ref IrFunction ir, ref IrBuilder builder)
+void func_pass_invert_conditions(CompilationContext* context, IrFunction* ir, ref IrBuilder builder)
 {
 	ir.assignSequentialBlockIndices();
 
@@ -75,7 +76,7 @@ void func_pass_invert_conditions(ref CompilationContext context, ref IrFunction 
 	}
 }
 
-void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction ir, ref IrBuilder builder)
+void func_pass_remove_dead_code(CompilationContext* context, IrFunction* ir, ref IrBuilder builder)
 {
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
@@ -84,11 +85,11 @@ void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction i
 			if (hasSideEffects(cast(IrOpcode)instrHeader.op)) continue;
 			if (!instrHeader.hasResult) continue;
 
-			context.assertf(instrHeader.result.isVirtReg, "instruction result must be virt reg");
-			if (ir.getVirtReg(instrHeader.result).users.length > 0) continue;
+			context.assertf(instrHeader.result(ir).isVirtReg, "instruction result must be virt reg");
+			if (ir.getVirtReg(instrHeader.result(ir)).users.length > 0) continue;
 
 			// we found some dead instruction, remove it
-			foreach(ref IrIndex arg; instrHeader.args) {
+			foreach(ref IrIndex arg; instrHeader.args(ir)) {
 				removeUser(context, ir, instrIndex, arg);
 			}
 			removeInstruction(ir, instrIndex);
@@ -98,12 +99,12 @@ void func_pass_remove_dead_code(ref CompilationContext context, ref IrFunction i
 }
 
 // TODO some typecasts are needed for correct typing
-void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex instrIndex, ref IrInstrHeader instrHeader)
+void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrIndex, ref IrInstrHeader instrHeader)
 {
 	IrIndex buildOffset(IrIndex basePtr, long offsetVal, IrIndex resultType) {
 		if (offsetVal == 0) {
 			// Shortcut for 0-th index
-			IrIndex basePtrType = getValueType(basePtr, *builder.ir, context);
+			IrIndex basePtrType = getValueType(basePtr, builder.ir, context);
 			if (basePtrType == resultType) return basePtr;
 
 			ExtraInstrArgs extra = { type : resultType };
@@ -140,8 +141,8 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 		return addressInstr.result;
 	}
 
-	IrIndex aggrPtr = instrHeader.args[0]; // aggregate ptr
-	IrIndex aggrPtrType = getValueType(aggrPtr, *builder.ir, context);
+	IrIndex aggrPtr = instrHeader.arg(builder.ir, 0); // aggregate ptr
+	IrIndex aggrPtrType = getValueType(aggrPtr, builder.ir, context);
 
 	context.assertf(aggrPtrType.isTypePointer,
 		"First argument to GEP instruction must be pointer, not %s", aggrPtr.typeKind);
@@ -149,7 +150,7 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 	IrIndex aggrType = context.types.getPointerBaseType(aggrPtrType);
 	uint aggrSize = context.types.typeSize(aggrType);
 
-	IrIndex firstIndex = instrHeader.args[1];
+	IrIndex firstIndex = instrHeader.arg(builder.ir, 1);
 
 	if (firstIndex.isConstant) {
 		long indexVal = context.constants.get(firstIndex).i64;
@@ -159,7 +160,7 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 		aggrPtr = buildIndex(aggrPtr, firstIndex, aggrSize, aggrPtrType);
 	}
 
-	foreach(IrIndex memberIndex; instrHeader.args[2..$])
+	foreach(IrIndex memberIndex; instrHeader.args(builder.ir)[2..$])
 	{
 		final switch(aggrType.typeKind)
 		{
@@ -210,11 +211,11 @@ void lowerGEP(ref CompilationContext context, ref IrBuilder builder, IrIndex ins
 		}
 	}
 
-	builder.redirectVregUsersTo(instrHeader.result, aggrPtr);
-	removeInstruction(*builder.ir, instrIndex);
+	builder.redirectVregUsersTo(instrHeader.result(builder.ir), aggrPtr);
+	removeInstruction(builder.ir, instrIndex);
 }
 
-void func_pass_lower_gep(ref CompilationContext context, ref IrFunction ir, ref IrBuilder builder)
+void func_pass_lower_gep(CompilationContext* context, IrFunction* ir, ref IrBuilder builder)
 {
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
@@ -251,12 +252,12 @@ void lir_func_pass_simplify(ref CompilationContext context, ref IrFunction ir)
 	}
 }
 */
-void pass_optimize_lir(ref CompilationContext context)
+void pass_optimize_lir(CompilationContext* context)
 {
 	apply_lir_func_pass(context, &pass_optimize_lir_func);
 }
 
-void pass_optimize_lir_func(ref CompilationContext context, ref IrFunction ir)
+void pass_optimize_lir_func(CompilationContext* context, IrFunction* ir)
 {
 	ir.assignSequentialBlockIndices();
 

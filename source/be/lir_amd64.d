@@ -292,7 +292,7 @@ void dumpAmd64Instr(ref InstrPrintInfo p)
 		case Amd64Opcode.jcc:
 			p.sink.putf("    j%s %s",
 				cast(Condition)p.instrHeader.cond,
-				IrIndexDump(p.instrHeader.args[0], p));
+				IrIndexDump(p.instrHeader.arg(p.ir, 0), p));
 			break;
 		default:
 			dumpOptionalResult(p);
@@ -324,22 +324,5 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref CompilationC
 		case type: dumpIrType(sink, context, i); break;
 		case variable: assert(false);
 		case func: sink.formattedWrite("f.%s", i.storageUintIndex); break;
-	}
-}
-
-///
-struct LirBuilder
-{
-	CompilationContext* context;
-	IrFunction* ir;
-	IrFunction* lir;
-
-	/// Must be called before LIR gen pass
-	void begin(IrFunction* lir, IrFunction* ir, CompilationContext* context) {
-		this.context = context;
-		this.lir = lir;
-		this.ir = ir;
-
-		lir.storage = context.irBuffer.nextPtr[0..0];
 	}
 }

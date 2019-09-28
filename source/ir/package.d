@@ -55,4 +55,9 @@ struct BlockVarPair
 {
 	IrIndex blockId;
 	IrIndex var;
+
+	void toString()(scope void delegate(const(char)[]) sink) const {
+		import std.format : formattedWrite;
+		sink.formattedWrite("(%s %s)", blockId, var);
+	}
 }

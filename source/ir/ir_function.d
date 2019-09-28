@@ -19,18 +19,69 @@ struct IrMirror(T)
 	static assert(T.sizeof == uint.sizeof, "T size must be equal to uint.sizeof");
 
 	// Mirror of original IR
-	private uint[] irMirror;
+	private T[] virtRegMirror;
+	private T[] basicBlockMirror;
+	private T[] phiMirror;
+	private T[] instrMirror;
 
-	void create(CompilationContext* context, IrFunction* ir)
-	{
-		irMirror = context.tempBuffer.voidPut(ir.storage.length);
-		irMirror[] = 0;
+	void createVirtRegMirror(CompilationContext* context, IrFunction* ir) {
+		virtRegMirror = makeParallelArray!T(context, ir, ir.numVirtualRegisters);
 	}
 
-	ref T opIndex(IrIndex irIndex)
-	{
-		return *cast(T*)&irMirror[irIndex.storageUintIndex];
+	void createBasicBlockMirror(CompilationContext* context, IrFunction* ir) {
+		basicBlockMirror = makeParallelArray!T(context, ir, ir.numBasicBlocks);
 	}
+
+	void createPhiMirror(CompilationContext* context, IrFunction* ir) {
+		phiMirror = makeParallelArray!T(context, ir, ir.numPhis);
+	}
+
+	void createInstrMirror(CompilationContext* context, IrFunction* ir) {
+		instrMirror = makeParallelArray!T(context, ir, ir.numInstructions);
+	}
+
+	void createAll(CompilationContext* context, IrFunction* ir)
+	{
+		createVirtRegMirror(context, ir);
+		createBasicBlockMirror(context, ir);
+		createPhiMirror(context, ir);
+		createInstrMirror(context, ir);
+	}
+
+	ref T opIndex(IrIndex index)
+	{
+		switch (index.kind) with(IrValueKind) {
+			case basicBlock: return basicBlockMirror[index.storageUintIndex];
+			case phi: return phiMirror[index.storageUintIndex];
+			case virtualRegister: return virtRegMirror[index.storageUintIndex];
+			case instruction: return instrMirror[index.storageUintIndex];
+			default: assert(false, format("%s", index));
+		}
+	}
+
+	ref T instr(IrIndex index) {
+		assert(index.isInstruction);
+		return instrMirror[index.storageUintIndex];
+	}
+	ref T basicBlock(IrIndex index) {
+		assert(index.isBasicBlock);
+		return basicBlockMirror[index.storageUintIndex];
+	}
+	ref T phi(IrIndex index) {
+		assert(index.isPhi);
+		return phiMirror[index.storageUintIndex];
+	}
+	ref T vreg(IrIndex index) {
+		assert(index.isVirtReg);
+		return virtRegMirror[index.storageUintIndex];
+	}
+}
+
+T[] makeParallelArray(T)(CompilationContext* context, IrFunction* ir, uint size)
+{
+	auto result = cast(T[])context.tempBuffer.voidPut(size);
+	result[] = T.init;
+	return result;
 }
 
 enum IrInstructionSet : ubyte
@@ -48,34 +99,59 @@ immutable InstrInfo[][] allInstrInfos = [
 
 struct IrFunction
 {
-	/// Slice of CompilationContext.irBuffer
-	uint[] storage;
+	IrInstrHeader* instrPtr;
+	IrIndex* instrPayloadPtr;
+	IrIndex* instrNextPtr;
+	IrIndex* instrPrevPtr;
+	IrPhi* phiPtr;
+	uint* arrayPtr;
+	IrVirtualRegister* vregPtr;
+	// index 0 must be always start block
+	// index 1 must be always exit block
+	IrBasicBlock* basicBlockPtr;
 
-	/// Special block. Automatically created. Program start. Created first.
-	IrIndex entryBasicBlock;
-	/// Special block. Automatically created. All returns must jump to it.
-	IrIndex exitBasicBlock;
-	// The last created basic block
-	IrIndex lastBasicBlock;
-	///
+	/// Used for instrPtr, instrNextPtr, instrPrevPtr
+	uint numInstructions;
+	uint numPayloadSlots;
+	uint numPhis;
+	uint arrayLength;
+	uint numVirtualRegisters;
 	uint numBasicBlocks;
 
-	/// First virtual register in linked list
-	IrIndex firstVirtualReg;
-	/// Last virtual register in linked list
-	IrIndex lastVirtualReg;
-	/// Total number of virtual registers
-	uint numVirtualRegisters;
+	IrBasicBlock[] blocksArray() {
+		return basicBlockPtr[0..numBasicBlocks];
+	}
+
+	/// Special block. Automatically created. Program start. Created first.
+	enum IrIndex entryBasicBlock = IrIndex(0, IrValueKind.basicBlock);
+	/// Special block. Automatically created. All returns must jump to it.
+	enum IrIndex exitBasicBlock = IrIndex(1, IrValueKind.basicBlock);
+
+	IrIndex lastBasicBlock() {
+		if (numBasicBlocks < 2) return IrIndex();
+		return getBlock(exitBasicBlock).prevBlock;
+	}
+
+	IrIndex firstVirtReg() {
+		if (numVirtualRegisters == 0) return IrIndex();
+		return IrIndex(0, IrValueKind.virtualRegister);
+	}
+
+	IrIndex lastVirtReg() {
+		if (numVirtualRegisters == 0) return IrIndex();
+		return IrIndex(numVirtualRegisters - 1, IrValueKind.virtualRegister);
+	}
 
 	/// IrTypeFunction index
 	IrIndex type;
+	///
+	IrInstructionSet instructionSet;
 
 	VregIterator virtualRegsiters() { return VregIterator(&this); }
 
 	///
 	FunctionBackendData* backendData;
-	///
-	IrInstructionSet instructionSet;
+
 
 	BlockIterator blocks() { return BlockIterator(&this); }
 	BlockReverseIterator blocksReverse() { return BlockReverseIterator(&this); }
@@ -86,9 +162,21 @@ struct IrFunction
 
 	ref T get(T)(IrIndex index)
 	{
+		enum IrValueKind kind = getIrValueKind!T;
 		assert(index.kind != IrValueKind.none, "null index");
-		assert(index.kind == getIrValueKind!T, format("%s != %s", index.kind, getIrValueKind!T));
-		return *cast(T*)(&storage[index.storageUintIndex]);
+		assert(index.kind == kind, format("%s != %s", index.kind, kind));
+		static if (kind == IrValueKind.instruction)
+			return *cast(T*)(&instrPtr[index.storageUintIndex]);
+		else static if (kind == IrValueKind.listItem)
+			return *cast(T*)(&arrayPtr[index.storageUintIndex]);
+		else static if (kind == IrValueKind.basicBlock)
+			return basicBlockPtr[index.storageUintIndex];
+		else static if (kind == IrValueKind.phi)
+			return phiPtr[index.storageUintIndex];
+		else static if (kind == IrValueKind.virtualRegister)
+			return vregPtr[index.storageUintIndex];
+		else
+			static assert(false, format("Cannot get %s from IrFunction", T.stringof));
 	}
 
 	// In correct code there must be no dangling basic blocks left
@@ -102,7 +190,7 @@ struct IrFunction
 		{
 			IrBasicBlock* block = &getBlock(node);
 			block.visitFlag = true;
-			foreach(ref IrIndex succ; block.successors.range(this))
+			foreach(ref IrIndex succ; block.successors.range(&this))
 				if (!getBlock(succ).visitFlag)
 					walk(succ);
 			if (first.isDefined)
@@ -133,30 +221,103 @@ struct IrFunction
 		}
 	}
 
-	IrIndex getValueType(ref CompilationContext context, IrIndex someIndex)
+	IrIndex getValueType(CompilationContext* context, IrIndex someIndex)
 	{
-		return .getValueType(someIndex, this, context);
+		return .getValueType(someIndex, &this, context);
+	}
+
+	ref IrIndex prevInstr(IrIndex instrIndex) {
+		return instrPrevPtr[instrIndex.storageUintIndex];
+	}
+
+	ref IrIndex nextInstr(IrIndex instrIndex) {
+		return instrNextPtr[instrIndex.storageUintIndex];
+	}
+
+	size_t byteLength() {
+		return
+			(IrInstrHeader.sizeof + uint.sizeof + uint.sizeof) * numInstructions +
+			IrIndex.sizeof * numPayloadSlots +
+			IrPhi.sizeof * numPhis +
+			uint.sizeof * arrayLength +
+			IrVirtualRegister.sizeof * numVirtualRegisters +
+			IrBasicBlock.sizeof * numBasicBlocks;
+	}
+}
+
+void dupIrStorage(IrFunction* ir, CompilationContext* c)
+{
+	void dupStorage(T)(ref Arena!T arena, ref T* ptr, uint length) {
+		T[] buf = ptr[0..length];
+		ptr = arena.nextPtr;
+		arena.put(buf);
+	}
+
+	dupStorage(c.irStorage.instrHeaderBuffer, ir.instrPtr, ir.numInstructions);
+	dupStorage(c.irStorage.instrPayloadBuffer, ir.instrPayloadPtr, ir.numPayloadSlots);
+	dupStorage(c.irStorage.instrNextBuffer, ir.instrNextPtr, ir.numInstructions);
+	dupStorage(c.irStorage.instrPrevBuffer, ir.instrPrevPtr, ir.numInstructions);
+	dupStorage(c.irStorage.phiBuffer, ir.phiPtr, ir.numPhis);
+	dupStorage(c.irStorage.vregBuffer, ir.vregPtr, ir.numVirtualRegisters);
+	dupStorage(c.irStorage.arrayBuffer, ir.arrayPtr, ir.arrayLength);
+	dupStorage(c.irStorage.basicBlockBuffer, ir.basicBlockPtr, ir.numBasicBlocks);
+}
+
+struct IrFuncStorage
+{
+	Arena!IrInstrHeader instrHeaderBuffer;
+	Arena!IrIndex instrPayloadBuffer; // stores variadic results + arguments per instruction
+	Arena!IrIndex instrNextBuffer; // index of next instruction
+	Arena!IrIndex instrPrevBuffer; // index of previous instruction
+	Arena!IrPhi phiBuffer;
+	Arena!IrVirtualRegister vregBuffer;
+	Arena!uint arrayBuffer; // stores data of SmallVector
+	Arena!IrBasicBlock basicBlockBuffer;
+
+	void printMemSize(ref TextSink sink)
+	{
+		size_t byteLength;
+		size_t committedBytes;
+		size_t reservedBytes;
+		void collect(T)(ref Arena!T arena) {
+			byteLength += arena.byteLength;
+			committedBytes += arena.committedBytes;
+			reservedBytes += arena.reservedBytes;
+		}
+		collect(instrHeaderBuffer);
+		collect(instrPayloadBuffer);
+		collect(instrNextBuffer);
+		collect(instrPrevBuffer);
+		collect(phiBuffer);
+		collect(vregBuffer);
+		collect(arrayBuffer);
+		collect(basicBlockBuffer);
+		sink.putfln("  %-16s%-6iB    %-6iB   %-6iB",
+			"  IR total",
+			scaledNumberFmt(byteLength),
+			scaledNumberFmt(committedBytes),
+			scaledNumberFmt(reservedBytes));
 	}
 }
 
 // instruction iterators are aware of this
 // only safe to delete current instruction while iterating
-void removeInstruction(ref IrFunction ir, IrIndex instrIndex)
+void removeInstruction(IrFunction* ir, IrIndex instrIndex)
 {
-	IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instrIndex);
+	if (ir.prevInstr(instrIndex).isInstruction)
+		ir.nextInstr(ir.prevInstr(instrIndex)) = ir.nextInstr(instrIndex);
+	else if (ir.prevInstr(instrIndex).isBasicBlock)
+		ir.getBlock(ir.prevInstr(instrIndex)).firstInstr = ir.nextInstr(instrIndex);
+	else assert(false);
 
-	if (instrHeader.prevInstr.isInstruction)
-		ir.get!IrInstrHeader(instrHeader.prevInstr).nextInstr = instrHeader.nextInstr;
-	else if (instrHeader.prevInstr.isBasicBlock)
-		ir.getBlock(instrHeader.prevInstr).firstInstr = instrHeader.nextInstr;
-
-	if (instrHeader.nextInstr.isInstruction)
-		ir.get!IrInstrHeader(instrHeader.nextInstr).prevInstr = instrHeader.prevInstr;
-	else if (instrHeader.nextInstr.isBasicBlock)
-		ir.getBlock(instrHeader.nextInstr).lastInstr = instrHeader.prevInstr;
+	if (ir.nextInstr(instrIndex).isInstruction)
+		ir.prevInstr(ir.nextInstr(instrIndex)) = ir.prevInstr(instrIndex);
+	else if (ir.nextInstr(instrIndex).isBasicBlock)
+		ir.getBlock(ir.nextInstr(instrIndex)).lastInstr = ir.prevInstr(instrIndex);
+	else assert(false);
 }
 
-void removeUser(ref CompilationContext context, ref IrFunction ir, IrIndex user, IrIndex used) {
+void removeUser(CompilationContext* context, IrFunction* ir, IrIndex user, IrIndex used) {
 	assert(used.isDefined, "used is undefined");
 	final switch (used.kind) with(IrValueKind) {
 		case none: assert(false, "removeUser none");
@@ -199,14 +360,9 @@ struct VregIterator
 {
 	IrFunction* ir;
 	int opApply(scope int delegate(IrIndex, ref IrVirtualRegister) dg) {
-		IrIndex next = ir.firstVirtualReg;
-		while (next.isDefined)
-		{
-			IrVirtualRegister* vreg = &ir.getVirtReg(next);
-			if (int res = dg(next, *vreg))
+		foreach(size_t i, ref IrVirtualRegister vreg; ir.vregPtr[0..ir.numVirtualRegisters])
+			if (int res = dg(IrIndex(cast(uint)i, IrValueKind.virtualRegister), vreg))
 				return res;
-			next = vreg.nextVirtReg;
-		}
 		return 0;
 	}
 }
@@ -227,14 +383,16 @@ struct BlockReverseIterator
 	}
 }
 
-void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
+void validateIrFunction(CompilationContext* context, IrFunction* ir)
 {
-	scope(failure) dumpFunction(&context, &ir);
+	scope(failure) dumpFunction(context, ir);
 
 	auto funcInstrInfos = allInstrInfos[ir.instructionSet];
 
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
+		context.assertf(blockIndex.storageUintIndex < ir.numBasicBlocks, "basic block out of bounds %s", blockIndex);
+
 		if (!block.isSealed)
 		{
 			context.internal_error("Unsealed basic block %s", blockIndex);
@@ -275,7 +433,7 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 
 			if (argUser.isInstruction)
 			{
-				foreach (i, IrIndex instrArg; ir.get!IrInstrHeader(argUser).args)
+				foreach (i, IrIndex instrArg; ir.get!IrInstrHeader(argUser).args(ir))
 					if (instrArg == arg)
 						++timesUsed;
 			}
@@ -345,6 +503,7 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 			size_t numPredecessors = 0;
 			foreach(IrIndex predIndex; block.predecessors.range(ir))
 			{
+				context.assertf(predIndex.storageUintIndex < ir.numBasicBlocks, "basic block out of bounds %s", predIndex);
 				++numPredecessors;
 			}
 			context.assertf(numPredecessors == block.predecessors.length,
@@ -361,14 +520,14 @@ void validateIrFunction(ref CompilationContext context, ref IrFunction ir)
 
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
 		{
-			foreach (i, IrIndex arg; instrHeader.args)
+			foreach (i, IrIndex arg; instrHeader.args(ir))
 			{
 				checkArg(instrIndex, arg);
 			}
 
 			if (instrHeader.hasResult)
 			{
-				checkResult(instrIndex, instrHeader.result);
+				checkResult(instrIndex, instrHeader.result(ir));
 			}
 
 			if (funcInstrInfos[instrHeader.op].isBlockExit)

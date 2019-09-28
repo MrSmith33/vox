@@ -300,7 +300,7 @@ struct LinearScan
 		resolve(fun);
 		genSaveCalleeSavedRegs(fun.backendData.stackLayout);
 
-		if (context.validateIr) validateIrFunction(*context, *lir);
+		if (context.validateIr) validateIrFunction(context, lir);
 
 		unhandledStorage = unhandled.release;
 
@@ -424,7 +424,7 @@ struct LinearScan
 				{
 					// register available for the whole interval
 					currentIt.reg = hintReg;
-					currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(*context, currentIt.definition), context);
+					currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(context, currentIt.definition), context);
 					physRegs.markAsUsed(hintReg);
 					version(RAPrint) writefln("    alloc hint %s", IrIndexDump(hintReg, *context, *lir));
 					return true;
@@ -438,7 +438,7 @@ struct LinearScan
 			if (currentEnd < maxPos)
 			{
 				currentIt.reg = reg;
-				currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(*context, currentIt.definition), context);
+				currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(context, currentIt.definition), context);
 				physRegs.markAsUsed(reg);
 				version(RAPrint) writefln("    alloc %s", IrIndexDump(reg, *context, *lir));
 				return true;
@@ -449,7 +449,7 @@ struct LinearScan
 				version(RAPrint) writefln("    alloc %s + split at %s", IrIndexDump(reg, *context, *lir), maxPos);
 				//splitBefore(currentId, maxPos, unhandled);
 				//currentIt.reg = reg;
-				//currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(*context, currentIt.definition), context);
+				//currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(context, currentIt.definition), context);
 				//physRegs.markAsUsed(reg);
 				return false;
 			}
@@ -582,12 +582,12 @@ struct LinearScan
 		{
 			// spill intervals that currently block reg
 			currentIt.reg = reg;
-			currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(*context, currentIt.definition), context);
+			currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(context, currentIt.definition), context);
 			physRegs.markAsUsed(reg);
 
 			//	split active interval for reg at position
 			IntervalIndex activeIndex = physRegs[reg].activeInterval;
-			context.assertf(!activeIndex.isNull, "%s", IrIndexDump(reg, *context, *lir)); // null means that it is fixed interval. But we filter out fixed interval above
+			context.assertf(!activeIndex.isNull, "%s", IrIndexDump(reg, context, lir)); // null means that it is fixed interval. But we filter out fixed interval above
 			splitBefore(activeIndex, currentStart, unhandled);
 
 			//	split any inactive interval for reg at the end of its lifetime hole
@@ -628,7 +628,7 @@ struct LinearScan
 
 	void assignSpillSlot(ref StackLayout stackLayout, LiveInterval* it)
 	{
-		IrIndex type = lir.getValueType(*context, it.definition);
+		IrIndex type = lir.getValueType(context, it.definition);
 		IrIndex slot = stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
 		writefln("assignSpillSlot %s %s", it.definition, slot);
 		it.reg = slot;
@@ -642,27 +642,27 @@ struct LinearScan
 		// fix uses first, because we may copy arg to definition below
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
 		{
-			foreach (size_t i, IrIndex userIndex; vreg.users.range(*lir))
+			foreach (size_t i, IrIndex userIndex; vreg.users.range(lir))
 			{
 				final switch (userIndex.kind) with(IrValueKind)
 				{
 					case none, listItem, virtualRegister, physicalRegister, constant, global, basicBlock, stackSlot, type, func, constantAggregate: assert(false);
 					case instruction:
-						int pos = live.linearIndicies[userIndex];
-						IrIndex reg = live.getRegFor(vregIndex, pos, lir);
-						foreach (ref IrIndex arg; lir.get!IrInstrHeader(userIndex).args)
+						int pos = live.linearIndicies.instr(userIndex);
+						IrIndex reg = live.getRegFor(vregIndex, pos);
+						foreach (ref IrIndex arg; lir.get!IrInstrHeader(userIndex).args(lir))
 							if (arg == vregIndex)
 							{
 								arg = reg;
 							}
 						break;
 					case phi:
-						foreach (size_t i, ref IrPhiArg phiArg; lir.get!IrPhi(userIndex).args(*lir))
+						foreach (size_t i, ref IrPhiArg phiArg; lir.get!IrPhi(userIndex).args(lir))
 							if (phiArg.value == vregIndex)
 							{
 								IrIndex lastInstr = lir.getBlock(phiArg.basicBlock).lastInstr;
-								int pos = live.linearIndicies[lastInstr];
-								IrIndex reg = live.getRegFor(vregIndex, pos, lir);
+								int pos = live.linearIndicies.instr(lastInstr);
+								IrIndex reg = live.getRegFor(vregIndex, pos);
 								phiArg.value = reg;
 							}
 						break;
@@ -677,11 +677,11 @@ struct LinearScan
 			switch(vreg.definition.kind) with(IrValueKind)
 			{
 				case instruction:
-					int pos = live.linearIndicies[vreg.definition];
-					IrIndex reg = live.getRegFor(vregIndex, pos, lir);
+					int pos = live.linearIndicies.instr(vreg.definition);
+					IrIndex reg = live.getRegFor(vregIndex, pos);
 
 					IrInstrHeader* instrHeader = &lir.get!IrInstrHeader(vreg.definition);
-					instrHeader.result = reg;
+					instrHeader.result(lir) = reg;
 					InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
 
 					// Insert mov for instructions requiring two-operand form (like x86 xor)
@@ -716,9 +716,9 @@ struct LinearScan
 						//     output: "r1 = op r1 r1"
 						// }
 
-						IrIndex r1 = instrHeader.result;
-						IrIndex r2 = instrHeader.args[0];
-						IrIndex r3 = instrHeader.args[1];
+						IrIndex r1 = instrHeader.result(lir);
+						IrIndex r2 = instrHeader.arg(lir, 0);
+						IrIndex r3 = instrHeader.args(lir)[1];
 
 						if ( !sameIndexOrPhysReg(r2, r3) ) // r2 != r3
 						{
@@ -730,8 +730,8 @@ struct LinearScan
 							{
 								if (instrInfo.isCommutative) // r1 = op r1 r2
 								{
-									instrHeader.args[0] = r1;
-									instrHeader.args[1] = r2;
+									instrHeader.arg(lir, 0) = r1;
+									instrHeader.args(lir)[1] = r2;
 								}
 								else
 								{
@@ -748,7 +748,7 @@ struct LinearScan
 								InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
 								builder.insertBeforeInstr(vreg.definition, instr.instruction);
 								// r1 = op r1 r3
-								instrHeader.args[0] = r1;
+								instrHeader.arg(lir, 0) = r1;
 							}
 						}
 						else // r2 == r3
@@ -761,12 +761,12 @@ struct LinearScan
 								builder.insertBeforeInstr(vreg.definition, instr.instruction);
 							}
 							// r1 = op r1 r1
-							instrHeader.args[0] = r1;
+							instrHeader.arg(lir, 0) = r1;
 						}
 
 						// validation
-						context.assertf(sameIndexOrPhysReg(instrHeader.result, instrHeader.args[0]),
-							"two-operand form not ensured res(%s) != arg0(%s)", IrIndexDump(instrHeader.result, *context, *lir), IrIndexDump(instrHeader.args[0], *context, *lir));
+						context.assertf(sameIndexOrPhysReg(instrHeader.result(lir), instrHeader.arg(lir, 0)),
+							"two-operand form not ensured res(%s) != arg0(%s)", IrIndexDump(instrHeader.result(lir), context, lir), IrIndexDump(instrHeader.arg(lir, 0), context, lir));
 					}
 
 					if (instrInfo.isResultInDst && instrHeader.numArgs == 1)
@@ -777,8 +777,8 @@ struct LinearScan
 						// output: r1 = r2
 						// output: r1 = op r1
 						//
-						IrIndex r1 = instrHeader.result;
-						IrIndex r2 = instrHeader.args[0];
+						IrIndex r1 = instrHeader.result(lir);
+						IrIndex r2 = instrHeader.arg(lir, 0);
 
 						if ( !sameIndexOrPhysReg(r1, r2) )
 						{
@@ -786,14 +786,14 @@ struct LinearScan
 							InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
 							builder.insertBeforeInstr(vreg.definition, instr.instruction);
 						}
-						instrHeader.args[0] = r1;
+						instrHeader.arg(lir, 0) = r1;
 					}
 
 					break;
 				case phi:
 					IrPhi* irPhi = &lir.get!IrPhi(vreg.definition);
-					int pos = live.linearIndicies[irPhi.blockIndex];
-					IrIndex reg = live.getRegFor(vregIndex, pos, lir);
+					int pos = live.linearIndicies.basicBlock(irPhi.blockIndex);
+					IrIndex reg = live.getRegFor(vregIndex, pos);
 					irPhi.result = reg;
 					break;
 				default: assert(false);
@@ -823,6 +823,8 @@ struct LinearScan
 	{
 		version(RAPrint_resolve) writefln("resolve");
 
+		//dumpFunction(context, lir);
+
 		MoveSolver moveSolver = MoveSolver(builder, context, fun);
 		moveSolver.setup();
 		scope(exit) moveSolver.release();
@@ -842,13 +844,13 @@ struct LinearScan
 			{
 				IrIndex newBlock = builder.addBasicBlock;
 				version(RAPrint_resolve) writefln("Split critical edge %s -> %s with %s", predIndex, succIndex, newBlock);
-				foreach (ref IrIndex succ; predBlock.successors.range(*lir)) {
+				foreach (ref IrIndex succ; predBlock.successors.range(lir)) {
 					if (succ == succIndex) {
 						succ = newBlock;
 						break;
 					}
 				}
-				foreach (ref IrIndex pred; succBlock.predecessors.range(*lir)) {
+				foreach (ref IrIndex pred; succBlock.predecessors.range(lir)) {
 					if (pred == predIndex) {
 						pred = newBlock;
 						break;
@@ -867,8 +869,8 @@ struct LinearScan
 			// we have no linearIndicies for new blocks
 			if (predBlock.replacesCriticalEdge || succBlock.replacesCriticalEdge) return;
 
-			int succPos = live.linearIndicies[succIndex];
-			int predPos = live.linearIndicies[predBlock.lastInstr];
+			int succPos = live.linearIndicies.basicBlock(succIndex);
+			int predPos = live.linearIndicies.instr(predBlock.lastInstr);
 
 			moveSolver.onEdge();
 
@@ -883,22 +885,22 @@ struct LinearScan
 				if (!interval.isSplit) continue; // skip intervals that weren't split
 
 				IrIndex vreg = interval.definition;
-				IrIndex succLoc = live.getRegFor(vreg, succPos, lir);
-				IrIndex predLoc = live.getRegFor(vreg, predPos, lir);
+				IrIndex succLoc = live.getRegFor(vreg, succPos);
+				IrIndex predLoc = live.getRegFor(vreg, predPos);
 				if (!predLoc.isDefined) continue; // inteval doesn't exist in pred
 
 				if (succLoc != predLoc)
 				{
-					version(RAPrint_resolve) writefln("    vreg %s, pred %s succ %s", vreg, IrIndexDump(predLoc, *context, *lir), IrIndexDump(succLoc, *context, *lir));
+					version(RAPrint_resolve) writefln("    vreg %s, pred %s succ %s", vreg, IrIndexDump(predLoc, context, lir), IrIndexDump(succLoc, context, lir));
 					IrArgSize argSize = getValueTypeArgSize(vreg, lir, context);
 					moveSolver.addMove(predLoc, succLoc, argSize);
 				}
 			}
 
-			foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(*lir))
+			foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(lir))
 			{
 				version(RAPrint_resolve) writef("    phi %s res %s", phiIndex, phi.result);
-				foreach (size_t arg_i, ref IrPhiArg arg; phi.args(*lir))
+				foreach (size_t arg_i, ref IrPhiArg arg; phi.args(lir))
 				{
 					if (arg.basicBlock == predIndex)
 					{
@@ -938,7 +940,7 @@ struct LinearScan
 
 		foreach (IrIndex succIndex, ref IrBasicBlock succBlock; lir.blocks)
 		{
-			foreach (IrIndex predIndex; succBlock.predecessors.range(*lir))
+			foreach (IrIndex predIndex; succBlock.predecessors.range(lir))
 			{
 				IrBasicBlock* predBlock = &lir.getBlock(predIndex);
 				onEdge(predIndex, *predBlock, succIndex, succBlock);
