@@ -55,7 +55,6 @@ struct IrBuilder
 
 	// Stores current definition of variable per block during SSA-form IR construction.
 	private HashMap!(BlockVarPair, IrIndex, BlockVarPair.init) blockVarDef;
-	private HashMap!(IrIndex, IrIndex, IrIndex.init) blockToIrIncompletePhi;
 
 	private uint nextIrVarIndex;
 
@@ -64,7 +63,6 @@ struct IrBuilder
 
 	void free() {
 		blockVarDef.free(context.arrayArena);
-		blockToIrIncompletePhi.free(context.arrayArena);
 	}
 
 	private void setPointers(IrFunction* ir, CompilationContext* context)
@@ -292,18 +290,17 @@ struct IrBuilder
 	/// Sealed block is not necessarily filled.
 	/// Ignores already sealed blocks.
 	void sealBlock(IrIndex basicBlockToSeal) {
-		//dumpFunction(*ir, *context);
+		//dumpFunction(context, ir);
 		version(IrPrint) writefln("[IR] seal %s", basicBlockToSeal);
+
 		IrBasicBlock* bb = &ir.getBlock(basicBlockToSeal);
 		if (bb.isSealed) return;
-		IrIndex index = blockToIrIncompletePhi.get(basicBlockToSeal, IrIndex());
-		while (index.isDefined)
-		{
-			IrIncompletePhi ip = context.getTemp!IrIncompletePhi(index);
-			addPhiOperands(basicBlockToSeal, ip.var, ip.phi);
-			index = ip.nextListItem;
+
+		// all phis added to this block are incomplete and need to get their arguments
+		foreach(IrIndex phiIndex, ref IrPhi phi; bb.phis(ir)) {
+			addPhiOperands(basicBlockToSeal, phi.var, phiIndex);
 		}
-		blockToIrIncompletePhi.remove(context.arrayArena, basicBlockToSeal);
+
 		bb.isSealed = true;
 	}
 
@@ -824,16 +821,6 @@ struct IrBuilder
 			// Incomplete CFG
 			IrIndex phiIndex = addPhi(blockIndex, getVarType(variable), variable);
 			value = ir.get!IrPhi(phiIndex).result;
-			bool wasCreated;
-			IrIndex incompletePhi = context.appendTemp!IrIncompletePhi;
-			IrIndex* phi = blockToIrIncompletePhi.getOrCreate(context.arrayArena, blockIndex, wasCreated, incompletePhi);
-			if (wasCreated)
-				context.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex);
-			else
-			{
-				context.getTemp!IrIncompletePhi(incompletePhi) = IrIncompletePhi(variable, phiIndex, *phi);
-				*phi = incompletePhi;
-			}
 		}
 		else
 		{

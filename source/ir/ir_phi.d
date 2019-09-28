@@ -15,7 +15,7 @@ struct IrPhi
 	IrIndex blockIndex;
 	IrIndex result;
 	IrIndex var;
-	IrIndex nextPhi; // if incomplete, points to next incomplete phi
+	IrIndex nextPhi;
 	IrIndex prevPhi;
 	IrIndex firstArgListItem;
 

@@ -133,9 +133,13 @@ struct PhiIterator
 		while (next.isDefined)
 		{
 			IrPhi* phi = &ir.get!IrPhi(next);
-			if (int res = dg(next, *phi))
-				return res;
+			IrIndex indexCopy = next;
+
+			// save current before invoking delegate, which can remove current phi
 			next = phi.nextPhi;
+
+			if (int res = dg(indexCopy, *phi))
+				return res;
 		}
 		return 0;
 	}

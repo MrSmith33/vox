@@ -92,15 +92,14 @@ o dll linking
 - small pointer type when basic type is store inline + pointer level for more than 1 indirection level
 - stack layout per IR (use alloca?)
 - don't store self-reference arguments in phi functions
-- store virtual registers, phi functions with arguments in separate arenas
++ store virtual registers, phi functions with arguments in separate arenas
 	vreg will shrink from 7 slots to 4 slots
-	phi will shrink from 5 slots to 2 slots
-	- need array arena for IR with per-function slices
+	+ need array arena for IR with per-function slices
 
 [Register allocator]
 + Do liveness + RA together on each function
 + reg alloc performance regression 1.9s -> 6.2s (Probably due to not reusing liveness info) [fixed by reusing state across all functions]
-- store use arrays in liveness info
++ store use arrays in liveness info
 - store fixed intervals separately from virtual register intervals while doing RA
 - Use array for unhandled list
 - Add special machine description for testing RA
