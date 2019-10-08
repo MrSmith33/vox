@@ -74,7 +74,7 @@ struct IrIndex
 			uint,        "physRegSize",       8,
 			// physical register class
 			uint,        "physRegClass",      8,
-			IrValueKind, "",                  4  // index kind
+			IrValueKind, "",                  4  // index `kind`
 		));
 
 		// is 0 for undefined index

@@ -7,6 +7,7 @@ import all;
 import tests.passing;
 import tests.failing;
 import tests.exe;
+import tests.reg_alloc;
 public import all : HostSymbol, DllModule;
 
 public import std.format : formattedWrite, format;
@@ -14,7 +15,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(test40);
+	Test test = makeTest!(reg_alloc2);//test90
 	string filterFuncName;
 
 	Driver driver;
@@ -31,17 +32,19 @@ void runDevTests()
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	driver.context.printSource = true;
+	//driver.context.printSource = true;
 	//driver.context.printLexemes = true;
 	//driver.context.printAstFresh = true;
-	driver.context.printAstSema = true;
+	//driver.context.printAstSema = true;
 	//driver.context.runTesters = false;
+	//driver.context.debugRegAlloc = true;
 
-	driver.context.printIr = true;
+
+	//driver.context.printIr = true;
 	//driver.context.printIrOpt = true;
 	//driver.context.printLir = true;
-	//driver.context.printLirRA = true;
 	//driver.context.printLiveIntervals = true;
+	//driver.context.printLirRA = true;
 	//driver.context.printStaticData = true;
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
@@ -68,6 +71,8 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	driver.context.buildType = BuildType.jit;
 	driver.context.buildDebug = false;
 	driver.context.validateIr = true;
+	//driver.context.debugRegAlloc = true;
+
 	//driver.context.printAstSema = true;
 	// Is slow when doing failing tests
 	//driver.context.printTraceOnError = true;
@@ -77,15 +82,18 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	dumpSettings.printBlockFlags = true;
 
 	Test[] jitTests = tests.passing.passingTests ~ tests.failing.failingTests;
+	Test[] regAllocTests = tests.reg_alloc.regAllocTests;
 	Test[] exeTests = tests.exe.exeTests;
 	//jitTests = jitTests[19..$];
 
-	size_t numTests = jitTests.length + exeTests.length;
+	size_t numTests = jitTests.length + regAllocTests.length + exeTests.length;
 	size_t numSuccessfulTests;
 	writefln("Running %s tests", numTests);
+
+	size_t indexOffset = 0;
 	bool failed = false;
 
-	void runTests(size_t indexOffset, Test[] tests)
+	void runTests(Test[] tests)
 	{
 		foreach(size_t i, ref Test test; tests)
 		{
@@ -105,21 +113,28 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 				++numSuccessfulTests;
 			}
 		}
+		indexOffset += tests.length;
 	}
 
 	auto time1 = currTime;
 
-	runTests(0, jitTests);
-
+	runTests(jitTests);
 	auto time2 = currTime;
+
+	driver.context.debugRegAlloc = true;
+	runTests(regAllocTests);
+	driver.context.debugRegAlloc = false;
+	auto time3 = currTime;
+
 	driver.context.buildType = BuildType.exe;
 	driver.passes = exePasses;
-	runTests(jitTests.length, exeTests);
+	runTests(exeTests);
+	auto time4 = currTime;
 
-	auto time3 = currTime;
 	Duration durationJit = time2-time1;
-	Duration durationExe = time3-time2;
-	Duration durationTotal = time3-time1;
+	Duration durationRA = time3-time2;
+	Duration durationExe = time4-time3;
+	Duration durationTotal = time4-time1;
 
 	auto startReleaseTime = currTime;
 	driver.releaseMemory;
@@ -128,6 +143,10 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	writefln("jit(%s tests) %ss",
 		jitTests.length,
 		scaledNumberFmt(durationJit),
+		);
+	writefln("RA(%s tests) %ss",
+		regAllocTests.length,
+		scaledNumberFmt(durationRA),
 		);
 	writefln("exe(%s tests) %ss",
 		exeTests.length,

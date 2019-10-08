@@ -179,30 +179,30 @@ immutable InstrInfo[] amd64InstrInfos = gatherInstrInfos!Amd64Opcode;
 private alias _ii = InstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) add,
-	@_ii(0,2,IFLG.isResultInDst) sub,
-	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) mul,
-	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) imul,
-	@_ii(0,2) div,
-	@_ii(0,2) idiv,
+	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) add,
+	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst) sub,
+	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) mul,
+	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) imul,
+	@_ii(0,3,IFLG.hasResult|IFLG.allMemArg) div,
+	@_ii(0,3,IFLG.hasResult|IFLG.allMemArg) idiv,
 	@_ii(0,0) divsx,
-	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) or,
-	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) and,
-	@_ii(0,2,IFLG.isResultInDst|IFLG.isCommutative) xor,
-	@_ii(0,1,IFLG.isResultInDst) shl,
-	@_ii(0,1,IFLG.isResultInDst) shr,
-	@_ii(0,1,IFLG.isResultInDst) sar,
+	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) and,
+	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) or,
+	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) xor,
+	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) shl,
+	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) shr,
+	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) sar,
 	@_ii() lea,
 
-	@_ii(0,1,IFLG.isMov) mov, // rr, ri
-	@_ii(0,1,IFLG.isLoad) load,
+	@_ii(0,1,IFLG.hasResult|IFLG.isMov) mov, // rr, ri
+	@_ii(0,1,IFLG.hasResult|IFLG.isLoad) load,
 	@_ii(0,2,IFLG.isStore) store,
 	@_ii() movsx,
 	@_ii() movzx,
 	@_ii() xchg,
 
-	@_ii(0,1,IFLG.isResultInDst) not,
-	@_ii(0,1,IFLG.isResultInDst) neg,
+	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) not,
+	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) neg,
 
 	@_ii() cmp,
 	@_ii() test,
@@ -213,8 +213,8 @@ enum Amd64Opcode : ushort {
 	// high-level branches
 	@_ii(0,2,IFLG.isBranch | IFLG.isBlockExit) bin_branch,
 	@_ii(0,2,IFLG.isBranch | IFLG.isBlockExit) un_branch,
-	@_ii(0,1) set_unary_cond,
-	@_ii(0,2) set_binary_cond,
+	@_ii(0,1,IFLG.hasResult) set_unary_cond,
+	@_ii(0,2,IFLG.hasResult) set_binary_cond,
 
 	@_ii() setcc,
 
@@ -254,8 +254,7 @@ alias LirAmd64Instr_store = IrGenericInstr!(Amd64Opcode.store, 2); // mov mr/mi
 alias LirAmd64Instr_xchg = IrGenericInstr!(Amd64Opcode.xchg, 2); // xchg mr/mr
 alias LirAmd64Instr_not = IrGenericInstr!(Amd64Opcode.not, 1, IFLG.hasResult | IFLG.isResultInDst);
 alias LirAmd64Instr_neg = IrGenericInstr!(Amd64Opcode.neg, 1, IFLG.hasResult | IFLG.isResultInDst);
-// call layout
-// - header
+// call payload layout
 // - result (if callee is non-void)
 // - arg0 (function or function pointer)
 // - arg1
@@ -311,18 +310,18 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref CompilationC
 
 	final switch(i.kind) with(IrValueKind) {
 		case none: sink.formattedWrite("0x%X", i.asUint); break;
-		case listItem: sink.formattedWrite("l.%s", i.storageUintIndex); break;
-		case instruction: sink.formattedWrite("i.%s", i.storageUintIndex); break;
+		case listItem: sink.formattedWrite("l%s", i.storageUintIndex); break;
+		case instruction: sink.formattedWrite("i%s", i.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
 		case constant: sink.formattedWrite("%s", context.constants.get(i).i64); break;
-		case constantAggregate: sink.formattedWrite("cagg.%s", i.storageUintIndex); break;
-		case global: sink.formattedWrite("g.%s", i.storageUintIndex); break;
-		case phi: sink.formattedWrite("phi.%s", i.storageUintIndex); break;
-		case stackSlot: sink.formattedWrite("s.%s", i.storageUintIndex); break;
-		case virtualRegister: sink.formattedWrite("v.%s", i.storageUintIndex); break;
+		case constantAggregate: sink.formattedWrite("cagg%s", i.storageUintIndex); break;
+		case global: sink.formattedWrite("g%s", i.storageUintIndex); break;
+		case phi: sink.formattedWrite("phi%s", i.storageUintIndex); break;
+		case stackSlot: sink.formattedWrite("s%s", i.storageUintIndex); break;
+		case virtualRegister: sink.formattedWrite("v%s", i.storageUintIndex); break;
 		case physicalRegister: sink(reg_names[i.physRegClass][i.physRegSize][i.physRegIndex]); break;
 		case type: dumpIrType(sink, context, i); break;
 		case variable: assert(false);
-		case func: sink.formattedWrite("f.%s", i.storageUintIndex); break;
+		case func: sink.formattedWrite("f%s", i.storageUintIndex); break;
 	}
 }

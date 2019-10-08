@@ -87,6 +87,14 @@ enum IrInstrFlags : uint {
 	/// If order of arguments doesn't change the result
 	isCommutative = 1 << 12,
 	isCall = 1 << 13,
+	/// For reg allocator
+	/// For instructions with single arg no restrictions
+	/// For binary instructions - only one of two args or one of result or arg may be memory
+	/// If not set, then no args/results can be memory
+	/// If only one of non-fixed arguments can be memory operand
+	singleMemArg = 1 << 14,
+	/// If all non-fixed arguments can be memory operands
+	allMemArg = 1 << 15,
 }
 
 alias IFLG = IrInstrFlags;

@@ -621,7 +621,7 @@ struct CodeEmitter
 		switch(moveType)
 		{
 			default:
-				context.internal_error("Invalid move to %s from %s", dst.kind, src.kind);
+				context.internal_error("Invalid move from %s to %s", IrIndexDump(dst, context, lir), IrIndexDump(src, context, lir));
 				assert(false);
 
 			case MoveType.const_to_reg:

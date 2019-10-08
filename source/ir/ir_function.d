@@ -212,6 +212,11 @@ struct IrFunction
 		}
 	}
 
+	void removeAllPhis() {
+		foreach (IrIndex index, ref IrBasicBlock block; blocks)
+			block.removeAllPhis;
+	}
+
 	void assignSequentialBlockIndices()
 	{
 		uint index;
@@ -248,9 +253,11 @@ struct IrFunction
 void dupIrStorage(IrFunction* ir, CompilationContext* c)
 {
 	void dupStorage(T)(ref Arena!T arena, ref T* ptr, uint length) {
+		//writefln("arena %s %s..%s %s", arena.length, ptr, ptr + length, length);
 		T[] buf = ptr[0..length];
 		ptr = arena.nextPtr;
 		arena.put(buf);
+		//writefln("arena %s %s..%s %s", arena.length, ptr, ptr + length, length);
 	}
 
 	dupStorage(c.irStorage.instrHeaderBuffer, ir.instrPtr, ir.numInstructions);

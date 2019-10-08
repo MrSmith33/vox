@@ -20,6 +20,10 @@ struct IrPhi
 	IrIndex firstArgListItem;
 
 	PhiArgIterator args(IrFunction* ir) { return PhiArgIterator(ir, firstArgListItem); }
+
+	bool isRemoved() {
+		return blockIndex.isUndefined;
+	}
 }
 
 struct PhiArgIterator

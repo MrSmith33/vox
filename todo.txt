@@ -95,12 +95,13 @@ o dll linking
 + store virtual registers, phi functions with arguments in separate arenas
 	vreg will shrink from 7 slots to 4 slots
 	+ need array arena for IR with per-function slices
+- make sure that blocks for splitting critical edges are inserted after successor
 
 [Register allocator]
 + Do liveness + RA together on each function
 + reg alloc performance regression 1.9s -> 6.2s (Probably due to not reusing liveness info) [fixed by reusing state across all functions]
 + store use arrays in liveness info
-- store fixed intervals separately from virtual register intervals while doing RA
++ store fixed intervals separately from virtual register intervals while doing RA
 - Use array for unhandled list
 - Add special machine description for testing RA
 - Write RA test suite

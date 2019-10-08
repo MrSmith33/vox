@@ -187,6 +187,7 @@ struct IrBuilder
 
 		// all removed regs were moved to the end of array
 		ir.numVirtualRegisters -= numRemovedVregs;
+		//writefln("remove %s %s, %s", ir.numVirtualRegisters, context.irStorage.vregBuffer.length, numRemovedVregs);
 		context.irStorage.vregBuffer.unput(numRemovedVregs);
 	}
 
@@ -230,6 +231,7 @@ struct IrBuilder
 		IrIndex result = IrIndex(ir.numVirtualRegisters, IrValueKind.virtualRegister);
 		ir.numVirtualRegisters += 1;
 		context.irStorage.vregBuffer.voidPut(1);
+		//writefln("add %s %s", ir.numVirtualRegisters, context.irStorage.vregBuffer.length);
 		return result;
 	}
 
@@ -751,12 +753,13 @@ struct IrBuilder
 	private void removeVirtualRegister(IrIndex virtRegIndex)
 	{
 		version(IrPrint) writefln("[IR] remove vreg %s", virtRegIndex);
+		if (!ir.getVirtReg(virtRegIndex).isRemoved)
+			++numRemovedVregs;
 		// note: removing register while blockVarDef table contains values of this register is difficult
 		// postpone removal until the end of IR construction
 		// also, this way we can return memory from removed registers to arena
 		// we will do removal after IR construction in `finalizeIr`
 		ir.getVirtReg(virtRegIndex).type = virtRegIndex; // mark as removed
-		++numRemovedVregs;
 	}
 
 	private void moveVreg(IrIndex fromSlot, IrIndex toSlot) {
@@ -811,6 +814,9 @@ struct IrBuilder
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
 			}
 		}
+
+		// mark as removed
+		phi.blockIndex = IrIndex();
 	}
 
 	// Algorithm 2: Implementation of global value numbering
@@ -898,6 +904,9 @@ struct IrBuilder
 	// Algorithm 3: Detect and recursively remove a trivial φ function
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex) {
+		// skip removed phi
+		if (ir.get!IrPhi(phiIndex).isRemoved) return IrIndex();
+
 		IrPhiArg same;
 		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
 		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(ir))
@@ -1039,6 +1048,7 @@ struct IrBuilder
 				case constant, constantAggregate: assert(false);
 				case global: assert(false);
 				case phi:
+					if (ir.get!IrPhi(phiUserIndex).isRemoved) continue; // skip
 					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiUserIndex).args(ir))
 					{
 						if (phiArg.value == what)

@@ -66,7 +66,7 @@ void pass_live_intervals(CompilationContext* context, ModuleDeclNode* mod, Funct
 
 	if (context.printLiveIntervals && context.printDumpOf(fun))
 	{
-		liveness.dump(context, fun);
+		liveness.dump(context, lirData);
 
 		FuncDumpSettings set;
 		set.printLiveness = true;
@@ -188,9 +188,11 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			if (instrHeader.hasResult) {
 				if (result.isVirtReg) {
 					liveness.get(result).setFrom(context, linearInstrIndex);
+					LiveInterval* it = liveness.vint(result);
+					it.prependUse(UsePosition(linearInstrIndex, UseKind.instruction));
 					liveRemove(result);
 				} else if (result.isPhysReg && !instrInfo.isMov) {
-					int physRegResultOffset = linearInstrIndex+ENUM_STEP;
+					uint physRegResultOffset = linearInstrIndex+ENUM_STEP;
 					// needed to account for sub/add rsp instructions around call
 					if (instrHeader.extendFixedResultRange)
 						physRegResultOffset += ENUM_STEP;
@@ -199,7 +201,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 				}
 			}
 
-			int physRegArgsOffset = 0;
+			uint physRegArgsOffset = 0;
 			foreach(IrIndex arg; args) {
 				if (arg.isVirtReg) {
 					LiveInterval* it = liveness.vint(arg);
@@ -312,7 +314,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 	}
 
 	// Reset length from 0 to actual length
-	liveness.setIntervalUsesLength(context, ir);
+	liveness.resetIntervalUsesLength(context, ir);
 }
 
 struct LiveBitmap
@@ -357,7 +359,10 @@ struct LiveBitmap
 	}
 }
 
-enum MAX_USE_POS = int.max;
+// position 0 is owned by entry block and can't be owned by any phi function
+// so all use positions are > 0
+enum MIN_USE_POS = 0;
+enum MAX_USE_POS = (1 << 28) - 1;
 enum ENUM_STEP = 2;
 
 enum UseKind : ubyte {
@@ -390,13 +395,13 @@ struct UsePosition
 struct LiveInterval
 {
 	Array!LiveRange ranges;
-	Array!UsePosition uses;
+	UsePosition[] uses;
 
-	int from() {
+	uint from() {
 		if (ranges.length > 0) return ranges[0].from;
 		return MAX_USE_POS;
 	}
-	int to() {
+	uint to() {
 		if (ranges.length > 0) return ranges.back.to;
 		return MAX_USE_POS;
 	}
@@ -404,7 +409,7 @@ struct LiveInterval
 	IrIndex reg;
 	IrIndex definition; // phys or virt reg
 	IrIndex storageHint;
-	IntervalIndex parent; // null if is original interval (leftmost), otherwise points to original interval
+	IntervalIndex parent; // prev split interval to the left
 	IntervalIndex child; // next split interval to the right
 
 	bool isFixed() { return definition.isPhysReg; }
@@ -415,7 +420,7 @@ struct LiveInterval
 		import std.format : formattedWrite;
 		sink.formattedWrite("int(");
 		if (definition.isDefined) sink.formattedWrite("%s, ", definition);
-		sink.formattedWrite("%s", ranges);
+		sink.formattedWrite("%s, %s", ranges, uses);
 		if (!parent.isNull) sink.formattedWrite(", par %s", parent);
 		if (!child.isNull) sink.formattedWrite(", child %s", child);
 		sink(")");
@@ -428,7 +433,7 @@ struct LiveInterval
 
 	// returns rangeId pointing to range covering position or one to the right of pos.
 	// returns NULL if no ranges left after pos.
-	LiveRangeIndex getRightRange(int position)
+	LiveRangeIndex getRightRange(uint position)
 	{
 		foreach(i, range; ranges) {
 			if (position < range.to)
@@ -437,9 +442,18 @@ struct LiveInterval
 		return LiveRangeIndex.NULL;
 	}
 
+	LiveRangeIndex getRightRangeInclusive(uint position)
+	{
+		foreach(i, range; ranges) {
+			if (position <= range.to)
+				return LiveRangeIndex(i);
+		}
+		return LiveRangeIndex.NULL;
+	}
+
 	// returns rangeId pointing to range covering position or one to the left of pos.
 	// returns NULL if empty interval or no ranges to the left
-	LiveRangeIndex getLeftRange(int position)
+	LiveRangeIndex getLeftRange(uint position)
 	{
 		LiveRangeIndex result = LiveRangeIndex.NULL;
 		foreach(i, range; ranges) {
@@ -451,7 +465,7 @@ struct LiveInterval
 	}
 
 	// sets the definition position
-	void setFrom(CompilationContext* context, int from) {
+	void setFrom(CompilationContext* context, uint from) {
 		version(LivePrint) writefln("[LIVE] setFrom vreg.%s from %s", virtReg, from);
 
 		if (ranges.empty) { // can happen if vreg had no uses (it is probably dead or used in phi above definition)
@@ -464,12 +478,12 @@ struct LiveInterval
 	void prependUse(UsePosition use) {
 		//writefln("prependUse %s %s", definition, use);
 		uses[$-1] = use;
-		uses.unput(1);
+		--uses.length;
 	}
 
 	// bounds are from block start to block end of the same block
 	// from is always == to block start for virtual intervals
-	void addRange(CompilationContext* context, int from, int to)
+	void addRange(CompilationContext* context, uint from, uint to)
 	{
 		version(LivePrint) writefln("[LIVE] addRange %s [%s; %s)", definition, from, to);
 		LiveRange newRange = LiveRange(from, to);
@@ -534,7 +548,7 @@ struct LiveInterval
 		return closest;
 	}
 
-	bool coversPosition(int position)
+	bool coversPosition(uint position)
 	{
 		foreach(range; ranges) {
 			if (position < range.from)
@@ -547,7 +561,7 @@ struct LiveInterval
 	}
 
 	// internal. Returns true for exclusive end too
-	bool coversPosition_dump(int position)
+	bool coversPosition_dump(uint position)
 	{
 		foreach(range; ranges) {
 			if (position < range.from)
@@ -557,6 +571,18 @@ struct LiveInterval
 			// position >= to
 		}
 		return false;
+	}
+
+	// retains uses before `pos`, returns uses >= `pos`
+	UsePosition[] splitUsesBefore(uint pos) {
+		foreach(i, use; uses) {
+			if (use.pos >= pos) {
+				UsePosition[] copy = uses;
+				uses = uses[0..i];
+				return copy[i..$];
+			}
+		}
+		return null;
 	}
 }
 
@@ -572,10 +598,13 @@ struct LivenessInfo
 	/// instructionIndex -> seqIndex
 	/// blockIndex -> seqIndex
 	IrMirror!uint linearIndicies;
+	// maps even indicies to instructions and basic blocks
+	IrIndex[] evenIndexToIrIndex;
 	uint maxLinearIndex; // max value stored in linearIndicies
 
-	auto virtualIntervals() { return intervals[numFixedIntervals..intervals.length]; }
+	auto virtualIntervals() { return intervals[numFixedIntervals..$]; }
 	auto physicalIntervals() { return intervals[0..numFixedIntervals]; }
+	auto splitIntervals(IrFunction* ir) { return intervals[numFixedIntervals+ir.numVirtualRegisters..$]; }
 
 	LiveInterval* vint(size_t virtSeqIndex) { return &intervals[numFixedIntervals+virtSeqIndex]; }
 	LiveInterval* vint(IrIndex index) { return &intervals[numFixedIntervals + index.storageUintIndex]; }
@@ -611,34 +640,49 @@ struct LivenessInfo
 		// enumerate all basic blocks, instructions
 		// phi functions use index of the block
 		// we can assume all blocks to have at least single instruction (exit instruction)
-		uint enumerationIndex = 0;
+		evenIndexToIrIndex = cast(IrIndex[])context.tempBuffer.voidPut(ir.numBasicBlocks + ir.numInstructions);
+		uint index = 0;
 		foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 		{
-			version(LivePrint) writefln("[LIVE] %s %s", enumerationIndex, blockIndex);
+			version(LivePrint) writefln("[LIVE] %s %s", index * ENUM_STEP, blockIndex);
 			// Allocate index for block start
-			linearIndicies.basicBlock(blockIndex) = enumerationIndex;
-			enumerationIndex += ENUM_STEP;
+			linearIndicies.basicBlock(blockIndex) = index * ENUM_STEP;
+			evenIndexToIrIndex[index] = blockIndex;
+			++index;
 			// enumerate instructions
 			foreach (IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
 			{
-				version(LivePrint) writefln("[LIVE]   %s %s", enumerationIndex, instrIndex);
-				linearIndicies.instr(instrIndex) = enumerationIndex;
-				enumerationIndex += ENUM_STEP;
+				version(LivePrint) writefln("[LIVE]   %s %s", index * ENUM_STEP, instrIndex);
+				linearIndicies.instr(instrIndex) = index * ENUM_STEP;
+				evenIndexToIrIndex[index] = instrIndex;
+				++index;
 			}
 		}
-		maxLinearIndex = enumerationIndex;
+		maxLinearIndex = index * ENUM_STEP;
 	}
 
 	// First we set length
 	// Then we assign last element for each use and decrement the length
-	// At the end we set the length one more time
-	// This way uses are in correct order
+	// We track definition users for instructions
 	void setIntervalUsesLength(CompilationContext* context, IrFunction* ir) {
 		foreach (ref LiveInterval it; virtualIntervals)
 		{
 			IrVirtualRegister* vreg = &ir.getVirtReg(it.definition);
 			context.assertf(it.uses.length == 0, "non empty uses %s of %s; %s", it.uses.length, it.definition, it.uses);
-			it.uses.voidPut(context.arrayArena, vreg.users.length);
+			uint numUses = vreg.definition.isPhi ? vreg.users.length : vreg.users.length + 1; // with definition
+			it.uses = cast(UsePosition[])context.tempBuffer.voidPut(numUses);
+		}
+	}
+
+	// At the end we set the length one more time
+	// This way uses are in correct order
+	void resetIntervalUsesLength(CompilationContext* context, IrFunction* ir) {
+		foreach (ref LiveInterval it; virtualIntervals)
+		{
+			IrVirtualRegister* vreg = &ir.getVirtReg(it.definition);
+			context.assertf(it.uses.length == 0, "non empty uses %s of %s; %s", it.uses.length, it.definition, it.uses);
+			uint numUses = vreg.definition.isPhi ? vreg.users.length : vreg.users.length + 1; // with definition
+			it.uses = it.uses.ptr[0..numUses];
 		}
 	}
 
@@ -646,7 +690,20 @@ struct LivenessInfo
 		return IntervalIndex(it - &intervals.front());
 	}
 
-	IrIndex getRegFor(IrIndex index, int pos)
+	bool isBlockStartAt(IrFunction* ir, uint pos, ref IrIndex next) {
+		while (next.isDefined)
+		{
+			IrBasicBlock* block = &ir.getBlock(next);
+			uint blockFromPos = linearIndicies.basicBlock(next);
+			if (pos == blockFromPos) return true;
+			uint blockToPos = linearIndicies.instr(block.lastInstr);
+			if (pos <= blockToPos) return false;
+			next = block.nextBlock;
+		}
+		return false;
+	}
+
+	IrIndex getRegFor(IrIndex index, uint pos)
 	{
 		if (index.isVirtReg)
 		{
@@ -679,28 +736,54 @@ struct LivenessInfo
 		assert(false);
 	}
 
-	// returns new interval
-	IntervalIndex splitBefore(CompilationContext* context, IntervalIndex parentInterval, int before)
+	// returns new interval or old if no split is possible
+	IntervalIndex splitBefore(CompilationContext* context, IrFunction* lir, IntervalIndex parentInterval, uint before)
 	{
 		LiveInterval* it = &intervals[parentInterval];
-		LiveRangeIndex rightIndex = it.getRightRange(before);
-		return splitBefore(context, parentInterval, before, rightIndex);
+		uint optimalPos = before;//findSplitPos(context, lir, it, before);
+		LiveRangeIndex rightIndex = it.getRightRange(optimalPos-1);
+		//writefln("  splitBefore1 %s %s %s", parentInterval, optimalPos, rightIndex);
+		if (rightIndex == MAX_USE_POS) {
+			return parentInterval;
+		}
+		return splitBefore(context, parentInterval, optimalPos, rightIndex);
 	}
 
-	IntervalIndex splitBefore(CompilationContext* context, IntervalIndex parentInterval, int before, LiveRangeIndex rightIndex)
+	uint findSplitPos(CompilationContext* context, IrFunction* lir, LiveInterval* it, uint before)
 	{
-		//writefln("splitBefore %s %s", parentInterval, before);
+		uint minPos = it.from + 1;
+		uint maxPos = before;
+		IrIndex maxBlock;
+		uint maxBlockPos;
+
+		foreach (IrIndex blockIndex, ref IrBasicBlock block; lir.blocks)
+		{
+			uint blockPos = linearIndicies.basicBlock(blockIndex);
+			if (blockPos > maxPos) break;
+			maxBlockPos = blockPos;
+		}
+
+		// max pos between minPos and maxPos
+		if (maxBlockPos >= minPos) return maxBlockPos;
+
+		// no block boundaries found
+		return maxPos;
+	}
+
+	IntervalIndex splitBefore(CompilationContext* context, IntervalIndex parentInterval, uint before, LiveRangeIndex rightIndex)
+	{
 		LiveInterval* it = &intervals[parentInterval];
 		auto right = &it.ranges[rightIndex];
+		//writefln("  splitBefore %s %s %s", parentInterval, before, right.from);
 
 		assert(before >= it.from);
 
 		Array!LiveRange newRanges;
 
-		if (right.from < before)
+		if (right.from < before-1)
 		{
 			newRanges.put(context.arrayArena, LiveRange(before, right.to)); // piece of splitted range
-			right.to = before;
+			right.to = before-1;
 			foreach(range; it.ranges[rightIndex+1..$])
 				newRanges.put(context.arrayArena, range);
 			it.ranges.unput(it.ranges.length - rightIndex - 1); // dont remove splitted range
@@ -717,16 +800,22 @@ struct LivenessInfo
 
 		LiveInterval rightInterval = {
 			ranges : newRanges,
+			uses : it.splitUsesBefore(before-1),
 			definition : it.definition,
 			parent : parentInterval
 		};
 
 		intervals.put(context.arrayArena, rightInterval);
+		//writefln("    left %s", *it);
+		//writefln("    right %s", rightInterval);
+		assert(it.ranges.length > 0);
+		assert(rightInterval.ranges.length > 0);
+		assert(rightInterval.uses.length > 0);
 
 		return childInterval;
 	}
 
-	void dump(ref TextSink sink, CompilationContext* context, FunctionDeclNode* fun) {
+	void dump(ref TextSink sink, CompilationContext* context, IrFunction* lir) {
 		void dumpSub(ref Array!LiveInterval intervals)
 		{
 			foreach (i, it; intervals) {
@@ -736,8 +825,9 @@ struct LivenessInfo
 				else sink.put("  v");
 
 				if (it.reg.isDefined)
-					sink.putf("% 3s %s [%2s]:", i, it.definition,
-						context.machineInfo.regName(it.reg));
+					sink.putf("% 3s %s [%2s]:", i,
+						IrIndexDump(it.definition, context, lir),
+						IrIndexDump(it.reg, context, lir));
 				else
 					sink.putf("% 3s %s [no reg]:", i, it.definition);
 
@@ -747,7 +837,7 @@ struct LivenessInfo
 				}
 
 				foreach(UsePosition use; it.uses) {
-					sink.putf(" (%s %s)", use.pos, use.kind);
+					sink.putf(" %s", use);
 				}
 				if (!it.parent.isNull) sink.putf(" parent: v %s", it.parent);
 				if (!it.child.isNull) sink.putf(" child: v %s", it.child);
@@ -755,14 +845,14 @@ struct LivenessInfo
 				sink.putln;
 			}
 		}
-		sink.putfln("intervals %s", context.idString(fun.backendData.name));
+		sink.putfln("intervals %s", context.idString(lir.backendData.name));
 		dumpSub(intervals);
 		//dump2;
 	}
-	void dump(CompilationContext* context, FunctionDeclNode* fun)
+	void dump(CompilationContext* context, IrFunction* lir)
 	{
 		TextSink sink;
-		dump(sink, context, fun);
+		dump(sink, context, lir);
 		sink.text.writeln;
 	}
 	void dump2() {
@@ -776,7 +866,7 @@ struct LivenessInfo
 	}
 }
 
-int firstIntersection(LiveInterval* a, LiveInterval* b)
+uint firstIntersection(LiveInterval* a, LiveInterval* b)
 {
 	size_t len_a = a.ranges.length;
 	if (len_a == 0) return MAX_USE_POS;
@@ -813,17 +903,27 @@ struct IntervalIndex
 	alias index this;
 	enum NULL = IntervalIndex();
 	bool isNull() { return index == uint.max; }
+	void toString(scope void delegate(const(char)[]) sink) {
+		import std.format : formattedWrite;
+		if (isNull) sink("it_null");
+		else sink.formattedWrite("it%s", index);
+	}
 }
 
 /// [from; to)
 struct LiveRange
 {
-	int from;
-	int to;
+	uint from;
+	uint to;
 
-	bool contains(int pos) {
+	bool contains(uint pos) {
 		if (pos < from) return false;
 		if (pos >= to) return false;
+		return true;
+	}
+	bool containsInclusive(uint pos) {
+		if (pos < from) return false;
+		if (pos > to) return false;
 		return true;
 	}
 	void merge(LiveRange other) {
