@@ -67,6 +67,7 @@ struct PhysRegisters
 	const(IrIndex)[] allocatableRegs;
 
 	ref RegisterState opIndex(IrIndex reg) {
+		assert(reg.isPhysReg, format("%s", reg));
 		return gpr[reg.physRegIndex];
 	}
 
@@ -169,6 +170,15 @@ struct LinearScan
 		{
 			IntervalIndex activeId = active[index];
 			LiveInterval* activeInt = &live.intervals[activeId];
+
+			// already spilled
+			if (activeInt.reg.isStackSlot)
+			{
+				version(RAPrint) writefln("  move %s active -> handled, spilled to %s", activeId, activeInt.reg);
+				active.removeInPlace(index);
+				continue;
+			}
+
 			LiveRangeIndex rangeId = activeInt.getRightRangeInclusive(position);
 
 			// if it ends before position then
@@ -176,7 +186,6 @@ struct LinearScan
 			{
 				// move it from active to handled
 				version(RAPrint) writefln("  move %s active -> handled", activeId);
-				physRegs[activeInt.reg].activeInterval = IntervalIndex.NULL;
 				active.removeInPlace(index);
 			}
 			// else if it does not cover position then
@@ -184,13 +193,11 @@ struct LinearScan
 			{
 				// move it from active to inactive
 				version(RAPrint) writefln("  move %s active -> inactive", activeId);
-				physRegs[activeInt.reg].activeInterval = IntervalIndex.NULL;
 				active.removeInPlace(index);
 				inactive.put(context.arrayArena, activeId);
 			}
 			else
 			{
-				physRegs[activeInt.reg].activeInterval = activeId;
 				++index;
 			}
 		}
@@ -223,7 +230,6 @@ struct LinearScan
 			{
 				// move it from inactive to active
 				version(RAPrint) writefln("  move %s inactive -> active", inactiveId);
-				physRegs[inactiveInt.reg].activeInterval = inactiveId;
 				active.put(context.arrayArena, inactiveId);
 				inactive.removeInPlace(index);
 			}
@@ -313,7 +319,7 @@ struct LinearScan
 
 			// position = start position of current
 			uint position = currentInterval.from;
-			version(RAPrint) writefln("current %s pos %s firstUse %s", currentIndex, position, currentInterval.firstUse);
+			version(RAPrint) writefln("current %s %s pos %s firstUse %s", currentIndex, *currentInterval, position, currentInterval.firstUse);
 
 			checkActive(position);
 			checkInactive(position);
@@ -325,6 +331,12 @@ struct LinearScan
 				{
 					version(RAPrint) writefln("  current is the middle of the block %s", currentBlock);
 					pendingMoveSplits.put(context.arrayArena, currentIndex);
+				}
+
+				// skip allocation if this interval has spill slot assigned
+				if (currentInterval.reg.isStackSlot) {
+					version(RAPrint) writefln("  current is spilled to %s. skip allocation", currentInterval.reg);
+					continue;
 				}
 			}
 
@@ -491,6 +503,16 @@ struct LinearScan
 		{
 			// no register available without spilling
 			version(RAPrint) writeln("    no register available without spilling");
+			// special case
+			// if current is interval without uses we can just spill the whole interval
+			// this happens when interval is used at the beginning of the loop, then split in the middle
+			// the tail part then contains no uses
+			if (currentIt.uses.empty)
+			{
+				assignSpillSlot(fun.backendData.stackLayout, currentIt);
+				version(RAPrint) writeln("    spill whole interval because of no uses");
+				return true;
+			}
 			return false;
 		} else {
 			version(RAPrint) writefln("    hint is %s", IrIndexDump(hintReg, context, lir));
@@ -568,6 +590,7 @@ struct LinearScan
 		foreach (IntervalIndex activeId; activeVirtual) {
 			LiveInterval* it = &live.intervals[activeId];
 			physRegs[it.reg].setUsePos = it.nextUseAfter(currentStart);
+			physRegs[it.reg].activeInterval = activeId;
 			version(RAPrint) writefln("active virt usePos of %s %s use %s block %s", activeId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
 		}
 		// We only need to check inactive intervals when current interval was split
@@ -582,6 +605,7 @@ struct LinearScan
 		foreach (IntervalIndex activeId; activeFixed) {
 			LiveInterval* it = &live.intervals[activeId];
 			physRegs[it.reg].setBlockPos = 0;
+			physRegs[it.reg].activeInterval = IntervalIndex.NULL;
 			version(RAPrint) writefln("active fixed usePos of %s %s use %s block %s", activeId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
 		}
 		foreach (inactiveId; inactiveFixed) {
@@ -599,12 +623,13 @@ struct LinearScan
 		IrIndex reg;
 		foreach (i, IrIndex r; physRegs.allocatableRegs) {
  			if (physRegs[r].usePos > maxPos) {
+ 				// if register was only available for the start of interval
+ 				// then all uses may have moved into split child
 				maxPos = physRegs[r].usePos;
-				assert(maxPos != MAX_USE_POS);
 				reg = r;
 			}
 		}
-		version(RAPrint) writefln("    candidate %s usePos %s blockPos %s", IrIndexDump(reg, context, lir), maxPos, physRegs[reg].blockPos);
+		version(RAPrint) writefln("    candidate %s usePos %s", IrIndexDump(reg, context, lir), maxPos);
 
 		uint firstUse = currentIt.firstUse;
 
@@ -629,20 +654,25 @@ struct LinearScan
 			void splitActiveOrInactive(IntervalIndex index)
 			{
 				LiveInterval* activeIt = &live.intervals[index];
-				assignSpillSlot(fun.backendData.stackLayout, activeIt);
-				// split before current start. Do not add to unhandled
-				IntervalIndex newInterval = live.splitBefore(context, lir, index, currentStart);
+				// split before current start. Add to unhandled so we get split move registered
+				IntervalIndex newInterval = splitBefore(index, currentStart, unhandled);
+
 				LiveInterval* splitActiveIt = &live.intervals[newInterval];
-				uint nextActiveUse = splitActiveIt.nextUseAfter(maxPos);
+				assignSpillSlot(fun.backendData.stackLayout, splitActiveIt);
+
+				// if there is a use position in spilled interval, split before use
+				uint nextActiveUse = splitActiveIt.nextUseAfter(currentStart);
 				if (nextActiveUse != MAX_USE_POS)
 				{
 					splitBefore(newInterval, nextActiveUse, unhandled);
+					version(RAPrint) writefln("      split before use %s", newInterval);
 				}
 			}
 
 			IntervalIndex activeIndex = physRegs[reg].activeInterval;
 			context.assertf(!activeIndex.isNull, "%s", IrIndexDump(reg, context, lir)); // null means that it is fixed interval. But we filter out fixed interval above
 			splitActiveOrInactive(activeIndex);
+			version(RAPrint) writefln("    split active interval %s", activeIndex);
 
 			//	split any inactive interval for reg at the end of its lifetime hole
 			foreach (inactiveId; inactiveVirtual)
@@ -651,10 +681,11 @@ struct LinearScan
 				if (sameIndexOrPhysReg(it.reg, reg))
 				{
 					splitActiveOrInactive(inactiveId);
+					version(RAPrint) writefln("    split inactive interval %s", inactiveId);
 				}
 			}
 
-			if (currentIt.coversPosition(physRegs[reg].blockPos))
+			if (currentIt.exclusivePosition(physRegs[reg].blockPos))
 			{
 				splitBefore(currentId, physRegs[reg].blockPos, unhandled);
 			}
@@ -681,13 +712,26 @@ struct LinearScan
 
 	void assignSpillSlot(ref StackLayout stackLayout, LiveInterval* it)
 	{
-		IrIndex type = lir.getValueType(context, it.definition);
-		IrIndex slot = stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
-		version(RAPrint) writefln("assignSpillSlot %s %s", it.definition, slot);
-		it.reg = slot;
+		assert(it.definition.isVirtReg);
+		VregState* state = &vregState[it.definition.storageUintIndex];
+		if (state.spillSlot.isDefined)
+		{
+			// use cached slot
+			it.reg = state.spillSlot;
+			version(RAPrint) writefln("assignSpillSlot %s use cached %s", it.definition, state.spillSlot);
+		}
+		else
+		{
+			IrIndex type = lir.getValueType(context, it.definition);
+			IrIndex slot = stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
+			state.spillSlot = slot; // cache slot
+			version(RAPrint) writefln("assignSpillSlot %s new slot %s", it.definition, slot);
+			it.reg = slot;
+		}
 		// TODO: need to fix instructions to use stack slots after RA
 		//       Not relevant yet
 		//       We always provide register for all uses
+		//       simple way would be to allow src arguments be stack slots
 	}
 
 	// Replaces all uses of virtual registers with physical registers or stack slots
@@ -717,6 +761,7 @@ struct LinearScan
 								IrIndex lastInstr = lir.getBlock(phiArg.basicBlock).lastInstr;
 								uint pos = live.linearIndicies.instr(lastInstr);
 								IrIndex reg = live.getRegFor(vregIndex, pos);
+								//writefln("set %s arg reg %s -> %s at %s", userIndex, phiArg.value, reg, pos);
 								phiArg.value = reg;
 							}
 						break;
@@ -924,6 +969,7 @@ struct LinearScan
 			if (!interval.isSplit) continue; // skip intervals that weren't split
 
 			IrIndex vreg = interval.definition;
+			version(RAPrint_resolve) writefln("    %s %s -> %s", vreg, succPos, predPos);
 			IrIndex succLoc = live.getRegFor(vreg, succPos);
 			IrIndex predLoc = live.getRegFor(vreg, predPos);
 			if (!predLoc.isDefined) continue; // inteval doesn't exist in pred
@@ -938,7 +984,7 @@ struct LinearScan
 
 		foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(lir))
 		{
-			version(RAPrint_resolve) writef("    phi %s res %s", phiIndex, phi.result);
+			version(RAPrint_resolve) writef("    phi %s res %s", phiIndex, IrIndexDump(phi.result, context, lir));
 			foreach (size_t arg_i, ref IrPhiArg arg; phi.args(lir))
 			{
 				if (arg.basicBlock == predIndex)
@@ -946,7 +992,7 @@ struct LinearScan
 					IrIndex moveFrom = arg.value;
 					IrIndex moveTo = phi.result;
 
-					version(RAPrint_resolve) writefln(" arg %s %s", arg.basicBlock, arg.value);
+					version(RAPrint_resolve) writefln(" arg %s %s", arg.basicBlock, IrIndexDump(arg.value, context, lir));
 
 					IrArgSize argSize = getValueTypeArgSize(phi.result, lir, context);
 					moveSolver.addMove(moveFrom, moveTo, argSize);
@@ -956,25 +1002,26 @@ struct LinearScan
 
 		if (moveSolver.numWrittenNodes == 0) return;
 
-		IrIndex movesTarget = predIndex;
-		bool addToBack = true;
-
 		if (isCriticalEdge(predBlock, succBlock))
 		{
-			movesTarget = splitCriticalEdge(predIndex, predBlock, succIndex, succBlock);
+			IrIndex movesTarget = splitCriticalEdge(predIndex, predBlock, succIndex, succBlock);
+			// add to the back
+			moveSolver.placeMovesBeforeInstr(lir.getBlock(movesTarget).lastInstr);
 		}
 		else if (predBlock.successors.length > 1)
 		{
-			movesTarget = succIndex;
-			addToBack = false;
+			IrIndex movesTarget = succIndex;
+			// add to the front
+			moveSolver.placeMovesBeforeInstr(lir.getBlock(movesTarget).firstInstr);
 		}
 		else
 		{
 			context.assertf(predBlock.successors.length == 1,
 				"predBlock.successors.length %s", predBlock.successors.length);
+			IrIndex movesTarget = predIndex;
+			// add to the back
+			moveSolver.placeMovesBeforeInstr(lir.getBlock(movesTarget).lastInstr);
 		}
-
-		moveSolver.placeMovesBeforeInstr(lir.getBlock(movesTarget).lastInstr);
 	}
 
 	/// Critical edge is edge between predecessor and successor

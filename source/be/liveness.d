@@ -59,8 +59,8 @@ void pass_live_intervals(CompilationContext* context, ModuleDeclNode* mod, Funct
 	if (fun.isExternal) return;
 
 	IrFunction* lirData = context.getAst!IrFunction(fun.backendData.lirData);
-	//lirData.orderBlocks;
-	//lirData.assignSequentialBlockIndices;
+	lirData.orderBlocks;
+	lirData.assignSequentialBlockIndices;
 	//dumpFunction(context, lirData);
 	pass_live_intervals_func(context, lirData, liveness);
 
@@ -313,6 +313,24 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		//writefln("liveBuckets %s %s %s", blockIndex, liveIns.ptr, liveness.bitmap.blockLiveInBits(blockIndex, ir));
 	}
 
+	// create ranges for parameter registers in start block
+	foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; ir.getBlock(ir.entryBasicBlock).instructions(ir))
+	{
+		InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
+		if (instrInfo.isMov) {
+			IrIndex from = instrHeader.arg(ir, 0);
+			if (from.isPhysReg) {
+				uint linearInstrIndex = liveness.linearIndicies.instr(instrIndex);
+				liveness.pint(from).addRange(context, 1, linearInstrIndex);
+			}
+			IrIndex result = instrHeader.result(ir);
+			if (result.isVirtReg)
+			{
+				liveness.vint(result).storageHint = from;
+			}
+		}
+	}
+
 	// Reset length from 0 to actual length
 	liveness.resetIntervalUsesLength(context, ir);
 }
@@ -445,7 +463,7 @@ struct LiveInterval
 	LiveRangeIndex getRightRangeInclusive(uint position)
 	{
 		foreach(i, range; ranges) {
-			if (position <= range.to)
+			if (position == range.from || position < range.to)
 				return LiveRangeIndex(i);
 		}
 		return LiveRangeIndex.NULL;
@@ -548,20 +566,20 @@ struct LiveInterval
 		return closest;
 	}
 
-	bool coversPosition(uint position)
+	// others intervals can't use interval's register in this pos
+	bool exclusivePosition(uint position)
 	{
 		foreach(range; ranges) {
-			if (position < range.from)
-				return false;
-			else if (position < range.to)
-				return true;
+			if (position < range.from) return false;
+			if (position == range.from) return true;
+			if (position < range.to) return true;
 			// position >= to
 		}
 		return false;
 	}
 
-	// internal. Returns true for exclusive end too
-	bool coversPosition_dump(uint position)
+	// interval's register contains valid value at this position
+	bool coversPosition(uint position)
 	{
 		foreach(range; ranges) {
 			if (position < range.from)
@@ -709,10 +727,16 @@ struct LivenessInfo
 		{
 			IntervalIndex intIndex = numFixedIntervals + index.storageUintIndex;
 			LiveInterval* it = &intervals[intIndex];
-			while (it.to < pos) {
-				if (it.child.isNull) return IrIndex.init;
-				it = &intervals[it.child];
+			while (true) {
+				if (it.coversPosition(pos)) {
+					break;
+				} else {
+					assert(!it.child.isNull, format("no children left to find reg, pos %s %s %s", pos, intIndex, *it));
+					intIndex = it.child;
+					it = &intervals[it.child];
+				}
 			}
+			assert(it.reg.isDefined, format("%s %s null reg", intIndex, *it));
 			return it.reg;
 		}
 		else if (index.isPhysReg)
@@ -740,10 +764,20 @@ struct LivenessInfo
 	IntervalIndex splitBefore(CompilationContext* context, IrFunction* lir, IntervalIndex parentInterval, uint before)
 	{
 		LiveInterval* it = &intervals[parentInterval];
+
+		// we want to take register from interval starting at the same position
+		// happens for multiple phi functions in the same block
+		// if first is allocated interval with bigger first use position
+		if (before == it.from) {
+			//writefln("  splitBefore %s %s take register from interval starting at %s", parentInterval, before, it.from);
+			return parentInterval;
+		}
+
 		uint optimalPos = before;//findSplitPos(context, lir, it, before);
 		LiveRangeIndex rightIndex = it.getRightRange(optimalPos-1);
 		//writefln("  splitBefore1 %s %s %s", parentInterval, optimalPos, rightIndex);
-		if (rightIndex == MAX_USE_POS) {
+		if (rightIndex.isNull) {
+			context.internal_error("splitBefore %s %s %s split at max pos", parentInterval, optimalPos, rightIndex);
 			return parentInterval;
 		}
 		return splitBefore(context, parentInterval, optimalPos, rightIndex);
@@ -796,21 +830,24 @@ struct LivenessInfo
 		}
 
 		auto childInterval = IntervalIndex(intervals.length);
-		it.child = childInterval;
 
 		LiveInterval rightInterval = {
 			ranges : newRanges,
 			uses : it.splitUsesBefore(before-1),
 			definition : it.definition,
-			parent : parentInterval
+			parent : parentInterval,
+			child : it.child,
 		};
 
+		if (!it.child.isNull)
+			intervals[it.child].parent = childInterval;
+		it.child = childInterval;
+
 		intervals.put(context.arrayArena, rightInterval);
-		//writefln("    left %s", *it);
-		//writefln("    right %s", rightInterval);
+		//writefln("    left %s %s", parentInterval, *it);
+		//writefln("    right %s %s", childInterval, rightInterval);
 		assert(it.ranges.length > 0);
 		assert(rightInterval.ranges.length > 0);
-		assert(rightInterval.uses.length > 0);
 
 		return childInterval;
 	}
@@ -910,6 +947,11 @@ struct IntervalIndex
 	}
 }
 
+/// exclusive end doesn't prevent register from being used by another interval
+/// ranges within one interval never have ranges[i].to == ranges[i+1].from
+/// When split prev range's end get's offset by 1 so [0; 10) becomes [0; 3) [4; 10)
+/// When looking if instruction is covered by range the end position is inclusive
+/// When considering [10;10) end is inclusive
 /// [from; to)
 struct LiveRange
 {
@@ -918,11 +960,13 @@ struct LiveRange
 
 	bool contains(uint pos) {
 		if (pos < from) return false;
+		if (pos == from) return true;
 		if (pos >= to) return false;
 		return true;
 	}
 	bool containsInclusive(uint pos) {
 		if (pos < from) return false;
+		if (pos == from) return true;
 		if (pos > to) return false;
 		return true;
 	}

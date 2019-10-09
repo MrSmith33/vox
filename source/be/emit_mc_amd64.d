@@ -431,8 +431,16 @@ struct CodeEmitter
 						else
 						{
 							// call by ptr
-							Register calleePtr = indexToRegister(calleeIndex);
-							gen.call(calleePtr);
+							if (calleeIndex.isStackSlot)
+							{
+								MemAddress addr = localVarMemAddress(calleeIndex);
+								gen.call(addr);
+							}
+							else
+							{
+								Register calleePtr = indexToRegister(calleeIndex);
+								gen.call(calleePtr);
+							}
 						}
 						break;
 

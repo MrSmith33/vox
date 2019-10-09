@@ -185,7 +185,7 @@ enum Amd64Opcode : ushort {
 	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) imul,
 	@_ii(0,3,IFLG.hasResult|IFLG.allMemArg) div,
 	@_ii(0,3,IFLG.hasResult|IFLG.allMemArg) idiv,
-	@_ii(0,0) divsx,
+	@_ii(0,0,IFLG.hasResult) divsx,
 	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) and,
 	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) or,
 	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) xor,
@@ -231,7 +231,7 @@ alias LirAmd64Instr_mul = IrGenericInstr!(Amd64Opcode.mul, 2, IFLG.hasResult | I
 alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult | IFLG.isResultInDst);
 alias LirAmd64Instr_div = IrGenericInstr!(Amd64Opcode.div, 3, IFLG.hasResult); // (dx, ax) = div (dx, ax) / v2
 alias LirAmd64Instr_idiv = IrGenericInstr!(Amd64Opcode.idiv, 3, IFLG.hasResult); // (dx, ax) = div (dx, ax) / v2
-alias LirAmd64Instr_divsx = IrGenericInstr!(Amd64Opcode.divsx, 0); // CWD/CDQ/CQO
+alias LirAmd64Instr_divsx = IrGenericInstr!(Amd64Opcode.divsx, 0, IFLG.hasResult); // CWD/CDQ/CQO
 alias LirAmd64Instr_and = IrGenericInstr!(Amd64Opcode.and, 2, IFLG.hasResult | IFLG.isResultInDst);
 alias LirAmd64Instr_or  = IrGenericInstr!(Amd64Opcode.or,  2, IFLG.hasResult | IFLG.isResultInDst);
 alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult | IFLG.isResultInDst);

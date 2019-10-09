@@ -172,7 +172,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 		{
 			foreach(ref interval; liveness.physicalIntervals)
 			{
-				if (interval.coversPosition_dump(linearInstrIndex))
+				if (interval.coversPosition(linearInstrIndex))
 					sink.put("┃");
 				else
 					sink.put(" ");
@@ -194,9 +194,12 @@ void dumpFunctionImpl(IrDumpContext* c)
 
 			if (interval.hasUseAt(linearInstrIndex))
 			{
-				sink.put("U");
+				if (vreg.definition == instrIndex)
+					sink.put("D"); // virtual register is defined by this instruction / phi
+				else
+					sink.put("U");
 			}
-			else if (interval.coversPosition_dump(linearInstrIndex))
+			else if (interval.coversPosition(linearInstrIndex))
 			{
 				if (vreg.definition == instrIndex)
 					sink.put("D"); // virtual register is defined by this instruction / phi

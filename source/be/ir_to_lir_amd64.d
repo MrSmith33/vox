@@ -483,23 +483,35 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					// is converted into:
 					//   mov ax, v2
 					//   zx/sx dx:ax
-					//   ax = div dx:ax, v3
+					//   ax = div ax, dx, v3
 					//   mov v1, ax
 
 					bool isSigned = instrHeader.op == IrOpcode.sdiv || instrHeader.op == IrOpcode.srem;
 					bool isDivision = instrHeader.op == IrOpcode.udiv || instrHeader.op == IrOpcode.sdiv;
+
+					// divisor must be in register
+					IrIndex divisor = instrHeader.arg(ir, 1);
+					if (instrHeader.arg(ir, 1).isConstant) {
+						ExtraInstrArgs extra = { addUsers : false, type : getValueType(divisor, ir, context) };
+						divisor = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, divisor).result;
+					}
+					else fixIndex(divisor);
+
+					IrIndex dividendTop = amd64_reg.dx;
+					dividendTop.physRegSize = instrHeader.argSize;
 
 					// copy bottom half of dividend
 					IrIndex dividendBottom = amd64_reg.ax;
 					dividendBottom.physRegSize = instrHeader.argSize;
 					makeMov(dividendBottom, instrHeader.arg(ir, 0), instrHeader.argSize);
 
-					IrIndex dividendTop = amd64_reg.dx;
-					dividendTop.physRegSize = instrHeader.argSize;
-
 					if (isSigned) {
+						// if dividend is 8bit we use movsx and only change ax
+						// if it is bigger we use cwd/cdq/cqo that affects dx too
+						// TODO: for now always say that we modify dx even if we dont (8bit arg doesn't touch dx, only ax)
+						IrIndex divsxResult = amd64_reg.dx;
 						// sign-extend top half of dividend
-						ExtraInstrArgs extra2 = { argSize : instrHeader.argSize };
+						ExtraInstrArgs extra2 = { argSize : instrHeader.argSize, result : divsxResult };
 						builder.emitInstr!LirAmd64Instr_divsx(lirBlockIndex, extra2);
 					} else {
 						// zero top half of dividend
@@ -512,21 +524,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						resultReg = dividendBottom; // dividend
 					}
 
-					// divisor must be in register
-					IrIndex divisor = instrHeader.arg(ir, 1);
-					if (instrHeader.arg(ir, 1).isConstant) {
-						ExtraInstrArgs extra = { addUsers : false, type : getValueType(divisor, ir, context) };
-						divisor = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, divisor).result;
-					}
-					else fixIndex(divisor);
-
 					// divide
 					ExtraInstrArgs extra3 = { addUsers : false, argSize : instrHeader.argSize, result : resultReg };
 					InstrWithResult res;
 					if (isSigned)
-						res = builder.emitInstr!LirAmd64Instr_idiv(lirBlockIndex, extra3, dividendTop, dividendBottom, divisor);
+						res = builder.emitInstr!LirAmd64Instr_idiv(lirBlockIndex, extra3, dividendBottom, dividendTop, divisor);
 					else
-						res = builder.emitInstr!LirAmd64Instr_div(lirBlockIndex, extra3, dividendTop, dividendBottom, divisor);
+						res = builder.emitInstr!LirAmd64Instr_div(lirBlockIndex, extra3, dividendBottom, dividendTop, divisor);
 
 					// copy result (quotient)
 					ExtraInstrArgs extra4 = { addUsers : false, argSize : instrHeader.argSize, type : ir.getVirtReg(instrHeader.result(ir)).type };

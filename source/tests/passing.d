@@ -2068,6 +2068,7 @@ void tester91(ref TestContext ctx) {
 
 	tran_thong(0, 0, 2, 2, &external_print_coords_func, &data);
 
+	//writefln("%s", testSink.text);
 	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
 	testSink.clear;
 }*/

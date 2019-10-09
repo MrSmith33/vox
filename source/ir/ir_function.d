@@ -203,7 +203,8 @@ struct IrFunction
 		walk(entryBasicBlock);
 
 		// bring exit block to the end of function
-		linkBlockAfter(&this, exitBasicBlock, firstLink);
+		if (firstLink != exitBasicBlock)
+			linkBlockBefore(&this, firstLink, exitBasicBlock);
 
 		// clear all flags
 		foreach (idx, ref IrBasicBlock block; blocks)

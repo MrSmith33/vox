@@ -15,7 +15,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(reg_alloc2);//test90
+	Test test = makeTest!(test90);
 	string filterFuncName;
 
 	Driver driver;
