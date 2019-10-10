@@ -555,12 +555,13 @@ struct LiveInterval
 		return uses[0].pos;
 	}
 
+	// incudes after
 	uint nextUseAfter(uint after)
 	{
 		uint closest = MAX_USE_POS;
 		foreach_reverse (UsePosition use; uses)
 		{
-			if (use.pos <= after) break;
+			if (use.pos < after) break;
 			closest = use.pos;
 		}
 		return closest;
