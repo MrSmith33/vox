@@ -1985,7 +1985,7 @@ void tester90(ref TestContext ctx) {
 	testFormatInt(long.max, "xxx9223372036854775807x", "9223372036854775807");
 }
 
-/*
+
 @TestInfo(&tester91)
 immutable test91 = q{--- test91
 	// splitting and spilling
@@ -2071,7 +2071,7 @@ void tester91(ref TestContext ctx) {
 	//writefln("%s", testSink.text);
 	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
 	testSink.clear;
-}*/
+}
 
 @TestInfo(&tester92)
 immutable test92 = q{--- test92
@@ -2224,3 +2224,87 @@ immutable test95 = q{--- test95
 void tester95(ref TestContext ctx) {
 }
 */
+
+@TestInfo(&tester96)
+immutable test96 = q{--- test96
+	// splitting and spilling
+	void tran_thong(i32 xstart, i32 ystart, i32 xend, i32 yend, void function(void*, i32, i32) callback, void* userData)
+	{
+		i32 x = xstart;
+		i32 y = ystart;
+
+		i32 deltax;
+		i32 signdx;
+		if (xend >= xstart) {
+			deltax = xend - xstart;
+			signdx = 1;
+		} else {
+			deltax = xstart - xend;
+			signdx = -1;
+		}
+
+		i32 deltay;
+		i32 signdy;
+		if (yend >= ystart) {
+			deltay = yend - ystart;
+			signdy = 1;
+		} else {
+			deltay = ystart - yend;
+			signdy = -1;
+		}
+
+		i32 test;
+		if (signdy == -1)
+			test = -1;
+		else
+			test = 0;
+
+		if (deltax >= deltay) {
+			test = (deltax + test) >> 1;
+			for (i32 i = 1; i < deltax; ++i) {
+				test -= deltay;
+				x += signdx;
+				if (test < 0) {
+					y += signdy;
+					test += deltax;
+				}
+				callback(userData, x, y);
+			}
+		} else {
+			test = (deltay + test) >> 1;
+			for (i32 i = 1; i < deltay; ++i) {
+				test -= deltax;
+				y += signdy;
+				if (test < 0) {
+					x += signdx;
+					test += deltay;
+				}
+				callback(userData, x, y);
+			}
+		}
+	}
+};
+void tester96(ref TestContext ctx) {
+	static struct test96_user_data {
+		string text;
+		size_t i;
+	}
+	static extern(C) void external_print_coords_func(void* userData, int x, int y) {
+		auto data = cast(test96_user_data*)userData;
+		if (data.i > 0) testSink.put(", ");
+		formattedWrite(testSink, "(%s %s %s)", data.text, x, y);
+		++data.i;
+	}
+	alias func_T = extern(C) void function(void*, int, int);
+	auto tran_thong = ctx.getFunctionPtr!(void, int, int, int, int, func_T, void*)("tran_thong");
+
+	test96_user_data data = {
+		text : "hi"
+	};
+
+	tran_thong(0, 0, 2, 2, &external_print_coords_func, &data);
+
+	//writefln("%s", testSink.text);
+	assert(testSink.text == "(hi 1 1)");
+	testSink.clear;
+}

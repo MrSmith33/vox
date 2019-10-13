@@ -286,15 +286,15 @@ struct CodeEmitter
 						genMove(instrHeader.result(lir), instrHeader.arg(lir, 0));
 						break;
 					case Amd64Opcode.xchg:
-						context.assertf(instrHeader.arg(lir, 0).isPhysReg, "%s is not phys reg", instrHeader.arg(lir, 0));
-						context.assertf(instrHeader.arg(lir, 1).isPhysReg, "%s is not phys reg", instrHeader.arg(lir, 1));
-						context.assertf(instrHeader.arg(lir, 0).physRegSize == instrHeader.arg(lir, 1).physRegSize,
-							"reg size mismatch %s != %s",
-							instrHeader.arg(lir, 0).physRegSize,
-							instrHeader.arg(lir, 1).physRegSize);
-						Register dst = indexToRegister(instrHeader.arg(lir, 0));
-						Register src = indexToRegister(instrHeader.arg(lir, 1));
-						gen.xchg(dst, src, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+						IrIndex arg0 = instrHeader.arg(lir, 0);
+						IrIndex arg1 = instrHeader.arg(lir, 1);
+						context.assertf(arg1.isPhysReg, "%s is not phys reg", arg1);
+						context.assertf(arg0.isPhysReg, "%s is not phys reg", arg0);
+						context.assertf(arg0.physRegSize == arg1.physRegSize,
+							"reg size mismatch %s != %s", arg0.physRegSize, arg1.physRegSize);
+						Register dst = indexToRegister(arg0);
+						Register src = indexToRegister(arg1);
+						gen.xchg(dst, src, cast(ArgType)arg0.physRegSize);
 						break;
 					case Amd64Opcode.load:
 						genLoad(instrHeader.result(lir), instrHeader.arg(lir, 0));
@@ -303,27 +303,27 @@ struct CodeEmitter
 						genStore(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), cast(ArgType)instrHeader.argSize);
 						break;
 					case Amd64Opcode.add:
-						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.add, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.add, cast(ArgType)instrHeader.arg(lir, 0).physRegSize, instrIndex);
 						if (instrHeader.arg(lir, 0) == stackPointer && instrHeader.arg(lir, 1).isConstant)
 						{
 							stackPointerExtraOffset -= context.constants.get(instrHeader.arg(lir, 1)).i64;
 						}
 						break;
 					case Amd64Opcode.sub:
-						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.sub, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.sub, cast(ArgType)instrHeader.arg(lir, 0).physRegSize, instrIndex);
 						if (instrHeader.arg(lir, 0) == stackPointer && instrHeader.arg(lir, 1).isConstant)
 						{
 							stackPointerExtraOffset += context.constants.get(instrHeader.arg(lir, 1)).i64;
 						}
 						break;
 					case Amd64Opcode.xor:
-						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.xor, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.xor, cast(ArgType)instrHeader.arg(lir, 0).physRegSize, instrIndex);
 						break;
 					case Amd64Opcode.or:
-						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.or, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.or, cast(ArgType)instrHeader.arg(lir, 0).physRegSize, instrIndex);
 						break;
 					case Amd64Opcode.and:
-						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.and, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.and, cast(ArgType)instrHeader.arg(lir, 0).physRegSize, instrIndex);
 						break;
 					case Amd64Opcode.imul:
 						context.assertf(instrHeader.arg(lir, 0).isPhysReg, "%s is not phys reg", instrHeader.arg(lir, 0));
@@ -469,7 +469,7 @@ struct CodeEmitter
 							cond = invertBinaryCond(cond);
 						}
 
-						genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
+						genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize, instrIndex);
 						Condition mach_cond = IrBinCondToAmd64Condition[cond];
 						gen.jcc(mach_cond, Imm32(0));
 						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
@@ -501,7 +501,7 @@ struct CodeEmitter
 						gen.setcc(cond, dst);
 						break;
 					case Amd64Opcode.set_binary_cond:
-						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize);
+						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize, instrIndex);
 						Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
 						Register dst = indexToRegister(instrHeader.result(lir));
 						gen.setcc(cond, dst);
@@ -564,7 +564,7 @@ struct CodeEmitter
 		return cast(Register)regIndex.physRegIndex;
 	}
 
-	void genRegular(IrIndex dst, IrIndex src, AMD64OpRegular op, ArgType argType)
+	void genRegular(IrIndex dst, IrIndex src, AMD64OpRegular op, ArgType argType, IrIndex instrIndex)
 	{
 		AsmArg argDst;
 		AsmArg argSrc;
@@ -609,7 +609,8 @@ struct CodeEmitter
 				param.srcKind = AsmArgKind.REG;
 				break;
 
-			case stackSlot: context.unreachable; assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
+			case stackSlot:
+				context.internal_error("func %s %s", context.idString(fun.backendData.name), instrIndex); assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}

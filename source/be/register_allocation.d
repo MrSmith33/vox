@@ -365,8 +365,8 @@ struct LinearScan
 
 		//live.dump(context, lir);
 
-		MoveSolver moveSolver = MoveSolver(builder, context, fun);
-		moveSolver.setup();
+		MoveSolver moveSolver = MoveSolver(context);
+		moveSolver.setup(fun);
 		fixInstructionArgs(fun);
 		// this pass inserts moves for spills and loads
 		resolveInsertSplitMoves(moveSolver);
@@ -1006,13 +1006,13 @@ struct LinearScan
 		{
 			IrIndex movesTarget = splitCriticalEdge(predIndex, predBlock, succIndex, succBlock);
 			// add to the back
-			moveSolver.placeMovesBeforeInstr(lir.getBlock(movesTarget).lastInstr);
+			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).lastInstr);
 		}
 		else if (predBlock.successors.length > 1)
 		{
 			IrIndex movesTarget = succIndex;
 			// add to the front
-			moveSolver.placeMovesBeforeInstr(lir.getBlock(movesTarget).firstInstr);
+			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).firstInstr);
 		}
 		else
 		{
@@ -1020,7 +1020,7 @@ struct LinearScan
 				"predBlock.successors.length %s", predBlock.successors.length);
 			IrIndex movesTarget = predIndex;
 			// add to the back
-			moveSolver.placeMovesBeforeInstr(lir.getBlock(movesTarget).lastInstr);
+			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).lastInstr);
 		}
 	}
 
@@ -1076,7 +1076,7 @@ struct LinearScan
 			IrIndex insertBeforeInstr = live.evenIndexToIrIndex[prevPos/2];
 			context.assertf(insertBeforeInstr.isInstruction, "%s", insertBeforeInstr);
 			version(RAPrint) writefln("   insert %s moves before %s at %s", moveSolver.numWrittenNodes, insertBeforeInstr, prevPos);
-			moveSolver.placeMovesBeforeInstr(insertBeforeInstr);
+			moveSolver.placeMovesBeforeInstr(builder, insertBeforeInstr);
 			moveSolver.reset();
 		}
 
@@ -1130,24 +1130,29 @@ struct LinearScan
 	}
 }
 
-//version = print_move_resolve;
 
 /// Reorders a set of moves, to produce correct behavior
+/// Nodes can be in 3 states:
+///   RO - value is only read. Those are not added to writtenNodes array.
+///   RW - value is read 1 or more times and written 1 time. Indicies of these nodes are at the beginning of writtenNodes
+///   WO - value is only written. Indicies are at the end of writtenNodes.
 struct MoveSolver
 {
-	IrBuilder* builder;
 	CompilationContext* context;
-	FunctionDeclNode* fun;
 
 	ValueInfo[] stackSlots;
 	ValueInfo[] registers;
 	ValueInfo anyConstant;
-	size_t numWrittenNodes;
+	IrIndex* writtenNodesPtr;
 	size_t savedBufLength;
+	uint numWrittenNodes;
+	uint numWriteOnlyValues;
 
 	// allocate buffers
 	// takes unique ownership of tempBuffer
-	void setup()
+	// Inits all register and stack slot infos
+	// after each `placeMovesBeforeInstr` call they need to be in init state for reuse
+	void setup(FunctionDeclNode* fun)
 	{
 		savedBufLength = context.tempBuffer.length;
 
@@ -1155,13 +1160,15 @@ struct MoveSolver
 		registers = context.allocateTempArray!ValueInfo(cast(uint)numRegs);
 		size_t numStackSlots = fun.backendData.stackLayout.slots.length;
 		stackSlots = context.allocateTempArray!ValueInfo(cast(uint)numStackSlots);
+
+		writtenNodesPtr = cast(IrIndex*)context.tempBuffer.nextPtr;
 	}
 
 	void reset()
 	{
-		// we don't care about fields in constant
-		anyConstant = ValueInfo();
-		numWrittenNodes = 0;
+		assert(anyConstant == ValueInfo.init);
+		assert(numWriteOnlyValues == 0);
+		assert(numWrittenNodes == 0);
 	}
 
 	// releases unique ownership of tempBuffer
@@ -1172,7 +1179,10 @@ struct MoveSolver
 		savedBufLength = 0;
 		stackSlots = null;
 		registers = null;
-		numWrittenNodes = 0;
+		writtenNodesPtr = null;
+		assert(anyConstant == ValueInfo.init);
+		assert(numWriteOnlyValues == 0);
+		assert(numWrittenNodes == 0);
 	}
 
 	ref ValueInfo getInfo(IrIndex index) {
@@ -1184,73 +1194,115 @@ struct MoveSolver
 		}
 	}
 
-	void addMove(IrIndex moveFrom, IrIndex moveTo, IrArgSize argSize)
+	void addMove(IrIndex fromIndex, IrIndex toIndex, IrArgSize argSize)
 	{
-		assert(moveFrom.isDefined);
-		assert(moveTo.isDefined);
-		if (moveFrom == moveTo) return;
+		assert(fromIndex.isDefined);
+		assert(toIndex.isDefined);
+		if (fromIndex == toIndex) return;
 
-		getInfo(moveFrom).onRead(moveFrom);
-		context.assertf(moveTo.isPhysReg || moveTo.isStackSlot, "moveTo is %s", moveTo.kind);
-		context.assertf(!getInfo(moveTo).readFrom.isDefined, "Second write to %s detected", moveTo);
-		getInfo(moveTo).onWrite(moveFrom, moveTo, argSize);
-		context.tempBuffer.put(moveTo.asUint);
+		ValueInfo* from = &getInfo(fromIndex);
+		ValueInfo* to = &getInfo(toIndex);
+
+		from.onRead(fromIndex);
+		// no longer write only
+		if (from.numReads == 1 && from.readFrom.isDefined) {
+			wo_to_rw(from.arrayPos);
+		}
+
+		context.assertf(toIndex.isPhysReg || toIndex.isStackSlot, "toIndex is %s", toIndex.kind);
+		context.assertf(!to.readFrom.isDefined, "Second write to %s detected", toIndex);
+
+		to.onWrite(fromIndex, toIndex, argSize);
+		to.arrayPos = numWrittenNodes;
+		context.tempBuffer.put(toIndex.asUint);
 		++numWrittenNodes;
+		++numWriteOnlyValues;
+
+		if (to.numReads > 0) {
+			wo_to_rw(to.arrayPos);
+		}
 	}
 
-	void placeMovesBeforeInstr(IrIndex beforeInstr)
+	void print() {
+		IrIndex[] writtenNodes = writtenNodesPtr[0..numWrittenNodes];
+		foreach(IrIndex index; writtenNodes[0..$-numWriteOnlyValues])
+			writef("(%s %s) ", index, getInfo(index));
+		write("| ");
+		foreach(IrIndex index; writtenNodes[$-numWriteOnlyValues..$])
+			writef("(%s %s) ", index, getInfo(index));
+		writeln;
+	}
+
+	void wo_to_rw(uint arrayPos)
 	{
-		IrIndex[] writtenNodes = cast(IrIndex[])context.tempBuffer.data[$-numWrittenNodes..$];
-		size_t i;
+		IrIndex[] writtenNodes = writtenNodesPtr[0..numWrittenNodes];
+		assert(numWriteOnlyValues > 0);
+		size_t from = arrayPos;
+		size_t to = numWrittenNodes - numWriteOnlyValues;
+		if (from != to) {
+			swap(writtenNodes[from], writtenNodes[to]);
+			getInfo(writtenNodes[from]).arrayPos = cast(uint)from;
+			getInfo(writtenNodes[to]).arrayPos = cast(uint)to;
+		}
+		--numWriteOnlyValues;
+	}
 
-		while (writtenNodes.length)
+	void rw_to_wo(uint arrayPos)
+	{
+		IrIndex[] writtenNodes = writtenNodesPtr[0..numWrittenNodes];
+		++numWriteOnlyValues;
+		size_t from = arrayPos;
+		size_t to = numWrittenNodes - numWriteOnlyValues;
+		if (from != to) {
+			swap(writtenNodes[from], writtenNodes[to]);
+			getInfo(writtenNodes[from]).arrayPos = cast(uint)from;
+			getInfo(writtenNodes[to]).arrayPos = cast(uint)to;
+		}
+	}
+
+	void removeItem(ValueInfo* item)
+	{
+		IrIndex[] writtenNodes = writtenNodesPtr[0..numWrittenNodes];
+		size_t from = numWrittenNodes-1;
+		size_t to = item.arrayPos;
+		if (from != to) {
+			writtenNodes[to] = writtenNodes[from];
+			getInfo(writtenNodes[to]).arrayPos = cast(uint)to;
+		}
+		*item = ValueInfo();
+		--numWrittenNodes;
+		context.tempBuffer.unput(1);
+	}
+
+	void placeMovesBeforeInstr(IrBuilder* builder, IrIndex beforeInstr)
+	{
+		while (numWrittenNodes)
 		{
-			IrIndex toIndex = writtenNodes[i];
+			IrIndex toIndex = writtenNodesPtr[numWrittenNodes-1];
 			ValueInfo* to = &getInfo(toIndex);
-
-			void removeCurrent()
-			{
-				*to = ValueInfo();
-				writtenNodes[i] = writtenNodes[$-1];
-				--writtenNodes.length;
-			}
-
 			IrIndex fromIndex = to.readFrom;
-
-			if (!fromIndex.isDefined)
-			{
-				// marked as removed node, skip
-				removeCurrent();
-				if (i >= writtenNodes.length) i = 0;
-				continue;
-			}
-
 			ValueInfo* from = &getInfo(fromIndex);
+
+			assert(!(fromIndex.isStackSlot && toIndex.isStackSlot));
 
 			if (to.numReads == 0)
 			{
+				version(RAPrint_resolve) writefln("insert move %s <- %s", toIndex, fromIndex);
 				if (fromIndex.isStackSlot)
 				{
-					if (toIndex.isStackSlot) // stack slot -> stack slot
-					{
-						context.internal_error("slot -> slot");
-					}
-					else // stack slot -> reg
-					{
-						ExtraInstrArgs extra = { result : toIndex, argSize : to.argSize };
-						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_load(extra, fromIndex);
-						builder.insertBeforeInstr(beforeInstr, instr.instruction);
-					}
+					ExtraInstrArgs extra = { result : toIndex, argSize : to.argSize };
+					InstrWithResult instr = builder.emitInstr!LirAmd64Instr_load(extra, fromIndex);
+					builder.insertBeforeInstr(beforeInstr, instr.instruction);
 				}
-				else
+				else // from is reg or constant
 				{
-					if (toIndex.isStackSlot) // reg -> stack slot
+					if (toIndex.isStackSlot) // con or reg -> stack slot
 					{
 						ExtraInstrArgs extra = { argSize : to.argSize };
 						IrIndex instr = builder.emitInstr!LirAmd64Instr_store(extra, toIndex, fromIndex);
 						builder.insertBeforeInstr(beforeInstr, instr);
 					}
-					else // reg -> reg
+					else // con or reg -> reg
 					{
 						ExtraInstrArgs extra = { result : toIndex, argSize : to.argSize };
 						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, fromIndex);
@@ -1259,54 +1311,46 @@ struct MoveSolver
 				}
 
 				--from.numReads;
-				removeCurrent();
+				--numWriteOnlyValues;
+				removeItem(to);
+
+				if (from.numReads == 0 && from.readFrom.isDefined)
+					rw_to_wo(from.arrayPos);
 			}
 			else // to.numReads > 0
 			{
-				if (from.readFrom.isDefined && from.numReads == 1 && getInfo(from.readFrom).numReads == 1)
-				{	// from is non-constant in this scope
+				// process cycled items
+				// from is non-constant in this scope
 
-					// to <-- from <-- from.readFrom
-					// mark from as removed and rewrite as:
-					// to <-- from.readFrom
+				// to <-- from <-- from.readFrom
+				// mark from as removed and rewrite as:
+				// to <-- from.readFrom
 
-					IrIndex instr = builder.emitInstr!LirAmd64Instr_xchg(ExtraInstrArgs(), fromIndex, from.readFrom);
-					builder.insertBeforeInstr(beforeInstr, instr);
+				version(RAPrint_resolve) writefln("xchg from %s to %s %s", *from, *to, toIndex);
 
-					if (from.readFrom == toIndex)
-					{
-						// handle case when from.readFrom == to
-						// to <-- from <-- to <-- from
-						// rewrite as
-						// from
-						removeCurrent();
-					}
-					else
-					{
-						to.readFrom = from.readFrom;
-						--from.numReads;
-						++i;
-					}
+				IrIndex instr = builder.emitInstr!LirAmd64Instr_xchg(ExtraInstrArgs(), fromIndex, from.readFrom);
+				builder.insertBeforeInstr(beforeInstr, instr);
 
-					// remove node from processing (we can't use removeInPlace, because we have no index)
-					from.readFrom = IrIndex();
+				if (from.readFrom == toIndex) {
+					// handle case when from.readFrom == to
+					// ... to <-- from <-- to ...
+					removeItem(to);
+				} else {
+					to.readFrom = from.readFrom;
+					--from.numReads;
 				}
-				else
-				{
-					++i;
-				}
+				removeItem(from);
 			}
-
-			if (i >= writtenNodes.length) i = 0;
 		}
 	}
 }
 
 struct ValueInfo
 {
+	uint arrayPos; // index into writtenNodes
+	IrIndex readFrom; // can be null
 	ushort numReads;
 	IrArgSize argSize; // used for memory moves
-	IrIndex readFrom; // can be null
 
 	void onRead(IrIndex self)
 	{
@@ -1315,6 +1359,7 @@ struct ValueInfo
 
 	void onWrite(IrIndex from, IrIndex self, IrArgSize argSize)
 	{
+		assert(readFrom.isUndefined, "Second write detected");
 		readFrom = from;
 		this.argSize = argSize;
 	}
