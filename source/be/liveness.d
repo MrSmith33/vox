@@ -132,7 +132,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 						{
 							liveAdd(arg.value);
 							LiveInterval* it = liveness.vint(arg.value);
-							it.prependUse(UsePosition(blockToPos, UseKind.phi));
+							it.prependUse(UsePosition(blockToPos+2, UseKind.phi));
 						}
 
 		//writef("in %s %s live:", blockIndex, liveness.linearIndicies.basicBlock(blockIndex));
@@ -144,7 +144,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		foreach (size_t index; liveness.bitmap.live.bitsSet)
 		{
 			// intervals[opd].addRange(block.from, block.to)
-			liveness.vint(index).addRange(context, blockFromPos, blockToPos);
+			liveness.vint(index).addRange(context, blockFromPos, blockToPos+2);
 			version(LivePrint) writefln("[LIVE] addRange vreg.#%s [%s; %s)", index,
 				blockFromPos, blockToPos);
 		}
@@ -276,11 +276,11 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		{
 			// We need to find the loop block with the max position
 			// Use loop header as starting block in case it is in max position
-			uint maxPos = blockToPos;
+			uint maxPos = blockToPos+2;
 			IrIndex loopEnd = blockIndex;
 			//     loopEnd = last block of the loop starting at b
 			foreach(IrIndex pred; block.predecessors.range(ir)) {
-				uint blockEndPos = liveness.linearIndicies[ir.getBlock(pred).lastInstr];
+				uint blockEndPos = liveness.linearIndicies[ir.getBlock(pred).lastInstr]+2;
 				if (blockEndPos > maxPos) {
 					maxPos = blockEndPos;
 					loopEnd = pred;

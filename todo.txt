@@ -109,6 +109,8 @@ o dll linking
 - Use array for unhandled list
 - Add special machine description for testing RA
 - Write RA test suite
+- Stack parameters need to have cached stack slot
+- For stack to stack moves in move solver we always spill scratch register. Check if there is free register available.
 
 + AST Index
 + improve parser to detect all declaration kinds in statements (add slice and static array)

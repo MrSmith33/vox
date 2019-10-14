@@ -280,7 +280,10 @@ struct AstToIr
 				if (resultType.isTypeStruct)
 					return builder.emitInstr!IrInstr_load_aggregate(currentBlock, extra, source).result;
 				else
+				{
+					extra.argSize = resultType.getTypeArgSize(ir, context);
 					return builder.emitInstr!IrInstr_load(currentBlock, extra, source).result;
+				}
 			case variable:
 				return builder.readVariable(currentBlock, source);
 			case constant:

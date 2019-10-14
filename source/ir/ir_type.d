@@ -384,3 +384,8 @@ IrArgSize getValueTypeArgSize(IrIndex value, IrFunction* ir, CompilationContext*
 	IrIndex type = getValueType(value, ir, context);
 	return sizeToIrArgSize(context.types.typeSize(type), context);
 }
+
+IrArgSize getTypeArgSize(IrIndex type, IrFunction* ir, CompilationContext* context)
+{
+	return sizeToIrArgSize(context.types.typeSize(type), context);
+}

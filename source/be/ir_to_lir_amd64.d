@@ -85,7 +85,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 	IrIndex genLoad(IrIndex lirPtr, uint offset, IrIndex ptrType, IrIndex lirBlockIndex) {
 		IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
 		IrIndex valType = context.types.getPointerBaseType(ptrType);
-		ExtraInstrArgs extra = { addUsers : false, type : valType };
+		IrArgSize argSize = typeToIrArgSize(valType, context);
+		ExtraInstrArgs extra = { addUsers : false, type : valType, argSize : argSize };
 		auto instr = builder.emitInstr!LirAmd64Instr_load(lirBlockIndex, extra, ptr);
 		return instr.result;
 	}

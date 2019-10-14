@@ -297,7 +297,7 @@ struct CodeEmitter
 						gen.xchg(dst, src, cast(ArgType)arg0.physRegSize);
 						break;
 					case Amd64Opcode.load:
-						genLoad(instrHeader.result(lir), instrHeader.arg(lir, 0));
+						genLoad(instrHeader.result(lir), instrHeader.arg(lir, 0), cast(ArgType)instrHeader.argSize);
 						break;
 					case Amd64Opcode.store:
 						genStore(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), cast(ArgType)instrHeader.argSize);
@@ -720,12 +720,11 @@ struct CodeEmitter
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
 	// If src is phys reg then it is used as address base.
 	// dst must be phys reg
-	void genLoad(IrIndex dst, IrIndex src)
+	void genLoad(IrIndex dst, IrIndex src, ArgType argType)
 	{
 		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot || src.isGlobal);
 		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
 
-		ArgType argType = cast(ArgType)dst.physRegSize;
 		Register dstReg = indexToRegister(dst);
 
 		switch(src.kind) with(IrValueKind)

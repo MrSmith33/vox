@@ -154,6 +154,8 @@ struct LinearScan
 	ref LivenessInfo live() { return *livePtr; }
 	IrFunction* lir;
 
+	IrIndex scratchSpillSlot;
+
 	void freeMem() {
 		activeVirtual.free(context.arrayArena);
 		activeFixed.free(context.arrayArena);
@@ -944,6 +946,14 @@ struct LinearScan
 		}
 	}
 
+	IrArgSize getMoveArgSize(IrIndex value)
+	{
+		if (value.isPhysReg) return cast(IrArgSize)value.physRegSize;
+		IrIndex type = getValueType(value, lir, context);
+		if (value.isStackSlot) type = context.types.getPointerBaseType(type);
+		return sizeToIrArgSize(context.types.typeSize(type), context);
+	}
+
 	void resolveEdge(
 		ref MoveSolver moveSolver,
 		IrIndex predIndex, ref IrBasicBlock predBlock,
@@ -976,8 +986,8 @@ struct LinearScan
 
 			if (succLoc != predLoc)
 			{
-				version(RAPrint_resolve) writefln("    vreg %s, pred %s succ %s", vreg, IrIndexDump(predLoc, context, lir), IrIndexDump(succLoc, context, lir));
-				IrArgSize argSize = getValueTypeArgSize(vreg, lir, context);
+				IrArgSize argSize = getMoveArgSize(vreg);
+				version(RAPrint_resolve) writefln("    vreg %s, pred %s succ %s size %s", vreg, IrIndexDump(predLoc, context, lir), IrIndexDump(succLoc, context, lir), argSize);
 				moveSolver.addMove(predLoc, succLoc, argSize);
 			}
 		}
@@ -992,9 +1002,9 @@ struct LinearScan
 					IrIndex moveFrom = arg.value;
 					IrIndex moveTo = phi.result;
 
-					version(RAPrint_resolve) writefln(" arg %s %s", arg.basicBlock, IrIndexDump(arg.value, context, lir));
+					IrArgSize argSize = getMoveArgSize(phi.result);
+					version(RAPrint_resolve) writefln(" arg %s %s size %s", arg.basicBlock, IrIndexDump(arg.value, context, lir), argSize);
 
-					IrArgSize argSize = getValueTypeArgSize(phi.result, lir, context);
 					moveSolver.addMove(moveFrom, moveTo, argSize);
 				}
 			}
@@ -1006,13 +1016,13 @@ struct LinearScan
 		{
 			IrIndex movesTarget = splitCriticalEdge(predIndex, predBlock, succIndex, succBlock);
 			// add to the back
-			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).lastInstr);
+			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).lastInstr, &getScratchSpillSlot);
 		}
 		else if (predBlock.successors.length > 1)
 		{
 			IrIndex movesTarget = succIndex;
 			// add to the front
-			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).firstInstr);
+			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).firstInstr, &getScratchSpillSlot);
 		}
 		else
 		{
@@ -1020,7 +1030,7 @@ struct LinearScan
 				"predBlock.successors.length %s", predBlock.successors.length);
 			IrIndex movesTarget = predIndex;
 			// add to the back
-			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).lastInstr);
+			moveSolver.placeMovesBeforeInstr(builder, lir.getBlock(movesTarget).lastInstr, &getScratchSpillSlot);
 		}
 	}
 
@@ -1067,7 +1077,7 @@ struct LinearScan
 	{
 		moveSolver.reset();
 		uint prevPos = 0;
-		version(RAPrint) writefln("Fix splits");
+		version(RAPrint_resolve) writefln("Fix splits");
 
 		void insertPrevMoves() {
 			if (prevPos == 0) return;
@@ -1075,8 +1085,8 @@ struct LinearScan
 
 			IrIndex insertBeforeInstr = live.evenIndexToIrIndex[prevPos/2];
 			context.assertf(insertBeforeInstr.isInstruction, "%s", insertBeforeInstr);
-			version(RAPrint) writefln("   insert %s moves before %s at %s", moveSolver.numWrittenNodes, insertBeforeInstr, prevPos);
-			moveSolver.placeMovesBeforeInstr(builder, insertBeforeInstr);
+			version(RAPrint_resolve) writefln("   insert %s moves before %s at %s", moveSolver.numWrittenNodes, insertBeforeInstr, prevPos);
+			moveSolver.placeMovesBeforeInstr(builder, insertBeforeInstr, &getScratchSpillSlot);
 			moveSolver.reset();
 		}
 
@@ -1089,16 +1099,15 @@ struct LinearScan
 			if (prevPos != splitPos) insertPrevMoves;
 
 			LiveInterval* parentIt = &live.intervals[it.parent];
-			version(RAPrint) writefln("  %s:%s split at %s, parent %s at %s", id, it.definition, it.from, it.parent, parentIt.to);
+			version(RAPrint_resolve) writefln("  %s:%s split at %s, parent %s at %s", id, it.definition, it.from, it.parent, parentIt.to);
 			context.assertf(prevPos <= it.from, "Wrong order");
 			IrIndex moveFrom = parentIt.reg;
 			IrIndex moveTo = it.reg;
-			version(RAPrint) writefln("   from %s to %s", IrIndexDump(moveFrom, context, lir), IrIndexDump(moveTo, context, lir));
+			version(RAPrint_resolve) writefln("   from %s to %s", IrIndexDump(moveFrom, context, lir), IrIndexDump(moveTo, context, lir));
 			if (moveFrom != moveTo)
 			{
-
 				IrIndex vreg = it.definition;
-				IrArgSize argSize = getValueTypeArgSize(vreg, lir, context);
+				IrArgSize argSize = getMoveArgSize(vreg);
 				moveSolver.addMove(moveFrom, moveTo, argSize);
 				prevPos = splitPos;
 			}
@@ -1122,11 +1131,18 @@ struct LinearScan
 				builder.prependBlockInstr(entryBlock, instrStore);
 
 				// restore register
-				ExtraInstrArgs extra = { result : reg.index };
+				ExtraInstrArgs extra = { result : reg.index, argSize : IrArgSize.size64 };
 				InstrWithResult instrLoad = builder.emitInstr!LirAmd64Instr_load(extra, slot);
 				builder.insertBeforeLastInstr(exitBlock, instrLoad.instruction);
 			}
 		}
+	}
+
+	IrIndex getScratchSpillSlot() {
+		if (scratchSpillSlot.isUndefined) {
+			scratchSpillSlot = fun.backendData.stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), StackSlotKind.local, 0);
+		}
+		return scratchSpillSlot;
 	}
 }
 
@@ -1274,8 +1290,22 @@ struct MoveSolver
 		context.tempBuffer.unput(1);
 	}
 
-	void placeMovesBeforeInstr(IrBuilder* builder, IrIndex beforeInstr)
+	void placeMovesBeforeInstr(IrBuilder* builder, IrIndex beforeInstr, IrIndex delegate() getScratchSpillSlot)
 	{
+		void makeStore(IrIndex dst, IrIndex src, IrArgSize argSize)
+		{
+			ExtraInstrArgs extra = { argSize : argSize };
+			IrIndex instr = builder.emitInstr!LirAmd64Instr_store(extra, dst, src);
+			builder.insertBeforeInstr(beforeInstr, instr);
+		}
+
+		void makeLoad(IrIndex dst, IrIndex src, IrArgSize argSize)
+		{
+			ExtraInstrArgs extra = { result : dst, argSize : argSize };
+			InstrWithResult instr = builder.emitInstr!LirAmd64Instr_load(extra, src);
+			builder.insertBeforeInstr(beforeInstr, instr.instruction);
+		}
+
 		while (numWrittenNodes)
 		{
 			IrIndex toIndex = writtenNodesPtr[numWrittenNodes-1];
@@ -1283,24 +1313,36 @@ struct MoveSolver
 			IrIndex fromIndex = to.readFrom;
 			ValueInfo* from = &getInfo(fromIndex);
 
-			assert(!(fromIndex.isStackSlot && toIndex.isStackSlot));
-
 			if (to.numReads == 0)
 			{
 				version(RAPrint_resolve) writefln("insert move %s <- %s", toIndex, fromIndex);
 				if (fromIndex.isStackSlot)
 				{
-					ExtraInstrArgs extra = { result : toIndex, argSize : to.argSize };
-					InstrWithResult instr = builder.emitInstr!LirAmd64Instr_load(extra, fromIndex);
-					builder.insertBeforeInstr(beforeInstr, instr.instruction);
+					if (toIndex.isStackSlot) // stack slot -> stack slot
+					{
+						IrIndex scratchSpillSlot = getScratchSpillSlot();
+						IrIndex scratchReg = IrIndex(0, IrArgSize.size64, 0);
+
+						makeStore(scratchSpillSlot, scratchReg, IrArgSize.size64);
+
+						// we don't have correct argSize inside `from` because size is only registered for move dst
+						scratchReg.physRegSize = to.argSize;
+						makeLoad(scratchReg, fromIndex, to.argSize);
+						makeStore(toIndex, scratchReg, to.argSize);
+
+						scratchReg.physRegSize = IrArgSize.size64;
+						makeLoad(scratchReg, scratchSpillSlot, IrArgSize.size64);
+					}
+					else // con or reg -> stack slot
+					{
+						makeLoad(toIndex, fromIndex, to.argSize);
+					}
 				}
 				else // from is reg or constant
 				{
 					if (toIndex.isStackSlot) // con or reg -> stack slot
 					{
-						ExtraInstrArgs extra = { argSize : to.argSize };
-						IrIndex instr = builder.emitInstr!LirAmd64Instr_store(extra, toIndex, fromIndex);
-						builder.insertBeforeInstr(beforeInstr, instr);
+						makeStore(toIndex, fromIndex, to.argSize);
 					}
 					else // con or reg -> reg
 					{

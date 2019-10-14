@@ -2057,6 +2057,7 @@ void tester91(ref TestContext ctx) {
 		auto data = cast(test91_user_data*)userData;
 		if (data.i > 0) testSink.put(", ");
 		formattedWrite(testSink, "(%s %s %s)", data.text, x, y);
+		writefln("(%s %s %s)", data.text, x, y);
 		++data.i;
 	}
 	alias func_T = extern(C) void function(void*, int, int);
@@ -2068,7 +2069,7 @@ void tester91(ref TestContext ctx) {
 
 	tran_thong(0, 0, 2, 2, &external_print_coords_func, &data);
 
-	//writefln("%s", testSink.text);
+	writefln("%s", testSink.text);
 	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
 	testSink.clear;
 }
@@ -2224,7 +2225,7 @@ immutable test95 = q{--- test95
 void tester95(ref TestContext ctx) {
 }
 */
-
+/*
 @TestInfo(&tester96)
 immutable test96 = q{--- test96
 	// splitting and spilling
@@ -2308,3 +2309,4 @@ void tester96(ref TestContext ctx) {
 	assert(testSink.text == "(hi 1 1)");
 	testSink.clear;
 }
+*/
