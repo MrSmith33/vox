@@ -1401,7 +1401,6 @@ struct ValueInfo
 
 	void onWrite(IrIndex from, IrIndex self, IrArgSize argSize)
 	{
-		assert(readFrom.isUndefined, "Second write detected");
 		readFrom = from;
 		this.argSize = argSize;
 	}

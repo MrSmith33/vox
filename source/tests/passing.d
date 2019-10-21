@@ -1985,7 +1985,7 @@ void tester90(ref TestContext ctx) {
 	testFormatInt(long.max, "xxx9223372036854775807x", "9223372036854775807");
 }
 
-
+/*
 @TestInfo(&tester91)
 immutable test91 = q{--- test91
 	// splitting and spilling
@@ -2072,7 +2072,7 @@ void tester91(ref TestContext ctx) {
 	writefln("%s", testSink.text);
 	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
 	testSink.clear;
-}
+}*/
 
 @TestInfo(&tester92)
 immutable test92 = q{--- test92
@@ -2225,7 +2225,7 @@ immutable test95 = q{--- test95
 void tester95(ref TestContext ctx) {
 }
 */
-/*
+
 @TestInfo(&tester96)
 immutable test96 = q{--- test96
 	// splitting and spilling
@@ -2309,4 +2309,3 @@ void tester96(ref TestContext ctx) {
 	assert(testSink.text == "(hi 1 1)");
 	testSink.clear;
 }
-*/

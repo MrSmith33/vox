@@ -173,11 +173,11 @@ void dumpFunctionImpl(IrDumpContext* c)
 			foreach(ref interval; liveness.physicalIntervals)
 			{
 				if (interval.coversPosition(linearInstrIndex))
-					sink.put("┃");
+					sink.put("|");
 				else
 					sink.put(" ");
 			}
-			if (settings.printVregLiveness) sink.put("┇");
+			if (settings.printVregLiveness) sink.put("#");
 		}
 
 		import std.bitmanip : BitArray;
@@ -194,10 +194,47 @@ void dumpFunctionImpl(IrDumpContext* c)
 
 			if (interval.hasUseAt(linearInstrIndex))
 			{
-				if (vreg.definition == instrIndex)
+				if (vreg.definition == instrIndex) // we are printing at definition site
 					sink.put("D"); // virtual register is defined by this instruction / phi
 				else
-					sink.put("U");
+				{
+					// some use
+					if (instrIndex.isPhi)
+					{
+						// some phi
+						if (vreg.users.contains(ir, instrIndex))
+							sink.put("U"); // phi uses current vreg
+						else
+							sink.put("|"); // phi doesn't use current phi
+					}
+					else if (instrIndex.isBasicBlock)
+					{
+						// this is a use in phi function
+						// it is phi function
+						IrIndex prevBlock = ir.getBlock(instrIndex).prevBlock;
+						foreach (i, index; vreg.users.range(ir))
+						{
+							if (index.isPhi)
+							{
+								IrPhi* phi = &ir.getPhi(index);
+								foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+								{
+									if (phiArg.basicBlock == prevBlock && phiArg.value == interval.definition)
+									{
+										uint phiPos = liveness.linearIndicies[phi.blockIndex];
+										if (phiPos < linearInstrIndex)
+											sink.put("^"); // vreg is used by phi above
+										else
+											sink.put("v"); // vreg is used by phi below
+										break;
+									}
+								}
+							}
+						}
+					}
+					else
+						sink.put("U");
+				}
 			}
 			else if (interval.coversPosition(linearInstrIndex))
 			{
@@ -205,15 +242,28 @@ void dumpFunctionImpl(IrDumpContext* c)
 					sink.put("D"); // virtual register is defined by this instruction / phi
 				else
 				{
-					if (instrIndex.isBasicBlock && blockLiveIn[interval.definition.storageUintIndex])
-						sink.put("┏"); // virtual register is in "live in" of basic block
+					if (instrIndex.isBasicBlock)
+					{
+						if (blockLiveIn[interval.definition.storageUintIndex])
+							sink.put("+"); // virtual register is in "live in" of basic block
+						else
+							sink.put(" "); // phi result
+					}
 					else
-						sink.put("┃"); // virtual register is live in this position
+						sink.put("|"); // virtual register is live in this position
 				}
 			}
 			else
 			{
-				sink.put(" ");
+				if (instrIndex.isPhi)
+				{
+					if (vreg.users.contains(ir, instrIndex))
+						sink.put("U");
+					else
+						sink.put(" ");
+				}
+				else
+					sink.put(" ");
 			}
 		}
 

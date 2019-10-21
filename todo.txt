@@ -104,12 +104,15 @@ o dll linking
 + store fixed intervals separately from virtual register intervals while doing RA
 + reuse spill stack slot
 - allow src operands to be stack slots
+	- differentiate uses that require value in a register and ones that dont
+	  phi uses do not require register location for example
 - select optimal split position
 - spill at definition if there are multiple spill points / spilled intervals detected.
 - Use array for unhandled list
 - Add special machine description for testing RA
 - Write RA test suite
 - Stack parameters need to have cached stack slot
+- optimize multiple spills into single spill at definition
 - For stack to stack moves in move solver we always spill scratch register. Check if there is free register available.
 
 + AST Index

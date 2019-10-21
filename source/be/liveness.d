@@ -551,8 +551,10 @@ struct LiveInterval
 	}
 
 	uint firstUse() {
-		if (uses.length == 0) return MAX_USE_POS;
-		return uses[0].pos;
+		// don't require uses by phi functions to be in register
+		foreach(UsePosition use; uses)
+			if (use.kind == UseKind.instruction) return use.pos;
+		return MAX_USE_POS;
 	}
 
 	// incudes after
@@ -562,7 +564,9 @@ struct LiveInterval
 		foreach_reverse (UsePosition use; uses)
 		{
 			if (use.pos < after) break;
-			closest = use.pos;
+			// don't require uses by phi functions to be in register
+			if (use.kind == UseKind.instruction)
+				closest = use.pos;
 		}
 		return closest;
 	}
@@ -769,8 +773,8 @@ struct LivenessInfo
 		// we want to take register from interval starting at the same position
 		// happens for multiple phi functions in the same block
 		// if first is allocated interval with bigger first use position
-		if (before == it.from) {
-			//writefln("  splitBefore %s %s take register from interval starting at %s", parentInterval, before, it.from);
+		if (before <= it.from) {
+			//writefln("  splitBefore before start %s %s take register from interval starting at %s", parentInterval, before, it.from);
 			return parentInterval;
 		}
 
@@ -778,7 +782,7 @@ struct LivenessInfo
 		LiveRangeIndex rightIndex = it.getRightRange(optimalPos-1);
 		//writefln("  splitBefore1 %s %s %s", parentInterval, optimalPos, rightIndex);
 		if (rightIndex.isNull) {
-			context.internal_error("splitBefore %s %s %s split at max pos", parentInterval, optimalPos, rightIndex);
+			//writefln("  splitBefore after end %s %s %s split at max pos", parentInterval, optimalPos, rightIndex);
 			return parentInterval;
 		}
 		return splitBefore(context, parentInterval, optimalPos, rightIndex);
