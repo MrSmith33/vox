@@ -460,15 +460,6 @@ struct LiveInterval
 		return LiveRangeIndex.NULL;
 	}
 
-	LiveRangeIndex getRightRangeInclusive(uint position)
-	{
-		foreach(i, range; ranges) {
-			if (position == range.from || position < range.to)
-				return LiveRangeIndex(i);
-		}
-		return LiveRangeIndex.NULL;
-	}
-
 	// returns rangeId pointing to range covering position or one to the left of pos.
 	// returns NULL if empty interval or no ranges to the left
 	LiveRangeIndex getLeftRange(uint position)
@@ -714,6 +705,8 @@ struct LivenessInfo
 	}
 
 	bool isBlockStartAt(IrFunction* ir, uint pos, ref IrIndex next) {
+		if ((pos & 1) == 1) pos += 1;
+
 		while (next.isDefined)
 		{
 			IrBasicBlock* block = &ir.getBlock(next);
@@ -770,21 +763,26 @@ struct LivenessInfo
 	{
 		LiveInterval* it = &intervals[parentInterval];
 
+		uint optimalPos = before;//findSplitPos(context, lir, it, before);
+		// Make sure that we split on odd position
+		if ((optimalPos & 1) == 0) optimalPos -= 1;
+
 		// we want to take register from interval starting at the same position
 		// happens for multiple phi functions in the same block
 		// if first is allocated interval with bigger first use position
-		if (before <= it.from) {
+		if (optimalPos <= it.from) {
 			//writefln("  splitBefore before start %s %s take register from interval starting at %s", parentInterval, before, it.from);
 			return parentInterval;
 		}
 
-		uint optimalPos = before;//findSplitPos(context, lir, it, before);
-		LiveRangeIndex rightIndex = it.getRightRange(optimalPos-1);
-		//writefln("  splitBefore1 %s %s %s", parentInterval, optimalPos, rightIndex);
+		LiveRangeIndex rightIndex = it.getRightRange(optimalPos);
+
 		if (rightIndex.isNull) {
 			//writefln("  splitBefore after end %s %s %s split at max pos", parentInterval, optimalPos, rightIndex);
 			return parentInterval;
 		}
+
+		//writefln("  splitBefore1 %s %s %s", parentInterval, optimalPos, rightIndex);
 		return splitBefore(context, parentInterval, optimalPos, rightIndex);
 	}
 
@@ -819,10 +817,10 @@ struct LivenessInfo
 
 		Array!LiveRange newRanges;
 
-		if (right.from < before-1)
+		if (right.from < before)
 		{
 			newRanges.put(context.arrayArena, LiveRange(before, right.to)); // piece of splitted range
-			right.to = before-1;
+			right.to = before;
 			foreach(range; it.ranges[rightIndex+1..$])
 				newRanges.put(context.arrayArena, range);
 			it.ranges.unput(it.ranges.length - rightIndex - 1); // dont remove splitted range
@@ -838,7 +836,7 @@ struct LivenessInfo
 
 		LiveInterval rightInterval = {
 			ranges : newRanges,
-			uses : it.splitUsesBefore(before-1),
+			uses : it.splitUsesBefore(before),
 			definition : it.definition,
 			parent : parentInterval,
 			child : it.child,
@@ -956,7 +954,9 @@ struct IntervalIndex
 /// ranges within one interval never have ranges[i].to == ranges[i+1].from
 /// When split prev range's end get's offset by 1 so [0; 10) becomes [0; 3) [4; 10)
 /// When looking if instruction is covered by range the end position is inclusive
-/// When considering [10;10) end is inclusive
+/// Splits must always occur on odd positions
+/// We forbid creation of [10; 10) ranges
+/// invariant: from < to
 /// [from; to)
 struct LiveRange
 {
@@ -965,14 +965,7 @@ struct LiveRange
 
 	bool contains(uint pos) {
 		if (pos < from) return false;
-		if (pos == from) return true;
 		if (pos >= to) return false;
-		return true;
-	}
-	bool containsInclusive(uint pos) {
-		if (pos < from) return false;
-		if (pos == from) return true;
-		if (pos > to) return false;
 		return true;
 	}
 	void merge(LiveRange other) {

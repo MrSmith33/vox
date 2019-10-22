@@ -9,6 +9,26 @@ Authors: Andrey Penechko.
 /// Notes:
 /// Non-split current interval does not intersect with inactive intervals because of SSA form
 ///
+/// Splits need to be at the odd position. This gives:
+///  a) no intervals of form: [x; x)
+///  b) no problems with two operand form mov instruction before two operand instruction
+///     two operand form can insert mov from first operand into result register
+///     and in case first operand's interval was split it would start at the instruction and not include the mov
+///     as result register allocator may allocate arg0 register to reloaded argument,
+///     but reload will precede the mov, thus overwriting the value
+///     100 | v0 = add v1, v2   | eax(v0) = add ecx(v1), ecx(v2)
+///     v0 [100; 200) eax
+///     v1 [50; 100) ecx
+///     v2 [40; 99) s0 [100; 109) ecx
+///    becomes
+///      99|    ecx = load i32* s3  // split move overwrites ecx that is used in the next instruction
+///      99|    eax = mov ecx       // fix two operand form
+///     100|    eax = add eax, ecx
+///
+/// As result of splits being on odd positions another invariant becomes available:
+///   All ranges have distinct `from` and `to` positions. Zero length ranges become impossible.
+///   range.from < range.to
+
 module be.register_allocation;
 
 import std.array : empty;
@@ -181,7 +201,7 @@ struct LinearScan
 				continue;
 			}
 
-			LiveRangeIndex rangeId = activeInt.getRightRangeInclusive(position);
+			LiveRangeIndex rangeId = activeInt.getRightRange(position);
 
 			// if it ends before position then
 			if (rangeId.isNull)
@@ -191,7 +211,7 @@ struct LinearScan
 				active.removeInPlace(index);
 			}
 			// else if it does not cover position then
-			else if(!activeInt.ranges[rangeId].containsInclusive(position))
+			else if(!activeInt.ranges[rangeId].contains(position))
 			{
 				// move it from active to inactive
 				version(RAPrint) writefln("  move %s active -> inactive", activeId);
@@ -218,7 +238,7 @@ struct LinearScan
 		{
 			IntervalIndex inactiveId = inactive[index];
 			LiveInterval* inactiveInt = &live.intervals[inactiveId];
-			LiveRangeIndex rangeId = inactiveInt.getRightRangeInclusive(position);
+			LiveRangeIndex rangeId = inactiveInt.getRightRange(position);
 
 			// if it ends before position then
 			if (rangeId.isNull)
@@ -228,7 +248,7 @@ struct LinearScan
 				inactive.removeInPlace(index);
 			}
 			// 	else if it covers position then
-			else if(inactiveInt.ranges[rangeId].containsInclusive(position))
+			else if(inactiveInt.ranges[rangeId].contains(position))
 			{
 				// move it from inactive to active
 				version(RAPrint) writefln("  move %s inactive -> active", inactiveId);
@@ -331,7 +351,7 @@ struct LinearScan
 				version(RAPrint) writefln("  current is split child");
 				if (!live.isBlockStartAt(lir, position, currentBlock))
 				{
-					version(RAPrint) writefln("  current is the middle of the block %s", currentBlock);
+					version(RAPrint) writefln("  current is in the middle of the block %s", currentBlock);
 					pendingMoveSplits.put(context.arrayArena, currentIndex);
 				}
 
@@ -437,7 +457,7 @@ struct LinearScan
 		foreach (IntervalIndex activeId; activeVirtual) {
 			LiveInterval* it = &live.intervals[activeId];
 			physRegs[it.reg].usePos = 0;
-			version(RAPrint) writefln("   intv %s %s %s reg %s (next use 0)", activeId, it, *it, IrIndexDump(it.reg, context, lir));
+			version(RAPrint) writefln("   intv %s %s reg %s (next use 0)", activeId, *it, IrIndexDump(it.reg, context, lir));
 		}
 
 		// for each interval it in inactive intersecting with current do
@@ -465,6 +485,7 @@ struct LinearScan
 		{
 			foreach (IntervalIndex inactiveId; inactiveVirtual) {
 				LiveInterval* it = &live.intervals[inactiveId];
+				assert(it.reg.isPhysReg, "not a reg");
 				version(RAPrint) writef("   intv %s %s (next use %s)", IrIndexDump(it.reg, context, lir), it.definition, FreeUntilPos(physRegs[it.reg].usePos));
 
 				// if current intersects both active and inactive, usePos stays 0
@@ -543,6 +564,10 @@ struct LinearScan
 			} else {
 				// split
 				version(RAPrint) writefln("    alloc %s + split at %s", IrIndexDump(reg, context, lir), maxPos);
+
+				// prevent split at even x when interval starts at x-1
+				if (currentIt.from + 1 == maxPos) return false;
+
 				splitBefore(currentId, maxPos, unhandled);
 				currentIt = &live.intervals[currentId]; // intervals may have reallocated
 
@@ -657,6 +682,7 @@ struct LinearScan
 			{
 				LiveInterval* activeIt = &live.intervals[index];
 				// split before current start. Add to unhandled so we get split move registered
+				version(RAPrint) writefln("      split before current start %s", currentStart);
 				IntervalIndex newInterval = splitBefore(index, currentStart, unhandled);
 
 				LiveInterval* splitActiveIt = &live.intervals[newInterval];
@@ -666,15 +692,15 @@ struct LinearScan
 				uint nextActiveUse = splitActiveIt.nextUseAfter(currentStart);
 				if (nextActiveUse != MAX_USE_POS)
 				{
-					splitBefore(newInterval, nextActiveUse, unhandled);
 					version(RAPrint) writefln("      split before use %s", newInterval);
+					splitBefore(newInterval, nextActiveUse, unhandled);
 				}
 			}
 
 			IntervalIndex activeIndex = physRegs[reg].activeInterval;
 			context.assertf(!activeIndex.isNull, "%s", IrIndexDump(reg, context, lir)); // null means that it is fixed interval. But we filter out fixed interval above
-			splitActiveOrInactive(activeIndex);
 			version(RAPrint) writefln("    split active interval %s", activeIndex);
+			splitActiveOrInactive(activeIndex);
 
 			//	split any inactive interval for reg at the end of its lifetime hole
 			foreach (inactiveId; inactiveVirtual)
@@ -682,8 +708,8 @@ struct LinearScan
 				LiveInterval* it = &live.intervals[inactiveId];
 				if (sameIndexOrPhysReg(it.reg, reg))
 				{
-					splitActiveOrInactive(inactiveId);
 					version(RAPrint) writefln("    split inactive interval %s", inactiveId);
+					splitActiveOrInactive(inactiveId);
 				}
 			}
 
@@ -1084,7 +1110,7 @@ struct LinearScan
 			if (moveSolver.numWrittenNodes == 0) return;
 
 			IrIndex insertBeforeInstr = live.evenIndexToIrIndex[prevPos/2];
-			context.assertf(insertBeforeInstr.isInstruction, "%s", insertBeforeInstr);
+			context.assertf(insertBeforeInstr.isInstruction, "%s %s", prevPos, insertBeforeInstr);
 			version(RAPrint_resolve) writefln("   insert %s moves before %s at %s", moveSolver.numWrittenNodes, insertBeforeInstr, prevPos);
 			moveSolver.placeMovesBeforeInstr(builder, insertBeforeInstr, &getScratchSpillSlot);
 			moveSolver.reset();
@@ -1094,13 +1120,14 @@ struct LinearScan
 		foreach (IntervalIndex id; pendingMoveSplits)
 		{
 			LiveInterval* it = &live.intervals[id]; // always returns first part of split intervals
-			uint splitPos = it.from;
+			uint splitPos = it.from+1;
+			assert((splitPos & 1) == 0, "Must be even pos");
 			// insert all moves on prev position
 			if (prevPos != splitPos) insertPrevMoves;
 
 			LiveInterval* parentIt = &live.intervals[it.parent];
 			version(RAPrint_resolve) writefln("  %s:%s split at %s, parent %s at %s", id, it.definition, it.from, it.parent, parentIt.to);
-			context.assertf(prevPos <= it.from, "Wrong order");
+			context.assertf(prevPos <= splitPos, "Wrong order %s < %s", prevPos, splitPos);
 			IrIndex moveFrom = parentIt.reg;
 			IrIndex moveTo = it.reg;
 			version(RAPrint_resolve) writefln("   from %s to %s", IrIndexDump(moveFrom, context, lir), IrIndexDump(moveTo, context, lir));

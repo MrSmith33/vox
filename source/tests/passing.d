@@ -1985,7 +1985,7 @@ void tester90(ref TestContext ctx) {
 	testFormatInt(long.max, "xxx9223372036854775807x", "9223372036854775807");
 }
 
-/*
+
 @TestInfo(&tester91)
 immutable test91 = q{--- test91
 	// splitting and spilling
@@ -2057,7 +2057,6 @@ void tester91(ref TestContext ctx) {
 		auto data = cast(test91_user_data*)userData;
 		if (data.i > 0) testSink.put(", ");
 		formattedWrite(testSink, "(%s %s %s)", data.text, x, y);
-		writefln("(%s %s %s)", data.text, x, y);
 		++data.i;
 	}
 	alias func_T = extern(C) void function(void*, int, int);
@@ -2069,10 +2068,10 @@ void tester91(ref TestContext ctx) {
 
 	tran_thong(0, 0, 2, 2, &external_print_coords_func, &data);
 
-	writefln("%s", testSink.text);
+	//writefln("%s", testSink.text);
 	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
 	testSink.clear;
-}*/
+}
 
 @TestInfo(&tester92)
 immutable test92 = q{--- test92
@@ -2161,7 +2160,7 @@ void tester94(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(Small, int, int)("glue")(42, 100) == Small(42, 100));
 }
 
-/*
+
 @TestInfo(&tester95)
 immutable test95 = q{--- test95
 	// if callback returns true the traversal stops
@@ -2169,6 +2168,8 @@ immutable test95 = q{--- test95
 	{
 		i32 x = xstart;
 		i32 y = ystart;
+
+		if (callback(userData, x, y)) return;
 
 		i32 deltax;
 		i32 signdx;
@@ -2223,8 +2224,39 @@ immutable test95 = q{--- test95
 	}
 };
 void tester95(ref TestContext ctx) {
+	static struct test95_user_data {
+		string text;
+		size_t i;
+		size_t breakIndex;
+	}
+	static extern(C) bool external_print_coords_func(void* userData, int x, int y) {
+		auto data = cast(test95_user_data*)userData;
+		if (data.i > 0) testSink.put(", ");
+		formattedWrite(testSink, "(%s %s %s)", data.text, x, y);
+		if (data.breakIndex == data.i) return true;
+		++data.i;
+		return false;
+	}
+
+	alias func_T = extern(C) bool function(void*, int, int);
+	auto tran_thong = ctx.getFunctionPtr!(void, int, int, int, int, func_T, void*)("tran_thong");
+
+	void runTest(size_t breakIndex, string expectedString)
+	{
+		test95_user_data data;
+		data = test95_user_data("hi", 0, breakIndex);
+		tran_thong(0, 0, 3, 3, &external_print_coords_func, &data);
+		//writefln("%s", testSink.text);
+		assert(testSink.text == expectedString);
+		testSink.clear;
+	}
+
+	runTest(0, "(hi 0 0)");
+	runTest(1, "(hi 0 0), (hi 1 1)");
+	runTest(2, "(hi 0 0), (hi 1 1), (hi 2 2)");
+	runTest(3, "(hi 0 0), (hi 1 1), (hi 2 2), (hi 3 3)");
+	runTest(4, "(hi 0 0), (hi 1 1), (hi 2 2), (hi 3 3)");
 }
-*/
 
 @TestInfo(&tester96)
 immutable test96 = q{--- test96
