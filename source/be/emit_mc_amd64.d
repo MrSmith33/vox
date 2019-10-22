@@ -610,7 +610,9 @@ struct CodeEmitter
 				break;
 
 			case stackSlot:
-				context.internal_error("func %s %s", context.idString(fun.backendData.name), instrIndex); assert(false); // gen.mov(reg0, localVarMemAddress(valueRef), argType);
+				argSrc.memAddress = localVarMemAddress(src);
+				param.srcKind = AsmArgKind.MEM;
+				break;
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}
