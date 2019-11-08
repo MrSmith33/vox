@@ -127,4 +127,25 @@ unittest
 	assert(removeInPlace([2, 1], 2) == [1]);
 }
 
+struct FileDataSlicer
+{
+	ubyte[] fileData;
+	size_t fileCursor = 0;
 
+	// Returns array of Ts of length 'length' stating from fileCursor offset in fileData
+	T[] getArrayOf(T)(size_t length)
+	{
+		enforce(fileData.length >= fileCursor + T.sizeof * length);
+		auto res = (cast(T*)(fileData.ptr + fileCursor))[0..length];
+		fileCursor += T.sizeof * length;
+		return res;
+	}
+
+	T* getPtrTo(T)() { return getArrayOf!T(1).ptr; }
+	T parseBigEndian(T)() {
+		ubyte[T.sizeof] buf = getArrayOf!ubyte(T.sizeof);
+		return bigEndianToNative!T(buf);
+	}
+
+	void advanceToAlignment(size_t alignment) { fileCursor += paddingSize(fileCursor, alignment); }
+}

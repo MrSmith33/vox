@@ -85,6 +85,9 @@ o dll linking
 - optimize pointer arithmetic into lea
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
+[Debug info]
+- Implement pdb format write/read
+
 [IR]
 - Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
 - IrBuilder must prevent adding instructions from wrong instruction set
