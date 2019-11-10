@@ -12,8 +12,6 @@ void pass_source(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 	size_t start = ctx.sourceBuffer.length;
 	foreach(ref file; ctx.files.data)
 	{
-		file.mod.id = ctx.idMap.getOrRegNoDup(stripExtension(file.name));
-
 		if (file.content)
 		{
 			ctx.sourceBuffer.put(SOI_CHAR);
@@ -371,13 +369,15 @@ struct Driver
 		context.files.put(moduleFile);
 		SourceFileInfo* file = &context.files.back();
 
+		Identifier id = context.idMap.getOrRegNoDup(stripExtension(file.name));
 		ObjectModule localModule = {
 			kind : ObjectModuleKind.isLocal,
-			id : context.idMap.getOrRegNoDup(":local")
+			id : id
 		};
 		auto mod = context.appendAst!ModuleDeclNode();
 		file.mod = context.getAst!ModuleDeclNode(mod);
 		file.mod.moduleIndex = ModuleIndex(fileIndex);
+		file.mod.id = id;
 		file.mod.objectSymIndex = context.objSymTab.addModule(localModule);
 	}
 

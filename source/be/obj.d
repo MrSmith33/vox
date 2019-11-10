@@ -154,6 +154,7 @@ struct ObjectModule
 	/// Linked list of symbols
 	LinkIndex firstSymbol;
 
+	bool isLocal() { return kind == ObjectModuleKind.isLocal; }
 	bool isImported() { return kind == ObjectModuleKind.isImported; }
 }
 
@@ -289,6 +290,42 @@ struct ObjectSymbolTable
 				}
 				symIndex = sym.nextSymbol;
 			}
+			modIndex = mod.nextModule;
+		}
+	}
+
+	// prints function label JSON for .dd64 database file of x64dbg debugger
+	void print_dd64_debug_info(CompilationContext* context)
+	{
+		LinkIndex modIndex = firstModule;
+		while (modIndex.isDefined)
+		{
+			ObjectModule* mod = &getModule(modIndex);
+			if (mod.isLocal)
+			{
+				LinkIndex symIndex = mod.firstSymbol;
+				while (symIndex.isDefined)
+				{
+					ObjectSymbol* sym = &getSymbol(symIndex);
+					ObjectSection* section = &getSection(sym.sectionIndex);
+
+					// it is a function
+					if (sym.sectionIndex == context.textSectionIndex)
+					{
+						writefln("  {");
+						writefln("   \"module\": \"%s\",", context.outputFilename);
+						writefln("   \"address\": \"0x%X\",", section.sectionAddress + sym.sectionOffset);
+						writefln("   \"manual\": true,");
+						//writefln("   \"text\": \"%s.%s\"", context.idString(mod.id), context.idString(sym.id));
+						writefln("   \"text\": \"%s\"", context.idString(sym.id));
+						writefln("  },");
+						//writefln("  0x%X %s.%s", section.sectionAddress + sym.sectionOffset, context.idString(mod.id), context.idString(sym.id));
+					}
+
+					symIndex = sym.nextSymbol;
+				}
+			}
+
 			modIndex = mod.nextModule;
 		}
 	}

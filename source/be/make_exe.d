@@ -114,6 +114,8 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	//printHex(sink.data, 16);
 	//writefln("Writing to '%s'", context.outputFilename.absolutePath);
 	//std.file.write(context.outputFilename, sink.data);
+
+	//context.objSymTab.print_dd64_debug_info(&context);
 }
 
 CoffImportSectionSize calcImportSize(CompilationContext* context)
