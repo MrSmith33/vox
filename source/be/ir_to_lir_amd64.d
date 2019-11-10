@@ -661,7 +661,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 	void fixInstrs(IrIndex blockIndex, ref IrBasicBlock lirBlock)
 	{
-		// replace old args with new args and add users
+		// all instructions already contain final arguments, add users here
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(lir))
 		{
 			foreach(ref IrIndex arg; instrHeader.args(lir))

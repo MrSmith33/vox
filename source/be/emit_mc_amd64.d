@@ -303,10 +303,37 @@ struct CodeEmitter
 						genStore(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), cast(ArgType)instrHeader.argSize);
 						break;
 					case Amd64Opcode.add:
-						genRegular(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), AMD64OpRegular.add, cast(ArgType)instrHeader.arg(lir, 0).physRegSize, instrIndex);
-						if (instrHeader.arg(lir, 0) == stackPointer && instrHeader.arg(lir, 1).isConstant)
+						IrIndex arg0 = instrHeader.arg(lir, 0);
+						IrIndex arg1 = instrHeader.arg(lir, 1);
+						if (arg1.isStackSlot)
 						{
-							stackPointerExtraOffset -= context.constants.get(instrHeader.arg(lir, 1)).i64;
+							// this was generated from GEP
+							//   reg += rsp + disp8/32
+							// convert it into
+							//   lea reg, rsp + reg + disp8/32
+							Register dst = indexToRegister(arg0);
+							MemAddress addr = localVarMemAddress(arg1);
+							switch(addr.type) {
+								case MemAddrType.baseDisp8:
+									MemAddress newAddr = memAddrBaseIndexDisp8(addr.baseReg, dst, SibScale(0), addr.disp8.value);
+									gen.lea(dst, newAddr, ArgType.QWORD);
+									break;
+								case MemAddrType.baseDisp32:
+									MemAddress newAddr = memAddrBaseIndexDisp32(addr.baseReg, dst, SibScale(0), addr.disp32.value);
+									gen.lea(dst, newAddr, ArgType.QWORD);
+									break;
+								default:
+									context.internal_error("Invalid memory operand %s", addr);
+							}
+						}
+						else
+						{
+							genRegular(arg0, arg1, AMD64OpRegular.add, cast(ArgType)arg0.physRegSize, instrIndex);
+						}
+
+						if (arg0 == stackPointer && arg1.isConstant)
+						{
+							stackPointerExtraOffset -= context.constants.get(arg1).i64;
 						}
 						break;
 					case Amd64Opcode.sub:
@@ -601,18 +628,15 @@ struct CodeEmitter
 				param.srcKind = AsmArgKind.IMM;
 				break;
 
-			case global:
-				assert(false); // TODO
-
 			case physicalRegister:
 				argSrc.reg = indexToRegister(src);
 				param.srcKind = AsmArgKind.REG;
 				break;
 
-			case stackSlot:
-				argSrc.memAddress = localVarMemAddress(src);
-				param.srcKind = AsmArgKind.MEM;
-				break;
+			case global, stackSlot:
+				// This should not happen. Stack slot or global must go through mov or load instruction.
+				context.internal_error("Cannot encode %s %s %s in %s %s", op, dst, src, context.idString(fun.backendData.name), instrIndex);
+				assert(false);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}

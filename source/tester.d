@@ -15,7 +15,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(test90);
+	Test test = makeTest!(test97);
 	string filterFuncName;
 
 	Driver driver;
@@ -84,7 +84,6 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	Test[] jitTests = tests.passing.passingTests ~ tests.failing.failingTests;
 	Test[] regAllocTests = tests.reg_alloc.regAllocTests;
 	Test[] exeTests = tests.exe.exeTests;
-	//jitTests = jitTests[19..$];
 
 	size_t numTests = jitTests.length + regAllocTests.length + exeTests.length;
 	size_t numSuccessfulTests;

@@ -2341,3 +2341,21 @@ void tester96(ref TestContext ctx) {
 	assert(testSink.text == "(hi 1 1)");
 	testSink.clear;
 }
+
+@TestInfo(&tester97)
+immutable test97 = q{--- test97
+	// test proper GEP lowering for stack allocated data
+	// stack argument of add instruction should be detected and lea instruction must be produced
+	i32 index_array(i32 index)
+	{
+		i32[10] array;
+		array[index] = 42;
+		return array[index];
+	}
+};
+void tester97(ref TestContext ctx) {
+	auto index_array = ctx.getFunctionPtr!(int, int)("index_array");
+
+	assert(index_array(0) == 42);
+	assert(index_array(9) == 42);
+}
