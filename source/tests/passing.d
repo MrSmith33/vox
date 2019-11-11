@@ -1890,11 +1890,19 @@ immutable test88 = q{--- test88
 	i32 test3() {
 		return callFunc(&sum, 10, 40);
 	}
+	i32 callFunc2(i32 a1, i32 a2, i32 a3, i32 a4, i32 a5, i32 a6, i32 function(i32, i32) func) {
+		return func(a1, a2);
+	}
+	// test push function address
+	i32 test4() {
+		return callFunc2(1, 2, 3, 4, 5, 6, &sum);
+	}
 };
 void tester88(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("test")() == 84);
 	assert(ctx.getFunctionPtr!(int)("test2")() == 84);
 	assert(ctx.getFunctionPtr!(int)("test3")() == 50);
+	assert(ctx.getFunctionPtr!(int)("test4")() == 3);
 }
 
 @TestInfo()
@@ -2359,3 +2367,15 @@ void tester97(ref TestContext ctx) {
 	assert(index_array(0) == 42);
 	assert(index_array(9) == 42);
 }
+
+@TestInfo()
+immutable test98 = q{--- folder/test98.vx
+	import dep98;
+	// test module name creation. Folders must be stripped
+	void test()
+	{
+		libfunc();
+	}
+--- folder/dep98.vx
+	void libfunc(){}
+};

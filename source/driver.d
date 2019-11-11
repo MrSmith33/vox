@@ -4,7 +4,7 @@
 module driver;
 
 import std.stdio : writeln, write, writef, writefln, stdout;
-import std.path : stripExtension;
+import std.path : baseName, stripExtension;
 import all;
 
 void pass_source(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
@@ -369,7 +369,7 @@ struct Driver
 		context.files.put(moduleFile);
 		SourceFileInfo* file = &context.files.back();
 
-		Identifier id = context.idMap.getOrRegNoDup(stripExtension(file.name));
+		Identifier id = context.idMap.getOrRegNoDup(file.name.baseName.stripExtension);
 		ObjectModule localModule = {
 			kind : ObjectModuleKind.isLocal,
 			id : id

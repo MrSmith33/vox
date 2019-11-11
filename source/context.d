@@ -391,6 +391,7 @@ struct CompilationContext
 	}
 
 	AstIndex getAstNodeIndex(T)(T* node) {
+		assert(node, "node is null");
 		uint* ptr = cast(uint*)node;
 		ptrdiff_t diff = ptr - astBuffer.bufPtr;
 		assert(diff > 0, "<= 0");
