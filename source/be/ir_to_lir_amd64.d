@@ -405,7 +405,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						foreach_reverse (IrIndex lirArg; localArgBuffer[numParamsInRegs..numArgs])
 						{
 							// TODO: push can use mem address
-							if (lirArg.isStackSlot) {
+							if (lirArg.isStackSlot || lirArg.isFunction) {
 								ExtraInstrArgs extra = { addUsers : false, type : lir.getValueType(context, lirArg) };
 								InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, lirArg);
 								lirArg = movInstr.result;

@@ -549,7 +549,10 @@ struct CodeEmitter
 								Register reg = indexToRegister(src);
 								gen.pushq(reg);
 								break;
-							default: context.unreachable; assert(false);
+							default:
+								context.internal_error("Cannot encode %s %s in %s %s",
+									cast(Amd64Opcode)instrHeader.op, src, context.idString(fun.backendData.name), instrIndex);
+								assert(false);
 						}
 						stackPointerExtraOffset += STACK_ITEM_SIZE;
 						break;
