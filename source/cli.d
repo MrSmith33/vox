@@ -7,7 +7,7 @@ module cli;
 
 import std.stdio;
 import std.file : exists;
-import std.path : absolutePath;
+import std.path : absolutePath, extension, baseName, setExtension;
 import all;
 
 enum WindowsSubsystemCli : ushort {
@@ -17,7 +17,6 @@ enum WindowsSubsystemCli : ushort {
 
 int runCli(string[] args)
 {
-	import std.path;
 	import std.getopt;
 
 	auto time1 = currTime;
@@ -101,7 +100,7 @@ int runCli(string[] args)
 	driver.context.buildType = BuildType.exe;
 
 	if (outputFilename) driver.context.outputFilename = outputFilename;
-	else driver.context.outputFilename = std.path.setExtension(filenames[0], ".exe"); // GC
+	else driver.context.outputFilename = filenames[0].baseName.setExtension(".exe"); // GC
 
 	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(filterFuncName);
 
@@ -114,11 +113,11 @@ int runCli(string[] args)
 
 		foreach(filename; filenames)
 		{
-			string ext = std.path.extension(filename);
+			string ext = filename.extension;
 			switch(ext)
 			{
 				case ".dll":
-					string libName = std.path.baseName(filename);
+					string libName = filename.baseName;
 					LinkIndex importedModule = driver.addDllModule(libName);
 
 					void onDllSymbol(uint ordinal, string symName) {
