@@ -72,21 +72,54 @@ struct Array(T)
 
 	void putFront(ref ArrayArena arena, T item)
 	{
-		putAt(arena, item, 0);
+		putAt(arena, 0, item);
 	}
 
 	// shifts items to the right
-	void putAt(ref ArrayArena arena, T item, size_t at)
+	void putAt(ref ArrayArena arena, size_t at, T[] items...)
 	{
-		if (_length == _capacity) extend(arena, 1);
+		replaceAt(arena, at, 0, items);
+	}
 
-		foreach_reverse(i; at.._length)
+	void replaceAt(A)(ref ArrayArena arena, size_t at, size_t numItemsToRemove, A itemsToInsert)
+	{
+		assert(at + numItemsToRemove <= _length);
+
+		size_t numItems = itemsToInsert.length;
+
+		if (numItems == numItemsToRemove)
 		{
-			this[i+1] = this[i];
+			foreach(i; 0..numItems)
+				this[at+i] = itemsToInsert[i];
 		}
-		this[at] = item;
+		else if (numItems >= numItemsToRemove)
+		{
+			size_t delta = numItems - numItemsToRemove;
 
-		++_length;
+			if (_length + delta > _capacity) extend(arena, cast(uint)delta);
+
+			foreach_reverse(i; at+numItemsToRemove.._length)
+			{
+				this[i+numItems] = this[i];
+			}
+			foreach(i; 0..numItems)
+				this[at+i] = itemsToInsert[i];
+
+			_length += delta;
+		}
+		else
+		{
+			size_t delta = numItemsToRemove - numItems;
+
+			foreach(i; at+numItemsToRemove.._length)
+			{
+				this[i-delta] = this[i];
+			}
+			foreach(i; 0..numItems)
+				this[at+i] = itemsToInsert[i];
+
+			_length -= delta;
+		}
 	}
 
 	void unput(size_t numItems)

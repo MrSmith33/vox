@@ -12,6 +12,12 @@ struct TypeConvExprNode {
 	AstIndex expr;
 }
 
+void name_register_nested_type_conv(TypeConvExprNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.expr, state);
+	node.state = AstNodeState.name_register_nested_done;
+}
+
 void name_resolve_type_conv(TypeConvExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.type, state);

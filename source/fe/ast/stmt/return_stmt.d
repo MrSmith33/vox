@@ -8,7 +8,7 @@ import all;
 
 @(AstType.stmt_return)
 struct ReturnStmtNode {
-	mixin AstNodeData!(AstType.stmt_return, AstFlags.isStatement, AstNodeState.name_register_done);
+	mixin AstNodeData!(AstType.stmt_return, AstFlags.isStatement, AstNodeState.name_register_nested_done);
 	AstIndex expression; // Nullable
 }
 

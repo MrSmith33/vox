@@ -18,13 +18,20 @@ import all;
 struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
 	AstIndex callee;
-	Array!AstIndex args;
+	AstNodes args;
+}
+
+void name_register_nested_call(CallExprNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.callee, state);
+	require_name_register(node.args, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_call(CallExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.callee, state);
-	foreach (ref arg; node.args) require_name_resolve(arg, state);
+	require_name_resolve(node.args, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 

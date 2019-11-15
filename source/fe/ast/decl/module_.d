@@ -14,8 +14,8 @@ struct ModuleIndex
 ///
 @(AstType.decl_module)
 struct ModuleDeclNode {
-	mixin ScopeDeclNodeData!(AstType.decl_module);
-	AstIndex _scope;
+	mixin ScopeDeclNodeData!(AstType.decl_module, 0, AstNodeState.name_register_self_done);
+	AstIndex memberScope;
 	/// Linear list of all functions of a module (including nested and methods and externals)
 	Array!AstIndex functions;
 	IrModule irModule;
@@ -35,31 +35,27 @@ struct ModuleDeclNode {
 		return findFunction(id, context);
 	}
 	FunctionDeclNode* findFunction(Identifier id, CompilationContext* context) {
-		AstIndex sym = context.getAst!Scope(_scope).symbols.get(id, AstIndex.init);
+		AstIndex sym = memberScope.lookup_scope(id, context);
 		if (sym.isUndefined) return null;
 		return sym.get!FunctionDeclNode(context);
 	}
 }
 
-void name_register_module(ModuleDeclNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	node._scope = state.pushScope("Module", No.ordered);
-	foreach (decl; node.declarations) require_name_register(decl, state);
-	state.popScope;
-	node.state = AstNodeState.name_register_done;
+void name_register_nested_module(ModuleDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.declarations, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_module(ModuleDeclNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	state.pushScope(node._scope);
-	foreach (decl; node.declarations) require_name_resolve(decl, state);
-	state.popScope;
+	require_name_resolve(node.declarations, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
 void type_check_module(ModuleDeclNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	foreach (ref AstIndex decl; node.declarations) require_type_check(decl, state);
+	require_type_check(node.declarations, state);
 	node.state = AstNodeState.type_check_done;
 }

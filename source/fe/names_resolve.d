@@ -25,19 +25,17 @@ void pass_names_resolve(ref CompilationContext context, CompilePassPerModule[] s
 struct NameResolveState
 {
 	CompilationContext* context;
-	Scope* currentScope;
+}
 
-	void pushScope(AstIndex scopeIndex)
-	{
-		assert(scopeIndex);
-		currentScope = context.getAst!Scope(scopeIndex);
-	}
+void require_name_resolve(ref AstIndex nodeIndex, CompilationContext* context)
+{
+	auto state = NameResolveState(context);
+	require_name_resolve(nodeIndex, state);
+}
 
-	void popScope()
-	{
-		assert(currentScope);
-		currentScope = currentScope.parentScope.get_scope(context);
-	}
+void require_name_resolve(ref AstNodes items, ref NameResolveState state)
+{
+	foreach(ref AstIndex item; items) require_name_resolve(item, state);
 }
 
 void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
@@ -46,11 +44,15 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 
 	switch(node.state) with(AstNodeState)
 	{
-		case name_register, name_resolve, type_check:
+		case name_register_self, name_register_nested, name_resolve, type_check:
 			state.context.unrecoverable_error(node.loc,
 				"Circular dependency, %s", node.astType);
-			return;
-		case name_register_done: break; // all requirement are done
+			assert(false);
+		case name_register_self_done:
+			require_name_register(nodeIndex, state.context);
+			state.context.throwOnErrors;
+			break;
+		case name_register_nested_done: break; // all requirement are done
 		case name_resolve_done, type_check_done: return; // already name resolved
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
@@ -69,6 +71,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case decl_struct: name_resolve_struct(cast(StructDeclNode*)node, state); break;
 		case decl_enum: name_resolve_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: name_resolve_enum_member(cast(EnumMemberDecl*)node, state); break;
+		case decl_static_if: assert(false);
 
 		case stmt_block: name_resolve_block(cast(BlockStmtNode*)node, state); break;
 		case stmt_if: name_resolve_if(cast(IfStmtNode*)node, state); break;
@@ -154,7 +157,7 @@ AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, Compil
 		{
 			ModuleDeclNode* imp = context.getAst!ModuleDeclNode(impIndex);
 			// TODO: check that import is higher in ordered scopes
-			AstIndex scopeSym = imp._scope.get_scope(context).symbols.get(id, AstIndex.init);
+			AstIndex scopeSym = imp.memberScope.lookup_scope(id, context);
 			if (!scopeSym) continue;
 
 			if (scopeSym && symIndex && scopeSym != symIndex)

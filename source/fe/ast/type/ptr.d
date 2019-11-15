@@ -7,7 +7,7 @@ import all;
 
 @(AstType.type_ptr)
 struct PtrTypeNode {
-	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType, AstNodeState.name_register_done);
+	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType, AstNodeState.name_register_self_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	AstIndex base;
 	IrIndex irType;
@@ -16,6 +16,12 @@ struct PtrTypeNode {
 	bool isVoidPtr(CompilationContext* context) {
 		return context.getAstType(base).isVoid;
 	}
+}
+
+void name_register_nested_ptr(PtrTypeNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.base, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_ptr(PtrTypeNode* node, ref NameResolveState state)

@@ -27,7 +27,7 @@ struct MemberExprNode {
 		// when unresolved
 		struct {
 			private Identifier _memberId; // member name before resolution
-			private AstIndex _curScope; // set in name resolve pass
+			private AstIndex parentScope; // set in parser
 		}
 		// when resolved
 		struct {
@@ -59,12 +59,13 @@ struct MemberExprNode {
 		return isSymResolved ? _member.get_node_id(c) : _memberId;
 	}
 
-	this(TokenIndex loc, AstIndex aggregate, Identifier memberId, AstIndex type = AstIndex.init, IrIndex irValue = IrIndex.init)
+	this(TokenIndex loc, AstIndex parentScope, AstIndex aggregate, Identifier memberId, AstIndex type = AstIndex.init, IrIndex irValue = IrIndex.init)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_member;
 		this.flags = AstFlags.isExpression;
-		this.state = AstNodeState.name_register_done;
+		this.state = AstNodeState.name_register_self_done;
+		this.parentScope = parentScope;
 		this.aggregate = aggregate;
 		this._memberId = memberId;
 		this.type = type;
@@ -72,12 +73,13 @@ struct MemberExprNode {
 	}
 
 	// produce already resolved node
-	this(TokenIndex loc, AstIndex aggregate, AstIndex member, uint memberIndex, MemberSubType subType)
+	this(TokenIndex loc, AstIndex parentScope, AstIndex aggregate, AstIndex member, uint memberIndex, MemberSubType subType)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_member;
 		this.flags = AstFlags.isExpression;
-		this.state = AstNodeState.name_register_done;
+		this.state = AstNodeState.name_register_self_done;
+		this.parentScope = parentScope;
 		this.aggregate = aggregate;
 		this._member = member;
 		this.subType = subType;
@@ -85,10 +87,15 @@ struct MemberExprNode {
 	}
 }
 
+void name_register_nested_member(MemberExprNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.aggregate, state);
+	node.state = AstNodeState.name_register_nested_done;
+}
+
 void name_resolve_member(MemberExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	assert(!node.isSymResolved);
-	node._curScope = state.context.getAstNodeIndex(state.currentScope);
 	// name resolution is done in type check pass
 	require_name_resolve(node.aggregate, state);
 	node.state = AstNodeState.name_resolve_done;
@@ -139,7 +146,7 @@ LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref
 {
 	CompilationContext* c = state.context;
 
-	AstIndex ufcsNodeIndex = lookupScopeIdRecursive(memberNode._curScope.get_scope(c), memberNode.memberId(c), memberNode.loc, c);
+	AstIndex ufcsNodeIndex = lookupScopeIdRecursive(memberNode.parentScope.get_scope(c), memberNode.memberId(c), memberNode.loc, c);
 	if (ufcsNodeIndex == c.errorNode) return LookupResult.failure;
 
 	AstType ufcsAstType = ufcsNodeIndex.astType(c);
@@ -242,7 +249,7 @@ LookupResult lookupEnumMember(MemberExprNode* expr, EnumDeclaration* enumDecl, I
 		"Trying to get member from anonymous enum defined at %s",
 		c.tokenLoc(enumDecl.loc));
 
-	AstIndex memberIndex = enumDecl._scope.get_scope(c).symbols.get(id, AstIndex.init);
+	AstIndex memberIndex = enumDecl.memberScope.lookup_scope(id, c);
 	if (!memberIndex) return LookupResult.failure;
 
 	EnumMemberDecl* enumMember = memberIndex.get!EnumMemberDecl(c);
@@ -312,7 +319,7 @@ LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* 
 
 LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl, Identifier id, CompilationContext* c)
 {
-	AstIndex entity = c.getAstScope(structDecl._scope).symbols.get(id, AstIndex.init);
+	AstIndex entity = c.getAstScope(structDecl.memberScope).symbols.get(id, AstIndex.init);
 	if (!entity) {
 		return LookupResult.failure;
 	}

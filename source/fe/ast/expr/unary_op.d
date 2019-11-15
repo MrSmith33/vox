@@ -13,6 +13,12 @@ struct UnaryExprNode {
 	AstIndex child;
 }
 
+void name_register_nested_unary_op(UnaryExprNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.child, state);
+	node.state = AstNodeState.name_register_nested_done;
+}
+
 void name_resolve_unary_op(UnaryExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.child, state);

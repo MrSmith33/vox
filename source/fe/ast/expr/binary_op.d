@@ -8,10 +8,17 @@ import all;
 
 @(AstType.expr_bin_op)
 struct BinaryExprNode {
-	mixin ExpressionNodeData!(AstType.expr_bin_op, 0, AstNodeState.name_register_done);
+	mixin ExpressionNodeData!(AstType.expr_bin_op, 0);
 	BinOp op;
 	AstIndex left;
 	AstIndex right;
+}
+
+void name_register_nested_binary_op(BinaryExprNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.left, state);
+	require_name_register(node.right, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_binary_op(BinaryExprNode* node, ref NameResolveState state) {

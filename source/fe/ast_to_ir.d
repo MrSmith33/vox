@@ -81,7 +81,7 @@ struct AstToIr
 		context.assertf(node.isDeclaration, node.loc, "Expected declaration, not %s", node.astType);
 		switch(node.astType) with(AstType)
 		{
-			case decl_function, decl_struct, decl_import:
+			case decl_enum, decl_enum_member, decl_function, decl_struct, decl_import:
 				// skip
 				if (currentBlock.isDefined)
 					builder.addJumpToLabel(currentBlock, nextStmt);
@@ -89,7 +89,9 @@ struct AstToIr
 
 			case decl_var: auto v = cast(VariableDeclNode*)node; visit(v, currentBlock, nextStmt); break;
 
-			default: context.unreachable(); assert(false);
+			default:
+				context.internal_error(node.loc, "visitDecl %s in %s state", node.astType, node.state);
+				assert(false);
 		}
 	}
 	void visitStmt(AstIndex astIndex, IrIndex currentBlock, ref IrLabel nextStmt) {
@@ -544,7 +546,7 @@ struct AstToIr
 	{
 		version(CfgGenPrint) writefln("[CFG GEN] beg IF cur %s next %s", currentBlock, nextStmt);
 		version(CfgGenPrint) scope(success) writefln("[CFG GEN] end IF cur %s next %s", currentBlock, nextStmt);
-		if (i.elseStatement) // if then else
+		if (!i.elseStatements.empty) // if then else
 		{
 			version(IrGenPrint) writefln("[IR GEN] if-else (%s) begin", i.loc);
 			version(IrGenPrint) scope(success) writefln("[IR GEN] if-else (%s) end", i.loc);
@@ -558,7 +560,7 @@ struct AstToIr
 			{
 				IrIndex thenBlock = trueLabel.blockIndex;
 				builder.sealBlock(thenBlock);
-				visitStmt(i.thenStatement, thenBlock, nextStmt);
+				genBlock(i.as!AstNode(context), i.thenStatements, thenBlock, nextStmt);
 			}
 			else
 				version(IrGenPrint) writeln("[IR GEN]   skip then stmt. Condition didn't jump here");
@@ -568,7 +570,7 @@ struct AstToIr
 			{
 				IrIndex elseBlock = falseLabel.blockIndex;
 				builder.sealBlock(elseBlock);
-				visitStmt(i.elseStatement, elseBlock, nextStmt);
+				genBlock(i.as!AstNode(context), i.elseStatements, elseBlock, nextStmt);
 			}
 			else
 				version(IrGenPrint) writeln("[IR GEN]   skip else stmt. Condition didn't jump here");
@@ -587,7 +589,7 @@ struct AstToIr
 			{
 				IrIndex thenBlock = trueLabel.blockIndex;
 				builder.sealBlock(thenBlock);
-				visitStmt(i.thenStatement, thenBlock, nextStmt);
+				genBlock(i.as!AstNode(context), i.thenStatements, thenBlock, nextStmt);
 			}
 			else
 				version(IrGenPrint) writeln("[IR GEN]   skip then stmt. Condition didn't jump here");
@@ -634,7 +636,7 @@ struct AstToIr
 
 			IrBasicBlock* block = &ir.getBlock(currentBlock);
 			assert(!block.isFinished);
-			visitStmt(n.statement, currentBlock, loopHeaderLabel);
+			genBlock(n.as!AstNode(context), n.statements, currentBlock, loopHeaderLabel);
 		}
 
 		if (loopHeaderLabel.numPredecessors > 1)
@@ -696,7 +698,7 @@ struct AstToIr
 
 			IrBasicBlock* block = &ir.getBlock(currentBlock);
 			assert(!block.isFinished);
-			visitStmt(n.statement, currentBlock, incrementLabel);
+			genBlock(n.as!AstNode(context), n.body_statements, currentBlock, incrementLabel);
 
 			if (incrementLabel.numPredecessors > 0)
 			{

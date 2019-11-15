@@ -7,7 +7,7 @@ import all;
 
 @(AstType.type_static_array)
 struct StaticArrayTypeNode {
-	mixin AstNodeData!(AstType.type_static_array, AstFlags.isType, AstNodeState.name_register_done);
+	mixin AstNodeData!(AstType.type_static_array, AstFlags.isType, AstNodeState.name_register_self_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	AstIndex base;
 	AstIndex length_expr;
@@ -15,6 +15,12 @@ struct StaticArrayTypeNode {
 	IrIndex irType;
 	uint size(CompilationContext* context) { return cast(uint)(base.typeSize(context) * length); } // TODO check overflow
 	uint alignment(CompilationContext* context) { return base.typeAlignment(context); }
+}
+
+void name_register_nested_static_array(StaticArrayTypeNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.base, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_static_array(StaticArrayTypeNode* node, ref NameResolveState state) {

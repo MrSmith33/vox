@@ -16,6 +16,7 @@ enum VariableFlags : ushort {
 struct VariableDeclNode
 {
 	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);
+	AstIndex parentScope;
 	AstIndex type;
 	AstIndex initializer; // may be null
 	Identifier id;
@@ -27,11 +28,16 @@ struct VariableDeclNode
 	bool isMember() { return cast(bool)(flags & VariableFlags.isMember); }
 }
 
-void name_register_var(AstIndex nodeIndex, VariableDeclNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	state.insert(node.id, nodeIndex);
+void name_register_self_var(AstIndex nodeIndex, VariableDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_self;
+	node.parentScope.insert_scope(node.id, nodeIndex, state.context);
+	node.state = AstNodeState.name_register_self_done;
+}
+
+void name_register_nested_var(AstIndex nodeIndex, VariableDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
 	if (node.initializer) require_name_register(node.initializer, state);
-	node.state = AstNodeState.name_register_done;
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_var(VariableDeclNode* node, ref NameResolveState state) {

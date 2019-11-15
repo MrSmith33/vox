@@ -8,27 +8,22 @@ import all;
 
 @(AstType.stmt_while)
 struct WhileStmtNode {
-	mixin AstNodeData!(AstType.stmt_while, AstFlags.isStatement);
+	mixin AstNodeData!(AstType.stmt_while, AstFlags.isStatement, AstNodeState.name_register_self_done);
 	AstIndex condition;
-	AstIndex statement;
-	AstIndex _scope;
+	AstNodes statements;
 }
 
-void name_register_while(WhileStmtNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
+void name_register_nested_while(WhileStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.condition, state);
-	node._scope = state.pushScope("While", Yes.ordered);
-	require_name_register(node.statement, state);
-	state.popScope;
-	node.state = AstNodeState.name_register_done;
+	require_name_register(node.statements, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_while(WhileStmtNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.condition, state);
-	state.pushScope(node._scope);
-	require_name_resolve(node.statement, state);
-	state.popScope;
+	require_name_resolve(node.statements, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
@@ -37,6 +32,6 @@ void type_check_while(WhileStmtNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 	require_type_check(node.condition, state);
 	autoconvToBool(node.condition, state.context);
-	require_type_check(node.statement, state);
+	require_type_check(node.statements, state);
 	node.state = AstNodeState.type_check_done;
 }

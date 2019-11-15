@@ -94,6 +94,8 @@ struct Parser
 	/// For member functions
 	/// mmodule, struct or function
 	AstIndex declarationOwner;
+	Scope* currentScope;
+	AstIndex currentScopeIndex() { return currentScope.get_ast_index(context); }
 
 	Token tok;
 	SourceLocation loc() {
@@ -101,9 +103,9 @@ struct Parser
 	}
 
 	int nesting;
-	auto indent() { return ' '.repeat(nesting*2); }
-	struct Scope { Parser* p; ~this(){--p.nesting;}}
-	Scope scop(Args...)(string name, Args args) { write(indent); writefln(name, args); ++nesting; return Scope(&this); }
+	auto indent(uint var) { return ' '.repeat(var*2); }
+	struct PrintScope { Parser* p; ~this(){--p.nesting;}}
+	PrintScope scop(Args...)(string name, Args args) { write(indent(nesting)); writefln(name, args); ++nesting; return PrintScope(&this); }
 
 	void nextToken()
 	{
@@ -152,6 +154,29 @@ struct Parser
 		return id;
 	}
 
+	AstIndex pushScope(string name, IsOrdered isOrdered)
+	{
+		AstIndex newScopeIndex = context.appendAst!Scope;
+		Scope* newScope = context.getAst!Scope(newScopeIndex);
+		newScope.debugName = name;
+		newScope.isOrdered = isOrdered;
+
+		if (currentScope)
+			newScope.parentScope = currentScope.get_ast_index(context);
+		currentScope = newScope;
+
+		return newScopeIndex;
+	}
+
+	void popScope()
+	{
+		if (currentScope.parentScope) {
+			currentScope = currentScope.parentScope.get_scope(context);
+		}
+		else
+			currentScope = null;
+	}
+
 	// ------------------------------ PARSING ----------------------------------
 
 	void parseModule(ModuleDeclNode* mod, TokenIndex firstTokenIndex) { // <module> ::= <declaration>*
@@ -163,8 +188,12 @@ struct Parser
 		tok.type = context.tokenBuffer[tok.index];
 		expectAndConsume(TokenType.SOI);
 		mod.loc = tok.index;
+		mod.state = AstNodeState.name_register_self_done;
 		declarationOwner = context.getAstNodeIndex(mod);
-		mod.declarations = parse_declarations(TokenType.EOI);
+
+		mod.memberScope = pushScope("Module", IsOrdered.no);
+			mod.declarations = parse_declarations(TokenType.EOI);
+		popScope;
 	}
 
 	AstNodes parse_declarations(TokenType until) { // <declaration>*
@@ -197,33 +226,28 @@ struct Parser
 	AstIndex parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
-		if (tok.type == TokenType.ALIAS_SYM) // <alias_decl> ::= "alias" <id> "=" <expr> ";"
+		switch(tok.type) with(TokenType)
 		{
-			return parse_alias();
-		}
-		else if (tok.type == TokenType.STRUCT_SYM) // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
-		{
-			return parse_struct();
-		}
-		else if (tok.type == TokenType.ENUM)
-		{
-			return parse_enum();
-		}
-		else if (tok.type == TokenType.IMPORT_SYM)
-		{
-			return parse_import();
-		}
-		else // <func_declaration> / <var_declaration>
-		{
-			AstIndex funcIndex = parse_var_func_declaration();
-			AstNode* node = context.getAstNode(funcIndex);
-			if (node) {
-				bool needSemicolon = node.astType == AstType.decl_var ||
-					node.as!FunctionDeclNode(context).isExternal;
+			case ALIAS_SYM: // <alias_decl> ::= "alias" <id> "=" <expr> ";"
+				return parse_alias();
+			case STRUCT_SYM: // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
+				return parse_struct();
+			case ENUM:
+				return parse_enum();
+			case IMPORT_SYM:
+				return parse_import();
+			case HASH_IF:
+				return parse_hash_if();
+			default: // <func_declaration> / <var_declaration>
+				AstIndex funcIndex = parse_var_func_declaration();
+				AstNode* node = context.getAstNode(funcIndex);
+				if (node) {
+					bool needSemicolon = node.astType == AstType.decl_var ||
+						node.as!FunctionDeclNode(context).isExternal;
 
-				if (needSemicolon) expectAndConsume(TokenType.SEMICOLON);
-			}
-			return funcIndex;
+					if (needSemicolon) expectAndConsume(TokenType.SEMICOLON);
+				}
+				return funcIndex;
 		}
 	}
 
@@ -239,7 +263,7 @@ struct Parser
 		AstIndex initializerIndex = expr();
 		expectAndConsume(TokenType.SEMICOLON);
 
-		return make!AliasDeclNode(start, aliasId, initializerIndex);
+		return make!AliasDeclNode(start, currentScopeIndex, aliasId, initializerIndex);
 	}
 
 	/// var_terminator can be ";" or ",". Used to parse regular var/func declaration
@@ -276,7 +300,7 @@ struct Parser
 		{
 			version(print_parse) auto s3 = scop("<var_declaration> %s", start);
 			// leave ";" or "," for parent to decide
-			return make!VariableDeclNode(start, typeIndex, initializerIndex, declarationId);
+			return make!VariableDeclNode(start, currentScopeIndex, typeIndex, initializerIndex, declarationId);
 		}
 		else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 		{
@@ -284,17 +308,21 @@ struct Parser
 			Array!AstIndex params;
 			bool isMember = false;
 
+			AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
+			pushScope(context.idString(declarationId), IsOrdered.yes);
+			scope(exit) popScope;
+
 			// add this pointer
 			if (declarationOwner.astType(context) == AstType.decl_struct)
 			{
-				AstIndex structName = make!NameUseExprNode(start, declarationOwner.get!StructDeclNode(context).id);
+				AstIndex structName = make!NameUseExprNode(start, currentScopeIndex, declarationOwner.get!StructDeclNode(context).id);
 				NameUseExprNode* name = structName.get_name_use(context);
 				name.resolve(declarationOwner, context);
 				name.flags |= AstFlags.isType;
 				name.state = AstNodeState.name_resolve_done;
 				AstIndex thisType = make!PtrTypeNode(start, structName);
 
-				AstIndex param = make!VariableDeclNode(start, thisType, AstIndex.init, context.commonIds.id_this, ushort(0));
+				AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, context.commonIds.id_this, ushort(0));
 				VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
 				paramNode.flags |= VariableFlags.isParameter;
 				params.put(context.arrayArena, param);
@@ -304,12 +332,11 @@ struct Parser
 			parseParameters(params, NeedRegNames.yes); // functions need to register their param names
 
 			AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
-			AstIndex func = make!FunctionDeclNode(start, signature, declarationId);
+			AstIndex func = make!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
 			if (isMember)
 			{
 				func.get!FunctionDeclNode(context).flags |= FunctionFlags.isMember;
 			}
-			currentModule.addFunction(func, context);
 
 			AstIndex block;
 			if (tok.type != TokenType.SEMICOLON)
@@ -353,12 +380,12 @@ struct Parser
 				paramId = context.idMap.getOrRegWithSuffix("__param_", paramIndex);
 			}
 
-			AstIndex param = make!VariableDeclNode(paramStart, paramType, AstIndex.init, paramId);
+			AstIndex param = make!VariableDeclNode(paramStart, currentScopeIndex, paramType, AstIndex.init, paramId);
 			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
 			paramNode.flags |= VariableFlags.isParameter;
 			paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
 			if (nameReg == NeedRegNames.no)
-				paramNode.state = AstNodeState.name_register_done;
+				paramNode.state = AstNodeState.name_register_nested_done;
 
 			params.put(context.arrayArena, param);
 			if (tok.type == TokenType.COMMA) nextToken; // skip ","
@@ -377,7 +404,11 @@ struct Parser
 		nextToken; // skip "struct"
 		Identifier structId = expectIdentifier();
 
-		AstIndex structIndex = make!StructDeclNode(start, structId);
+		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
+		AstIndex memberScope = pushScope(context.idString(structId), IsOrdered.no);
+		scope(exit) popScope;
+
+		AstIndex structIndex = make!StructDeclNode(start, parentScope, memberScope, structId);
 		StructDeclNode* s = structIndex.get!StructDeclNode(context);
 
 		if (tok.type == TokenType.SEMICOLON)
@@ -389,11 +420,13 @@ struct Parser
 
 		expectAndConsume(TokenType.LCURLY);
 
-		AstIndex prevOwner = declarationOwner;
-		declarationOwner = structIndex;
-		scope(exit) declarationOwner = prevOwner;
+		{
+			AstIndex prevOwner = declarationOwner;
+			declarationOwner = structIndex;
+			scope(exit) declarationOwner = prevOwner;
 
-		s.declarations = parse_declarations(TokenType.RCURLY);
+			s.declarations = parse_declarations(TokenType.RCURLY);
+		}
 
 		expectAndConsume(TokenType.RCURLY);
 
@@ -460,7 +493,8 @@ struct Parser
 			Identifier enumId = expectIdentifier;
 			expectAndConsume(TokenType.EQUAL); // "="
 			AstIndex value = expr; // initializer
-			auto member = make!EnumMemberDecl(start, type, value, enumId);
+
+			auto member = make!EnumMemberDecl(start, currentScopeIndex, type, value, enumId);
 
 			expectAndConsume(TokenType.SEMICOLON); // ";"
 
@@ -481,15 +515,16 @@ struct Parser
 			{
 				nextToken; // skip ";"
 				Identifier enumId = makeIdentifier(id);
+				AstIndex memberScope; // no scope
 
-				return make!EnumDeclaration(start, AstNodes(), intType, enumId);
+				return make!EnumDeclaration(start, currentScopeIndex, memberScope, AstNodes(), intType, enumId);
 			}
 			else if (tok.type == TokenType.EQUAL)
 			{
 				nextToken; // skip "="
 				Identifier enumId = makeIdentifier(id);
 				AstIndex value = expr;
-				auto member = make!EnumMemberDecl(start, intType, value, enumId);
+				auto member = make!EnumMemberDecl(start, currentScopeIndex, intType, value, enumId);
 
 				expectAndConsume(TokenType.SEMICOLON); // ";"
 
@@ -501,20 +536,24 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex type = parseColonType;
+				AstIndex memberScope = pushScope(context.idString(enumId), IsOrdered.no);
 				AstNodes members = tryParseEnumBody(type);
+				popScope;
 
 				// enum e7 : i32 { e7 }
 				// enum e8 : i32;
-				return make!EnumDeclaration(start, members, type, enumId);
+				return make!EnumDeclaration(start, currentScopeIndex, memberScope, members, type, enumId);
 			}
 			else if (tok.type == TokenType.LCURLY)
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex type = intType;
+				AstIndex memberScope = pushScope(context.idString(enumId), IsOrdered.no);
 				AstNodes members = parse_enum_body(type);
+				popScope;
 
 				// enum e9 { e9 }
-				return make!EnumDeclaration(start, members, type, enumId);
+				return make!EnumDeclaration(start, currentScopeIndex, memberScope, members, type, enumId);
 			}
 			else
 			{
@@ -526,17 +565,19 @@ struct Parser
 		{
 			AstIndex type = parseColonType;
 			AstNodes members = parse_enum_body(type);
+			AstIndex memberScope; // no scope
 
 			// enum : i32 { e6 }
-			return make!EnumDeclaration(start, members, type);
+			return make!EnumDeclaration(start, currentScopeIndex, memberScope, members, type);
 		}
 		else if (tok.type == TokenType.LCURLY)
 		{
 			AstIndex type = intType;
 			AstNodes members = parse_enum_body(type);
+			AstIndex memberScope; // no scope
 
 			// enum { e5 }
-			return make!EnumDeclaration(start, members, type);
+			return make!EnumDeclaration(start, currentScopeIndex, memberScope, members, type);
 		}
 		else if (isBasicTypeToken(tok.type))
 		{
@@ -558,7 +599,53 @@ struct Parser
 		nextToken; // skip "import"
 		Identifier moduleId = expectIdentifier();
 		expectAndConsume(TokenType.SEMICOLON);
-		return make!ImportDeclNode(start, moduleId);
+		return make!ImportDeclNode(start, currentScopeIndex, moduleId);
+	}
+
+	AstIndex parse_hash_if() /* "#if" <paren_expr> <statement/decl> */
+	{
+		AstNodes parseItems(alias itemParser)()
+		{
+			AstNodes items;
+			TokenIndex start = tok.index;
+			if (tok.type == TokenType.LCURLY)
+			{
+				nextToken; // skip {
+				while (tok.type != TokenType.RCURLY)
+				{
+					if (tok.type == TokenType.EOI) break;
+					items.put(context.arrayArena, itemParser());
+				}
+				expectAndConsume(TokenType.RCURLY);
+			}
+			else
+				items.put(context.arrayArena, itemParser());
+			return items;
+		}
+
+		TokenIndex start = tok.index;
+		nextToken; // skip #if
+		AstIndex condition = paren_expr();
+		AstNodes thenStatements;
+		AstNodes elseStatements;
+
+		if (declarationOwner.isDeclaration(context))
+		{
+			thenStatements = parseItems!statement();
+			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement/decl> */
+				nextToken; // skip else
+				elseStatements = parseItems!statement();
+			}
+		}
+		else
+		{
+			thenStatements = parseItems!parse_declaration();
+			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement/decl> */
+				nextToken; // skip else
+				elseStatements = parseItems!parse_declaration();
+			}
+		}
+		return make!StaticIfDeclNode(start, condition, thenStatements, elseStatements);
 	}
 
 	AstNodes parse_enum_body(AstIndex type) { // { id [= val], ... }
@@ -579,7 +666,7 @@ struct Parser
 				value = expr;
 			}
 
-			auto member = make!EnumMemberDecl(start, type, value, id);
+			auto member = make!EnumMemberDecl(start, currentScopeIndex, type, value, id);
 			EnumMemberDecl* memberNode = context.getAst!EnumMemberDecl(member);
 			memberNode.scopeIndex = varIndex++;
 			members.put(context.arrayArena, member);
@@ -608,7 +695,7 @@ struct Parser
 		AstIndex base;
 		if (tok.type == TokenType.IDENTIFIER) {
 			Identifier id = expectIdentifier();
-			base = make!NameUseExprNode(start, id);
+			base = make!NameUseExprNode(start, currentScopeIndex, id);
 		} else if (isBasicTypeToken(tok.type)) {
 			base = context.basicTypeNodes(parse_type_basic());
 		}
@@ -664,11 +751,9 @@ struct Parser
 		assert(false);
 	}
 
-	AstIndex block_stmt() // <block_statement> ::= "{" <statement>* "}"
+	AstNodes parse_block() // "{" <statement>* "}"
 	{
-		version(print_parse) auto s1 = scop("block_stmt %s", loc);
 		AstNodes statements;
-		TokenIndex start = tok.index;
 		expectAndConsume(TokenType.LCURLY);
 		while (tok.type != TokenType.RCURLY)
 		{
@@ -677,7 +762,31 @@ struct Parser
 			statements.put(context.arrayArena, statement());
 		}
 		expectAndConsume(TokenType.RCURLY);
+		return statements;
+	}
+
+	AstIndex block_stmt() // <block_statement> ::= "{" <statement>* "}"
+	{
+		version(print_parse) auto s1 = scop("block_stmt %s", loc);
+		TokenIndex start = tok.index;
+		pushScope("Block", IsOrdered.yes);
+		AstNodes statements = parse_block;
+		popScope;
 		return make!BlockStmtNode(start, statements);
+	}
+
+	AstNodes statement_as_array()
+	{
+		if (tok.type == TokenType.LCURLY)
+		{
+			return parse_block;
+		}
+		else
+		{
+			AstNodes items;
+			items.put(context.arrayArena, statement);
+			return items;
+		}
 	}
 
 	AstIndex statement()
@@ -689,25 +798,35 @@ struct Parser
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
 				nextToken;
 				AstIndex condition = paren_expr();
-				AstIndex thenStatement = statement();
-				AstIndex elseStatement;
+				pushScope("Then", IsOrdered.yes);
+				AstNodes thenStatements = statement_as_array;
+				popScope;
+				AstNodes elseStatements;
 				if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
 					nextToken;
-					elseStatement = statement();
+					pushScope("Else", IsOrdered.yes);
+					elseStatements = statement_as_array;
+					popScope;
 				}
-				return make!IfStmtNode(start, condition, thenStatement, elseStatement);
+				return make!IfStmtNode(start, condition, thenStatements, elseStatements);
+			case TokenType.HASH_IF:
+				return parse_hash_if();
 			case TokenType.WHILE_SYM:  /* "while" <paren_expr> <statement> */
 				nextToken;
+				pushScope("While", IsOrdered.yes);
 				AstIndex condition = paren_expr();
-				AstIndex statement = statement();
-				return make!WhileStmtNode(start, condition, statement);
+				AstNodes statements = statement_as_array;
+				popScope;
+				return make!WhileStmtNode(start, condition, statements);
 			case TokenType.DO_SYM:  /* "do" <statement> "while" <paren_expr> ";" */
 				nextToken;
-				AstIndex statement = statement();
+				pushScope("do", IsOrdered.yes);
+				AstNodes statements = statement_as_array;
 				expectAndConsume(TokenType.WHILE_SYM);
 				AstIndex condition = paren_expr();
+				popScope;
 				expectAndConsume(TokenType.SEMICOLON);
-				return make!DoWhileStmtNode(start, condition, statement);
+				return make!DoWhileStmtNode(start, condition, statements);
 			case TokenType.FOR_SYM:  /* "for" "(" <statement> ";" <statement> ";" "while" <paren_expr> ";" */
 				return parse_for;
 			case TokenType.RETURN_SYM:  /* return <expr> */
@@ -767,6 +886,9 @@ struct Parser
 
 		expectAndConsume(TokenType.LPAREN); // (
 
+		pushScope("For", IsOrdered.yes);
+		scope(exit) popScope;
+
 		Array!AstIndex init_statements;
 
 		// <init>
@@ -822,9 +944,9 @@ struct Parser
 		}
 		expectAndConsume(TokenType.RPAREN);
 
-		AstIndex statement = statement();
+		AstNodes statements = statement_as_array;
 
-		return make!ForStmtNode(start, init_statements, condition, increment_statements, statement);
+		return make!ForStmtNode(start, init_statements, condition, increment_statements, statements);
 	}
 
 	// scans forward to check if current token starts new declaration
@@ -1077,7 +1199,7 @@ AstIndex nullLiteral(ref Parser p, Token token, int rbp) {
 	{
 		case IDENTIFIER:
 			Identifier id = p.makeIdentifier(token.index);
-			return p.make!NameUseExprNode(token.index, id);
+			return p.make!NameUseExprNode(token.index, p.currentScopeIndex, id);
 		case NULL:
 			return p.makeExpr!NullLiteralExprNode(token.index);
 		case TRUE_LITERAL:
@@ -1215,7 +1337,7 @@ AstIndex leftOpDot(ref Parser p, Token token, int rbp, AstIndex left)
 			"Expected identifier after '.', while got '%s'",
 			p.context.getTokenString(p.tok.index));
 	}
-	return p.make!MemberExprNode(token.index, left, id);
+	return p.make!MemberExprNode(token.index, p.currentScopeIndex, left, id);
 }
 
 AstIndex leftFunctionOp(ref Parser p, Token token, int rbp, AstIndex returnType) {
@@ -1223,7 +1345,7 @@ AstIndex leftFunctionOp(ref Parser p, Token token, int rbp, AstIndex returnType)
 	p.parseParameters(params, p.NeedRegNames.no); // function types don't need to register their param names
 	auto sig = p.make!FunctionSignatureNode(token.index, returnType, params);
 	// we don't have to register parameter names, since we have no body
-	sig.setState(p.context, AstNodeState.name_register_done);
+	sig.setState(p.context, AstNodeState.name_register_nested_done);
 	return p.make!PtrTypeNode(token.index, sig);
 }
 

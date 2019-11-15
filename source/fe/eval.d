@@ -16,9 +16,18 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 
 	switch(node.state) with(AstNodeState)
 	{
+		case name_register_self_done:
+			require_name_register(nodeIndex, context);
+			context.throwOnErrors;
+			goto case;
+		case name_register_nested_done:
+			require_name_resolve(nodeIndex, context);
+			context.throwOnErrors;
+			goto case;
 		case name_resolve_done:
 			// perform type checking of forward referenced node
 			require_type_check(nodeIndex, context);
+			context.throwOnErrors;
 			break;
 		case type_check_done: break; // all requirement are done
 		default: context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);

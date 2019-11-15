@@ -13,18 +13,21 @@ enum StructFlags
 @(AstType.decl_struct)
 struct StructDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_struct, AstFlags.isType);
+	AstIndex parentScope;
+	AstIndex memberScope;
 	Identifier id;
 	IrIndex irType;
-	AstIndex _scope;
 	uint size = 1;
 	uint alignment = 1;
 
 
-	this(TokenIndex loc, Identifier id)
+	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_struct;
 		this.flags = AstFlags.isScope | AstFlags.isDeclaration | AstFlags.isType;
+		this.parentScope = parentScope;
+		this.memberScope = memberScope;
 		this.id = id;
 	}
 
@@ -32,21 +35,30 @@ struct StructDeclNode {
 	bool isOpaque() { return cast(bool)(flags & StructFlags.isOpaque); }
 }
 
-void name_register_struct(AstIndex nodeIndex, StructDeclNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	state.insert(node.id, nodeIndex);
-	node._scope = state.pushScope(state.context.idString(node.id), No.ordered);
-	foreach (decl; node.declarations) require_name_register(decl, state);
-	state.popScope;
-	node.state = AstNodeState.name_register_done;
+void name_register_self_struct(AstIndex nodeIndex, StructDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_self;
+	node.parentScope.insert_scope(node.id, nodeIndex, state.context);
+	node.state = AstNodeState.name_register_self_done;
+}
+
+void name_register_nested_struct(AstIndex nodeIndex, StructDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.declarations, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_struct(StructDeclNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	state.pushScope(node._scope);
-	foreach (decl; node.declarations) require_name_resolve(decl, state);
-	state.popScope;
+	require_name_resolve(node.declarations, state);
 	node.state = AstNodeState.name_resolve_done;
+}
+
+void type_check_struct(StructDeclNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.declarations, state);
+	gen_ir_type_struct(node, state.context);
+	node.state = AstNodeState.type_check_done;
 }
 
 IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
@@ -90,12 +102,4 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
 	s.size = memberOffset;
 	s.alignment = maxAlignment;
 	return s.irType;
-}
-
-void type_check_struct(StructDeclNode* node, ref TypeCheckState state)
-{
-	node.state = AstNodeState.type_check;
-	foreach (decl; node.declarations) require_type_check(decl, state);
-	gen_ir_type_struct(node, state.context);
-	node.state = AstNodeState.type_check_done;
 }

@@ -4,13 +4,15 @@
 module fe.ast.decl.enum_;
 
 import all;
+import fe.ast.ast_index;
 
 @(AstType.decl_enum)
 struct EnumDeclaration
 {
 	mixin ScopeDeclNodeData!(AstType.decl_enum, AstFlags.isType);
+	AstIndex parentScope;
+	AstIndex memberScope;
 	AstIndex memberType;
-	AstIndex _scope;
 	Identifier id;
 
 	private enum Flags
@@ -18,22 +20,26 @@ struct EnumDeclaration
 		isAnonymous = AstFlags.userFlag
 	}
 
-	this(TokenIndex loc, Array!AstIndex members, AstIndex memberType, Identifier id)
+	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, Array!AstIndex members, AstIndex memberType, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
 		this.flags = AstFlags.isType | AstFlags.isScope | AstFlags.isDeclaration;
+		this.parentScope = parentScope;
+		this.memberScope = memberScope;
 		this.declarations = members;
 		this.memberType = memberType;
 		this.id = id;
 	}
 
 	/// Anonymous
-	this(TokenIndex loc, Array!AstIndex members, AstIndex memberType)
+	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, Array!AstIndex members, AstIndex memberType)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
 		this.flags = AstFlags.isType | AstFlags.isScope | AstFlags.isDeclaration | Flags.isAnonymous;
+		this.parentScope = parentScope;
+		this.memberScope = memberScope;
 		this.declarations = members;
 		this.memberType = memberType;
 	}
@@ -41,41 +47,28 @@ struct EnumDeclaration
 	bool isAnonymous() { return cast(bool)(flags & Flags.isAnonymous); }
 }
 
-void name_register_enum(AstIndex nodeIndex, EnumDeclaration* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	if (node.isAnonymous)
-	{
-		foreach (ref AstIndex decl; node.declarations) require_name_register(decl, state);
-	}
-	else
-	{
-		state.insert(node.id, nodeIndex);
-		node._scope = state.pushScope(state.context.idString(node.id), No.ordered);
-		foreach (ref AstIndex decl; node.declarations) require_name_register(decl, state);
-		state.popScope;
-	}
-	node.state = AstNodeState.name_register_done;
+void name_register_self_enum(AstIndex nodeIndex, EnumDeclaration* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_self;
+	if (!node.isAnonymous) node.parentScope.insert_scope(node.id, nodeIndex, state.context);
+	node.state = AstNodeState.name_register_self_done;
+}
+
+void name_register_nested_enum(AstIndex nodeIndex, EnumDeclaration* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.declarations, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_enum(EnumDeclaration* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	if (node.isAnonymous)
-	{
-		foreach (ref AstIndex decl; node.declarations) require_name_resolve(decl, state);
-	}
-	else
-	{
-		state.pushScope(node._scope);
-		foreach (decl; node.declarations) require_name_resolve(decl, state);
-		state.popScope;
-	}
+	require_name_resolve(node.declarations, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
 void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	foreach (decl; node.declarations) require_type_check(decl, state);
+	require_type_check(node.declarations, state);
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -84,17 +77,23 @@ void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 struct EnumMemberDecl
 {
 	mixin AstNodeData!(AstType.decl_enum_member, AstFlags.isDeclaration | AstFlags.isStatement);
+	AstIndex parentScope;
 	AstIndex type;
 	AstIndex initializer;
 	Identifier id;
 	ushort scopeIndex;
 }
 
-void name_register_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	state.insert(node.id, nodeIndex);
+void name_register_self_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_self;
+	node.parentScope.insert_scope(node.id, nodeIndex, state.context);
+	node.state = AstNodeState.name_register_self_done;
+}
+
+void name_register_nested_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
 	if (node.initializer) require_name_register(node.initializer, state);
-	node.state = AstNodeState.name_register_done;
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_enum_member(EnumMemberDecl* node, ref NameResolveState state) {

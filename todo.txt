@@ -1,3 +1,21 @@
+- meta
+	- function template
+	- struct/union template
+	- variadic template arguments
+	- macros (templated function that is inlined and can access inline scope/insert stuff into outer scope)
+	- # introspection
+		- #allMembers(symbol) -> tuple
+		- #getAttributes(symbol) -> tuple
+		- #is*
+- attributes
+	- User Defined Attributes UDAs
+
+- conditional compilation
+	+ #if
+	- #version
+	- #debug
+	- #foreach
+
 + function pointer type <ret> function(<args>)
 	+ call by pointer
 	+ take address of function
@@ -21,7 +39,7 @@
 	+ UFCS functions
 	+ return small complex structs
 	- lower aggregates in IR by replacing phis taking in aggregates with scalar phis. Only non-phi users must remain.
-- pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
++ pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 +- all register subtypes 8/16/32/64 bit registers, !!! QWORD is forced rn everywhere
 - array literal
 - slices (need better structs)
@@ -69,7 +87,6 @@ o dll linking
 - globals need to be initialized
 - need assignment visitors
 
-- attributes
 - test escape sequences
 - test all implicit conversions
 - test parsing errors

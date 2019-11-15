@@ -7,40 +7,29 @@ import all;
 
 
 @(AstType.stmt_if)
-struct IfStmtNode {
-	mixin AstNodeData!(AstType.stmt_if, AstFlags.isStatement);
+struct IfStmtNode
+{
+	mixin AstNodeData!(AstType.stmt_if, AstFlags.isStatement, AstNodeState.name_register_self_done);
 	AstIndex condition;
-	AstIndex thenStatement;
-	AstIndex elseStatement; // Nullable
-	AstIndex then_scope;
-	AstIndex else_scope;
+	AstNodes thenStatements; // can be empty
+	AstNodes elseStatements; // can be empty
 }
 
-void name_register_if(IfStmtNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
+void name_register_nested_if(IfStmtNode* node, ref NameRegisterState state)
+{
+	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.condition, state);
-	node.then_scope = state.pushScope("Then", Yes.ordered);
-	require_name_register(node.thenStatement, state);
-	state.popScope;
-	if (node.elseStatement) {
-		node.else_scope = state.pushScope("Else", Yes.ordered);
-		require_name_register(node.elseStatement, state);
-		state.popScope;
-	}
-	node.state = AstNodeState.name_register_done;
+	require_name_register(node.thenStatements, state);
+	require_name_register(node.elseStatements, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
-void name_resolve_if(IfStmtNode* node, ref NameResolveState state) {
+void name_resolve_if(IfStmtNode* node, ref NameResolveState state)
+{
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.condition, state);
-	state.pushScope(node.then_scope);
-	require_name_resolve(node.thenStatement, state);
-	state.popScope;
-	if (node.elseStatement) {
-		state.pushScope(node.else_scope);
-		require_name_resolve(node.elseStatement, state);
-		state.popScope;
-	}
+	require_name_resolve(node.thenStatements, state);
+	require_name_resolve(node.elseStatements, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
@@ -49,9 +38,7 @@ void type_check_if(IfStmtNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 	require_type_check(node.condition, state);
 	autoconvToBool(node.condition, state.context);
-	require_type_check(node.thenStatement, state);
-	if (node.elseStatement) {
-		require_type_check(node.elseStatement, state);
-	}
+	require_type_check(node.thenStatements, state);
+	require_type_check(node.elseStatements, state);
 	node.state = AstNodeState.type_check_done;
 }

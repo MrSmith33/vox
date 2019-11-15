@@ -8,45 +8,40 @@ import all;
 
 @(AstType.stmt_for)
 struct ForStmtNode {
-	mixin AstNodeData!(AstType.stmt_for, AstFlags.isStatement);
-	Array!AstIndex init_statements;
+	mixin AstNodeData!(AstType.stmt_for, AstFlags.isStatement, AstNodeState.name_register_self_done);
+	AstNodes init_statements;
 	AstIndex condition; // Nullable
-	Array!AstIndex increment_statements;
-	AstIndex statement;
-	AstIndex _scope;
+	AstNodes increment_statements;
+	AstNodes body_statements;
 }
 
-void name_register_for(ForStmtNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	node._scope = state.pushScope("For", Yes.ordered);
-	foreach(stmt; node.init_statements) require_name_register(stmt, state);
+void name_register_nested_for(ForStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.init_statements, state);
 	if (node.condition) require_name_register(node.condition, state);
-	foreach(stmt; node.increment_statements) require_name_register(stmt, state);
-	require_name_register(node.statement, state);
-	state.popScope;
-	node.state = AstNodeState.name_register_done;
+	require_name_register(node.increment_statements, state);
+	require_name_register(node.body_statements, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_for(ForStmtNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	state.pushScope(node._scope);
-	foreach(stmt; node.init_statements) require_name_resolve(stmt, state);
+	require_name_resolve(node.init_statements, state);
 	if (node.condition) require_name_resolve(node.condition, state);
-	foreach(stmt; node.increment_statements) require_name_resolve(stmt, state);
-	require_name_resolve(node.statement, state);
-	state.popScope;
+	require_name_resolve(node.increment_statements, state);
+	require_name_resolve(node.body_statements, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
 void type_check_for(ForStmtNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	foreach(stmt; node.init_statements) require_type_check(stmt, state);
+	require_type_check(node.init_statements, state);
 	if (node.condition) {
 		require_type_check(node.condition, state);
 		autoconvToBool(node.condition, state.context);
 	}
-	foreach(stmt; node.increment_statements) require_type_check(stmt, state);
-	require_type_check(node.statement, state);
+	require_type_check(node.increment_statements, state);
+	require_type_check(node.body_statements, state);
 	node.state = AstNodeState.type_check_done;
 }

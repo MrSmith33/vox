@@ -12,15 +12,16 @@ import all;
 struct AliasDeclNode
 {
 	mixin AstNodeData!(AstType.decl_alias, AstFlags.isDeclaration | AstFlags.isStatement);
+	AstIndex parentScope;
 	Identifier id;
 	AstIndex initializer;
 }
 
-void name_register_alias(AstIndex nodeIndex, AliasDeclNode* node, ref NameRegisterState state)
+void name_register_self_alias(AstIndex nodeIndex, AliasDeclNode* node, ref NameRegisterState state)
 {
-	node.state = AstNodeState.name_register;
-	state.insert(node.id, nodeIndex);
-	node.state = AstNodeState.name_register_done;
+	node.state = AstNodeState.name_register_self;
+	node.parentScope.insert_scope(node.id, nodeIndex, state.context);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_alias(AliasDeclNode* node, ref NameResolveState state)

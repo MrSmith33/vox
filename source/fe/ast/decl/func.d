@@ -45,16 +45,19 @@ enum FunctionFlags : ushort {
 @(AstType.decl_function)
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
+	AstIndex _module;
+	AstIndex parentScope;
 	AstIndex signature; // FunctionSignatureNode
 	AstIndex block_stmt; // null if external
-	AstIndex _scope;
 	FunctionBackendData backendData;
 
-	this(TokenIndex loc, AstIndex signature, Identifier id)
+	this(TokenIndex loc, AstIndex _module, AstIndex parentScope, AstIndex signature, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_function;
 		this.flags = AstFlags.isDeclaration;
+		this._module = _module;
+		this.parentScope = parentScope;
 		this.signature = signature;
 		this.backendData.name = id;
 		this.backendData.signature = signature;
@@ -71,31 +74,37 @@ struct FunctionDeclNode {
 	ref Identifier id() { return backendData.name; }
 }
 
-void name_register_func(AstIndex nodeIndex, FunctionDeclNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	state.insert(node.id, nodeIndex);
-	node._scope = state.pushScope(state.context.idString(node.id), Yes.ordered);
+void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref NameRegisterState state) {
+	auto c = state.context;
+	node.state = AstNodeState.name_register_self;
+
+	// can't be done at parse time because of conditional compilation
+	node.parentScope.insert_scope(node.id, nodeIndex, c);
+	node._module.get!ModuleDeclNode(c).addFunction(nodeIndex, c);
+
+	node.state = AstNodeState.name_register_self_done;
+}
+
+void name_register_nested_func(AstIndex nodeIndex, FunctionDeclNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.signature, state);
 	if (node.block_stmt)
 	{
 		// TODO: we don't need to register parameters on function without body
 		require_name_register(node.block_stmt, state);
 	}
-	state.popScope;
-	node.state = AstNodeState.name_register_done;
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_func(FunctionDeclNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	// TODO: parameters don't need to see each other (including default param value expr)
-	state.pushScope(node._scope);
 	require_name_resolve(node.signature, state);
 	if (node.block_stmt)
 	{
 		// TODO: we don't need to register parameters on function without body
 		require_name_resolve(node.block_stmt, state);
 	}
-	state.popScope;
 	node.state = AstNodeState.name_resolve_done;
 }
 

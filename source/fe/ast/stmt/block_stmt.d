@@ -8,31 +8,26 @@ import all;
 
 @(AstType.stmt_block)
 struct BlockStmtNode {
-	mixin AstNodeData!(AstType.stmt_block, AstFlags.isStatement);
+	mixin AstNodeData!(AstType.stmt_block, AstFlags.isStatement, AstNodeState.name_register_self_done);
 	/// Each node can be expression, declaration or expression
-	Array!AstIndex statements;
-	AstIndex _scope;
+	AstNodes statements;
 }
 
-void name_register_block(BlockStmtNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	node._scope = state.pushScope("Block", Yes.ordered);
-	foreach(ref stmt; node.statements) require_name_register(stmt, state);
-	state.popScope;
-	node.state = AstNodeState.name_register_done;
+void name_register_nested_block(BlockStmtNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.statements, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_block(BlockStmtNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	state.pushScope(node._scope);
-	foreach(ref stmt; node.statements) require_name_resolve(stmt, state);
-	state.popScope;
+	require_name_resolve(node.statements, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
 void type_check_block(BlockStmtNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	foreach(ref stmt; node.statements) require_type_check(stmt, state);
+	require_type_check(node.statements, state);
 	node.state = AstNodeState.type_check_done;
 }

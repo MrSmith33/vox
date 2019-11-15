@@ -118,7 +118,7 @@ struct LiveInterval
 			else if (to < r.from)
 			{
 				// we found insertion point before cur
-				ranges.putAt(context.arrayArena, newRange, cur);
+				ranges.putAt(context.arrayArena, cur, newRange);
 				return;
 			}
 

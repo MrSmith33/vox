@@ -9,15 +9,17 @@ import all;
 struct ImportDeclNode
 {
 	mixin AstNodeData!(AstType.decl_import, AstFlags.isDeclaration);
+	AstIndex parentScope;
 	Identifier id;
 }
 
-void name_register_import(ImportDeclNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	ModuleDeclNode* m = state.context.findModule(node.id);
+void name_register_self_import(ImportDeclNode* node, ref NameRegisterState state) {
+	CompilationContext* c = state.context;
+	node.state = AstNodeState.name_register_self;
+	ModuleDeclNode* m = c.findModule(node.id);
 	if (m is null)
-		state.context.error(node.loc, "Cannot find module `%s`", state.context.idString(node.id));
+		c.error(node.loc, "Cannot find module `%s`", c.idString(node.id));
 	else
-		state.currentScope.imports.put(state.context.arrayArena, state.context.getAstNodeIndex(m));
+		node.parentScope.get_scope(c).imports.put(c.arrayArena, c.getAstNodeIndex(m));
 	node.state = AstNodeState.type_check_done;
 }

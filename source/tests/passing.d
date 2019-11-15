@@ -2379,3 +2379,86 @@ immutable test98 = q{--- folder/test98.vx
 --- folder/dep98.vx
 	void libfunc(){}
 };
+
+@TestInfo(&tester99)
+immutable test99 = `--- test99
+	// test #if
+	enum valTrue = true;
+	enum valFalse = false;
+
+	// global scope
+	#if(valTrue)
+		i32 foo() { return 42; } // no else
+
+	#if(valFalse)
+		i32 foo() { return 42; } // no items to insert
+
+	#if(valTrue){} // empty
+
+	// curly braces
+	#if(valFalse)
+	{
+		i32 bar() { return 42; }
+	}
+	else // insert more than 1 item
+	{
+		i32 bar() { return 100; }
+		i32 bar2() { return 200; }
+	}
+
+	// function scope
+	i32 funcTrue() {
+		#if(valTrue)
+			return 42;
+		else
+			return 100;
+	}
+
+	i32 funcFalse() {
+		#if(valFalse)
+			return 42;
+		else
+			return 100;
+	}
+`;
+void tester99(ref TestContext ctx) {
+	auto foo = ctx.getFunctionPtr!(int)("foo");
+	auto bar = ctx.getFunctionPtr!(int)("bar");
+	auto bar2 = ctx.getFunctionPtr!(int)("bar2");
+	auto funcTrue = ctx.getFunctionPtr!(int)("funcTrue");
+	auto funcFalse = ctx.getFunctionPtr!(int)("funcFalse");
+
+	assert(foo() == 42);
+	assert(bar() == 100);
+	assert(bar2() == 200);
+	assert(funcTrue() == 42);
+	assert(funcFalse() == 100);
+}
+
+@TestInfo()
+immutable test100 = `--- test100
+	enum a = true;
+	#if (a)
+		enum b = true;
+
+	void main()
+	{
+		#if (b) enum c = 42; // requires #if (a) to be evalauated first
+	}
+`;
+
+@TestInfo()
+immutable test101 = `--- test101
+	enum a = true;
+	enum b = true;
+	#if (a)
+	{
+		#if (b) enum c = true;
+	}
+
+	void main()
+	{
+		#if (c) enum d = 42; // requires #if (b) to be evalauated first
+	}
+`;
+

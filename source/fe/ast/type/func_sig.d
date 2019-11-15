@@ -7,7 +7,7 @@ import all;
 
 @(AstType.type_func_sig)
 struct FunctionSignatureNode {
-	mixin AstNodeData!(AstType.type_func_sig, AstFlags.isType, AstNodeState.parse_done);
+	mixin AstNodeData!(AstType.type_func_sig, AstFlags.isType, AstNodeState.name_register_self_done);
 	AstIndex returnType;
 	// parameters are owned by the function declaration or
 	// if it is part of function type literal then there is no owner
@@ -18,18 +18,17 @@ struct FunctionSignatureNode {
 }
 
 // only occurs when signature is a part of function declaration
-void name_register_func_sig(FunctionSignatureNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register;
-	foreach (ref param; node.parameters) require_name_register(param, state);
-	node.state = AstNodeState.name_register_done;
+void name_register_nested_func_sig(FunctionSignatureNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.parameters, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_func_sig(FunctionSignatureNode* node, ref NameResolveState state)
 {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.returnType, state);
-	foreach(ref param; node.parameters)
-		require_name_resolve(param, state);
+	require_name_resolve(node.parameters, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
@@ -47,8 +46,7 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 			returnType.printer(c));
 	}
 
-	foreach(ref AstIndex param; node.parameters)
-		require_type_check(param, state);
+	require_type_check(node.parameters, state);
 
 	node.state = AstNodeState.type_check_done;
 }

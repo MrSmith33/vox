@@ -27,6 +27,14 @@ struct AstPrinter {
 		AstNode* node = context.getAstNode(nodeIndex);
 		indent += indentSize; _visit(node); indent -= indentSize;
 	}
+	void pr_nodes(AstNodes nodes) { // print node
+		indent += indentSize;
+		foreach (AstIndex nodeIndex; nodes) {
+			AstNode* node = context.getAstNode(nodeIndex);
+			_visit(node);
+		}
+		indent -= indentSize;
+	}
 
 	void visit(AliasDeclNode* n) {
 		print("ALIAS ", context.idString(n.id));
@@ -34,7 +42,7 @@ struct AstPrinter {
 	}
 	void visit(ModuleDeclNode* m) {
 		print("MODULE ", context.files[m.moduleIndex.fileIndex].name);
-		foreach (decl; m.declarations) pr_node(decl);
+		pr_nodes(m.declarations);
 	}
 	void visit(ImportDeclNode* i) {
 		print("IMPORT ", context.idString(i.id));
@@ -42,7 +50,7 @@ struct AstPrinter {
 	void visit(FunctionDeclNode* f) {
 		auto sig = f.signature.get!FunctionSignatureNode(context);
 		print("FUNC ", sig.returnType.printer(context), " ", context.idString(f.id));
-		foreach (param; sig.parameters) pr_node(param);
+		pr_nodes(sig.parameters);
 		if (f.block_stmt) pr_node(f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
@@ -51,43 +59,52 @@ struct AstPrinter {
 	}
 	void visit(StructDeclNode* s) {
 		print("STRUCT ", context.idString(s.id));
-		foreach (decl; s.declarations) pr_node(decl); }
+		pr_nodes(s.declarations); }
 	void visit(EnumDeclaration* e) {
 		if (e.isAnonymous)
 			print("ENUM ", e.memberType.printer(context));
 		else
 			print("ENUM ", e.memberType.printer(context), " ", context.idString(e.id));
-		foreach (decl; e.declarations) pr_node(decl);
+		pr_nodes(e.declarations);
 	}
 	void visit(EnumMemberDecl* m) {
 		print("ENUM MEMBER ", m.type.printer(context), " ", context.idString(m.id));
 		if (m.initializer) pr_node(m.initializer);
 	}
+	void visit(StaticIfDeclNode* n) {
+		print("#IF"); pr_node(n.condition);
+		print("#THEN");
+		pr_nodes(n.thenItems);
+		print("#ELSE");
+		pr_nodes(n.elseItems);
+	}
 	void visit(BlockStmtNode* b) {
 		print("BLOCK");
-		foreach(stmt; b.statements) pr_node(stmt); }
+		pr_nodes(b.statements); }
 	void visit(IfStmtNode* i) {
 		print("IF"); pr_node(i.condition);
-		print("THEN"); pr_node(i.thenStatement);
-		if (i.elseStatement) { print("ELSE"); pr_node(i.elseStatement); }
+		print("THEN"); pr_nodes(i.thenStatements);
+		if (!i.elseStatements.empty) {
+			print("ELSE"); pr_nodes(i.elseStatements);
+		}
 	}
 	void visit(WhileStmtNode* w) {
 		print("WHILE");
 		pr_node(w.condition);
-		pr_node(w.statement); }
+		pr_nodes(w.statements); }
 	void visit(DoWhileStmtNode* d) {
 		print("DO");
 		pr_node(d.condition);
 		print("WHILE");
-		pr_node(d.statement); }
+		pr_nodes(d.statements); }
 	void visit(ForStmtNode* n) {
 		print("FOR");
-		foreach (stmt; n.init_statements) pr_node(stmt);
+		pr_nodes(n.init_statements);
 		print("COND");
 		if (n.condition) pr_node(n.condition);
 		print("INC");
-		foreach (stmt; n.increment_statements) pr_node(stmt);
-		pr_node(n.statement); }
+		pr_nodes(n.increment_statements);
+		pr_nodes(n.body_statements); }
 	void visit(ReturnStmtNode* r) {
 		print("RETURN");
 		if (r.expression) pr_node(r.expression); }
@@ -130,7 +147,7 @@ struct AstPrinter {
 			print("CALL");
 			pr_node(c.callee);
 		}
-		foreach (arg; c.args) pr_node(arg); }
+		pr_nodes(c.args); }
 	void visit(IndexExprNode* i) {
 		print("INDEX"); pr_node(i.array); pr_node(i.index); }
 	void visit(TypeConvExprNode* t) {
@@ -169,6 +186,13 @@ struct AstDotPrinter {
 		writeln(`  node_`, cast(void*)parent, ` -> node_`, cast(void*)node);
 		_visit(node);
 	}
+	void pr_node_edges(N)(N* parent, AstNodes nodes) { // print nodes
+		foreach (nodeIndex; nodes) {
+			AstNode* node = context.getAstNode(nodeIndex);
+			writeln(`  node_`, cast(void*)parent, ` -> node_`, cast(void*)node);
+			_visit(node);
+		}
+	}
 
 	void visit(AliasDeclNode* n) {
 		printLabel(n, `ALIAS\n%s`, context.idString(n.id));
@@ -176,7 +200,7 @@ struct AstDotPrinter {
 	}
 	void visit(ModuleDeclNode* m) {
 		printLabel(m, "Module");
-		foreach (decl; m.declarations) pr_node_edge(m, decl);
+		pr_node_edges(m, m.declarations);
 	}
 	void visit(ImportDeclNode* i) {
 		printLabel(i, `IMPORT\n%s`, context.idString(i.id));
@@ -184,7 +208,7 @@ struct AstDotPrinter {
 	void visit(FunctionDeclNode* f) {
 		auto sig = f.signature.get!FunctionSignatureNode(context);
 		printLabel(f, `FUNC\n%s %s`, sig.returnType.printer(context), context.idString(f.id));
-		foreach (param; sig.parameters) pr_node_edge(f, param);
+		pr_node_edges(f, sig.parameters);
 		if (f.block_stmt) pr_node_edge(f, f.block_stmt);
 	}
 	void visit(VariableDeclNode* v) {
@@ -193,40 +217,45 @@ struct AstDotPrinter {
 	}
 	void visit(StructDeclNode* s) {
 		printLabel(s, `STRUCT\n%s`, context.idString(s.id));
-		foreach (decl; s.declarations) pr_node_edge(s, decl); }
+		pr_node_edges(s, s.declarations); }
 	void visit(EnumDeclaration* e) {
 		if (e.isAnonymous)
 			printLabel(e, `ENUM\n%s`, e.memberType.printer(context));
 		else
 			printLabel(e, `ENUM\n%s %s`, e.memberType.printer(context), context.idString(e.id));
-		foreach (decl; e.declarations) pr_node_edge(e, decl);
+		pr_node_edges(e, e.declarations);
 	}
 	void visit(EnumMemberDecl* m) {
 		printLabel(m, `ENUM MEMBER\n%s %s`, m.type.printer(context), context.idString(m.id));
 		if (m.initializer) pr_node_edge(m, m.initializer);
 	}
+	void visit(StaticIfDeclNode* n) {
+		printLabel(n, "#IF"); pr_node_edge(n, n.condition);
+		pr_node_edges(n, n.thenItems);
+		pr_node_edges(n, n.elseItems);
+	}
 	void visit(BlockStmtNode* b) {
 		printLabel(b, "BLOCK");
-		foreach(stmt; b.statements) pr_node_edge(b, stmt); }
+		pr_node_edges(b, b.statements); }
 	void visit(IfStmtNode* i) {
 		printLabel(i, "IF"); pr_node_edge(i, i.condition);
-		pr_node_edge(i, i.thenStatement);
-		if (i.elseStatement) { pr_node_edge(i, i.elseStatement); }
+		pr_node_edges(i, i.thenStatements);
+		pr_node_edges(i, i.elseStatements);
 	}
 	void visit(WhileStmtNode* w) {
 		printLabel(w, "WHILE");
 		pr_node_edge(w, w.condition);
-		pr_node_edge(w, w.statement); }
+		pr_node_edges(w, w.statements); }
 	void visit(DoWhileStmtNode* d) {
 		printLabel(d, "DO");
 		pr_node_edge(d, d.condition);
-		pr_node_edge(d, d.statement); }
+		pr_node_edges(d, d.statements); }
 	void visit(ForStmtNode* n) {
 		printLabel(n, "FOR");
-		foreach (stmt; n.init_statements) pr_node_edge(n, stmt);
+		pr_node_edges(n, n.init_statements);
 		if (n.condition) pr_node_edge(n, n.condition);
-		foreach (stmt; n.increment_statements) pr_node_edge(n, stmt);
-		pr_node_edge(n, n.statement); }
+		pr_node_edges(n, n.increment_statements);
+		pr_node_edges(n, n.body_statements); }
 	void visit(ReturnStmtNode* r) {
 		printLabel(r, "RETURN");
 		if (r.expression) pr_node_edge(r, r.expression); }
@@ -258,7 +287,7 @@ struct AstDotPrinter {
 	void visit(CallExprNode* c) {
 		printLabel(c, `CALL`);
 		pr_node_edge(c, c.callee);
-		foreach (arg; c.args) pr_node_edge(c, arg); }
+		pr_node_edges(c, c.args); }
 	void visit(IndexExprNode* i) {
 		printLabel(i, `INDEX`); pr_node_edge(i, i.array); pr_node_edge(i, i.index); }
 	void visit(TypeConvExprNode* t) {

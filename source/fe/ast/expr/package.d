@@ -14,7 +14,7 @@ public import fe.ast.expr.unary_op;
 
 import all;
 
-mixin template ExpressionNodeData(AstType _astType, int default_flags = 0, AstNodeState _init_state = AstNodeState.name_register_done) {
+mixin template ExpressionNodeData(AstType _astType, int default_flags = 0, AstNodeState _init_state = AstNodeState.name_register_self_done) {
 	mixin AstNodeData!(_astType, default_flags | AstFlags.isExpression, _init_state);
 	AstIndex type;
 	// can be stack slot, global, variable, virtualRegister, constant, constantAggregate

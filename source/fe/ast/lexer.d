@@ -46,7 +46,6 @@ enum TokenType : ubyte {
 	@(">>=")  MORE_MORE_EQUAL,
 	@(">>>")  MORE_MORE_MORE,
 	@(">>>=") MORE_MORE_MORE_EQUAL,
-	@("#")    HASH,
 	@("<")    LESS,
 	@("<=")   LESS_EQUAL,
 	@("<<")   LESS_LESS,
@@ -82,6 +81,8 @@ enum TokenType : ubyte {
 	@("{")    LCURLY,
 	@("}")    RCURLY,
 
+
+	@("#if")      HASH_IF,
 
 	@("alias")    ALIAS_SYM,
 	@("break")    BREAK_SYM,
@@ -321,7 +322,6 @@ struct Lexer
 				case '\r': lex_EOLR(); continue;
 				case ' ' : nextChar;   continue;
 				case '!' : nextChar; return lex_multi_equal2(TT.NOT, TT.NOT_EQUAL);
-				//case '#' : nextChar; return TT.HASH;
 				case '$' : nextChar; return TT.DOLLAR;
 				case '%' : nextChar; return lex_multi_equal2(TT.PERCENT, TT.PERCENT_EQUAL);
 				case '&' : nextChar; return lex_multi_equal2_3('&', TT.AND, TT.AND_EQUAL, TT.AND_AND);
@@ -358,7 +358,6 @@ struct Lexer
 					}
 					return TT.LESS;
 				case '=' : nextChar; return lex_multi_equal2(TT.EQUAL, TT.EQUAL_EQUAL);
-				case '#' : nextChar; return TT.HASH;
 				case '?' : nextChar; return TT.QUESTION;
 				case '>' : nextChar;
 					if (c == '=') { nextChar;
@@ -379,6 +378,7 @@ struct Lexer
 					return TT.MORE;
 				//case '?' : nextChar; return TT.QUESTION;
 				case '@' : nextChar; return TT.AT;
+				case '#' : nextChar; return lex_HASH();
 				case 'A' : ..case 'Z': return lex_LETTER();
 				case '[' : nextChar; return TT.LBRACKET;
 				case '\\': nextChar; return TT.BACKSLASH;
@@ -593,6 +593,23 @@ struct Lexer
 		nextChar;
 		consumeDecimal();
 		return TT.INT_DEC_LITERAL;
+	}
+
+	private TokenType lex_HASH() // #
+	{
+		switch (c)
+		{
+			case 'i':
+				nextChar;
+				switch(c) {
+					case 'f': if (match("f")) return TT.HASH_IF; break;
+					default: break;
+				}
+				break;
+			default: break;
+		}
+		lexError(TT.INVALID, "Invalid # identifier");
+		return TT.INVALID;
 	}
 
 	private TokenType lex_LETTER() // a-zA-Z_

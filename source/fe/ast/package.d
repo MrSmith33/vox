@@ -34,6 +34,7 @@ enum AstType : ubyte
 	decl_struct,
 	decl_enum,
 	decl_enum_member,
+	decl_static_if,
 
 	stmt_block,
 	stmt_if,
@@ -95,8 +96,11 @@ enum AstNodeState : ubyte
 	// initial state
 	parse_done,
 	// is set after scope gathered all named entities
-	name_register,
-	name_register_done,
+	name_register_self,
+	name_register_self_done,
+	// is set after scope gathered all named entities
+	name_register_nested,
+	name_register_nested_done,
 	// is set after name uses resolved identifier
 	name_resolve,
 	name_resolve_done,

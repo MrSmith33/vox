@@ -3,8 +3,8 @@
 /// Authors: Andrey Penechko.
 module fe.ast.decl;
 
-public import fe.ast.decl.builtin;
 public import fe.ast.decl.alias_;
+public import fe.ast.decl.builtin;
 public import fe.ast.decl.enum_;
 public import fe.ast.decl.func;
 public import fe.ast.decl.import_;
@@ -12,3 +12,4 @@ public import fe.ast.decl.module_;
 public import fe.ast.decl.scope_;
 public import fe.ast.decl.struct_;
 public import fe.ast.decl.var;
+public import fe.ast.decl.static_if;

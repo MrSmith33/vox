@@ -39,6 +39,11 @@ void require_type_check(ref AstIndex nodeIndex, CompilationContext* context)
 	require_type_check(nodeIndex, state);
 }
 
+void require_type_check(ref AstNodes items, ref TypeCheckState state)
+{
+	foreach(ref AstIndex item; items) require_type_check(item, state);
+}
+
 /// Annotates all expression nodes with their type
 /// Type checking, casting
 void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
@@ -48,7 +53,16 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 
 	switch(node.state) with(AstNodeState)
 	{
-		case name_register, name_resolve, type_check: state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
+		case name_register_self, name_register_nested, name_resolve, type_check:
+			state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
+		case name_register_self_done:
+			require_name_register(nodeIndex, state.context);
+			state.context.throwOnErrors;
+			goto case;
+		case name_register_nested_done:
+			require_name_resolve(nodeIndex, state.context);
+			state.context.throwOnErrors;
+			break;
 		case name_resolve_done: break; // all requirement are done
 		case type_check_done: return; // already type checked
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
@@ -68,6 +82,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case decl_struct: type_check_struct(cast(StructDeclNode*)node, state); break;
 		case decl_enum: type_check_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: type_check_enum_member(cast(EnumMemberDecl*)node, state); break;
+		case decl_static_if: assert(false);
 
 		case stmt_block: type_check_block(cast(BlockStmtNode*)node, state); break;
 		case stmt_if: type_check_if(cast(IfStmtNode*)node, state); break;
@@ -227,7 +242,8 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 			if (ptrBaseType.astType == AstType.type_basic &&
 				ptrBaseType.as_basic.basicType == BasicType.t_u8)
 			{
-				auto memberExpr = c.appendAst!MemberExprNode(expr.loc, exprIndex, Identifier(), typeIndex);
+				AstIndex parentScope; // no scope
+				auto memberExpr = c.appendAst!MemberExprNode(expr.loc, parentScope, exprIndex, Identifier(), typeIndex);
 				auto node = memberExpr.get!MemberExprNode(c);
 				node.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_ptr), 1, c);
 				node.state = AstNodeState.type_check;

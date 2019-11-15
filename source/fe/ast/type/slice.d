@@ -7,13 +7,19 @@ import all;
 
 @(AstType.type_slice)
 struct SliceTypeNode {
-	mixin AstNodeData!(AstType.type_slice, AstFlags.isType, AstNodeState.name_register_done);
+	mixin AstNodeData!(AstType.type_slice, AstFlags.isType, AstNodeState.name_register_self_done);
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	AstIndex base;
 	IrIndex irType;
 
 	uint size() { return POINTER_SIZE * 2; }
 	uint alignment() { return POINTER_SIZE; }
+}
+
+void name_register_nested_slice(SliceTypeNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.base, state);
+	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_slice(SliceTypeNode* node, ref NameResolveState state) {

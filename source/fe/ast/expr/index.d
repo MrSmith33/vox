@@ -13,6 +13,13 @@ struct IndexExprNode {
 	AstIndex index;
 }
 
+void name_register_nested_index(IndexExprNode* node, ref NameRegisterState state) {
+	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.array, state);
+	require_name_register(node.index, state);
+	node.state = AstNodeState.name_register_nested_done;
+}
+
 void name_resolve_index(IndexExprNode* node, ref NameResolveState state)
 {
 	CompilationContext* c = state.context;

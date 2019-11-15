@@ -15,6 +15,7 @@ enum NameUseFlags : ushort
 @(AstType.expr_name_use)
 struct NameUseExprNode {
 	mixin ExpressionNodeData!(AstType.expr_name_use);
+	AstIndex parentScope;
 	union
 	{
 		private AstIndex _entity; // used when resolved, node contains Identifier internally
@@ -24,12 +25,13 @@ struct NameUseExprNode {
 	bool isSymResolved() { return cast(bool)(flags & NameUseFlags.isSymResolved); }
 	bool isAddressTaken() { return cast(bool)(flags & NameUseFlags.isAddressTaken); }
 
-	this(TokenIndex loc, Identifier id, AstIndex type = AstIndex.init, IrIndex irValue = IrIndex.init)
+	this(TokenIndex loc, AstIndex parentScope, Identifier id, AstIndex type = AstIndex.init, IrIndex irValue = IrIndex.init)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_name_use;
 		this.flags = AstFlags.isExpression;
-		this.state = AstNodeState.name_register_done;
+		this.state = AstNodeState.name_register_nested_done;
+		this.parentScope = parentScope;
 		this._id = id;
 		this.type = type;
 		this.irValue = irValue;
@@ -78,7 +80,10 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 	scope(exit) node.state = AstNodeState.name_resolve_done;
 
 	Identifier id = node.id(c);
-	AstIndex entity = lookupScopeIdRecursive(state.currentScope, id, node.loc, c);
+
+	Scope* currentScope = node.parentScope.get_scope(c);
+
+	AstIndex entity = lookupScopeIdRecursive(currentScope, id, node.loc, c);
 
 	if (entity == c.errorNode)
 	{
@@ -119,9 +124,9 @@ private void lowerToMember(ref AstIndex nodeIndex, NameUseExprNode* node, uint s
 	CompilationContext* c = state.context;
 	// rewrite as this.entity
 	// let member_access handle everything else
-	AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, c.commonIds.id_this);
+	AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, node.parentScope, c.commonIds.id_this);
 	require_name_resolve(thisName, state);
-	AstIndex member = c.appendAst!MemberExprNode(node.loc, thisName, nodeIndex, scopeIndex, MemberSubType.nonstatic_struct_member);
+	AstIndex member = c.appendAst!MemberExprNode(node.loc, node.parentScope, thisName, nodeIndex, scopeIndex, MemberSubType.nonstatic_struct_member);
 	if (node.isLvalue)
 		member.flags(c) |= AstFlags.isLvalue;
 	nodeIndex = member;
