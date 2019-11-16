@@ -301,7 +301,7 @@ struct AstToIr
 		bool isLvalue;
 	}
 
-	LRValue getMember(IrIndex currentBlock, IrIndex aggr, IrIndex[] indicies...)
+	LRValue getMember(TokenIndex loc, IrIndex currentBlock, IrIndex aggr, IrIndex[] indicies...)
 	{
 		if (aggr.isVariable) {
 			aggr = builder.readVariable(currentBlock, aggr);
@@ -310,7 +310,7 @@ struct AstToIr
 		IrIndex aggrType = ir.getValueType(context, aggr);
 
 		switch (aggrType.typeKind) {
-			case IrTypeKind.pointer: return LRValue(buildGEP(currentBlock, aggr, context.constants.ZERO, indicies), true);
+			case IrTypeKind.pointer: return LRValue(buildGEP(loc, currentBlock, aggr, context.constants.ZERO, indicies), true);
 			case IrTypeKind.struct_t: return LRValue(getStructMember(currentBlock, aggr, indicies), false);
 			default: context.internal_error("%s", aggrType.typeKind); assert(false);
 		}
@@ -340,7 +340,7 @@ struct AstToIr
 		return aggr;
 	}
 
-	IrIndex buildGEP(IrIndex currentBlock, IrIndex aggrPtr, IrIndex ptrIndex, IrIndex[] indicies...)
+	IrIndex buildGEP(TokenIndex loc, IrIndex currentBlock, IrIndex aggrPtr, IrIndex ptrIndex, IrIndex[] indicies...)
 	{
 		context.assertf(indicies.length < MAX_GEP_INDICIES,
 			"too much indicies for GEP instruction (%s) > %s",
@@ -359,11 +359,11 @@ struct AstToIr
 			final switch(aggrType.typeKind)
 			{
 				case IrTypeKind.basic:
-					context.internal_error("Cannot index basic type %s", aggrType.typeKind);
+					context.internal_error(loc, "Cannot index basic type %s", aggrType.typeKind);
 					break;
 
 				case IrTypeKind.pointer:
-					context.internal_error("Cannot index pointer with GEP instruction, use load first");
+					context.internal_error(loc, "Cannot index pointer with GEP instruction, use load first");
 					break;
 
 				case IrTypeKind.array:
@@ -371,13 +371,13 @@ struct AstToIr
 					break;
 
 				case IrTypeKind.struct_t:
-					context.assertf(memberIndex.isConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
+					context.assertf(memberIndex.isConstant, loc, "Structs can only be indexed with constants, not with %s", memberIndex);
 					uint memberIndexVal = context.constants.get(memberIndex).i32;
 					aggrType = context.types.getStructMemberType(aggrType, memberIndexVal, *context);
 					break;
 
 				case IrTypeKind.func_t:
-					context.internal_error("Cannot index function type");
+					context.internal_error(loc, "Cannot index function type");
 					break;
 			}
 		}
@@ -805,12 +805,14 @@ struct AstToIr
 		{
 			case nonstatic_struct_member, slice_member:
 				IrLabel afterAggr = IrLabel(currentBlock);
-				m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
+				// load pointers
+				if (!m.aggregate.get_node_type(c).get_type(c).isPointer)
+					m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
 				visitExprValue(m.aggregate, currentBlock, afterAggr);
 				currentBlock = afterAggr.blockIndex;
 
 				IrIndex memberIndex = c.constants.add(m.memberIndex(c), IsSigned.no);
-				LRValue rlVal = getMember(currentBlock, m.aggregate.get_expr(c).irValue, memberIndex);
+				LRValue rlVal = getMember(m.loc, currentBlock, m.aggregate.get_expr(c).irValue, memberIndex);
 
 				if (m.isLvalue) {
 					if (rlVal.isLvalue) m.irValue = rlVal.value;
@@ -845,7 +847,7 @@ struct AstToIr
 						m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
 						visitExprValue(m.aggregate, currentBlock, afterAggr);
 						currentBlock = afterAggr.blockIndex;
-						m.irValue = buildGEP(currentBlock, m.aggregate.get_expr(c).irValue, c.constants.ZERO, c.constants.ZERO);
+						m.irValue = buildGEP(m.loc, currentBlock, m.aggregate.get_expr(c).irValue, c.constants.ZERO, c.constants.ZERO);
 						break;
 					default:
 						if (m.isLvalue) { c.internal_error(m.loc, "not an l-value"); }
@@ -966,7 +968,7 @@ struct AstToIr
 
 				case PTR_PLUS_INT:
 					assert(leftExpr.type.get_type(context).isPointer && rightExpr.type.get_type(context).isInteger);
-					b.irValue = buildGEP(currentBlock, leftValue, rightExpr.irValue);
+					b.irValue = buildGEP(b.loc, currentBlock, leftValue, rightExpr.irValue);
 					break;
 
 				case PTR_DIFF:
@@ -1170,7 +1172,7 @@ struct AstToIr
 			{
 				IrIndex leftRvalue = load(currentBlock, leftExpr.irValue);
 				assert(leftExpr.type.get_type(context).isPointer && rightExpr.type.get_type(context).isInteger);
-				IrIndex opResult = buildGEP(currentBlock, leftRvalue, rightExpr.irValue);
+				IrIndex opResult = buildGEP(b.loc, currentBlock, leftRvalue, rightExpr.irValue);
 				store(currentBlock, leftExpr.irValue, opResult);
 				b.irValue = opResult;
 			}
@@ -1340,7 +1342,7 @@ struct AstToIr
 				context.assertf(type.isTypePointer, "%s", type); // pointer to static array
 
 				// pointer to first element
-				IrIndex ptr = buildGEP(currentBlock, childExpr.irValue, context.constants.ZERO, context.constants.ZERO);
+				IrIndex ptr = buildGEP(u.loc, currentBlock, childExpr.irValue, context.constants.ZERO, context.constants.ZERO);
 				// array length
 				IrIndex length = context.constants.add(childExpr.type.get_type(context).as_static_array.length, IsSigned.no, IrArgSize.size64);
 
@@ -1507,21 +1509,21 @@ struct AstToIr
 		switch (arrayExpr.type.get_type(context).astType) with(AstType)
 		{
 			case type_ptr:
-				i.irValue = buildGEP(currentBlock, arrayExpr.irValue, indexExpr.irValue);
+				i.irValue = buildGEP(i.loc, currentBlock, arrayExpr.irValue, indexExpr.irValue);
 				break;
 			case type_static_array:
 				IrIndex type = ir.getValueType(context, arrayExpr.irValue);
 				if (type.isTypePointer)
-					i.irValue = buildGEP(currentBlock, arrayExpr.irValue, aggregateIndex, indexExpr.irValue);
+					i.irValue = buildGEP(i.loc, currentBlock, arrayExpr.irValue, aggregateIndex, indexExpr.irValue);
 				else {
 					context.assertf(type.isTypeArray, "%s", IrIndexDump(type, context, ir));
-					i.irValue = buildGEP(currentBlock, arrayExpr.irValue, indexExpr.irValue);
+					i.irValue = buildGEP(i.loc, currentBlock, arrayExpr.irValue, indexExpr.irValue);
 				}
 				break;
 			case type_slice:
-				IrIndex ptrPtr = buildGEP(currentBlock, arrayExpr.irValue, aggregateIndex, slicePtrIndex);
+				IrIndex ptrPtr = buildGEP(i.loc, currentBlock, arrayExpr.irValue, aggregateIndex, slicePtrIndex);
 				IrIndex ptr = load(currentBlock, ptrPtr);
-				i.irValue = buildGEP(currentBlock, ptr, indexExpr.irValue);
+				i.irValue = buildGEP(i.loc, currentBlock, ptr, indexExpr.irValue);
 				break;
 			default:
 				context.internal_error("Cannot index %s", arrayExpr.type.printer(context));

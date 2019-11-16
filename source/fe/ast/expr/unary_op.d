@@ -79,6 +79,9 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 				case AstType.expr_index:
 					node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
 					break;
+				case AstType.expr_member:
+					node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
+					break;
 				default:
 					c.internal_error(node.loc, "Cannot take address of %s", child.astType);
 			}

@@ -158,7 +158,7 @@ LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref
 		return LookupResult.success;
 	}
 	else
-		c.internal_error("call of %s is not supported", ufcsAstType);
+		c.internal_error(memberNode.loc, "call of %s is not supported", ufcsAstType);
 
 	return LookupResult.failure;
 }

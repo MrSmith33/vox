@@ -31,7 +31,7 @@ void require_name_register(ref AstIndex nodeIndex, CompilationContext* context)
 // must be called inside name_register_nested state
 void require_name_register(ref AstNodes items, ref NameRegisterState state)
 {
-	require_name_register_sub_array(items, 0, items.length, state);
+	require_name_register_self_sub_array(items, 0, items.length, state);
 	foreach(ref AstIndex item; items) require_name_register(item, state);
 }
 
@@ -42,7 +42,7 @@ void require_name_register(ref AstNodes items, ref NameRegisterState state)
 //   eval condition
 //   in array replace static if node with correct branch
 //   call this recursively for inserted subrange
-private long require_name_register_sub_array(ref AstNodes items, uint from, uint to, ref NameRegisterState state)
+private long require_name_register_self_sub_array(ref AstNodes items, uint from, uint to, ref NameRegisterState state)
 {
 	CompilationContext* c = state.context;
 	state.firstStaticIf = AstIndex();
@@ -71,7 +71,7 @@ private long require_name_register_sub_array(ref AstNodes items, uint from, uint
 		items.replaceAt(c.arrayArena, insertPoint, 1, itemsToInsert);
 
 		sizeDelta += itemsToInsert.length - 1;
-		sizeDelta += require_name_register_sub_array(items, insertPoint, insertPoint+itemsToInsert.length, state);
+		sizeDelta += require_name_register_self_sub_array(items, insertPoint, insertPoint+itemsToInsert.length, state);
 
 		++numStaticIfs;
 		staticIf = staticIfNode.next;

@@ -2462,3 +2462,30 @@ immutable test101 = `--- test101
 	}
 `;
 
+@TestInfo()
+immutable test102 = q{--- test102
+	// test taking address of members
+	struct S {
+		u64 member;
+		void method() {
+			func(&member);
+		}
+	}
+	void func(u64* ptr) {}
+};
+
+@TestInfo()
+immutable test103 = q{--- test103
+	// test loading of pointers in member chains
+	struct A {
+		u64 member;
+	}
+	struct S {
+		A* a;
+	}
+	void func() {
+		S s;
+		s.a.member = 42;
+	}
+};
+

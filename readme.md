@@ -10,25 +10,26 @@ Project/language name is still missing.
 
 Strong focus on application extensions
 - Maximize user productivity
-    - Static typing
-    - Great error messages
-    - Fast / Incremental compilation
-    - Minimize effort needed for installation, setup, integration
-        - Minimal dependencies/encapsulate dependency into module or package
-        - Runtime as a library/minimal runtime/no runtime
-        - Embedding/extern C
-        - Code driven compilation, extending compiler from inside of the program being compiled
-    - Runtime module loading/runtime module compilation
-    - AOT and JIT, plugin support, runtime compilation, embedded compiler, tiered compilation
 - Maximize application performance
-    - Static typing
+- Static typing
+- Great error messages
+- Fast / Incremental compilation
+- Minimize effort needed for installation, setup, integration
+    - Minimal dependencies/encapsulate dependency into module or package
+    - Runtime as a library/minimal runtime/no runtime
+    - Embedding/extern C
+    - Code driven compilation, extending compiler from inside of the program being compiled
+- AOT and JIT, plugin support, runtime compilation, embedded compiler, tiered compilation
+- Static typing
+- Processor intrinsics
+- Conditional compilation
+- CTFE, Templates, Introspection, Code generation
 
 Target platforms (Only win64 is supported now):
 - amd64 (Windows, Linux, MacOS)
 - WebAssembly (browsers)
 - ARM (Android, Linux)
 - SPIR-V (Vulkan/OpenCL/OpenGL shaders)
-
 
 # Compiler
 
@@ -96,6 +97,10 @@ Release CLI build:
 
 # What works
 
+- win64 executable generation
+- dll importing
+- 
+
 - Example of JIT compilation for amd64 from D code:
 ```D
 string source = q{
@@ -120,57 +125,4 @@ testFun(val.ptr, 1, 10);
 assert(val[1] == 10);
 ```
 
-- Executable generation:
-
-File `sdl_test.har`:
-```D
---- sdl
-void SDL_SetMainReady();
-i32 SDL_Init(u32);
-void SDL_Quit();
-void* SDL_CreateWindow(u8* title, i32 x, i32 y, i32 w, i32 h, u32 flags);
-void* SDL_CreateRenderer(void* window, i32 index, u32 flags);
-void SDL_DestroyRenderer(void* renderer);
-void SDL_DestroyWindow(void* renderer);
-i32 SDL_PollEvent(SDL_Event* event);
-struct SDL_Event
-{
-    u32 type;
-    u8[52] padding;
-}
-
-enum u32 SDL_INIT_VIDEO = 0x00000020;
-enum i32 SDL_WINDOWPOS_UNDEFINED = 0x1FFF0000;
-enum SDL_EventType {
-    SDL_QUIT = 0x100
-}
-
---- kernel32
-void ExitProcess(u32 uExitCode);
-
---- main
-import sdl;
-import kernel32;
-i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
-    SDL_SetMainReady();
-    if(SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
-    void* window = SDL_CreateWindow("SDL test via tiny_jit",
-        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 300, 100, 4);
-    void* renderer = SDL_CreateRenderer(window, -1, 2);
-    SDL_Event e;
-    while (1)
-    {
-        SDL_PollEvent(&e);
-        if (e.type == SDL_EventType.SDL_QUIT)
-            break;
-    }
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    ExitProcess(0);
-    return 0;
-}
-```
-
-Compiling with `tjc --subsystem=GUI sdl_test.har SDL2.dll C:\Windows\System32\kernel32.dll`
-produces `sdl_test.exe` for win64
+- Roguelike tutorial using SDL2 - [repo](https://github.com/MrSmith33/rltut_2019)

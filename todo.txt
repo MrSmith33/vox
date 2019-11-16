@@ -9,6 +9,7 @@
 		- #is*
 - attributes
 	- User Defined Attributes UDAs
+- CTFE
 
 - conditional compilation
 	+ #if
@@ -69,8 +70,8 @@
 - multi-indexing operator x[1, 2, 3]
 - in passes with state pass context separately
 o dll linking
-	- @dllimport("lz4.dll") attribute on externals
-	- @dllimport("lz4.dll") attribute on module
+	- #dllimport("lz4.dll") attribute on externals
+	- #dllimport("lz4.dll") attribute on module
 		pros: only symbols from specific module will be searched in a dll
 	- .def file passing
 	+ .dll file passing
