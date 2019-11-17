@@ -76,7 +76,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		} else {
 			IrIndex offsetIndex = context.constants.add(offset, IsSigned.no);
 			ExtraInstrArgs extra = { addUsers : false, type : ptrType };
-			InstrWithResult addressInstr = builder.emitInstr!LirAmd64Instr_add(lirBlockIndex, extra, lirPtr, offsetIndex);
+			InstrWithResult addressInstr = builder.emitInstr!(Amd64Opcode.add)(lirBlockIndex, extra, lirPtr, offsetIndex);
 			ptr = addressInstr.result;
 		}
 		return ptr;
@@ -87,7 +87,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		IrIndex valType = context.types.getPointerBaseType(ptrType);
 		IrArgSize argSize = typeToIrArgSize(valType, context);
 		ExtraInstrArgs extra = { addUsers : false, type : valType, argSize : argSize };
-		auto instr = builder.emitInstr!LirAmd64Instr_load(lirBlockIndex, extra, ptr);
+		auto instr = builder.emitInstr!(Amd64Opcode.load)(lirBlockIndex, extra, ptr);
 		return instr.result;
 	}
 
@@ -112,7 +112,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 					IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
 					ExtraInstrArgs extra = { addUsers : false, argSize : argSize };
-					builder.emitInstr!LirAmd64Instr_store(lirBlockIndex, extra, ptr, loadedVal);
+					builder.emitInstr!(Amd64Opcode.store)(lirBlockIndex, extra, ptr, loadedVal);
 					break;
 				}
 
@@ -124,13 +124,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				{
 					// copy to temp register
 					ExtraInstrArgs extra = { addUsers : false, type : srcType };
-					InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, rvalue);
+					InstrWithResult movInstr = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, rvalue);
 					rvalue = movInstr.result;
 				}
 
 				ExtraInstrArgs extra = { addUsers : false, argSize : argSize };
 				IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
-				builder.emitInstr!LirAmd64Instr_store(lirBlockIndex, extra, ptr, rvalue);
+				builder.emitInstr!(Amd64Opcode.store)(lirBlockIndex, extra, ptr, rvalue);
 				break;
 
 			case struct_t:
@@ -300,14 +300,14 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 			IrIndex paramReg = lir.backendData.getCallConv(context).paramsInRegs[0];
 			paramReg.physRegSize = typeToRegSize(type, context);
 			ExtraInstrArgs extra = { type : type };
-			InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, paramReg);
+			InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, paramReg);
 			hiddenParameter = instr.result;
 		}
 
 		// Add instructions with old args
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; ir.getBlock(irBlockIndex).instructions(ir))
 		{
-			auto emitLirInstr(I)()
+			auto emitLirInstr(alias I)()
 			{
 				static assert(!getInstrInfo!I.hasVariadicArgs);
 				static assert(!getInstrInfo!I.hasVariadicResult);
@@ -331,7 +331,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 			void makeMov(IrIndex to, IrIndex from, IrArgSize argSize) {
 				ExtraInstrArgs extra = { addUsers : false, result : to, argSize : argSize };
-				builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, getFixedIndex(from));
+				builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, getFixedIndex(from));
 			}
 
 			switch(instrHeader.op)
@@ -345,7 +345,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					paramReg.physRegSize = typeToRegSize(type, context);
 					ExtraInstrArgs extra = { type : type, argSize : instrHeader.argSize };
-					InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, paramReg);
+					InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, paramReg);
 					recordIndex(instrHeader.result(ir), instr.result);
 					break;
 
@@ -397,7 +397,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							stackReserve += STACK_ITEM_SIZE;
 							IrIndex paddingSize = context.constants.add(STACK_ITEM_SIZE, IsSigned.no);
 							ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
-							builder.emitInstr!LirAmd64Instr_sub(
+							builder.emitInstr!(Amd64Opcode.sub)(
 								lirBlockIndex, extra, stackPtrReg, paddingSize);
 						}
 
@@ -407,12 +407,12 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							// TODO: push can use mem address
 							if (lirArg.isStackSlot || lirArg.isFunction) {
 								ExtraInstrArgs extra = { addUsers : false, type : lir.getValueType(context, lirArg) };
-								InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, lirArg);
+								InstrWithResult movInstr = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, lirArg);
 								lirArg = movInstr.result;
 							}
 
 							ExtraInstrArgs extra = { addUsers : false };
-							builder.emitInstr!LirAmd64Instr_push(lirBlockIndex, extra, lirArg);
+							builder.emitInstr!(Amd64Opcode.push)(lirBlockIndex, extra, lirArg);
 						}
 					}
 
@@ -425,13 +425,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						argRegister.physRegSize = typeToRegSize(type, context);
 						localArgBuffer[i] = argRegister;
 						ExtraInstrArgs extra = {addUsers : false, result : argRegister};
-						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, lirArg);
+						builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, lirArg);
 					}
 
 					{	// Allocate shadow space for 4 physical registers
 						IrIndex const_32 = context.constants.add(32, IsSigned.no);
 						ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
-						builder.emitInstr!LirAmd64Instr_sub(
+						builder.emitInstr!(Amd64Opcode.sub)(
 							lirBlockIndex, extra, stackPtrReg, const_32);
 					}
 
@@ -447,7 +447,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							result : returnReg // will be used if function has result
 						};
 
-						InstrWithResult callInstr = builder.emitInstr!LirAmd64Instr_call(
+						InstrWithResult callInstr = builder.emitInstr!(Amd64Opcode.call)(
 							lirBlockIndex, callExtra, argBuffer[0..numPhysRegs+1]); // include callee
 						lir.get!IrInstrHeader(callInstr.instruction).extendFixedArgRange = true;
 						if (callExtra.hasResult) lir.get!IrInstrHeader(callInstr.instruction).extendFixedResultRange = true;
@@ -455,14 +455,14 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						{	// Deallocate stack after call
 							IrIndex conReservedBytes = context.constants.add(stackReserve, IsSigned.no);
 							ExtraInstrArgs extra = {addUsers : false, result : stackPtrReg};
-							builder.emitInstr!LirAmd64Instr_add(
+							builder.emitInstr!(Amd64Opcode.add)(
 								lirBlockIndex, extra, stackPtrReg, conReservedBytes);
 						}
 
 						if (callExtra.hasResult) {
 							// mov result to virt reg
 							ExtraInstrArgs extra = { type : ir.getVirtReg(instrHeader.result(ir)).type };
-							InstrWithResult movInstr = builder.emitInstr!LirAmd64Instr_mov(
+							InstrWithResult movInstr = builder.emitInstr!(Amd64Opcode.mov)(
 								lirBlockIndex, extra, returnReg);
 							recordIndex(instrHeader.result(ir), movInstr.result);
 						}
@@ -470,14 +470,14 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 					break;
 
-				case IrOpcode.add: emitLirInstr!LirAmd64Instr_add; break;
-				case IrOpcode.sub: emitLirInstr!LirAmd64Instr_sub; break;
-				case IrOpcode.umul, IrOpcode.smul: emitLirInstr!LirAmd64Instr_imul; break;
-				case IrOpcode.not: emitLirInstr!LirAmd64Instr_not; break;
-				case IrOpcode.neg: emitLirInstr!LirAmd64Instr_neg; break;
-				case IrOpcode.and: emitLirInstr!LirAmd64Instr_and; break;
-				case IrOpcode.or: emitLirInstr!LirAmd64Instr_or; break;
-				case IrOpcode.xor: emitLirInstr!LirAmd64Instr_xor; break;
+				case IrOpcode.add: emitLirInstr!(Amd64Opcode.add); break;
+				case IrOpcode.sub: emitLirInstr!(Amd64Opcode.sub); break;
+				case IrOpcode.umul, IrOpcode.smul: emitLirInstr!(Amd64Opcode.imul); break;
+				case IrOpcode.not: emitLirInstr!(Amd64Opcode.not); break;
+				case IrOpcode.neg: emitLirInstr!(Amd64Opcode.neg); break;
+				case IrOpcode.and: emitLirInstr!(Amd64Opcode.and); break;
+				case IrOpcode.or: emitLirInstr!(Amd64Opcode.or); break;
+				case IrOpcode.xor: emitLirInstr!(Amd64Opcode.xor); break;
 
 				case IrOpcode.udiv, IrOpcode.sdiv, IrOpcode.urem, IrOpcode.srem:
 					//   v1 = div v2, v3
@@ -494,7 +494,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					IrIndex divisor = instrHeader.arg(ir, 1);
 					if (instrHeader.arg(ir, 1).isConstant) {
 						ExtraInstrArgs extra = { addUsers : false, type : getValueType(divisor, ir, context) };
-						divisor = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, divisor).result;
+						divisor = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, divisor).result;
 					}
 					else fixIndex(divisor);
 
@@ -513,7 +513,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						IrIndex divsxResult = amd64_reg.dx;
 						// sign-extend top half of dividend
 						ExtraInstrArgs extra2 = { argSize : instrHeader.argSize, result : divsxResult };
-						builder.emitInstr!LirAmd64Instr_divsx(lirBlockIndex, extra2);
+						builder.emitInstr!(Amd64Opcode.divsx)(lirBlockIndex, extra2);
 					} else {
 						// zero top half of dividend
 						makeMov(dividendTop, context.constants.add(0, IsSigned.no), IrArgSize.size32);
@@ -529,13 +529,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					ExtraInstrArgs extra3 = { addUsers : false, argSize : instrHeader.argSize, result : resultReg };
 					InstrWithResult res;
 					if (isSigned)
-						res = builder.emitInstr!LirAmd64Instr_idiv(lirBlockIndex, extra3, dividendBottom, dividendTop, divisor);
+						res = builder.emitInstr!(Amd64Opcode.idiv)(lirBlockIndex, extra3, dividendBottom, dividendTop, divisor);
 					else
-						res = builder.emitInstr!LirAmd64Instr_div(lirBlockIndex, extra3, dividendBottom, dividendTop, divisor);
+						res = builder.emitInstr!(Amd64Opcode.div)(lirBlockIndex, extra3, dividendBottom, dividendTop, divisor);
 
 					// copy result (quotient)
 					ExtraInstrArgs extra4 = { addUsers : false, argSize : instrHeader.argSize, type : ir.getVirtReg(instrHeader.result(ir)).type };
-					InstrWithResult movResult = builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra4, resultReg);
+					InstrWithResult movResult = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra4, resultReg);
 					recordIndex(instrHeader.result(ir), movResult.result);
 					break;
 
@@ -554,19 +554,19 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					InstrWithResult res;
 					switch(instrHeader.op) {
 						case IrOpcode.shl:
-							res = builder.emitInstr!LirAmd64Instr_shl(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
+							res = builder.emitInstr!(Amd64Opcode.shl)(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
 							break;
 						case IrOpcode.lshr:
-							res = builder.emitInstr!LirAmd64Instr_shr(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
+							res = builder.emitInstr!(Amd64Opcode.shr)(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
 							break;
 						case IrOpcode.ashr:
-							res = builder.emitInstr!LirAmd64Instr_sar(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
+							res = builder.emitInstr!(Amd64Opcode.sar)(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), rightArg);
 							break;
 						default: assert(false);
 					}
 					recordIndex(instrHeader.result(ir), res.result);
 					break;
-				case IrOpcode.load: emitLirInstr!LirAmd64Instr_load; break;
+				case IrOpcode.load: emitLirInstr!(Amd64Opcode.load); break;
 				case IrOpcode.store:
 					IrIndex type = ir.getValueType(context, instrHeader.arg(ir, 1));
 					genStore(getFixedIndex(instrHeader.arg(ir, 0)), 0, instrHeader.arg(ir, 1), 0, type, lirBlockIndex, ir);
@@ -577,46 +577,44 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
 					uint typeSizeFrom = context.types.typeSize(typeFrom);
 					uint typeSizeTo = context.types.typeSize(typeTo);
-					context.assertf(typeSizeTo <= typeSizeFrom,
-						"Can't cast from %s bytes to %s bytes", typeSizeFrom, typeSizeTo);
-					emitLirInstr!LirAmd64Instr_mov;
+					emitLirInstr!(Amd64Opcode.mov);
 					break;
 
 				case IrOpcode.set_unary_cond:
 					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize, type : type };
-					InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_unary_cond(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)));
+					InstrWithResult res = builder.emitInstr!(Amd64Opcode.set_unary_cond)(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)));
 					recordIndex(instrHeader.result(ir), res.result);
 					break;
 
 				case IrOpcode.set_binary_cond:
 					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize, type : type };
-					InstrWithResult res = builder.emitInstr!LirAmd64Instr_set_binary_cond(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
+					InstrWithResult res = builder.emitInstr!(Amd64Opcode.set_binary_cond)(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
 					recordIndex(instrHeader.result(ir), res.result);
 					break;
 
-				case IrOpcode.block_exit_jump:
-					builder.emitInstr!LirAmd64Instr_jmp(lirBlockIndex);
+				case IrOpcode.jump:
+					builder.emitInstr!(Amd64Opcode.jmp)(lirBlockIndex);
 					break;
 
-				case IrOpcode.block_exit_unary_branch:
+				case IrOpcode.branch_unary:
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize };
-					IrIndex instruction = builder.emitInstr!LirAmd64Instr_un_branch(
+					IrIndex instruction = builder.emitInstr!(Amd64Opcode.un_branch)(
 						lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)));
 					break;
 
-				case IrOpcode.block_exit_binary_branch:
+				case IrOpcode.branch_binary:
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize };
-					IrIndex instruction = builder.emitInstr!LirAmd64Instr_bin_branch(
+					IrIndex instruction = builder.emitInstr!(Amd64Opcode.bin_branch)(
 						lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
 					break;
 
-				case IrOpcode.block_exit_return_void:
-					builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
+				case IrOpcode.ret:
+					builder.emitInstr!(Amd64Opcode.ret)(lirBlockIndex);
 					break;
 
-				case IrOpcode.block_exit_return_value:
+				case IrOpcode.ret_val:
 					IrIndex result = lir.backendData.getCallConv(context).returnReg;
 					auto lirFuncType = &context.types.get!IrTypeFunction(lir.type);
 					IrIndex type = lirFuncType.resultTypes[0];
@@ -644,13 +642,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						// store struct into pointer, then return pointer
 						IrIndex valType = context.types.getPointerBaseType(type);
 						genStore(hiddenParameter, 0, instrHeader.arg(ir, 0), 0, valType, lirBlockIndex, ir);
-						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, hiddenParameter);
+						builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, hiddenParameter);
 					} else {
 						IrIndex itemToReturn = tryMovComplexStruct;
-						builder.emitInstr!LirAmd64Instr_mov(lirBlockIndex, extra, itemToReturn);
+						builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, itemToReturn);
 					}
 
-					IrIndex instruction = builder.emitInstr!LirAmd64Instr_return(lirBlockIndex);
+					IrIndex instruction = builder.emitInstr!(Amd64Opcode.ret)(lirBlockIndex);
 					break;
 
 				default:

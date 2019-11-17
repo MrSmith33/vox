@@ -15,23 +15,24 @@ import ir.ir_index;
 
 struct InstrInfo
 {
-	this(ushort _opcode, ubyte _numArgs = 0, uint _flags = 0, ubyte _numHiddenArgs = 0) {
-		opcode = _opcode;
+	this(byte _numArgs, uint _flags = 0, ubyte _numHiddenArgs = 0) {
 		numArgs = _numArgs;
 		flags = _flags;
 		numHiddenArgs = _numHiddenArgs;
 	}
 
-	ushort opcode;
 	/// If hasVariadicArgs is set, then determines the minimum required number of arguments
 	/// Otherwise specifies exact number of arguments
 	/// Is copied to IrInstrHeader.numArgs
 	ubyte numArgs;
+
 	/// those are allocated after results and arguments
 	/// Doesn't affect IrInstrHeader.numArgs
 	ubyte numHiddenArgs;
+
 	/// Set of IrInstrFlags
 	uint flags;
+
 	static assert(IrInstrFlags.max <= uint.max, "Not enough bits for flags");
 
 	bool isMov() const { return (flags & IFLG.isMov) != 0; }
@@ -48,6 +49,7 @@ struct InstrInfo
 	bool isResultInDst() const { return (flags & IFLG.isResultInDst) != 0; }
 	bool isCommutative() const { return (flags & IFLG.isCommutative) != 0; }
 	bool isCall() const { return (flags & IFLG.isCall) != 0; }
+	bool isGeneric() const { return (flags & IFLG.isGeneric) != 0; }
 
 	bool mayHaveResult() { return hasResult || hasVariadicResult; }
 }
@@ -95,11 +97,13 @@ enum IrInstrFlags : uint {
 	singleMemArg = 1 << 14,
 	/// If all non-fixed arguments can be memory operands
 	allMemArg = 1 << 15,
+	/// If set opcode of instruction is set from ExtraInstrArgs.opcode
+	isGeneric = 1 << 16,
 }
 
 alias IFLG = IrInstrFlags;
 
-enum getInstrInfo(T) = getUDAs!(T, InstrInfo)[0];
+enum getInstrInfo(alias T) = getUDAs!(T, InstrInfo)[0];
 enum getIrValueKind(T) = getUDAs!(T, IrValueKind)[0];
 
 immutable InstrInfo[] irInstrInfos = gatherInstrInfos!IrOpcode;
@@ -107,49 +111,74 @@ private alias _ii = InstrInfo;
 enum IrOpcode : ushort
 {
 	// used as placeholder inside generic instructions. Must not remain in IR.
-	@_ii(0) invalid,
+	@_ii() invalid,
 
-	@_ii(0, 0, IFLG.isBlockExit) block_exit_jump,
-	@_ii(0, 1, IFLG.isBlockExit) block_exit_unary_branch,
-	@_ii(0, 2, IFLG.isBlockExit) block_exit_binary_branch,
-	@_ii(0, 0, IFLG.isBlockExit) block_exit_return_void,
-	@_ii(0, 1, IFLG.isBlockExit) block_exit_return_value,
+	@_ii(0, IFLG.isBlockExit) jump,
+	@_ii(1, IFLG.hasCondition | IFLG.isBlockExit) branch_unary,
+	@_ii(2, IFLG.hasCondition | IFLG.isBlockExit) branch_binary,
+	@_ii(0, IFLG.isBlockExit) ret,
+	@_ii(1, IFLG.isBlockExit) ret_val,
 
-	@_ii(0, 0, IFLG.none, 1) parameter,
-	@_ii(0) call,
+	/// Extra argument represents parameter index and stored as plain uint
+	@_ii(0, IFLG.hasResult, 1) parameter,
+	// first argument is function or function pointer
+	@_ii(0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) call,
 
-	@_ii(0) set_binary_cond,
-	@_ii(0) set_unary_cond,
+	/// Returns boolean result of binary comparison
+	@_ii(2, IFLG.hasResult | IFLG.hasCondition) set_binary_cond,
+	/// Returns boolean result of unary comparison
+	@_ii(1, IFLG.hasResult | IFLG.hasCondition) set_unary_cond,
 
-	@_ii(0) store,
-	@_ii(0) load,
-	@_ii(0) get_element_ptr,
-	@_ii(0) load_aggregate,
-	@_ii(0) create_aggregate,
-	@_ii(0) get_element,
-	@_ii(0) insert_element,
+	@_ii(2) store,
+	@_ii(1, IFLG.hasResult) load,
+	/// Args: aggregate pointer, 1 or more index
+	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element_ptr,
+	@_ii(1, IFLG.hasResult) load_aggregate,
+	/// Args: aggregate members
+	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasResult) create_aggregate,
+	/// Args: aggregate, 1 or more index
+	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element,
+	/// Args: aggregate, new element value, 1 or more index
+	/// Returns: aggregate with replaced element
+	@_ii(3, IFLG.hasVariadicArgs | IFLG.hasResult) insert_element,
 
-	@_ii(0) not, // One's Complement Negation
-	@_ii(0) neg, // Two's Complement Negation
+	// One's complement negation
+	@_ii(1, IFLG.hasResult) not,
+	// Two's complement negation
+	@_ii(1, IFLG.hasResult) neg,
 
-	@_ii(0) conv,
+	/// Args: source value, target size is represented with argSize field
+	@_ii(1, IFLG.hasResult) conv,
+	/// Args: target type, source value
+	@_ii(2, IFLG.hasResult) zext,
+	/// Args: target type, source value
+	@_ii(2, IFLG.hasResult) sext,
 
-	@_ii(0) add,
-	@_ii(0) sub,
-	@_ii(0) and,
-	@_ii(0) or,
-	@_ii(0) xor,
+	/// Used when generating any of binary instructions.
+	/// Actual opcode is passed via ExtraInstrArgs.opcode
+	@_ii(2, IFLG.hasResult | IFLG.isGeneric) generic_binary,
+	@_ii(2, IFLG.hasResult) add,
+	@_ii(2, IFLG.hasResult) sub,
+	@_ii(2, IFLG.hasResult) and,
+	@_ii(2, IFLG.hasResult) or,
+	@_ii(2, IFLG.hasResult) xor,
 
-	@_ii(0) umul,
-	@_ii(0) smul,
-	@_ii(0) udiv,
-	@_ii(0) sdiv,
-	@_ii(0) urem,
-	@_ii(0) srem,
+	/// Unsigned multiply
+	@_ii(2, IFLG.hasResult) umul,
+	/// Signed multiply
+	@_ii(2, IFLG.hasResult) smul,
+	/// Unsigned division
+	@_ii(2, IFLG.hasResult) udiv,
+	/// Signed division
+	@_ii(2, IFLG.hasResult) sdiv,
+	/// Unsigned remainder
+	@_ii(2, IFLG.hasResult) urem,
+	/// Signed remainder
+	@_ii(2, IFLG.hasResult) srem,
 
-	@_ii(0) shl,
-	@_ii(0) lshr,
-	@_ii(0) ashr,
+	@_ii(2, IFLG.hasResult) shl,
+	@_ii(2, IFLG.hasResult) lshr,
+	@_ii(2, IFLG.hasResult) ashr,
 }
 
 bool hasSideEffects(IrOpcode opcode)
@@ -182,7 +211,7 @@ IrArgSize typeToIrArgSize(IrIndex type, CompilationContext* context) {
 }
 
 /// Common prefix of all IR instruction structs
-@(IrValueKind.instruction) @InstrInfo()
+@(IrValueKind.instruction)
 struct IrInstrHeader
 {
 	ushort op;
@@ -249,60 +278,6 @@ struct IrInstrHeader
 	}
 }
 
-template IrGenericInstr(ushort opcode, ubyte numArgs, uint flags = 0, ubyte numExtraArgs = 0)
-{
-	enum hasResult = (flags & IFLG.hasResult) != 0;
-
-	@(IrValueKind.instruction) @InstrInfo(opcode, numArgs, flags, numExtraArgs)
-	struct IrGenericInstr
-	{
-		IrInstrHeader header;
-	}
-}
-
-alias IrInstr_return_value = IrGenericInstr!(IrOpcode.block_exit_return_value, 1, IFLG.isBlockExit);
-alias IrInstr_return_void = IrGenericInstr!(IrOpcode.block_exit_return_void, 0, IFLG.isBlockExit);
-alias IrInstr_store = IrGenericInstr!(IrOpcode.store, 2);
-alias IrInstr_load = IrGenericInstr!(IrOpcode.load, 1, IFLG.hasResult);
-alias IrInstr_not = IrGenericInstr!(IrOpcode.not, 1, IFLG.hasResult); // one's complement negation
-alias IrInstr_neg = IrGenericInstr!(IrOpcode.neg, 1, IFLG.hasResult); // two's complement negation
-alias IrInstr_set_binary_cond = IrGenericInstr!(IrOpcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
-alias IrInstr_set_unary_cond = IrGenericInstr!(IrOpcode.set_unary_cond, 1, IFLG.hasResult | IFLG.hasCondition);
-
-alias IrInstr_add =  IrGenericInstr!(IrOpcode.add,  2, IFLG.hasResult);
-alias IrInstr_sub =  IrGenericInstr!(IrOpcode.sub,  2, IFLG.hasResult);
-alias IrInstr_umul =  IrGenericInstr!(IrOpcode.umul,  2, IFLG.hasResult); // unsigned multiply
-alias IrInstr_smul = IrGenericInstr!(IrOpcode.smul, 2, IFLG.hasResult); // signed multiply
-alias IrInstr_udiv =  IrGenericInstr!(IrOpcode.udiv,  2, IFLG.hasResult); // unsigned division
-alias IrInstr_sdiv = IrGenericInstr!(IrOpcode.sdiv, 2, IFLG.hasResult); // signed division
-alias IrInstr_urem =  IrGenericInstr!(IrOpcode.urem,  2, IFLG.hasResult); // unsigned remainder
-alias IrInstr_srem = IrGenericInstr!(IrOpcode.srem, 2, IFLG.hasResult); // signed remainder
-alias IrInstr_shl =  IrGenericInstr!(IrOpcode.shl,  2, IFLG.hasResult);
-alias IrInstr_lshr =  IrGenericInstr!(IrOpcode.lshr,  2, IFLG.hasResult);
-alias IrInstr_ashr =  IrGenericInstr!(IrOpcode.ashr,  2, IFLG.hasResult);
-alias IrInstr_and =  IrGenericInstr!(IrOpcode.and,  2, IFLG.hasResult);
-alias IrInstr_or  =  IrGenericInstr!(IrOpcode.or,   2, IFLG.hasResult);
-alias IrInstr_xor =  IrGenericInstr!(IrOpcode.xor,  2, IFLG.hasResult);
-
-// used when generating any of above binary instructions. Actual opcode is passed via ExtraInstrArgs.opcode
-alias IrInstr_any_binary_instr =  IrGenericInstr!(IrOpcode.invalid,  2, IFLG.hasResult);
-
-alias IrInstr_conv = IrGenericInstr!(IrOpcode.conv, 1, IFLG.hasResult);
-alias IrInstr_jump = IrGenericInstr!(IrOpcode.block_exit_jump, 0, IFLG.isBlockExit);
-// first argument is function or function pointer
-alias IrInstr_call = IrGenericInstr!(IrOpcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);
-
-/// args: aggregate pointer, 1 or more index
-alias IrInstr_get_element_ptr = IrGenericInstr!(IrOpcode.get_element_ptr, 2, IFLG.hasVariadicArgs | IFLG.hasResult);
-/// args: aggregate, 1 or more index
-alias IrInstr_create_aggregate = IrGenericInstr!(IrOpcode.create_aggregate, 1, IFLG.hasVariadicArgs | IFLG.hasResult);
-///
-alias IrInstr_load_aggregate = IrGenericInstr!(IrOpcode.load_aggregate, 1, IFLG.hasResult);
-
-/// args: aggregate, 1 or more index
-alias IrInstr_get_element = IrGenericInstr!(IrOpcode.get_element, 2, IFLG.hasVariadicArgs | IFLG.hasResult);
-/// args: aggregate, new element value, 1 or more index
-alias IrInstr_insert_element = IrGenericInstr!(IrOpcode.insert_element, 3, IFLG.hasVariadicArgs | IFLG.hasResult);
 
 enum IrBinaryCondition : ubyte {
 	eq,
@@ -344,9 +319,6 @@ IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
 	}
 }
 
-/// Uses header.cond
-alias IrInstr_binary_branch = IrGenericInstr!(IrOpcode.block_exit_binary_branch, 2, IFLG.hasCondition | IFLG.isBlockExit);
-
 enum IrUnaryCondition : ubyte {
 	zero,
 	not_zero
@@ -362,10 +334,7 @@ IrUnaryCondition invertUnaryCond(IrUnaryCondition cond)
 	}
 }
 
-/// Uses header.cond
-alias IrInstr_unary_branch = IrGenericInstr!(IrOpcode.block_exit_unary_branch, 1, IFLG.hasCondition | IFLG.isBlockExit);
-
-@(IrValueKind.instruction) @InstrInfo(IrOpcode.parameter, 0, IFLG.hasResult, 1)
+@(IrValueKind.instruction)
 struct IrInstr_parameter
 {
 	IrInstrHeader header;

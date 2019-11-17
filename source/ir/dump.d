@@ -554,9 +554,9 @@ void dumpIrInstr(ref InstrPrintInfo p)
 {
 	switch(p.instrHeader.op)
 	{
-		case IrOpcode.block_exit_unary_branch: dumpUnBranch(p); break;
-		case IrOpcode.block_exit_binary_branch: dumpBinBranch(p); break;
-		case IrOpcode.block_exit_jump: dumpJmp(p); break;
+		case IrOpcode.branch_unary: dumpUnBranch(p); break;
+		case IrOpcode.branch_binary: dumpBinBranch(p); break;
+		case IrOpcode.jump: dumpJmp(p); break;
 
 		case IrOpcode.parameter:
 			uint paramIndex = p.ir.get!IrInstr_parameter(p.instrIndex).index(p.ir);
@@ -564,11 +564,11 @@ void dumpIrInstr(ref InstrPrintInfo p)
 			p.sink.putf("parameter%s", paramIndex);
 			break;
 
-		case IrOpcode.block_exit_return_void:
+		case IrOpcode.ret:
 			p.sink.put("     return");
 			break;
 
-		case IrOpcode.block_exit_return_value:
+		case IrOpcode.ret_val:
 			p.sink.put("    return");
 			dumpArg(p.instrHeader.arg(p.ir, 0), p);
 			break;

@@ -891,7 +891,7 @@ struct LinearScan
 				{
 					// mov r1 r2
 					ExtraInstrArgs extra = {addUsers : false, result : r1};
-					InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
+					InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, r2);
 					builder.insertBeforeInstr(instrIndex, instr.instruction);
 					// r1 = op r1 r3
 					instrHeader.arg(lir, 0) = r1;
@@ -903,7 +903,7 @@ struct LinearScan
 				{
 					// mov r1 r2
 					ExtraInstrArgs extra = {addUsers : false, result : r1};
-					InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
+					InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, r2);
 					builder.insertBeforeInstr(instrIndex, instr.instruction);
 				}
 				// r1 = op r1 r1
@@ -928,7 +928,7 @@ struct LinearScan
 			if ( !sameIndexOrPhysReg(r1, r2) )
 			{
 				ExtraInstrArgs extra = {addUsers : false, result : r1};
-				InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, r2);
+				InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, r2);
 				builder.insertBeforeInstr(instrIndex, instr.instruction);
 			}
 			instrHeader.arg(lir, 0) = r1;
@@ -1088,7 +1088,7 @@ struct LinearScan
 		lir.getBlock(newBlock).predecessors.append(builder, predIndex);
 		lir.getBlock(newBlock).successors.append(builder, succIndex);
 		lir.getBlock(newBlock).isSealed = true;
-		builder.emitInstr!LirAmd64Instr_jmp(newBlock);
+		builder.emitInstr!(Amd64Opcode.jmp)(newBlock);
 		lir.getBlock(newBlock).isFinished = true;
 		lir.getBlock(newBlock).replacesCriticalEdge = true;
 		return newBlock;
@@ -1150,12 +1150,12 @@ struct LinearScan
 
 				// save register
 				ExtraInstrArgs extra1 = { argSize : IrArgSize.size64 };
-				IrIndex instrStore = builder.emitInstr!LirAmd64Instr_store(extra1, slot, reg.index);
+				IrIndex instrStore = builder.emitInstr!(Amd64Opcode.store)(extra1, slot, reg.index);
 				builder.prependBlockInstr(entryBlock, instrStore);
 
 				// restore register
 				ExtraInstrArgs extra = { result : reg.index, argSize : IrArgSize.size64 };
-				InstrWithResult instrLoad = builder.emitInstr!LirAmd64Instr_load(extra, slot);
+				InstrWithResult instrLoad = builder.emitInstr!(Amd64Opcode.load)(extra, slot);
 				builder.insertBeforeLastInstr(exitBlock, instrLoad.instruction);
 			}
 		}

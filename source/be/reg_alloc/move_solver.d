@@ -154,14 +154,14 @@ struct MoveSolver
 		void makeStore(IrIndex dst, IrIndex src, IrArgSize argSize)
 		{
 			ExtraInstrArgs extra = { argSize : argSize };
-			IrIndex instr = builder.emitInstr!LirAmd64Instr_store(extra, dst, src);
+			IrIndex instr = builder.emitInstr!(Amd64Opcode.store)(extra, dst, src);
 			builder.insertBeforeInstr(beforeInstr, instr);
 		}
 
 		void makeLoad(IrIndex dst, IrIndex src, IrArgSize argSize)
 		{
 			ExtraInstrArgs extra = { result : dst, argSize : argSize };
-			InstrWithResult instr = builder.emitInstr!LirAmd64Instr_load(extra, src);
+			InstrWithResult instr = builder.emitInstr!(Amd64Opcode.load)(extra, src);
 			builder.insertBeforeInstr(beforeInstr, instr.instruction);
 		}
 
@@ -206,7 +206,7 @@ struct MoveSolver
 					else // con or reg -> reg
 					{
 						ExtraInstrArgs extra = { result : toIndex, argSize : to.argSize };
-						InstrWithResult instr = builder.emitInstr!LirAmd64Instr_mov(extra, fromIndex);
+						InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, fromIndex);
 						builder.insertBeforeInstr(beforeInstr, instr.instruction);
 					}
 				}
@@ -229,7 +229,7 @@ struct MoveSolver
 
 				version(RAPrint_resolve) writefln("xchg from %s to %s %s", *from, *to, toIndex);
 
-				IrIndex instr = builder.emitInstr!LirAmd64Instr_xchg(ExtraInstrArgs(), fromIndex, from.readFrom);
+				IrIndex instr = builder.emitInstr!(Amd64Opcode.xchg)(ExtraInstrArgs(), fromIndex, from.readFrom);
 				builder.insertBeforeInstr(beforeInstr, instr);
 
 				if (from.readFrom == toIndex) {

@@ -53,10 +53,10 @@ void func_pass_invert_conditions(CompilationContext* context, IrFunction* ir, re
 
 		switch(instrHeader.op) with(IrOpcode)
 		{
-			case block_exit_unary_branch:
+			case branch_unary:
 				invertedCond = invertUnaryCond(cast(IrUnaryCondition)instrHeader.cond);
 				break;
-			case block_exit_binary_branch:
+			case branch_binary:
 				invertedCond = invertBinaryCond(cast(IrBinaryCondition)instrHeader.cond);
 				break;
 
@@ -108,14 +108,14 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 			if (basePtrType == resultType) return basePtr;
 
 			ExtraInstrArgs extra = { type : resultType };
-			InstrWithResult instr = builder.emitInstr!IrInstr_conv(extra, basePtr);
+			InstrWithResult instr = builder.emitInstr!(IrOpcode.conv)(extra, basePtr);
 			builder.insertBeforeInstr(instrIndex, instr.instruction);
 			return instr.result;
 		} else {
 			IrIndex offset = context.constants.add(offsetVal, IsSigned.yes);
 
 			ExtraInstrArgs extra = { type : resultType };
-			InstrWithResult addressInstr = builder.emitInstr!IrInstr_add(extra, basePtr, offset);
+			InstrWithResult addressInstr = builder.emitInstr!(IrOpcode.add)(extra, basePtr, offset);
 			builder.insertBeforeInstr(instrIndex, addressInstr.instruction);
 
 			return addressInstr.result;
@@ -129,13 +129,13 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 
 		if (elemSize > 1) {
 			ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
-			InstrWithResult offsetInstr = builder.emitInstr!IrInstr_umul(extra1, index, scale);
+			InstrWithResult offsetInstr = builder.emitInstr!(IrOpcode.umul)(extra1, index, scale);
 			builder.insertBeforeInstr(instrIndex, offsetInstr.instruction);
 			indexVal = offsetInstr.result;
 		}
 
 		ExtraInstrArgs extra2 = { type : resultType };
-		InstrWithResult addressInstr = builder.emitInstr!IrInstr_add(extra2, basePtr, indexVal);
+		InstrWithResult addressInstr = builder.emitInstr!(IrOpcode.add)(extra2, basePtr, indexVal);
 		builder.insertBeforeInstr(instrIndex, addressInstr.instruction);
 
 		return addressInstr.result;

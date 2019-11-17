@@ -259,7 +259,7 @@ struct AstToIr
 			case stackSlot, global, virtualRegister:
 				ExtraInstrArgs extra;
 				// destination must be a pointer
-				builder.emitInstr!IrInstr_store(currentBlock, extra, destination, value);
+				builder.emitInstr!(IrOpcode.store)(currentBlock, extra, destination, value);
 				break;
 			case variable:
 				builder.writeVariable(currentBlock, destination, value);
@@ -280,11 +280,11 @@ struct AstToIr
 				IrIndex resultType = context.types.getPointerBaseType(ir.getValueType(context, source));
 				ExtraInstrArgs extra = {type : resultType};
 				if (resultType.isTypeStruct)
-					return builder.emitInstr!IrInstr_load_aggregate(currentBlock, extra, source).result;
+					return builder.emitInstr!(IrOpcode.load_aggregate)(currentBlock, extra, source).result;
 				else
 				{
 					extra.argSize = resultType.getTypeArgSize(ir, context);
-					return builder.emitInstr!IrInstr_load(currentBlock, extra, source).result;
+					return builder.emitInstr!(IrOpcode.load)(currentBlock, extra, source).result;
 				}
 			case variable:
 				return builder.readVariable(currentBlock, source);
@@ -386,7 +386,7 @@ struct AstToIr
 		IrIndex[] args = gepBuf[0..indicies.length+2];
 		args[0] = aggrPtr;
 		args[1] = ptrIndex;
-		IrIndex result = builder.emitInstr!IrInstr_get_element_ptr(currentBlock, extra, args).result;
+		IrIndex result = builder.emitInstr!(IrOpcode.get_element_ptr)(currentBlock, extra, args).result;
 		return result;
 	}
 
@@ -439,7 +439,7 @@ struct AstToIr
 					type = context.types.appendPtr(type);
 					IrArgSize argSize = sizeToIrArgSize(context.types.typeSize(type), context);
 					ExtraInstrArgs extra = {type : type, argSize : argSize};
-					InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
+					InstrWithResult param = builder.emitInstr!(IrOpcode.parameter)(ir.entryBasicBlock, extra);
 					ir.get!IrInstr_parameter(param.instruction).index(ir) = v.scopeIndex;
 					v.irValue = param.result;
 				}
@@ -451,7 +451,7 @@ struct AstToIr
 					v.irValue = builder.newIrVarIndex(type);
 
 					ExtraInstrArgs extra = {type : type, argSize : argSize};
-					InstrWithResult param = builder.emitInstr!IrInstr_parameter(ir.entryBasicBlock, extra);
+					InstrWithResult param = builder.emitInstr!(IrOpcode.parameter)(ir.entryBasicBlock, extra);
 					ir.get!IrInstr_parameter(param.instruction).index(ir) = v.scopeIndex;
 
 					store(currentBlock, v.irValue, param.result);
@@ -962,7 +962,7 @@ struct AstToIr
 				case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 					version(IrGenPrint) writefln("[IR GEN]   rel op value %s", b.op);
 					ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op), type : b.type.gen_ir_type(context), argSize : leftExpr.type.typeArgSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_set_binary_cond(
+					b.irValue = builder.emitInstr!(IrOpcode.set_binary_cond)(
 						currentBlock, extra, leftValue, rightValue).result;
 					break;
 
@@ -975,7 +975,7 @@ struct AstToIr
 					assert(leftExpr.type.get_type(context).isPointer && rightExpr.type.get_type(context).isPointer);
 
 					ExtraInstrArgs extra = { type : b.type.gen_ir_type(context), argSize : leftExpr.type.typeArgSize(context) };
-					b.irValue = builder.emitInstr!IrInstr_sub(currentBlock, extra, leftValue, rightValue).result;
+					b.irValue = builder.emitInstr!(IrOpcode.sub)(currentBlock, extra, leftValue, rightValue).result;
 
 					// divide by elem size
 					TypeNode* baseType = leftExpr.type.get_type(context).as_ptr.base.get_type(context);
@@ -984,7 +984,7 @@ struct AstToIr
 
 					ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64), argSize : leftExpr.type.typeArgSize(context) };
 					IrIndex elemSizeValue = context.constants.add(elemSize, IsSigned.no, leftExpr.type.typeArgSize(context));
-					b.irValue = builder.emitInstr!IrInstr_sdiv(currentBlock, extra, b.irValue, elemSizeValue).result;
+					b.irValue = builder.emitInstr!(IrOpcode.sdiv)(currentBlock, extra, b.irValue, elemSizeValue).result;
 					break;
 
 				// TODO
@@ -994,7 +994,7 @@ struct AstToIr
 						type : b.type.gen_ir_type(context),
 						argSize : b.type.typeArgSize(context)
 					};
-					b.irValue = builder.emitInstr!IrInstr_any_binary_instr(
+					b.irValue = builder.emitInstr!(IrOpcode.generic_binary)(
 						currentBlock, extra, leftValue, rightValue).result;
 					break;
 				default: context.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
@@ -1191,7 +1191,7 @@ struct AstToIr
 						type : leftExpr.type.gen_ir_type(context),
 						argSize : leftExpr.type.typeArgSize(context)
 					};
-					b.irValue = builder.emitInstr!IrInstr_any_binary_instr(
+					b.irValue = builder.emitInstr!(IrOpcode.generic_binary)(
 						currentBlock, extra, leftRvalue, rightExpr.irValue).result;
 				}
 
@@ -1275,7 +1275,7 @@ struct AstToIr
 				visitExprValue(u.child, currentBlock, afterChild);
 				currentBlock = afterChild.blockIndex;
 				ExtraInstrArgs extra = {type : u.type.gen_ir_type(context), argSize : u.type.typeArgSize(context) };
-				u.irValue = builder.emitInstr!IrInstr_not(currentBlock, extra, u.child.get_expr(context).irValue).result;
+				u.irValue = builder.emitInstr!(IrOpcode.not)(currentBlock, extra, u.child.get_expr(context).irValue).result;
 				break;
 			case logicalNot:
 				IrLabel afterChild = IrLabel(currentBlock);
@@ -1287,7 +1287,7 @@ struct AstToIr
 				visitExprValue(u.child, currentBlock, afterChild);
 				currentBlock = afterChild.blockIndex;
 				ExtraInstrArgs extra = {type : u.type.gen_ir_type(context), argSize : u.type.typeArgSize(context) };
-				u.irValue = builder.emitInstr!IrInstr_neg(currentBlock, extra, u.child.get_expr(context).irValue).result;
+				u.irValue = builder.emitInstr!(IrOpcode.neg)(currentBlock, extra, u.child.get_expr(context).irValue).result;
 				break;
 			case preIncrement, postIncrement, preDecrement, postDecrement:
 				IrOpcode opcode = IrOpcode.sub;
@@ -1314,7 +1314,7 @@ struct AstToIr
 					type : childType.gen_ir_type(context),
 					argSize : argSize
 				};
-				IrIndex opResult = builder.emitInstr!IrInstr_any_binary_instr(
+				IrIndex opResult = builder.emitInstr!(IrOpcode.generic_binary)(
 					currentBlock, extra, rval, increment).result;
 				store(currentBlock, childExpr.irValue, opResult);
 
@@ -1349,7 +1349,7 @@ struct AstToIr
 				// combine into slice {i64, T*}
 				IrIndex resType = u.type.gen_ir_type(context);
 				ExtraInstrArgs extra = { type : resType };
-				InstrWithResult res = builder.emitInstr!IrInstr_create_aggregate(currentBlock, extra, length, ptr);
+				InstrWithResult res = builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, length, ptr);
 				u.irValue = res.result;
 				break;
 			default:
@@ -1430,7 +1430,7 @@ struct AstToIr
 
 		if (returnType.isVoidType(context))
 		{
-			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, args);
+			InstrWithResult res = builder.emitInstr!(IrOpcode.call)(currentBlock, args);
 			context.assertf(!res.result.isDefined, "Call has result");
 		}
 		else
@@ -1438,7 +1438,7 @@ struct AstToIr
 			IrIndex callResultType = returnType.gen_ir_type(context);
 
 			ExtraInstrArgs extra = { hasResult : true, type : callResultType };
-			InstrWithResult res = builder.emitInstr!IrInstr_call(currentBlock, extra, args);
+			InstrWithResult res = builder.emitInstr!(IrOpcode.call)(currentBlock, extra, args);
 			c.irValue = res.result;
 		}
 
@@ -1477,7 +1477,7 @@ struct AstToIr
 		}
 
 		ExtraInstrArgs extra = { type : structType };
-		InstrWithResult res = builder.emitInstr!IrInstr_create_aggregate(currentBlock, extra, args);
+		InstrWithResult res = builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, args);
 		c.irValue = res.result;
 
 		if (c.isLvalue) {
@@ -1596,12 +1596,12 @@ struct AstToIr
 		else if (t.type.get_type(context).isBool)
 		{
 			ExtraInstrArgs extra = { type : to, cond : IrUnaryCondition.not_zero };
-			t.irValue = builder.emitInstr!IrInstr_set_unary_cond(currentBlock, extra, childExpr.irValue).result;
+			t.irValue = builder.emitInstr!(IrOpcode.set_unary_cond)(currentBlock, extra, childExpr.irValue).result;
 		}
 		else
 		{
 			ExtraInstrArgs extra = {type : to};
-			t.irValue = builder.emitInstr!IrInstr_conv(currentBlock, extra, childExpr.irValue).result;
+			t.irValue = builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, childExpr.irValue).result;
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}

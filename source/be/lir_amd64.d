@@ -179,89 +179,64 @@ immutable InstrInfo[] amd64InstrInfos = gatherInstrInfos!Amd64Opcode;
 private alias _ii = InstrInfo;
 ///
 enum Amd64Opcode : ushort {
-	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) add,
-	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst) sub,
-	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) mul,
-	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) imul,
-	@_ii(0,3,IFLG.hasResult|IFLG.allMemArg) div,
-	@_ii(0,3,IFLG.hasResult|IFLG.allMemArg) idiv,
-	@_ii(0,0,IFLG.hasResult) divsx,
-	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) and,
-	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) or,
-	@_ii(0,2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative|IFLG.allMemArg) xor,
-	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) shl,
-	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) shr,
-	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) sar,
-	@_ii() lea,
+	@_ii() invalid,
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) add, // arg0 = arg0 + arg1
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) sub, // arg0 = arg0 - arg1
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) mul,
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) imul,
+	@_ii(3,IFLG.hasResult) div, // (dx, ax) = div (dx, ax) / v2
+	@_ii(3,IFLG.hasResult) idiv, // (dx, ax) = div (dx, ax) / v2
+	@_ii(0,IFLG.hasResult) divsx, // CWD/CDQ/CQO
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) and,
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) or,
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) xor,
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) shl,
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) shr,
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) sar,
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) lea,
 
-	@_ii(0,1,IFLG.hasResult|IFLG.isMov) mov, // rr, ri
-	@_ii(0,1,IFLG.hasResult|IFLG.isLoad) load,
-	@_ii(0,2,IFLG.isStore) store,
-	@_ii() movsx,
-	@_ii() movzx,
-	@_ii() xchg,
+	@_ii(1,IFLG.hasResult|IFLG.isMov) mov, // mov rr/ri
+	@_ii(1,IFLG.hasResult|IFLG.isLoad) load, // mov rm
+	@_ii(2,IFLG.isStore) store, // mov mr/mi
 
-	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) not,
-	@_ii(0,1,IFLG.hasResult|IFLG.isResultInDst|IFLG.allMemArg) neg,
 
-	@_ii() cmp,
-	@_ii() test,
+	@_ii(1,IFLG.hasResult) movzx_btow,
+	@_ii(1,IFLG.hasResult) movzx_btod,
+	@_ii(1,IFLG.hasResult) movzx_btoq,
+	@_ii(1,IFLG.hasResult) movzx_wtod,
+	@_ii(1,IFLG.hasResult) movzx_wtoq,
+
+	@_ii(1,IFLG.hasResult) movsx_btow,
+	@_ii(1,IFLG.hasResult) movsx_btod,
+	@_ii(1,IFLG.hasResult) movsx_btoq,
+	@_ii(1,IFLG.hasResult) movsx_wtod,
+	@_ii(1,IFLG.hasResult) movsx_wtoq,
+
+	@_ii(2) xchg, // xchg mr/mr
+
+	@_ii(1,IFLG.hasResult|IFLG.isResultInDst) not,
+	@_ii(1,IFLG.hasResult|IFLG.isResultInDst) neg,
+
+	@_ii(2) cmp,
+	@_ii(1) test,
 
 	// machine specific branches
-	@_ii(0,0,IFLG.isJump | IFLG.isBlockExit) jmp,
-	@_ii(0,0,IFLG.isBlockExit) jcc,
+	@_ii(0,IFLG.isJump | IFLG.isBlockExit) jmp,
+	@_ii(1,IFLG.isBlockExit) jcc,
 	// high-level branches
-	@_ii(0,2,IFLG.isBranch | IFLG.isBlockExit) bin_branch,
-	@_ii(0,2,IFLG.isBranch | IFLG.isBlockExit) un_branch,
-	@_ii(0,1,IFLG.hasResult) set_unary_cond,
-	@_ii(0,2,IFLG.hasResult) set_binary_cond,
+	@_ii(2,IFLG.hasCondition | IFLG.isBranch | IFLG.isBlockExit) bin_branch,
+	@_ii(1,IFLG.hasCondition | IFLG.isBranch | IFLG.isBlockExit) un_branch,
+	@_ii(1,IFLG.hasResult | IFLG.hasCondition) set_unary_cond,
+	@_ii(2,IFLG.hasResult | IFLG.hasCondition) set_binary_cond,
 
-	@_ii() setcc,
+	@_ii(1,IFLG.hasCondition) setcc,
 
-	@_ii(0,0,IFLG.isCall) call,
-	@_ii(0,0,IFLG.isBlockExit) ret,
+	@_ii(0,IFLG.hasVariadicArgs | IFLG.hasVariadicResult | IFLG.isCall) call,
+	@_ii(0,IFLG.isBlockExit) ret,
 
-	@_ii() pop,
-	@_ii() push,
+	@_ii(0,IFLG.hasResult) pop,
+	@_ii(1) push,
 }
-
-alias LirAmd64Instr_add = IrGenericInstr!(Amd64Opcode.add, 2, IFLG.hasResult | IFLG.isResultInDst); // arg0 = arg0 + arg1
-alias LirAmd64Instr_sub = IrGenericInstr!(Amd64Opcode.sub, 2, IFLG.hasResult | IFLG.isResultInDst); // arg0 = arg0 - arg1
-alias LirAmd64Instr_mul = IrGenericInstr!(Amd64Opcode.mul, 2, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_imul = IrGenericInstr!(Amd64Opcode.imul, 2, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_div = IrGenericInstr!(Amd64Opcode.div, 3, IFLG.hasResult); // (dx, ax) = div (dx, ax) / v2
-alias LirAmd64Instr_idiv = IrGenericInstr!(Amd64Opcode.idiv, 3, IFLG.hasResult); // (dx, ax) = div (dx, ax) / v2
-alias LirAmd64Instr_divsx = IrGenericInstr!(Amd64Opcode.divsx, 0, IFLG.hasResult); // CWD/CDQ/CQO
-alias LirAmd64Instr_and = IrGenericInstr!(Amd64Opcode.and, 2, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_or  = IrGenericInstr!(Amd64Opcode.or,  2, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_xor = IrGenericInstr!(Amd64Opcode.xor, 2, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_shl = IrGenericInstr!(Amd64Opcode.shl, 2, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_shr = IrGenericInstr!(Amd64Opcode.shr, 2, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_sar = IrGenericInstr!(Amd64Opcode.sar, 2, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_cmp = IrGenericInstr!(Amd64Opcode.cmp, 2);
-alias LirAmd64Instr_jcc = IrGenericInstr!(Amd64Opcode.jcc, 1);
-alias LirAmd64Instr_jmp = IrGenericInstr!(Amd64Opcode.jmp, 0);
-alias LirAmd64Instr_bin_branch = IrGenericInstr!(Amd64Opcode.bin_branch, 2, IFLG.hasCondition);
-alias LirAmd64Instr_un_branch = IrGenericInstr!(Amd64Opcode.un_branch, 1, IFLG.hasCondition);
-alias LirAmd64Instr_set_unary_cond = IrGenericInstr!(Amd64Opcode.set_unary_cond, 1, IFLG.hasResult | IFLG.hasCondition);
-alias LirAmd64Instr_set_binary_cond = IrGenericInstr!(Amd64Opcode.set_binary_cond, 2, IFLG.hasResult | IFLG.hasCondition);
-alias LirAmd64Instr_test = IrGenericInstr!(Amd64Opcode.test, 1);
-alias LirAmd64Instr_push = IrGenericInstr!(Amd64Opcode.push, 1);
-alias LirAmd64Instr_return = IrGenericInstr!(Amd64Opcode.ret, 0);
-alias LirAmd64Instr_mov = IrGenericInstr!(Amd64Opcode.mov, 1, IFLG.hasResult); // mov rr/ri
-alias LirAmd64Instr_load = IrGenericInstr!(Amd64Opcode.load, 1, IFLG.hasResult); // mov rm
-alias LirAmd64Instr_store = IrGenericInstr!(Amd64Opcode.store, 2); // mov mr/mi
-alias LirAmd64Instr_xchg = IrGenericInstr!(Amd64Opcode.xchg, 2); // xchg mr/mr
-alias LirAmd64Instr_not = IrGenericInstr!(Amd64Opcode.not, 1, IFLG.hasResult | IFLG.isResultInDst);
-alias LirAmd64Instr_neg = IrGenericInstr!(Amd64Opcode.neg, 1, IFLG.hasResult | IFLG.isResultInDst);
-// call payload layout
-// - result (if callee is non-void)
-// - arg0 (function or function pointer)
-// - arg1
-// - ...
-// - argN
-///
-alias LirAmd64Instr_call = IrGenericInstr!(Amd64Opcode.call, 0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult);
 
 Condition[] IrBinCondToAmd64Condition = [
 	Condition.E,  // eq

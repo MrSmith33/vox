@@ -23,6 +23,8 @@
 	- check member variable func ptr
 - default parameters
 - named parameters
+- overloading
+
 - char literal / type
 	+ literal (for now generates int literal expression)
 - escape sequences in string/char literals (\n)
@@ -117,6 +119,7 @@ o dll linking
 	vreg will shrink from 7 slots to 4 slots
 	+ need array arena for IR with per-function slices
 - make sure that blocks for splitting critical edges are inserted after successor
++ Remove IR instruction structs, use enum values directly in emitInstr
 
 [Register allocator]
 + Do liveness + RA together on each function

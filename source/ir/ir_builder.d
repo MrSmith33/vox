@@ -99,11 +99,11 @@ struct IrBuilder
 		{
 			returnVar = newIrVarIndex(returnType);
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
-			emitInstr!IrInstr_return_value(ir.exitBasicBlock, retValue);
+			emitInstr!(IrOpcode.ret_val)(ir.exitBasicBlock, retValue);
 		}
 		else
 		{
-			emitInstr!IrInstr_return_void(ir.exitBasicBlock);
+			emitInstr!(IrOpcode.ret)(ir.exitBasicBlock);
 		}
 		ir.getBlock(ir.exitBasicBlock).isFinished = true;
 	}
@@ -376,14 +376,14 @@ struct IrBuilder
 	/// Always returns InstrWithResult when instruction has variadic result
 	///   in this case result can be null if no result is requested
 	/// See: ExtraInstrArgs
-	auto emitInstr(I)(IrIndex blockIndex, IrIndex[] args ...)
+	auto emitInstr(alias I)(IrIndex blockIndex, IrIndex[] args ...)
 	{
 		// TODO assert if I requires ExtraInstrArgs data
 		return emitInstr!I(blockIndex, ExtraInstrArgs(), args);
 	}
 
 	/// ditto
-	auto emitInstr(I)(IrIndex blockIndex, ExtraInstrArgs extra, IrIndex[] args ...)
+	auto emitInstr(alias I)(IrIndex blockIndex, ExtraInstrArgs extra, IrIndex[] args ...)
 	{
 		static if (getInstrInfo!I.mayHaveResult) {
 			InstrWithResult result = emitInstr!I(extra, args);
@@ -398,7 +398,7 @@ struct IrBuilder
 
 	/// ditto
 	/// Only creates instruction, doesn't add to basic block
-	auto emitInstr(I)(ExtraInstrArgs extra, IrIndex[] args ...)
+	auto emitInstr(alias I)(ExtraInstrArgs extra, IrIndex[] args ...)
 	{
 		IrIndex instr = IrIndex(ir.numInstructions, IrValueKind.instruction);
 		appendInstructionSlots(1);
@@ -406,11 +406,13 @@ struct IrBuilder
 		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
 		*instrHeader = IrInstrHeader.init;
 
+		enum iinfo = getInstrInfo!I;
+
 		// opcode
-		static if (getInstrInfo!I.opcode == IrOpcode.invalid)
+		static if (iinfo.isGeneric)
 			instrHeader.op = extra.opcode;
 		else
-			instrHeader.op = getInstrInfo!I.opcode;
+			instrHeader.op = I;
 
 		instrHeader.argSize = extra.argSize;
 
@@ -418,14 +420,14 @@ struct IrBuilder
 		instrHeader._payloadOffset = ir.numPayloadSlots;
 
 		// result
-		static if (getInstrInfo!I.hasVariadicResult) {
+		static if (iinfo.hasVariadicResult) {
 			if (extra.hasResult) {
 				appendPayloadSlots(1);
 				instrHeader.hasResult = true;
 			} else {
 				instrHeader.hasResult = false;
 			}
-		} else static if (getInstrInfo!I.hasResult) {
+		} else static if (iinfo.hasResult) {
 			appendPayloadSlots(1);
 			instrHeader.hasResult = true;
 		} else {
@@ -433,7 +435,7 @@ struct IrBuilder
 		}
 
 		// set result
-		static if (getInstrInfo!I.mayHaveResult)
+		static if (iinfo.mayHaveResult)
 		{
 			if (instrHeader.hasResult)
 			{
@@ -456,22 +458,22 @@ struct IrBuilder
 		}
 
 		// condition
-		static if (getInstrInfo!I.hasCondition) {
+		static if (iinfo.hasCondition) {
 			instrHeader.cond = extra.cond;
 		}
 
 		// arguments
-		static if (getInstrInfo!I.hasVariadicArgs)
+		static if (iinfo.hasVariadicArgs)
 		{
 			context.assertf(args.length <= IrInstrHeader.numArgs.max,
 				"Too many arguments (%s), max is %s",
 				args.length,
 				IrInstrHeader.numArgs.max);
 
-			context.assertf(args.length >= getInstrInfo!I.numArgs,
+			context.assertf(args.length >= iinfo.numArgs,
 				"Instruction %s requires at least %s arguments, while passed %s",
 				I.stringof,
-				getInstrInfo!I.numArgs,
+				iinfo.numArgs,
 				args.length);
 
 			instrHeader.numArgs = cast(typeof(instrHeader.numArgs))args.length;
@@ -481,16 +483,16 @@ struct IrBuilder
 		}
 		else
 		{
-			context.assertf(getInstrInfo!I.numArgs == args.length,
+			context.assertf(iinfo.numArgs == args.length,
 				"Instruction %s requires %s args, while passed %s",
-				I.stringof, getInstrInfo!I.numArgs, args.length);
+				I.stringof, iinfo.numArgs, args.length);
 
-			instrHeader.numArgs = getInstrInfo!I.numArgs;
-			appendPayloadSlots(getInstrInfo!I.numArgs);
+			instrHeader.numArgs = iinfo.numArgs;
+			appendPayloadSlots(iinfo.numArgs);
 		}
 
 		// allocate hidden args
-		appendPayloadSlots(getInstrInfo!I.numHiddenArgs);
+		appendPayloadSlots(iinfo.numHiddenArgs);
 
 		// set arguments
 		instrHeader.args(ir)[] = args;
@@ -502,7 +504,7 @@ struct IrBuilder
 			}
 		}
 
-		static if (getInstrInfo!I.mayHaveResult)
+		static if (iinfo.mayHaveResult)
 		{
 			if (instrHeader.hasResult)
 				return InstrWithResult(instr, instrHeader.result(ir));
@@ -615,7 +617,7 @@ struct IrBuilder
 		assert(!block.isFinished);
 		block.isFinished = true;
 		ExtraInstrArgs extra = { cond : cond, argSize : argSize };
-		return emitInstr!IrInstr_binary_branch(blockIndex, extra, arg0, arg1);
+		return emitInstr!(IrOpcode.branch_binary)(blockIndex, extra, arg0, arg1);
 	}
 
 	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrArgSize argSize, IrIndex arg0, ref IrLabel trueExit, ref IrLabel falseExit)
@@ -634,7 +636,7 @@ struct IrBuilder
 		assert(!block.isFinished);
 		block.isFinished = true;
 		ExtraInstrArgs extra = { cond : cond, argSize : argSize };
-		return emitInstr!IrInstr_unary_branch(blockIndex, extra, arg0);
+		return emitInstr!(IrOpcode.branch_unary)(blockIndex, extra, arg0);
 	}
 
 	void addReturn(IrIndex blockIndex, IrIndex returnValue)
@@ -660,7 +662,7 @@ struct IrBuilder
 		IrBasicBlock* block = &ir.getBlock(blockIndex);
 		context.assertf(!block.isFinished, "%s.%s is already finished", context.idString(ir.backendData.name), blockIndex);
 		block.isFinished = true;
-		return emitInstr!IrInstr_jump(blockIndex);
+		return emitInstr!(IrOpcode.jump)(blockIndex);
 	}
 
 	void addJumpToLabel(IrIndex blockIndex, ref IrLabel label)
