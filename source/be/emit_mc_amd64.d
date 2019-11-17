@@ -377,6 +377,18 @@ struct CodeEmitter
 						Register divisor = indexToRegister(instrHeader.arg(lir, 2));
 						gen.idiv(divisor, cast(ArgType)instrHeader.arg(lir, 2).physRegSize);
 						break;
+
+					case Amd64Opcode.movzx_btow: gen.movzx_btow(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movzx_btod: gen.movzx_btod(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movzx_btoq: gen.movzx_btoq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movzx_wtod: gen.movzx_wtod(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movzx_wtoq: gen.movzx_wtoq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movsx_btow: gen.movsx_btow(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movsx_btod: gen.movsx_btod(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movsx_btoq: gen.movsx_btoq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movsx_wtod: gen.movsx_wtod(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movsx_wtoq: gen.movsx_wtoq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.movsx_dtoq: gen.movsx_dtoq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
 					case Amd64Opcode.divsx:
 						final switch(instrHeader.argSize) {
 							case IrArgSize.size8: gen.movsx_btow(Register.AX, Register.AX); break;

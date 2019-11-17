@@ -577,6 +577,77 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
 					uint typeSizeFrom = context.types.typeSize(typeFrom);
 					uint typeSizeTo = context.types.typeSize(typeTo);
+					context.assertf(typeSizeTo <= typeSizeFrom,
+						"Can't cast from %s bytes to %s bytes", typeSizeFrom, typeSizeTo);
+					emitLirInstr!(Amd64Opcode.mov);
+					break;
+				case IrOpcode.sext:
+					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrArgSize sizeFrom = getTypeArgSize(typeFrom, lir, context);
+					IrArgSize sizeTo = instrHeader.argSize;
+					final switch(sizeFrom) with(IrArgSize)
+					{
+						case size8:
+							switch(sizeTo) with(IrArgSize)
+							{
+								case size16: emitLirInstr!(Amd64Opcode.movsx_btow); break;
+								case size32: emitLirInstr!(Amd64Opcode.movsx_btod); break;
+								case size64: emitLirInstr!(Amd64Opcode.movsx_btoq); break;
+								default: context.internal_error("Invalid target size %s", sizeTo); break;
+							}
+							break;
+						case size16:
+							switch(sizeTo) with(IrArgSize)
+							{
+								case size32: emitLirInstr!(Amd64Opcode.movsx_wtod); break;
+								case size64: emitLirInstr!(Amd64Opcode.movsx_wtoq); break;
+								default: context.internal_error("Invalid target size %s", sizeTo); break;
+							}
+							break;
+						case size32:
+							context.assertf(sizeTo == size64, "Invalid target size %s", sizeTo);
+							emitLirInstr!(Amd64Opcode.movsx_dtoq);
+							break;
+						case size64: context.internal_error("Invalid source size %s", sizeFrom); break;
+					}
+					break;
+				case IrOpcode.zext:
+					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrArgSize sizeFrom = getTypeArgSize(typeFrom, lir, context);
+					IrArgSize sizeTo = instrHeader.argSize;
+					final switch(sizeFrom) with(IrArgSize)
+					{
+						case size8:
+							switch(sizeTo) with(IrArgSize)
+							{
+								case size16: emitLirInstr!(Amd64Opcode.movzx_btow); break;
+								case size32: emitLirInstr!(Amd64Opcode.movzx_btod); break;
+								case size64: emitLirInstr!(Amd64Opcode.movzx_btoq); break;
+								default: context.internal_error("Invalid target size %s", sizeTo); break;
+							}
+							break;
+						case size16:
+							switch(sizeTo) with(IrArgSize)
+							{
+								case size32: emitLirInstr!(Amd64Opcode.movzx_wtod); break;
+								case size64: emitLirInstr!(Amd64Opcode.movzx_wtoq); break;
+								default: context.internal_error("Invalid target size %s", sizeTo); break;
+							}
+							break;
+						case size32:
+							context.assertf(sizeTo == size64, "Invalid target size %s", sizeTo);
+							emitLirInstr!(Amd64Opcode.mov);
+							break;
+						case size64: context.internal_error("Invalid source size %s", sizeFrom); break;
+					}
+					break;
+				case IrOpcode.trunc:
+					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
+					uint typeSizeFrom = context.types.typeSize(typeFrom);
+					uint typeSizeTo = context.types.typeSize(typeTo);
+					context.assertf(typeSizeTo < typeSizeFrom,
+						"Can't cast from %s bytes to %s bytes", typeSizeFrom, typeSizeTo);
 					emitLirInstr!(Amd64Opcode.mov);
 					break;
 

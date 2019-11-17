@@ -94,6 +94,7 @@ o dll linking
 - test all implicit conversions
 - test parsing errors
 - test all integer size code gen
+- signed to unsigned should use casts
 - test bools
 - test constant folding of all operators
 - test mismatched number of args/params to call/constructor

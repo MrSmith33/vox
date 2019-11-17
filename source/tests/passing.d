@@ -2489,3 +2489,64 @@ immutable test103 = q{--- test103
 	}
 };
 
+@TestInfo(&tester104)
+immutable test104 = q{--- test104
+	i16 func__i8_to_i16( i8 a) { return a; } // sext   i8 -> i16
+	i32 func__i8_to_i32( i8 a) { return a; } // sext   i8 -> i32
+	i32 func_i16_to_i32(i16 a) { return a; } // sext  i16 -> i32
+	i64 func__i8_to_i64( i8 a) { return a; } // sext   i8 -> i64
+	i64 func_i16_to_i64(i16 a) { return a; } // sext  i16 -> i64
+	i64 func_i32_to_i64(i32 a) { return a; } // sext  i32 -> i64
+
+	i16 func__u8_to_i16( u8 a) { return a; } // sext   u8 -> i16
+	i32 func__u8_to_i32( u8 a) { return a; } // sext   u8 -> i32
+	i32 func_u16_to_i32(u16 a) { return a; } // sext  u16 -> i32
+	i64 func__u8_to_i64( u8 a) { return a; } // sext   u8 -> i64
+	i64 func_u16_to_i64(u16 a) { return a; } // sext  u16 -> i64
+	i64 func_u32_to_i64(u32 a) { return a; } // sext  u32 -> i64
+
+	u16 func__u8_to_u16( u8 a) { return a; } // zext   u8 -> u16
+	u32 func__u8_to_u32( u8 a) { return a; } // zext   u8 -> u32
+	u32 func_u16_to_u32(u16 a) { return a; } // zext  u16 -> u32
+	u64 func__u8_to_u64( u8 a) { return a; } // zext   u8 -> u64
+	u64 func_u16_to_u64(u16 a) { return a; } // zext  u16 -> u64
+	u64 func_u32_to_u64(u32 a) { return a; } // zext  u32 -> u64
+
+	u16 func__i8_to_u16( i8 a) { return cast(u16)a; } // zext   i8 -> u16 TODO: these should error without cast
+	u32 func__i8_to_u32( i8 a) { return cast(u32)a; } // zext   i8 -> u32 TODO: these should error without cast
+	u32 func_i16_to_u32(i16 a) { return cast(u32)a; } // zext  i16 -> u32 TODO: these should error without cast
+	u64 func__i8_to_u64( i8 a) { return cast(u64)a; } // zext   i8 -> u64 TODO: these should error without cast
+	u64 func_i16_to_u64(i16 a) { return cast(u64)a; } // zext  i16 -> u64 TODO: these should error without cast
+	u64 func_i32_to_u64(i32 a) { return cast(u64)a; } // zext  i32 -> u64 TODO: these should error without cast
+};
+void tester104(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(short,   byte)("func__i8_to_i16")(  byte(-1)) == short(-1));
+	assert(ctx.getFunctionPtr!(  int,   byte)("func__i8_to_i32")(  byte(-1)) ==   int(-1));
+	assert(ctx.getFunctionPtr!(  int,  short)("func_i16_to_i32")( short(-1)) ==   int(-1));
+	assert(ctx.getFunctionPtr!( long,   byte)("func__i8_to_i64")(  byte(-1)) ==  long(-1));
+	assert(ctx.getFunctionPtr!( long,  short)("func_i16_to_i64")( short(-1)) ==  long(-1));
+	assert(ctx.getFunctionPtr!( long,    int)("func_i32_to_i64")(   int(-1)) ==  long(-1));
+
+	assert(ctx.getFunctionPtr!(short,  ubyte)("func__u8_to_i16")( ubyte(0x0000_00FF)) == -1);
+	assert(ctx.getFunctionPtr!(  int,  ubyte)("func__u8_to_i32")( ubyte(0x0000_00FF)) == -1);
+	assert(ctx.getFunctionPtr!(  int, ushort)("func_u16_to_i32")(ushort(0x0000_FFFF)) == -1);
+	assert(ctx.getFunctionPtr!( long,  ubyte)("func__u8_to_i64")( ubyte(0x0000_00FF)) == -1);
+	assert(ctx.getFunctionPtr!( long, ushort)("func_u16_to_i64")(ushort(0x0000_FFFF)) == -1);
+	assert(ctx.getFunctionPtr!( long,   uint)("func_u32_to_i64")(  uint(0xFFFF_FFFF)) == -1);
+
+	assert(ctx.getFunctionPtr!(ushort,  ubyte)("func__u8_to_u16")( ubyte.min) ==  ubyte.min);
+	assert(ctx.getFunctionPtr!(  uint,  ubyte)("func__u8_to_u32")( ubyte.min) ==  ubyte.min);
+	assert(ctx.getFunctionPtr!(  uint, ushort)("func_u16_to_u32")(ushort.min) == ushort.min);
+	assert(ctx.getFunctionPtr!( ulong,  ubyte)("func__u8_to_u64")( ubyte.min) ==  ubyte.min);
+	assert(ctx.getFunctionPtr!( ulong, ushort)("func_u16_to_u64")(ushort.min) == ushort.min);
+	assert(ctx.getFunctionPtr!( ulong,   uint)("func_u32_to_u64")(  uint.min) ==   uint.min);
+
+	//writefln("%08X", ctx.getFunctionPtr!(ushort,   byte)("func__i8_to_u16")(  byte.min));
+	assert(ctx.getFunctionPtr!(ushort,   byte)("func__i8_to_u16")(  byte.min) ==  ubyte(0x0000_0080));
+	assert(ctx.getFunctionPtr!(  uint,   byte)("func__i8_to_u32")(  byte.min) ==  ubyte(0x0000_0080));
+	assert(ctx.getFunctionPtr!(  uint,  short)("func_i16_to_u32")( short.min) == ushort(0x0000_8000));
+	assert(ctx.getFunctionPtr!( ulong,   byte)("func__i8_to_u64")(  byte.min) ==  ubyte(0x0000_0080));
+	assert(ctx.getFunctionPtr!( ulong,  short)("func_i16_to_u64")( short.min) == ushort(0x0000_8000));
+	assert(ctx.getFunctionPtr!( ulong,    int)("func_i32_to_u64")(   int.min) ==   uint(0x8000_0000));
+}
+

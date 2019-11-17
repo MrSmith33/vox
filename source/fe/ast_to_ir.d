@@ -1587,21 +1587,54 @@ struct AstToIr
 		currentBlock = afterExpr.blockIndex;
 
 		ExpressionNode* childExpr = t.expr.get_expr(context);
-		IrIndex to = t.type.gen_ir_type(context);
-		IrIndex from = childExpr.type.gen_ir_type(context);
-		if (childExpr.irValue.isConstant || (from == makeBasicTypeIndex(IrValueType.i32) && to == makeBasicTypeIndex(IrValueType.i64)))
+		TypeNode* sourceType = childExpr.type.get_type(context);
+		TypeNode* targetType = t.type.get_type(context);
+		context.assertf(sourceType.as_basic || sourceType.as_ptr, t.loc, "Source must have basic/ptr type, not %s", sourceType.printer(context));
+		context.assertf(targetType.as_basic || targetType.as_ptr, t.loc, "Target must have basic/ptr type, not %s", targetType.printer(context));
+		IrIndex typeTo = t.type.gen_ir_type(context);
+		IrIndex typeFrom = childExpr.type.gen_ir_type(context);
+		uint typeSizeFrom = context.types.typeSize(typeFrom);
+		uint typeSizeTo = context.types.typeSize(typeTo);
+
+		if (childExpr.irValue.isConstant)
 		{
 			t.irValue = childExpr.irValue;
 		}
-		else if (t.type.get_type(context).isBool)
+		else if (targetType.isBool)
 		{
-			ExtraInstrArgs extra = { type : to, cond : IrUnaryCondition.not_zero };
+			ExtraInstrArgs extra = { type : typeTo, cond : IrUnaryCondition.not_zero };
 			t.irValue = builder.emitInstr!(IrOpcode.set_unary_cond)(currentBlock, extra, childExpr.irValue).result;
 		}
 		else
 		{
-			ExtraInstrArgs extra = {type : to};
-			t.irValue = builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, childExpr.irValue).result;
+			// bitcast
+			if (typeSizeFrom == typeSizeTo)
+			{
+				ExtraInstrArgs extra = { type : typeTo };
+				t.irValue = builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, childExpr.irValue).result;
+			}
+			// trunc
+			else if (typeSizeTo < typeSizeFrom)
+			{
+				ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(context) };
+				t.irValue = builder.emitInstr!(IrOpcode.trunc)(currentBlock, extra, childExpr.irValue).result;
+			}
+			// sext/zext
+			else
+			{
+				context.assertf(sourceType.as_basic !is null, t.loc, "Source must have basic type, not %s", sourceType.printer(context));
+				context.assertf(targetType.as_basic !is null, t.loc, "Target must have basic type, not %s", targetType.printer(context));
+				if (targetType.as_basic.isSigned)
+				{
+					ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(context) };
+					t.irValue = builder.emitInstr!(IrOpcode.sext)(currentBlock, extra, childExpr.irValue).result;
+				}
+				else
+				{
+					ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(context) };
+					t.irValue = builder.emitInstr!(IrOpcode.zext)(currentBlock, extra, childExpr.irValue).result;
+				}
+			}
 		}
 		builder.addJumpToLabel(currentBlock, nextStmt);
 	}

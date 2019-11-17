@@ -211,6 +211,7 @@ enum Amd64Opcode : ushort {
 	@_ii(1,IFLG.hasResult) movsx_btoq,
 	@_ii(1,IFLG.hasResult) movsx_wtod,
 	@_ii(1,IFLG.hasResult) movsx_wtoq,
+	@_ii(1,IFLG.hasResult) movsx_dtoq,
 
 	@_ii(2) xchg, // xchg mr/mr
 

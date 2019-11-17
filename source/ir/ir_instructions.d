@@ -149,10 +149,12 @@ enum IrOpcode : ushort
 
 	/// Args: source value, target size is represented with argSize field
 	@_ii(1, IFLG.hasResult) conv,
-	/// Args: target type, source value
-	@_ii(2, IFLG.hasResult) zext,
-	/// Args: target type, source value
-	@_ii(2, IFLG.hasResult) sext,
+	/// Args: source value, argSize sets target size. Target size must be > source size
+	@_ii(1, IFLG.hasResult) zext,
+	/// Args: source value, argSize sets target size. Target size must be > source size
+	@_ii(1, IFLG.hasResult) sext,
+	/// Args: source value, argSize sets target size. Target size must be < source size
+	@_ii(1, IFLG.hasResult) trunc,
 
 	/// Used when generating any of binary instructions.
 	/// Actual opcode is passed via ExtraInstrArgs.opcode
