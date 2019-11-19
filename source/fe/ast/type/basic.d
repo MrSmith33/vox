@@ -22,6 +22,25 @@ struct BasicTypeNode {
 	bool isUnsigned() { return cast(bool)(typeFlags & BasicTypeFlag.isUnsigned); }
 	IsSigned isSigned() { if (isUnsigned) return IsSigned.no; else return IsSigned.yes; }
 	bool isBoolean() { return cast(bool)(typeFlags & BasicTypeFlag.isBoolean); }
+
+	IrIndex gen_default_value(CompilationContext* c)
+	{
+		switch(basicType)
+		{
+			case BasicType.t_bool: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
+			case BasicType.t_u8: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
+			case BasicType.t_i8: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
+			case BasicType.t_i16: return c.constants.add(0, IsSigned.no, IrArgSize.size16);
+			case BasicType.t_u16: return c.constants.add(0, IsSigned.no, IrArgSize.size16);
+			case BasicType.t_i32: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
+			case BasicType.t_u32: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
+			case BasicType.t_i64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
+			case BasicType.t_u64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
+			default:
+				c.internal_error(loc, "Cannot convert %s to IrIndex", basicType);
+				assert(false);
+		}
+	}
 }
 
 BasicTypeNode basicTypeNode(uint size, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)

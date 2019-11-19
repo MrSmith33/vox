@@ -53,6 +53,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			auto signature = func.signature.get!FunctionSignatureNode(c);
 			return type_check_func_call(node, signature, func.id, state);
 		case AstType.decl_struct:
+			require_type_check(callee, state);
 			return type_check_constructor_call(node, callee.get!StructDeclNode(c), state);
 		case AstType.expr_member:
 			MemberExprNode* member = callee.get!MemberExprNode(c);
@@ -148,7 +149,7 @@ void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref Type
 			require_type_check(node.args[numStructMembers], state);
 			autoconvTo(node.args[numStructMembers], member.as!VariableDeclNode(c).type, c);
 		} else { // init with initializer from struct definition
-			c.internal_error(node.loc, "Not implemented");
+			// skip
 		}
 		++numStructMembers;
 	}

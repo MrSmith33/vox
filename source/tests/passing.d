@@ -2550,3 +2550,24 @@ void tester104(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!( ulong,    int)("func_i32_to_u64")(   int.min) ==   uint(0x8000_0000));
 }
 
+@TestInfo(&tester105)
+immutable test105 = q{--- test105
+	// test struct constructor with default initialization
+	struct Struct
+	{
+		i32 var = 42;
+		void fun(){}
+		i32 var2;
+	}
+	Struct get_struct()
+	{
+		Struct s = Struct();
+		return s;
+	}
+};
+void tester105(ref TestContext ctx) {
+	struct Struct { int a; int b; }
+	auto get_struct = ctx.getFunctionPtr!(Struct)("get_struct");
+
+	assert(get_struct() == Struct(42, 0));
+}

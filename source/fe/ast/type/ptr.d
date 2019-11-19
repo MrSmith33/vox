@@ -16,6 +16,11 @@ struct PtrTypeNode {
 	bool isVoidPtr(CompilationContext* context) {
 		return context.getAstType(base).isVoid;
 	}
+
+	IrIndex gen_default_value(CompilationContext* c)
+	{
+		return c.constants.add(0, IsSigned.no, SIZET_SIZE);
+	}
 }
 
 void name_register_nested_ptr(PtrTypeNode* node, ref NameRegisterState state) {

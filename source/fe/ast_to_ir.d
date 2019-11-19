@@ -1459,19 +1459,29 @@ struct AstToIr
 		uint memberIndex;
 		foreach(AstIndex member; s.declarations)
 		{
-			if (member.get_node(context).astType != AstType.decl_var) continue;
+			AstNode* memberVarNode = member.get_node(context);
+			if (memberVarNode.astType != AstType.decl_var) continue;
+			VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(context);
+
+			void processExpr(ref AstIndex initializer)
+			{
+				IrLabel afterArg = IrLabel(currentBlock);
+				visitExprValue(initializer, currentBlock, afterArg);
+				args[memberIndex] = initializer.get_expr(context).irValue;
+				currentBlock = afterArg.blockIndex;
+			}
 
 			AstIndex initializer;
 			if (c.args.length > memberIndex) { // init from constructor argument
-				initializer = c.args[memberIndex];
+				processExpr(c.args[memberIndex]);
 			} else { // init with initializer from struct definition
-				context.internal_error(c.loc, "Not implemented");
+				if (memberVar.initializer)
+					processExpr(memberVar.initializer);
+				else
+				{
+					args[memberIndex] = memberVar.type.get_type(context).gen_default_value(context);
+				}
 			}
-
-			IrLabel afterArg = IrLabel(currentBlock);
-			visitExprValue(initializer, currentBlock, afterArg);
-			args[memberIndex] = initializer.get_expr(context).irValue;
-			currentBlock = afterArg.blockIndex;
 
 			++memberIndex;
 		}

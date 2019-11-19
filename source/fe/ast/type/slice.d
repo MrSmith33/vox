@@ -14,6 +14,12 @@ struct SliceTypeNode {
 
 	uint size() { return POINTER_SIZE * 2; }
 	uint alignment() { return POINTER_SIZE; }
+
+	IrIndex gen_default_value(CompilationContext* c)
+	{
+		IrIndex irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
+		return c.constants.addAggrecateConstant(gen_ir_type_slice(&this, c), irValue, irValue);
+	}
 }
 
 void name_register_nested_slice(SliceTypeNode* node, ref NameRegisterState state) {

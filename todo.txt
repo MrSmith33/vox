@@ -103,6 +103,7 @@ o dll linking
 - make sure that `this` is being used outside methods
 - test that sections get correct offsets in executable
 - implement _chkstk and call it at the start of functions with frame size > 1 page
+- implement zero initialized data section
 
 [Optimizations]
 - optimize pointer arithmetic into lea

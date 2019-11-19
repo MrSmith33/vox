@@ -100,6 +100,20 @@ struct TypeNode
 			default: c.internal_error(loc, "%s is not indexable", astType); assert(false);
 		}
 	}
+
+	IrIndex gen_default_value(CompilationContext* c)
+	{
+		switch(astType)
+		{
+			case AstType.type_basic: return as_basic.gen_default_value(c);
+			case AstType.type_ptr: return as_ptr.gen_default_value(c);
+			//case AstType.type_static_array: return as_static_array.size(c);
+			case AstType.type_slice: return as_slice.gen_default_value(c);
+			//case AstType.decl_struct: return as_struct.size;
+			case AstType.expr_name_use: return as_name_use.entity.get_type(c).gen_default_value(c);
+			default: assert(false, format("got %s", astType));
+		}
+	}
 }
 
 uint typeSize(AstIndex typeIndex, CompilationContext* c)
