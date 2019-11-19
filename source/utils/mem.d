@@ -55,6 +55,15 @@ version(Posix)
 		//assert(res != 0, format("mprotect(%X, %s, PROT_READ | PROT_WRITE) failed, %s", addr, numPages*PAGE_SIZE, errno));
 	}
 
+	void markAsRO(void* addr, size_t numPages)
+	{
+		import core.sys.posix.sys.mman : mprotect, PROT_READ;
+		if (numPages == 0) return;
+		// TODO: crashes in WSL
+		//int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ);
+		//assert(res != 0, format("mprotect(%X, %s, PROT_READ) failed, %s", addr, numPages*PAGE_SIZE, errno));
+	}
+
 	void markAsExecutable(void* addr, size_t numPages)
 	{
 		import core.sys.posix.sys.mman : mprotect, PROT_READ, PROT_EXEC;
@@ -69,7 +78,7 @@ else version(Windows)
 	import core.sys.windows.windows :
 		FlushInstructionCache, GetLastError, GetCurrentProcess,
 		VirtualAlloc, VirtualFree, VirtualProtect,
-		MEM_COMMIT, PAGE_READWRITE, MEM_RELEASE, PAGE_EXECUTE_READWRITE, MEM_RESERVE, PAGE_EXECUTE;
+		MEM_COMMIT, PAGE_READWRITE, PAGE_READONLY, MEM_RELEASE, PAGE_EXECUTE_READWRITE, MEM_RESERVE, PAGE_EXECUTE;
 
 	ubyte[] allocate(size_t bytes, void* location, MemType memoryType)
 	{
@@ -109,6 +118,13 @@ else version(Windows)
 		if (numPages == 0) return;
 		uint val;
 		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_READWRITE, &val);
+	}
+
+	void markAsRO(void* addr, size_t numPages)
+	{
+		if (numPages == 0) return;
+		uint val;
+		VirtualProtect(addr, numPages*PAGE_SIZE, PAGE_READONLY, &val);
 	}
 
 	void markAsExecutable(void* addr, size_t numPages)

@@ -49,30 +49,31 @@ void finalizeStaticData(ref CompilationContext context)
 		if (global.isInBuffer) continue; // already in buffer
 		if (global.numUsers == 0) continue; // no users
 
+		ObjectSymbol* globalSym = &context.objSymTab.getSymbol(global.objectSymIndex);
+		ObjectSection* symSection = &context.objSymTab.getSection(globalSym.sectionIndex);
+
 		// alignment
-		uint padding = paddingSize!uint(cast(uint)context.staticDataBuffer.length, global.alignment);
-		context.staticDataBuffer.pad(padding);
+		uint padding = paddingSize!uint(cast(uint)symSection.buffer.length, global.alignment);
+		symSection.buffer.pad(padding);
 
 		// offset
-		global.staticBufferOffset = cast(uint)context.staticDataBuffer.length;
-
-		ObjectSymbol* globalSym = &context.objSymTab.getSymbol(global.objectSymIndex);
+		global.staticBufferOffset = cast(uint)symSection.buffer.length;
 		globalSym.sectionOffset = global.staticBufferOffset;
 
 		// copy
 		if (global.initializerPtr !is null) {
-			context.staticDataBuffer.put(global.initializer);
+			symSection.buffer.put(global.initializer);
 		} else {
-			context.staticDataBuffer.voidPut(global.length)[] = 0;
+			symSection.buffer.voidPut(global.length)[] = 0;
 		}
 
 		// zero termination
 		if (global.needsZeroTermination)
-			context.staticDataBuffer.put(0);
+			symSection.buffer.put(0);
 
 		global.flags |= IrGlobalFlags.isInBuffer;
 		//writefln("Global %s, size %s, zero %s, offset %s, buf size %s",
-		//	global.initializer, global.length, global.needsZeroTermination, global.staticBufferOffset, context.staticDataBuffer.length);
+		//	global.initializer, global.length, global.needsZeroTermination, global.staticBufferOffset, symSection.buffer.length);
 	}
 }
 
@@ -86,7 +87,11 @@ void addStaticDataSymbols(ref CompilationContext context)
 
 		ushort symFlags;
 
-		if (global.isMutable) symFlags |= ObjectSymbolFlags.isMutable;
+		LinkIndex sectionIndex = context.rdataSectionIndex;
+		if (global.isMutable) {
+			symFlags |= ObjectSymbolFlags.isMutable;
+			sectionIndex = context.dataSectionIndex;
+		}
 		if (global.isAllZero) symFlags |= ObjectSymbolFlags.isAllZero;
 		if (global.needsZeroTermination) symFlags |= ObjectSymbolFlags.needsZeroTermination;
 		if (global.isString) symFlags |= ObjectSymbolFlags.isString;
@@ -94,9 +99,9 @@ void addStaticDataSymbols(ref CompilationContext context)
 		ObjectSymbol sym = {
 			kind : ObjectSymbolKind.isLocal,
 			flags : symFlags,
-			sectionOffset : global.staticBufferOffset,
+			sectionOffset : 0, // set later
 			dataPtr : global.initializerPtr,
-			sectionIndex : context.dataSectionIndex,
+			sectionIndex : sectionIndex,
 			moduleIndex : global.moduleSymIndex,
 			length : global.length,
 			alignment : global.alignment,

@@ -310,7 +310,7 @@ struct Driver
 		passes = passes_;
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		size_t irMemSize = GiB*161;
+		size_t irMemSize = GiB*162;
 		arenaPool.reserve(irMemSize);
 		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
@@ -319,6 +319,7 @@ struct Driver
 		context.importBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.codeBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.staticDataBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.roStaticDataBuffer.setBuffer(arenaPool.take(GiB), 0);
 
 		context.sourceBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.files.setBuffer(arenaPool.take(GiB), 0);
@@ -358,6 +359,7 @@ struct Driver
 	void beginCompilation()
 	{
 		markAsRW(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
+		markAsRW(context.roStaticDataBuffer.bufPtr, divCeil(context.roStaticDataBuffer.length, PAGE_SIZE));
 		context.beginCompilation;
 		foreach(ref pass; passes) pass.clear;
 		addSections();
@@ -407,9 +409,12 @@ struct Driver
 	}
 
 	/// Must be called after compilation is finished and before execution
+	/// Effect is reverted with the call to beginCompilation
+	/// Marks code pages as read-execute, and readonly data pages as read-only
 	void markCodeAsExecutable()
 	{
 		markAsExecutable(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
+		markAsRO(context.roStaticDataBuffer.bufPtr, divCeil(context.roStaticDataBuffer.length, PAGE_SIZE));
 	}
 
 	private bool canReferenceFromCode(void* hostSym)
@@ -435,7 +440,8 @@ struct Driver
 			sectionAddress : 0,
 			length : 0,
 			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".idata")
+			id : context.idMap.getOrRegNoDup(".idata"),
+			buffer : &context.importBuffer,
 		};
 		context.importSectionIndex = context.objSymTab.addSection(importSection);
 
@@ -444,16 +450,28 @@ struct Driver
 			sectionData : context.staticDataBuffer.bufPtr,
 			length : 0,
 			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".data")
+			id : context.idMap.getOrRegNoDup(".data"),
+			buffer : &context.staticDataBuffer,
 		};
 		context.dataSectionIndex = context.objSymTab.addSection(dataSection);
+
+		ObjectSection rdataSection = {
+			sectionAddress : 0,
+			sectionData : context.roStaticDataBuffer.bufPtr,
+			length : 0,
+			alignment : 1,
+			id : context.idMap.getOrRegNoDup(".rdata"),
+			buffer : &context.roStaticDataBuffer,
+		};
+		context.rdataSectionIndex = context.objSymTab.addSection(rdataSection);
 
 		ObjectSection textSection = {
 			sectionAddress : 0,
 			sectionData : context.codeBuffer.bufPtr,
 			length : 0,
 			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".text")
+			id : context.idMap.getOrRegNoDup(".text"),
+			buffer : &context.codeBuffer,
 		};
 		context.textSectionIndex = context.objSymTab.addSection(textSection);
 	}

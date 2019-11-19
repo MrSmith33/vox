@@ -34,6 +34,13 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	Section dataSection = Section(SectionType.data, ".data");
 	dataSection.header.Characteristics =
 		SectionFlags.SCN_CNT_INITIALIZED_DATA |
+		SectionFlags.SCN_MEM_WRITE |
+		SectionFlags.SCN_MEM_READ;
+
+	// Readonly static data section
+	Section rdataSection = Section(SectionType.data, ".rdata");
+	rdataSection.header.Characteristics =
+		SectionFlags.SCN_CNT_INITIALIZED_DATA |
 		SectionFlags.SCN_MEM_READ;
 
 	// ---------------------------------------------------------
@@ -48,13 +55,14 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	textSection.data = context.codeBuffer.data;
 	idataSection.data = importMapping.sectionData;
 	dataSection.data = context.staticDataBuffer.data;
+	rdataSection.data = context.roStaticDataBuffer.data;
 
 	//context.objSymTab.dump(&context);
 
 	// ---------------------------------------------------------
 
 	// Exe gen
-	Section*[3] sectionsBuf;
+	Section*[4] sectionsBuf;
 	FixedBuffer!(Section*) sections = fixedBuffer!(Section*)(sectionsBuf);
 
 	void addSection(Section* section)
@@ -66,6 +74,7 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	addSection(&textSection);
 	addSection(&idataSection);
 	addSection(&dataSection);
+	addSection(&rdataSection);
 
 	auto fileParams = FileParameters(DEFAULT_SECTION_ALIGNMENT, context.sectionAlignemnt);
 	if (fileParams.fileAlignment < 512) fileParams.sectionAlignment = fileParams.fileAlignment;
@@ -81,10 +90,12 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	context.objSymTab.getSection(context.textSectionIndex).sectionAddress = textSection.header.VirtualAddress;
 	context.objSymTab.getSection(context.importSectionIndex).sectionAddress = idataSection.header.VirtualAddress;
 	context.objSymTab.getSection(context.dataSectionIndex).sectionAddress = dataSection.header.VirtualAddress;
+	context.objSymTab.getSection(context.rdataSectionIndex).sectionAddress = rdataSection.header.VirtualAddress;
 
 	// uses sectionAddress
 	fillImports(importMapping, &context);
 
+	// fix all references between symbols
 	foreach (ref SourceFileInfo file; context.files.data) {
 		linkModule(context, file.mod.objectSymIndex);
 	}

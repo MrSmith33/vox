@@ -88,6 +88,9 @@ struct CompilationContext
 	/// Buffer for string/array/struct literals
 	/// String literals have \0 after last character
 	/// Must be allocated before or after code segment to allow relative addressing
+	/// Static read-only data
+	Arena!ubyte roStaticDataBuffer;
+	/// Static read-write data
 	Arena!ubyte staticDataBuffer;
 	/// Buffer for resulting machine code
 	Arena!ubyte codeBuffer;
@@ -113,6 +116,7 @@ struct CompilationContext
 	LinkIndex hostSectionIndex;
 	LinkIndex importSectionIndex;
 	LinkIndex dataSectionIndex;
+	LinkIndex rdataSectionIndex;
 	LinkIndex textSectionIndex;
 
 	// errors and debug
@@ -579,7 +583,8 @@ struct CompilationContext
 
 		printArena(tempBuffer, "temp");
 		printArena(types.buffer, "types");
-		printArena(staticDataBuffer, "static data");
+		printArena(staticDataBuffer, "static RW data");
+		printArena(roStaticDataBuffer, "static RO data");
 		printArena(globals.buffer, "globals");
 		printArena(constants.buffer, "constants");
 		printArena(constants.aggregateBuffer, "aggregates");
@@ -682,6 +687,7 @@ struct CompilationContext
 		irStorage.arrayBuffer.clear;
 		types.buffer.length = initializedIrTypeBufSize;
 		tempBuffer.clear;
+		roStaticDataBuffer.clear;
 		staticDataBuffer.clear;
 		objSymTab.buffer.clear;
 		objSymTab.firstModule = LinkIndex();

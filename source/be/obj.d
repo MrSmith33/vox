@@ -175,6 +175,8 @@ struct ObjectSection
 	LinkIndex moduleIndex;
 	///
 	Identifier id;
+	///
+	Arena!ubyte* buffer;
 }
 
 enum ObjectSymbolRefKind : ubyte {
