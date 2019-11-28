@@ -31,3 +31,8 @@ void type_check_block(BlockStmtNode* node, ref TypeCheckState state)
 	require_type_check(node.statements, state);
 	node.state = AstNodeState.type_check_done;
 }
+
+void ir_gen_block(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt, BlockStmtNode* b)
+{
+	genBlock(gen, b.as!AstNode(gen.context), b.statements, curBlock, nextStmt);
+}

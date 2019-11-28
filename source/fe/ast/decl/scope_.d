@@ -16,15 +16,11 @@ struct Scope
 	AstIndex parentScope;
 	///
 	string debugName;
-	/// Ordered scope is in function body, requires declaration above use
-	/// Unordered scope is in struct, module
-	IsOrdered isOrdered;
 
 	/// Constructs and inserts symbol with id
 	void insert(Identifier id, AstIndex nodeIndex, CompilationContext* c)
 	{
 		AstNode* node = nodeIndex.get_node(c);
-		if (isOrdered) node.flags |= AstFlags.isInOrderedScope;
 		if (auto s = symbols.get(id, AstIndex.init))
 		{
 			c.error(node.loc,
@@ -33,11 +29,6 @@ struct Scope
 		}
 		symbols.put(c.arrayArena, id, nodeIndex);
 	}
-}
-
-enum IsOrdered : bool {
-	no = false,
-	yes = true,
 }
 
 mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse_done) {

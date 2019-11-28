@@ -18,7 +18,7 @@ void pass_ir_to_lir_amd64(CompilationContext* context, IrBuilder* builder, Modul
 
 	lirData.backendData = &func.backendData;
 
-	mod.lirModule.addFunction(*context, lirData);
+	mod.lirModule.addFunction(context, lirData);
 	IrFunction* irData = context.getAst!IrFunction(func.backendData.irData);
 
 	builder.beginLir(lirData, irData, context);

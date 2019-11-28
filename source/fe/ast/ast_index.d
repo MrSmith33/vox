@@ -48,11 +48,8 @@ struct AstIndex
 	bool isStatement(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isStatement); }
 	bool isType(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isType); }
 	bool isLvalue(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLvalue); }
-	bool isLiteral(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLiteral); }
 	bool isAssignment(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isAssignment); }
 	bool isArgument(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isArgument); }
-	bool isGlobal(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isGlobal); }
-	bool isInOrderedScope(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isInOrderedScope); }
 
 	// type functions
 	AstIndex getElementType(CompilationContext* c) { return get_type(c).getElementType(c); }

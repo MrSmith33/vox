@@ -49,6 +49,7 @@ struct IdentifierMap {
 			char[] buf = stringDataBuffer.voidPut(str.length);
 			buf[] = str;
 			string duppedKey = cast(string)buf;
+			// can't use .max, because it marks null ids
 			assert(strings.length < uint.max, "Id map overflow");
 			id = cast(uint)strings.length;
 			map[duppedKey] = id;
@@ -69,25 +70,27 @@ struct IdentifierMap {
 		}
 		return Identifier(id);
 	}
+
+	// internal. Called in CompilationContext.initialize()
+	void regCommonIds()
+	{
+		assert(strings.length == 0);
+		assert(map.length == 0);
+		assert(stringDataBuffer.length == 0);
+		foreach (size_t i, string memberName; __traits(allMembers, CommonIds))
+		{
+			string name = __traits(getAttributes, __traits(getMember, CommonIds, memberName))[0];
+			getOrRegNoDup(name);
+		}
+	}
 }
 
-struct CommonIdentifiers
+enum CommonIds : Identifier
 {
-	Identifier id_ptr;
-	Identifier id_length;
-	Identifier id_min;
-	Identifier id_max;
-	Identifier id_sizeof;
-	Identifier id_this;
-}
-
-CommonIdentifiers collectIdentifiers(ref CompilationContext context) {
-	CommonIdentifiers res;
-	res.id_ptr = context.idMap.getOrRegNoDup("ptr");
-	res.id_length = context.idMap.getOrRegNoDup("length");
-	res.id_min = context.idMap.getOrRegNoDup("min");
-	res.id_max = context.idMap.getOrRegNoDup("max");
-	res.id_sizeof = context.idMap.getOrRegNoDup("sizeof");
-	res.id_this = context.idMap.getOrRegNoDup("this");
-	return res;
+	@("ptr")    id_ptr    = Identifier(0),
+	@("length") id_length = Identifier(1),
+	@("min")    id_min    = Identifier(2),
+	@("max")    id_max    = Identifier(3),
+	@("sizeof") id_sizeof = Identifier(4),
+	@("this")   id_this   = Identifier(5),
 }

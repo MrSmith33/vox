@@ -58,3 +58,52 @@ void type_check_index(IndexExprNode* node, ref TypeCheckState state)
 	node.type = node.array.expr_type(c).get_type(c).getElementType(c);
 	node.state = AstNodeState.type_check_done;
 }
+
+void ir_gen_index(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, IndexExprNode* i)
+{
+	CompilationContext* c = gen.context;
+	ExpressionNode* arrayExpr = i.array.get_expr(c);
+	ExpressionNode* indexExpr = i.index.get_expr(c);
+
+	IrLabel afterIndex = IrLabel(currentBlock);
+	arrayExpr.flags |= AstFlags.isLvalue;
+	ir_gen_expr(gen, i.array, currentBlock, afterIndex);
+	currentBlock = afterIndex.blockIndex;
+
+	IrLabel afterRight = IrLabel(currentBlock);
+	ir_gen_expr(gen, i.index, currentBlock, afterRight);
+	currentBlock = afterRight.blockIndex;
+
+	IrIndex aggregateIndex = c.constants.ZERO;
+	IrIndex slicePtrIndex = c.constants.ONE;
+
+	switch (arrayExpr.type.get_type(c).astType) with(AstType)
+	{
+		case type_ptr:
+			i.irValue = buildGEP(gen, i.loc, currentBlock, arrayExpr.irValue, indexExpr.irValue);
+			break;
+		case type_static_array:
+			IrIndex type = gen.ir.getValueType(c, arrayExpr.irValue);
+			if (type.isTypePointer)
+				i.irValue = buildGEP(gen, i.loc, currentBlock, arrayExpr.irValue, aggregateIndex, indexExpr.irValue);
+			else {
+				c.assertf(type.isTypeArray, "%s", IrIndexDump(type, c, gen.ir));
+				i.irValue = buildGEP(gen, i.loc, currentBlock, arrayExpr.irValue, indexExpr.irValue);
+			}
+			break;
+		case type_slice:
+			IrIndex ptrPtr = buildGEP(gen, i.loc, currentBlock, arrayExpr.irValue, aggregateIndex, slicePtrIndex);
+			IrIndex ptr = load(gen, currentBlock, ptrPtr);
+			i.irValue = buildGEP(gen, i.loc, currentBlock, ptr, indexExpr.irValue);
+			break;
+		default:
+			c.internal_error("Cannot index %s", arrayExpr.type.printer(c));
+			break;
+	}
+
+	if (!i.isLvalue) {
+		i.irValue = load(gen, currentBlock, i.irValue);
+	}
+
+	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+}

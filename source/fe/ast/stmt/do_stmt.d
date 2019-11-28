@@ -35,3 +35,8 @@ void type_check_do(DoWhileStmtNode* node, ref TypeCheckState state)
 	autoconvToBool(node.condition, state.context);
 	node.state = AstNodeState.type_check_done;
 }
+
+void ir_gen_do(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, DoWhileStmtNode* d)
+{
+	gen.context.unreachable;
+}

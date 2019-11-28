@@ -57,3 +57,15 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 	}
 	node.state = AstNodeState.type_check_done;
 }
+
+void ir_gen_return(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, ReturnStmtNode* r)
+{
+	if (r.expression)
+	{
+		IrLabel afterExpr = IrLabel(currentBlock);
+		ir_gen_expr(gen, r.expression, currentBlock, afterExpr);
+		currentBlock = afterExpr.blockIndex;
+		gen.builder.addReturn(currentBlock, r.expression.get_expr(gen.context).irValue);
+	}
+	else gen.builder.addReturn(currentBlock);
+}

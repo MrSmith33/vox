@@ -114,3 +114,11 @@ void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 	}
 	node.state = AstNodeState.type_check_done;
 }
+
+void ir_gen_enum_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, EnumMemberDecl* n)
+{
+	IrLabel afterExpr = IrLabel(currentBlock);
+	ir_gen_expr(gen, n.initializer, currentBlock, afterExpr);
+	currentBlock = afterExpr.blockIndex;
+	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+}

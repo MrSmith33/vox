@@ -17,6 +17,7 @@ struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module, 0, AstNodeState.name_register_self_done);
 	AstIndex memberScope;
 	/// Linear list of all functions of a module (including nested and methods and externals)
+	/// Order may be different from declaration order, because conditionaly compiled functions are added later
 	Array!AstIndex functions;
 	IrModule irModule;
 	IrModule lirModule;
@@ -58,4 +59,31 @@ void type_check_module(ModuleDeclNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 	require_type_check(node.declarations, state);
 	node.state = AstNodeState.type_check_done;
+}
+
+void ir_gen_module(ref IrGenState gen, ModuleDeclNode* m)
+{
+	CompilationContext* c = gen.context;
+	gen.mod = m;
+
+	foreach (AstIndex decl; m.declarations)
+	{
+		ir_gen_decl(gen, decl);
+	}
+
+	foreach (AstIndex decl; m.functions)
+	{
+		FunctionDeclNode* func = c.getAst!FunctionDeclNode(decl);
+		ir_gen_function(gen, func);
+
+		IrFunction* irData = c.getAst!IrFunction(func.backendData.irData);
+
+		// can be null if function is external
+		if (irData)
+		{
+			m.irModule.addFunction(c, irData);
+			if (c.validateIr) validateIrFunction(c, irData);
+			if (c.printIr && c.printDumpOf(func)) dumpFunction(c, irData);
+		}
+	}
 }

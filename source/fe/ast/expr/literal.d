@@ -7,7 +7,7 @@ import all;
 
 @(AstType.literal_int)
 struct IntLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_int, AstFlags.isLiteral, AstNodeState.name_resolve_done);
+	mixin ExpressionNodeData!(AstType.literal_int, 0, AstNodeState.name_resolve_done);
 	ulong value;
 
 	private enum Flags : ushort
@@ -43,9 +43,19 @@ void type_check_literal_int(IntLiteralExprNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
+void ir_gen_literal_int(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, IntLiteralExprNode* n)
+{
+	CompilationContext* c = gen.context;
+	if (!n.irValue.isDefined) {
+		n.irValue = c.constants.add(n.value, n.isSigned, n.type.typeArgSize(c));
+	}
+
+	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+}
+
 @(AstType.literal_null)
 struct NullLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_null, AstFlags.isLiteral, AstNodeState.name_resolve_done);
+	mixin ExpressionNodeData!(AstType.literal_null, 0, AstNodeState.name_resolve_done);
 }
 
 void type_check_literal_null(NullLiteralExprNode* node, ref TypeCheckState state)
@@ -55,9 +65,24 @@ void type_check_literal_null(NullLiteralExprNode* node, ref TypeCheckState state
 	node.state = AstNodeState.type_check_done;
 }
 
+void ir_gen_literal_null(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, NullLiteralExprNode* n)
+{
+	CompilationContext* c = gen.context;
+	if (!n.irValue.isDefined) {
+		if (n.type.get_type(c).isPointer) {
+			n.irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE);
+		} else if (n.type.get_type(c).isSlice) {
+			IrIndex irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
+			n.irValue = c.constants.addAggrecateConstant(n.type.gen_ir_type(c), irValue, irValue);
+		} else c.internal_error(n.loc, "%s", n.type.printer(c));
+	}
+
+	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+}
+
 @(AstType.literal_bool)
 struct BoolLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_bool, AstFlags.isLiteral, AstNodeState.name_resolve_done);
+	mixin ExpressionNodeData!(AstType.literal_bool, 0, AstNodeState.name_resolve_done);
 	bool value;
 }
 
@@ -68,9 +93,30 @@ void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state
 	node.state = AstNodeState.type_check_done;
 }
 
+void ir_gen_literal_bool(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, BoolLiteralExprNode* n)
+{
+	CompilationContext* c = gen.context;
+	if (!n.irValue.isDefined) {
+		if (n.value)
+			n.irValue = c.constants.add(1, IsSigned.no, n.type.typeArgSize(c));
+		else
+			n.irValue = c.constants.add(0, IsSigned.no, n.type.typeArgSize(c));
+	}
+	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+}
+
+void ir_gen_branch_literal_bool(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, BoolLiteralExprNode* n)
+{
+	if (n.value)
+		gen.builder.addJumpToLabel(currentBlock, trueExit);
+	else
+		gen.builder.addJumpToLabel(currentBlock, falseExit);
+	return;
+}
+
 @(AstType.literal_string)
 struct StringLiteralExprNode {
-	mixin ExpressionNodeData!(AstType.literal_string, AstFlags.isLiteral, AstNodeState.name_resolve_done);
+	mixin ExpressionNodeData!(AstType.literal_string, 0, AstNodeState.name_resolve_done);
 	string value;
 }
 
@@ -79,4 +125,9 @@ void type_check_literal_string(StringLiteralExprNode* node, ref TypeCheckState s
 	node.state = AstNodeState.type_check;
 	// done in parser
 	node.state = AstNodeState.type_check_done;
+}
+
+void ir_gen_literal_string(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, StringLiteralExprNode* n)
+{
+	gen.builder.addJumpToLabel(currentBlock, nextStmt);
 }

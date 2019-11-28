@@ -154,12 +154,11 @@ struct Parser
 		return id;
 	}
 
-	AstIndex pushScope(string name, IsOrdered isOrdered)
+	AstIndex pushScope(string name)
 	{
 		AstIndex newScopeIndex = context.appendAst!Scope;
 		Scope* newScope = context.getAst!Scope(newScopeIndex);
 		newScope.debugName = name;
-		newScope.isOrdered = isOrdered;
 
 		if (currentScope)
 			newScope.parentScope = currentScope.get_ast_index(context);
@@ -191,12 +190,12 @@ struct Parser
 		mod.state = AstNodeState.name_register_self_done;
 		declarationOwner = context.getAstNodeIndex(mod);
 
-		mod.memberScope = pushScope("Module", IsOrdered.no);
-			mod.declarations = parse_declarations(TokenType.EOI);
+		mod.memberScope = pushScope("Module");
+			mod.declarations = parse_declarations(TokenType.EOI, AstFlags.isGlobal);
 		popScope;
 	}
 
-	AstNodes parse_declarations(TokenType until) { // <declaration>*
+	AstNodes parse_declarations(TokenType until, ushort declFlags = 0) { // <declaration>*
 		AstNodes declarations;
 		ushort varIndex = 0;
 		while (tok.type != until)
@@ -211,11 +210,10 @@ struct Parser
 			}
 
 			AstNode* declNode = context.getAstNode(declIndex);
+			declNode.flags |= declFlags;
 			if (declNode.astType == AstType.decl_var) {
 				auto var = declNode.as!VariableDeclNode(context);
 				var.scopeIndex = varIndex++;
-				if (declarationOwner.astType(context) == AstType.decl_struct)
-					var.flags |= VariableFlags.isMember;
 			}
 			declarations.put(context.arrayArena, declIndex);
 		}
@@ -306,10 +304,9 @@ struct Parser
 		{
 			version(print_parse) auto s3 = scop("<func_declaration> %s", start);
 			Array!AstIndex params;
-			bool isMember = false;
 
 			AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-			pushScope(context.idString(declarationId), IsOrdered.yes);
+			pushScope(context.idString(declarationId));
 			scope(exit) popScope;
 
 			// add this pointer
@@ -326,17 +323,12 @@ struct Parser
 				VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
 				paramNode.flags |= VariableFlags.isParameter;
 				params.put(context.arrayArena, param);
-				isMember = true;
 			}
 
 			parseParameters(params, NeedRegNames.yes); // functions need to register their param names
 
 			AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
 			AstIndex func = make!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
-			if (isMember)
-			{
-				func.get!FunctionDeclNode(context).flags |= FunctionFlags.isMember;
-			}
 
 			AstIndex block;
 			if (tok.type != TokenType.SEMICOLON)
@@ -405,7 +397,7 @@ struct Parser
 		Identifier structId = expectIdentifier();
 
 		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-		AstIndex memberScope = pushScope(context.idString(structId), IsOrdered.no);
+		AstIndex memberScope = pushScope(context.idString(structId));
 		scope(exit) popScope;
 
 		AstIndex structIndex = make!StructDeclNode(start, parentScope, memberScope, structId);
@@ -425,7 +417,7 @@ struct Parser
 			declarationOwner = structIndex;
 			scope(exit) declarationOwner = prevOwner;
 
-			s.declarations = parse_declarations(TokenType.RCURLY);
+			s.declarations = parse_declarations(TokenType.RCURLY, AstFlags.isMember);
 		}
 
 		expectAndConsume(TokenType.RCURLY);
@@ -536,7 +528,7 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex type = parseColonType;
-				AstIndex memberScope = pushScope(context.idString(enumId), IsOrdered.no);
+				AstIndex memberScope = pushScope(context.idString(enumId));
 				AstNodes members = tryParseEnumBody(type);
 				popScope;
 
@@ -548,7 +540,7 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex type = intType;
-				AstIndex memberScope = pushScope(context.idString(enumId), IsOrdered.no);
+				AstIndex memberScope = pushScope(context.idString(enumId));
 				AstNodes members = parse_enum_body(type);
 				popScope;
 
@@ -769,7 +761,7 @@ struct Parser
 	{
 		version(print_parse) auto s1 = scop("block_stmt %s", loc);
 		TokenIndex start = tok.index;
-		pushScope("Block", IsOrdered.yes);
+		pushScope("Block");
 		AstNodes statements = parse_block;
 		popScope;
 		return make!BlockStmtNode(start, statements);
@@ -798,13 +790,13 @@ struct Parser
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
 				nextToken;
 				AstIndex condition = paren_expr();
-				pushScope("Then", IsOrdered.yes);
+				pushScope("Then");
 				AstNodes thenStatements = statement_as_array;
 				popScope;
 				AstNodes elseStatements;
 				if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
 					nextToken;
-					pushScope("Else", IsOrdered.yes);
+					pushScope("Else");
 					elseStatements = statement_as_array;
 					popScope;
 				}
@@ -813,14 +805,14 @@ struct Parser
 				return parse_hash_if();
 			case TokenType.WHILE_SYM:  /* "while" <paren_expr> <statement> */
 				nextToken;
-				pushScope("While", IsOrdered.yes);
+				pushScope("While");
 				AstIndex condition = paren_expr();
 				AstNodes statements = statement_as_array;
 				popScope;
 				return make!WhileStmtNode(start, condition, statements);
 			case TokenType.DO_SYM:  /* "do" <statement> "while" <paren_expr> ";" */
 				nextToken;
-				pushScope("do", IsOrdered.yes);
+				pushScope("do");
 				AstNodes statements = statement_as_array;
 				expectAndConsume(TokenType.WHILE_SYM);
 				AstIndex condition = paren_expr();
@@ -886,7 +878,7 @@ struct Parser
 
 		expectAndConsume(TokenType.LPAREN); // (
 
-		pushScope("For", IsOrdered.yes);
+		pushScope("For");
 		scope(exit) popScope;
 
 		Array!AstIndex init_statements;

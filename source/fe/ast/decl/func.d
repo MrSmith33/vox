@@ -34,14 +34,6 @@ struct FunctionBackendData
 	}
 }
 
-enum FunctionAndVarFlags : ushort {
-	isMember = AstFlags.userFlag << 0,
-}
-
-enum FunctionFlags : ushort {
-	isMember = FunctionAndVarFlags.isMember,
-}
-
 @(AstType.decl_function)
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
@@ -70,7 +62,6 @@ struct FunctionDeclNode {
 
 	/// External functions have no body
 	bool isExternal() { return block_stmt.isUndefined; }
-	bool isMember() { return cast(bool)(flags & FunctionFlags.isMember); }
 	ref Identifier id() { return backendData.name; }
 }
 
@@ -124,4 +115,78 @@ void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
 	}
 	state.curFunc = prevFunc;
 	node.state = AstNodeState.type_check_done;
+}
+
+// ModuleDeclNode.functions are processed sequentially. No nesting can occur.
+void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
+{
+	CompilationContext* c = gen.context;
+	IrBuilder* builder = &gen.builder;
+
+	// skip external functions, they don't have a body
+	if (f.isExternal) return;
+
+	gen.fun = f;
+	scope(exit) gen.fun = null;
+
+	// create new function
+	AstIndex irIndex = c.appendAst!IrFunction;
+	f.backendData.irData = irIndex;
+	gen.ir = c.getAst!IrFunction(irIndex);
+	IrFunction* ir = gen.ir;
+	ir.backendData = &f.backendData;
+
+	auto signature = f.signature.get!FunctionSignatureNode(c);
+	ir.type = f.signature.gen_ir_type(c);
+	ir.instructionSet = IrInstructionSet.ir;
+
+	builder.begin(ir, c);
+
+	foreach (AstIndex param; signature.parameters)
+	{
+		IrLabel dummy;
+		ir_gen_stmt(gen, param, ir.entryBasicBlock, dummy);
+	}
+
+	builder.addJump(ir.entryBasicBlock);
+
+	IrIndex body_block = builder.addBasicBlock();
+	builder.addBlockTarget(ir.entryBasicBlock, body_block);
+	builder.sealBlock(body_block);
+
+	// label at the end of body
+	IrLabel bodyExitLabel = IrLabel(body_block);
+
+	// compile body
+	ir_gen_stmt(gen, f.block_stmt, body_block, bodyExitLabel);
+
+	IrIndex currentBlock = bodyExitLabel.blockIndex;
+	// In case new block was created, no new predecessors will be added
+	builder.sealBlock(currentBlock);
+
+	if (!signature.returnType.isVoidType(c))
+	{
+		// currentBlock must be finished with retVal
+		if (!ir.getBlock(currentBlock).isFinished)
+		{
+			c.error(f.loc,
+				"function `%s` has no return statement, but is expected to return a value of type %s",
+				c.idString(f.id), signature.returnType.typeName(c));
+		}
+	}
+	else
+	{
+		// currentBlock must be finished with ret or, not finished
+		if (!ir.getBlock(currentBlock).isFinished)
+		{
+			builder.addReturn(currentBlock);
+		}
+	}
+
+	//dumpFunction(c, ir);
+
+	// all blocks with return (exit's predecessors) already connected, seal exit block
+	builder.sealBlock(ir.exitBasicBlock);
+
+	builder.finalizeIr;
 }

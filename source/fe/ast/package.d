@@ -75,16 +75,18 @@ enum AstFlags : ushort
 	isType           = 1 <<  4,
 	/// Is added to expression nodes that are being assigned to
 	isLvalue         = 1 <<  5,
-	isLiteral        = 1 <<  6, // unused
-	isAssignment     = 1 <<  7,
+	isAssignment     = 1 <<  6,
 	/// Marks expression that is used as func argument.
 	/// Needed to handle calling conventions properly.
-	isArgument       = 1 <<  8,
-	/// Declaration at module level
-	isGlobal         = 1 <<  9,
-	isInOrderedScope = 1 << 10,
+	isArgument       = 1 <<  7,
+	/// stores ScopeKind
+	scopeKindMask    = 1 << 8 | 1 << 9, // used for reading value
+	isLocal          = 0 << 8,          // used for setting flags
+	isGlobal         = 1 << 8,          // used for setting flags
+	isMember         = 2 << 8,          // used for setting flags
+
 	// used for node specific flags
-	userFlag         = 1 << 11,
+	userFlag         = 1 << 10,
 }
 
 enum hasAstNodeType(T) = getUDAs!(T, AstType).length > 0;
@@ -154,17 +156,17 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		return cast(TypeNode*)&this;
 	}
 
-	bool isDeclaration() { return cast(bool)(flags & AstFlags.isDeclaration); }
-	bool isScope() { return cast(bool)(flags & AstFlags.isScope); }
+	bool isDeclaration(){ return cast(bool)(flags & AstFlags.isDeclaration); }
+	bool isScope()      { return cast(bool)(flags & AstFlags.isScope); }
 	bool isExpression() { return cast(bool)(flags & AstFlags.isExpression); }
-	bool isStatement() { return cast(bool)(flags & AstFlags.isStatement); }
-	bool isType() { return cast(bool)(flags & AstFlags.isType); }
-	bool isLvalue() { return cast(bool)(flags & AstFlags.isLvalue); }
-	bool isLiteral() { return cast(bool)(flags & AstFlags.isLiteral); }
+	bool isStatement()  { return cast(bool)(flags & AstFlags.isStatement); }
+	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
+	bool isLvalue()     { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
-	bool isArgument() { return cast(bool)(flags & AstFlags.isArgument); }
-	bool isGlobal() { return cast(bool)(flags & AstFlags.isGlobal); }
-	bool isInOrderedScope() { return cast(bool)(flags & AstFlags.isInOrderedScope); }
+	bool isArgument()   { return cast(bool)(flags & AstFlags.isArgument); }
+	bool isGlobal()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isGlobal; }
+	bool isMember()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isMember; }
+	bool isLocal()      { return (flags & AstFlags.scopeKindMask) == AstFlags.isLocal;  }
 }
 
 Identifier get_node_id(AstIndex nodeIndex, CompilationContext* c)

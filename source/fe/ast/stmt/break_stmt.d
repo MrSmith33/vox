@@ -10,3 +10,9 @@ import all;
 struct BreakStmtNode {
 	mixin AstNodeData!(AstType.stmt_break, AstFlags.isStatement, AstNodeState.type_check_done);
 }
+
+void ir_gen_break(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt, BreakStmtNode* b)
+{
+	if (gen.currentLoopEnd is null) gen.context.unrecoverable_error(b.loc, "break is not within the loop");
+	gen.builder.addJumpToLabel(curBlock, *gen.currentLoopEnd);
+}

@@ -360,3 +360,77 @@ LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl
 			assert(false);
 	}
 }
+
+void ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, MemberExprNode* m)
+{
+	CompilationContext* c = gen.context;
+
+	switch(m.subType) with(MemberSubType)
+	{
+		case nonstatic_struct_member, slice_member:
+			IrLabel afterAggr = IrLabel(currentBlock);
+			// load pointers
+			if (!m.aggregate.get_node_type(c).get_type(c).isPointer)
+				m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
+			ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
+			currentBlock = afterAggr.blockIndex;
+
+			IrIndex memberIndex = c.constants.add(m.memberIndex(c), IsSigned.no);
+			LRValue rlVal = getMember(gen, m.loc, currentBlock, m.aggregate.get_expr(c).irValue, memberIndex);
+
+			if (m.isLvalue) {
+				if (rlVal.isLvalue) m.irValue = rlVal.value;
+				else c.internal_error(m.loc, "member expression is not an l-value");
+			}
+			else {
+				if (rlVal.isLvalue)
+					m.irValue = load(gen, currentBlock, rlVal.value);
+				else m.irValue = rlVal.value;
+			}
+			break;
+		case static_struct_member:
+			c.unreachable("Not implemented");
+			break;
+		case enum_member:
+			EnumMemberDecl* enumMember = m.member(c).get!EnumMemberDecl(c);
+			IrLabel afterAggr = IrLabel(currentBlock);
+			ir_gen_expr(gen, enumMember.initializer, currentBlock, afterAggr);
+			currentBlock = afterAggr.blockIndex;
+			m.irValue = enumMember.initializer.get_expr(c).irValue;
+			break;
+		case builtin_member:
+			BuiltinId builtin = m.member(c).get!BuiltinNode(c).builtin;
+			switch(builtin) with(BuiltinId)
+			{
+				case array_ptr:
+					if (m.isLvalue) {
+						c.internal_error(m.loc, "cannot assign static array member");
+					}
+
+					IrLabel afterAggr = IrLabel(currentBlock);
+					m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
+					ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
+					currentBlock = afterAggr.blockIndex;
+					m.irValue = buildGEP(gen, m.loc, currentBlock, m.aggregate.get_expr(c).irValue, c.constants.ZERO, c.constants.ZERO);
+					break;
+				default:
+					if (m.isLvalue) { c.internal_error(m.loc, "not an l-value"); }
+					m.irValue = eval_builtin(builtin, m.aggregate, m.loc, c);
+			}
+			break;
+		default:
+			c.internal_error(m.loc, "Unexpected node type %s", m.astType);
+	}
+
+	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+}
+
+void ir_gen_branch_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, MemberExprNode* n)
+{
+	CompilationContext* c = gen.context;
+	IrLabel afterExpr = IrLabel(currentBlock);
+	ir_gen_expr(gen, c.getAstNodeIndex(n), currentBlock, afterExpr);
+	currentBlock = afterExpr.blockIndex;
+
+	addUnaryBranch(gen, n.irValue, currentBlock, trueExit, falseExit);
+}

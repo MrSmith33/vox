@@ -42,3 +42,40 @@ void type_check_if(IfStmtNode* node, ref TypeCheckState state)
 	require_type_check(node.elseStatements, state);
 	node.state = AstNodeState.type_check_done;
 }
+
+void ir_gen_if(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, IfStmtNode* i)
+{
+	CompilationContext* c = gen.context;
+	if (!i.elseStatements.empty) // if then else
+	{
+		IrLabel trueLabel = IrLabel(currentBlock);
+		IrLabel falseLabel = IrLabel(currentBlock);
+		ir_gen_branch(gen, i.condition, currentBlock, trueLabel, falseLabel);
+
+		if (trueLabel.numPredecessors != 0)
+		{
+			IrIndex thenBlock = trueLabel.blockIndex;
+			gen.builder.sealBlock(thenBlock);
+			genBlock(gen, i.as!AstNode(c), i.thenStatements, thenBlock, nextStmt);
+		}
+
+		if (falseLabel.numPredecessors != 0)
+		{
+			IrIndex elseBlock = falseLabel.blockIndex;
+			gen.builder.sealBlock(elseBlock);
+			genBlock(gen, i.as!AstNode(c), i.elseStatements, elseBlock, nextStmt);
+		}
+	}
+	else // if then
+	{
+		IrLabel trueLabel = IrLabel(currentBlock);
+		ir_gen_branch(gen, i.condition, currentBlock, trueLabel, nextStmt);
+
+		if (trueLabel.numPredecessors != 0)
+		{
+			IrIndex thenBlock = trueLabel.blockIndex;
+			gen.builder.sealBlock(thenBlock);
+			genBlock(gen, i.as!AstNode(c), i.thenStatements, thenBlock, nextStmt);
+		}
+	}
+}

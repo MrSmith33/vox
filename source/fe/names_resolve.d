@@ -124,17 +124,20 @@ AstIndex lookupScopeIdRecursive(Scope* scop, const Identifier id, TokenIndex fro
 		if (symIndex)
 		{
 			AstNode* symNode = context.getAstNode(symIndex);
-			// forward reference allowed for unordered scope
-			if (!symNode.isInOrderedScope) {
-				return symIndex;
-			} else { // ordered scope
-				// we need to skip forward references in ordered scope
+			if (symNode.isLocal)
+			{
+				// we need to skip forward references in function scope
 				uint fromStart = context.tokenLocationBuffer[from].start;
 				uint toStart = context.tokenLocationBuffer[symNode.loc].start;
 				// backward reference
 				if (fromStart > toStart) {
 					return symIndex;
 				}
+			}
+			else
+			{
+				// forward reference allowed in global and member scopes
+				return symIndex;
 			}
 		}
 

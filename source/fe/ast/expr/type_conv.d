@@ -40,3 +40,90 @@ void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
 	}
 	node.state = AstNodeState.type_check_done;
 }
+
+void ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, TypeConvExprNode* t)
+{
+	CompilationContext* c = gen.context;
+	IrLabel afterExpr = IrLabel(currentBlock);
+	ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
+	currentBlock = afterExpr.blockIndex;
+
+	ExpressionNode* childExpr = t.expr.get_expr(c);
+	TypeNode* sourceType = childExpr.type.get_type(c);
+	TypeNode* targetType = t.type.get_type(c);
+	c.assertf(sourceType.as_basic || sourceType.as_ptr, t.loc, "Source must have basic/ptr type, not %s", sourceType.printer(c));
+	c.assertf(targetType.as_basic || targetType.as_ptr, t.loc, "Target must have basic/ptr type, not %s", targetType.printer(c));
+	IrIndex typeTo = t.type.gen_ir_type(c);
+	IrIndex typeFrom = childExpr.type.gen_ir_type(c);
+	uint typeSizeFrom = c.types.typeSize(typeFrom);
+	uint typeSizeTo = c.types.typeSize(typeTo);
+
+	if (childExpr.irValue.isConstant)
+	{
+		t.irValue = childExpr.irValue;
+	}
+	else if (targetType.isBool)
+	{
+		ExtraInstrArgs extra = { type : typeTo, cond : IrUnaryCondition.not_zero };
+		t.irValue = gen.builder.emitInstr!(IrOpcode.set_unary_cond)(currentBlock, extra, childExpr.irValue).result;
+	}
+	else
+	{
+		// bitcast
+		if (typeSizeFrom == typeSizeTo)
+		{
+			ExtraInstrArgs extra = { type : typeTo };
+			t.irValue = gen.builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, childExpr.irValue).result;
+		}
+		// trunc
+		else if (typeSizeTo < typeSizeFrom)
+		{
+			ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
+			t.irValue = gen.builder.emitInstr!(IrOpcode.trunc)(currentBlock, extra, childExpr.irValue).result;
+		}
+		// sext/zext
+		else
+		{
+			c.assertf(sourceType.as_basic !is null, t.loc, "Source must have basic type, not %s", sourceType.printer(c));
+			c.assertf(targetType.as_basic !is null, t.loc, "Target must have basic type, not %s", targetType.printer(c));
+			if (targetType.as_basic.isSigned)
+			{
+				ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
+				t.irValue = gen.builder.emitInstr!(IrOpcode.sext)(currentBlock, extra, childExpr.irValue).result;
+			}
+			else
+			{
+				ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
+				t.irValue = gen.builder.emitInstr!(IrOpcode.zext)(currentBlock, extra, childExpr.irValue).result;
+			}
+		}
+	}
+	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+}
+
+void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, TypeConvExprNode* t)
+{
+	CompilationContext* c = gen.context;
+	IrLabel afterExpr = IrLabel(currentBlock);
+	ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
+	currentBlock = afterExpr.blockIndex;
+
+	ExpressionNode* childExpr = t.expr.get_expr(c);
+	IrIndex from = childExpr.type.gen_ir_type(c);
+
+	if (childExpr.irValue.isConstant ||
+		from == makeBasicTypeIndex(IrValueType.i8) ||
+		from == makeBasicTypeIndex(IrValueType.i16) ||
+		from == makeBasicTypeIndex(IrValueType.i32) ||
+		from == makeBasicTypeIndex(IrValueType.i64))
+	{
+		addUnaryBranch(gen, childExpr.irValue, currentBlock, trueExit, falseExit);
+		return;
+	}
+	else
+	{
+		//t.irValue = builder.emitInstr1(IrOpcode.o_conv, to, childExpr.irValue);
+		c.internal_error(t.loc, "%s to %s", childExpr.type.printer(c), t.type.printer(c));
+	}
+	c.unreachable;
+}

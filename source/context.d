@@ -196,7 +196,7 @@ struct CompilationContext
 	AstIndex errorNode;
 	AstIndex u8Ptr;
 	AstIndex u8Slice;
-	CommonIdentifiers commonIds;
+	alias commonIds = CommonIds;
 
 	private AstIndex[BasicType.max + 1] basicTypes;
 	private AstIndex[BuiltinId.max + 1] builtins;
@@ -602,7 +602,8 @@ struct CompilationContext
 
 	void initialize()
 	{
-		commonIds = collectIdentifiers(this);
+		// populates idMap with common identifiers like this, length, ptr, min, max, sizeof...
+		idMap.regCommonIds();
 
 		astBuffer.voidPut(1); // 0th slot is reserved for undefined index
 

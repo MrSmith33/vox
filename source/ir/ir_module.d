@@ -13,7 +13,7 @@ struct IrModule
 {
 	Array!(IrFunction*) functions;
 
-	void addFunction(ref CompilationContext context, IrFunction* fun)
+	void addFunction(CompilationContext* context, IrFunction* fun)
 	{
 		functions.put(context.arrayArena, fun);
 	}
