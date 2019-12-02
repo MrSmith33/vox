@@ -82,6 +82,7 @@ struct EnumMemberDecl
 	AstIndex initializer;
 	Identifier id;
 	ushort scopeIndex;
+	IrIndex initValue; // cached value of initializer
 }
 
 void name_register_self_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, ref NameRegisterState state) {
@@ -113,12 +114,4 @@ void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 		autoconvTo(node.initializer, node.type, state.context);
 	}
 	node.state = AstNodeState.type_check_done;
-}
-
-void ir_gen_enum_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, EnumMemberDecl* n)
-{
-	IrLabel afterExpr = IrLabel(currentBlock);
-	ir_gen_expr(gen, n.initializer, currentBlock, afterExpr);
-	currentBlock = afterExpr.blockIndex;
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
 }

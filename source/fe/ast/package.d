@@ -76,17 +76,14 @@ enum AstFlags : ushort
 	/// Is added to expression nodes that are being assigned to
 	isLvalue         = 1 <<  5,
 	isAssignment     = 1 <<  6,
-	/// Marks expression that is used as func argument.
-	/// Needed to handle calling conventions properly.
-	isArgument       = 1 <<  7,
 	/// stores ScopeKind
-	scopeKindMask    = 1 << 8 | 1 << 9, // used for reading value
-	isLocal          = 0 << 8,          // used for setting flags
-	isGlobal         = 1 << 8,          // used for setting flags
-	isMember         = 2 << 8,          // used for setting flags
+	scopeKindMask    = 1 << 7 | 1 << 8, // used for reading value
+	isLocal          = 0 << 7,          // used for setting flags
+	isGlobal         = 1 << 7,          // used for setting flags
+	isMember         = 2 << 7,          // used for setting flags
 
 	// used for node specific flags
-	userFlag         = 1 << 10,
+	userFlag         = 1 << 9,
 }
 
 enum hasAstNodeType(T) = getUDAs!(T, AstType).length > 0;
@@ -163,7 +160,6 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
 	bool isLvalue()     { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
-	bool isArgument()   { return cast(bool)(flags & AstFlags.isArgument); }
 	bool isGlobal()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isGlobal; }
 	bool isMember()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isMember; }
 	bool isLocal()      { return (flags & AstFlags.scopeKindMask) == AstFlags.isLocal;  }
@@ -221,6 +217,7 @@ AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
 	{
 		case decl_alias: return node.as!AliasDeclNode(c).initializer.get_effective_node(c);
 		case decl_struct: return nodeIndex;
+		case decl_builtin: return nodeIndex;
 		case decl_function: return nodeIndex;
 		case decl_var: return nodeIndex;
 		case decl_enum: return nodeIndex;
@@ -230,7 +227,7 @@ AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
 		case literal_int, literal_string, expr_call, expr_index, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return nodeIndex;
 
-		default: assert(false, format("get_node_type used on %s", node.astType));
+		default: assert(false, format("get_effective_node used on %s", node.astType));
 	}
 }
 

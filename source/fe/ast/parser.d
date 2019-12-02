@@ -124,7 +124,7 @@ struct Parser
 		return context.appendAst!T(start, args);
 	}
 	AstIndex makeExpr(T, Args...)(TokenIndex start, Args args) {
-		return context.appendAst!T(start, AstIndex.init, IrIndex(), args);
+		return context.appendAst!T(start, AstIndex.init, args);
 	}
 
 	void expect(TokenType type) {
@@ -319,7 +319,7 @@ struct Parser
 				name.state = AstNodeState.name_resolve_done;
 				AstIndex thisType = make!PtrTypeNode(start, structName);
 
-				AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, context.commonIds.id_this, ushort(0));
+				AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, CommonIds.id_this, ushort(0));
 				VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
 				paramNode.flags |= VariableFlags.isParameter;
 				params.put(context.arrayArena, param);
@@ -1289,7 +1289,7 @@ AstIndex nullCast(ref Parser p, Token token, int rbp) {
 	AstIndex type = p.parse_type_expected();
 	p.expectAndConsume(TokenType.RPAREN);
 	AstIndex right = p.expr(rbp);
-	return p.make!TypeConvExprNode(token.index, type, IrIndex(), right);
+	return p.make!TypeConvExprNode(token.index, type, right);
 }
 
 // Left Denotations -- tokens that take an expression on the left

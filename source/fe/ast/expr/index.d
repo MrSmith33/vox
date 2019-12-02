@@ -11,6 +11,7 @@ struct IndexExprNode {
 	mixin ExpressionNodeData!(AstType.expr_index);
 	AstIndex array;
 	AstIndex index;
+	IrIndex _padding;
 }
 
 void name_register_nested_index(IndexExprNode* node, ref NameRegisterState state) {
@@ -47,6 +48,7 @@ void type_check_index(IndexExprNode* node, ref TypeCheckState state)
 	CompilationContext* c = state.context;
 
 	node.state = AstNodeState.type_check;
+	node.array.flags(c) |= AstFlags.isLvalue;
 	require_type_check(node.array, state);
 	require_type_check(node.index, state);
 	autoconvTo(node.index, c.basicTypeNodes(BasicType.t_i64), c);
@@ -59,20 +61,20 @@ void type_check_index(IndexExprNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_index(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, IndexExprNode* i)
+ExprValue ir_gen_index(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt, IndexExprNode* node)
 {
 	CompilationContext* c = gen.context;
-	ExpressionNode* arrayExpr = i.array.get_expr(c);
-	ExpressionNode* indexExpr = i.index.get_expr(c);
+	ExpressionNode* arrayExpr = node.array.get_expr(c);
+	ExpressionNode* indexExpr = node.index.get_expr(c);
 
-	IrLabel afterIndex = IrLabel(currentBlock);
-	arrayExpr.flags |= AstFlags.isLvalue;
-	ir_gen_expr(gen, i.array, currentBlock, afterIndex);
-	currentBlock = afterIndex.blockIndex;
+	IrLabel afterRight = IrLabel(curBlock);
+	ExprValue indexLvalue = ir_gen_expr(gen, node.index, curBlock, afterRight);
+	curBlock = afterRight.blockIndex;
+	IrIndex indexRvalue = getRvalue(gen, node.loc, curBlock, indexLvalue);
 
-	IrLabel afterRight = IrLabel(currentBlock);
-	ir_gen_expr(gen, i.index, currentBlock, afterRight);
-	currentBlock = afterRight.blockIndex;
+	IrLabel afterIndex = IrLabel(curBlock);
+	ExprValue arrayLvalue = ir_gen_expr(gen, node.array, curBlock, afterIndex);
+	curBlock = afterIndex.blockIndex;
 
 	IrIndex aggregateIndex = c.constants.ZERO;
 	IrIndex slicePtrIndex = c.constants.ONE;
@@ -80,30 +82,25 @@ void ir_gen_index(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt
 	switch (arrayExpr.type.get_type(c).astType) with(AstType)
 	{
 		case type_ptr:
-			i.irValue = buildGEP(gen, i.loc, currentBlock, arrayExpr.irValue, indexExpr.irValue);
-			break;
+			IrIndex ptrRvalue = getRvalue(gen, node.loc, curBlock, arrayLvalue);
+			IrIndex result = buildGEP(gen, node.loc, curBlock, ptrRvalue, indexRvalue);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(result, ExprValueKind.ptr_to_data, IsLvalue.yes);
+
 		case type_static_array:
-			IrIndex type = gen.ir.getValueType(c, arrayExpr.irValue);
-			if (type.isTypePointer)
-				i.irValue = buildGEP(gen, i.loc, currentBlock, arrayExpr.irValue, aggregateIndex, indexExpr.irValue);
-			else {
-				c.assertf(type.isTypeArray, "%s", IrIndexDump(type, c, gen.ir));
-				i.irValue = buildGEP(gen, i.loc, currentBlock, arrayExpr.irValue, indexExpr.irValue);
-			}
-			break;
+			ExprValue result = getAggregateMember(gen, node.loc, curBlock, arrayLvalue, indexRvalue);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return result;
+
 		case type_slice:
-			IrIndex ptrPtr = buildGEP(gen, i.loc, currentBlock, arrayExpr.irValue, aggregateIndex, slicePtrIndex);
-			IrIndex ptr = load(gen, currentBlock, ptrPtr);
-			i.irValue = buildGEP(gen, i.loc, currentBlock, ptr, indexExpr.irValue);
-			break;
+			ExprValue ptrLvalue = getAggregateMember(gen, node.loc, curBlock, arrayLvalue, slicePtrIndex);
+			IrIndex ptr = getRvalue(gen, node.loc, curBlock, ptrLvalue);
+			IrIndex result = buildGEP(gen, node.loc, curBlock, ptr, indexRvalue);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(result, ExprValueKind.ptr_to_data, IsLvalue.yes);
+
 		default:
 			c.internal_error("Cannot index %s", arrayExpr.type.printer(c));
-			break;
+			assert(false);
 	}
-
-	if (!i.isLvalue) {
-		i.irValue = load(gen, currentBlock, i.irValue);
-	}
-
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
 }

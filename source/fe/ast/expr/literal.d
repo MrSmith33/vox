@@ -43,14 +43,10 @@ void type_check_literal_int(IntLiteralExprNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_literal_int(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, IntLiteralExprNode* n)
+IrIndex ir_gen_literal_int(CompilationContext* context, IntLiteralExprNode* n)
 {
-	CompilationContext* c = gen.context;
-	if (!n.irValue.isDefined) {
-		n.irValue = c.constants.add(n.value, n.isSigned, n.type.typeArgSize(c));
-	}
-
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+	CompilationContext* c = context;
+	return c.constants.add(n.value, n.isSigned, n.type.typeArgSize(c));
 }
 
 @(AstType.literal_null)
@@ -65,19 +61,16 @@ void type_check_literal_null(NullLiteralExprNode* node, ref TypeCheckState state
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_literal_null(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, NullLiteralExprNode* n)
+IrIndex ir_gen_literal_null(CompilationContext* context, NullLiteralExprNode* n)
 {
-	CompilationContext* c = gen.context;
-	if (!n.irValue.isDefined) {
-		if (n.type.get_type(c).isPointer) {
-			n.irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE);
-		} else if (n.type.get_type(c).isSlice) {
-			IrIndex irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
-			n.irValue = c.constants.addAggrecateConstant(n.type.gen_ir_type(c), irValue, irValue);
-		} else c.internal_error(n.loc, "%s", n.type.printer(c));
-	}
-
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+	CompilationContext* c = context;
+	if (n.type.get_type(c).isPointer) {
+		return c.constants.add(0, IsSigned.no, SIZET_SIZE);
+	} else if (n.type.get_type(c).isSlice) {
+		IrIndex irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
+		return c.constants.addAggrecateConstant(n.type.gen_ir_type(c), irValue, irValue);
+	} else c.internal_error(n.loc, "%s", n.type.printer(c));
+	assert(false);
 }
 
 @(AstType.literal_bool)
@@ -93,16 +86,13 @@ void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_literal_bool(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, BoolLiteralExprNode* n)
+IrIndex ir_gen_literal_bool(CompilationContext* context, BoolLiteralExprNode* n)
 {
-	CompilationContext* c = gen.context;
-	if (!n.irValue.isDefined) {
-		if (n.value)
-			n.irValue = c.constants.add(1, IsSigned.no, n.type.typeArgSize(c));
-		else
-			n.irValue = c.constants.add(0, IsSigned.no, n.type.typeArgSize(c));
-	}
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+	CompilationContext* c = context;
+	if (n.value)
+		return c.constants.add(1, IsSigned.no, n.type.typeArgSize(c));
+	else
+		return c.constants.add(0, IsSigned.no, n.type.typeArgSize(c));
 }
 
 void ir_gen_branch_literal_bool(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, BoolLiteralExprNode* n)
@@ -111,12 +101,12 @@ void ir_gen_branch_literal_bool(ref IrGenState gen, IrIndex currentBlock, ref Ir
 		gen.builder.addJumpToLabel(currentBlock, trueExit);
 	else
 		gen.builder.addJumpToLabel(currentBlock, falseExit);
-	return;
 }
 
 @(AstType.literal_string)
 struct StringLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_string, 0, AstNodeState.name_resolve_done);
+	IrIndex irValue;
 	string value;
 }
 
@@ -127,7 +117,7 @@ void type_check_literal_string(StringLiteralExprNode* node, ref TypeCheckState s
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_literal_string(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, StringLiteralExprNode* n)
+IrIndex ir_gen_literal_string(CompilationContext* context, StringLiteralExprNode* n)
 {
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+	return n.irValue;
 }

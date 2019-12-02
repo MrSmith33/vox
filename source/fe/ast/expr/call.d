@@ -156,7 +156,7 @@ void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref Type
 	node.type = c.getAstNodeIndex(s);
 }
 
-void ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* node)
+ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* node)
 {
 	CompilationContext* c = gen.context;
 
@@ -186,15 +186,16 @@ void ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt,
 			TypeNode* base = varType.as_ptr.base.get_type(c);
 			if (!base.isFuncSignature) goto default;
 			AstIndex returnType = base.as_func_sig.returnType;
-			IrIndex irIndex = load(gen, currentBlock, var.irValue);
+			IrIndex irIndex = getRvalue(gen, node.loc, currentBlock, var.irValue);
 			return visitCall(gen, returnType, irIndex, currentBlock, nextStmt, node);
 			goto default;
 		default:
-			c.error(node.loc, "Cannot call %s", callee.get_node_type(c).get_type(c).printer(c));
+			c.internal_error(node.loc, "Cannot call %s", callee.get_node_type(c).get_type(c).printer(c));
+			assert(false);
 	}
 }
 
-void visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* n)
+ExprValue visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* n)
 {
 	CompilationContext* c = gen.context;
 	c.assertf(n.args.length+1 <= IrInstrHeader.MAX_ARGS,
@@ -211,21 +212,25 @@ void visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrIndex 
 	{
 		IrLabel afterArg = IrLabel(currentBlock);
 		ExpressionNode* node = arg.get_expr(c);
-		node.flags |= AstFlags.isArgument;
-		ir_gen_expr(gen, arg, currentBlock, afterArg);
+		ExprValue lval = ir_gen_expr(gen, arg, currentBlock, afterArg);
 		currentBlock = afterArg.blockIndex;
-		args[i+1] = node.irValue;
+		args[i+1] = getRvalue(gen, n.loc, currentBlock, lval);
 		debug c.assertf(node.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, node.astType, c.tokenLoc(node.loc));
 	}
 
 	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
 	// need handling of function pointers
 
+	if (n.isLvalue) {
+		c.internal_error(n.loc, "Call cannot be an l-value");
+	}
 
 	if (returnType.isVoidType(c))
 	{
 		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, args);
 		c.assertf(!res.result.isDefined, "Call has result");
+		gen.builder.addJumpToLabel(currentBlock, nextStmt);
+		return ExprValue();
 	}
 	else
 	{
@@ -233,17 +238,12 @@ void visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrIndex 
 
 		ExtraInstrArgs extra = { hasResult : true, type : callResultType };
 		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, extra, args);
-		n.irValue = res.result;
+		gen.builder.addJumpToLabel(currentBlock, nextStmt);
+		return ExprValue(res.result);
 	}
-
-	if (n.isLvalue) {
-		c.internal_error(n.loc, "Call cannot be an l-value");
-	}
-
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
 }
 
-void visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* n)
+ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* n)
 {
 	CompilationContext* c = gen.context;
 	IrIndex structType = s.gen_ir_type_struct(c);
@@ -261,9 +261,9 @@ void visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex currentBloc
 		void processExpr(ref AstIndex initializer)
 		{
 			IrLabel afterArg = IrLabel(currentBlock);
-			ir_gen_expr(gen, initializer, currentBlock, afterArg);
-			args[memberIndex] = initializer.get_expr(c).irValue;
+			ExprValue lval = ir_gen_expr(gen, initializer, currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
+			args[memberIndex] = getRvalue(gen, n.loc, currentBlock, lval);
 		}
 
 		AstIndex initializer;
@@ -281,23 +281,11 @@ void visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex currentBloc
 		++memberIndex;
 	}
 
-	ExtraInstrArgs extra = { type : structType };
-	InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, args);
-	n.irValue = res.result;
-
 	if (n.isLvalue) {
 		c.internal_error(n.loc, "Constructor cannot be an l-value");
 	}
 
-	n.type = c.getAstNodeIndex(s);
-}
-
-void ir_gen_branch_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, CallExprNode* n)
-{
-	CompilationContext* c = gen.context;
-	IrLabel afterExpr = IrLabel(currentBlock);
-	ir_gen_expr(gen, c.getAstNodeIndex(n), currentBlock, afterExpr);
-	currentBlock = afterExpr.blockIndex;
-
-	addUnaryBranch(gen, n.irValue, currentBlock, trueExit, falseExit);
+	ExtraInstrArgs extra = { type : structType };
+	InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, args);
+	return ExprValue(res.result);
 }

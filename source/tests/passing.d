@@ -1323,17 +1323,17 @@ immutable test64 = q{--- test64
 	}
 	// - pass as arg (fits in register)
 	// - pass as arg (by ptr)
-	void passArgBigStruct() {
-		receiveArgBigStruct(Test64(10, 42));
-	}
+	//Test64 passArgBigStruct() {
+	//	return receiveArgBigStruct(Test64(10, 42));
+	//}
 	// - pass as arg (by ptr, pushed)
-	void passArgBigStructPush() {
-		receiveArgBigStructPush(1,2,3,4,Test64(10, 42));
-	}
+	//Test64 passArgBigStructPush() {
+	//	return receiveArgBigStructPush(1,2,3,4,Test64(10, 42));
+	//}
 	// - receive parameter (fits in register)
 	// - receive parameter (by ptr)
-	void receiveArgBigStruct(Test64 arg) {}
-	void receiveArgBigStructPush(i32,i32,i32,i32,Test64 arg) {}
+	//Test64 receiveArgBigStruct(Test64 arg) { return arg; }
+	//Test64 receiveArgBigStructPush(i32,i32,i32,i32,Test64 arg) { return arg; }
 	// - pass member as arg (by ptr)
 	// - pass member as arg (fits in register)
 	// - receive result (fits in register)
@@ -1357,11 +1357,11 @@ void tester64(ref TestContext ctx) {
 	auto returnBigStruct2 = ctx.getFunctionPtr!(Test64)("returnBigStruct2");
 	assert(returnBigStruct2() == Test64(10, 42));
 
-	auto passArgBigStruct = ctx.getFunctionPtr!(void)("passArgBigStruct");
-	passArgBigStruct();
+	//auto passArgBigStruct = ctx.getFunctionPtr!(Test64)("passArgBigStruct");
+	//assert(passArgBigStruct() == Test64(10, 42));
 
-	auto passArgBigStructPush = ctx.getFunctionPtr!(void)("passArgBigStructPush");
-	passArgBigStructPush();
+	//auto passArgBigStructPush = ctx.getFunctionPtr!(Test64)("passArgBigStructPush");
+	//assert(passArgBigStructPush() == Test64(10, 42));
 }
 
 
@@ -2096,9 +2096,17 @@ immutable test92 = q{--- test92
 		}
 		void set2() {
 			set42(); // pass this
+		}
+		void set3() {
 			set42; // pass this
+		}
+		void set4() {
 			this.set42; // explicit this
+		}
+		void set5() {
 			this.set42(); // explicit this
+		}
+		void set6() {
 			set(42); // pass this
 		}
 	}
@@ -2130,6 +2138,31 @@ immutable test92 = q{--- test92
 		s[0].set(42);
 		return s[0].member;
 	}
+	i32 testMethodToMethod2() {
+		Struct s = Struct(10); // reset stack value for future tests
+		s.set2;
+		return s.member;
+	}
+	i32 testMethodToMethod3() {
+		Struct s = Struct(10); // reset stack value for future tests
+		s.set3;
+		return s.member;
+	}
+	i32 testMethodToMethod4() {
+		Struct s = Struct(10); // reset stack value for future tests
+		s.set4;
+		return s.member;
+	}
+	i32 testMethodToMethod5() {
+		Struct s = Struct(10); // reset stack value for future tests
+		s.set5;
+		return s.member;
+	}
+	i32 testMethodToMethod6() {
+		Struct s = Struct(10); // reset stack value for future tests
+		s.set6;
+		return s.member;
+	}
 };
 void tester92(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("testMethod1")() == 42);
@@ -2137,6 +2170,11 @@ void tester92(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("testMethod3")() == 42);
 	assert(ctx.getFunctionPtr!(int)("testMethod4")() == 42);
 	assert(ctx.getFunctionPtr!(int)("testMethod5")() == 42);
+	assert(ctx.getFunctionPtr!(int)("testMethodToMethod2")() == 42);
+	assert(ctx.getFunctionPtr!(int)("testMethodToMethod3")() == 42);
+	assert(ctx.getFunctionPtr!(int)("testMethodToMethod4")() == 42);
+	assert(ctx.getFunctionPtr!(int)("testMethodToMethod5")() == 42);
+	assert(ctx.getFunctionPtr!(int)("testMethodToMethod6")() == 42);
 }
 
 @TestInfo()
@@ -2570,4 +2608,23 @@ void tester105(ref TestContext ctx) {
 	auto get_struct = ctx.getFunctionPtr!(Struct)("get_struct");
 
 	assert(get_struct() == Struct(42, 0));
+}
+@TestInfo(&tester106, [HostSymbol("fun2", cast(void*)&external_tester106)])
+immutable test106 = q{--- test106
+	// Test structs passed as pointer on the stack (name parameter)
+	void fun(i32, i32, i32, u8, u8, u8, u8[] name, bool){
+		fun2(name);
+	}
+	void fun2(u8[]);
+	void run()
+	{
+		fun(50, 50, 32, 0, 255, 0, "Player", true);
+	}
+};
+extern(C) void external_tester106(Slice!char str) {
+	assert(str == "Player");
+}
+void tester106(ref TestContext ctx) {
+	auto run = ctx.getFunctionPtr!(void)("run");
+	run();
 }

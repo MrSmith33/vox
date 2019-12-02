@@ -43,10 +43,10 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 		case expr_bin_op: return eval_static_expr_bin_op(cast(BinaryExprNode*)node, context);
 		case expr_un_op: return eval_static_expr_un_op(cast(UnaryExprNode*)node, context);
 		case expr_type_conv: return eval_static_expr_type_conv(cast(TypeConvExprNode*)node, context);
-		case literal_int: return eval_static_expr_literal_int(cast(IntLiteralExprNode*)node, context);
-		case literal_string: return eval_static_expr_literal_string(cast(StringLiteralExprNode*)node, context);
-		case literal_null: return eval_static_expr_literal_null(cast(NullLiteralExprNode*)node, context);
-		case literal_bool: return eval_static_expr_literal_bool(cast(BoolLiteralExprNode*)node, context);
+		case literal_int: return ir_gen_literal_int(context, cast(IntLiteralExprNode*)node);
+		case literal_string: return ir_gen_literal_string(context, cast(StringLiteralExprNode*)node);
+		case literal_null: return ir_gen_literal_null(context, cast(NullLiteralExprNode*)node);
+		case literal_bool: return ir_gen_literal_bool(context, cast(BoolLiteralExprNode*)node);
 		default:
 			context.internal_error(node.loc, "Cannot evaluate static expression %s", node.astType);
 			assert(false);
@@ -55,7 +55,10 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 
 IrIndex eval_static_expr_enum_member(EnumMemberDecl* node, CompilationContext* context)
 {
-	return eval_static_expr(node.initializer, context);
+	if (!node.initValue.isDefined) {
+		node.initValue = eval_static_expr(node.initializer, context);
+	}
+	return node.initValue;
 }
 
 IrIndex eval_static_expr_name_use(NameUseExprNode* node, CompilationContext* context)
@@ -65,25 +68,20 @@ IrIndex eval_static_expr_name_use(NameUseExprNode* node, CompilationContext* con
 
 IrIndex eval_static_expr_member(MemberExprNode* node, CompilationContext* c)
 {
-	if (!node.irValue.isDefined)
+	switch(node.subType) with(MemberSubType)
 	{
-		switch(node.subType) with(MemberSubType)
-		{
-			case enum_member:
-				node.irValue = eval_static_expr(node.member(c), c);
-				break;
-			case builtin_member:
-				node.irValue = eval_builtin(node.member(c).get!BuiltinNode(c).builtin, node.aggregate, node.loc, c);
-				break;
-			default:
-				AstIndex nodeIndex = get_ast_index(node, c);
-				c.unrecoverable_error(node.loc,
-					"Cannot access .%s member of %s while in CTFE",
-					get_node_id(nodeIndex, c),
-					get_node_kind_name(nodeIndex, c));
-		}
+		case enum_member:
+			return eval_static_expr(node.member(c), c);
+		case builtin_member:
+			return eval_builtin(node.member(c).get!BuiltinNode(c).builtin, node.aggregate, node.loc, c);
+		default:
+			AstIndex nodeIndex = get_ast_index(node, c);
+			c.unrecoverable_error(node.loc,
+				"Cannot access .%s member of %s while in CTFE",
+				get_node_id(nodeIndex, c),
+				get_node_kind_name(nodeIndex, c));
+			assert(false);
 	}
-	return node.irValue;
 }
 
 IrIndex eval_builtin(BuiltinId builtin, AstIndex obj, TokenIndex loc, CompilationContext* c)
@@ -114,102 +112,45 @@ IrIndex eval_builtin(BuiltinId builtin, AstIndex obj, TokenIndex loc, Compilatio
 
 IrIndex eval_static_expr_bin_op(BinaryExprNode* node, CompilationContext* context)
 {
-	if (!node.irValue.isDefined)
-	{
-		IrIndex leftVal = eval_static_expr(node.left, context);
-		IrIndex rightVal = eval_static_expr(node.right, context);
-		node.irValue = calcBinOp(node.op, leftVal, rightVal, node.type.typeArgSize(context), context);
-	}
-	return node.irValue;
+	IrIndex leftVal = eval_static_expr(node.left, context);
+	IrIndex rightVal = eval_static_expr(node.right, context);
+	return calcBinOp(node.op, leftVal, rightVal, node.type.typeArgSize(context), context);
 }
 
 IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 {
-	if (!node.irValue.isDefined)
+	ExpressionNode* child = node.child.get_expr(c);
+	switch (node.op) with(UnOp)
 	{
-		ExpressionNode* child = node.child.get_expr(c);
-		switch (node.op) with(UnOp)
-		{
-			case addrOf:
-				switch(child.astType)
-				{
-					case AstType.expr_name_use:
-						AstNode* entity = child.as!NameUseExprNode(c).entity.get_node(c);
+		case addrOf:
+			switch(child.astType)
+			{
+				case AstType.expr_name_use:
+					AstNode* entity = child.as!NameUseExprNode(c).entity.get_node(c);
 
-						switch (entity.astType)
-						{
-							// TODO: force IR gen for global var when address is taken
-							case AstType.decl_function:
-								// type is not pointer to function sig, but sig itself
-								node.irValue = entity.as!FunctionDeclNode(c).getIrIndex(c);
-								break;
-							default:
-								c.internal_error(node.loc, "Cannot take address of %s while in CTFE", entity.astType);
-						}
-						break;
-					default:
-						c.internal_error(node.loc, "Cannot take address of %s while in CTFE", child.astType);
-				}
-				break;
-			default:
-				c.internal_error(node.loc, "%s not implemented in CTFE", node.op);
-		}
+					switch (entity.astType)
+					{
+						// TODO: force IR gen for global var when address is taken
+						case AstType.decl_function:
+							// type is not pointer to function sig, but sig itself
+							return entity.as!FunctionDeclNode(c).getIrIndex(c);
+						default:
+							c.internal_error(node.loc, "Cannot take address of %s while in CTFE", entity.astType);
+							assert(false);
+					}
+					assert(false);
+				default:
+					c.internal_error(node.loc, "Cannot take address of %s while in CTFE", child.astType);
+					assert(false);
+			}
+			break;
+		default:
+			c.internal_error(node.loc, "%s not implemented in CTFE", node.op);
+			assert(false);
 	}
-	return node.irValue;
 }
 
 IrIndex eval_static_expr_type_conv(TypeConvExprNode* node, CompilationContext* context)
 {
-	if (!node.irValue.isDefined)
-	{
-		node.irValue = eval_static_expr(node.expr, context);
-	}
-	return node.irValue;
-}
-
-IrIndex eval_static_expr_literal_int(IntLiteralExprNode* node, CompilationContext* context)
-{
-	if (!node.irValue.isDefined)
-	{
-		node.irValue = context.constants.add(node.value, node.isSigned, node.type.typeArgSize(context));
-	}
-	return node.irValue;
-}
-
-IrIndex eval_static_expr_literal_string(StringLiteralExprNode* node, CompilationContext* context)
-{
-	return node.irValue;
-}
-
-IrIndex eval_static_expr_literal_null(NullLiteralExprNode* node, CompilationContext* context)
-{
-	if (!node.irValue.isDefined)
-	{
-		if (node.type.get_type(context).isPointer)
-		{
-			node.irValue = context.constants.add(0, IsSigned.no, SIZET_SIZE);
-		}
-		else if (node.type.get_type(context).isSlice)
-		{
-			IrIndex irValue = context.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
-			node.irValue = context.constants.addAggrecateConstant(node.type.gen_ir_type(context), irValue, irValue);
-		}
-		else
-		{
-			context.internal_error(node.loc, "%s", node.type.printer(context));
-		}
-	}
-	return node.irValue;
-}
-
-IrIndex eval_static_expr_literal_bool(BoolLiteralExprNode* node, CompilationContext* context)
-{
-	if (!node.irValue.isDefined)
-	{
-		if (node.value)
-			node.irValue = context.constants.add(1, IsSigned.no, node.type.typeArgSize(context));
-		else
-			node.irValue = context.constants.add(0, IsSigned.no, node.type.typeArgSize(context));
-	}
-	return node.irValue;
+	return eval_static_expr(node.expr, context);
 }

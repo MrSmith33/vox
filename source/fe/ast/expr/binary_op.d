@@ -42,53 +42,58 @@ void type_check_binary_op(BinaryExprNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, BinaryExprNode* b)
+ExprValue ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, BinaryExprNode* b)
 {
 	CompilationContext* c = gen.context;
+
 	if (b.op == BinOp.LOGIC_AND || b.op == BinOp.LOGIC_OR)
 	{
 		IrLabel afterChild = IrLabel(currentBlock);
-		b.irValue = makeBoolValue(gen, cast(ExpressionNode*)b, currentBlock, afterChild);
+		IrIndex irValue = makeBoolValue(gen, cast(ExpressionNode*)b, currentBlock, afterChild);
 		currentBlock = afterChild.blockIndex;
 		gen.builder.addJumpToLabel(currentBlock, nextStmt);
-		return;
+		return ExprValue(irValue);
 	}
 
 	if (b.isAssignment)
 	{
 		IrLabel afterLeft = IrLabel(currentBlock);
-		ir_gen_expr(gen, b.left, currentBlock, afterLeft);
+		ExprValue leftLvalue = ir_gen_expr(gen, b.left, currentBlock, afterLeft);
 		currentBlock = afterLeft.blockIndex;
 
 		IrLabel afterRight = IrLabel(currentBlock);
-		ir_gen_expr(gen, b.right, currentBlock, afterRight);
+		ExprValue rightLvalue = ir_gen_expr(gen, b.right, currentBlock, afterRight);
 		currentBlock = afterRight.blockIndex;
+		IrIndex rightRvalue = getRvalue(gen, b.loc, currentBlock, rightLvalue);
 
 		ExpressionNode* leftExpr = b.left.get_expr(c);
 		ExpressionNode* rightExpr = b.right.get_expr(c);
 
-		c.assertf(leftExpr.irValue.isDefined, leftExpr.loc, "%s null IR val", leftExpr.astType);
-		c.assertf(rightExpr.irValue.isDefined, rightExpr.loc, "%s null IR val", rightExpr.astType);
+		c.assertf(leftLvalue.irValue.isDefined, leftExpr.loc, "%s null IR val", leftExpr.astType);
+		c.assertf(rightLvalue.irValue.isDefined, rightExpr.loc, "%s null IR val", rightExpr.astType);
 
 		if (b.op == BinOp.ASSIGN) {
-			store(gen, currentBlock, leftExpr.irValue, rightExpr.irValue);
-			b.irValue = rightExpr.irValue;
+			store(gen, b.loc, currentBlock, leftLvalue, rightRvalue);
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return rightLvalue;
 		}
 		else if (b.op == BinOp.PTR_PLUS_INT_ASSIGN)
 		{
-			IrIndex leftRvalue = load(gen, currentBlock, leftExpr.irValue);
+			IrIndex leftRvalue = getRvalue(gen, b.loc, currentBlock, leftLvalue);
 			assert(leftExpr.type.get_type(c).isPointer && rightExpr.type.get_type(c).isInteger);
-			IrIndex opResult = buildGEP(gen, b.loc, currentBlock, leftRvalue, rightExpr.irValue);
-			store(gen, currentBlock, leftExpr.irValue, opResult);
-			b.irValue = opResult;
+			IrIndex irValue = buildGEP(gen, b.loc, currentBlock, leftRvalue, rightRvalue);
+			store(gen, b.loc, currentBlock, leftLvalue, irValue);
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return ExprValue(irValue);
 		}
 		else
 		{
-			IrIndex leftRvalue = load(gen, currentBlock, leftExpr.irValue);
+			IrIndex leftRvalue = getRvalue(gen, b.loc, currentBlock, leftLvalue);
+			IrIndex irValue;
 
-			if (leftRvalue.isConstant && rightExpr.irValue.isConstant)
+			if (leftRvalue.isConstant && rightRvalue.isConstant)
 			{
-				b.irValue = calcBinOp(binOpAssignToRegularOp(b.op), leftRvalue, rightExpr.irValue, leftExpr.type.typeArgSize(c), c);
+				irValue = calcBinOp(binOpAssignToRegularOp(b.op), leftRvalue, rightRvalue, leftExpr.type.typeArgSize(c), c);
 			}
 			else
 			{
@@ -97,21 +102,21 @@ void ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabel
 					type : leftExpr.type.gen_ir_type(c),
 					argSize : leftExpr.type.typeArgSize(c)
 				};
-				b.irValue = gen.builder.emitInstr!(IrOpcode.generic_binary)(
-					currentBlock, extra, leftRvalue, rightExpr.irValue).result;
+				irValue = gen.builder.emitInstr!(IrOpcode.generic_binary)(
+					currentBlock, extra, leftRvalue, rightRvalue).result;
 			}
 
-			store(gen, currentBlock, leftExpr.irValue, b.irValue);
+			store(gen, b.loc, currentBlock, leftLvalue, irValue);
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return ExprValue(irValue);
 		}
-		c.assertf(b.irValue.isDefined, b.loc, "%s %s null IR val", b.op, b.astType);
-
-		gen.builder.addJumpToLabel(currentBlock, nextStmt);
 	}
 	else
 	{
 		IrLabel fake;
-		visitBinOpImpl!true(gen, currentBlock, nextStmt, fake, b);
+		IrIndex irValue = visitBinOpImpl!true(gen, currentBlock, nextStmt, fake, b);
 		assert(fake.numPredecessors == 0);
+		return ExprValue(irValue);
 	}
 }
 
@@ -154,31 +159,35 @@ void ir_gen_branch_binary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLab
 }
 
 // In value mode only uses trueExit as nextStmt
-void visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, BinaryExprNode* b)
+IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, BinaryExprNode* b)
 {
 	CompilationContext* c = gen.context;
 
 	IrLabel afterLeft = IrLabel(currentBlock);
-	ir_gen_expr(gen, b.left, currentBlock, afterLeft);
+	ExprValue leftLvalue = ir_gen_expr(gen, b.left, currentBlock, afterLeft);
 	currentBlock = afterLeft.blockIndex;
+
 	IrLabel afterRight = IrLabel(currentBlock);
-	ir_gen_expr(gen, b.right, currentBlock, afterRight);
+	ExprValue rightLvalue = ir_gen_expr(gen, b.right, currentBlock, afterRight);
 	currentBlock = afterRight.blockIndex;
 
 	ExpressionNode* leftExpr = b.left.get_expr(c);
 	ExpressionNode* rightExpr = b.right.get_expr(c);
 
-	c.assertf(leftExpr.irValue.isDefined, leftExpr.loc, "%s null IR val", leftExpr.astType);
-	c.assertf(rightExpr.irValue.isDefined, rightExpr.loc, "%s null IR val", rightExpr.astType);
+	c.assertf(leftLvalue.irValue.isDefined, leftExpr.loc, "%s null IR val", leftExpr.astType);
+	c.assertf(rightLvalue.irValue.isDefined, rightExpr.loc, "%s null IR val", rightExpr.astType);
+
+	auto leftValue = getRvalue(gen, b.loc, currentBlock, leftLvalue);
+	auto rightValue = getRvalue(gen, b.loc, currentBlock, rightLvalue);
 
 	// constant folding
-	if (leftExpr.irValue.isConstant && rightExpr.irValue.isConstant)
+	if (leftValue.isConstant && rightValue.isConstant)
 	{
-		IrIndex value = calcBinOp(b.op, leftExpr.irValue, rightExpr.irValue, b.type.typeArgSize(c), c);
+		IrIndex value = calcBinOp(b.op, leftValue, rightValue, b.type.typeArgSize(c), c);
 		static if (forValue)
 		{
-			b.irValue = value;
-			c.assertf(b.irValue.isDefined, b.loc, "%s null IR val", b.astType);
+			c.assertf(value.isDefined, b.loc, "%s null IR val", b.astType);
+			return value;
 		}
 		else
 		{
@@ -186,33 +195,31 @@ void visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlock,
 				gen.builder.addJumpToLabel(currentBlock, trueExit);
 			else
 				gen.builder.addJumpToLabel(currentBlock, falseExit);
+			return IrIndex();
 		}
-		return;
 	}
-
-	auto leftValue = leftExpr.irValue;
-	auto rightValue = rightExpr.irValue;
 
 	static if (forValue)
 	{
+		IrIndex irValue;
 		switch(b.op) with(BinOp)
 		{
 			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 				ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op), type : b.type.gen_ir_type(c), argSize : leftExpr.type.typeArgSize(c) };
-				b.irValue = gen.builder.emitInstr!(IrOpcode.set_binary_cond)(
+				irValue = gen.builder.emitInstr!(IrOpcode.set_binary_cond)(
 					currentBlock, extra, leftValue, rightValue).result;
 				break;
 
 			case PTR_PLUS_INT:
 				assert(leftExpr.type.get_type(c).isPointer && rightExpr.type.get_type(c).isInteger);
-				b.irValue = buildGEP(gen, b.loc, currentBlock, leftValue, rightExpr.irValue);
+				irValue = buildGEP(gen, b.loc, currentBlock, leftValue, rightValue);
 				break;
 
 			case PTR_DIFF:
 				assert(leftExpr.type.get_type(c).isPointer && rightExpr.type.get_type(c).isPointer);
 
 				ExtraInstrArgs extra = { type : b.type.gen_ir_type(c), argSize : leftExpr.type.typeArgSize(c) };
-				b.irValue = gen.builder.emitInstr!(IrOpcode.sub)(currentBlock, extra, leftValue, rightValue).result;
+				irValue = gen.builder.emitInstr!(IrOpcode.sub)(currentBlock, extra, leftValue, rightValue).result;
 
 				// divide by elem size
 				TypeNode* baseType = leftExpr.type.get_type(c).as_ptr.base.get_type(c);
@@ -221,7 +228,7 @@ void visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlock,
 
 				ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64), argSize : leftExpr.type.typeArgSize(c) };
 				IrIndex elemSizeValue = c.constants.add(elemSize, IsSigned.no, leftExpr.type.typeArgSize(c));
-				b.irValue = gen.builder.emitInstr!(IrOpcode.sdiv)(currentBlock, extra, b.irValue, elemSizeValue).result;
+				irValue = gen.builder.emitInstr!(IrOpcode.sdiv)(currentBlock, extra, irValue, elemSizeValue).result;
 				break;
 
 			// TODO
@@ -231,13 +238,14 @@ void visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlock,
 					type : b.type.gen_ir_type(c),
 					argSize : b.type.typeArgSize(c)
 				};
-				b.irValue = gen.builder.emitInstr!(IrOpcode.generic_binary)(
+				irValue = gen.builder.emitInstr!(IrOpcode.generic_binary)(
 					currentBlock, extra, leftValue, rightValue).result;
 				break;
-			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
+			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); assert(false);
 		}
-		c.assertf(b.irValue.isDefined, b.loc, "%s null IR val", b.astType);
+		c.assertf(irValue.isDefined, b.loc, "%s null IR val", b.astType);
 		gen.builder.addJumpToLabel(currentBlock, trueExit);
+		return irValue;
 	}
 	else // branch
 	{
@@ -250,6 +258,7 @@ void visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlock,
 				break;
 			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
 		}
+		return IrIndex();
 	}
 }
 

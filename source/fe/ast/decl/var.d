@@ -20,7 +20,8 @@ struct VariableDeclNode
 	AstIndex initializer; // may be null
 	Identifier id;
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
-	IrIndex irValue; // kind is variable or stackSlot, unique id of variable within a function
+	ExprValue initValue;
+	ExprValue irValue; // kind is variable or stackSlot, unique id of variable within a function
 	bool forceMemoryStorage() { return cast(bool)(flags & VariableFlags.forceMemoryStorage); }
 	bool isParameter() { return cast(bool)(flags & VariableFlags.isParameter); }
 	bool isAddressTaken() { return cast(bool)(flags & VariableFlags.isAddressTaken); }
@@ -108,15 +109,25 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 	if (needsStackSlot)
 	{
 		auto slotKind = v.isParameter ? StackSlotKind.parameter : StackSlotKind.local;
+		IrIndex irType = varType.gen_ir_type(c);
+		ExprValueKind valueKind = ExprValueKind.ptr_to_data;
+
+		// pointer is pushed on the stack, so pointer to pointer to data
+		if (v.isParameter && varType.isPassByPtr) {
+			irType = c.types.appendPtr(irType);
+			valueKind = ExprValueKind.ptr_to_ptr_to_data;
+		}
+
 		// allocate stack slot
-		v.irValue = gen.fun.backendData.stackLayout.addStackItem(c, varType.gen_ir_type(c), slotKind, v.scopeIndex);
+		IrIndex slot = gen.fun.backendData.stackLayout.addStackItem(c, irType, slotKind, v.scopeIndex);
+		v.irValue = ExprValue(slot, valueKind, IsLvalue.yes);
 	}
 	else
 	{
+		IrIndex valueType = varType.gen_ir_type(c);
 		if (v.isParameter)
 		{
 			// register parameter input
-			IrIndex valueType = varType.gen_ir_type(c);
 			IrIndex type = valueType;
 			if (varType.isPassByPtr) // value is already passed as a pointer
 			{
@@ -125,26 +136,26 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 				ExtraInstrArgs extra = {type : type, argSize : argSize};
 				InstrWithResult param = gen.builder.emitInstr!(IrOpcode.parameter)(gen.ir.entryBasicBlock, extra);
 				gen.ir.get!IrInstr_parameter(param.instruction).index(gen.ir) = v.scopeIndex;
-				v.irValue = param.result;
+				v.irValue = ExprValue(param.result, ExprValueKind.ptr_to_data, IsLvalue.yes);
 			}
 			else
 			{
 				IrArgSize argSize = sizeToIrArgSize(c.types.typeSize(type), c);
 
 				// allocate new variable
-				v.irValue = gen.builder.newIrVarIndex(type);
+				v.irValue = ExprValue(gen.builder.newIrVarIndex(type), ExprValueKind.value, IsLvalue.yes);
 
 				ExtraInstrArgs extra = {type : type, argSize : argSize};
 				InstrWithResult param = gen.builder.emitInstr!(IrOpcode.parameter)(gen.ir.entryBasicBlock, extra);
 				gen.ir.get!IrInstr_parameter(param.instruction).index(gen.ir) = v.scopeIndex;
 
-				store(gen, curBlock, v.irValue, param.result);
+				store(gen, v.loc, curBlock, v.irValue, param.result);
 			}
 		}
 		else
 		{
 			// allocate new variable
-			v.irValue = gen.builder.newIrVarIndex(varType.gen_ir_type(c));
+			v.irValue = ExprValue(gen.builder.newIrVarIndex(valueType), ExprValueKind.value, IsLvalue.yes);
 		}
 	}
 
@@ -154,9 +165,10 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 		if (v.initializer)
 		{
 			IrLabel afterExpr = IrLabel(curBlock);
-			ir_gen_expr(gen, v.initializer, curBlock, afterExpr);
+			ExprValue initValue = ir_gen_expr(gen, v.initializer, curBlock, afterExpr);
 			curBlock = afterExpr.blockIndex;
-			store(gen, curBlock, v.irValue, c.getAstExpr(v.initializer).irValue);
+			IrIndex val = getRvalue(gen, v.loc, curBlock, initValue);
+			store(gen, v.loc, curBlock, v.irValue, val);
 		}
 		else
 		{
@@ -164,7 +176,7 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 			if (varType.as_basic || varType.as_ptr)
 			{
 				IrIndex value = c.constants.ZERO;
-				store(gen, curBlock, v.irValue, value);
+				store(gen, v.loc, curBlock, v.irValue, value);
 			}
 		}
 	}
@@ -178,8 +190,9 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 	if (v.isGlobal)
 	{
 		// TODO: initializers
-		v.irValue = c.globals.add();
-		IrGlobal* global = &c.globals.get(v.irValue);
+		IrIndex globalIndex = c.globals.add();
+		v.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
+		IrGlobal* global = &c.globals.get(globalIndex);
 		global.flags |= IrGlobalFlags.isAllZero | IrGlobalFlags.isMutable;
 		TypeNode* varType = c.getAstType(v.type).foldAliases(c);
 		IrIndex valueType = varType.gen_ir_type(c);

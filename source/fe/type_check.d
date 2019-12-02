@@ -207,7 +207,7 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 				// change type of int literal inline
 				expr.type = typeIndex;
 			} else {
-				exprIndex = c.appendAst!TypeConvExprNode(expr.loc, typeIndex, IrIndex(), exprIndex);
+				exprIndex = c.appendAst!TypeConvExprNode(expr.loc, typeIndex, exprIndex);
 				exprIndex.setState(c, AstNodeState.type_check_done);
 			}
 			return true;
@@ -257,7 +257,7 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 		if (same_type(exprType.as_static_array.base, type.as_slice.base, c))
 		{
 			exprIndex = c.appendAst!UnaryExprNode(
-				expr.loc, typeIndex, IrIndex(), UnOp.staticArrayToSlice, exprIndex);
+				expr.loc, typeIndex, UnOp.staticArrayToSlice, exprIndex);
 			return true;
 		}
 	}

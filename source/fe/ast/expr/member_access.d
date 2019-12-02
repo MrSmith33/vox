@@ -59,7 +59,7 @@ struct MemberExprNode {
 		return isSymResolved ? _member.get_node_id(c) : _memberId;
 	}
 
-	this(TokenIndex loc, AstIndex parentScope, AstIndex aggregate, Identifier memberId, AstIndex type = AstIndex.init, IrIndex irValue = IrIndex.init)
+	this(TokenIndex loc, AstIndex parentScope, AstIndex aggregate, Identifier memberId, AstIndex type = AstIndex.init)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_member;
@@ -69,7 +69,6 @@ struct MemberExprNode {
 		this.aggregate = aggregate;
 		this._memberId = memberId;
 		this.type = type;
-		this.irValue = irValue;
 	}
 
 	// produce already resolved node
@@ -113,14 +112,27 @@ void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeChe
 	LookupResult res = lookupMember(node, state);
 
 	if (res == LookupResult.success) {
-		if (node.member(c).astType(c) == AstType.decl_function)
+		AstIndex effectiveMember = node.member(c).get_effective_node(c);
+		if (effectiveMember.astType(c) == AstType.decl_function)
 		{
 			// parentheses-less method call
 			AstIndex callIndex;
-			createMethodCall(callIndex, node.loc, node.aggregate, node.member(c), node.memberId(c), state);
+			createMethodCall(callIndex, node.loc, node.aggregate, effectiveMember, node.memberId(c), state);
 			nodeIndex = callIndex;
 			return;
 		}
+
+		TypeNode* objType = node.aggregate.get_type(c);
+		if (objType.isPointer)
+		{
+			auto baseType = objType.as_ptr.base.get_type(c);
+			if (baseType.isStruct)
+			{
+				node.aggregate = c.appendAst!UnaryExprNode(node.loc, c.getAstNodeIndex(baseType), UnOp.deref, node.aggregate);
+				node.aggregate.setState(c, AstNodeState.type_check_done);
+			}
+		}
+
 		nodeIndex.get_node(c).state = AstNodeState.type_check_done;
 		return;
 	}
@@ -191,7 +203,7 @@ void lowerThisArgument(FunctionSignatureNode* signature, ref AstIndex aggregate,
 	if (aggregate.get_node_type(c) == structType) // rewrite Struct as Struct*
 	{
 		aggregate.flags(c) |= AstFlags.isLvalue;
-		aggregate = c.appendAst!UnaryExprNode(loc, AstIndex.init, IrIndex.init, UnOp.addrOf, aggregate);
+		aggregate = c.appendAst!UnaryExprNode(loc, AstIndex.init, UnOp.addrOf, aggregate);
 	}
 	aggregate.get_node(c).state = AstNodeState.name_resolve_done;
 }
@@ -209,7 +221,7 @@ LookupResult lookupMember(MemberExprNode* expr, ref TypeCheckState state)
 	TypeNode* objType = expr.aggregate.get_type(c);
 
 	Identifier memberId = expr.memberId(c);
-	if (memberId == c.commonIds.id_sizeof)
+	if (memberId == CommonIds.id_sizeof)
 	{
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.type_sizeof), 0, c);
 		expr.type = c.basicTypeNodes(BasicType.t_u64);
@@ -263,13 +275,13 @@ LookupResult lookupBasicMember(MemberExprNode* expr, BasicTypeNode* basicType, I
 {
 	if (basicType.isInteger)
 	{
-		if (id == c.commonIds.id_min)
+		if (id == CommonIds.id_min)
 		{
 			expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.int_min), 0, c);
 			expr.type = basicType.get_ast_index(c);
 			return LookupResult.success;
 		}
-		else if (id == c.commonIds.id_max)
+		else if (id == CommonIds.id_max)
 		{
 			expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.int_max), 0, c);
 			expr.type = basicType.get_ast_index(c);
@@ -283,13 +295,13 @@ LookupResult lookupBasicMember(MemberExprNode* expr, BasicTypeNode* basicType, I
 LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id, CompilationContext* c)
 {
 	// use integer indicies, because slice is a struct
-	if (id == c.commonIds.id_ptr)
+	if (id == CommonIds.id_ptr)
 	{
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_ptr), 1, c);
 		expr.type = c.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
 		return LookupResult.success;
 	}
-	else if (id == c.commonIds.id_length)
+	else if (id == CommonIds.id_length)
 	{
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_length), 0, c);
 		expr.type = c.basicTypeNodes(BasicType.t_u64);
@@ -301,13 +313,13 @@ LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, I
 
 LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* arrType, Identifier id, CompilationContext* c)
 {
-	if (id == c.commonIds.id_ptr)
+	if (id == CommonIds.id_ptr)
 	{
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.array_ptr), 0, c);
 		expr.type = c.appendAst!PtrTypeNode(arrType.loc, arrType.base);
 		return LookupResult.success;
 	}
-	else if (id == c.commonIds.id_length)
+	else if (id == CommonIds.id_length)
 	{
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.array_length), 0, c);
 		expr.type = c.basicTypeNodes(BasicType.t_u64);
@@ -361,7 +373,7 @@ LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl
 	}
 }
 
-void ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, MemberExprNode* m)
+ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, MemberExprNode* m)
 {
 	CompilationContext* c = gen.context;
 
@@ -369,68 +381,37 @@ void ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStm
 	{
 		case nonstatic_struct_member, slice_member:
 			IrLabel afterAggr = IrLabel(currentBlock);
-			// load pointers
-			if (!m.aggregate.get_node_type(c).get_type(c).isPointer)
-				m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
-			ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
+			ExprValue aggr = ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
+			TypeNode* objType = m.aggregate.get_type(c);
 			currentBlock = afterAggr.blockIndex;
 
 			IrIndex memberIndex = c.constants.add(m.memberIndex(c), IsSigned.no);
-			LRValue rlVal = getMember(gen, m.loc, currentBlock, m.aggregate.get_expr(c).irValue, memberIndex);
-
-			if (m.isLvalue) {
-				if (rlVal.isLvalue) m.irValue = rlVal.value;
-				else c.internal_error(m.loc, "member expression is not an l-value");
-			}
-			else {
-				if (rlVal.isLvalue)
-					m.irValue = load(gen, currentBlock, rlVal.value);
-				else m.irValue = rlVal.value;
-			}
-			break;
+			ExprValue result = getAggregateMember(gen, m.loc, currentBlock, aggr, memberIndex);
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return result;
 		case static_struct_member:
 			c.unreachable("Not implemented");
-			break;
+			assert(false);
 		case enum_member:
-			EnumMemberDecl* enumMember = m.member(c).get!EnumMemberDecl(c);
-			IrLabel afterAggr = IrLabel(currentBlock);
-			ir_gen_expr(gen, enumMember.initializer, currentBlock, afterAggr);
-			currentBlock = afterAggr.blockIndex;
-			m.irValue = enumMember.initializer.get_expr(c).irValue;
-			break;
+			IrIndex result = eval_static_expr(m.member(c), c);
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return ExprValue(result);
 		case builtin_member:
 			BuiltinId builtin = m.member(c).get!BuiltinNode(c).builtin;
 			switch(builtin) with(BuiltinId)
 			{
 				case array_ptr:
-					if (m.isLvalue) {
-						c.internal_error(m.loc, "cannot assign static array member");
-					}
-
 					IrLabel afterAggr = IrLabel(currentBlock);
-					m.aggregate.get_node(c).flags |= AstFlags.isLvalue;
-					ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
+					ExprValue aggr = ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
 					currentBlock = afterAggr.blockIndex;
-					m.irValue = buildGEP(gen, m.loc, currentBlock, m.aggregate.get_expr(c).irValue, c.constants.ZERO, c.constants.ZERO);
-					break;
+					IrIndex ptr = buildGEP(gen, m.loc, currentBlock, aggr.irValue, c.constants.ZERO, c.constants.ZERO);
+					gen.builder.addJumpToLabel(currentBlock, nextStmt);
+					return ExprValue(ptr);
 				default:
-					if (m.isLvalue) { c.internal_error(m.loc, "not an l-value"); }
-					m.irValue = eval_builtin(builtin, m.aggregate, m.loc, c);
+					return ExprValue(eval_builtin(builtin, m.aggregate, m.loc, c));
 			}
-			break;
 		default:
 			c.internal_error(m.loc, "Unexpected node type %s", m.astType);
+			assert(false);
 	}
-
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
-}
-
-void ir_gen_branch_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, MemberExprNode* n)
-{
-	CompilationContext* c = gen.context;
-	IrLabel afterExpr = IrLabel(currentBlock);
-	ir_gen_expr(gen, c.getAstNodeIndex(n), currentBlock, afterExpr);
-	currentBlock = afterExpr.blockIndex;
-
-	addUnaryBranch(gen, n.irValue, currentBlock, trueExit, falseExit);
 }

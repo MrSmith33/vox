@@ -25,7 +25,7 @@ struct NameUseExprNode {
 	bool isSymResolved() { return cast(bool)(flags & NameUseFlags.isSymResolved); }
 	bool isAddressTaken() { return cast(bool)(flags & NameUseFlags.isAddressTaken); }
 
-	this(TokenIndex loc, AstIndex parentScope, Identifier id, AstIndex type = AstIndex.init, IrIndex irValue = IrIndex.init)
+	this(TokenIndex loc, AstIndex parentScope, Identifier id, AstIndex type = AstIndex.init)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_name_use;
@@ -34,7 +34,6 @@ struct NameUseExprNode {
 		this.parentScope = parentScope;
 		this._id = id;
 		this.type = type;
-		this.irValue = irValue;
 	}
 
 	void resolve(AstIndex n, CompilationContext* c) {
@@ -124,7 +123,7 @@ private void lowerToMember(ref AstIndex nodeIndex, NameUseExprNode* node, uint s
 	CompilationContext* c = state.context;
 	// rewrite as this.entity
 	// let member_access handle everything else
-	AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, node.parentScope, c.commonIds.id_this);
+	AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, node.parentScope, CommonIds.id_this);
 	require_name_resolve(thisName, state);
 	AstIndex member = c.appendAst!MemberExprNode(node.loc, node.parentScope, thisName, nodeIndex, scopeIndex, MemberSubType.nonstatic_struct_member);
 	if (node.isLvalue)
@@ -148,73 +147,35 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 	{
 		// Call without parenthesis
 		// rewrite as call
-		nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), IrIndex(), nodeIndex);
+		nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), nodeIndex);
 		nodeIndex.setState(c, AstNodeState.name_resolve_done);
 		require_type_check(nodeIndex, state);
 	}
 }
 
-void ir_gen_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, NameUseExprNode* v)
+ExprValue ir_gen_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, NameUseExprNode* v)
 {
 	CompilationContext* c = gen.context;
 	AstNode* entity = v.entity.get_node(c);
+
 	switch (entity.astType) with(AstType)
 	{
 		case decl_enum_member:
 		{
-			EnumMemberDecl* member = entity.as!EnumMemberDecl(c);
-			IrLabel after = IrLabel(currentBlock);
-			ir_gen_expr(gen, member.initializer, currentBlock, after);
-			currentBlock = after.blockIndex;
-			v.irValue = c.getAstExpr(member.initializer).irValue;
-			break;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return ExprValue(eval_static_expr(v.entity, gen.context));
 		}
 		case decl_var:
 		{
-			if (v.isLvalue) {
-				v.irValue = v.varDecl(c).irValue;
-			}
-			else {
-				TypeNode* type = c.getAstType(v.varDecl(c).type).foldAliases(c);
-				if (v.isArgument && type.isPassByPtr)
-				{
-					IrIndex irType = type.gen_ir_type(c);
-					uint size = c.types.typeSize(irType);
-					if (size == 1 || size == 2 || size == 4 || size == 8)
-					{
-						// pass by value
-						v.irValue = load(gen, currentBlock, v.varDecl(c).irValue);
-					}
-					else
-					{
-						// pass pointer
-						c.todo("need to pass pointer to copy");
-						v.irValue = v.varDecl(c).irValue;
-					}
-				}
-				else
-				{
-					v.irValue = load(gen, currentBlock, v.varDecl(c).irValue);
-				}
-			}
-			break;
+			ExprValue result = v.varDecl(c).irValue;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return result;
 		}
 		case decl_function:
-			v.irValue = entity.as!FunctionDeclNode(c).getIrIndex(c);
-			break;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return ExprValue(entity.as!FunctionDeclNode(c).getIrIndex(c));
 		default:
-			writefln("visitExprValue %s", entity.astType);
-			c.unreachable; assert(false);
+			c.internal_error(v.loc, "ir_gen_name_use %s", entity.astType);
+			assert(false);
 	}
-
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
-}
-
-void ir_gen_branch_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, NameUseExprNode* n)
-{
-	IrLabel afterExpr = IrLabel(currentBlock);
-	ir_gen_name_use(gen, currentBlock, afterExpr, n);
-	currentBlock = afterExpr.blockIndex;
-
-	addUnaryBranch(gen, n.irValue, currentBlock, trueExit, falseExit);
 }

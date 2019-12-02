@@ -196,7 +196,6 @@ struct CompilationContext
 	AstIndex errorNode;
 	AstIndex u8Ptr;
 	AstIndex u8Slice;
-	alias commonIds = CommonIds;
 
 	private AstIndex[BasicType.max + 1] basicTypes;
 	private AstIndex[BuiltinId.max + 1] builtins;
@@ -645,13 +644,13 @@ struct CompilationContext
 		}
 
 		builtins = [
-			makeBuiltin(commonIds.id_min, BuiltinId.int_min),
-			makeBuiltin(commonIds.id_max, BuiltinId.int_max),
-			makeBuiltin(commonIds.id_length, BuiltinId.slice_length),
-			makeBuiltin(commonIds.id_ptr, BuiltinId.slice_ptr),
-			makeBuiltin(commonIds.id_length, BuiltinId.array_length),
-			makeBuiltin(commonIds.id_ptr, BuiltinId.array_ptr),
-			makeBuiltin(commonIds.id_sizeof, BuiltinId.type_sizeof),
+			makeBuiltin(CommonIds.id_min, BuiltinId.int_min),
+			makeBuiltin(CommonIds.id_max, BuiltinId.int_max),
+			makeBuiltin(CommonIds.id_length, BuiltinId.slice_length),
+			makeBuiltin(CommonIds.id_ptr, BuiltinId.slice_ptr),
+			makeBuiltin(CommonIds.id_length, BuiltinId.array_length),
+			makeBuiltin(CommonIds.id_ptr, BuiltinId.array_ptr),
+			makeBuiltin(CommonIds.id_sizeof, BuiltinId.type_sizeof),
 		];
 
 		errorNode = appendAst!ErrorAstNode();

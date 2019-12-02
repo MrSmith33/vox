@@ -41,12 +41,13 @@ void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, TypeConvExprNode* t)
+ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, TypeConvExprNode* t)
 {
 	CompilationContext* c = gen.context;
 	IrLabel afterExpr = IrLabel(currentBlock);
-	ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
+	ExprValue lval = ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
 	currentBlock = afterExpr.blockIndex;
+	IrIndex rval = getRvalue(gen, t.loc, currentBlock, lval);
 
 	ExpressionNode* childExpr = t.expr.get_expr(c);
 	TypeNode* sourceType = childExpr.type.get_type(c);
@@ -58,14 +59,15 @@ void ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel
 	uint typeSizeFrom = c.types.typeSize(typeFrom);
 	uint typeSizeTo = c.types.typeSize(typeTo);
 
-	if (childExpr.irValue.isConstant)
+	IrIndex result;
+	if (rval.isConstant)
 	{
-		t.irValue = childExpr.irValue;
+		result = rval;
 	}
 	else if (targetType.isBool)
 	{
 		ExtraInstrArgs extra = { type : typeTo, cond : IrUnaryCondition.not_zero };
-		t.irValue = gen.builder.emitInstr!(IrOpcode.set_unary_cond)(currentBlock, extra, childExpr.irValue).result;
+		result = gen.builder.emitInstr!(IrOpcode.set_unary_cond)(currentBlock, extra, rval).result;
 	}
 	else
 	{
@@ -73,13 +75,13 @@ void ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel
 		if (typeSizeFrom == typeSizeTo)
 		{
 			ExtraInstrArgs extra = { type : typeTo };
-			t.irValue = gen.builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, childExpr.irValue).result;
+			result = gen.builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, rval).result;
 		}
 		// trunc
 		else if (typeSizeTo < typeSizeFrom)
 		{
 			ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
-			t.irValue = gen.builder.emitInstr!(IrOpcode.trunc)(currentBlock, extra, childExpr.irValue).result;
+			result = gen.builder.emitInstr!(IrOpcode.trunc)(currentBlock, extra, rval).result;
 		}
 		// sext/zext
 		else
@@ -89,40 +91,42 @@ void ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel
 			if (targetType.as_basic.isSigned)
 			{
 				ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
-				t.irValue = gen.builder.emitInstr!(IrOpcode.sext)(currentBlock, extra, childExpr.irValue).result;
+				result = gen.builder.emitInstr!(IrOpcode.sext)(currentBlock, extra, rval).result;
 			}
 			else
 			{
 				ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
-				t.irValue = gen.builder.emitInstr!(IrOpcode.zext)(currentBlock, extra, childExpr.irValue).result;
+				result = gen.builder.emitInstr!(IrOpcode.zext)(currentBlock, extra, rval).result;
 			}
 		}
 	}
 	gen.builder.addJumpToLabel(currentBlock, nextStmt);
+	return ExprValue(result);
 }
 
 void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, TypeConvExprNode* t)
 {
 	CompilationContext* c = gen.context;
 	IrLabel afterExpr = IrLabel(currentBlock);
-	ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
+	ExprValue lval = ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
 	currentBlock = afterExpr.blockIndex;
+	IrIndex rval = getRvalue(gen, t.loc, currentBlock, lval);
 
 	ExpressionNode* childExpr = t.expr.get_expr(c);
 	IrIndex from = childExpr.type.gen_ir_type(c);
 
-	if (childExpr.irValue.isConstant ||
+	if (rval.isConstant ||
 		from == makeBasicTypeIndex(IrValueType.i8) ||
 		from == makeBasicTypeIndex(IrValueType.i16) ||
 		from == makeBasicTypeIndex(IrValueType.i32) ||
 		from == makeBasicTypeIndex(IrValueType.i64))
 	{
-		addUnaryBranch(gen, childExpr.irValue, currentBlock, trueExit, falseExit);
+		addUnaryBranch(gen, rval, currentBlock, trueExit, falseExit);
 		return;
 	}
 	else
 	{
-		//t.irValue = builder.emitInstr1(IrOpcode.o_conv, to, childExpr.irValue);
+		//result = builder.emitInstr1(IrOpcode.o_conv, to, rval);
 		c.internal_error(t.loc, "%s to %s", childExpr.type.printer(c), t.type.printer(c));
 	}
 	c.unreachable;

@@ -508,6 +508,10 @@ struct IrTypeDump
 
 void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext ctx, IrIndex type)
 {
+	if (type.isUndefined) {
+		sink("<null>");
+		return;
+	}
 	final switch(type.typeKind) with(IrTypeKind) {
 		case basic: sink.formattedWrite("%s", cast(IrValueType)type.typeIndex); break;
 		case pointer:

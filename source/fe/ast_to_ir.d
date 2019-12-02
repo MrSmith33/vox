@@ -37,25 +37,36 @@ struct IrGenState
 }
 
 enum ExprValueKind : ubyte {
-	// irIndex is variable (isLvalue=true), constant or vreg (isLvalue=false)
-	// numIndicies indicates number of gepBuf indicies being used
-	struct_sub_index,
+	// irValue is variable (isLvalue=true), constant or vreg (isLvalue=false) being used directly
+	value,
 	// it is data in source language, but prt to data in IR
 	// for example 1st parameter of function that is passed as pointer to struct in RCX in win64 CC
 	ptr_to_data,
 	// it is data in source language, but prt to ptr to data in IR
 	// for example 5th parameter of function that is passed as pointer to struct on stack in win64 CC
 	ptr_to_ptr_to_data,
-	// irIndex is variable (isLvalue=true), constant or vreg (isLvalue=false) being used directly
-	value,
+	// irValue is variable (isLvalue=true), constant or vreg (isLvalue=false)
+	// numIndicies indicates number of gepBuf indicies being used
+	struct_sub_index,
 }
 
+/// Lvalue means that value is stored in global, stack slot or variable.
+///
 struct ExprValue
 {
-	IrIndex irIndex;
-	ExprValueKind kind;
-	bool isLvalue;
-	ubyte numIndicies;
+	// IR value
+	IrIndex irValue;
+	// Describes irValue
+	ExprValueKind kind = ExprValueKind.value;
+	// true if can be assigned or address taken
+	IsLvalue isLvalue = IsLvalue.no;
+	// indicates number of gepBuf indicies being used
+	ubyte numIndicies = 0;
+}
+
+enum IsLvalue : bool {
+	no = false,
+	yes = true,
 }
 
 void ir_gen_decl(ref IrGenState gen, AstIndex astIndex)
@@ -87,22 +98,25 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case stmt_break:       ir_gen_break   (gen, curBlock, nextStmt, cast(BreakStmtNode*)n); break;
 		case stmt_continue:    ir_gen_continue(gen, curBlock, nextStmt, cast(ContinueStmtNode*)n); break;
 
-		// expression statement
-		case expr_name_use:    ir_gen_name_use(gen, curBlock, nextStmt, cast(NameUseExprNode*)n); break;
-		case expr_member:      ir_gen_member(gen, curBlock, nextStmt, cast(MemberExprNode*)n); break;
+		// expression statement, must have side effect
 		case expr_call:        ir_gen_call(gen, curBlock, nextStmt, cast(CallExprNode*)n); break;
-		case expr_index:       ir_gen_index(gen, curBlock, nextStmt, cast(IndexExprNode*)n); break;
 		case expr_bin_op:      ir_gen_expr_binary_op(gen, curBlock, nextStmt, cast(BinaryExprNode*)n); break;
 		case expr_un_op:       ir_gen_expr_unary_op(gen, curBlock, nextStmt, cast(UnaryExprNode*)n); break;
-		case expr_type_conv:   ir_gen_expr_type_conv(gen, curBlock, nextStmt, cast(TypeConvExprNode*)n); break;
-		case literal_int:      ir_gen_literal_int(gen, curBlock, nextStmt, cast(IntLiteralExprNode*)n); break;
-		case literal_string:   ir_gen_literal_string(gen, curBlock, nextStmt, cast(StringLiteralExprNode*)n); break;
-		case literal_null:     ir_gen_literal_null(gen, curBlock, nextStmt, cast(NullLiteralExprNode*)n); break;
-		case literal_bool:     ir_gen_literal_bool(gen, curBlock, nextStmt, cast(BoolLiteralExprNode*)n); break;
-		case decl_enum_member: ir_gen_enum_member(gen, curBlock, nextStmt, cast(EnumMemberDecl*)n); break;
+		// should be catched in semantic check, since they have no side effect
+		case expr_member:
+		case expr_name_use:
+		case expr_index:
+		case expr_type_conv:
+		case literal_int:
+		case literal_string:
+		case literal_null:
+		case literal_bool:
+			c.internal_error(n.loc, "stmt %s in %s state", n.astType, n.state);
+			assert(false);
 
 		// declaration statement
 		case decl_enum:
+		case decl_enum_member:
 		case decl_function:
 		case decl_struct:
 		case decl_import:      gen.builder.addJumpToLabel(curBlock, nextStmt); break;
@@ -118,71 +132,146 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 	AstNode* n = gen.getAstNode(astIndex);
 	switch(n.astType) with(AstType)
 	{
-		case expr_name_use:    ir_gen_name_use(gen, curBlock, nextStmt, cast(NameUseExprNode*)n); break;
-		case expr_member:      ir_gen_member(gen, curBlock, nextStmt, cast(MemberExprNode*)n); break;
-		case expr_call:        ir_gen_call(gen, curBlock, nextStmt, cast(CallExprNode*)n); break;
-		case expr_index:       ir_gen_index(gen, curBlock, nextStmt, cast(IndexExprNode*)n); break;
-		case expr_bin_op:      ir_gen_expr_binary_op(gen, curBlock, nextStmt, cast(BinaryExprNode*)n); break;
-		case expr_un_op:       ir_gen_expr_unary_op(gen, curBlock, nextStmt, cast(UnaryExprNode*)n); break;
-		case expr_type_conv:   ir_gen_expr_type_conv(gen, curBlock, nextStmt, cast(TypeConvExprNode*)n); break;
-		case literal_int:      ir_gen_literal_int(gen, curBlock, nextStmt, cast(IntLiteralExprNode*)n); break;
-		case literal_string:   ir_gen_literal_string(gen, curBlock, nextStmt, cast(StringLiteralExprNode*)n); break;
-		case literal_null:     ir_gen_literal_null(gen, curBlock, nextStmt, cast(NullLiteralExprNode*)n); break;
-		case literal_bool:     ir_gen_literal_bool(gen, curBlock, nextStmt, cast(BoolLiteralExprNode*)n); break;
-		case decl_enum_member: ir_gen_enum_member(gen, curBlock, nextStmt, cast(EnumMemberDecl*)n); break;
+		case expr_name_use:    return ir_gen_name_use(gen, curBlock, nextStmt, cast(NameUseExprNode*)n);
+		case expr_member:      return ir_gen_member(gen, curBlock, nextStmt, cast(MemberExprNode*)n);
+		case expr_call:        return ir_gen_call(gen, curBlock, nextStmt, cast(CallExprNode*)n);
+		case expr_index:       return ir_gen_index(gen, curBlock, nextStmt, cast(IndexExprNode*)n);
+		case expr_bin_op:      return ir_gen_expr_binary_op(gen, curBlock, nextStmt, cast(BinaryExprNode*)n);
+		case expr_un_op:       return ir_gen_expr_unary_op(gen, curBlock, nextStmt, cast(UnaryExprNode*)n);
+		case expr_type_conv:   return ir_gen_expr_type_conv(gen, curBlock, nextStmt, cast(TypeConvExprNode*)n);
+		case literal_int: {
+			IrIndex irValue = ir_gen_literal_int(gen.context, cast(IntLiteralExprNode*)n);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(irValue);
+		}
+		case literal_string: {
+			IrIndex irValue = ir_gen_literal_string(gen.context, cast(StringLiteralExprNode*)n);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(irValue);
+		}
+		case literal_null: {
+			IrIndex irValue = ir_gen_literal_null(gen.context, cast(NullLiteralExprNode*)n);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(irValue);
+		}
+		case literal_bool: {
+			IrIndex irValue = ir_gen_literal_bool(gen.context, cast(BoolLiteralExprNode*)n);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(irValue);
+		}
 		default:
 			c.internal_error(n.loc, "Expected expression, not %s", n.astType);
 			assert(false);
 	}
-	return ExprValue();
 }
 
 void ir_gen_branch(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 {
+	CompilationContext* c = gen.context;
 	AstNode* n = gen.getAstNode(astIndex);
 	switch(n.astType) with(AstType)
 	{
 		case literal_int, literal_string, expr_index: // TODO: expr_index may return bool
 			gen.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
 			break;
-		case expr_name_use:  ir_gen_branch_name_use    (gen, curBlock, trueExit, falseExit, cast(NameUseExprNode*)n); break;
 		case expr_bin_op:    ir_gen_branch_binary_op   (gen, curBlock, trueExit, falseExit, cast(BinaryExprNode*)n); break;
 		case expr_type_conv: ir_gen_branch_type_conv   (gen, curBlock, trueExit, falseExit, cast(TypeConvExprNode*)n); break;
 		case expr_un_op:     ir_gen_branch_unary_op    (gen, curBlock, trueExit, falseExit, cast(UnaryExprNode*)n); break;
-		case expr_call:      ir_gen_branch_call        (gen, curBlock, trueExit, falseExit, cast(CallExprNode*)n); break;
 		case literal_bool:   ir_gen_branch_literal_bool(gen, curBlock, trueExit, falseExit, cast(BoolLiteralExprNode*)n); break;
-		case expr_member:    ir_gen_branch_member      (gen, curBlock, trueExit, falseExit, cast(MemberExprNode*)n); break;
+		case expr_name_use, expr_call, expr_member:
+			IrLabel afterExpr = IrLabel(curBlock);
+			ExprValue lval = ir_gen_expr(gen, astIndex, curBlock, afterExpr);
+			curBlock = afterExpr.blockIndex;
+			IrIndex rval = getRvalue(gen, n.loc, curBlock, lval);
+			addUnaryBranch(gen, rval, curBlock, trueExit, falseExit);
+			break;
 
 		default: gen.internal_error(n.loc, "Expected expression, not %s", n.astType);
 	}
 }
 
 /// destination must be pointer or variable
-void store(ref IrGenState gen, IrIndex currentBlock, IrIndex destination, IrIndex value)
+void store(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue destination, IrIndex value)
 {
-	switch (destination.kind) with(IrValueKind)
+	//writefln("store %s %s", destination, value);
+	switch (destination.kind)
 	{
-		case stackSlot, global, virtualRegister:
-			ExtraInstrArgs extra;
-			// destination must be a pointer
-			gen.builder.emitInstr!(IrOpcode.store)(currentBlock, extra, destination, value);
-			break;
-		case variable:
-			gen.builder.writeVariable(currentBlock, destination, value);
+		case ExprValueKind.ptr_to_data:
+			switch (destination.irValue.kind) with(IrValueKind)
+			{
+				case variable:
+					IrIndex ptr = gen.builder.readVariable(currentBlock, destination.irValue);
+					gen.builder.emitInstr!(IrOpcode.store)(currentBlock, ExtraInstrArgs(), ptr, value);
+					return;
+				case stackSlot, global, virtualRegister:
+					ExtraInstrArgs extra;
+					// destination must be a pointer
+					gen.builder.emitInstr!(IrOpcode.store)(currentBlock, extra, destination.irValue, value);
+					return;
+
+				default: break;
+			}
 			break;
 		default:
-			gen.context.internal_error("Cannot store into %s", destination.kind);
+			switch (destination.irValue.kind) with(IrValueKind)
+			{
+				case stackSlot, global, virtualRegister:
+					ExtraInstrArgs extra;
+					// destination must be a pointer
+					gen.builder.emitInstr!(IrOpcode.store)(currentBlock, extra, destination.irValue, value);
+					return;
+				case variable:
+					gen.builder.writeVariable(currentBlock, destination.irValue, value);
+					return;
+				default:
+					break;
+			}
+	}
+	gen.context.internal_error(loc, "Cannot store into %s", destination.irValue.kind);
+	assert(false);
+}
+
+/// returns value as intended by frontend
+IrIndex getRvalue(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue source)
+{
+	CompilationContext* c = gen.context;
+	switch (source.kind) with(ExprValueKind)
+	{
+		case value:
+			switch (source.irValue.kind) with(IrValueKind)
+			{
+				case variable: return gen.builder.readVariable(currentBlock, source.irValue);
+				default: return source.irValue;
+			}
+		case ptr_to_data:
+			return load(gen, loc, currentBlock, source.irValue);
+		case ptr_to_ptr_to_data:
+			IrIndex ptr = load(gen, loc, currentBlock, source.irValue);
+			return load(gen, loc, currentBlock, ptr);
+		default:
+			c.internal_error(loc, "Cannot load from %s", source.kind);
 			assert(false);
 	}
 }
 
-/// source must be pointer or variable
-IrIndex load(ref IrGenState gen, IrIndex currentBlock, IrIndex source)
+/// loads value from pointer. pointer must be rvalue (getRvalue must be called before passing here)
+IrIndex load(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrIndex source)
 {
 	CompilationContext* c = gen.context;
+
+	if (source.isVariable) {
+		source = gen.builder.readVariable(currentBlock, source);
+	}
+
 	switch (source.kind) with(IrValueKind)
 	{
+		case variable:
+			// it's variable holding pointer
+			source = gen.builder.readVariable(currentBlock, source);
+			goto case;
+
 		case stackSlot, global, virtualRegister:
+			// those are already a pointer
 			IrIndex resultType = c.types.getPointerBaseType(gen.ir.getValueType(c, source));
 			ExtraInstrArgs extra = {type : resultType};
 			if (resultType.isTypeStruct)
@@ -192,28 +281,33 @@ IrIndex load(ref IrGenState gen, IrIndex currentBlock, IrIndex source)
 				extra.argSize = resultType.getTypeArgSize(gen.ir, c);
 				return gen.builder.emitInstr!(IrOpcode.load)(currentBlock, extra, source).result;
 			}
-		case variable:
-			return gen.builder.readVariable(currentBlock, source);
-		case constant:
-			return source;
+
 		default:
-			c.internal_error("Cannot load from %s", source.kind);
+			c.internal_error(loc, "Cannot load from %s", source.kind);
 			assert(false);
 	}
 }
 
-LRValue getMember(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrIndex aggr, IrIndex[] indicies...)
+ExprValue getAggregateMember(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue aggr, IrIndex[] indicies...)
 {
 	CompilationContext* c = gen.context;
-	if (aggr.isVariable) {
-		aggr = gen.builder.readVariable(currentBlock, aggr);
+	if (aggr.irValue.isVariable) {
+		aggr.irValue = gen.builder.readVariable(currentBlock, aggr.irValue);
 	}
 
-	IrIndex aggrType = gen.ir.getValueType(c, aggr);
+	switch (aggr.kind) with(ExprValueKind)
+	{
+		case ptr_to_ptr_to_data:
+			aggr.irValue = load(gen, loc, currentBlock, aggr.irValue);
+			break;
+		default: break;
+	}
+
+	IrIndex aggrType = gen.ir.getValueType(c, aggr.irValue);
 
 	switch (aggrType.typeKind) {
-		case IrTypeKind.pointer: return LRValue(buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, indicies), true);
-		case IrTypeKind.struct_t: return LRValue(getStructMember(gen, currentBlock, aggr, indicies), false);
+		case IrTypeKind.pointer: return ExprValue(buildGEP(gen, loc, currentBlock, aggr.irValue, c.constants.ZERO, indicies), ExprValueKind.ptr_to_data, IsLvalue.yes);
+		case IrTypeKind.struct_t: return ExprValue(getStructMember(gen, currentBlock, aggr.irValue, indicies));
 		default: c.internal_error("%s", aggrType.typeKind); assert(false);
 	}
 }
@@ -332,12 +426,6 @@ void genBlock(ref IrGenState gen, AstNode* parent, ref Array!AstIndex statements
 
 	if (statements.length == 0)
 		gen.builder.addJumpToLabel(currentBlock, nextStmt);
-}
-
-struct LRValue {
-	IrIndex value;
-	bool isLvalue;
-	ubyte numIndicies;
 }
 
 IrIndex makeBoolValue(ref IrGenState gen, ExpressionNode* n, IrIndex currentBlock, ref IrLabel nextStmt)

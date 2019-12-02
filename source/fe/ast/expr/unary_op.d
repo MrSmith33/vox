@@ -97,6 +97,7 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 			node.type = child.type;
 			break;
 		case preIncrement, postIncrement, preDecrement, postDecrement:
+			child.flags |= AstFlags.isLvalue;
 			node.type = child.type;
 			break;
 		case deref:
@@ -116,56 +117,67 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, UnaryExprNode* u)
+ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, UnaryExprNode* u)
 {
 	CompilationContext* c = gen.context;
+
 	switch(u.op) with(UnOp)
 	{
 		case addrOf:
 			IrLabel afterChild = IrLabel(currentBlock);
-			ir_gen_expr(gen, u.child, currentBlock, afterChild);
+			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
-			u.irValue = u.child.get_expr(c).irValue;
-			break;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			lval.isLvalue = IsLvalue.no;
+			lval.kind = ExprValueKind.value;
+			return lval;
+
 		case bitwiseNot:
 			IrLabel afterChild = IrLabel(currentBlock);
-			ir_gen_expr(gen, u.child, currentBlock, afterChild);
+			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
+			IrIndex rval = getRvalue(gen, u.loc, currentBlock, lval);
 			ExtraInstrArgs extra = {type : u.type.gen_ir_type(c), argSize : u.type.typeArgSize(c) };
-			u.irValue = gen.builder.emitInstr!(IrOpcode.not)(currentBlock, extra, u.child.get_expr(c).irValue).result;
-			break;
+			IrIndex result = gen.builder.emitInstr!(IrOpcode.not)(currentBlock, extra, rval).result;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return ExprValue(result);
+
 		case logicalNot:
 			IrLabel afterChild = IrLabel(currentBlock);
-			u.irValue = makeBoolValue(gen, cast(ExpressionNode*)u, currentBlock, afterChild);
+			IrIndex result = makeBoolValue(gen, cast(ExpressionNode*)u, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
-			break;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return ExprValue(result);
+
 		case minus:
 			IrLabel afterChild = IrLabel(currentBlock);
-			ir_gen_expr(gen, u.child, currentBlock, afterChild);
+			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
+			IrIndex rval = getRvalue(gen, u.loc, currentBlock, lval);
 			ExtraInstrArgs extra = {type : u.type.gen_ir_type(c), argSize : u.type.typeArgSize(c) };
-			u.irValue = gen.builder.emitInstr!(IrOpcode.neg)(currentBlock, extra, u.child.get_expr(c).irValue).result;
-			break;
+			IrIndex result = gen.builder.emitInstr!(IrOpcode.neg)(currentBlock, extra, rval).result;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return ExprValue(result);
+
 		case preIncrement, postIncrement, preDecrement, postDecrement:
 			IrOpcode opcode = IrOpcode.sub;
 			if (u.op == preIncrement || u.op == postIncrement) opcode = IrOpcode.add;
 
 			ExpressionNode* childExpr = u.child.get_expr(c);
-			TypeNode* childType = childExpr.type.get_type(c);
-			childExpr.flags |= AstFlags.isLvalue;
 
 			IrLabel afterChild = IrLabel(currentBlock);
-			ir_gen_expr(gen, u.child, currentBlock, afterChild);
+			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
 
 			IrIndex increment = c.constants.ONE; // integers increment by 1
+			TypeNode* childType = childExpr.type.get_type(c);
 			if (childType.isPointer) { // pointers increment by size of element
 				uint size = childType.as_ptr.base.typeSize(c);
 				increment = c.constants.add(size, IsSigned.no);
 			}
 
 			IrArgSize argSize = childType.argSize(c);
-			IrIndex rval = load(gen, currentBlock, childExpr.irValue);
+			IrIndex rval = getRvalue(gen, u.loc, currentBlock, lval);
 			ExtraInstrArgs extra = {
 				opcode : opcode,
 				type : childType.gen_ir_type(c),
@@ -173,48 +185,55 @@ void ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabel 
 			};
 			IrIndex opResult = gen.builder.emitInstr!(IrOpcode.generic_binary)(
 				currentBlock, extra, rval, increment).result;
-			store(gen, currentBlock, childExpr.irValue, opResult);
+			store(gen, u.loc, currentBlock, lval, opResult);
 
-			if (u.op == preIncrement || u.op == preDecrement) u.irValue = opResult;
-			else u.irValue = rval;
-			break;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+
+			if (u.op == preIncrement || u.op == preDecrement)
+				return ExprValue(opResult);
+			else
+				return ExprValue(rval);
+
 		case deref:
 			IrLabel afterChild = IrLabel(currentBlock);
-			ir_gen_expr(gen, u.child, currentBlock, afterChild);
+			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
-			if (u.isLvalue) {
-				u.irValue = u.child.get_expr(c).irValue;
-			} else {
-				u.irValue = load(gen, currentBlock, u.child.get_expr(c).irValue);
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			lval.isLvalue = IsLvalue.yes;
+			switch (lval.kind) {
+				case ExprValueKind.value:
+					lval.kind = ExprValueKind.ptr_to_data;
+					break;
+				case ExprValueKind.ptr_to_data:
+					lval.kind = ExprValueKind.ptr_to_ptr_to_data;
+					break;
+				default:
+					c.internal_error(u.loc, "%s", lval.kind);
 			}
-			break;
+			return lval;
+
 		case staticArrayToSlice:
 			IrLabel afterChild = IrLabel(currentBlock);
 			ExpressionNode* childExpr = u.child.get_expr(c);
-			childExpr.flags |= AstFlags.isLvalue;
-			ir_gen_expr(gen, u.child, currentBlock, afterChild);
+			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
 
-			IrIndex type = gen.ir.getValueType(c, childExpr.irValue);
-			c.assertf(type.isTypePointer, "%s", type); // pointer to static array
-
+			c.assertf(lval.isLvalue, "%s", lval); // pointer to static array
 			// pointer to first element
-			IrIndex ptr = buildGEP(gen, u.loc, currentBlock, childExpr.irValue, c.constants.ZERO, c.constants.ZERO);
+			IrIndex ptr = buildGEP(gen, u.loc, currentBlock, lval.irValue, c.constants.ZERO, c.constants.ZERO);
 			// array length
 			IrIndex length = c.constants.add(childExpr.type.get_type(c).as_static_array.length, IsSigned.no, IrArgSize.size64);
 
-			// combine into slice {i64, T*}
+			// combine into slice {u64, T*}
 			IrIndex resType = u.type.gen_ir_type(c);
 			ExtraInstrArgs extra = { type : resType };
 			InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, length, ptr);
-			u.irValue = res.result;
-			break;
+			return ExprValue(res.result);
+
 		default:
 			c.internal_error(u.loc, "un op %s not implemented", u.op);
-			gen.builder.addJumpToLabel(currentBlock, nextStmt);
-			break;
+			assert(false);
 	}
-	gen.builder.addJumpToLabel(currentBlock, nextStmt);
 }
 
 void ir_gen_branch_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, UnaryExprNode* u)
