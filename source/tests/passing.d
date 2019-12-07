@@ -1323,17 +1323,17 @@ immutable test64 = q{--- test64
 	}
 	// - pass as arg (fits in register)
 	// - pass as arg (by ptr)
-	//Test64 passArgBigStruct() {
-	//	return receiveArgBigStruct(Test64(10, 42));
-	//}
+	Test64 passArgBigStruct() {
+		return receiveArgBigStruct(Test64(10, 42));
+	}
 	// - pass as arg (by ptr, pushed)
-	//Test64 passArgBigStructPush() {
-	//	return receiveArgBigStructPush(1,2,3,4,Test64(10, 42));
-	//}
+	Test64 passArgBigStructPush() {
+		return receiveArgBigStructPush(1,2,3,4,Test64(10, 42));
+	}
 	// - receive parameter (fits in register)
 	// - receive parameter (by ptr)
-	//Test64 receiveArgBigStruct(Test64 arg) { return arg; }
-	//Test64 receiveArgBigStructPush(i32,i32,i32,i32,Test64 arg) { return arg; }
+	Test64 receiveArgBigStruct(Test64 arg) { return arg; }
+	Test64 receiveArgBigStructPush(i32,i32,i32,i32,Test64 arg) { return arg; }
 	// - pass member as arg (by ptr)
 	// - pass member as arg (fits in register)
 	// - receive result (fits in register)
@@ -1357,11 +1357,11 @@ void tester64(ref TestContext ctx) {
 	auto returnBigStruct2 = ctx.getFunctionPtr!(Test64)("returnBigStruct2");
 	assert(returnBigStruct2() == Test64(10, 42));
 
-	//auto passArgBigStruct = ctx.getFunctionPtr!(Test64)("passArgBigStruct");
-	//assert(passArgBigStruct() == Test64(10, 42));
+	auto passArgBigStruct = ctx.getFunctionPtr!(Test64)("passArgBigStruct");
+	assert(passArgBigStruct() == Test64(10, 42));
 
-	//auto passArgBigStructPush = ctx.getFunctionPtr!(Test64)("passArgBigStructPush");
-	//assert(passArgBigStructPush() == Test64(10, 42));
+	auto passArgBigStructPush = ctx.getFunctionPtr!(Test64)("passArgBigStructPush");
+	assert(passArgBigStructPush() == Test64(10, 42));
 }
 
 

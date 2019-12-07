@@ -17,9 +17,6 @@ struct StructDeclNode {
 	AstIndex memberScope;
 	Identifier id;
 	IrIndex irType;
-	uint size = 1;
-	uint alignment = 1;
-
 
 	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, Identifier id)
 	{
@@ -33,6 +30,16 @@ struct StructDeclNode {
 
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	bool isOpaque() { return cast(bool)(flags & StructFlags.isOpaque); }
+	uint size(CompilationContext* c) {
+		c.assertf(state >= AstNodeState.type_check_done, loc, "size is unknown in %s state. Must be semantically analized", state);
+		IrTypeStruct* structType = &c.types.get!IrTypeStruct(irType);
+		return structType.size;
+	}
+	uint alignment(CompilationContext* c) {
+		c.assertf(state >= AstNodeState.type_check_done, loc, "alignment is unknown in %s state. Must be semantically analized", state);
+		IrTypeStruct* structType = &c.types.get!IrTypeStruct(irType);
+		return structType.alignment;
+	}
 }
 
 void name_register_self_struct(AstIndex nodeIndex, StructDeclNode* node, ref NameRegisterState state) {
@@ -99,7 +106,5 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
 	memberOffset = alignValue!uint(memberOffset, maxAlignment);
 	structType.size = memberOffset;
 	structType.alignment = maxAlignment;
-	s.size = memberOffset;
-	s.alignment = maxAlignment;
 	return s.irType;
 }

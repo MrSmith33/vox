@@ -59,8 +59,20 @@ struct TypeNode
 		return TypePrinter(&this, c);
 	}
 
-	bool isPassByPtr() {
-		return astType == AstType.decl_struct || astType == AstType.type_slice;
+	bool isPassByPtr(CompilationContext* c)
+	{
+		if (astType == AstType.type_slice) return true;
+		if (astType == AstType.decl_struct)
+		{
+			switch(size(c)) {
+				case 1: return false;
+				case 2: return false;
+				case 4: return false;
+				case 8: return false;
+				default: return true;
+			}
+		}
+		return false;
 	}
 
 	bool isTypeofNull() {
@@ -130,7 +142,7 @@ uint typeSize(TypeNode* type, CompilationContext* c)
 		case AstType.type_ptr: return type.as_ptr.size;
 		case AstType.type_static_array: return type.as_static_array.size(c);
 		case AstType.type_slice: return type.as_slice.size;
-		case AstType.decl_struct: return type.as_struct.size;
+		case AstType.decl_struct: return type.as_struct.size(c);
 		case AstType.expr_name_use: return type.as_name_use.entity.typeSize(c);
 		default: assert(false, format("got %s", type.astType));
 	}
@@ -149,7 +161,7 @@ uint typeAlignment(TypeNode* type, CompilationContext* c)
 		case AstType.type_ptr: return type.as_ptr.alignment;
 		case AstType.type_static_array: return type.as_static_array.alignment(c);
 		case AstType.type_slice: return type.as_slice.alignment;
-		case AstType.decl_struct: return type.as_struct.alignment;
+		case AstType.decl_struct: return type.as_struct.alignment(c);
 		case AstType.expr_name_use: return type.as_name_use.entity.typeAlignment(c);
 		default: assert(false, format("got %s", type.astType));
 	}

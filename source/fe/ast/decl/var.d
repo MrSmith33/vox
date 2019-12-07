@@ -113,7 +113,7 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 		ExprValueKind valueKind = ExprValueKind.ptr_to_data;
 
 		// pointer is pushed on the stack, so pointer to pointer to data
-		if (v.isParameter && varType.isPassByPtr) {
+		if (v.isParameter && varType.isPassByPtr(c)) {
 			irType = c.types.appendPtr(irType);
 			valueKind = ExprValueKind.ptr_to_ptr_to_data;
 		}
@@ -129,7 +129,7 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 		{
 			// register parameter input
 			IrIndex type = valueType;
-			if (varType.isPassByPtr) // value is already passed as a pointer
+			if (varType.isPassByPtr(c)) // value is already passed as a pointer
 			{
 				type = c.types.appendPtr(type);
 				IrArgSize argSize = sizeToIrArgSize(c.types.typeSize(type), c);

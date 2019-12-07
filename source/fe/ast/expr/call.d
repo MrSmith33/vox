@@ -208,6 +208,12 @@ ExprValue visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrI
 
 	args[0] = callee;
 
+	if (callee.kind == IrValueKind.func)
+	{
+		// force creation of function type for external functions
+		gen_ir_type(c.getFunction(callee).signature, c);
+	}
+
 	foreach (i, AstIndex arg; n.args)
 	{
 		IrLabel afterArg = IrLabel(currentBlock);

@@ -31,7 +31,7 @@ void pass_ir_to_lir_amd64(CompilationContext* context, IrBuilder* builder, Modul
 
 void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir, IrFunction* lir)
 {
-	//writefln("IR to LIR %s", context.idString(ir.name));
+	//writefln("IR to LIR %s", context.idString(ir.backendData.name));
 	lir.instructionSet = IrInstructionSet.lir_amd64;
 
 	// Mirror of original IR, we will put the new IrIndex of copied entities there
@@ -97,7 +97,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		//writefln("genStore %s %s %s %s %s", lirPtr, offset, irValue, fromOffset, IrIndexDump(valueType, context, ir));
 		IrIndex dstType = getValueType(lirPtr, lir, context);
 		IrIndex srcType = getValueType(irValue, ir, context);
-		//writefln("  %s %s <- %s %s", IrTypeDump(dstType, context), dstType, IrTypeDump(srcType, context), srcType);
+		//writefln("  %s %s <- %s %s", IrTypeDump(dstType, *context), dstType, IrTypeDump(srcType, *context), srcType);
 		context.assertf(dstType.isTypePointer, "%s", IrIndexDump(dstType, context, lir));
 		IrIndex ptrType = context.types.appendPtr(valueType);
 
@@ -145,7 +145,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 						switch (instr.op)
 						{
-							case IrOpcode.load_aggregate:
+							case IrOpcode.load_aggregate, IrOpcode.load:
 								foreach (i, IrTypeStructMember member; structType.members)
 								{
 									genStore(lirPtr, offset + member.offset, instr.arg(ir, 0), fromOffset + member.offset, member.type, lirBlockIndex, ir);
@@ -155,6 +155,17 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							case IrOpcode.create_aggregate:
 								members = instr.args(ir);
 								break;
+
+							case IrOpcode.call:
+								// register fixup for return stack slot
+								IrIndex resultSlot = getFixedIndex(irValue);
+								//context.internal_error("call . todo %s", resultSlot);
+								foreach (i, IrTypeStructMember member; structType.members)
+								{
+									genStore(lirPtr, offset + member.offset, resultSlot, fromOffset + member.offset, member.type, lirBlockIndex, ir);
+								}
+								return;
+
 							default:
 								context.internal_error("%s", cast(IrOpcode)instr.op);
 						}
@@ -337,7 +348,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 			switch(instrHeader.op)
 			{
 				case IrOpcode.parameter:
-					uint paramIndex = ir.get!IrInstrHeader(instrIndex).extraPayload(ir, 1)[0].asUint + numHiddenParams;
+					// hack, TODO: hidden param is accounted for in frontend (ir_gen_function)
+					uint paramIndex = ir.get!IrInstrHeader(instrIndex).extraPayload(ir, 1)[0].asUint;// + numHiddenParams;
 					context.assertf(paramIndex < lir.backendData.getCallConv(context).paramsInRegs.length,
 						"Only parameters passed through registers are implemented");
 
@@ -363,13 +375,31 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					lir.backendData.stackLayout.numCalls += 1;
 
 					IrIndex callee = instrHeader.arg(ir, 0);
+					IrIndex calleeTypeIndex = ir.getValueType(context, callee);
+					if (calleeTypeIndex.isTypePointer)
+						calleeTypeIndex = context.types.getPointerBaseType(calleeTypeIndex);
+					IrTypeFunction* calleeType = &context.types.get!IrTypeFunction(calleeTypeIndex);
+
 					CallConv* callConv = context.types.getCalleeCallConv(callee, ir, context);
 					argBuffer[0] = getFixedIndex(callee);
 					IrIndex[] args = instrHeader.args(ir)[1..$];
 					IrIndex[] localArgBuffer = argBuffer[1..$];
 
+					// allocate stack slot for big return value
+					bool hasResultArg = false;
+					if (calleeType.numResults == 1)
+					{
+						IrIndex resType = calleeType.resultTypes[0];
+						if (!isPassByValue(resType))
+						{
+							argBuffer[1] = lir.backendData.stackLayout.addStackItem(context, resType, StackSlotKind.argument, 0);
+							hasResultArg = true;
+							recordIndex(instrHeader.result(ir), argBuffer[1]);
+						}
+					}
+
 					enum STACK_ITEM_SIZE = 8;
-					size_t numArgs = args.length;
+					size_t numArgs = args.length + hasResultArg;
 					size_t numParamsInRegs = callConv.paramsInRegs.length;
 					// how many bytes are allocated on the stack before func call
 					size_t stackReserve = max(numArgs, numParamsInRegs) * STACK_ITEM_SIZE;
@@ -381,11 +411,11 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						IrIndex type = ir.getValueType(context, irArg);
 
 						if (isPassByValue(type)) {
-							localArgBuffer[i] = getFixedIndex(irArg);
+							localArgBuffer[i+hasResultArg] = getFixedIndex(irArg);
 						} else {
 							//allocate stack slot, store value there and use slot pointer as argument
-							localArgBuffer[i] = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
-							genStore(localArgBuffer[i], 0, irArg, 0, type, lirBlockIndex, ir);
+							localArgBuffer[i+hasResultArg] = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.argument, 0);
+							genStore(localArgBuffer[i+hasResultArg], 0, irArg, 0, type, lirBlockIndex, ir);
 						}
 					}
 
@@ -436,21 +466,22 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					}
 
 					{
+						bool hasResult = instrHeader.hasResult && (!hasResultArg);
 						IrIndex returnReg = callConv.returnReg;
-						if (instrHeader.hasResult) {
+						if (hasResult) {
 							returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result(ir)).type, context);
 						}
 						// call
 						ExtraInstrArgs callExtra = {
 							addUsers : false,
-							hasResult : instrHeader.hasResult,
+							hasResult : hasResult,
 							result : returnReg // will be used if function has result
 						};
 
 						InstrWithResult callInstr = builder.emitInstr!(Amd64Opcode.call)(
 							lirBlockIndex, callExtra, argBuffer[0..numPhysRegs+1]); // include callee
 						lir.get!IrInstrHeader(callInstr.instruction).extendFixedArgRange = true;
-						if (callExtra.hasResult) lir.get!IrInstrHeader(callInstr.instruction).extendFixedResultRange = true;
+						if (hasResult) lir.get!IrInstrHeader(callInstr.instruction).extendFixedResultRange = true;
 
 						{	// Deallocate stack after call
 							IrIndex conReservedBytes = context.constants.add(stackReserve, IsSigned.no);
@@ -459,7 +490,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 								lirBlockIndex, extra, stackPtrReg, conReservedBytes);
 						}
 
-						if (callExtra.hasResult) {
+						if (hasResult) {
 							// mov result to virt reg
 							ExtraInstrArgs extra = { type : ir.getVirtReg(instrHeader.result(ir)).type };
 							InstrWithResult movInstr = builder.emitInstr!(Amd64Opcode.mov)(

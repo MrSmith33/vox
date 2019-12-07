@@ -142,6 +142,20 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 
 	builder.begin(ir, c);
 
+	// hack, TODO: hidden param is accounted here instead of with lowering
+	if (!signature.returnType.isVoidType(c))
+	{
+		TypeNode* returnType = signature.returnType.get_type(c);
+		// shift parameter indicies by 1 to account for return value ptr
+		if (returnType.isPassByPtr(c))
+		{
+			foreach (AstIndex param; signature.parameters)
+			{
+				++param.get!VariableDeclNode(c).scopeIndex;
+			}
+		}
+	}
+
 	foreach (AstIndex param; signature.parameters)
 	{
 		IrLabel dummy;
