@@ -72,7 +72,9 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 	IrIndex genAddressOffset(IrIndex lirPtr, uint offset, IrIndex ptrType, IrIndex lirBlockIndex) {
 		IrIndex ptr;
 		if (offset == 0) {
-			ptr = lirPtr;
+			ExtraInstrArgs extra = { addUsers : false, type : ptrType };
+			InstrWithResult movInstr = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, lirPtr);
+			ptr = movInstr.result;
 		} else {
 			IrIndex offsetIndex = context.constants.add(offset, IsSigned.no);
 			ExtraInstrArgs extra = { addUsers : false, type : ptrType };
@@ -148,7 +150,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							case IrOpcode.load_aggregate, IrOpcode.load:
 								foreach (i, IrTypeStructMember member; structType.members)
 								{
-									genStore(lirPtr, offset + member.offset, instr.arg(ir, 0), fromOffset + member.offset, member.type, lirBlockIndex, ir);
+									IrIndex ptr = genAddressOffset(lirPtr, offset + member.offset, ptrType, lirBlockIndex);
+									genStore(ptr, 0, instr.arg(ir, 0), fromOffset + member.offset, member.type, lirBlockIndex, ir);
 								}
 								return;
 
@@ -162,7 +165,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 								//context.internal_error("call . todo %s", resultSlot);
 								foreach (i, IrTypeStructMember member; structType.members)
 								{
-									genStore(lirPtr, offset + member.offset, resultSlot, fromOffset + member.offset, member.type, lirBlockIndex, ir);
+									IrIndex ptr = genAddressOffset(lirPtr, offset + member.offset, ptrType, lirBlockIndex);
+									genStore(ptr, 0, resultSlot, fromOffset + member.offset, member.type, lirBlockIndex, ir);
 								}
 								return;
 

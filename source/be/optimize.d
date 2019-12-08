@@ -105,7 +105,8 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 		if (offsetVal == 0) {
 			// Shortcut for 0-th index
 			IrIndex basePtrType = getValueType(basePtr, builder.ir, context);
-			if (basePtrType == resultType) return basePtr;
+			// TODO: prefer proper typing for now, until IR lowering is implemented
+			//if (basePtrType == resultType) return basePtr;
 
 			ExtraInstrArgs extra = { type : resultType };
 			InstrWithResult instr = builder.emitInstr!(IrOpcode.conv)(extra, basePtr);

@@ -2602,13 +2602,27 @@ immutable test105 = q{--- test105
 		Struct s = Struct();
 		return s;
 	}
+	// test struct constructor with nested struct initialization
+	struct Struct2
+	{
+		u8[] str;
+	}
+	Struct2 get_struct2(u8[] str)
+	{
+		return Struct2(str);
+	}
 };
 void tester105(ref TestContext ctx) {
 	struct Struct { int a; int b; }
 	auto get_struct = ctx.getFunctionPtr!(Struct)("get_struct");
-
 	assert(get_struct() == Struct(42, 0));
+
+	struct Struct2 { const(char)[] str; }
+	auto get_struct2 = ctx.getFunctionPtr!(Struct2, Slice!(const(char)))("get_struct2");
+	assert(get_struct2(Slice!(const(char))("test")) == Struct2("test"));
 }
+
+
 @TestInfo(&tester106, [HostSymbol("fun2", cast(void*)&external_tester106)])
 immutable test106 = q{--- test106
 	// Test structs passed as pointer on the stack (name parameter)
