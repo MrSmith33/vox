@@ -225,3 +225,17 @@ immutable fail20 = q{
 --- <error>
 fail20(5, 12): Error: `enumT` has no member `ESCAPE`
 };
+
+@TestInfo()
+immutable fail21 = q{
+--- fail21
+	struct S {
+		u16 num;
+	}
+	// Test wrong constructor argument type
+	void test() {
+		S s = S("string");
+	}
+--- <error>
+fail21(6, 11): Error: Argument 1, must have type u16, not u8[]
+};

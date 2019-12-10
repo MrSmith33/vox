@@ -139,15 +139,22 @@ void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref Type
 	CompilationContext* c = state.context;
 
 	size_t numStructMembers;
-	foreach(AstIndex memberIndex; s.declarations)
+	foreach(AstIndex arg; s.declarations)
 	{
-		AstNode* member = memberIndex.get_node(c);
+		AstNode* member = arg.get_node(c);
 		if (member.astType != AstType.decl_var) continue;
 
 		ExpressionNode* initializer;
 		if (node.args.length > numStructMembers) { // init from constructor argument
 			require_type_check(node.args[numStructMembers], state);
-			autoconvTo(node.args[numStructMembers], member.as!VariableDeclNode(c).type, c);
+			AstIndex memberType = member.as!VariableDeclNode(c).type;
+			bool success = autoconvTo(node.args[numStructMembers], memberType, c);
+			if (!success) {
+				c.error(node.args[numStructMembers].loc(c),
+					"Argument %s, must have type %s, not %s", numStructMembers+1,
+					memberType.printer(c),
+					node.args[numStructMembers].expr_type(c).printer(c));
+			}
 		} else { // init with initializer from struct definition
 			// skip
 		}
