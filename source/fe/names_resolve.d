@@ -88,6 +88,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case expr_un_op: name_resolve_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: name_resolve_call(cast(CallExprNode*)node, state); break;
 		case expr_index: name_resolve_index(cast(IndexExprNode*)node, state); break;
+		case expr_slice: name_resolve_expr_slice(cast(SliceExprNode*)node, state); break;
 		case expr_type_conv: name_resolve_type_conv(cast(TypeConvExprNode*)node, state); break;
 
 		case literal_int: assert(false);

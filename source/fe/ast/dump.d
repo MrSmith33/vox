@@ -150,6 +150,8 @@ struct AstPrinter {
 		pr_nodes(c.args); }
 	void visit(IndexExprNode* i) {
 		print("INDEX"); pr_node(i.array); pr_node(i.index); }
+	void visit(SliceExprNode* i) {
+		print("SLICE"); pr_node(i.array); pr_node(i.fromIndex); pr_node(i.toIndex); }
 	void visit(TypeConvExprNode* t) {
 		print("CAST to ", t.type.printer(context));
 		pr_node(t.expr); }
@@ -280,24 +282,26 @@ struct AstDotPrinter {
 		else printLabel(b, `BINOP\n%s`, b.op);
 		pr_node_edge(b, b.left);
 		pr_node_edge(b, b.right); }
-	void visit(UnaryExprNode* u) {
-		if (u.type) printLabel(u, `UNOP\n%s %s`, u.type.printer(context), u.op);
-		else printLabel(u, `UNOP\n%s`, u.op);
-		pr_node_edge(u, u.child); }
-	void visit(CallExprNode* c) {
-		printLabel(c, `CALL`);
-		pr_node_edge(c, c.callee);
-		pr_node_edges(c, c.args); }
-	void visit(IndexExprNode* i) {
-		printLabel(i, `INDEX`); pr_node_edge(i, i.array); pr_node_edge(i, i.index); }
-	void visit(TypeConvExprNode* t) {
-		printLabel(t, `CAST\n%s`, t.type.printer(context));
-		pr_node_edge(t, t.expr); }
-	void visit(BasicTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
-	void visit(FunctionSignatureNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
-	void visit(PtrTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
-	void visit(StaticArrayTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
-	void visit(SliceTypeNode* t) { printLabel(t, `TYPE\n%s`, t.typeNode.printer(context)); }
+	void visit(UnaryExprNode* n) {
+		if (n.type) printLabel(n, `UNOP\n%s %s`, n.type.printer(context), n.op);
+		else printLabel(n, `UNOP\n%s`, n.op);
+		pr_node_edge(n, n.child); }
+	void visit(CallExprNode* n) {
+		printLabel(n, `CALL`);
+		pr_node_edge(n, n.callee);
+		pr_node_edges(n, n.args); }
+	void visit(IndexExprNode* n) {
+		printLabel(n, `INDEX`); pr_node_edge(n, n.array); pr_node_edge(n, n.index); }
+	void visit(SliceExprNode* n) {
+		printLabel(n, `SLICE`); pr_node_edge(n, n.array); pr_node_edge(n, n.fromIndex); pr_node_edge(n, n.toIndex); }
+	void visit(TypeConvExprNode* n) {
+		printLabel(n, `CAST\n%s`, n.type.printer(context));
+		pr_node_edge(n, n.expr); }
+	void visit(BasicTypeNode* n) { printLabel(n, `TYPE\n%s`, n.typeNode.printer(context)); }
+	void visit(FunctionSignatureNode* n) { printLabel(n, `TYPE\n%s`, n.typeNode.printer(context)); }
+	void visit(PtrTypeNode* n) { printLabel(n, `TYPE\n%s`, n.typeNode.printer(context)); }
+	void visit(StaticArrayTypeNode* n) { printLabel(n, `TYPE\n%s`, n.typeNode.printer(context)); }
+	void visit(SliceTypeNode* n) { printLabel(n, `TYPE\n%s`, n.typeNode.printer(context)); }
 
 	void printAst(AstNode* n)
 	{

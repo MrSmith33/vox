@@ -43,19 +43,18 @@
 	+ return small complex structs
 	- lower aggregates in IR by replacing phis taking in aggregates with scalar phis. Only non-phi users must remain.
 + pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
-+- all register subtypes 8/16/32/64 bit registers, !!! QWORD is forced rn everywhere
 - array literal
 - slices (need better structs)
 	+ assign string literal
 	+ access .ptr, .length
 	+ indexing
 	- pass literal to function
-	- slicing slice[0..42]
-	- slice ptr
-		- ptr[0..b] -> slice(b, ptr)
-		- ptr[a..b] -> slice(b-a, ptr+a)
+	+ slicing slice[0..42]
+	+ slice ptr
+		+ ptr[0..b] -> slice(b, ptr)
+		+ ptr[a..b] -> slice(b-a, ptr+a)
 	- slice assign: slice[] = 42; and slice[] = slice2;
-	- static array to slice (implicit conversion, slicing)
+	+ static array to slice (implicit conversion, slicing)
 - context format/writefln
 
 - foreach
@@ -82,13 +81,13 @@ o dll linking
 	- custom .def-like format (binary, combine all libs description in a single file)
 + enum
 	- enum with bigger than i32 values doesn't compile
+	- autoincrementing enum member values
+	- enum type
 - -run option
 - in error on unexpected EOF show unterminated ([{ symbol
 - constant folding << >> >>> shifts needs to know type of left operand to mask the shift size
 - globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
-- mutable globals need their own read-write section
 - globals need to be initialized
-- need assignment visitors
 
 - test escape sequences
 - test all implicit conversions
@@ -143,6 +142,7 @@ o dll linking
 - optimize multiple spills into single spill at definition
 - For stack to stack moves in move solver we always spill scratch register. Check if there is free register available.
 
++ mutable globals need their own read-write section
 + AST Index
 + improve parser to detect all declaration kinds in statements (add slice and static array)
 + check if right operand of << >> >>> is constant and pass it as is. Recognize constants in codegen

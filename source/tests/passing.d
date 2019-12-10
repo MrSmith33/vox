@@ -2642,3 +2642,54 @@ void tester106(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(void)("run");
 	run();
 }
+
+
+@TestInfo(&tester107)
+immutable test107 = q{--- test107
+	// Test slicing
+	i32[] slice_ptr1(i32* ptr)
+	{
+		return ptr[0..10];
+	}
+	i32[] slice_ptr2(i32* ptr, u64 from, u64 to)
+	{
+		return ptr[from..to];
+	}
+	i32[] slice_array1(i32[10]* ptr)
+	{
+		return (*ptr)[0..10];
+	}
+	i32[] slice_array2(i32[10]* ptr, u64 from, u64 to)
+	{
+		return (*ptr)[from..to];
+	}
+	i32[] slice_slice1(i32[] ptr)
+	{
+		return ptr[0..10];
+	}
+	i32[] slice_slice2(i32[] ptr, u64 from, u64 to)
+	{
+		return ptr[from..to];
+	}
+};
+void tester107(ref TestContext ctx) {
+	int[10] array = [0,1,2,3,4,5,6,7,8,9];
+
+	auto slice_ptr1 = ctx.getFunctionPtr!(Slice!int, int*)("slice_ptr1");
+	assert(slice_ptr1(array.ptr) == array[]);
+	auto slice_ptr2 = ctx.getFunctionPtr!(Slice!int, int*, ulong, ulong)("slice_ptr2");
+	assert(slice_ptr2(array.ptr, 0, 10) == array[]);
+	assert(slice_ptr2(array.ptr, 5, 7) == array[5..7]);
+
+	auto slice_array1 = ctx.getFunctionPtr!(Slice!int, int[10]*)("slice_array1");
+	assert(slice_array1(&array) == array[]);
+	auto slice_array2 = ctx.getFunctionPtr!(Slice!int, int[10]*, ulong, ulong)("slice_array2");
+	assert(slice_array2(&array, 0, 10) == array[]);
+	assert(slice_array2(&array, 5, 7) == array[5..7]);
+
+	auto slice_slice1 = ctx.getFunctionPtr!(Slice!int, Slice!int)("slice_slice1");
+	assert(slice_slice1(Slice!int(array[])) == array[]);
+	auto slice_slice2 = ctx.getFunctionPtr!(Slice!int, Slice!int, ulong, ulong)("slice_slice2");
+	assert(slice_slice2(Slice!int(array[]), 0, 10) == array[]);
+	assert(slice_slice2(Slice!int(array[]), 5, 7) == array[5..7]);
+}

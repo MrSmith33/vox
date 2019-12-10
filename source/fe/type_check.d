@@ -99,6 +99,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case expr_un_op: type_check_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: type_check_call(nodeIndex, cast(CallExprNode*)node, state); break;
 		case expr_index: type_check_index(cast(IndexExprNode*)node, state); break;
+		case expr_slice: type_check_expr_slice(cast(SliceExprNode*)node, state); break;
 		case expr_type_conv: type_check_type_conv(cast(TypeConvExprNode*)node, state); break;
 
 		case literal_int: type_check_literal_int(cast(IntLiteralExprNode*)node, state); break;

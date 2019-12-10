@@ -34,6 +34,7 @@ enum IrTypeKind : ubyte
 
 enum getIrTypeKind(T) = getUDAs!(T, IrTypeKind)[0];
 
+///
 IrIndex makeBasicTypeIndex(IrValueType t) {
 	IrIndex result;
 	result.kind = IrValueKind.type;

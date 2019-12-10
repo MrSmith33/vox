@@ -43,6 +43,7 @@ mixin template AstVisitorMixin() {
 			case expr_un_op: auto u = cast(UnaryExprNode*)n; visit(u); break;
 			case expr_call: auto c = cast(CallExprNode*)n; visit(c); break;
 			case expr_index: auto i = cast(IndexExprNode*)n; visit(i); break;
+			case expr_slice: auto i = cast(SliceExprNode*)n; visit(i); break;
 			case expr_type_conv: auto t = cast(TypeConvExprNode*)n; visit(t); break;
 
 			case literal_int: auto l = cast(IntLiteralExprNode*)n; visit(l); break;

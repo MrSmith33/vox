@@ -9,6 +9,7 @@ public import fe.ast.expr.index;
 public import fe.ast.expr.literal;
 public import fe.ast.expr.member_access;
 public import fe.ast.expr.name_use;
+public import fe.ast.expr.slice;
 public import fe.ast.expr.type_conv;
 public import fe.ast.expr.unary_op;
 

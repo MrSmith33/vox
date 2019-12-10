@@ -1308,10 +1308,18 @@ AstIndex leftIncDec(ref Parser p, Token token, int rbp, AstIndex left) {
 }
 
 // <expr> "[" <expr> "]"
+// <expr> "[" <expr> .. <expr> "]"
 AstIndex leftIndex(ref Parser p, Token token, int rbp, AstIndex array) {
 	AstIndex index = p.expr(0);
+	if (p.tok.type == TokenType.RBRACKET)
+	{
+		p.nextToken;
+		return p.makeExpr!IndexExprNode(token.index, array, index);
+	}
+	p.expectAndConsume(TokenType.DOT_DOT);
+	AstIndex index2 = p.expr(0);
 	p.expectAndConsume(TokenType.RBRACKET);
-	return p.makeExpr!IndexExprNode(token.index, array, index);
+	return p.makeExpr!SliceExprNode(token.index, array, index, index2);
 }
 
 // member access <expr> . <expr>

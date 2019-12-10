@@ -106,6 +106,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case expr_member:
 		case expr_name_use:
 		case expr_index:
+		case expr_slice:
 		case expr_type_conv:
 		case literal_int:
 		case literal_string:
@@ -136,6 +137,7 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 		case expr_member:      return ir_gen_member(gen, curBlock, nextStmt, cast(MemberExprNode*)n);
 		case expr_call:        return ir_gen_call(gen, curBlock, nextStmt, cast(CallExprNode*)n);
 		case expr_index:       return ir_gen_index(gen, curBlock, nextStmt, cast(IndexExprNode*)n);
+		case expr_slice:       return ir_gen_expr_slice(gen, curBlock, nextStmt, cast(SliceExprNode*)n);
 		case expr_bin_op:      return ir_gen_expr_binary_op(gen, curBlock, nextStmt, cast(BinaryExprNode*)n);
 		case expr_un_op:       return ir_gen_expr_unary_op(gen, curBlock, nextStmt, cast(UnaryExprNode*)n);
 		case expr_type_conv:   return ir_gen_expr_type_conv(gen, curBlock, nextStmt, cast(TypeConvExprNode*)n);
@@ -171,7 +173,7 @@ void ir_gen_branch(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref 
 	AstNode* n = gen.getAstNode(astIndex);
 	switch(n.astType) with(AstType)
 	{
-		case literal_int, literal_string, expr_index: // TODO: expr_index may return bool
+		case literal_int, literal_string, expr_index, expr_slice: // TODO: expr_index may return bool
 			gen.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
 			break;
 		case expr_bin_op:    ir_gen_branch_binary_op   (gen, curBlock, trueExit, falseExit, cast(BinaryExprNode*)n); break;
