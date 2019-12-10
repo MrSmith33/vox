@@ -2671,6 +2671,13 @@ immutable test107 = q{--- test107
 	{
 		return ptr[from..to];
 	}
+	void test()
+	{
+		u8[2] array;
+		u8[] slice = array[0..1];
+		u8_user(array[0..1]);
+	}
+	void u8_user(u8[]){}
 };
 void tester107(ref TestContext ctx) {
 	int[10] array = [0,1,2,3,4,5,6,7,8,9];
