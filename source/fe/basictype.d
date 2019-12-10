@@ -53,7 +53,7 @@ bool isUnsignedInteger(BasicType b) {
 
 // usage isAutoConvertibleFromToBasic[from][to]
 immutable bool[14][14] isAutoConvertibleFromToBasic = [
-	//err void bool null i8 i16 i32 i64 u8 u16 u32 u64 f32 f64  // to
+	//err void bool null i8 i16 i32 i64  u8 u16 u32 u64 f32 f64  // to
 	[   0,   0,   0,   0, 0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from error
 	[   0,   0,   0,   0, 0,  0,  0,  0,  0,  0,  0,  0, 0,  0], // from void
 	[   0,   0,   0,   0, 1,  1,  1,  1,  1,  1,  1,  1, 1,  1], // from bool

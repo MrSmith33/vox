@@ -45,7 +45,12 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 		}
 		else
 		{
-			autoconvTo(node.expression, retTypeIndex, c);
+			bool success = autoconvTo(node.expression, retTypeIndex, c);
+			if (!success)
+				c.error(node.loc,
+					"Cannot implicitly convert expression of type `%s` to `%s`",
+					node.expression.expr_type(c).printer(c),
+					retTypeIndex.printer(c));
 		}
 	}
 	else

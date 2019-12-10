@@ -192,7 +192,19 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 
 	ExpressionNode* expr = exprIndex.get_expr(c);
 	TypeNode* type = typeIndex.get_type(c);
+
+	if (type.isError) { // Recover
+		expr.type = c.basicTypeNodes(BasicType.t_error);
+		return true;
+	}
+
 	TypeNode* exprType = expr.type.get_type(c);
+
+	if (exprType.isError) { // Recover
+		expr.type = typeIndex;
+		return true;
+	}
+
 	if (same_type(expr.type, typeIndex, c)) return true;
 	string extraError;
 

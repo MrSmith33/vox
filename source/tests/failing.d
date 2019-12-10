@@ -239,3 +239,14 @@ immutable fail21 = q{
 --- <error>
 fail21(6, 11): Error: Argument 1, must have type u16, not u8[]
 };
+
+@TestInfo()
+immutable fail22 = q{
+--- fail22
+	// Test return null when int is expected
+	u32 test() {
+		return null;
+	}
+--- <error>
+fail22(3, 3): Error: Cannot implicitly convert expression of type `null` to `u32`
+};
