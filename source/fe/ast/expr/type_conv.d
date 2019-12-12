@@ -88,7 +88,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 		{
 			c.assertf(sourceType.as_basic !is null, t.loc, "Source must have basic type, not %s", sourceType.printer(c));
 			c.assertf(targetType.as_basic !is null, t.loc, "Target must have basic type, not %s", targetType.printer(c));
-			if (targetType.as_basic.isSigned)
+			if (sourceType.as_basic.isSigned && targetType.as_basic.isSigned)
 			{
 				ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
 				result = gen.builder.emitInstr!(IrOpcode.sext)(currentBlock, extra, rval).result;

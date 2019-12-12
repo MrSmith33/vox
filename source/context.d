@@ -162,6 +162,7 @@ struct CompilationContext
 	// limit number of regs for allocation
 	bool debugRegAlloc = false;
 	Identifier printOnlyFun;
+	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegNoDup(name); }
 
 	/// Check if printing of this function needed (including if all functions are requested)
 	bool printDumpOf(FunctionDeclNode* fun) {

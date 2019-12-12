@@ -664,7 +664,13 @@ struct CodeEmitter
 	/// Generate move from src operand to dst operand. Size of destination is used
 	void genMove(IrIndex dst, IrIndex src)
 	{
-		ArgType argType = cast(ArgType)dst.physRegSize;
+		// i64 <- i32 must be 32bit move if both sides are registers.
+		ArgType argType;
+		if (src.isPhysReg)
+			argType = cast(ArgType)min(dst.physRegSize, src.physRegSize);
+		else
+			argType = cast(ArgType)dst.physRegSize;
+
 		version(emit_mc_print) writefln("genMove %s %s %s", dst, src, argType);
 		MoveType moveType = calcMoveType(dst.kind, src.kind);
 

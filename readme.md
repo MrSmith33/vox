@@ -8,9 +8,10 @@ Project/language name is still missing.
 
 # Project goals
 
-Strong focus on application extensions
+- Strong focus on application extensions
 - Maximize user productivity
 - Maximize application performance
+- AOT and JIT, plugin support, runtime compilation, embedded compiler, tiered compilation
 - Static typing
 - Great error messages
 - Fast / Incremental compilation
@@ -19,8 +20,6 @@ Strong focus on application extensions
     - Runtime as a library/minimal runtime/no runtime
     - Embedding/extern C
     - Code driven compilation, extending compiler from inside of the program being compiled
-- AOT and JIT, plugin support, runtime compilation, embedded compiler, tiered compilation
-- Static typing
 - Processor intrinsics
 - Conditional compilation
 - CTFE, Templates, Introspection, Code generation
@@ -79,12 +78,12 @@ Target platforms (Only win64 is supported now):
 
 In `main.d` uncomment one of the following lines:
 ```D
-runBench(); // Runs benchmark
-runAllTests(StopOnFirstFail.yes); // Runs test suite
-runDevTests(); // Run single test with fine-tuned logging. Useful for development.
+//version = bench; // Runs benchmark
+//version = devtest; // Run single test with fine-tuned logging. Useful for development.
+//version = test; // Runs test suite
 ```
 
-Run with: `source> dmd -m64 -i main.d`
+Run with: `source> dmd -m64 -i main.d && main`
 
 Benchmarking:
     `ldc2 -d-version=bench -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d && main`
@@ -99,10 +98,9 @@ Release CLI build:
 
 - win64 executable generation
 - dll importing
-- 
-
 - Example of JIT compilation for amd64 from D code:
 ```D
+// Source code
 string source = q{
     void test(i32* array, i32 index, i32 value) {
         array[index] = value;
@@ -118,8 +116,10 @@ driver.addModule(SourceFileInfo("test", source));
 driver.compile();
 driver.markCodeAsExecutable();
 
+// Get function pointer
 auto testFun = driver.context.getFunctionPtr!(void, int*, int, int)("test");
 
+// Use compiled function
 int[2] val = [42, 56];
 testFun(val.ptr, 1, 10);
 assert(val[1] == 10);
