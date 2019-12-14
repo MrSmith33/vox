@@ -17,6 +17,12 @@ struct StaticArrayTypeNode {
 	uint alignment(CompilationContext* context) { return base.typeAlignment(context); }
 }
 
+void post_clone_static_array(StaticArrayTypeNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.base);
+	state.fixAstIndex(node.length_expr);
+}
+
 void name_register_nested_static_array(StaticArrayTypeNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.base, state);

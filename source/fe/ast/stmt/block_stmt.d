@@ -13,6 +13,11 @@ struct BlockStmtNode {
 	AstNodes statements;
 }
 
+void post_clone_block(BlockStmtNode* node, ref CloneState state)
+{
+	state.fixAstNodes(node.statements);
+}
+
 void name_register_nested_block(BlockStmtNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.statements, state);

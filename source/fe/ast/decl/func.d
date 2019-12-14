@@ -65,12 +65,27 @@ struct FunctionDeclNode {
 	ref Identifier id() { return backendData.name; }
 }
 
+void post_clone_func(FunctionDeclNode* node, ref CloneState state)
+{
+	state.fixScope(node.parentScope);
+	state.fixAstIndex(node._module);
+	state.fixAstIndex(node.signature);
+	state.fixAstIndex(node.block_stmt);
+	node.backendData.signature = node.signature;
+}
+
 void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref NameRegisterState state) {
 	auto c = state.context;
 	node.state = AstNodeState.name_register_self;
 
-	// can't be done at parse time because of conditional compilation
-	node.parentScope.insert_scope(node.id, nodeIndex, c);
+	// Template instance shouldn't register itself
+	// They are discovered with template instantiation syntax
+	// Instance is wrapped in special scope, which shouldn't have function name inserted, only template args
+	if (!node.isTemplateInstance)
+	{
+		// can't be done at parse time because of conditional compilation
+		node.parentScope.insert_scope(node.id, nodeIndex, c);
+	}
 	node._module.get!ModuleDeclNode(c).addFunction(nodeIndex, c);
 
 	node.state = AstNodeState.name_register_self_done;

@@ -6,7 +6,7 @@ Authors: Andrey Penechko.
 module fe.identifier;
 
 import std.stdio;
-import utils : Buffer, Arena;
+import utils : Arena, TextSink;
 import context;
 
 struct Identifier {
@@ -16,11 +16,12 @@ struct Identifier {
 }
 
 struct IdentifierMap {
+	// TODO: reset those in CompilationContext.beginCompilation
 	Arena!char stringDataBuffer;
 	Arena!(const(char)[]) strings;
 	uint[string] map;
 
-	Buffer!char tempBuf;
+	TextSink tempBuf;
 
 	string get(Identifier id) {
 		if (id.isDefined) return strings[id.index];
@@ -32,13 +33,12 @@ struct IdentifierMap {
 		return Identifier(map.get(cast(string)str, uint.max));
 	}
 
-	Identifier getOrRegWithSuffix(const(char)[] str, size_t suffix) {
-		assert(str.length > 0);
+	Identifier getOrRegFormatted(Args...)(const(char)[] fmt, Args args) {
+		assert(fmt.length > 0);
 		import std.format : formattedWrite;
 		tempBuf.clear;
-		tempBuf.put(cast(string)str);
-		formattedWrite(tempBuf, "%s", suffix);
-		const(char)[] idString = tempBuf.data;
+		tempBuf.putf(fmt, args);
+		const(char)[] idString = tempBuf.data.data;
 		return getOrReg(idString);
 	}
 

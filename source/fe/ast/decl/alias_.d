@@ -17,6 +17,12 @@ struct AliasDeclNode
 	AstIndex initializer;
 }
 
+void post_clone_alias(AliasDeclNode* node, ref CloneState state)
+{
+	state.fixScope(node.parentScope);
+	state.fixAstIndex(node.initializer);
+}
+
 void name_register_self_alias(AstIndex nodeIndex, AliasDeclNode* node, ref NameRegisterState state)
 {
 	node.state = AstNodeState.name_register_self;

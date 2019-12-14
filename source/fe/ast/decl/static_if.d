@@ -13,10 +13,16 @@ struct StaticIfDeclNode
 	AstIndex condition;
 	AstNodes thenItems; // can be empty
 	AstNodes elseItems; // can be empty
-	AstIndex next;
-	AstIndex prev;
-	// index into AstNodes of the parent node
-	uint arrayIndex;
+	AstIndex next; // used during expansion
+	AstIndex prev; // used during expansion
+	uint arrayIndex; // index into AstNodes of the parent node
+}
+
+void post_clone_static_if(StaticIfDeclNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.condition);
+	state.fixAstNodes(node.thenItems);
+	state.fixAstNodes(node.elseItems);
 }
 
 void name_register_nested_static_if(AstIndex nodeIndex, StaticIfDeclNode* node, ref NameRegisterState state) {

@@ -17,6 +17,12 @@ struct FunctionSignatureNode {
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 }
 
+void post_clone_func_sig(FunctionSignatureNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.returnType);
+	state.fixAstNodes(node.parameters);
+}
+
 // only occurs when signature is a part of function declaration
 void name_register_nested_func_sig(FunctionSignatureNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;

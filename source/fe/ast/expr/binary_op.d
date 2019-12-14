@@ -14,6 +14,12 @@ struct BinaryExprNode {
 	AstIndex right;
 }
 
+void post_clone_binary_op(BinaryExprNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.left);
+	state.fixAstIndex(node.right);
+}
+
 void name_register_nested_binary_op(BinaryExprNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.left, state);

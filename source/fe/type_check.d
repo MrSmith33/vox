@@ -55,8 +55,14 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
 			state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
+		case parse_done:
+			auto name_state = NameRegisterState(state.context);
+			require_name_register_self(0, nodeIndex, name_state);
+			state.context.throwOnErrors;
+			goto case;
 		case name_register_self_done:
-			require_name_register(nodeIndex, state.context);
+			auto name_state = NameRegisterState(state.context);
+			require_name_register(nodeIndex, name_state);
 			state.context.throwOnErrors;
 			goto case;
 		case name_register_nested_done:
@@ -83,6 +89,8 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case decl_enum: type_check_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: type_check_enum_member(cast(EnumMemberDecl*)node, state); break;
 		case decl_static_if: assert(false);
+		case decl_template: assert(false);
+		case decl_template_param: assert(false);
 
 		case stmt_block: type_check_block(cast(BlockStmtNode*)node, state); break;
 		case stmt_if: type_check_if(cast(IfStmtNode*)node, state); break;
@@ -98,7 +106,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case expr_bin_op: type_check_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: type_check_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: type_check_call(nodeIndex, cast(CallExprNode*)node, state); break;
-		case expr_index: type_check_index(cast(IndexExprNode*)node, state); break;
+		case expr_index: type_check_index(nodeIndex, cast(IndexExprNode*)node, state); break;
 		case expr_slice: type_check_expr_slice(cast(SliceExprNode*)node, state); break;
 		case expr_type_conv: type_check_type_conv(cast(TypeConvExprNode*)node, state); break;
 

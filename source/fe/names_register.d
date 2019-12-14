@@ -122,6 +122,7 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 			staticIf.arrayIndex = arrayIndex;
 			state.lastStaticIf = nodeIndex;
 			break;
+		case decl_template: name_register_self_template(nodeIndex, cast(TemplateDeclNode*)node, state); break;
 
 		default: state.context.internal_error(node.loc, "Visiting %s node", node.astType); break;
 	}
@@ -137,6 +138,11 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case name_register_self, name_register_nested, name_resolve, type_check:
 			state.context.unrecoverable_error(node.loc, "Circular dependency");
 			return;
+		case parse_done:
+			auto name_state = NameRegisterState(state.context);
+			require_name_register_self(0, nodeIndex, name_state);
+			state.context.throwOnErrors;
+			goto case;
 		case name_register_self_done: break; // all requirement are done
 		case name_register_nested_done, name_resolve_done, type_check_done: return; // already name registered
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);

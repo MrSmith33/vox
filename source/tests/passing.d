@@ -2700,3 +2700,35 @@ void tester107(ref TestContext ctx) {
 	assert(slice_slice2(Slice!int(array[]), 0, 10) == array[]);
 	assert(slice_slice2(Slice!int(array[]), 5, 7) == array[5..7]);
 }
+
+
+@TestInfo(&tester108)
+immutable test108 = q{--- test108
+	// Test function templates
+	T min[T](T a, T b) {
+		if (a < b) return a;
+		return b;
+	}
+	i8 test_i8(i8 a, i8 b) {
+		return min[i8](a, b) + min[i8](a, b); // test double instantiation
+	}
+	i16 test_i16(i16 a, i16 b) {
+		return min[i16](a, b) + min[i16](a, b); // test multiple instances
+	}
+	i32 test_i32(i32 a, i32 b) {
+		return min[i32](a, b) + min[i32](a, b);
+	}
+	i64 test_i64(i64 a, i64 b) {
+		return min[i64](a, b) + min[i64](a, b);
+	}
+};
+void tester108(ref TestContext ctx) {
+	auto test_i8 = ctx.getFunctionPtr!(byte, byte, byte)("test_i8");
+	auto test_i16 = ctx.getFunctionPtr!(short, short, short)("test_i16");
+	auto test_i32 = ctx.getFunctionPtr!(int, int, int)("test_i32");
+	auto test_i64 = ctx.getFunctionPtr!(long, long, long)("test_i64");
+	assert(test_i8(42, 120) == 42 * 2);
+	assert(test_i16(420, 1200) == 420 * 2);
+	assert(test_i32(-10_000, 10_000) == -10_000 * 2);
+	assert(test_i64(-10_000, 10_000) == -10_000 * 2);
+}

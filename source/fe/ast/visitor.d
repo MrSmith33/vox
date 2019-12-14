@@ -27,6 +27,8 @@ mixin template AstVisitorMixin() {
 			case decl_enum: auto e = cast(EnumDeclaration*)n; visit(e); break;
 			case decl_enum_member: auto e = cast(EnumMemberDecl*)n; visit(e); break;
 			case decl_static_if: auto e = cast(StaticIfDeclNode*)n; visit(e); break;
+			case decl_template: auto e = cast(TemplateDeclNode*)n; visit(e); break;
+			case decl_template_param: auto e = cast(TemplateParamDeclNode*)n; visit(e); break;
 
 			case stmt_block: auto b = cast(BlockStmtNode*)n; visit(b); break;
 			case stmt_if: auto i = cast(IfStmtNode*)n; visit(i); break;

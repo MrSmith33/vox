@@ -237,14 +237,8 @@ struct Parser
 			case HASH_IF:
 				return parse_hash_if();
 			default: // <func_declaration> / <var_declaration>
-				AstIndex funcIndex = parse_var_func_declaration();
+				AstIndex funcIndex = parse_var_func_declaration(ConsumeTerminator.yes, TokenType.SEMICOLON);
 				AstNode* node = context.getAstNode(funcIndex);
-				if (node) {
-					bool needSemicolon = node.astType == AstType.decl_var ||
-						node.as!FunctionDeclNode(context).isExternal;
-
-					if (needSemicolon) expectAndConsume(TokenType.SEMICOLON);
-				}
 				return funcIndex;
 		}
 	}
@@ -264,11 +258,13 @@ struct Parser
 		return make!AliasDeclNode(start, currentScopeIndex, aliasId, initializerIndex);
 	}
 
-	/// var_terminator can be ";" or ",". Used to parse regular var/func declaration
+	enum ConsumeTerminator : bool { no, yes }
+	/// var_terminator can be ";" or ",". Used to parse var declaration
 	/// or to parse var declaration in foreach
-	AstIndex parse_var_func_declaration()
+	AstIndex parse_var_func_declaration(ConsumeTerminator consume_terminator, TokenType var_terminator = TokenType.init)
 	{
 		TokenIndex start = tok.index;
+		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
 		version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
 		AstIndex typeIndex = parse_type();
 
@@ -297,56 +293,70 @@ struct Parser
 		if (tok.type == TokenType.SEMICOLON || tok.type == TokenType.COMMA) // <var_declaration> ::= <type> <id> (";" / ",")
 		{
 			version(print_parse) auto s3 = scop("<var_declaration> %s", start);
+			if (consume_terminator) expectAndConsume(var_terminator);
 			// leave ";" or "," for parent to decide
 			return make!VariableDeclNode(start, currentScopeIndex, typeIndex, initializerIndex, declarationId);
 		}
+		else if (tok.type == TokenType.LBRACKET) // <func_declaration> ::= <type> <id> "[" <template_params> "]" "(" <param_list> ")" (<block_statement> / ';')
+		{
+			AstNodes template_params;
+			parse_template_parameters(template_params);
+			AstIndex body = parse_func(start, typeIndex, declarationId);
+			AstIndex after_body = AstIndex(context.astBuffer.uintLength);
+			return make!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, declarationId);
+		}
 		else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 		{
-			version(print_parse) auto s3 = scop("<func_declaration> %s", start);
-			Array!AstIndex params;
-
-			AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-			pushScope(context.idString(declarationId));
-			scope(exit) popScope;
-
-			// add this pointer
-			if (declarationOwner.astType(context) == AstType.decl_struct)
-			{
-				AstIndex structName = make!NameUseExprNode(start, currentScopeIndex, declarationOwner.get!StructDeclNode(context).id);
-				NameUseExprNode* name = structName.get_name_use(context);
-				name.resolve(declarationOwner, context);
-				name.flags |= AstFlags.isType;
-				name.state = AstNodeState.name_resolve_done;
-				AstIndex thisType = make!PtrTypeNode(start, structName);
-
-				AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, CommonIds.id_this, ushort(0));
-				VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
-				paramNode.flags |= VariableFlags.isParameter;
-				params.put(context.arrayArena, param);
-			}
-
-			parseParameters(params, NeedRegNames.yes); // functions need to register their param names
-
-			AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
-			AstIndex func = make!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
-
-			AstIndex block;
-			if (tok.type != TokenType.SEMICOLON)
-			{
-				AstIndex prevOwner = declarationOwner;
-				declarationOwner = func;
-				scope(exit) declarationOwner = prevOwner;
-				func.get!FunctionDeclNode(context).block_stmt = block_stmt();
-			}
-			else expect(TokenType.SEMICOLON); // external function
-
-			return func;
+			return parse_func(start, typeIndex, declarationId);
 		}
 		else
 		{
 			context.unrecoverable_error(tok.index, "Expected '(' or ';', while got '%s'", context.getTokenString(tok.index));
 			assert(false);
 		}
+	}
+
+	AstIndex parse_func(TokenIndex start, AstIndex typeIndex, Identifier declarationId)
+	{
+		version(print_parse) auto s3 = scop("<func_declaration> %s", start);
+		AstNodes params;
+
+		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
+		pushScope(context.idString(declarationId));
+		scope(exit) popScope;
+
+		// add this pointer
+		if (declarationOwner.astType(context) == AstType.decl_struct)
+		{
+			AstIndex structName = make!NameUseExprNode(start, currentScopeIndex, declarationOwner.get!StructDeclNode(context).id);
+			NameUseExprNode* name = structName.get_name_use(context);
+			name.resolve(declarationOwner, context);
+			name.flags |= AstFlags.isType;
+			name.state = AstNodeState.name_resolve_done;
+			AstIndex thisType = make!PtrTypeNode(start, structName);
+
+			AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, CommonIds.id_this, ushort(0));
+			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
+			paramNode.flags |= VariableFlags.isParameter;
+			params.put(context.arrayArena, param);
+		}
+
+		parseParameters(params, NeedRegNames.yes); // functions need to register their param names
+
+		AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
+		AstIndex func = make!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
+
+		AstIndex block;
+		if (tok.type != TokenType.SEMICOLON)
+		{
+			AstIndex prevOwner = declarationOwner;
+			declarationOwner = func;
+			scope(exit) declarationOwner = prevOwner;
+			func.get!FunctionDeclNode(context).block_stmt = block_stmt();
+		}
+		else expectAndConsume(TokenType.SEMICOLON); // external function
+
+		return func;
 	}
 
 	enum NeedRegNames : bool { no, yes }
@@ -369,7 +379,7 @@ struct Parser
 				paramId = expectIdentifier();
 			else // anon parameter
 			{
-				paramId = context.idMap.getOrRegWithSuffix("__param_", paramIndex);
+				paramId = context.idMap.getOrRegFormatted("__param_%s", paramIndex);
 			}
 
 			AstIndex param = make!VariableDeclNode(paramStart, currentScopeIndex, paramType, AstIndex.init, paramId);
@@ -385,6 +395,28 @@ struct Parser
 		}
 
 		expectAndConsume(TokenType.RPAREN);
+	}
+
+	void parse_template_parameters(ref AstNodes params)
+	{
+		expectAndConsume(TokenType.LBRACKET);
+
+		while (tok.type != TokenType.RBRACKET)
+		{
+			if (tok.type == TokenType.EOI) break;
+
+			// <type_param> ::= <identifier>
+			TokenIndex paramStart = tok.index;
+			Identifier paramId = expectIdentifier();
+
+			AstIndex param = make!TemplateParamDeclNode(paramStart, paramId);
+			params.put(context.arrayArena, param);
+
+			if (tok.type == TokenType.COMMA) nextToken; // skip ","
+			else break;
+		}
+
+		expectAndConsume(TokenType.RBRACKET);
 	}
 
 	// <struct_declaration> ::= "struct" <id> "{" <declaration>* "}" /
@@ -893,7 +925,7 @@ struct Parser
 			if (is_declaration)
 			{
 				tok = copy;
-				init_stmt = parse_var_func_declaration();
+				init_stmt = parse_var_func_declaration(ConsumeTerminator.no);
 			}
 			else
 			{

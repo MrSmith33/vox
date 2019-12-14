@@ -78,6 +78,14 @@ struct AstPrinter {
 		print("#ELSE");
 		pr_nodes(n.elseItems);
 	}
+	void visit(TemplateDeclNode* n) {
+		print("TEMPLATE ", context.idString(n.id));
+		pr_nodes(n.parameters);
+		pr_node(n.body);
+	}
+	void visit(TemplateParamDeclNode* n) {
+		print("TEMPLATE PARAM ", context.idString(n.id));
+	}
 	void visit(BlockStmtNode* b) {
 		print("BLOCK");
 		pr_nodes(b.statements); }
@@ -235,6 +243,14 @@ struct AstDotPrinter {
 		printLabel(n, "#IF"); pr_node_edge(n, n.condition);
 		pr_node_edges(n, n.thenItems);
 		pr_node_edges(n, n.elseItems);
+	}
+	void visit(TemplateDeclNode* n) {
+		printLabel(n, "TEMPLATE %s", context.idString(n.id));
+		pr_node_edges(n, n.parameters);
+		pr_node_edge(n, n.body);
+	}
+	void visit(TemplateParamDeclNode* n) {
+		printLabel(n, "TEMPLATE PARAM %s", context.idString(n.id));
 	}
 	void visit(BlockStmtNode* b) {
 		printLabel(b, "BLOCK");

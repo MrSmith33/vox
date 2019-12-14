@@ -23,6 +23,11 @@ struct PtrTypeNode {
 	}
 }
 
+void post_clone_ptr(PtrTypeNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.base);
+}
+
 void name_register_nested_ptr(PtrTypeNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.base, state);

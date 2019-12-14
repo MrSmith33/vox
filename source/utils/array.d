@@ -56,6 +56,37 @@ struct Array(T)
 		return chunkedArray[chunkIndex][chunkPos];
 	}
 
+	Array!T dup(ref ArrayArena arena)
+	{
+		Array!T copy = this;
+
+		static if (NUM_INLINE_ITEMS > 0)
+			if (_capacity == NUM_INLINE_ITEMS)
+				return copy;
+
+		if (capacity <= NUM_ITEMS_PER_PAGE)
+		{
+			size_t byteCapacity = nextPOT(_capacity * T.sizeof);
+			ubyte[] block = (cast(ubyte*)externalArray)[0..byteCapacity];
+
+			ubyte[] newBlock = arena.allocBlock(block.length);
+			newBlock[] = block;
+			copy.externalArray = cast(T*)newBlock.ptr;
+			return copy;
+		}
+
+		size_t numPages = _capacity / NUM_ITEMS_PER_PAGE;
+		size_t pageArrayCapacity = nextPOT(numPages);
+		ubyte[] pageArray = cast(ubyte[])(chunkedArray[0..pageArrayCapacity]);
+		ubyte[] newPageArrayBlock = arena.allocBlock(pageArray.length);
+		copy.chunkedArray = cast(T**)newPageArrayBlock.ptr;
+		foreach(i; 0..numPages) {
+			ubyte[] page = arena.allocBlock(ARRAY_PAGE_BYTES);
+			copy.chunkedArray[i] = cast(T*)page.ptr;
+		}
+		return copy;
+	}
+
 	void voidPut(ref ArrayArena arena, uint howMany)
 	{
 		if (_length + howMany > _capacity) extend(arena, howMany);

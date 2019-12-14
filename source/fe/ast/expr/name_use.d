@@ -42,7 +42,7 @@ struct NameUseExprNode {
 		this.flags |= NameUseFlags.isSymResolved;
 	}
 	AstIndex entity() { return isSymResolved ? _entity : AstIndex(); }
-	Identifier id(CompilationContext* context) {
+	ref Identifier id(CompilationContext* context) {
 		return isSymResolved ? _entity.get_node_id(context) : _id;
 	}
 
@@ -71,6 +71,14 @@ struct NameUseExprNode {
 	alias tryStructDecl = tryGet!(StructDeclNode, AstType.decl_struct);
 	alias tryEnumDecl = tryGet!(EnumDeclaration, AstType.decl_enum);
 	alias tryEnumMember = tryGet!(EnumMemberDecl, AstType.decl_enum_member);
+}
+
+void post_clone_name_use(NameUseExprNode* node, ref CloneState state)
+{
+	CompilationContext* c = state.context;
+	assert(!node.isSymResolved);
+	state.fixScope(node.parentScope);
+	// _entity is not yet resolved
 }
 
 void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref NameResolveState state) {
@@ -113,6 +121,13 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 			// replace current node with aliased entity
 			nodeIndex = entity.get!AliasDeclNode(c).initializer;
 			break;
+		case type_basic:
+			// Happens after template arg replacement. Similar to alias
+			nodeIndex = entity;
+			break;
+		case decl_template:
+			if (entity.isType(c)) node.flags |= AstFlags.isType;
+			break;
 		default:
 			c.internal_error("Unknown entity %s", entityNode.astType);
 	}
@@ -138,36 +153,51 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 {
 	CompilationContext* c = state.context;
 
-	node.state = AstNodeState.type_check;
-	node.type = node.entity.get_node_type(state.context);
-	node.state = AstNodeState.type_check_done;
-
-	// check isAddressTaken to prevent call on func address take
-	if (node.entity.astType(c) == AstType.decl_function && !node.isAddressTaken)
+	c.assertf(node.entity.isDefined, node.loc, "name null %s %s", node.isSymResolved, node.state);
+	switch(node.entity.astType(c))
 	{
-		// Call without parenthesis
-		// rewrite as call
-		nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), nodeIndex);
-		nodeIndex.setState(c, AstNodeState.name_resolve_done);
-		require_type_check(nodeIndex, state);
+		case AstType.decl_template:
+			node.state = AstNodeState.type_check_done;
+			break;
+
+		case AstType.decl_function:
+			// check isAddressTaken to prevent call on func address take
+			if (!node.isAddressTaken)
+			{
+				// Call without parenthesis
+				// rewrite as call
+				nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), nodeIndex);
+				nodeIndex.setState(c, AstNodeState.name_resolve_done);
+				require_type_check(nodeIndex, state);
+				break;
+			}
+			goto default;
+
+		default:
+			node.state = AstNodeState.type_check;
+			node.type = node.entity.get_node_type(state.context);
+			node.state = AstNodeState.type_check_done;
+			break;
 	}
 }
 
-ExprValue ir_gen_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, NameUseExprNode* v)
+ExprValue ir_gen_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, NameUseExprNode* node)
 {
 	CompilationContext* c = gen.context;
-	AstNode* entity = v.entity.get_node(c);
+	AstNode* entity = node.entity.get_node(c);
+
+	c.assertf(entity !is null, node.loc, "name null %s %s", node.isSymResolved, node.state);
 
 	switch (entity.astType) with(AstType)
 	{
 		case decl_enum_member:
 		{
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
-			return ExprValue(eval_static_expr(v.entity, gen.context));
+			return ExprValue(eval_static_expr(node.entity, gen.context));
 		}
 		case decl_var:
 		{
-			ExprValue result = v.varDecl(c).irValue;
+			ExprValue result = node.varDecl(c).irValue;
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return result;
 		}
@@ -175,7 +205,7 @@ ExprValue ir_gen_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel 
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return ExprValue(entity.as!FunctionDeclNode(c).getIrIndex(c));
 		default:
-			c.internal_error(v.loc, "ir_gen_name_use %s", entity.astType);
+			c.internal_error(node.loc, "ir_gen_name_use %s", entity.astType);
 			assert(false);
 	}
 }

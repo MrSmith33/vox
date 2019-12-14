@@ -22,6 +22,11 @@ struct SliceTypeNode {
 	}
 }
 
+void post_clone_slice(SliceTypeNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.base);
+}
+
 void name_register_nested_slice(SliceTypeNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.base, state);

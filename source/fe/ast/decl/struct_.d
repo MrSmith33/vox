@@ -42,6 +42,13 @@ struct StructDeclNode {
 	}
 }
 
+void post_clone_struct(StructDeclNode* node, ref CloneState state)
+{
+	state.fixScope(node.parentScope);
+	state.fixScope(node.memberScope);
+	state.fixAstNodes(node.declarations);
+}
+
 void name_register_self_struct(AstIndex nodeIndex, StructDeclNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_self;
 	node.parentScope.insert_scope(node.id, nodeIndex, state.context);

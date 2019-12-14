@@ -47,6 +47,14 @@ struct EnumDeclaration
 	bool isAnonymous() { return cast(bool)(flags & Flags.isAnonymous); }
 }
 
+void post_clone_enum(EnumDeclaration* node, ref CloneState state)
+{
+	state.fixScope(node.parentScope);
+	state.fixScope(node.memberScope);
+	state.fixAstIndex(node.memberType);
+	state.fixAstNodes(node.declarations);
+}
+
 void name_register_self_enum(AstIndex nodeIndex, EnumDeclaration* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_self;
 	if (!node.isAnonymous) node.parentScope.insert_scope(node.id, nodeIndex, state.context);
@@ -83,6 +91,13 @@ struct EnumMemberDecl
 	Identifier id;
 	ushort scopeIndex;
 	IrIndex initValue; // cached value of initializer
+}
+
+void post_clone_enum_member(EnumMemberDecl* node, ref CloneState state)
+{
+	state.fixScope(node.parentScope);
+	state.fixAstIndex(node.type);
+	state.fixAstIndex(node.initializer);
 }
 
 void name_register_self_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, ref NameRegisterState state) {

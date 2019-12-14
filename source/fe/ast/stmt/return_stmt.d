@@ -12,6 +12,11 @@ struct ReturnStmtNode {
 	AstIndex expression; // Nullable
 }
 
+void post_clone_return(ReturnStmtNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.expression);
+}
+
 void name_resolve_return(ReturnStmtNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	if (node.expression) require_name_resolve(node.expression, state);

@@ -13,6 +13,11 @@ struct UnaryExprNode {
 	AstIndex child;
 }
 
+void post_clone_unary_op(UnaryExprNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.child);
+}
+
 void name_register_nested_unary_op(UnaryExprNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.child, state);

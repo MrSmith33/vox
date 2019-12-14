@@ -13,6 +13,11 @@ struct ImportDeclNode
 	Identifier id;
 }
 
+void post_clone_import(ImportDeclNode* node, ref CloneState state)
+{
+	state.fixScope(node.parentScope);
+}
+
 void name_register_self_import(ImportDeclNode* node, ref NameRegisterState state) {
 	CompilationContext* c = state.context;
 	node.state = AstNodeState.name_register_self;

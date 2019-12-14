@@ -14,6 +14,12 @@ struct IndexExprNode {
 	IrIndex _padding;
 }
 
+void post_clone_index(IndexExprNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.array);
+	state.fixAstIndex(node.index);
+}
+
 void name_register_nested_index(IndexExprNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.array, state);
@@ -43,7 +49,7 @@ void name_resolve_index(IndexExprNode* node, ref NameResolveState state)
 	node.state = AstNodeState.name_resolve_done;
 }
 
-void type_check_index(IndexExprNode* node, ref TypeCheckState state)
+void type_check_index(ref AstIndex nodeIndex, IndexExprNode* node, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
 
@@ -51,13 +57,29 @@ void type_check_index(IndexExprNode* node, ref TypeCheckState state)
 	node.array.flags(c) |= AstFlags.isLvalue;
 	require_type_check(node.array, state);
 	require_type_check(node.index, state);
-	autoconvTo(node.index, c.basicTypeNodes(BasicType.t_i64), c);
-	switch (node.array.expr_type(c).astType(c)) with(AstType)
+
+	AstIndex effective_array = node.array.get_effective_node(c);
+	AstType array_ast_type = effective_array.astType(c);
+
+	if (array_ast_type == AstType.decl_template)
 	{
-		case type_ptr, type_static_array, type_slice: break; // valid
-		default: c.internal_error("Cannot index value of type `%s`", node.array.expr_type(c).printer(c));
+		// template instantiation
+		AstNodes args;
+		// wont allocate for 1 node. TODO: use array for indicies in index node (support multiple indicies)
+		args.put(c.arrayArena, node.index);
+		nodeIndex = get_template_instance(effective_array, node.loc, args, state);
 	}
-	node.type = node.array.expr_type(c).get_type(c).getElementType(c);
+	else
+	{
+		// array/ptr/slice indexing
+		autoconvTo(node.index, c.basicTypeNodes(BasicType.t_i64), c);
+		switch (node.array.expr_type(c).astType(c)) with(AstType)
+		{
+			case type_ptr, type_static_array, type_slice: break; // valid
+			default: c.internal_error("Cannot index value of type `%s`", node.array.expr_type(c).printer(c));
+		}
+		node.type = node.array.expr_type(c).get_type(c).getElementType(c);
+	}
 	node.state = AstNodeState.type_check_done;
 }
 

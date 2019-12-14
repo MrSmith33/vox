@@ -21,6 +21,12 @@ struct CallExprNode {
 	AstNodes args;
 }
 
+void post_clone_call(CallExprNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.callee);
+	state.fixAstNodes(node.args);
+}
+
 void name_register_nested_call(CallExprNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.callee, state);
@@ -89,6 +95,12 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 				}
 			}
 			goto default;
+		case AstType.expr_index:
+			require_type_check(callee, state);
+			if (callee.astType(c) != AstType.decl_function)
+				goto case AstType.decl_var;
+			node.callee = callee;
+			goto case AstType.decl_function;
 		default:
 			node.type = c.basicTypeNodes(BasicType.t_error);
 			c.error(node.loc, "Cannot call %s", callee.astType(c));
@@ -102,6 +114,7 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 {
 	CompilationContext* c = state.context;
 
+	require_type_check(signature.returnType, state);
 	node.type = signature.returnType;
 
 	Array!AstIndex params = signature.parameters;

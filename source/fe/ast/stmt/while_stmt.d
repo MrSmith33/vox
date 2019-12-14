@@ -13,6 +13,12 @@ struct WhileStmtNode {
 	AstNodes statements;
 }
 
+void post_clone_while(WhileStmtNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.condition);
+	state.fixAstNodes(node.statements);
+}
+
 void name_register_nested_while(WhileStmtNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.condition, state);

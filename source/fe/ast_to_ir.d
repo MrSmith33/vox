@@ -75,7 +75,7 @@ void ir_gen_decl(ref IrGenState gen, AstIndex astIndex)
 	AstNode* n = c.getAstNode(astIndex);
 	switch(n.astType) with(AstType)
 	{
-		case decl_enum, decl_enum_member, decl_function, decl_struct, decl_import, decl_alias: break;
+		case decl_enum, decl_enum_member, decl_function, decl_struct, decl_import, decl_alias, decl_template: break;
 		case decl_var: ir_gen_decl_var(gen, cast(VariableDeclNode*)n); break;
 		default:
 			c.internal_error(n.loc, "ir_gen_decl %s in %s state", n.astType, n.state);
@@ -112,6 +112,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case literal_string:
 		case literal_null:
 		case literal_bool:
+		case decl_template_param:
 			c.internal_error(n.loc, "stmt %s in %s state", n.astType, n.state);
 			assert(false);
 
@@ -120,6 +121,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case decl_enum_member:
 		case decl_function:
 		case decl_struct:
+		case decl_template:
 		case decl_import:      gen.builder.addJumpToLabel(curBlock, nextStmt); break;
 		case decl_var:         ir_gen_local_var(gen, curBlock, nextStmt, cast(VariableDeclNode*)n); break;
 

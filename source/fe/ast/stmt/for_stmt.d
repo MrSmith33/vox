@@ -15,6 +15,14 @@ struct ForStmtNode {
 	AstNodes body_statements;
 }
 
+void post_clone_for(ForStmtNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.condition);
+	state.fixAstNodes(node.init_statements);
+	state.fixAstNodes(node.increment_statements);
+	state.fixAstNodes(node.body_statements);
+}
+
 void name_register_nested_for(ForStmtNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.init_statements, state);

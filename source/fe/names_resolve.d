@@ -48,6 +48,11 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 			state.context.unrecoverable_error(node.loc,
 				"Circular dependency, %s", node.astType);
 			assert(false);
+		case parse_done:
+			auto name_state = NameRegisterState(state.context);
+			require_name_register_self(0, nodeIndex, name_state);
+			state.context.throwOnErrors;
+			goto case;
 		case name_register_self_done:
 			require_name_register(nodeIndex, state.context);
 			state.context.throwOnErrors;
@@ -72,6 +77,8 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case decl_enum: name_resolve_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: name_resolve_enum_member(cast(EnumMemberDecl*)node, state); break;
 		case decl_static_if: assert(false);
+		case decl_template: assert(false);
+		case decl_template_param: assert(false);
 
 		case stmt_block: name_resolve_block(cast(BlockStmtNode*)node, state); break;
 		case stmt_if: name_resolve_if(cast(IfStmtNode*)node, state); break;

@@ -14,6 +14,13 @@ struct SliceExprNode {
 	AstIndex toIndex;
 }
 
+void post_clone_expr_slice(SliceExprNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.array);
+	state.fixAstIndex(node.fromIndex);
+	state.fixAstIndex(node.toIndex);
+}
+
 void name_register_nested_expr_slice(SliceExprNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.array, state);

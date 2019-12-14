@@ -27,14 +27,16 @@ enum AstType : ubyte
 
 	decl_alias,
 	decl_builtin,
-	decl_module,
-	decl_import,
-	decl_function,
-	decl_var,
-	decl_struct,
 	decl_enum,
 	decl_enum_member,
+	decl_function,
+	decl_import,
+	decl_module,
 	decl_static_if,
+	decl_struct,
+	decl_template,
+	decl_template_param,
+	decl_var,
 
 	stmt_block,
 	stmt_if,
@@ -83,8 +85,9 @@ enum AstFlags : ushort
 	isGlobal         = 1 << 7,          // used for setting flags
 	isMember         = 2 << 7,          // used for setting flags
 
+	isTemplateInstance = 1 << 9,
 	// used for node specific flags
-	userFlag         = 1 << 9,
+	userFlag         = 1 << 10,
 }
 
 enum hasAstNodeType(T) = getUDAs!(T, AstType).length > 0;
@@ -161,12 +164,34 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
 	bool isLvalue()     { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
+	bool isTemplateInstance() { return cast(bool)(flags & AstFlags.isTemplateInstance); }
 	bool isGlobal()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isGlobal; }
 	bool isMember()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isMember; }
 	bool isLocal()      { return (flags & AstFlags.scopeKindMask) == AstFlags.isLocal;  }
 }
 
-Identifier get_node_id(AstIndex nodeIndex, CompilationContext* c)
+void print_node_name(ref TextSink sink, AstIndex nodeIndex, CompilationContext* c)
+{
+	AstNode* node = c.getAstNode(nodeIndex);
+	switch(node.astType) with(AstType)
+	{
+		case decl_alias: sink.put(c.idString(node.as!AliasDeclNode(c).id)); break;
+		case decl_builtin: sink.put(c.idString(node.as!BuiltinNode(c).id)); break;
+		case decl_module: sink.put(c.idString(node.as!ModuleDeclNode(c).id)); break;
+		case decl_struct: sink.put(c.idString(node.as!StructDeclNode(c).id)); break;
+		case decl_function: sink.put(c.idString(node.as!FunctionDeclNode(c).id)); break;
+		case decl_var: sink.put(c.idString(node.as!VariableDeclNode(c).id)); break;
+		case decl_enum: sink.put(c.idString(node.as!EnumDeclaration(c).id)); break;
+		case decl_enum_member: sink.put(c.idString(node.as!EnumMemberDecl(c).id)); break;
+		case expr_name_use: sink.put(c.idString(node.as!NameUseExprNode(c).id(c))); break;
+		case expr_member: sink.put(c.idString(node.as!MemberExprNode(c).memberId(c))); break;
+		case decl_template: sink.put(c.idString(node.as!TemplateDeclNode(c).id)); break;
+		case type_basic: sink.put(basicTypeNames[node.as!BasicTypeNode(c).basicType]); break;
+		default: assert(false, format("got %s", node.astType));
+	}
+}
+
+ref Identifier get_node_id(AstIndex nodeIndex, CompilationContext* c)
 {
 	AstNode* node = c.getAstNode(nodeIndex);
 	switch(node.astType) with(AstType)
@@ -181,6 +206,7 @@ Identifier get_node_id(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return node.as!EnumMemberDecl(c).id;
 		case expr_name_use: return node.as!NameUseExprNode(c).id(c);
 		case expr_member: return node.as!MemberExprNode(c).memberId(c);
+		case decl_template: return node.as!TemplateDeclNode(c).id;
 		default: assert(false, format("got %s", node.astType));
 	}
 }
@@ -217,6 +243,7 @@ AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
 	switch(node.astType) with(AstType)
 	{
 		case decl_alias: return node.as!AliasDeclNode(c).initializer.get_effective_node(c);
+		case decl_template: return nodeIndex;
 		case decl_struct: return nodeIndex;
 		case decl_builtin: return nodeIndex;
 		case decl_function: return nodeIndex;

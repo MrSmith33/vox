@@ -55,7 +55,7 @@ struct MemberExprNode {
 		c.assertf(isSymResolved, loc, "Member access is %s, %s", cast(MemberSubType)subType, state);
 		return _memberIndex;
 	}
-	Identifier memberId(CompilationContext* c) {
+	ref Identifier memberId(CompilationContext* c) {
 		return isSymResolved ? _member.get_node_id(c) : _memberId;
 	}
 
@@ -84,6 +84,13 @@ struct MemberExprNode {
 		this.subType = subType;
 		this._memberIndex = memberIndex;
 	}
+}
+
+void post_clone_member(MemberExprNode* node, ref CloneState state)
+{
+	assert(!node.isSymResolved);
+	state.fixScope(node.parentScope);
+	state.fixAstIndex(node.aggregate);
 }
 
 void name_register_nested_member(MemberExprNode* node, ref NameRegisterState state) {

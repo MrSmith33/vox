@@ -15,6 +15,13 @@ struct IfStmtNode
 	AstNodes elseStatements; // can be empty
 }
 
+void post_clone_if(IfStmtNode* node, ref CloneState state)
+{
+	state.fixAstIndex(node.condition);
+	state.fixAstNodes(node.thenStatements);
+	state.fixAstNodes(node.elseStatements);
+}
+
 void name_register_nested_if(IfStmtNode* node, ref NameRegisterState state)
 {
 	node.state = AstNodeState.name_register_nested;
