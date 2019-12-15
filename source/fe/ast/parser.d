@@ -1238,7 +1238,7 @@ private TokenLookups cexp_parser()
 
 	// 0 precedence -- never used
 	nilfix(0, &nullLiteral, [
-		"#id", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "null",
+		"#id", "void", "bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "null",
 		"true", "false", "#num_dec_lit", "#num_bin_lit", "#num_hex_lit",
 		"#str_lit", "#char_lit"]);
 	nilfix(0, &null_error_parser, [")", "]", ":", "#eoi", ";"]);
@@ -1302,7 +1302,7 @@ AstIndex nullLiteral(ref Parser p, Token token, int rbp) {
 			string value = cast(string)p.context.getTokenString(token.index);
 			long intValue = value[2..$].filter!(c => c != '_').to!ulong(2); // skip 0b, 0B
 			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
-		case TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64, TYPE_U8, TYPE_U16, TYPE_U32, TYPE_U64:
+		case TYPE_VOID, TYPE_BOOL, TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64, TYPE_U8, TYPE_U16, TYPE_U32, TYPE_U64:
 			BasicType t = token.type.tokenTypeToBasicType;
 			return p.context.basicTypeNodes(t);
 		default:

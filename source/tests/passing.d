@@ -1833,6 +1833,8 @@ immutable test86 = q{--- test86
 	T test6() { return enumAlias; }
 
 	alias Ptr = i32*;
+	alias HANDLE = void*;
+	alias alias_bool = bool;
 	enum ptrsize = i32*.sizeof;
 	enum u8min = u8.max;
 	u8[u8min] arr;
