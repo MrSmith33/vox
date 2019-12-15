@@ -17,6 +17,7 @@ void pass_type_check(ref CompilationContext context, CompilePassPerModule[] subP
 	foreach (ref SourceFileInfo file; context.files.data) {
 		AstIndex modIndex = file.mod.get_ast_index(&context);
 		require_type_check(modIndex, state);
+		assert(context.analisysStack.length == 0);
 
 		if (context.printAstSema && modIndex) {
 			auto astPrinter = AstPrinter(&context, 2);
@@ -54,7 +55,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
-			state.context.unrecoverable_error(node.loc, "Circular dependency"); return;
+			state.context.circular_dependency; return;
 		case parse_done:
 			auto name_state = NameRegisterState(state.context);
 			require_name_register_self(0, nodeIndex, name_state);

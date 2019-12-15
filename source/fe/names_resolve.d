@@ -19,6 +19,7 @@ void pass_names_resolve(ref CompilationContext context, CompilePassPerModule[] s
 	foreach (ref SourceFileInfo file; context.files.data) {
 		AstIndex modIndex = file.mod.get_ast_index(&context);
 		require_name_resolve(modIndex, state);
+		assert(context.analisysStack.length == 0);
 	}
 }
 
@@ -45,8 +46,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
-			state.context.unrecoverable_error(node.loc,
-				"Circular dependency, %s", node.astType);
+			state.context.circular_dependency;
 			assert(false);
 		case parse_done:
 			auto name_state = NameRegisterState(state.context);
@@ -124,19 +124,22 @@ AstIndex lookupScopeIdRecursive(Scope* scop, const Identifier id, TokenIndex fro
 {
 	Scope* sc = scop;
 
+	//writefln("lookup %s", context.idString(id));
 	// first phase
 	while(sc)
 	{
 		AstIndex symIndex = sc.symbols.get(id, AstIndex.init);
+		//writefln("  scope %s %s %s", context.getAstNodeIndex(sc), sc.debugName, symIndex);
 
 		if (symIndex)
 		{
 			AstNode* symNode = context.getAstNode(symIndex);
-			if (symNode.isLocal)
+			if (sc.kind == ScopeKind.local)
 			{
 				// we need to skip forward references in function scope
 				uint fromStart = context.tokenLocationBuffer[from].start;
 				uint toStart = context.tokenLocationBuffer[symNode.loc].start;
+				//writefln("    local %s %s", fromStart, toStart);
 				// backward reference
 				if (fromStart > toStart) {
 					return symIndex;

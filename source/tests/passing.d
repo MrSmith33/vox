@@ -2732,3 +2732,41 @@ void tester108(ref TestContext ctx) {
 	assert(test_i32(-10_000, 10_000) == -10_000 * 2);
 	assert(test_i64(-10_000, 10_000) == -10_000 * 2);
 }
+
+@TestInfo()
+immutable test109 = q{--- test109
+	// Test all type kinds
+	struct S {
+		i32 n;
+	}
+	T pass[T](T a) {
+		return a;
+	}
+	i8 test_basic(i8 a) {
+		return pass[i8](a);
+	}
+	u8* test_ptr(u8* ptr) {
+		return pass[u8*](ptr);
+	}
+	S test_struct(S s) {
+		return pass[S](s);
+	}
+	u8[] test_i64(u8[] slice) {
+		return pass[u8[]](slice);
+	}
+};
+
+@TestInfo(&tester110)
+immutable test110 = q{--- test110
+	// Test struct templates
+	struct Array[T] {
+		T item;
+	}
+	T fun[T](T arg) { return arg; }
+	Array[i32] test(Array[i32] array) {
+		return fun[Array[i32]](array);
+	}
+};
+void tester110(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int, int)("test")(42) == 42);
+}

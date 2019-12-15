@@ -187,6 +187,30 @@ void print_node_name(ref TextSink sink, AstIndex nodeIndex, CompilationContext* 
 		case expr_member: sink.put(c.idString(node.as!MemberExprNode(c).memberId(c))); break;
 		case decl_template: sink.put(c.idString(node.as!TemplateDeclNode(c).id)); break;
 		case type_basic: sink.put(basicTypeNames[node.as!BasicTypeNode(c).basicType]); break;
+		case type_ptr:
+			print_node_name(sink, node.as!PtrTypeNode(c).base, c);
+			sink.put("*");
+			break;
+		case type_slice:
+			print_node_name(sink, node.as!SliceTypeNode(c).base, c);
+			sink.put("[]");
+			break;
+		case type_static_array:
+			auto arr = node.as!StaticArrayTypeNode(c);
+			print_node_name(sink, arr.base, c);
+			sink.putf("[%s]", arr.length);
+			break;
+		case type_func_sig:
+			auto sig = node.as!FunctionSignatureNode(c);
+			print_node_name(sink, sig.returnType, c);
+			sink.put(" function(");
+			foreach(i, AstIndex param; sig.parameters)
+			{
+				if (i > 0) sink.put(", ");
+				print_node_name(sink, param, c);
+			}
+			sink.put(")");
+			break;
 		default: assert(false, format("got %s", node.astType));
 	}
 }

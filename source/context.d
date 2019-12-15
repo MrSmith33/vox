@@ -121,6 +121,8 @@ struct CompilationContext
 
 	// errors and debug
 
+	Array!AstIndex analisysStack;
+
 	/// True if current/last pass had errors
 	bool hasErrors;
 	/// Text output for errors
@@ -289,6 +291,33 @@ struct CompilationContext
 		internal_error_impl(format, file, line, args);
 	}
 
+	void circular_dependency()
+	{
+		AstIndex same;
+		if (!analisysStack.empty) same = analisysStack.back;
+		size_t startLen = sink.data.length;
+		sink.putfln("Error: Circular dependency");
+		while(!analisysStack.empty)
+		{
+			AstIndex currentIndex = analisysStack.back;
+			TokenIndex tokIdx = currentIndex.loc(&this);
+			if (currentIndex == same) sink.put("> ");
+			else sink.put("  ");
+			sink.putf("%s: %s %s ", FmtSrcLoc(tokIdx, &this), currentIndex.state(&this), currentIndex.astType(&this));
+			print_node_name(sink, currentIndex, &this);
+			sink.putln;
+			analisysStack.unput(1);
+		}
+		errorSink.put(sink.data[startLen..$]);
+		if (printTraceOnError)
+			try
+				throw new Exception(null);
+			catch (Exception e)
+				sink.putf("%s", e.info);
+		hasErrors = true;
+		throw new CompilationException();
+	}
+
 	private void internal_error_impl(Args...)(string format, string file, int line, Args args)
 	{
 		size_t startLen = sink.data.length;
@@ -325,6 +354,15 @@ struct CompilationContext
 	void throwOnErrors()
 	{
 		if (hasErrors) throw new CompilationException();
+	}
+
+	void push_analized_node(AstIndex index) {
+		analisysStack.put(arrayArena, index);
+	}
+
+	void pop_analized_node() {
+		assertf(!analisysStack.empty, "Excessive popping detected");
+		analisysStack.unput(1);
 	}
 
 	IrIndex appendTemp(T)(uint howMany = 1)

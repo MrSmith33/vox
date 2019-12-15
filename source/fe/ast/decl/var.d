@@ -57,9 +57,9 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
 
-	TypeNode* type = node.type.get_type(c);
 	node.state = AstNodeState.type_check;
 	require_type_check(node.type, state);
+	TypeNode* type = node.type.get_type(c);
 
 	if (type.isOpaqueStruct(c)) {
 		if (node.isParameter) {

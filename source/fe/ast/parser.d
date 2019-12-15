@@ -154,11 +154,12 @@ struct Parser
 		return id;
 	}
 
-	AstIndex pushScope(string name)
+	AstIndex pushScope(string name, ScopeKind kind)
 	{
 		AstIndex newScopeIndex = context.appendAst!Scope;
 		Scope* newScope = context.getAst!Scope(newScopeIndex);
 		newScope.debugName = name;
+		newScope.kind = kind;
 
 		if (currentScope)
 			newScope.parentScope = currentScope.get_ast_index(context);
@@ -190,7 +191,7 @@ struct Parser
 		mod.state = AstNodeState.name_register_self_done;
 		declarationOwner = context.getAstNodeIndex(mod);
 
-		mod.memberScope = pushScope("Module");
+		mod.memberScope = pushScope("Module", ScopeKind.global);
 			mod.declarations = parse_declarations(TokenType.EOI, AstFlags.isGlobal);
 		popScope;
 	}
@@ -322,7 +323,7 @@ struct Parser
 		AstNodes params;
 
 		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-		pushScope(context.idString(declarationId));
+		pushScope(context.idString(declarationId), ScopeKind.local);
 		scope(exit) popScope;
 
 		// add this pointer
@@ -419,42 +420,70 @@ struct Parser
 		expectAndConsume(TokenType.RBRACKET);
 	}
 
-	// <struct_declaration> ::= "struct" <id> "{" <declaration>* "}" /
-	//                          "struct" <id> ";"
+	void parse_expr_list(ref AstNodes expressions, TokenType terminator)
+	{
+		while (tok.type != terminator) {
+			// We don't want to grab the comma, e.g. it is NOT a sequence operator.
+			expressions.put(context.arrayArena, expr(COMMA_PREC));
+			// allows trailing comma too
+			if (tok.type == TokenType.COMMA)
+				nextToken;
+		}
+		expectAndConsume(terminator);
+	}
+
+	// <struct_declaration> ::= "struct" <id> ("[" <template_params> "]")? "{" <declaration>* "}" /
+	//                          "struct" <id> ("[" <template_params> "]")? ";"
 	AstIndex parse_struct()
 	{
 		TokenIndex start = tok.index;
+		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
+
 		version(print_parse) auto s2 = scop("struct %s", start);
 		nextToken; // skip "struct"
 		Identifier structId = expectIdentifier();
 
-		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-		AstIndex memberScope = pushScope(context.idString(structId));
-		scope(exit) popScope;
-
-		AstIndex structIndex = make!StructDeclNode(start, parentScope, memberScope, structId);
-		StructDeclNode* s = structIndex.get!StructDeclNode(context);
-
-		if (tok.type == TokenType.SEMICOLON)
+		AstIndex parse_rest()
 		{
-			nextToken; // skip semicolon
-			s.flags |= StructFlags.isOpaque;
+			if (tok.type == TokenType.SEMICOLON)
+			{
+				nextToken; // skip semicolon
+				AstIndex structIndex = make!StructDeclNode(start, currentScopeIndex, AstIndex(), structId);
+				StructDeclNode* s = structIndex.get!StructDeclNode(context);
+				s.flags |= StructFlags.isOpaque;
+				return structIndex;
+			}
+
+			AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
+			AstIndex memberScope = pushScope(context.idString(structId), ScopeKind.member);
+			scope(exit) popScope;
+
+			AstIndex structIndex = make!StructDeclNode(start, parentScope, memberScope, structId);
+			StructDeclNode* s = structIndex.get!StructDeclNode(context);
+
+			expectAndConsume(TokenType.LCURLY);
+			{
+				AstIndex prevOwner = declarationOwner;
+				declarationOwner = structIndex;
+				scope(exit) declarationOwner = prevOwner;
+
+				s.declarations = parse_declarations(TokenType.RCURLY, AstFlags.isMember);
+			}
+			expectAndConsume(TokenType.RCURLY);
+
 			return structIndex;
 		}
 
-		expectAndConsume(TokenType.LCURLY);
-
+		AstNodes template_params;
+		if (tok.type == TokenType.LBRACKET) // <func_declaration> ::= "struct" <id> "[" <template_params> "]"
 		{
-			AstIndex prevOwner = declarationOwner;
-			declarationOwner = structIndex;
-			scope(exit) declarationOwner = prevOwner;
-
-			s.declarations = parse_declarations(TokenType.RCURLY, AstFlags.isMember);
+			parse_template_parameters(template_params);
+			AstIndex body = parse_rest();
+			AstIndex after_body = AstIndex(context.astBuffer.uintLength);
+			return make!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, structId);
 		}
 
-		expectAndConsume(TokenType.RCURLY);
-
-		return structIndex;
+		return parse_rest();
 	}
 
 	// <enum_decl> = <enum_decl_single> / <enum_decl_multi>
@@ -560,7 +589,7 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex type = parseColonType;
-				AstIndex memberScope = pushScope(context.idString(enumId));
+				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member);
 				AstNodes members = tryParseEnumBody(type);
 				popScope;
 
@@ -572,7 +601,7 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex type = intType;
-				AstIndex memberScope = pushScope(context.idString(enumId));
+				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member);
 				AstNodes members = parse_enum_body(type);
 				popScope;
 
@@ -745,7 +774,9 @@ struct Parser
 						{
 							AstIndex length_expr = expr();
 							expectAndConsume(TokenType.RBRACKET);
-							base = make!StaticArrayTypeNode(start, base, length_expr);
+							AstNodes indicies;
+							indicies.put(context.arrayArena, length_expr);
+							base = makeExpr!IndexExprNode(start, base, indicies);
 						}
 						break;
 					case FUNCTION_SYM:
@@ -793,7 +824,7 @@ struct Parser
 	{
 		version(print_parse) auto s1 = scop("block_stmt %s", loc);
 		TokenIndex start = tok.index;
-		pushScope("Block");
+		pushScope("Block", ScopeKind.local);
 		AstNodes statements = parse_block;
 		popScope;
 		return make!BlockStmtNode(start, statements);
@@ -822,13 +853,13 @@ struct Parser
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
 				nextToken;
 				AstIndex condition = paren_expr();
-				pushScope("Then");
+				pushScope("Then", ScopeKind.local);
 				AstNodes thenStatements = statement_as_array;
 				popScope;
 				AstNodes elseStatements;
 				if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
 					nextToken;
-					pushScope("Else");
+					pushScope("Else", ScopeKind.local);
 					elseStatements = statement_as_array;
 					popScope;
 				}
@@ -837,14 +868,14 @@ struct Parser
 				return parse_hash_if();
 			case TokenType.WHILE_SYM:  /* "while" <paren_expr> <statement> */
 				nextToken;
-				pushScope("While");
+				pushScope("While", ScopeKind.local);
 				AstIndex condition = paren_expr();
 				AstNodes statements = statement_as_array;
 				popScope;
 				return make!WhileStmtNode(start, condition, statements);
 			case TokenType.DO_SYM:  /* "do" <statement> "while" <paren_expr> ";" */
 				nextToken;
-				pushScope("do");
+				pushScope("do", ScopeKind.local);
 				AstNodes statements = statement_as_array;
 				expectAndConsume(TokenType.WHILE_SYM);
 				AstIndex condition = paren_expr();
@@ -910,7 +941,7 @@ struct Parser
 
 		expectAndConsume(TokenType.LPAREN); // (
 
-		pushScope("For");
+		pushScope("For", ScopeKind.local);
 		scope(exit) popScope;
 
 		Array!AstIndex init_statements;
@@ -1339,14 +1370,22 @@ AstIndex leftIncDec(ref Parser p, Token token, int rbp, AstIndex left) {
 	return p.makeExpr!UnaryExprNode(token.index, op, left);
 }
 
-// <expr> "[" <expr> "]"
+// <expr> "[" "]"
+// <expr> "[" <expr> "," <expr>+ "]"
 // <expr> "[" <expr> .. <expr> "]"
 AstIndex leftIndex(ref Parser p, Token token, int rbp, AstIndex array) {
+	AstNodes indicies;
+	if (p.tok.type == TokenType.RBRACKET)
+	{
+		p.nextToken;
+		return p.makeExpr!IndexExprNode(token.index, array, indicies);
+	}
 	AstIndex index = p.expr(0);
 	if (p.tok.type == TokenType.RBRACKET)
 	{
 		p.nextToken;
-		return p.makeExpr!IndexExprNode(token.index, array, index);
+		indicies.put(p.context.arrayArena, index);
+		return p.makeExpr!IndexExprNode(token.index, array, indicies);
 	}
 	p.expectAndConsume(TokenType.DOT_DOT);
 	AstIndex index2 = p.expr(0);
@@ -1386,7 +1425,7 @@ AstIndex leftFunctionOp(ref Parser p, Token token, int rbp, AstIndex returnType)
 AstIndex leftStarOp(ref Parser p, Token token, int rbp, AstIndex left) {
 	switch (p.tok.type) with(TokenType)
 	{
-		case STAR, COMMA, RPAREN, SEMICOLON, FUNCTION_SYM /*,DELEGATE_SYM*/:
+		case STAR, COMMA, RPAREN, RBRACKET, SEMICOLON, FUNCTION_SYM /*,DELEGATE_SYM*/:
 			// pointer
 			return p.make!PtrTypeNode(token.index, left);
 		case DOT:
@@ -1474,14 +1513,7 @@ AstIndex leftAssignOp(ref Parser p, Token token, int rbp, AstIndex left) {
 
 // <id> "(" <expr_list> ")"
 AstIndex leftFuncCall(ref Parser p, Token token, int unused_rbp, AstIndex callee) {
-	Array!AstIndex args;
-	while (p.tok.type != TokenType.RPAREN) {
-		// We don't want to grab the comma, e.g. it is NOT a sequence operator.
-		args.put(p.context.arrayArena, p.expr(COMMA_PREC));
-		// allows trailing comma too
-		if (p.tok.type == TokenType.COMMA)
-			p.nextToken;
-	}
-	p.expectAndConsume(TokenType.RPAREN);
+	AstNodes args;
+	p.parse_expr_list(args, TokenType.RPAREN);
 	return p.makeExpr!CallExprNode(token.index, callee, args);
 }

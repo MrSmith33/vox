@@ -5,6 +5,12 @@ module fe.ast.decl.scope_;
 
 import all;
 
+enum ScopeKind : ubyte {
+	local,
+	member,
+	global
+}
+
 ///
 struct Scope
 {
@@ -14,6 +20,8 @@ struct Scope
 	Array!AstIndex imports;
 	///
 	AstIndex parentScope;
+	///
+	ScopeKind kind;
 	///
 	string debugName;
 

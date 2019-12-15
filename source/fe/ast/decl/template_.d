@@ -134,7 +134,7 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	{
 		foreach(size_t i, AstIndex arg; instance.args)
 		{
-			if (arg != args[i]) continue instance_loop;
+			if (!same_type(arg, args[i], c)) continue instance_loop;
 		}
 
 		// Found match, reuse instance
@@ -149,11 +149,13 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	Scope* newScope = c.getAst!Scope(instance_scope);
 	newScope.parentScope = templ.parentScope;
 	newScope.debugName = "template instance";
+	newScope.kind = newScope.parentScope.get!Scope(c).kind;
 
 	// Register template instance arguments
 	foreach(size_t i, AstIndex arg; args)
 	{
 		auto param = templ.parameters[i].get!TemplateParamDeclNode(c);
+		//writefln("reg %s %s into %s", c.idString(param.id), arg, instance_scope);
 		newScope.insert(param.id, arg, c);
 	}
 

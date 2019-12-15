@@ -41,8 +41,12 @@ void name_resolve_slice(SliceTypeNode* node, ref NameResolveState state) {
 
 void type_check_slice(SliceTypeNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
 	node.state = AstNodeState.type_check;
 	require_type_check(node.base, state);
+	if (!node.base.isType(c))
+		c.error(node.loc, "Slice base type is not a type, it is %s", node.base.astType(c));
+
 	node.state = AstNodeState.type_check_done;
 }
 

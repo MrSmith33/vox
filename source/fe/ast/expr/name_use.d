@@ -121,6 +121,10 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 			// replace current node with aliased entity
 			nodeIndex = entity.get!AliasDeclNode(c).initializer;
 			break;
+		case type_ptr:
+		case type_static_array:
+		case type_slice:
+		case expr_name_use:
 		case type_basic:
 			// Happens after template arg replacement. Similar to alias
 			nodeIndex = entity;
@@ -175,7 +179,9 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 
 		default:
 			node.state = AstNodeState.type_check;
+			c.assertf(node.isSymResolved, node.loc, "not resolved");
 			node.type = node.entity.get_node_type(state.context);
+			assert(node.type.isDefined);
 			node.state = AstNodeState.type_check_done;
 			break;
 	}

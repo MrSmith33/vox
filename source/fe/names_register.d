@@ -18,6 +18,7 @@ void pass_names_register(ref CompilationContext context, CompilePassPerModule[] 
 	foreach (ref SourceFileInfo file; context.files.data) {
 		AstIndex modIndex = file.mod.get_ast_index(&context);
 		require_name_register(modIndex, state);
+		assert(context.analisysStack.length == 0);
 	}
 }
 
@@ -88,8 +89,7 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
-			state.context.unrecoverable_error(node.loc, "Circular dependency");
-			return;
+			state.context.circular_dependency; assert(false);
 		case parse_done:
 			// all requirement are done
 			break;
@@ -136,8 +136,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
-			state.context.unrecoverable_error(node.loc, "Circular dependency");
-			return;
+			state.context.circular_dependency; assert(false);
 		case parse_done:
 			auto name_state = NameRegisterState(state.context);
 			require_name_register_self(0, nodeIndex, name_state);

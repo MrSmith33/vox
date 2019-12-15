@@ -157,7 +157,7 @@ struct AstPrinter {
 		}
 		pr_nodes(c.args); }
 	void visit(IndexExprNode* i) {
-		print("INDEX"); pr_node(i.array); pr_node(i.index); }
+		print("INDEX"); pr_node(i.array); pr_nodes(i.indicies); }
 	void visit(SliceExprNode* i) {
 		print("SLICE"); pr_node(i.array); pr_node(i.fromIndex); pr_node(i.toIndex); }
 	void visit(TypeConvExprNode* t) {
@@ -307,7 +307,7 @@ struct AstDotPrinter {
 		pr_node_edge(n, n.callee);
 		pr_node_edges(n, n.args); }
 	void visit(IndexExprNode* n) {
-		printLabel(n, `INDEX`); pr_node_edge(n, n.array); pr_node_edge(n, n.index); }
+		printLabel(n, `INDEX`); pr_node_edge(n, n.array); pr_node_edges(n, n.indicies); }
 	void visit(SliceExprNode* n) {
 		printLabel(n, `SLICE`); pr_node_edge(n, n.array); pr_node_edge(n, n.fromIndex); pr_node_edge(n, n.toIndex); }
 	void visit(TypeConvExprNode* n) {
