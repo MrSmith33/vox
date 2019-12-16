@@ -190,7 +190,9 @@ bool isConvertibleTo(AstIndex fromTypeIndex, AstIndex toTypeIndex, CompilationCo
 		// TODO: bool is special (need to have 0 or 1)
 		return isRegisterTypeFrom && isRegisterTypeTo;
 	}
-	if (fromType.astType == AstType.type_ptr && toType.astType == AstType.type_ptr) return true;
+	if (fromType.isPointer && toType.isPointer) return true;
+	if (fromType.isPointer && toType.isInteger) return true;
+	if (fromType.isInteger && toType.isPointer) return true;
 	return false;
 }
 

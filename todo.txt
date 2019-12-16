@@ -1,12 +1,13 @@
 - meta
-	- function template
-	- struct/union template
+	+ function template
+	+ struct/union template
 	- variadic template arguments
 	- macros (templated function that is inlined and can access inline scope/insert stuff into outer scope)
 	- # introspection
 		- #allMembers(symbol) -> tuple
 		- #getAttributes(symbol) -> tuple
 		- #is*
+	- template parameter inference (for function templates)
 - attributes
 	- User Defined Attributes UDAs
 - CTFE

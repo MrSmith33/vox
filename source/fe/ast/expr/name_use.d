@@ -76,9 +76,10 @@ struct NameUseExprNode {
 void post_clone_name_use(NameUseExprNode* node, ref CloneState state)
 {
 	CompilationContext* c = state.context;
-	assert(!node.isSymResolved);
 	state.fixScope(node.parentScope);
-	// _entity is not yet resolved
+	if (node.isSymResolved)
+		state.fixAstIndex(node._entity);
+	// _entity is resolved in template args
 }
 
 void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref NameResolveState state) {

@@ -2772,3 +2772,31 @@ immutable test110 = q{--- test110
 void tester110(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int, int)("test")(42) == 42);
 }
+
+/*
+@TestInfo(&tester111)
+immutable test111 = q{--- test111
+	// Test string escapes
+	u8[] test() {
+		return "\'\"\?\\\0\a\b\f\n\r\t\v\xAA\uAAAA\U0000AAAA";
+	}
+};
+void tester111(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(char[])("test")() == "");
+}*/
+
+
+@TestInfo(&tester112)
+immutable test112 = q{--- test112
+	// Test int <--> ptr conversions
+	u64 ptr_to_int(u8* ptr) {
+		return cast(u64)ptr;
+	}
+	u8* int_to_ptr(u64 i) {
+		return cast(u8*)i;
+	}
+};
+void tester112(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong, ubyte*)("ptr_to_int")(cast(ubyte*)0xFFFF_FFFF_FFFF_FFFF) == 0xFFFF_FFFF_FFFF_FFFF);
+	assert(ctx.getFunctionPtr!(ubyte*, ulong)("int_to_ptr")(0xFFFF_FFFF_FFFF_FFFF) == cast(ubyte*)0xFFFF_FFFF_FFFF_FFFF);
+}
