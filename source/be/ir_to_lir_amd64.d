@@ -190,6 +190,62 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				}
 				break;
 
+			case array:
+				IrTypeArray* arrayType = &context.types.get!IrTypeArray(valueType);
+				uint elemSize = context.types.typeSize(arrayType.elemType);
+				IrIndex[] members;
+
+				switch(irValue.kind) with(IrValueKind)
+				{
+					case virtualRegister:
+						IrIndex origin = ir.getVirtReg(irValue).definition;
+						IrInstrHeader* instr = &ir.get!IrInstrHeader(origin);
+
+						switch (instr.op)
+						{
+							case IrOpcode.load_aggregate, IrOpcode.load:
+								foreach (i; 0..arrayType.size)
+								{
+									IrIndex ptr = genAddressOffset(lirPtr, offset + elemSize * i, ptrType, lirBlockIndex);
+									genStore(ptr, 0, instr.arg(ir, 0), fromOffset + elemSize * i, arrayType.elemType, lirBlockIndex, ir);
+								}
+								return;
+
+							case IrOpcode.create_aggregate:
+								members = instr.args(ir);
+								break;
+
+							case IrOpcode.call:
+								// register fixup for return stack slot
+								IrIndex resultSlot = getFixedIndex(irValue);
+								//context.internal_error("call . todo %s", resultSlot);
+								foreach (i; 0..arrayType.size)
+								{
+									IrIndex ptr = genAddressOffset(lirPtr, offset + elemSize * i, ptrType, lirBlockIndex);
+									genStore(ptr, 0, resultSlot, fromOffset + elemSize * i, arrayType.elemType, lirBlockIndex, ir);
+								}
+								return;
+
+							default:
+								context.internal_error("%s", cast(IrOpcode)instr.op);
+						}
+						break;
+
+					case constantAggregate:
+						members = context.constants.getAggregate(irValue).members;
+						break;
+
+					default: context.internal_error("%s", irValue.kind); assert(false);
+				}
+
+				context.assertf(members.length == arrayType.size, "%s != %s", members.length, arrayType.size);
+
+				foreach (i; 0..arrayType.size)
+				{
+					genStore(lirPtr, offset + elemSize * i, members[i], fromOffset, arrayType.elemType, lirBlockIndex, ir);
+				}
+				break;
+
 			default:
 				context.internal_error("%s", valueType.typeKind); assert(false);
 		}

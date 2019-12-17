@@ -357,6 +357,7 @@ struct IrBuilder
 			case basicBlock: break; // allowed. As argument of jmp jcc
 			case constant: break; // allowed, noop
 			case constantAggregate: break;
+			case constantZero: break;
 			case global:
 				context.globals.get(used).addUser(user);
 				break;
@@ -983,6 +984,7 @@ struct IrBuilder
 			case basicBlock: assert(false);
 			case constant: assert(false);
 			case constantAggregate: assert(false);
+			case constantZero: assert(false);
 			case global: assert(false);
 			case phi: return someIndex;
 			case func: assert(false); // TODO
@@ -1047,7 +1049,7 @@ struct IrBuilder
 						}
 					break;
 				case basicBlock: assert(false);
-				case constant, constantAggregate: assert(false);
+				case constant, constantAggregate, constantZero: assert(false);
 				case global: assert(false);
 				case phi:
 					if (ir.get!IrPhi(phiUserIndex).isRemoved) continue; // skip
@@ -1084,7 +1086,7 @@ struct IrBuilder
 		final switch (used.kind) with(IrValueKind) {
 			case none, listItem, basicBlock, physicalRegister: assert(false);
 			case instruction: return replaceVregUser(ir.getVirtReg(ir.get!IrInstrHeader(used).result(ir)));
-			case constant, constantAggregate: return; // constants dont track individual users
+			case constant, constantAggregate, constantZero: return; // constants dont track individual users
 			case global: return; // globals dont track individual users
 			case phi: return replaceVregUser(ir.getVirtReg(ir.get!IrPhi(used).result));
 			case stackSlot: assert(false); // TODO

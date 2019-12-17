@@ -481,6 +481,7 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref CompilationContext
 			}
 			sink("}");
 			break;
+		case constantZero: sink("zeroinit"); break;
 		case global: sink.formattedWrite("g%s", index.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi%s", index.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s%s", index.storageUintIndex); break;

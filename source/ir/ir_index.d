@@ -56,7 +56,7 @@ struct IrIndex
 			IrValueKind,     "",               4  // index kind
 		));
 
-		// used when kind == IrValueKind.type
+		// used when kind == IrValueKind.type || kind == IrValueKind.constantZero
 		// types are stored in 8-byte chunked buffer
 		mixin(bitfields!(
 			// if typeKind is basic, then typeIndex contains IrValueType

@@ -13,6 +13,7 @@ struct StaticArrayTypeNode {
 	AstIndex length_expr;
 	uint length;
 	IrIndex irType;
+	IrIndex defaultVal;
 	uint size(CompilationContext* context) { return cast(uint)(base.typeSize(context) * length); } // TODO check overflow
 	uint alignment(CompilationContext* context) { return base.typeAlignment(context); }
 }
@@ -50,6 +51,21 @@ void type_check_static_array(StaticArrayTypeNode* node, ref TypeCheckState state
 bool same_type_static_array(StaticArrayTypeNode* t1, StaticArrayTypeNode* t2, CompilationContext* context)
 {
 	return (t1.length == t2.length) && same_type(t1.base, t2.base, context);
+}
+
+IrIndex gen_default_value_static_array(StaticArrayTypeNode* node, CompilationContext* c)
+{
+	if (node.defaultVal.isDefined) return node.defaultVal;
+
+	IrIndex arrayType = node.gen_ir_type_static_array(c);
+	uint size = c.types.get!IrTypeArray(arrayType).size;
+
+	node.defaultVal = c.constants.addAggrecateConstant(arrayType, size);
+	IrAggregateConstant* agg = &c.constants.getAggregate(node.defaultVal);
+	IrIndex elemDefault = node.base.get_type(c).gen_default_value(c);
+	agg.members[] = elemDefault;
+
+	return node.defaultVal;
 }
 
 IrIndex gen_ir_type_static_array(StaticArrayTypeNode* t, CompilationContext* context)

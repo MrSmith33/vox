@@ -1730,45 +1730,45 @@ immutable test83 = q{--- test83
 	// use static array length in constant folded expression
 	enum combined_enums = cast(u64)arr_size3 + arrBackref.length;
 	i32[combined_enums] arrBackrefX;
-	u64 combinedEnums() { return arrBackrefX.length; } // 160
+	u64 combinedEnums() { return arrBackrefX.length; } // 16
 
-	enum arr_size = 40;
+	enum arr_size = 4;
 	i32[arr_size] arrBackref;
-	u64 getSize1() { return arrBackref.length; } // 40
+	u64 getSize1() { return arrBackref.length; } // 4
 
 	u64 testBackref() {
 		i32[arr_size] local_arr;
-		return local_arr.length; // 40
+		return local_arr.length; // 4
 	}
 
 	i32[arr_size2] arrForwardref;
-	u64 getSize2() { return arrForwardref.length; } // 100
+	u64 getSize2() { return arrForwardref.length; } // 7
 
 	u64 testForwardref() {
 		i32[arr_size2] local_arr;
-		return local_arr.length; // 100
+		return local_arr.length; // 7
 	}
 
-	enum arr_size2 = 100;
+	enum arr_size2 = 7;
 
 	i32[arr_size3 + 4] arrForwardref2;
-	u64 getSize3() { return arrForwardref2.length; } // 124
+	u64 getSize3() { return arrForwardref2.length; } // 16
 
 	u64 testForwardref2() {
 		i32[arr_size3 + 10] local_arr;
-		return local_arr.length; // 130
+		return local_arr.length; // 22
 	}
 
-	enum arr_size3 = 120;
+	enum arr_size3 = 12;
 };
 void tester83(ref TestContext ctx) {
-	assert(ctx.getFunctionPtr!ulong("combinedEnums")() == 160);
-	assert(ctx.getFunctionPtr!ulong("getSize1")() == 40);
-	assert(ctx.getFunctionPtr!ulong("testBackref")() == 40);
-	assert(ctx.getFunctionPtr!ulong("getSize2")() == 100);
-	assert(ctx.getFunctionPtr!ulong("testForwardref")() == 100);
-	assert(ctx.getFunctionPtr!ulong("getSize3")() == 124);
-	assert(ctx.getFunctionPtr!ulong("testForwardref2")() == 130);
+	assert(ctx.getFunctionPtr!ulong("combinedEnums")() == 16);
+	assert(ctx.getFunctionPtr!ulong("getSize1")() == 4);
+	assert(ctx.getFunctionPtr!ulong("testBackref")() == 4);
+	assert(ctx.getFunctionPtr!ulong("getSize2")() == 7);
+	assert(ctx.getFunctionPtr!ulong("testForwardref")() == 7);
+	assert(ctx.getFunctionPtr!ulong("getSize3")() == 16);
+	assert(ctx.getFunctionPtr!ulong("testForwardref2")() == 22);
 }
 
 @TestInfo(&tester84)
@@ -2799,4 +2799,23 @@ immutable test112 = q{--- test112
 void tester112(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(ulong, ubyte*)("ptr_to_int")(cast(ubyte*)0xFFFF_FFFF_FFFF_FFFF) == 0xFFFF_FFFF_FFFF_FFFF);
 	assert(ctx.getFunctionPtr!(ubyte*, ulong)("int_to_ptr")(0xFFFF_FFFF_FFFF_FFFF) == cast(ubyte*)0xFFFF_FFFF_FFFF_FFFF);
+}
+
+
+@TestInfo(&tester113)
+immutable test113 = q{--- test113
+	// default initialization of variables
+	struct S
+	{
+		i32 integer;
+		u8[] slice;
+	}
+	void fun()
+	{
+		S s;
+		i32 integer;
+		u8[] slice;
+	}
+};
+void tester113(ref TestContext ctx) {
 }

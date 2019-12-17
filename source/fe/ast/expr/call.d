@@ -284,24 +284,17 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 		if (memberVarNode.astType != AstType.decl_var) continue;
 		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
 
-		void processExpr(ref AstIndex initializer)
+		AstIndex initializer;
+		if (n.args.length > memberIndex) // init from constructor argument
 		{
 			IrLabel afterArg = IrLabel(currentBlock);
-			ExprValue lval = ir_gen_expr(gen, initializer, currentBlock, afterArg);
+			ExprValue lval = ir_gen_expr(gen, n.args[memberIndex], currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
 			args[memberIndex] = getRvalue(gen, n.loc, currentBlock, lval);
 		}
-
-		AstIndex initializer;
-		if (n.args.length > memberIndex) { // init from constructor argument
-			processExpr(n.args[memberIndex]);
-		} else { // init with initializer from struct definition
-			if (memberVar.initializer)
-				processExpr(memberVar.initializer);
-			else
-			{
-				args[memberIndex] = memberVar.type.get_type(c).gen_default_value(c);
-			}
+		else // init with initializer from struct definition
+		{
+			args[memberIndex] = memberVar.gen_default_value_var(c);
 		}
 
 		++memberIndex;

@@ -16,6 +16,7 @@ enum IrValueKind : ubyte
 	basicBlock,
 	constant,
 	constantAggregate, /// Cannot appear in LIR
+	constantZero, /// Zero inits value of any type. Type is embedded (same layout as IrValueKind.type)
 	global, /// Index of global var or const (or literal data)
 	phi,
 	stackSlot,

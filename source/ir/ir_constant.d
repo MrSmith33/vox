@@ -121,17 +121,31 @@ struct IrConstantStorage
 		return result;
 	}
 
-	///
-	IrIndex addAggrecateConstant(IrIndex type, IrIndex[] members...) {
+	/// Creates aggrecate constant without initializing members
+	IrIndex addAggrecateConstant(IrIndex type, uint numMembers)
+	{
+		assert (type.isTypeStruct || type.isTypeArray);
 		IrIndex resultIndex = IrIndex(cast(uint)aggregateBuffer.length, IrValueKind.constantAggregate);
-		uint numMembers = cast(uint)members.length;
 		uint allocSize = cast(uint)divCeil(IrAggregateConstant.sizeof, uint.sizeof) + numMembers;
 		aggregateBuffer.voidPut(allocSize);
 		IrAggregateConstant* agg = &getAggregate(resultIndex);
 		agg.type = type;
 		agg.numMembers = numMembers;
+		return resultIndex;
+	}
+
+	///
+	IrIndex addAggrecateConstant(IrIndex type, IrIndex[] members...) {
+		IrIndex resultIndex = addAggrecateConstant(type, cast(uint)members.length);
+		IrAggregateConstant* agg = &getAggregate(resultIndex);
 		agg.members[] = members;
 		return resultIndex;
+	}
+
+	static IrIndex addZeroConstant(IrIndex type)
+	{
+		type.kind = IrValueKind.constantZero;
+		return type;
 	}
 
 	///
@@ -148,16 +162,24 @@ struct IrConstantStorage
 	///
 	IrConstant get(IrIndex index)
 	{
-		assert(index.kind == IrValueKind.constant, format("Not a constant (%s)", index));
-		final switch(index.constantKind) with(IrConstantKind) {
-			case intUnsignedSmall: return IrConstant(index.constantIndex);
-			case intSignedSmall: return IrConstant((cast(int)index.constantIndex << 8) >> 8);
-			case intUnsignedBig, intSignedBig:
-				assert(index.constantIndex < buffer.length,
-					format("Not in bounds: index.constantIndex(%s) < buffer.length(%s)",
-						index.constantIndex, buffer.length));
-				return buffer[index.constantIndex];
+		if (index.kind == IrValueKind.constant)
+		{
+			final switch(index.constantKind) with(IrConstantKind) {
+				case intUnsignedSmall: return IrConstant(index.constantIndex);
+				case intSignedSmall: return IrConstant((cast(int)index.constantIndex << 8) >> 8);
+				case intUnsignedBig, intSignedBig:
+					assert(index.constantIndex < buffer.length,
+						format("Not in bounds: index.constantIndex(%s) < buffer.length(%s)",
+							index.constantIndex, buffer.length));
+					return buffer[index.constantIndex];
+			}
 		}
+		else if (index.kind == IrValueKind.constantZero)
+		{
+			return IrConstant(0);
+		}
+		else
+			assert(false, format("Not a constant (%s)", index));
 	}
 
 	enum IrIndex ZERO = makeConst(0, IrConstantKind.intSignedSmall);

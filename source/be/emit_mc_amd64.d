@@ -631,6 +631,7 @@ struct CodeEmitter
 		final switch (src.kind) with(IrValueKind)
 		{
 			case none, listItem, instruction, basicBlock, phi, type, virtualRegister, variable, func, constantAggregate: assert(false);
+			case constantZero:
 			case constant:
 				IrConstant con = context.constants.get(src);
 				if (con.i64.argSizeIntSigned == IrArgSize.size8) {

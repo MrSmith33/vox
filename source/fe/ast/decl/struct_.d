@@ -17,6 +17,7 @@ struct StructDeclNode {
 	AstIndex memberScope;
 	Identifier id;
 	IrIndex irType;
+	IrIndex defaultVal;
 
 	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, Identifier id)
 	{
@@ -73,6 +74,29 @@ void type_check_struct(StructDeclNode* node, ref TypeCheckState state)
 	require_type_check(node.declarations, state);
 	gen_ir_type_struct(node, state.context);
 	node.state = AstNodeState.type_check_done;
+}
+
+IrIndex gen_default_value_struct(StructDeclNode* node, CompilationContext* c)
+{
+	if (node.defaultVal.isDefined) return node.defaultVal;
+
+	IrIndex structType = node.gen_ir_type_struct(c);
+	uint numStructMembers = c.types.get!IrTypeStruct(structType).numMembers;
+	IrIndex[] args = c.allocateTempArray!IrIndex(numStructMembers);
+	scope(exit) c.freeTempArray(args);
+
+	uint memberIndex;
+	foreach(AstIndex member; node.declarations)
+	{
+		AstNode* memberVarNode = member.get_node(c);
+		if (memberVarNode.astType != AstType.decl_var) continue;
+		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
+		args[memberIndex] = memberVar.gen_default_value_var(c);
+		++memberIndex;
+	}
+	node.defaultVal = c.constants.addAggrecateConstant(structType, args);
+
+	return node.defaultVal;
 }
 
 IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)

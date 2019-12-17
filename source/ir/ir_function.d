@@ -332,7 +332,7 @@ void removeUser(CompilationContext* context, IrFunction* ir, IrIndex user, IrInd
 		case listItem: assert(false, "removeUser listItem");
 		case instruction: assert(false, "removeUser instruction");
 		case basicBlock: break; // allowed. As argument of jmp jcc
-		case constant, constantAggregate: break; // allowed, noop
+		case constant, constantAggregate, constantZero: break; // allowed, noop
 		case global:
 			context.globals.get(used).removeUser(user);
 			break;

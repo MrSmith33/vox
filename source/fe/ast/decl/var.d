@@ -22,6 +22,7 @@ struct VariableDeclNode
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
 	ExprValue initValue;
 	ExprValue irValue; // kind is variable or stackSlot, unique id of variable within a function
+	IrIndex defaultVal;
 	bool forceMemoryStorage() { return cast(bool)(flags & VariableFlags.forceMemoryStorage); }
 	bool isParameter() { return cast(bool)(flags & VariableFlags.isParameter); }
 	bool isAddressTaken() { return cast(bool)(flags & VariableFlags.isAddressTaken); }
@@ -96,6 +97,20 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 		}
 	}
 	node.state = AstNodeState.type_check_done;
+}
+
+IrIndex gen_default_value_var(VariableDeclNode* node, CompilationContext* c)
+{
+	if (node.defaultVal.isDefined) return node.defaultVal;
+	if (node.initializer)
+	{
+		node.defaultVal = eval_static_expr(node.initializer, c);
+	}
+	else
+	{
+		node.defaultVal = node.type.get_type(c).gen_default_value(c);
+	}
+	return node.defaultVal;
 }
 
 void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt, VariableDeclNode* v)
@@ -179,12 +194,8 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 		}
 		else
 		{
-			// TODO: default init structs, arrays, slices
-			if (varType.as_basic || varType.as_ptr)
-			{
-				IrIndex value = c.constants.ZERO;
-				store(gen, v.loc, curBlock, v.irValue, value);
-			}
+			IrIndex value = varType.gen_default_value(c);
+			store(gen, v.loc, curBlock, v.irValue, value);
 		}
 	}
 

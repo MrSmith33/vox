@@ -768,7 +768,7 @@ struct LinearScan
 			{
 				final switch (userIndex.kind) with(IrValueKind)
 				{
-					case none, listItem, virtualRegister, physicalRegister, constant, global, basicBlock, stackSlot, type, func, constantAggregate: assert(false);
+					case none, listItem, virtualRegister, physicalRegister, constant, constantAggregate, constantZero, global, basicBlock, stackSlot, type, func: assert(false);
 					case instruction:
 						uint pos = live.linearIndicies.instr(userIndex);
 						IrIndex reg = live.getRegFor(vregIndex, pos);

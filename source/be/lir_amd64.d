@@ -291,6 +291,7 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref CompilationC
 		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
 		case constant: sink.formattedWrite("%s", context.constants.get(i).i64); break;
 		case constantAggregate: sink.formattedWrite("cagg%s", i.storageUintIndex); break;
+		case constantZero: sink.formattedWrite("zeroinit"); break;
 		case global: sink.formattedWrite("g%s", i.storageUintIndex); break;
 		case phi: sink.formattedWrite("phi%s", i.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s%s", i.storageUintIndex); break;

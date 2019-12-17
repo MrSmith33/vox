@@ -11,15 +11,10 @@ struct SliceTypeNode {
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	AstIndex base;
 	IrIndex irType;
+	IrIndex defaultVal;
 
 	uint size() { return POINTER_SIZE * 2; }
 	uint alignment() { return POINTER_SIZE; }
-
-	IrIndex gen_default_value(CompilationContext* c)
-	{
-		IrIndex irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
-		return c.constants.addAggrecateConstant(gen_ir_type_slice(&this, c), irValue, irValue);
-	}
 }
 
 void post_clone_slice(SliceTypeNode* node, ref CloneState state)
@@ -53,6 +48,14 @@ void type_check_slice(SliceTypeNode* node, ref TypeCheckState state)
 bool same_type_slice(SliceTypeNode* t1, SliceTypeNode* t2, CompilationContext* context)
 {
 	return same_type(t1.base, t2.base, context);
+}
+
+IrIndex gen_default_value_slice(SliceTypeNode* node, CompilationContext* c)
+{
+	if (node.defaultVal.isDefined) return node.defaultVal;
+	IrIndex irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
+	node.defaultVal = c.constants.addAggrecateConstant(gen_ir_type_slice(node, c), irValue, irValue);
+	return node.defaultVal;
 }
 
 // slice is lowered into struct with two members
