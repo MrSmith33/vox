@@ -20,6 +20,7 @@ public import ir.ir_instructions;
 public import ir.ir_module;
 public import ir.ir_phi;
 public import ir.ir_type;
+public import ir.ir_validation;
 public import ir.ir_value_kind;
 public import ir.ir_variable;
 public import ir.ir_virt_reg;
