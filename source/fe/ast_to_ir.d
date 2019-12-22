@@ -239,6 +239,7 @@ void store(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue d
 IrIndex getRvalue(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue source)
 {
 	CompilationContext* c = gen.context;
+	//writefln("getRvalue %s", source);
 	switch (source.kind) with(ExprValueKind)
 	{
 		case value:
@@ -295,8 +296,10 @@ IrIndex load(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrIndex s
 ExprValue getAggregateMember(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue aggr, IrIndex[] indicies...)
 {
 	CompilationContext* c = gen.context;
+	//writefln("getAggregateMember %s", aggr);
 	if (aggr.irValue.isVariable) {
 		aggr.irValue = gen.builder.readVariable(currentBlock, aggr.irValue);
+		//writefln("  %s", aggr.irValue);
 	}
 
 	switch (aggr.kind) with(ExprValueKind)
@@ -308,6 +311,7 @@ ExprValue getAggregateMember(ref IrGenState gen, TokenIndex loc, IrIndex current
 	}
 
 	IrIndex aggrType = gen.ir.getValueType(c, aggr.irValue);
+	//writefln("  %s", aggrType.typeKind);
 
 	switch (aggrType.typeKind) {
 		case IrTypeKind.pointer: return ExprValue(buildGEP(gen, loc, currentBlock, aggr.irValue, c.constants.ZERO, indicies), ExprValueKind.ptr_to_data, IsLvalue.yes);

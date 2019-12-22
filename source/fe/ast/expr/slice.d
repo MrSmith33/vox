@@ -90,6 +90,7 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 	AstType astType = arrayExpr.type.get_type(c).astType;
 	IrIndex ptr; // pointer to first element
 	IrIndex length; // slice length
+
 	if (fromIndexRvalue.isConstant && c.constants.get(fromIndexRvalue).i64 == 0)
 	{
 		// special case for array[0..to];
@@ -98,7 +99,7 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 		{
 			case type_ptr:
 				// read pointer variable for T*
-				if (ptr.isVariable) ptr = gen.builder.readVariable(curBlock, ptr);
+				ptr = getRvalue(gen, node.loc, curBlock, arrayLvalue);
 				break;
 			case type_static_array:
 				// need to convert [n x T]* into T* for static arrays

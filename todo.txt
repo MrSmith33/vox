@@ -124,6 +124,9 @@ o dll linking
 	+ need array arena for IR with per-function slices
 - make sure that blocks for splitting critical edges are inserted after successor
 + Remove IR instruction structs, use enum values directly in emitInstr
+- Automatically use zero initialization when possible
+- Add constant kind that inits all elements of an array with the same value
+- Validate all instructions
 
 [Register allocator]
 + Do liveness + RA together on each function

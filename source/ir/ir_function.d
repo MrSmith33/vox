@@ -396,6 +396,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 	scope(failure) dumpFunction(context, ir);
 
 	auto funcInstrInfos = allInstrInfos[ir.instructionSet];
+	auto instrValidator = instrValidators[ir.instructionSet];
 
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
@@ -544,6 +545,74 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 					"Branch %s is in the middle of basic block %s",
 					instrIndex, blockIndex);
 			}
+
+			instrValidator(context, ir, instrIndex, instrHeader);
 		}
 	}
+}
+
+immutable void function(CompilationContext*, IrFunction*, IrIndex, ref IrInstrHeader)[] instrValidators = [
+	&validateIrInstruction, // ir
+	&validateIrInstruction_dummy, // lir_amd64
+];
+
+void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrIndex, ref IrInstrHeader instrHeader)
+{
+	switch(instrHeader.op)
+	{
+		// TODO: check all instructions
+		// only check create_aggregate for now
+		case IrOpcode.create_aggregate:
+			c.assertf(instrHeader.hasResult, "%s: create_aggregate has no result", instrIndex);
+
+			IrIndex result = instrHeader.result(ir);
+			c.assertf(result.isVirtReg, "%s: create_aggregate result is %s. virtualRegister expected", instrIndex, result.kind);
+
+			IrVirtualRegister* vreg = &ir.getVirtReg(result);
+			c.assertf(vreg.type.isType, "%s result type is not a type: %s", instrIndex, vreg.type.kind);
+
+			if (vreg.type.isTypeStruct)
+			{
+				IrTypeStruct* structType = &c.types.get!IrTypeStruct(vreg.type);
+				c.assertf(instrHeader.numArgs == structType.numMembers,
+					"%s: create_aggregate invalid number of arguments, got %s, expected %s",
+					instrIndex, instrHeader.numArgs, structType.numMembers);
+
+				IrTypeStructMember[] structMembers = structType.members;
+				foreach (i, IrIndex arg; instrHeader.args(ir))
+				{
+					IrIndex memberType = structMembers[i].type;
+					IrIndex argType = getValueType(arg, ir, c);
+					bool sameType = c.types.isSameType(argType, memberType);
+					c.assertf(sameType, "%s: create_aggregate type of arg %s mismatch. Expected %s, got %s",
+						instrIndex, i+1, IrIndexDump(memberType, c, ir), IrIndexDump(argType, c, ir));
+				}
+			}
+			else if (vreg.type.isTypeArray)
+			{
+				IrTypeArray* arrayType = &c.types.get!IrTypeArray(vreg.type);
+				c.assertf(instrHeader.numArgs == arrayType.size,
+					"%s: create_aggregate invalid number of arguments, got %s, expected %s",
+					instrIndex, instrHeader.numArgs, arrayType.size);
+
+				IrIndex memberType = arrayType.elemType;
+				foreach (i, IrIndex arg; instrHeader.args(ir))
+				{
+					IrIndex argType = getValueType(arg, ir, c);
+					bool sameType = c.types.isSameType(argType, memberType);
+					c.assertf(sameType, "%s: create_aggregate type of arg %s mismatch. Expected %s, got %s",
+						instrIndex, i+1, IrIndexDump(memberType, c, ir), IrIndexDump(argType, c, ir));
+				}
+			}
+			else
+				c.assertf(false, "%s: create_aggregate result type must be struct or array, got %s",
+						instrIndex, vreg.type.kind);
+			break;
+		default: break;
+	}
+}
+
+void validateIrInstruction_dummy(CompilationContext* context, IrFunction* ir, IrIndex instrIndex, ref IrInstrHeader instrHeader)
+{
+
 }

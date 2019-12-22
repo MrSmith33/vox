@@ -798,38 +798,56 @@ struct LinearScan
 	void fixInstructionResults(FunctionDeclNode* fun)
 	{
 		// fix definitions
+		// args are already fixed
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
 		{
 			switch(vreg.definition.kind) with(IrValueKind)
 			{
 				case instruction:
 					uint pos = live.linearIndicies.instr(vreg.definition);
-					IrIndex reg = live.getRegFor(vregIndex, pos);
+					IrIndex resultReg = live.getRegFor(vregIndex, pos);
 
 					IrIndex instrIndex = vreg.definition;
 					IrInstrHeader* instrHeader = &lir.get!IrInstrHeader(instrIndex);
-					instrHeader.result(lir) = reg;
+					instrHeader.result(lir) = resultReg;
 
-					fixTwoOperandForm(instrIndex, instrHeader);
+					InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
+
+					// requires two operant form
+					if (instrInfo.isResultInDst)
+					{
+						fixTwoOperandForm(instrInfo, instrIndex, instrHeader);
+					}
+					// optimization that can be safely disabled
+					else
+					{
+						if (instrInfo.isMov)
+						{
+							IrIndex src = instrHeader.arg(lir, 0);
+							if (resultReg == src)
+							{
+								// redundant mov
+								//writefln("%s mov %s", resultReg, src);
+								lir.removeInstruction(instrIndex);
+							}
+						}
+					}
 					break;
+
 				case phi:
 					IrPhi* irPhi = &lir.get!IrPhi(vreg.definition);
 					uint pos = live.linearIndicies.basicBlock(irPhi.blockIndex);
 					IrIndex reg = live.getRegFor(vregIndex, pos);
 					irPhi.result = reg;
 					break;
+
 				default: assert(false);
 			}
 		}
 	}
 
-	void fixTwoOperandForm(IrIndex instrIndex, IrInstrHeader* instrHeader)
+	void fixTwoOperandForm(InstrInfo instrInfo, IrIndex instrIndex, IrInstrHeader* instrHeader)
 	{
-		InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
-
-		// doesn't require two operant form
-		if (!instrInfo.isResultInDst) return;
-
 		// Insert mov for instructions requiring two-operand form (like x86 xor)
 		if (instrHeader.numArgs == 2)
 		{

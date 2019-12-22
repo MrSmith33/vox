@@ -3,6 +3,7 @@
 /// Authors: Andrey Penechko.
 module tests.passing;
 
+import core.stdc.stdlib : malloc, free;
 import std.stdio;
 import tester;
 
@@ -2818,4 +2819,38 @@ immutable test113 = q{--- test113
 	}
 };
 void tester113(ref TestContext ctx) {
+}
+
+
+@TestInfo(&tester114)
+immutable test114 = q{--- test114
+	// test ptr slice correctenss
+	struct Array
+	{
+		i32* bufPtr;
+		u32 length;
+		u32 capacity;
+
+		i32[] data()
+		{
+			return bufPtr[0..length];
+		}
+	}
+
+	i32[] test(Array* array)
+	{
+		return array.data;
+	}
+};
+void tester114(ref TestContext ctx) {
+	static struct Array {
+		int* ptr;
+		uint length;
+		uint capacity;
+	}
+	int[2] buffer = [42, 0];
+	Array array = Array(buffer.ptr, 1, 2);
+	int[] data = ctx.getFunctionPtr!(Slice!int, Array*)("test")(&array).slice;
+	assert(data.ptr == buffer.ptr);
+	assert(data.length == 1);
 }
