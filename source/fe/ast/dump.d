@@ -55,6 +55,7 @@ struct AstPrinter {
 	}
 	void visit(VariableDeclNode* v) {
 		print(v.isParameter ? "PARAM " : "VAR ", v.type.printer(context), " ", context.idString(v.id));
+		if (v.type) pr_node(v.type);
 		if (v.initializer) pr_node(v.initializer);
 	}
 	void visit(StructDeclNode* s) {

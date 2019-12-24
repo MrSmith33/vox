@@ -203,13 +203,6 @@ struct Parser
 		{
 			if (tok.type == TokenType.EOI) break;
 			AstIndex declIndex = parse_declaration;
-			if (declIndex.isUndefined)
-			{
-				const(char)[] tokenString = context.getTokenString(tok.index);
-				context.unrecoverable_error(tok.index, "Expected declaration, while got `%s` tok '%s'",
-					tok, tokenString);
-			}
-
 			AstNode* declNode = context.getAstNode(declIndex);
 			declNode.flags |= declFlags;
 			if (declNode.astType == AstType.decl_var) {
@@ -221,7 +214,6 @@ struct Parser
 		return declarations;
 	}
 
-	/// Can return null
 	AstIndex parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
@@ -253,10 +245,32 @@ struct Parser
 		Identifier aliasId = expectIdentifier();
 		expectAndConsume(TokenType.EQUAL);
 
-		AstIndex initializerIndex = expr();
+		AstIndex initializerIndex = expr(PreferType.no);
 		expectAndConsume(TokenType.SEMICOLON);
 
 		return make!AliasDeclNode(start, currentScopeIndex, aliasId, initializerIndex);
+	}
+
+	/// Parses expression preferring types, if identifier follows, parses as var/func declaration
+	AstIndex parse_expr_or_id_decl(ConsumeTerminator consume_terminator, TokenType var_terminator = TokenType.init)
+	{
+		TokenIndex start = tok.index;
+		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
+		AstIndex expr_or_type = expr(PreferType.yes);
+
+		if (tok.type == TokenType.IDENTIFIER)
+		{
+			// declaration
+			return parse_var_func_declaration_after_type(start, body_start, expr_or_type, consume_terminator, var_terminator);
+		}
+		else
+		{
+			// expression
+			AstNode* statementNode = context.getAstNode(expr_or_type);
+			statementNode.flags |= AstFlags.isStatement;
+			if (consume_terminator) expectAndConsume(var_terminator);
+			return expr_or_type;
+		}
 	}
 
 	enum ConsumeTerminator : bool { no, yes }
@@ -266,14 +280,13 @@ struct Parser
 	{
 		TokenIndex start = tok.index;
 		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
-		version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
-		AstIndex typeIndex = parse_type();
+		AstIndex typeIndex = expr(PreferType.yes, 0);
+		return parse_var_func_declaration_after_type(start, body_start, typeIndex, consume_terminator, var_terminator);
+	}
 
-		if (typeIndex.isUndefined)
-		{
-			version(print_parse) auto s3 = scop("<type> is null %s", loc);
-			return AstIndex.init;
-		}
+	AstIndex parse_var_func_declaration_after_type(TokenIndex start, AstIndex body_start, AstIndex typeIndex, ConsumeTerminator consume_terminator, TokenType var_terminator = TokenType.init)
+	{
+		version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
 		Identifier declarationId = expectIdentifier();
 
 		AstIndex initializerIndex;
@@ -281,7 +294,7 @@ struct Parser
 		{
 			// <var_decl> = <type> <identifier> ("=" <expression>)? ";"
 			nextToken; // skip "="
-			initializerIndex = expr();
+			initializerIndex = expr(PreferType.no);
 			AstNode* initializerNode = context.getAstNode(initializerIndex);
 			if (!initializerNode.isExpression) {
 				const(char)[] tokenString = context.getTokenString(initializerNode.loc);
@@ -372,7 +385,7 @@ struct Parser
 
 			// <param> ::= <type> <identifier>?
 			TokenIndex paramStart = tok.index;
-			AstIndex paramType = parse_type_expected();
+			AstIndex paramType = expr(PreferType.yes, 0);
 			Identifier paramId;
 			size_t paramIndex = params.length;
 
@@ -424,7 +437,7 @@ struct Parser
 	{
 		while (tok.type != terminator) {
 			// We don't want to grab the comma, e.g. it is NOT a sequence operator.
-			expressions.put(context.arrayArena, expr(COMMA_PREC));
+			expressions.put(context.arrayArena, expr(PreferType.no, COMMA_PREC));
 			// allows trailing comma too
 			if (tok.type == TokenType.COMMA)
 				nextToken;
@@ -511,7 +524,7 @@ struct Parser
 		AstIndex parseColonType()
 		{
 			nextToken; // skip ":"
-			AstIndex type = parse_type();
+			AstIndex type = expr(PreferType.yes, 0);
 			if (!type)
 				context.unrecoverable_error(tok.index,
 					"Expected type after `enum :`, while got `%s`", context.getTokenString(tok.index));
@@ -537,7 +550,7 @@ struct Parser
 		// enum T e4 = initializer;
 		AstIndex parseTypeEnum()
 		{
-			AstIndex type = parse_type();
+			AstIndex type = expr(PreferType.yes, 0);
 			if (!type)
 				context.unrecoverable_error(tok.index,
 					"Expected type after `enum`, while got `%s`",
@@ -545,7 +558,7 @@ struct Parser
 
 			Identifier enumId = expectIdentifier;
 			expectAndConsume(TokenType.EQUAL); // "="
-			AstIndex value = expr; // initializer
+			AstIndex value = expr(PreferType.no); // initializer
 
 			auto member = make!EnumMemberDecl(start, currentScopeIndex, type, value, enumId);
 
@@ -576,7 +589,7 @@ struct Parser
 			{
 				nextToken; // skip "="
 				Identifier enumId = makeIdentifier(id);
-				AstIndex value = expr;
+				AstIndex value = expr(PreferType.no);
 				auto member = make!EnumMemberDecl(start, currentScopeIndex, intType, value, enumId);
 
 				expectAndConsume(TokenType.SEMICOLON); // ";"
@@ -716,7 +729,7 @@ struct Parser
 			if (tok.type == TokenType.EQUAL)
 			{
 				nextToken; // skip "="
-				value = expr;
+				value = expr(PreferType.no);
 			}
 
 			auto member = make!EnumMemberDecl(start, currentScopeIndex, type, value, id);
@@ -730,80 +743,6 @@ struct Parser
 		}
 		expectAndConsume(TokenType.RCURLY);
 		return members;
-	}
-
-	AstIndex parse_type_expected()
-	{
-		version(print_parse) auto s1 = scop("parse_type_expected %s", tok.index);
-		auto type = parse_type();
-		if (!type) context.unrecoverable_error(tok.index, "Expected basic type, while got '%s'", context.getTokenString(tok.index));
-		return type;
-	}
-
-	/// Can return null
-	AstIndex parse_type() // <type> = (<type_basic> / <type_struct>) <type_specializer>*
-	{
-		version(print_parse) auto s1 = scop("parse_type %s %s", loc, tok.type);
-		TokenIndex start = tok.index;
-		AstIndex base;
-		if (tok.type == TokenType.IDENTIFIER) {
-			Identifier id = expectIdentifier();
-			base = make!NameUseExprNode(start, currentScopeIndex, id);
-		} else if (isBasicTypeToken(tok.type)) {
-			base = context.basicTypeNodes(parse_type_basic());
-		}
-
-		if (base) // <type_specializer> = '*' / '[' <expression> ']'
-		{
-			loop: while (true)
-			{
-				switch(tok.type) with(TokenType)
-				{
-					case STAR: // '*' pointer
-						nextToken;
-						base = make!PtrTypeNode(start, base);
-						break;
-					case LBRACKET:
-						nextToken;
-						if (tok.type == TokenType.RBRACKET) // '[' ']' slice
-						{
-							nextToken; // skip ']'
-							base = make!SliceTypeNode(start, base);
-						}
-						else // '[' <expression> ']' static array
-						{
-							AstIndex length_expr = expr();
-							expectAndConsume(TokenType.RBRACKET);
-							AstNodes indicies;
-							indicies.put(context.arrayArena, length_expr);
-							base = makeExpr!IndexExprNode(start, base, indicies);
-						}
-						break;
-					case FUNCTION_SYM:
-						Token token = tok;
-						nextToken; // skip "function"
-						base = leftFunctionOp(this, token, 0, base);
-						break;
-					default:
-						break loop;
-				}
-			}
-		}
-
-		return base;
-	}
-
-	BasicType parse_type_basic()
-	{
-		version(print_parse) auto s1 = scop("parse_type_basic %s", loc);
-		if (isBasicTypeToken(tok.type))
-		{
-			auto res = tokenTypeToBasicType(tok.type);
-			nextToken;
-			return res;
-		}
-		context.unrecoverable_error(tok.index, "Expected basic type, while got '%s'", context.getTokenString(tok.index));
-		assert(false);
 	}
 
 	AstNodes parse_block() // "{" <statement>* "}"
@@ -850,6 +789,19 @@ struct Parser
 		TokenIndex start = tok.index;
 		switch (tok.type)
 		{
+			// declarations
+			case TokenType.ALIAS_SYM:
+				return parse_alias();
+			case TokenType.STRUCT_SYM:
+				return parse_struct();
+			case TokenType.ENUM:
+				return parse_enum();
+			case TokenType.IMPORT_SYM:
+				return parse_import();
+			case TokenType.HASH_IF:
+				return parse_hash_if();
+
+			// statements
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
 				nextToken;
 				AstIndex condition = paren_expr();
@@ -864,8 +816,6 @@ struct Parser
 					popScope;
 				}
 				return make!IfStmtNode(start, condition, thenStatements, elseStatements);
-			case TokenType.HASH_IF:
-				return parse_hash_if();
 			case TokenType.WHILE_SYM:  /* "while" <paren_expr> <statement> */
 				nextToken;
 				pushScope("While", ScopeKind.local);
@@ -886,7 +836,7 @@ struct Parser
 				return parse_for;
 			case TokenType.RETURN_SYM:  /* return <expr> */
 				nextToken;
-				AstIndex expression = tok.type != TokenType.SEMICOLON ? expr() : AstIndex.init;
+				AstIndex expression = tok.type != TokenType.SEMICOLON ? expr(PreferType.no) : AstIndex.init;
 				expectAndConsume(TokenType.SEMICOLON);
 				return make!ReturnStmtNode(start, expression);
 			case TokenType.BREAK_SYM:  /* break; */
@@ -904,37 +854,16 @@ struct Parser
 				return block_stmt();
 			default:
 			{
+				// expression or var/func declaration
 				version(print_parse) auto s2 = scop("default %s", loc);
-
-				if (isBasicTypeToken(tok.type) ||
-					tok.type == TokenType.STRUCT_SYM ||
-					tok.type == TokenType.ENUM ||
-					tok.type == TokenType.IMPORT_SYM) // declaration
-				{
-					return parse_declaration;
-				}
-
-				Token copy = tok; // save
-				if (is_declaration)
-				{
-					tok = copy;
-					AstIndex decl = parse_declaration;
-					return decl;
-				}
-				tok = copy;
-
-				// <expr> ";"
-				AstIndex expression = expr();
-				AstNode* expressionNode = context.getAstNode(expression);
-				expressionNode.flags |= AstFlags.isStatement;
-				expectAndConsume(TokenType.SEMICOLON);
-
+				// <expr> ";" / var decl / func decl
+				AstIndex expression = parse_expr_or_id_decl(ConsumeTerminator.yes, TokenType.SEMICOLON);
 				return expression;
 			}
 		}
 	}
 
-	AstIndex parse_for() // "for" "(" <init> ";" <cond> ";" <increment> ")" <statement>
+	AstIndex parse_for() // "for" "(" <init>,... ";" <cond> ";" <increment> ")" <statement>
 	{
 		TokenIndex start = tok.index;
 		nextToken; // skip "for"
@@ -949,26 +878,7 @@ struct Parser
 		// <init>
 		while (tok.type != TokenType.SEMICOLON) // check after trailing comma
 		{
-			AstIndex init_stmt;
-
-			Token copy = tok; // save
-
-			if (is_declaration)
-			{
-				tok = copy;
-				init_stmt = parse_var_func_declaration(ConsumeTerminator.no);
-			}
-			else
-			{
-				tok = copy; // restore
-
-				// <expr>
-				AstIndex expression = expr();
-				AstNode* expressionNode = context.getAstNode(expression);
-				expressionNode.flags |= AstFlags.isStatement;
-				init_stmt = expression;
-			}
-
+			AstIndex init_stmt = parse_expr_or_id_decl(ConsumeTerminator.no);
 			init_statements.put(context.arrayArena, init_stmt);
 
 			if (tok.type == TokenType.COMMA)
@@ -980,7 +890,7 @@ struct Parser
 		// <cond>
 		AstIndex condition;
 		if (tok.type != TokenType.SEMICOLON) {
-			condition = expr();
+			condition = expr(PreferType.no);
 		}
 		expectAndConsume(TokenType.SEMICOLON);
 
@@ -988,7 +898,7 @@ struct Parser
 		// <increment>
 		while (tok.type != TokenType.RPAREN) // check after trailing comma
 		{
-			AstIndex incExpr = expr();
+			AstIndex incExpr = expr(PreferType.no);
 			AstNode* incExprNode = context.getAstNode(incExpr);
 			incExprNode.flags |= AstFlags.isStatement;
 			increment_statements.put(context.arrayArena, incExpr);
@@ -1004,93 +914,21 @@ struct Parser
 		return make!ForStmtNode(start, init_statements, condition, increment_statements, statements);
 	}
 
-	// scans forward to check if current token starts new declaration
-	private bool is_declaration()
-	{
-		if (tok.type == TokenType.IDENTIFIER || isBasicTypeToken(tok.type))
-		{
-			nextToken;
-			while(is_declarator)
-			{}
-
-			if (tok.type == TokenType.IDENTIFIER)
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	// scans forward to check if current token starts new declarator
-	// doesn't restore in a case of failure
-	// [], *, [expr], function(expr)
-	private bool is_declarator()
-	{
-		if (tok.type == TokenType.STAR) { // *
-			nextToken;
-			return true;
-		}
-		if (tok.type == TokenType.LBRACKET) { // [
-			skip_brackets;
-			return true;
-		}
-		if (tok.type == TokenType.FUNCTION_SYM) { // function
-			nextToken;
-			skip_parenths;
-			return true;
-		}
-		return false;
-	}
-
-	void skip_brackets() {
-		skip!(TokenType.LBRACKET, TokenType.RBRACKET, '[')();
-	}
-
-	void skip_parenths() {
-		skip!(TokenType.LPAREN, TokenType.RPAREN, '(')();
-	}
-
-	void skip(TokenType Open, TokenType Close, char sym)() {
-		Token start = tok;
-		expectAndConsume(Open);
-		int depth = 1;
-		while (hasMoreTokens) {
-			switch (tok.type) {
-				case Close:
-					nextToken;
-					--depth;
-					if (depth <= 0) {
-						return;
-					}
-					break;
-				case Open:
-					++depth;
-					nextToken;
-					break;
-				default:
-					nextToken;
-					break;
-			}
-		}
-		context.unrecoverable_error(start.index, "Unclosed `%s`", sym);
-	}
-
 	AstIndex paren_expr() { /* <paren_expr> ::= "(" <expr> ")" */
 		version(print_parse) auto s1 = scop("paren_expr %s", loc);
 		expectAndConsume(TokenType.LPAREN);
-		auto res = expr();
+		auto res = expr(PreferType.no);
 		expectAndConsume(TokenType.RPAREN);
 		return res;
 	}
 
-	AstIndex expr(int rbp = 0)
+	AstIndex expr(PreferType preferType, int rbp = 0)
 	{
 		Token t = tok;
 		nextToken;
 
 		NullInfo null_info = g_tokenLookups.null_lookup[t.type];
-		AstIndex node = null_info.parser_null(this, t, null_info.rbp);
+		AstIndex node = null_info.parser_null(this, preferType, t, null_info.rbp);
 		int nbp = null_info.nbp; // next bp
 		int lbp = g_tokenLookups.left_lookup[tok.type].lbp;
 
@@ -1099,7 +937,7 @@ struct Parser
 			t = tok;
 			nextToken;
 			LeftInfo left_info = g_tokenLookups.left_lookup[t.type];
-			node = left_info.parser_left(this, t, left_info.rbp, node);
+			node = left_info.parser_left(this, preferType, t, left_info.rbp, node);
 			nbp = left_info.nbp; // next bp
 			lbp = g_tokenLookups.left_lookup[tok.type].lbp;
 		}
@@ -1108,15 +946,23 @@ struct Parser
 	}
 }
 
+/// Controls the expression parser
+/// Forces * expression to be parsed as pointer type
+/// Disables slice parsing for [] expression
+enum PreferType : bool {
+	no = false,
+	yes = true,
+}
+
 /// min and max binding powers
 enum MIN_BP = 0;
 enum MAX_BP = 10000;
 enum COMMA_PREC = 10;
 
-alias LeftParser = AstIndex function(ref Parser p, Token token, int rbp, AstIndex left);
-alias NullParser = AstIndex function(ref Parser p, Token token, int rbp);
+alias LeftParser = AstIndex function(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left);
+alias NullParser = AstIndex function(ref Parser p, PreferType preferType, Token token, int rbp);
 
-AstIndex left_error_parser(ref Parser p, Token token, int rbp, AstIndex left)
+AstIndex left_error_parser(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left)
 {
 	if (token.type == TokenType.EOI)
 		p.context.unrecoverable_error(token.index, "Unexpected end of input");
@@ -1125,7 +971,7 @@ AstIndex left_error_parser(ref Parser p, Token token, int rbp, AstIndex left)
 	assert(false);
 }
 
-AstIndex null_error_parser(ref Parser p, Token token, int rbp)
+AstIndex null_error_parser(ref Parser p, PreferType preferType, Token token, int rbp)
 {
 	if (token.type == TokenType.EOI)
 		p.context.unrecoverable_error(token.index, "Unexpected end of input");
@@ -1248,7 +1094,7 @@ private TokenLookups cexp_parser()
 // Null Denotations -- tokens that take nothing on the left
 
 // id, int_literal, string_literal
-AstIndex nullLiteral(ref Parser p, Token token, int rbp) {
+AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) {
 	import std.algorithm.iteration : filter;
 	switch(token.type) with(TokenType)
 	{
@@ -1311,8 +1157,8 @@ AstIndex nullLiteral(ref Parser p, Token token, int rbp) {
 }
 
 // Arithmetic grouping
-AstIndex nullParen(ref Parser p, Token token, int rbp) {
-	AstIndex r = p.expr(rbp);
+AstIndex nullParen(ref Parser p, PreferType preferType, Token token, int rbp) {
+	AstIndex r = p.expr(PreferType.no, rbp);
 	p.expectAndConsume(TokenType.RPAREN);
 	//r.flags |= NFLG.parenthesis; // NOTE: needed if ternary operator is needed
 	return r;
@@ -1320,8 +1166,8 @@ AstIndex nullParen(ref Parser p, Token token, int rbp) {
 
 // Prefix operator
 // ["+", "-", "!", "~", "*", "&", "++", "--"] <expr>
-AstIndex nullPrefixOp(ref Parser p, Token token, int rbp) {
-	AstIndex right = p.expr(rbp);
+AstIndex nullPrefixOp(ref Parser p, PreferType preferType, Token token, int rbp) {
+	AstIndex right = p.expr(PreferType.no, rbp);
 	UnOp op;
 	switch(token.type) with(TokenType)
 	{
@@ -1347,18 +1193,18 @@ AstIndex nullPrefixOp(ref Parser p, Token token, int rbp) {
 }
 
 // "cast" "(" <expr> ")" <expr>
-AstIndex nullCast(ref Parser p, Token token, int rbp) {
+AstIndex nullCast(ref Parser p, PreferType preferType, Token token, int rbp) {
 	p.expectAndConsume(TokenType.LPAREN);
-	AstIndex type = p.parse_type_expected();
+	AstIndex type = p.expr(PreferType.yes, 0);
 	p.expectAndConsume(TokenType.RPAREN);
-	AstIndex right = p.expr(rbp);
+	AstIndex right = p.expr(PreferType.no, rbp);
 	return p.make!TypeConvExprNode(token.index, type, right);
 }
 
 // Left Denotations -- tokens that take an expression on the left
 
 // <expr> "++" / "--"
-AstIndex leftIncDec(ref Parser p, Token token, int rbp, AstIndex left) {
+AstIndex leftIncDec(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left) {
 	UnOp op;
 	switch(token.type) with(TokenType)
 	{
@@ -1373,28 +1219,39 @@ AstIndex leftIncDec(ref Parser p, Token token, int rbp, AstIndex left) {
 // <expr> "[" "]"
 // <expr> "[" <expr> "," <expr>+ "]"
 // <expr> "[" <expr> .. <expr> "]"
-AstIndex leftIndex(ref Parser p, Token token, int rbp, AstIndex array) {
+AstIndex leftIndex(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex array) {
 	AstNodes indicies;
 	if (p.tok.type == TokenType.RBRACKET)
 	{
 		p.nextToken;
 		return p.makeExpr!IndexExprNode(token.index, array, indicies);
 	}
-	AstIndex index = p.expr(0);
+	AstIndex index = p.expr(PreferType.no, 0);
 	if (p.tok.type == TokenType.RBRACKET)
 	{
 		p.nextToken;
 		indicies.put(p.context.arrayArena, index);
 		return p.makeExpr!IndexExprNode(token.index, array, indicies);
 	}
-	p.expectAndConsume(TokenType.DOT_DOT);
-	AstIndex index2 = p.expr(0);
-	p.expectAndConsume(TokenType.RBRACKET);
-	return p.makeExpr!SliceExprNode(token.index, array, index, index2);
+
+	if (preferType == PreferType.yes)
+	{
+		// it is type
+		p.expectAndConsume(TokenType.RBRACKET);
+		assert(false);
+	}
+	else
+	{
+		// it is expression
+		p.expectAndConsume(TokenType.DOT_DOT);
+		AstIndex index2 = p.expr(PreferType.no, 0);
+		p.expectAndConsume(TokenType.RBRACKET);
+		return p.makeExpr!SliceExprNode(token.index, array, index, index2);
+	}
 }
 
 // member access <expr> . <expr>
-AstIndex leftOpDot(ref Parser p, Token token, int rbp, AstIndex left)
+AstIndex leftOpDot(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left)
 {
 	Identifier id;
 	if (p.tok.type == TokenType.IDENTIFIER)
@@ -1411,7 +1268,7 @@ AstIndex leftOpDot(ref Parser p, Token token, int rbp, AstIndex left)
 	return p.make!MemberExprNode(token.index, p.currentScopeIndex, left, id);
 }
 
-AstIndex leftFunctionOp(ref Parser p, Token token, int rbp, AstIndex returnType) {
+AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex returnType) {
 	Array!AstIndex params;
 	p.parseParameters(params, p.NeedRegNames.no); // function types don't need to register their param names
 	auto sig = p.make!FunctionSignatureNode(token.index, returnType, params);
@@ -1422,7 +1279,7 @@ AstIndex leftFunctionOp(ref Parser p, Token token, int rbp, AstIndex returnType)
 
 // multiplication or pointer type
 // <expr> * <expr> or <expr>*
-AstIndex leftStarOp(ref Parser p, Token token, int rbp, AstIndex left) {
+AstIndex leftStarOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left) {
 	switch (p.tok.type) with(TokenType)
 	{
 		case STAR, COMMA, RPAREN, RBRACKET, SEMICOLON, FUNCTION_SYM /*,DELEGATE_SYM*/:
@@ -1433,19 +1290,27 @@ AstIndex leftStarOp(ref Parser p, Token token, int rbp, AstIndex left) {
 			AstIndex ptr = p.make!PtrTypeNode(token.index, left);
 			Token tok = p.tok;
 			p.nextToken; // skip dot
-			return leftOpDot(p, tok, 0, ptr);
+			return leftOpDot(p, PreferType.no, tok, 0, ptr);
 		default:
 			// otherwise it is multiplication
 			break;
 	}
-	AstIndex right = p.expr(rbp);
+
+	if (preferType)
+	{
+		// pointer
+		return p.make!PtrTypeNode(token.index, left);
+	}
+
+	// otherwise it is multiplication
+	AstIndex right = p.expr(PreferType.no, rbp);
 	BinOp op = BinOp.MULT;
 	return p.makeExpr!BinaryExprNode(token.index, op, left, right);
 }
 
 // Normal binary operator <expr> op <expr>
-AstIndex leftBinaryOp(ref Parser p, Token token, int rbp, AstIndex left) {
-	AstIndex right = p.expr(rbp);
+AstIndex leftBinaryOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left) {
+	AstIndex right = p.expr(PreferType.no, rbp);
 	BinOp op;
 	switch(token.type) with(TokenType)
 	{
@@ -1479,8 +1344,8 @@ AstIndex leftBinaryOp(ref Parser p, Token token, int rbp, AstIndex left) {
 }
 
 // Binary assignment operator <expr> op= <expr>
-AstIndex leftAssignOp(ref Parser p, Token token, int rbp, AstIndex left) {
-	AstIndex right = p.expr(rbp);
+AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left) {
+	AstIndex right = p.expr(PreferType.no, rbp);
 	BinOp op;
 	switch(token.type) with(TokenType)
 	{
@@ -1512,7 +1377,7 @@ AstIndex leftAssignOp(ref Parser p, Token token, int rbp, AstIndex left) {
 }
 
 // <id> "(" <expr_list> ")"
-AstIndex leftFuncCall(ref Parser p, Token token, int unused_rbp, AstIndex callee) {
+AstIndex leftFuncCall(ref Parser p, PreferType preferType, Token token, int unused_rbp, AstIndex callee) {
 	AstNodes args;
 	p.parse_expr_list(args, TokenType.RPAREN);
 	return p.makeExpr!CallExprNode(token.index, callee, args);
