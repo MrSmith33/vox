@@ -848,6 +848,39 @@ struct LinearScan
 
 	void fixTwoOperandForm(InstrInfo instrInfo, IrIndex instrIndex, IrInstrHeader* instrHeader)
 	{
+		void makeMov(IrIndex to, IrIndex from)
+		{
+			IrArgSize sizeFrom;
+			switch(from.kind) with(IrValueKind)
+			{
+				case stackSlot, global, func, constant:
+					sizeFrom = IrArgSize.size64; // use regular mov
+					break;
+				case physicalRegister:
+					sizeFrom = cast(IrArgSize)from.physRegSize; // movzx for 8/16bit regs
+					break;
+				default:
+					context.internal_error("fixTwoOperandForm %s", from);
+			}
+
+			IrIndex instr;
+			ExtraInstrArgs extra = {addUsers : false, result : to};
+			// zero extend 8 and 16 bit args to 32bit
+			final switch(sizeFrom) with(IrArgSize)
+			{
+				case size8:
+					instr = builder.emitInstr!(Amd64Opcode.movzx_btod)(extra, from).instruction;
+					break;
+				case size16:
+					instr = builder.emitInstr!(Amd64Opcode.movzx_wtod)(extra, from).instruction;
+					break;
+				case size32, size64:
+					instr = builder.emitInstr!(Amd64Opcode.mov)(extra, from).instruction;
+					break;
+			}
+			builder.insertBeforeInstr(instrIndex, instr);
+		}
+
 		// Insert mov for instructions requiring two-operand form (like x86 xor)
 		if (instrHeader.numArgs == 2)
 		{
@@ -908,9 +941,7 @@ struct LinearScan
 				else // r1 = op r2 r3; all different
 				{
 					// mov r1 r2
-					ExtraInstrArgs extra = {addUsers : false, result : r1};
-					InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, r2);
-					builder.insertBeforeInstr(instrIndex, instr.instruction);
+					makeMov(r1, r2);
 					// r1 = op r1 r3
 					instrHeader.arg(lir, 0) = r1;
 				}
@@ -920,9 +951,7 @@ struct LinearScan
 				if ( !sameIndexOrPhysReg(r1, r2) )
 				{
 					// mov r1 r2
-					ExtraInstrArgs extra = {addUsers : false, result : r1};
-					InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, r2);
-					builder.insertBeforeInstr(instrIndex, instr.instruction);
+					makeMov(r1, r2);
 				}
 				// r1 = op r1 r1
 				instrHeader.arg(lir, 0) = r1;
@@ -945,9 +974,7 @@ struct LinearScan
 
 			if ( !sameIndexOrPhysReg(r1, r2) )
 			{
-				ExtraInstrArgs extra = {addUsers : false, result : r1};
-				InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, r2);
-				builder.insertBeforeInstr(instrIndex, instr.instruction);
+				makeMov(r1, r2);
 			}
 			instrHeader.arg(lir, 0) = r1;
 		}

@@ -584,6 +584,19 @@ struct CodeGen_x86_64
 	void movsx_wtoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP2(0x0F, 0xBF), src, dst); }
 	void movsx_dtoq(Register dst, Register src){ encoder.putInstrBinaryRegReg!(ArgType.QWORD)(OP1(0x63), src, dst); }
 
+	void movzx_btow(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP2(0x0F, 0xB6), dst, src); }
+	void movzx_btod(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP2(0x0F, 0xB6), dst, src); }
+	void movzx_btoq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP2(0x0F, 0xB6), dst, src); }
+	void movzx_wtod(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP2(0x0F, 0xB7), dst, src); }
+	void movzx_wtoq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP2(0x0F, 0xB7), dst, src); }
+
+	void movsx_btow(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.WORD) (OP2(0x0F, 0xBE), dst, src); }
+	void movsx_btod(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP2(0x0F, 0xBE), dst, src); }
+	void movsx_btoq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP2(0x0F, 0xBE), dst, src); }
+	void movsx_wtod(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.DWORD)(OP2(0x0F, 0xBF), dst, src); }
+	void movsx_wtoq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP2(0x0F, 0xBF), dst, src); }
+	void movsx_dtoq(Register dst, MemAddress src){ encoder.putInstrBinaryRegMem!(ArgType.QWORD)(OP1(0x63), dst, src); }
+
 	void cwd() { encoder.putInstrNullary(OP2(0x66, 0x99)); }
 	void cdq() { encoder.putInstrNullary(OP1(0x99)); }
 	void cqo() { encoder.putInstrNullary(OP2(0x48, 0x99)); }

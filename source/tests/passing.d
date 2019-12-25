@@ -1306,35 +1306,90 @@ immutable test63 = q{--- test63
 @TestInfo(&tester64)
 immutable test64 = q{--- test64
 	// Test structs
-	struct Test64 {
+	struct Big {
 		i64 a;
 		i64 b;
+	}
+	struct Big2
+	{
+		u8 r;
+		u8 g;
+		u8 b;
+		u8 a;
+		u8 r2;
+		u8 g2;
+		u8 b2;
+		u8 a2;
+	}
+	struct Small {
+		i32 a;
+		i32 b;
+	}
+	struct Small3 {
+		i32 a;
+		i16 b;
+		i16 c;
+	}
+	struct Micro {
+		u8 a;
+		u8 b;
+	}
+	struct Mini {
+		Micro a;
+		Micro b;
 	}
 	// constructor is a function (expression) that returns struct type
 	// can compile it into create_aggregate instruction
 	// - default initialization of members
 	// + return result (by ptr)
 	// return aggregate by storing into hidden first parameter
-	Test64 returnBigStruct() {
-		return Test64(10, 42);
+	Big returnBigStruct() {
+		return Big(10, 42);
 	}
-	Test64 returnBigStruct2() {
-		Test64 res = Test64(10, 42);
+	Big returnBigStruct2() {
+		Big res = Big(10, 42);
 		return res;
 	}
+	Small returnSmallStruct() {
+		return Small(10, 42);
+	}
+	Small buildSmallStruct(i32 a, i32 b) {
+		return Small(a, b);
+	}
+	Small3 buildSmall3Struct(i32 a, i16 b, i16 c) {
+		return Small3(a, b, c);
+	}
+	Mini buildMiniStruct(u8 a, u8 b, u8 c, u8 d) {
+		return Mini(Micro(a, b), Micro(c, d));
+	}
+	Big2 buildBig2Struct(u8 r, u8 g, u8 b, u8 a) {
+		return Big2(r, 42, b, 42, 42, g, 42, a);
+	}
+	Mini returnMiniStruct() {
+		return Mini(Micro(10, 42), Micro(120, 3));
+	}
 	// - pass as arg (fits in register)
+	Small passArgSmallStruct() {
+		return receiveArgSmallStruct(Small(10, 42));
+	}
+	// - pass as arg (fits in register, pushed)
+	Small passArgSmallStructPush() {
+		return receiveArgSmallStructPush(1,2,3,4,Small(10, 42));
+	}
 	// - pass as arg (by ptr)
-	Test64 passArgBigStruct() {
-		return receiveArgBigStruct(Test64(10, 42));
+	Big passArgBigStruct() {
+		return receiveArgBigStruct(Big(10, 42));
 	}
 	// - pass as arg (by ptr, pushed)
-	Test64 passArgBigStructPush() {
-		return receiveArgBigStructPush(1,2,3,4,Test64(10, 42));
+	Big passArgBigStructPush() {
+		return receiveArgBigStructPush(1,2,3,4,Big(10, 42));
 	}
 	// - receive parameter (fits in register)
+	Small receiveArgSmallStruct(Small arg) { return arg; }
+	Small receiveArgSmallStructPush(i32,i32,i32,i32,Small arg) { return arg; }
 	// - receive parameter (by ptr)
-	Test64 receiveArgBigStruct(Test64 arg) { return arg; }
-	Test64 receiveArgBigStructPush(i32,i32,i32,i32,Test64 arg) { return arg; }
+	Big receiveArgBigStruct(Big arg) { return arg; }
+	Big receiveArgBigStructPush(i32,i32,i32,i32,Big arg) { return arg; }
 	// - pass member as arg (by ptr)
 	// - pass member as arg (fits in register)
 	// - receive result (fits in register)
@@ -1347,22 +1402,74 @@ immutable test64 = q{--- test64
 	// - get member ptr
 	// - get ptr
 };
-struct Test64 {
-	long a;
-	long b;
-}
 void tester64(ref TestContext ctx) {
-	auto returnBigStruct = ctx.getFunctionPtr!(Test64)("returnBigStruct");
-	assert(returnBigStruct() == Test64(10, 42));
+	static struct Big {
+		long a;
+		long b;
+	}
+	static struct Big2
+	{
+		ubyte r;
+		ubyte g;
+		ubyte b;
+		ubyte a;
+		ubyte r2;
+		ubyte g2;
+		ubyte b2;
+		ubyte a2;
+	}
+	static struct Small {
+		int a;
+		int b;
+	}
+	static struct Small3 {
+		int a;
+		short b;
+		short c;
+	}
+	static struct Micro {
+		ubyte a;
+		ubyte b;
+	}
+	static struct Mini {
+		Micro a;
+		Micro b;
+	}
+	auto returnSmallStruct = ctx.getFunctionPtr!(Small)("returnSmallStruct");
+	assert(returnSmallStruct() == Small(10, 42));
 
-	auto returnBigStruct2 = ctx.getFunctionPtr!(Test64)("returnBigStruct2");
-	assert(returnBigStruct2() == Test64(10, 42));
+	auto returnBigStruct = ctx.getFunctionPtr!(Big)("returnBigStruct");
+	assert(returnBigStruct() == Big(10, 42));
 
-	auto passArgBigStruct = ctx.getFunctionPtr!(Test64)("passArgBigStruct");
-	assert(passArgBigStruct() == Test64(10, 42));
+	auto returnBigStruct2 = ctx.getFunctionPtr!(Big)("returnBigStruct2");
+	assert(returnBigStruct2() == Big(10, 42));
 
-	auto passArgBigStructPush = ctx.getFunctionPtr!(Test64)("passArgBigStructPush");
-	assert(passArgBigStructPush() == Test64(10, 42));
+	auto passArgBigStruct = ctx.getFunctionPtr!(Big)("passArgBigStruct");
+	assert(passArgBigStruct() == Big(10, 42));
+
+	auto passArgBigStructPush = ctx.getFunctionPtr!(Big)("passArgBigStructPush");
+	assert(passArgBigStructPush() == Big(10, 42));
+
+	auto passArgSmallStruct = ctx.getFunctionPtr!(Small)("passArgSmallStruct");
+	assert(passArgSmallStruct() == Small(10, 42));
+
+	auto passArgSmallStructPush = ctx.getFunctionPtr!(Small)("passArgSmallStructPush");
+	assert(passArgSmallStructPush() == Small(10, 42));
+
+	auto buildSmallStruct = ctx.getFunctionPtr!(Small, int, int)("buildSmallStruct");
+	assert(buildSmallStruct(10, 42) == Small(10, 42));
+
+	auto buildSmall3Struct = ctx.getFunctionPtr!(Small3, int, short, short)("buildSmall3Struct");
+	assert(buildSmall3Struct(10, 42, 120) == Small3(10, 42, 120));
+
+	auto buildMiniStruct = ctx.getFunctionPtr!(Mini, ubyte, ubyte, ubyte, ubyte)("buildMiniStruct");
+	assert(buildMiniStruct(10, 42, 120, 3) == Mini(Micro(10, 42), Micro(120, 3)));
+
+	auto buildBig2Struct = ctx.getFunctionPtr!(Big2, ubyte, ubyte, ubyte, ubyte)("buildBig2Struct");
+	assert(buildBig2Struct(10, 42, 120, 3) == Big2(10, 42, 120, 42, 42, 42, 42, 3));
+
+	auto returnMiniStruct = ctx.getFunctionPtr!(Mini)("returnMiniStruct");
+	assert(returnMiniStruct() == Mini(Micro(10, 42), Micro(120, 3)));
 }
 
 

@@ -422,10 +422,121 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					break;
 
 				case IrOpcode.create_aggregate:
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
+
+					// pack values and constants into a register via `shift` and `binary or` instructions
+					if (isPassByValue(type))
+					{
+						IrArgSize argSize = typeToIrArgSize(type, context);
+						context.assertf(instrHeader.numArgs <= 8, "too much args %s", instrHeader.numArgs);
+						ulong constant = 0;
+						// how many non-constants are prepared in argBuffer
+						uint numBufferedValues = 0;
+
+						void insertNonConstant(IrIndex value, uint bit_offset, uint size)
+						{
+							ExtraInstrArgs extra = { addUsers : false, argSize : argSize, type : type };
+							switch(size) { // zero extend 8 and 16 bit args to 32bit
+								case 1: value = builder.emitInstr!(Amd64Opcode.movzx_btod)(lirBlockIndex, extra, value).result; break;
+								case 2: value = builder.emitInstr!(Amd64Opcode.movzx_wtod)(lirBlockIndex, extra, value).result; break;
+								default: break;
+							}
+
+							// shift
+							if (bit_offset == 0)
+								argBuffer[numBufferedValues] = value;
+							else
+							{
+
+								IrIndex rightArg = context.constants.add(bit_offset, IsSigned.no);
+								ExtraInstrArgs extra1 = { addUsers : false, argSize : argSize, type : type };
+								IrIndex shiftRes = builder.emitInstr!(Amd64Opcode.shl)(lirBlockIndex, extra1, value, rightArg).result;
+								argBuffer[numBufferedValues] = shiftRes;
+							}
+							++numBufferedValues;
+
+							if (numBufferedValues == 2)
+							{
+								// or
+								ExtraInstrArgs extra2 = { addUsers : false, argSize : argSize, type : type };
+								argBuffer[0] = builder.emitInstr!(Amd64Opcode.or)(lirBlockIndex, extra2, argBuffer[0], argBuffer[1]).result;
+								numBufferedValues = 1;
+							}
+						}
+
+						void insertAt(IrIndex value, uint offset, uint size)
+						{
+							if (value.isConstant) {
+								constant |= context.constants.get(value).i64 << (offset * 8);
+							} else {
+								insertNonConstant(value, offset * 8, size);
+							}
+						}
+
+						switch(type.typeKind) with(IrTypeKind) {
+							case struct_t:
+								IrTypeStruct* structType = &context.types.get!IrTypeStruct(type);
+								IrIndex[] args = instrHeader.args(ir);
+								foreach_reverse (i, IrTypeStructMember member; structType.members)
+								{
+									uint memberSize = context.types.typeSize(member.type);
+									insertAt(getFixedIndex(args[i]), member.offset, memberSize);
+								}
+								break;
+							case array:
+								IrTypeArray* arrayType = &context.types.get!IrTypeArray(type);
+								uint elemSize = context.types.typeSize(arrayType.elemType);
+								IrIndex[] args = instrHeader.args(ir);
+								foreach_reverse (i; 0..arrayType.size)
+								{
+									insertAt(getFixedIndex(args[i]), i * elemSize, elemSize);
+								}
+								break;
+							default: assert(false);
+						}
+
+						IrIndex constIndex = context.constants.add(constant, IsSigned.no, argSize);
+						if (numBufferedValues == 1)
+						{
+							if (constant == 0)
+							{
+								recordIndex(instrHeader.result(ir), argBuffer[0]);
+								break;
+							}
+
+							bool isBigConstant = context.constants.get(constIndex).payloadSize(constIndex) == IrArgSize.size64;
+
+							if (isBigConstant)
+							{
+								// copy to temp register
+								ExtraInstrArgs extra = { addUsers : false, argSize : argSize, type : type };
+								constIndex = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, constIndex).result;
+							}
+
+							ExtraInstrArgs extra3 = { addUsers : false, argSize : argSize, type : type };
+							IrIndex result = builder.emitInstr!(Amd64Opcode.or)(lirBlockIndex, extra3, argBuffer[0], constIndex).result;
+							recordIndex(instrHeader.result(ir), result);
+						}
+						else
+						{
+							recordIndex(instrHeader.result(ir), constIndex);
+						}
+					}
 					// skip
 					break;
 
 				case IrOpcode.load_aggregate:
+					IrIndex resType = ir.getVirtReg(instrHeader.result(ir)).type;
+
+					// pack values and constants into a register via `shift` and `binary or` instructions
+					if (isPassByValue(resType))
+					{
+						IrIndex lirPtr = getFixedIndex(instrHeader.arg(ir, 0));
+						IrArgSize argSize = typeToIrArgSize(resType, context);
+						ExtraInstrArgs extra = { addUsers : false, type : resType, argSize : argSize };
+						IrIndex result = builder.emitInstr!(Amd64Opcode.load)(lirBlockIndex, extra, lirPtr).result;
+						recordIndex(instrHeader.result(ir), result);
+					}
 					// skip
 					break;
 
@@ -471,7 +582,15 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						IrIndex type = ir.getValueType(context, irArg);
 
 						if (isPassByValue(type)) {
-							localArgBuffer[i+hasResultArg] = getFixedIndex(irArg);
+							IrIndex fixedArg = getFixedIndex(irArg);
+							if (fixedArg.isConstant && context.constants.get(fixedArg).payloadSize(fixedArg) == IrArgSize.size64)
+							{
+								// push cannot push 64bit constants
+								// copy to temp register
+								ExtraInstrArgs extra = { addUsers : false, type : type };
+								fixedArg = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, fixedArg).result;
+							}
+							localArgBuffer[i+hasResultArg] = fixedArg;
 						} else {
 							//allocate stack slot, store value there and use slot pointer as argument
 							localArgBuffer[i+hasResultArg] = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.argument, 0);
@@ -783,30 +902,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					result.physRegSize = typeToRegSize(type, context);
 					ExtraInstrArgs extra = { addUsers : false, result : result };
 
-					// simple way of returning multi-member structs. Store to memory, then load into register
-					IrIndex tryMovComplexStruct()
-					{
-						if (type.isTypeStruct)
-						{
-							IrTypeStruct* structRes = &context.types.get!IrTypeStruct(type);
-							if (structRes.numMembers > 1)
-							{
-								IrIndex slot = lir.backendData.stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
-								IrIndex slotType = lir.backendData.stackLayout[slot].type;
-								genStore(slot, 0, instrHeader.arg(ir, 0), 0, type, lirBlockIndex, ir);
-								return genLoad(slot, 0, slotType, lirBlockIndex);
-							}
-						}
-						return getFixedIndex(instrHeader.arg(ir, 0));
-					}
-
 					if (numHiddenParams == 1) {
 						// store struct into pointer, then return pointer
 						IrIndex valType = context.types.getPointerBaseType(type);
 						genStore(hiddenParameter, 0, instrHeader.arg(ir, 0), 0, valType, lirBlockIndex, ir);
 						builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, hiddenParameter);
 					} else {
-						IrIndex itemToReturn = tryMovComplexStruct;
+						IrIndex itemToReturn = getFixedIndex(instrHeader.arg(ir, 0));
 						builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, itemToReturn);
 					}
 
