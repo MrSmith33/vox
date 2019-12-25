@@ -168,11 +168,12 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	// Create identifier for instance
 	set_instance_id(instance, args, c);
 
-	// Type check instance
-	require_type_check(instance, c);
-
 	// Cache instance
 	templ.instances.put(c.arrayArena, TemplateInstance(args, instance));
+
+	// Type check instance
+	// Must be registered before type check to prevent infinite recursion in case of recursive templates
+	require_type_check(instance, c);
 
 	return instance;
 }

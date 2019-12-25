@@ -2961,3 +2961,20 @@ void tester114(ref TestContext ctx) {
 	assert(data.ptr == buffer.ptr);
 	assert(data.length == 1);
 }
+
+
+@TestInfo(&tester115)
+immutable test115 = q{--- test115
+	// Test recursive templates
+	T test[T](T arg) {
+		if (arg == 0)
+			return 42;
+		return test[T](arg-1);
+	}
+	i32 test_i32() {
+		return test[i32](42);
+	}
+};
+void tester115(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("test_i32")() == 42);
+}
