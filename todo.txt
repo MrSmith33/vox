@@ -3,10 +3,20 @@
 	+ struct/union template
 	- variadic template arguments
 	- macros (templated function that is inlined and can access inline scope/insert stuff into outer scope)
+	- meta types
+		- #alias
+		- #type
+		- #value
+		- #code
 	- # introspection
-		- #allMembers(symbol) -> tuple
-		- #getAttributes(symbol) -> tuple
+		- #allMembers(symbol) -> #alias[]
+		- #getAttributes(symbol) -> #alias[]
 		- #is*
+	- # attributes
+		- #likely
+		- #unlikely
+		- #likely_when(<expr>)
+		- #dllimport(id)
 	- template parameter inference (for function templates)
 - attributes
 	- User Defined Attributes UDAs
@@ -22,9 +32,8 @@
 	+ call by pointer
 	+ take address of function
 	- check member variable func ptr
-- default parameters
-- named parameters
 - overloading
+- named parameters
 
 - char literal / type
 	+ literal (for now generates int literal expression)
@@ -146,6 +155,7 @@ o dll linking
 - optimize multiple spills into single spill at definition
 - For stack to stack moves in move solver we always spill scratch register. Check if there is free register available.
 
++ default arguments
 + mutable globals need their own read-write section
 + AST Index
 + improve parser to detect all declaration kinds in statements (add slice and static array)

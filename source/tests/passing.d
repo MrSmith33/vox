@@ -9,6 +9,18 @@ import tester;
 
 Test[] passingTests() { return collectTests!(tests.passing)(); }
 
+struct Slice(T) {
+	this(T[] data) {
+		ptr = data.ptr;
+		length = data.length;
+	}
+	ulong length;
+	T* ptr;
+	T[] slice() { return ptr[0..length]; }
+	alias slice this;
+}
+alias SliceString = Slice!(const(char));
+
 extern(C) void external_print_i32_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
@@ -369,16 +381,6 @@ immutable test25 = q{--- test25
 		print(str);
 	}
 };
-struct Slice(T) {
-	this(T[] data) {
-		ptr = data.ptr;
-		length = data.length;
-	}
-	ulong length;
-	T* ptr;
-	T[] slice() { return ptr[0..length]; }
-	alias slice this;
-}
 extern(C) void external_print_string(Slice!char param) {
 	char[] slice = *cast(char[]*)&param;
 	testSink.put(slice); // Hello
@@ -2728,8 +2730,8 @@ void tester105(ref TestContext ctx) {
 	assert(get_struct() == Struct(42, 0));
 
 	struct Struct2 { const(char)[] str; }
-	auto get_struct2 = ctx.getFunctionPtr!(Struct2, Slice!(const(char)))("get_struct2");
-	assert(get_struct2(Slice!(const(char))("test")) == Struct2("test"));
+	auto get_struct2 = ctx.getFunctionPtr!(Struct2, SliceString)("get_struct2");
+	assert(get_struct2(SliceString("test")) == Struct2("test"));
 }
 
 
@@ -2977,4 +2979,22 @@ immutable test115 = q{--- test115
 };
 void tester115(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("test_i32")() == 42);
+}
+
+
+@TestInfo(&tester116)
+immutable test116 = q{--- test116
+	// Test default arguments
+	struct S { i32 a; i32 b; }
+	i32 func_i32(i32 arg = 42) { return arg; }
+	u8[] func_string(u8[] arg = "Hello") { return arg; }
+	//S func_struct(S arg = S(1, 2)) { return arg; } // TODO
+
+	i32 test_i32() { return func_i32; }
+	u8[] test_string() { return func_string; }
+	//S test_struct() { return func_struct; }
+};
+void tester116(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("test_i32")() == 42);
+	assert(ctx.getFunctionPtr!SliceString("test_string")().slice == "Hello");
 }

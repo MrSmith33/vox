@@ -15,8 +15,8 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(test97);
-	string filterFuncName;
+	Test test = makeTest!(test116);
+	//driver.context.setDumpFilter("test");
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -24,6 +24,12 @@ void runDevTests()
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
 	driver.context.printTodos = true;
+	//driver.context.runTesters = false;
+	//driver.context.debugRegAlloc = true;
+	//driver.context.buildType = BuildType.exe;
+	//driver.passes = exePasses;
+	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
+
 	scope(exit) {
 		//driver.context.printMemSize;
 		driver.releaseMemory;
@@ -36,10 +42,6 @@ void runDevTests()
 	//driver.context.printLexemes = true;
 	//driver.context.printAstFresh = true;
 	//driver.context.printAstSema = true;
-	//driver.context.runTesters = false;
-	//driver.context.debugRegAlloc = true;
-
-
 	//driver.context.printIr = true;
 	//driver.context.printIrOpt = true;
 	//driver.context.printLir = true;
@@ -49,15 +51,7 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	driver.context.printOnlyFun = Identifier.init;
-	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(filterFuncName);
-
 	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test);
-
-	//driver.context.buildType = BuildType.exe;
-	//driver.passes = exePasses;
-	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
-	//tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test30);
 }
 
 enum StopOnFirstFail : bool { no = false, yes = true }

@@ -11,9 +11,10 @@ struct FunctionSignatureNode {
 	AstIndex returnType;
 	// parameters are owned by the function declaration or
 	// if it is part of function type literal then there is no owner
-	Array!AstIndex parameters; // array of var declarations
-	IrIndex irType; /// Index of function type
+	AstNodes parameters; // array of var declarations
+	ubyte numDefaultArgs;
 	CallConvention callConvention = CallConvention.win64; // hardcoded for now
+	IrIndex irType; /// Index of function type
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 }
 

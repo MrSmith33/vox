@@ -17,7 +17,7 @@ struct VariableDeclNode
 	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);
 	AstIndex parentScope;
 	AstIndex type;
-	AstIndex initializer; // may be null
+	AstIndex initializer; // may be null, stores initializer for variables, default argument for parameters
 	Identifier id;
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
 	ExprValue initValue;
@@ -99,9 +99,11 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
+// only called for members and parameters
 IrIndex gen_default_value_var(VariableDeclNode* node, CompilationContext* c)
 {
 	if (node.defaultVal.isDefined) return node.defaultVal;
+	c.assertf(node.isParameter || node.isMember, node.loc, "gen_default_value_var");
 	if (node.initializer)
 	{
 		node.defaultVal = eval_static_expr(node.initializer, c);

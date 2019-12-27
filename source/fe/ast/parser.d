@@ -355,9 +355,9 @@ struct Parser
 			params.put(context.arrayArena, param);
 		}
 
-		parseParameters(params, NeedRegNames.yes); // functions need to register their param names
+		ubyte numDefaultArgs = parseParameters(params, NeedRegNames.yes); // functions need to register their param names
 
-		AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
+		AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params, numDefaultArgs);
 		AstIndex func = make!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
 
 		AstIndex block;
@@ -375,10 +375,12 @@ struct Parser
 
 	enum NeedRegNames : bool { no, yes }
 	// nameReg can put parameters in name_register_done state
-	void parseParameters(ref Array!AstIndex params, NeedRegNames nameReg)
+	/// returns number of default args
+	ubyte parseParameters(ref Array!AstIndex params, NeedRegNames nameReg)
 	{
 		expectAndConsume(TokenType.LPAREN);
 
+		ubyte numDefaultArgs = 0;
 		while (tok.type != TokenType.RPAREN)
 		{
 			if (tok.type == TokenType.EOI) break;
@@ -388,6 +390,7 @@ struct Parser
 			AstIndex paramType = expr(PreferType.yes, 0);
 			Identifier paramId;
 			size_t paramIndex = params.length;
+			AstIndex defaultValue;
 
 			if (tok.type == TokenType.IDENTIFIER) // named parameter
 				paramId = expectIdentifier();
@@ -396,7 +399,23 @@ struct Parser
 				paramId = context.idMap.getOrRegFormatted("__param_%s", paramIndex);
 			}
 
-			AstIndex param = make!VariableDeclNode(paramStart, currentScopeIndex, paramType, AstIndex.init, paramId);
+			// default argument
+			if (tok.type == TokenType.EQUAL)
+			{
+				nextToken; // skip =
+				defaultValue = expr(PreferType.yes, 0);
+
+				++numDefaultArgs;
+			}
+			else
+			{
+				// all default arguments must be at the end of param list
+				if (numDefaultArgs != 0)
+					context.error(paramStart,
+						"Default argument expected for %s", context.idString(paramId));
+			}
+
+			AstIndex param = make!VariableDeclNode(paramStart, currentScopeIndex, paramType, defaultValue, paramId);
 			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
 			paramNode.flags |= VariableFlags.isParameter;
 			paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
@@ -409,6 +428,8 @@ struct Parser
 		}
 
 		expectAndConsume(TokenType.RPAREN);
+
+		return numDefaultArgs;
 	}
 
 	void parse_template_parameters(ref AstNodes params)
@@ -1270,8 +1291,8 @@ AstIndex leftOpDot(ref Parser p, PreferType preferType, Token token, int rbp, As
 
 AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex returnType) {
 	Array!AstIndex params;
-	p.parseParameters(params, p.NeedRegNames.no); // function types don't need to register their param names
-	auto sig = p.make!FunctionSignatureNode(token.index, returnType, params);
+	ubyte numDefaultArgs = p.parseParameters(params, p.NeedRegNames.no); // function types don't need to register their param names
+	auto sig = p.make!FunctionSignatureNode(token.index, returnType, params, numDefaultArgs);
 	// we don't have to register parameter names, since we have no body
 	sig.setState(p.context, AstNodeState.name_register_nested_done);
 	return p.make!PtrTypeNode(token.index, sig);

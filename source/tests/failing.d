@@ -250,3 +250,51 @@ immutable fail22 = q{
 --- <error>
 fail22(3, 3): Error: Cannot implicitly convert expression of type `null` to `u32`
 };
+
+@TestInfo()
+immutable fail23 = q{
+--- fail23
+	// Test default argument is expected, unnamed parameter
+	void test(u32 arg1 = 42, u32) {}
+--- <error>
+fail23(2, 27): Error: Default argument expected for __param_1
+};
+
+@TestInfo()
+immutable fail24 = q{
+--- fail24
+	// Test default argument is expected
+	void test(u32 arg1 = 42, u32 arg2) {}
+--- <error>
+fail24(2, 27): Error: Default argument expected for arg2
+};
+
+@TestInfo()
+immutable fail25 = q{
+--- fail25
+	// Test insufficient args with default args
+	void func(u32 arg1, u32 arg2 = 42) {}
+	void test() { func(); }
+--- <error>
+fail25(3, 20): Error: Insufficient arguments to `func`, got 0, expected 1-2
+};
+
+@TestInfo()
+immutable fail26 = q{
+--- fail26
+	// Test excessive arguments
+	void func(u32 arg1 = 42) {}
+	void test() { func(1, 2); }
+--- <error>
+fail26(3, 20): Error: Too much arguments to `func`, got 2, expected 0-1
+};
+
+@TestInfo()
+immutable fail27 = q{
+--- fail27
+	// Test excessive arguments
+	void func(u32 arg1) {}
+	void test() { func(1, 2); }
+--- <error>
+fail27(3, 20): Error: Too much arguments to `func`, got 2, expected 1
+};

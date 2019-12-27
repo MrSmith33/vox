@@ -114,29 +114,44 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 {
 	CompilationContext* c = state.context;
 
-	require_type_check(signature.returnType, state);
+	AstIndex signatureIndex = c.getAstNodeIndex(signature);
+	require_type_check(signatureIndex, state);
 	node.type = signature.returnType;
 
-	Array!AstIndex params = signature.parameters;
+	AstNodes params = signature.parameters;
 	auto numParams = params.length;
+	auto numDefaultArgs = signature.numDefaultArgs;
+	c.assertf(numParams >= numDefaultArgs, node.loc,
+		"numParams(%s) < numDefaultArgs(%s)", numParams, numDefaultArgs);
+	auto numRequiredArgs = numParams - numDefaultArgs;
 	auto numArgs = node.args.length;
 
-	if (numArgs < numParams) {
-		c.error(node.loc, "Insufficient parameters to '%s', got %s, expected %s",
-			c.idString(id), numArgs, numParams);
+	if (numArgs < numRequiredArgs) {
+		if (numDefaultArgs == 0)
+			c.error(node.loc, "Insufficient arguments to `%s`, got %s, expected %s",
+				c.idString(id), numArgs, numParams);
+		else
+			c.error(node.loc, "Insufficient arguments to `%s`, got %s, expected %s-%s",
+				c.idString(id), numArgs, numRequiredArgs, numParams);
 		return;
 	}
 	else if (numArgs > numParams) {
-		c.error(node.loc, "Too much parameters to '%s', got %s, expected %s",
-			c.idString(id), numArgs, numParams);
+		if (numDefaultArgs == 0)
+			c.error(node.loc, "Too much arguments to `%s`, got %s, expected %s",
+				c.idString(id), numArgs, numParams);
+		else
+			c.error(node.loc, "Too much arguments to `%s`, got %s, expected %s-%s",
+				c.idString(id), numArgs, numRequiredArgs, numParams);
+
 		return;
 	}
 
+	// check arguments
+	// default arguments do not require checking here
 	foreach (i, ref AstIndex arg; node.args)
 	{
 		VariableDeclNode* param = c.getAst!VariableDeclNode(params[i]);
 
-		require_type_check(param.type, state);
 		require_type_check(arg, state);
 		bool success = autoconvTo(arg, param.type, c);
 		if (!success)
@@ -188,7 +203,7 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			auto func = callee.get!FunctionDeclNode(c);
 			AstIndex returnType = func.signature.get!FunctionSignatureNode(c).returnType;
 			IrIndex irIndex = func.getIrIndex(c);
-			return visitCall(gen, returnType, irIndex, currentBlock, nextStmt, node);
+			return visitCall(gen, func.signature, irIndex, currentBlock, nextStmt, node);
 		case AstType.decl_struct: return visitConstructor(gen, callee.get!StructDeclNode(c), currentBlock, nextStmt, node);
 		case AstType.decl_enum_member:
 			// TODO: clean up
@@ -196,18 +211,16 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			if (!varType.isPointer) goto default;
 			TypeNode* base = varType.as_ptr.base.get_type(c);
 			if (!base.isFuncSignature) goto default;
-			AstIndex returnType = base.as_func_sig.returnType;
 			IrIndex irIndex = eval_static_expr(callee, c);
-			return visitCall(gen, returnType, irIndex, currentBlock, nextStmt, node);
+			return visitCall(gen, c.getAstNodeIndex(base), irIndex, currentBlock, nextStmt, node);
 		case AstType.decl_var:
 			VariableDeclNode* var = callee.get!VariableDeclNode(c);
 			TypeNode* varType = var.type.get_type(c);
 			if (!varType.isPointer) goto default;
 			TypeNode* base = varType.as_ptr.base.get_type(c);
 			if (!base.isFuncSignature) goto default;
-			AstIndex returnType = base.as_func_sig.returnType;
 			IrIndex irIndex = getRvalue(gen, node.loc, currentBlock, var.irValue);
-			return visitCall(gen, returnType, irIndex, currentBlock, nextStmt, node);
+			return visitCall(gen, c.getAstNodeIndex(base), irIndex, currentBlock, nextStmt, node);
 			goto default;
 		default:
 			c.internal_error(node.loc, "Cannot call %s", callee.get_node_type(c).get_type(c).printer(c));
@@ -215,15 +228,18 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 	}
 }
 
-ExprValue visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* n)
+ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* n)
 {
 	CompilationContext* c = gen.context;
-	c.assertf(n.args.length+1 <= IrInstrHeader.MAX_ARGS,
+	auto signature = signatureIndex.get!FunctionSignatureNode(c);
+	uint numArgs = n.args.length;
+	uint numParams = signature.parameters.length;
+	c.assertf(numArgs+1 <= IrInstrHeader.MAX_ARGS,
 		"Cannot generate a call with %s arguments, max args is %s",
-		n.args.length, IrInstrHeader.MAX_ARGS-1);
+		numArgs, IrInstrHeader.MAX_ARGS-1);
 
 	// We need to allocate for each call, because calls can be nested
-	IrIndex[] args = c.allocateTempArray!IrIndex(n.args.length + 1); // first is callee
+	IrIndex[] args = c.allocateTempArray!IrIndex(numParams + 1); // first argument is callee
 	scope(exit) c.freeTempArray(args);
 
 	args[0] = callee;
@@ -231,7 +247,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrI
 	if (callee.kind == IrValueKind.func)
 	{
 		// force creation of function type for external functions
-		gen_ir_type(c.getFunction(callee).signature, c);
+		gen_ir_type(signatureIndex, c);
 	}
 
 	foreach (i, AstIndex arg; n.args)
@@ -240,8 +256,16 @@ ExprValue visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrI
 		ExpressionNode* node = arg.get_expr(c);
 		ExprValue lval = ir_gen_expr(gen, arg, currentBlock, afterArg);
 		currentBlock = afterArg.blockIndex;
-		args[i+1] = getRvalue(gen, n.loc, currentBlock, lval);
+		args[i+1] = getRvalue(gen, n.loc, currentBlock, lval); // account for callee in 0th index
 		debug c.assertf(node.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, node.astType, c.tokenLoc(node.loc));
+	}
+
+	foreach(i; numArgs..numParams)
+	{
+		// use default argument value
+		VariableDeclNode* param = c.getAst!VariableDeclNode(signature.parameters[i]);
+		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
+		args[i+1] = param.gen_default_value_var(c); // account for callee in 0th index
 	}
 
 	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
@@ -251,7 +275,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrI
 		c.internal_error(n.loc, "Call cannot be an l-value");
 	}
 
-	if (returnType.isVoidType(c))
+	if (signature.returnType.isVoidType(c))
 	{
 		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, args);
 		c.assertf(!res.result.isDefined, "Call has result");
@@ -260,7 +284,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex returnType, IrIndex callee, IrI
 	}
 	else
 	{
-		IrIndex callResultType = returnType.gen_ir_type(c);
+		IrIndex callResultType = signature.returnType.gen_ir_type(c);
 
 		ExtraInstrArgs extra = { hasResult : true, type : callResultType };
 		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, extra, args);
