@@ -153,7 +153,7 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 
 	IrIndex firstIndex = instrHeader.arg(builder.ir, 1);
 
-	if (firstIndex.isConstant) {
+	if (firstIndex.isSimpleConstant) {
 		long indexVal = context.constants.get(firstIndex).i64;
 		long offset = indexVal * aggrSize;
 		aggrPtr = buildOffset(aggrPtr, offset, aggrPtrType);
@@ -178,7 +178,7 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 				IrIndex elemPtrType = context.types.appendPtr(elemType);
 				uint elemSize = context.types.typeSize(elemType);
 
-				if (memberIndex.isConstant) {
+				if (memberIndex.isSimpleConstant) {
 					long indexVal = context.constants.get(memberIndex).i64;
 					long offset = indexVal * elemSize;
 					aggrPtr = buildOffset(aggrPtr, offset, elemPtrType);
@@ -190,7 +190,7 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 				break;
 
 			case IrTypeKind.struct_t:
-				context.assertf(memberIndex.isConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
+				context.assertf(memberIndex.isSimpleConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
 
 				long memberIndexVal = context.constants.get(memberIndex).i64;
 				IrTypeStructMember[] members = context.types.get!IrTypeStruct(aggrType).members;

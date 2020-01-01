@@ -66,7 +66,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 	uint typeSizeTo = c.types.typeSize(typeTo);
 
 	IrIndex result;
-	if (rval.isConstant)
+	if (rval.isSimpleConstant)
 	{
 		result = rval;
 	}
@@ -121,7 +121,7 @@ void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLab
 	ExpressionNode* childExpr = t.expr.get_expr(c);
 	IrIndex from = childExpr.type.gen_ir_type(c);
 
-	if (rval.isConstant ||
+	if (rval.isSimpleConstant ||
 		from == makeBasicTypeIndex(IrValueType.i8) ||
 		from == makeBasicTypeIndex(IrValueType.i16) ||
 		from == makeBasicTypeIndex(IrValueType.i32) ||

@@ -86,15 +86,22 @@ IrIndex gen_default_value_struct(StructDeclNode* node, CompilationContext* c)
 	scope(exit) c.freeTempArray(args);
 
 	uint memberIndex;
+	bool allZeroes = true;
 	foreach(AstIndex member; node.declarations)
 	{
 		AstNode* memberVarNode = member.get_node(c);
 		if (memberVarNode.astType != AstType.decl_var) continue;
 		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
-		args[memberIndex] = memberVar.gen_default_value_var(c);
+		IrIndex memberValue = memberVar.gen_default_value_var(c);
+		args[memberIndex] = memberValue;
 		++memberIndex;
+
+		if (!memberValue.isConstantZero) allZeroes = false;
 	}
-	node.defaultVal = c.constants.addAggrecateConstant(structType, args);
+	if (allZeroes)
+		node.defaultVal = c.constants.addZeroConstant(structType);
+	else
+		node.defaultVal = c.constants.addAggrecateConstant(structType, args);
 
 	return node.defaultVal;
 }

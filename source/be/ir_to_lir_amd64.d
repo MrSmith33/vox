@@ -29,6 +29,33 @@ void pass_ir_to_lir_amd64(CompilationContext* context, IrBuilder* builder, Modul
 	if (context.printLir && context.printDumpOf(func)) dumpFunction(context, lirData);
 }
 
+/// Converts complex constants fitting in a single register into an integer constant
+IrIndex simplifyConstant(IrIndex index, CompilationContext* c)
+{
+	union U {
+		ulong bufferValue;
+		ubyte[8] buffer;
+	}
+	U data;
+	uint typeSize;
+	if (index.isConstantZero)
+	{
+		typeSize = c.types.typeSize(index.constantZeroType);
+	}
+	else if (index.isConstantAggregate)
+	{
+		IrAggregateConstant* con = &c.constants.getAggregate(index);
+		typeSize = c.types.typeSize(con.type);
+	}
+	else
+	{
+		return index;
+	}
+
+	constantToMem(data.buffer[0..typeSize], index, c);
+	return c.constants.add(data.bufferValue, IsSigned.no);
+}
+
 void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir, IrFunction* lir)
 {
 	//writefln("IR to LIR %s", context.idString(ir.backendData.name));
@@ -175,6 +202,15 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						}
 						break;
 
+					case constantZero:
+						IrIndex zero = context.constants.add(0, IsSigned.no);
+						foreach (i, IrTypeStructMember member; structType.members)
+						{
+							IrIndex ptr = genAddressOffset(lirPtr, offset + member.offset, ptrType, lirBlockIndex);
+							genStore(ptr, 0, zero, fromOffset + member.offset, member.type, lirBlockIndex, ir);
+						}
+						return;
+
 					case constantAggregate:
 						members = context.constants.getAggregate(irValue).members;
 						break;
@@ -230,6 +266,15 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 								context.internal_error("%s", cast(IrOpcode)instr.op);
 						}
 						break;
+
+					case constantZero:
+						IrIndex zero = context.constants.add(0, IsSigned.no);
+						foreach (i; 0..arrayType.size)
+						{
+							IrIndex ptr = genAddressOffset(lirPtr, offset + elemSize * i, ptrType, lirBlockIndex);
+							genStore(ptr, 0, zero, fromOffset + elemSize * i, arrayType.elemType, lirBlockIndex, ir);
+						}
+						return;
 
 					case constantAggregate:
 						members = context.constants.getAggregate(irValue).members;
@@ -583,6 +628,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 						if (isPassByValue(type)) {
 							IrIndex fixedArg = getFixedIndex(irArg);
+							fixedArg = simplifyConstant(fixedArg, context);
 							if (fixedArg.isConstant && context.constants.get(fixedArg).payloadSize(fixedArg) == IrArgSize.size64)
 							{
 								// push cannot push 64bit constants
@@ -909,6 +955,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, hiddenParameter);
 					} else {
 						IrIndex itemToReturn = getFixedIndex(instrHeader.arg(ir, 0));
+						itemToReturn = simplifyConstant(itemToReturn, context);
 						builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, itemToReturn);
 					}
 

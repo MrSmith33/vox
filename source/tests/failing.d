@@ -298,3 +298,12 @@ immutable fail27 = q{
 --- <error>
 fail27(3, 20): Error: Too much arguments to `func`, got 2, expected 1
 };
+
+@TestInfo()
+immutable fail28 = q{
+--- fail28
+	// Test ; as empty statement
+	void test() { if(true); }
+--- <error>
+fail28(2, 24): Error: Cannot use `;` as an empty statement. Use `{}` instead
+};

@@ -326,6 +326,7 @@ struct IrBuilder
 			value.kind == IrValueKind.func ||
 			value.kind == IrValueKind.constant ||
 			value.kind == IrValueKind.constantAggregate ||
+			value.kind == IrValueKind.constantZero ||
 			value.kind == IrValueKind.global ||
 			value.kind == IrValueKind.virtualRegister ||
 			value.kind == IrValueKind.physicalRegister ||
@@ -851,6 +852,7 @@ struct IrBuilder
 		{
 			assert(
 				value.kind == constant ||
+				value.kind == constantZero ||
 				value.kind == virtualRegister ||
 				value.kind == physicalRegister, format("%s", value));
 		}

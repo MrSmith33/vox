@@ -496,9 +496,9 @@ struct CodeEmitter
 						IrIndex arg1 = instrHeader.arg(lir, 1);
 						auto cond = cast(IrBinaryCondition)instrHeader.cond;
 
-						if (arg0.isConstant)
+						if (arg0.isSimpleConstant)
 						{
-							if (arg1.isConstant)
+							if (arg1.isSimpleConstant)
 							{
 								if (evalBinCondition(*context, cond, arg0, arg1))
 									genJumpToSuccessor(lirBlock, 0);
@@ -520,7 +520,7 @@ struct CodeEmitter
 						genJumpToSuccessor(lirBlock, 1);
 						break;
 					case Amd64Opcode.un_branch:
-						if (instrHeader.arg(lir, 0).isConstant)
+						if (instrHeader.arg(lir, 0).isSimpleConstant)
 						{
 							IrConstant con = context.constants.get(instrHeader.arg(lir, 0)).i64;
 							if (con.i64 && instrHeader.cond == IrUnaryCondition.not_zero ||
@@ -557,7 +557,7 @@ struct CodeEmitter
 						IrIndex src = instrHeader.arg(lir, 0);
 						switch (src.kind) with(IrValueKind)
 						{
-							case constant:
+							case constant, constantZero:
 								IrConstant con = context.constants.get(src);
 								gen.pushd(Imm32(con.i32));
 								break;
@@ -915,7 +915,7 @@ MoveType calcMoveType(IrValueKind dst, IrValueKind src)
 		case virtualRegister: return MoveType.invalid;
 		case physicalRegister:
 			switch(src) with(IrValueKind) {
-				case constant: return MoveType.const_to_reg;
+				case constant, constantZero: return MoveType.const_to_reg;
 				case global: return MoveType.global_to_reg;
 				case physicalRegister: return MoveType.reg_to_reg;
 				case stackSlot: return MoveType.stack_to_reg;

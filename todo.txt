@@ -21,6 +21,8 @@
 - attributes
 	- User Defined Attributes UDAs
 - CTFE
+	+ constant to mem
+	- mem to constant
 
 - conditional compilation
 	+ #if
@@ -52,6 +54,7 @@
 	+ UFCS functions
 	+ return small complex structs
 	- lower aggregates in IR by replacing phis taking in aggregates with scalar phis. Only non-phi users must remain.
+	- detect all zero members and emit constantZero
 + pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 - array literal
 - slices (need better structs)

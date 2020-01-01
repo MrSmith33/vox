@@ -132,7 +132,13 @@ struct IrIndex
 	bool isBasicBlock() { return kind == IrValueKind.basicBlock; }
 	bool isPhi() { return kind == IrValueKind.phi; }
 	bool isConstant() { return kind == IrValueKind.constant; }
+	bool isSimpleConstant() { return kind == IrValueKind.constant || kind == IrValueKind.constantZero; }
 	bool isConstantAggregate() { return kind == IrValueKind.constantAggregate; }
+	bool isConstantZero() { return kind == IrValueKind.constantZero; }
+	bool isSomeConstant() { return
+			kind == IrValueKind.constant ||
+			kind == IrValueKind.constantAggregate ||
+			kind == IrValueKind.constantZero; }
 	bool isGlobal() { return kind == IrValueKind.global; }
 	bool isVirtReg() { return kind == IrValueKind.virtualRegister; }
 	bool isPhysReg() { return kind == IrValueKind.physicalRegister; }
@@ -159,6 +165,20 @@ struct IrIndex
 		return kind == IrValueKind.constant &&
 			(constantKind == IrConstantKind.intSignedSmall ||
 			constantKind == IrConstantKind.intSignedBig);
+	}
+
+	IrIndex constantZeroType() {
+		assert(isConstantZero);
+		IrIndex copy = this;
+		copy.kind = IrValueKind.type;
+		return copy;
+	}
+
+	IrIndex typeZeroConstant() {
+		assert(isType);
+		IrIndex copy = this;
+		copy.kind = IrValueKind.constantZero;
+		return copy;
 	}
 }
 

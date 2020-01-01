@@ -95,6 +95,16 @@ struct IrConstantStorage
 	IrIndex add(ulong value, IsSigned signed, IrArgSize constantSize)
 	{
 		IrIndex result;
+
+		if (value == 0) {
+			final switch(constantSize) with(IrArgSize) {
+				case size8: return makeBasicTypeIndex(IrValueType.i8).typeZeroConstant;
+				case size16: return makeBasicTypeIndex(IrValueType.i16).typeZeroConstant;
+				case size32: return makeBasicTypeIndex(IrValueType.i32).typeZeroConstant;
+				case size64: return makeBasicTypeIndex(IrValueType.i64).typeZeroConstant;
+			}
+		}
+
 		if (signed) {
 			bool fitsInSmallInt = ((value << 40) >> 40) == value;
 			if (fitsInSmallInt) {
@@ -191,4 +201,79 @@ private IrIndex makeConst(uint val, IrConstantKind kind) {
 	result.storageUintIndex = val | kind << 24;
 	result.kind = IrValueKind.constant;
 	return result;
+}
+
+/// Stores constant into buffer
+void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c)
+{
+	if (index.isConstant)
+	{
+		IrConstant con = c.constants.get(index);
+		switch(buffer.length)
+		{
+			case 1:
+				if (index.constantSize > IrArgSize.size8) goto default;
+				buffer[0] = con.i8;
+				break;
+			case 2:
+				if (index.constantSize > IrArgSize.size16) goto default;
+				*(cast(short*)buffer.ptr) = con.i16;
+				break;
+			case 4:
+				if (index.constantSize > IrArgSize.size32) goto default;
+				*(cast(int*)buffer.ptr) = con.i32;
+				break;
+			case 8:
+				*(cast(long*)buffer.ptr) = con.i64;
+				break;
+			default:
+				c.internal_error("Cannot store constant of size %s, into memory of size %s bytes",
+					index.constantSize, buffer.length);
+		}
+	}
+	else if (index.isConstantZero)
+	{
+		uint typeSize = c.types.typeSize(index.constantZeroType);
+		c.assertf(typeSize == buffer.length,
+			"Cannot store zero constant of size %s, into memory of size %s bytes",
+			typeSize, buffer.length);
+		buffer[] = 0;
+	}
+	else if (index.isConstantAggregate)
+	{
+		IrAggregateConstant* con = &c.constants.getAggregate(index);
+
+		switch(con.type.typeKind) with(IrTypeKind) {
+			case struct_t:
+				IrTypeStruct* structType = &c.types.get!IrTypeStruct(con.type);
+				c.assertf(structType.size == buffer.length,
+					"Cannot store struct constant of size %s, into memory of size %s bytes",
+					structType.size, buffer.length);
+				IrIndex[] args = con.members;
+				foreach (i, IrTypeStructMember member; structType.members)
+				{
+					uint memberOffset = member.offset;
+					uint memberSize = c.types.typeSize(member.type);
+					constantToMem(buffer[memberOffset..memberOffset+memberSize], args[i], c);
+				}
+				break;
+			case array:
+				IrTypeArray* arrayType = &c.types.get!IrTypeArray(con.type);
+				uint elemSize = c.types.typeSize(arrayType.elemType);
+				uint typeSize = arrayType.size * elemSize;
+				c.assertf(typeSize == buffer.length,
+					"Cannot store array constant of size %s, into memory of size %s bytes",
+					typeSize, buffer.length);
+				IrIndex[] args = con.members;
+				foreach (i; 0..arrayType.size)
+				{
+					uint memberOffset = i * elemSize;
+					constantToMem(buffer[memberOffset..memberOffset+elemSize], args[i], c);
+				}
+				break;
+			default: assert(false);
+		}
+	}
+	else
+		c.internal_error("%s is not a constant", index);
 }

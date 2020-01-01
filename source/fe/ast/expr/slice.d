@@ -91,7 +91,7 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 	IrIndex ptr; // pointer to first element
 	IrIndex length; // slice length
 
-	if (fromIndexRvalue.isConstant && c.constants.get(fromIndexRvalue).i64 == 0)
+	if (fromIndexRvalue.isSimpleConstant && c.constants.get(fromIndexRvalue).i64 == 0)
 	{
 		// special case for array[0..to];
 		ptr = arrayLvalue.irValue;

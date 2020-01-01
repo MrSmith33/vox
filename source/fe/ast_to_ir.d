@@ -332,7 +332,8 @@ IrIndex getStructMember(ref IrGenState gen, IrIndex currentBlock, IrIndex aggr, 
 		switch(aggrType.typeKind)
 		{
 			case IrTypeKind.struct_t:
-				c.assertf(memberIndex.isConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
+				c.assertf(memberIndex.isSimpleConstant,
+					"Structs can only be indexed with constants, not with %s", memberIndex);
 				uint memberIndexVal = c.constants.get(memberIndex).i32;
 				aggrType = c.types.getStructMemberType(aggrType, memberIndexVal, *c);
 				aggr = c.constants.getAggregateMember(aggr, memberIndexVal);
@@ -377,7 +378,8 @@ IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrInd
 				break;
 
 			case IrTypeKind.struct_t:
-				c.assertf(memberIndex.isConstant, loc, "Structs can only be indexed with constants, not with %s", memberIndex);
+				c.assertf(memberIndex.isSimpleConstant, loc,
+					"Structs can only be indexed with constants, not with %s", memberIndex);
 				uint memberIndexVal = c.constants.get(memberIndex).i32;
 				aggrType = c.types.getStructMemberType(aggrType, memberIndexVal, *c);
 				break;
@@ -493,7 +495,7 @@ IrIndex makeBoolValue(ref IrGenState gen, ExpressionNode* n, IrIndex currentBloc
 void addUnaryBranch(ref IrGenState gen, IrIndex value, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit)
 {
 	CompilationContext* c = gen.context;
-	if (value.isConstant)
+	if (value.isSimpleConstant)
 	{
 		long conValue = c.constants.get(value).i64;
 		if (conValue != 0)

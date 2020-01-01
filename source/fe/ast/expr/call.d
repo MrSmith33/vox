@@ -296,11 +296,19 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* n)
 {
 	CompilationContext* c = gen.context;
+
+	if (n.args.length == 0)
+	{
+		return ExprValue(s.gen_default_value_struct(c));
+	}
+
 	IrIndex structType = s.gen_ir_type_struct(c);
 	uint numStructMembers = c.types.get!IrTypeStruct(structType).numMembers;
 	IrIndex[] args = c.allocateTempArray!IrIndex(numStructMembers);
 	scope(exit) c.freeTempArray(args);
 
+	bool allConstants = true;
+	bool allZeroes = true;
 	uint memberIndex;
 	foreach(AstIndex member; s.declarations)
 	{
@@ -314,7 +322,11 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 			IrLabel afterArg = IrLabel(currentBlock);
 			ExprValue lval = ir_gen_expr(gen, n.args[memberIndex], currentBlock, afterArg);
 			currentBlock = afterArg.blockIndex;
-			args[memberIndex] = getRvalue(gen, n.loc, currentBlock, lval);
+			IrIndex memberValue = getRvalue(gen, n.loc, currentBlock, lval);
+			args[memberIndex] = memberValue;
+
+			if (memberValue.isVirtReg) allConstants = false;
+			if (!memberValue.isConstantZero) allZeroes = false;
 		}
 		else // init with initializer from struct definition
 		{
@@ -328,7 +340,18 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 		c.internal_error(n.loc, "Constructor cannot be an l-value");
 	}
 
-	ExtraInstrArgs extra = { type : structType };
-	InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, args);
-	return ExprValue(res.result);
+	if (allZeroes)
+	{
+		return ExprValue(c.constants.addZeroConstant(structType));
+	}
+	else if (allConstants)
+	{
+		return ExprValue(c.constants.addAggrecateConstant(structType, args));
+	}
+	else
+	{
+		ExtraInstrArgs extra = { type : structType };
+		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, args);
+		return ExprValue(res.result);
+	}
 }

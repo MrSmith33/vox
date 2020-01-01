@@ -53,8 +53,7 @@ bool same_type_slice(SliceTypeNode* t1, SliceTypeNode* t2, CompilationContext* c
 IrIndex gen_default_value_slice(SliceTypeNode* node, CompilationContext* c)
 {
 	if (node.defaultVal.isDefined) return node.defaultVal;
-	IrIndex irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
-	node.defaultVal = c.constants.addAggrecateConstant(gen_ir_type_slice(node, c), irValue, irValue);
+	node.defaultVal = c.constants.addZeroConstant(gen_ir_type_slice(node, c));
 	return node.defaultVal;
 }
 

@@ -853,7 +853,7 @@ struct LinearScan
 			IrArgSize sizeFrom;
 			switch(from.kind) with(IrValueKind)
 			{
-				case stackSlot, global, func, constant:
+				case stackSlot, global, func, constant, constantZero:
 					sizeFrom = IrArgSize.size64; // use regular mov
 					break;
 				case physicalRegister:

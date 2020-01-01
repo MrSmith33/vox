@@ -60,10 +60,18 @@ IrIndex gen_default_value_static_array(StaticArrayTypeNode* node, CompilationCon
 	IrIndex arrayType = node.gen_ir_type_static_array(c);
 	uint size = c.types.get!IrTypeArray(arrayType).size;
 
-	node.defaultVal = c.constants.addAggrecateConstant(arrayType, size);
-	IrAggregateConstant* agg = &c.constants.getAggregate(node.defaultVal);
 	IrIndex elemDefault = node.base.get_type(c).gen_default_value(c);
-	agg.members[] = elemDefault;
+
+	if (elemDefault.isConstantZero)
+	{
+		node.defaultVal = c.constants.addZeroConstant(arrayType);
+	}
+	else
+	{
+		node.defaultVal = c.constants.addAggrecateConstant(arrayType, size);
+		IrAggregateConstant* agg = &c.constants.getAggregate(node.defaultVal);
+		agg.members[] = elemDefault;
+	}
 
 	return node.defaultVal;
 }

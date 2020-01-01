@@ -869,8 +869,9 @@ struct Parser
 				expectAndConsume(TokenType.SEMICOLON);
 				return make!ContinueStmtNode(start);
 			case TokenType.SEMICOLON:  /* ";" */
+				context.error(tok.index, "Cannot use `;` as an empty statement. Use `{}` instead");
 				nextToken;
-				return make!BlockStmtNode(start, AstNodes()); // TODO: make this an error
+				return make!BlockStmtNode(start, AstNodes());
 			case TokenType.LCURLY:  /* "{" { <statement> } "}" */
 				return block_stmt();
 			default:

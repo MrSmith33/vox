@@ -97,7 +97,7 @@ ExprValue ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref Ir
 			IrIndex leftRvalue = getRvalue(gen, b.loc, currentBlock, leftLvalue);
 			IrIndex irValue;
 
-			if (leftRvalue.isConstant && rightRvalue.isConstant)
+			if (leftRvalue.isSimpleConstant && rightRvalue.isSimpleConstant)
 			{
 				irValue = calcBinOp(binOpAssignToRegularOp(b.op), leftRvalue, rightRvalue, leftExpr.type.typeArgSize(c), c);
 			}
@@ -187,7 +187,7 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 	auto rightValue = getRvalue(gen, b.loc, currentBlock, rightLvalue);
 
 	// constant folding
-	if (leftValue.isConstant && rightValue.isConstant)
+	if (leftValue.isSimpleConstant && rightValue.isSimpleConstant)
 	{
 		IrIndex value = calcBinOp(b.op, leftValue, rightValue, b.type.typeArgSize(c), c);
 		static if (forValue)
