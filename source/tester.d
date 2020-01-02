@@ -4,6 +4,7 @@
 module tester;
 
 import all;
+import tests.ctfe;
 import tests.passing;
 import tests.failing;
 import tests.exe;
@@ -66,6 +67,7 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	driver.context.buildDebug = false;
 	driver.context.validateIr = true;
 	//driver.context.debugRegAlloc = true;
+	//driver.context.printIr = true;
 
 	//driver.context.printAstSema = true;
 	// Is slow when doing failing tests
@@ -75,7 +77,7 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	Test[] jitTests = tests.passing.passingTests ~ tests.failing.failingTests;
+	Test[] jitTests = tests.passing.passingTests ~ tests.ctfe.ctfeTests ~ tests.failing.failingTests;
 	Test[] regAllocTests = tests.reg_alloc.regAllocTests;
 	Test[] exeTests = tests.exe.exeTests;
 
@@ -166,6 +168,18 @@ struct Test
 	HostSymbol[] hostSymbols;
 	DllModule[] dllModules;
 }
+
+struct Slice(T) {
+	this(T[] data) {
+		ptr = data.ptr;
+		length = data.length;
+	}
+	ulong length;
+	T* ptr;
+	T[] slice() { return ptr[0..length]; }
+	alias slice this;
+}
+alias SliceString = Slice!(const(char));
 
 Test makeTest(alias test)() {
 	static assert (__traits(getAttributes, test).length > 0);

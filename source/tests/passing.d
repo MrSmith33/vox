@@ -9,18 +9,6 @@ import tester;
 
 Test[] passingTests() { return collectTests!(tests.passing)(); }
 
-struct Slice(T) {
-	this(T[] data) {
-		ptr = data.ptr;
-		length = data.length;
-	}
-	ulong length;
-	T* ptr;
-	T[] slice() { return ptr[0..length]; }
-	alias slice this;
-}
-alias SliceString = Slice!(const(char));
-
 extern(C) void external_print_i32_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
@@ -2997,4 +2985,21 @@ immutable test116 = q{--- test116
 void tester116(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("test_i32")() == 42);
 	assert(ctx.getFunctionPtr!SliceString("test_string")().slice == "Hello");
+}
+
+
+@TestInfo(&tester117)
+immutable test117 = q{--- test117
+	// BUG: passing small constant (u8) as big (u32) argument causes u8 <- u8 mov instead of u32 <- u32
+	u32 pass(u32 param) {
+		return param;
+	}
+	u64 test() {
+		u64 val = pass(0xFFFF_FFFF); // fill register with garbage
+		val += pass(0); // BUG: sets only the lowest byte, passing 0xFFFF_FF00 as an argument
+		return val;
+	}
+};
+void tester117(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("test")() == 0xFFFF_FFFF);
 }

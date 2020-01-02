@@ -53,7 +53,7 @@ IrIndex simplifyConstant(IrIndex index, CompilationContext* c)
 	}
 
 	constantToMem(data.buffer[0..typeSize], index, c);
-	return c.constants.add(data.bufferValue, IsSigned.no);
+	return c.constants.add(data.bufferValue, IsSigned.no, sizeToIrArgSize(typeSize, c));
 }
 
 void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir, IrFunction* lir)
