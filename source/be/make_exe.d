@@ -33,7 +33,6 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	// Static data section
 	Section dataSection = Section(SectionType.data, ".data");
 	dataSection.header.Characteristics =
-		SectionFlags.SCN_CNT_INITIALIZED_DATA |
 		SectionFlags.SCN_MEM_WRITE |
 		SectionFlags.SCN_MEM_READ;
 
@@ -55,9 +54,10 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	textSection.data = context.codeBuffer.data;
 	idataSection.data = importMapping.sectionData;
 	dataSection.data = context.staticDataBuffer.data;
+	dataSection.setSectionZeroLength(context.zeroDataLength);
+	if (dataSection.data.length > 0) dataSection.header.Characteristics |= SectionFlags.SCN_CNT_INITIALIZED_DATA;
+	if (context.zeroDataLength > 0) dataSection.header.Characteristics |= SectionFlags.SCN_CNT_UNINITIALIZED_DATA;
 	rdataSection.data = context.roStaticDataBuffer.data;
-
-	//context.objSymTab.dump(&context);
 
 	// ---------------------------------------------------------
 
@@ -67,7 +67,7 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 
 	void addSection(Section* section)
 	{
-		if (section.dataSize == 0) return;
+		if (section.totalSize == 0) return;
 		sections.put(section);
 	}
 
@@ -94,6 +94,8 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 
 	// uses sectionAddress
 	fillImports(importMapping, &context);
+
+	if (context.printSymbols) context.objSymTab.dump(&context);
 
 	// fix all references between symbols
 	foreach (ref SourceFileInfo file; context.files.data) {
@@ -338,7 +340,7 @@ struct CoffExecutable
 		foreach (Section* section; sections)
 		{
 			// size in a file
-			uint sectionFileSize = alignValue(section.dataSize, params.fileAlignment);
+			uint sectionFileSize = alignValue(section.initializedSize, params.fileAlignment);
 			section.header.SizeOfRawData = sectionFileSize;
 
 			// position in a file
@@ -362,9 +364,9 @@ struct CoffExecutable
 		{
 			// position in memory after load
 			section.header.VirtualAddress = imageVirtualSize;
-			uint sectionVirtualSize = alignValue(section.dataSize, params.sectionAlignment);
-			// size in memory after load
-			section.header.VirtualSize = sectionVirtualSize;
+			uint sectionVirtualSize = alignValue(section.totalSize, params.sectionAlignment);
+			// size in memory after load, need not be aligned
+			section.header.VirtualSize = section.totalSize;
 			imageVirtualSize += sectionVirtualSize;
 		}
 
@@ -412,6 +414,7 @@ struct CoffExecutable
 		coffFileHeader.PointerToSymbolTable = 0;
 		coffFileHeader.NumberOfSymbols = 0;
 		coffFileHeader.Characteristics =
+			CoffFlags.RELOCS_STRIPPED | // TODO. remove when relocations are implemented
 			CoffFlags.EXECUTABLE_IMAGE |
 			CoffFlags.LARGE_ADDRESS_AWARE;
 

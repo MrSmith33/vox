@@ -3037,7 +3037,7 @@ void tester119(ref TestContext ctx) {
 	assert(read_global() == 100);
 }
 
-/* TODO
+
 @TestInfo(&tester120)
 immutable test120 = q{--- test120
 	// Test global struct initialization
@@ -3063,11 +3063,45 @@ void tester120(ref TestContext ctx) {
 	assert(read_global() == S(1, 2, 3, 4));
 	set_global(S(10, 20, 30, 40));
 	assert(read_global() == S(10, 20, 30, 40));
-}*/
+}
 
 
 @TestInfo(&tester121)
 immutable test121 = q{--- test121
+	// Test global struct initialization with pointers
+	u32 a = 1;
+	u32 b = 2;
+	u32 c = 3;
+	u32 d = 4;
+	struct S {
+		u32* a;
+		u32* b;
+		u32* c;
+		u32* d;
+	}
+	S glob = S(&a, &b, &c, &d);
+	S read_global() { return glob; }
+};
+void tester121(ref TestContext ctx) {
+	struct S {
+		uint* a;
+		uint* b;
+		uint* c;
+		uint* d;
+	}
+	auto read_global = ctx.getFunctionPtr!(S)("read_global");
+	//import utils : printHex;
+	//printHex(ctx.driver.context.staticDataBuffer.data, 16);
+	S s = read_global();
+	assert(*s.a == 1);
+	assert(*s.b == 2);
+	assert(*s.c == 3);
+	assert(*s.d == 4);
+}
+
+
+@TestInfo(&tester122)
+immutable test122 = q{--- test122
 	// Test global pointer initialization
 	u32 glob = 42;
 	u32* glob_ptr = &glob;
@@ -3075,7 +3109,7 @@ immutable test121 = q{--- test121
 	u32 read_global() { return *glob_ptr; }
 	void set_global(u32 val) { *glob_ptr = val; }
 };
-void tester121(ref TestContext ctx) {
+void tester122(ref TestContext ctx) {
 	auto get_ptr = ctx.getFunctionPtr!(uint*)("get_ptr");
 	auto read_global = ctx.getFunctionPtr!(uint)("read_global");
 	auto set_global = ctx.getFunctionPtr!(void, uint)("set_global");

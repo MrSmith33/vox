@@ -135,9 +135,14 @@ o dll linking
 
 [Linking / Static data / Globals]
 - Absolute references need relocations emitted (ObjectSymbolRefKind.absolute64)
-- Do not emit zero inited globals, only track them. Important for executables.
-- Implement zero initialized data section
+	CoffFlags.RELOCS_STRIPPED is set for now
+	executables can work without relocations
+	dlls require reloc table
+	*- https://docs.microsoft.com/en-us/cpp/build/reference/dynamicbase-use-address-space-layout-randomization?view=vs-2019
+	* https://github.com/bitcoin/bitcoin/issues/8248
 - First arrange globals by alignment for tighter packing, then fill sections with data.
++ Do not emit zero inited globals, only track them. Important for executables.
++ Implement zero initialized data section (at the end of rw section)
 + globals need to be initialized
 x globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
 

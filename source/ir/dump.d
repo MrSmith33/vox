@@ -48,6 +48,11 @@ struct IrIndexDump
 		this.context = printInfo.context;
 		this.instrSet = printInfo.ir.instructionSet;
 	}
+	this(IrIndex index, CompilationContext* c, IrInstructionSet instrSet) {
+		this.index = index;
+		this.context = c;
+		this.instrSet = instrSet;
+	}
 	this(IrIndex index, CompilationContext* context, IrFunction* ir) {
 		this.index = index;
 		this.context = context;

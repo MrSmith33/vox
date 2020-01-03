@@ -316,7 +316,6 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 		if (memberVarNode.astType != AstType.decl_var) continue;
 		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
 
-		AstIndex initializer;
 		if (n.args.length > memberIndex) // init from constructor argument
 		{
 			IrLabel afterArg = IrLabel(currentBlock);

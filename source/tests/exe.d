@@ -9,9 +9,10 @@ Test[] exeTests() { return collectTests!(tests.exe)(); }
 
 @TestInfo()
 immutable exe1 = q{--- exe1
+	i32 glob;
 	// Test exe creation. no static data, no imports
 	i32 main(void* hInstance, void* hPrevInstance, u8* lpCmdLine, i32 nShowCmd) {
-		return 0;
+		return glob;
 	}
 };
 

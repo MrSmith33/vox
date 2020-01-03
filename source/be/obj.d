@@ -289,7 +289,8 @@ struct ObjectSymbolTable
 			while (symIndex.isDefined)
 			{
 				ObjectSymbol* sym = &getSymbol(symIndex);
-				writef("  %s %s", symIndex, context.idString(sym.id));
+				writef("  %s %s %s bytes", symIndex, context.idString(sym.id), sym.length);
+				if (sym.isAllZero) write(" zeroinit");
 				if (sym.isString)
 					writefln(` "%s"`, (cast(char*)(sym.dataPtr))[0..sym.length]);
 				else writeln;

@@ -91,8 +91,9 @@ struct CompilationContext
 	/// Must be allocated before or after code segment to allow relative addressing
 	/// Static read-only data
 	Arena!ubyte roStaticDataBuffer;
-	/// Static read-write data
+	/// Static read-write data. zero-initialized data is stored after initialized data
 	Arena!ubyte staticDataBuffer;
+	uint zeroDataLength;
 	/// Buffer for resulting machine code
 	Arena!ubyte codeBuffer;
 	/// Buffer for indirect addresses when in JIT mode

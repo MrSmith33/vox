@@ -43,6 +43,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 		case expr_bin_op: return eval_static_expr_bin_op(cast(BinaryExprNode*)node, context);
 		case expr_un_op: return eval_static_expr_un_op(cast(UnaryExprNode*)node, context);
 		case expr_type_conv: return eval_static_expr_type_conv(cast(TypeConvExprNode*)node, context);
+		case expr_call: return eval_static_expr_call(cast(CallExprNode*)node, context);
 		case literal_int: return ir_gen_literal_int(context, cast(IntLiteralExprNode*)node);
 		case literal_string: return ir_gen_literal_string(context, cast(StringLiteralExprNode*)node);
 		case literal_null: return ir_gen_literal_null(context, cast(NullLiteralExprNode*)node);
@@ -158,7 +159,48 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 	}
 }
 
-IrIndex eval_static_expr_type_conv(TypeConvExprNode* node, CompilationContext* context)
+IrIndex eval_static_expr_type_conv(TypeConvExprNode* node, CompilationContext* c)
 {
-	return eval_static_expr(node.expr, context);
+	return eval_static_expr(node.expr, c);
+}
+
+IrIndex eval_static_expr_call(CallExprNode* node, CompilationContext* c)
+{
+	AstIndex callee = node.callee.get_effective_node(c);
+
+	if (callee.astType(c) != AstType.decl_struct)
+		c.assertf(callee.astType(c) == AstType.decl_struct, node.loc,
+			"Calls are not implemented in CTFE yet");
+
+	StructDeclNode* s = callee.get!StructDeclNode(c);
+
+	if (node.args.length == 0) {
+		return s.gen_default_value_struct(c);
+	}
+
+	IrIndex structType = s.gen_ir_type_struct(c);
+	uint numStructMembers = c.types.get!IrTypeStruct(structType).numMembers;
+	IrIndex[] args = c.allocateTempArray!IrIndex(numStructMembers);
+	scope(exit) c.freeTempArray(args);
+
+	bool allZeroes = true;
+	uint memberIndex;
+	foreach(AstIndex member; s.declarations)
+	{
+		AstNode* memberVarNode = member.get_node(c);
+		if (memberVarNode.astType != AstType.decl_var) continue;
+		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
+
+		if (node.args.length > memberIndex) { // init from constructor argument
+			IrIndex memberValue = eval_static_expr(node.args[memberIndex], c);
+			args[memberIndex] = memberValue;
+			if (!memberValue.isConstantZero) allZeroes = false;
+		} else { // init with initializer from struct definition
+			args[memberIndex] = memberVar.gen_default_value_var(c);
+		}
+
+		++memberIndex;
+	}
+
+	return c.constants.addAggrecateConstant(structType, args);
 }

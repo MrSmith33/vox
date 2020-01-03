@@ -1270,7 +1270,7 @@ struct Executable
 		foreach (Section* section; sections)
 		{
 			section.header.PointerToRawData = imageFileSize;
-			uint sectionFileSize = alignValue(section.dataSize, params.fileAlignment);
+			uint sectionFileSize = alignValue(section.initializedSize, params.fileAlignment);
 			section.header.SizeOfRawData = sectionFileSize;
 			imageFileSize += sectionFileSize;
 		}
@@ -1285,8 +1285,8 @@ struct Executable
 		foreach (section; sections)
 		{
 			section.header.VirtualAddress = imageVirtualSize;
-			uint sectionVirtualSize = alignValue(section.dataSize, params.sectionAlignment);
-			section.header.VirtualSize = sectionVirtualSize;
+			uint sectionVirtualSize = alignValue(section.totalSize, params.sectionAlignment);
+			section.header.VirtualSize = section.totalSize;
 			imageVirtualSize += sectionVirtualSize;
 		}
 
@@ -2569,8 +2569,9 @@ struct Section
 	// In the latter case, header.Name needs to be set before writing to the file.
 	string name;
 	SectionHeader header;
-	CoffRelocation[] relocations;
+	uint zeroedBytes;
 	ubyte[] data;
+	CoffRelocation[] relocations;
 	SymbolSectionInfo[] symbols;
 
 	// string name() { return fromFixedString(header.Name); }
@@ -2592,7 +2593,15 @@ struct Section
 		return symbols[symbol].length;
 	}
 
-	uint dataSize() { return cast(uint)data.length; }
+	void setSectionZeroLength(uint length) {
+		zeroedBytes = length;
+	}
+	uint initializedSize() {
+		return cast(uint)data.length;
+	}
+	uint totalSize() {
+		return cast(uint)data.length + zeroedBytes;
+	}
 
 	bool isCodeSection()
 	{

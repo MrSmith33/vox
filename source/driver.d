@@ -416,10 +416,16 @@ struct Driver
 	/// Must be called after compilation is finished and before execution
 	/// Effect is reverted with the call to beginCompilation
 	/// Marks code pages as read-execute, and readonly data pages as read-only
+	/// Clears zero-initialized data
+	/// Only needed in JIT mode, not needed in AOT mode
 	void markCodeAsExecutable()
 	{
 		markAsExecutable(context.codeBuffer.bufPtr, divCeil(context.codeBuffer.length, PAGE_SIZE));
 		markAsRO(context.roStaticDataBuffer.bufPtr, divCeil(context.roStaticDataBuffer.length, PAGE_SIZE));
+		// we cannot have a separate section for zeroinitialized data (would require 2 smaller arenas)
+		// because it needs to occupy the same GiB as initialized data
+		// to be RIP addressable in JIT mode
+		context.staticDataBuffer.voidPut(context.zeroDataLength)[] = 0; // zero initialize
 	}
 
 	private bool canReferenceFromCode(void* hostSym)

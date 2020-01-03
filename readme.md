@@ -89,7 +89,7 @@ In `main.d` uncomment one of the following lines:
 //version = test; // Runs test suite. Uses tester.runAllTests().
 ```
 
-Run with: `source> dmd -m64 -i main.d && main`
+and run with: `source> dmd -m64 -i main.d && main`
 
 Benchmarking:
     `ldc2 -d-version=bench -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d && main`

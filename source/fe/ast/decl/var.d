@@ -265,6 +265,8 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 				};
 				c.objSymTab.addReference(r);
 			}
+			//if (!initializer.isConstantZero)
+			//	writefln("%s %s", c.idString(v.id), IrIndexDump(initializer, c, IrInstructionSet.ir));
 			constantToMem(buffer, initializer, c, &onGlobal);
 			globalSym.setInitializer(buffer);
 		}

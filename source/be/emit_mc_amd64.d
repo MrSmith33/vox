@@ -16,7 +16,7 @@ void pass_emit_mc_amd64(ref CompilationContext context, CompilePassPerModule[] s
 {
 	auto emitter = CodeEmitter(&context);
 
-	fillStaticDataSections(context);
+	fillStaticDataSections(&context);
 
 	if (context.printStaticData) {
 		writefln("// Data: addr 0x%X, %s bytes",
@@ -37,14 +37,14 @@ void pass_emit_mc_amd64(ref CompilationContext context, CompilePassPerModule[] s
 }
 
 // Arranges static data inside static data sections
-void fillStaticDataSections(ref CompilationContext c)
+void fillStaticDataSections(CompilationContext* c)
 {
-	// copy static data into buffer and set offsets
+	// copy initialized static data into buffer and set offsets
 	foreach(size_t i, ref IrGlobal global; c.globals.buffer.data)
 	{
-		IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
-
 		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
+		if (globalSym.isAllZero) continue;
+
 		ObjectSection* symSection = &c.objSymTab.getSection(globalSym.sectionIndex);
 
 		// alignment
@@ -55,21 +55,38 @@ void fillStaticDataSections(ref CompilationContext c)
 		globalSym.sectionOffset = cast(uint)symSection.buffer.length;
 
 		// copy data
-		if (globalSym.isAllZero) {
-			// TODO: do not emit zeroes, only track them. Important for executables
-			symSection.buffer.voidPut(globalSym.length)[] = 0;
-		} else {
-			c.assertf(globalSym.dataPtr !is null, "null initializer");
-			symSection.buffer.put(globalSym.initializer);
-		}
+		c.assertf(globalSym.dataPtr !is null, "null initializer");
+		symSection.buffer.put(globalSym.initializer);
 
 		// zero termination
-		if (globalSym.needsZeroTermination)
-			symSection.buffer.put(0);
-
+		if (globalSym.needsZeroTermination) symSection.buffer.put(0);
 		//writefln("Global %s, size %s, zero %s, offset %s, buf size %s",
 		//	globalSym.initializer, globalSym.length, globalSym.needsZeroTermination, globalSym.sectionOffset, symSection.buffer.length);
 	}
+
+	uint zeroDataOffset = cast(uint)c.staticDataBuffer.length;
+
+	// second pass for zero initialized data
+	foreach(size_t i, ref IrGlobal global; c.globals.buffer.data)
+	{
+		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
+		if (!globalSym.isAllZero) continue;
+
+		// alignment
+		uint padding = paddingSize!uint(zeroDataOffset, globalSym.alignment);
+		zeroDataOffset += padding;
+
+		// offset
+		globalSym.sectionOffset = zeroDataOffset;
+
+		// copy data
+		zeroDataOffset += globalSym.length;
+
+		// zero termination
+		if (globalSym.needsZeroTermination) ++zeroDataOffset;
+	}
+
+	c.zeroDataLength = zeroDataOffset - cast(uint)c.staticDataBuffer.length;
 }
 
 void addFunctionSymbols(ref CompilationContext context, ref ModuleDeclNode mod)
