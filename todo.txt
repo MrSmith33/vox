@@ -1,7 +1,7 @@
+[Language]
 - meta
 	+ function template
 	+ struct/union template
-	- variadic template arguments
 	- macros (templated function that is inlined and can access inline scope/insert stuff into outer scope)
 	- meta types
 		- #alias
@@ -11,18 +11,20 @@
 	- # introspection
 		- #allMembers(symbol) -> #alias[]
 		- #getAttributes(symbol) -> #alias[]
-		- #is*
+		- #is* -> bool
 	- # attributes
 		- #likely
 		- #unlikely
 		- #likely_when(<expr>)
 		- #dllimport(id)
 	- template parameter inference (for function templates)
+	- variadic template arguments (requires inference)
 - attributes
 	- User Defined Attributes UDAs
 - CTFE
 	+ constant to mem
 	- mem to constant
+	- constructors
 
 - conditional compilation
 	+ #if
@@ -40,6 +42,7 @@
 - char literal / type
 	+ literal (for now generates int literal expression)
 - escape sequences in string/char literals (\n)
+	can be emitted into IrGlobalStorage.initializerBuffer
 	+ in char literals
 - float double
 - union
@@ -96,12 +99,13 @@ o dll linking
 	- enum with bigger than i32 values doesn't compile
 	- autoincrementing enum member values
 	- enum type
-- -run option
-- in error on unexpected EOF show unterminated ([{ symbol
 - constant folding << >> >>> shifts needs to know type of left operand to mask the shift size
-- globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
-- globals need to be initialized
 
+[CLI]
+- -run option
+- -i option (compile all imported files)
+
+[Testing]
 - test escape sequences
 - test all implicit conversions
 - test parsing errors
@@ -114,15 +118,28 @@ o dll linking
 - test all expressions that compile with error being used inside other expressions (semantic check must correctly assign error type and check it when necessary)
 - make sure that `this` is being used outside methods
 - test that sections get correct offsets in executable
+
+[Backend]
 - implement _chkstk and call it at the start of functions with frame size > 1 page
-- implement zero initialized data section
+
+[Error messages]
+- in error on unexpected EOF show unterminated ([{ symbol
 
 [Optimizations]
 - optimize pointer arithmetic into lea
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
 
 [Debug info]
+- Propagate loc through instructions
 - Implement pdb format write/read
+
+[Linking / Static data / Globals]
+- Absolute references need relocations emitted (ObjectSymbolRefKind.absolute64)
+- Do not emit zero inited globals, only track them. Important for executables.
+- Implement zero initialized data section
+- First arrange globals by alignment for tighter packing, then fill sections with data.
++ globals need to be initialized
+x globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
 
 [IR]
 - Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
@@ -137,7 +154,10 @@ o dll linking
 - make sure that blocks for splitting critical edges are inserted after successor
 + Remove IR instruction structs, use enum values directly in emitInstr
 - Automatically use zero initialization when possible
-- Add constant kind that inits all elements of an array with the same value
+- Constants
+	- Zeroinitializer
+	- Add constant kind that inits all elements of an array with the same value
+	- expression constant (required for expressions involving link-time constants like global address)
 - Validate all instructions
 
 [Register allocator]

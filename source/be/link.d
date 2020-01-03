@@ -19,13 +19,17 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 	LinkIndex symIndex = mod.firstSymbol;
 	while (symIndex.isDefined)
 	{
-		ObjectSymbol* sym = &context.objSymTab.getSymbol(symIndex);
-		//writef("  %s %s", symIndex, context.idString(sym.id));
-		//if (sym.isString)
-		//	writefln(` "%s"`, (cast(char*)(sym.dataPtr))[0..sym.length]);
-		//else writeln;
+		ObjectSymbol* fromSymbol = &context.objSymTab.getSymbol(symIndex);
+		ObjectSection* fromSection = &context.objSymTab.getSection(fromSymbol.sectionIndex);
+		ulong fromSymAddr = fromSection.sectionAddress + fromSymbol.sectionOffset;
 
-		LinkIndex symRefIndex = sym.firstRef;
+		//writef("  %s `%s` %X", symIndex, context.idString(fromSymbol.id), fromSymAddr);
+		//if (fromSymbol.isString)
+		//	writefln(` "%s"`, (cast(char*)(fromSymbol.dataPtr))[0..fromSymbol.length]);
+		//else writeln;
+		//writefln("    fromSection %s %X", context.idString(fromSection.id), fromSection.sectionData);
+
+		LinkIndex symRefIndex = fromSymbol.firstRef;
 		while (symRefIndex.isDefined)
 		{
 			ObjectSymbolReference* symRef = &context.objSymTab.getReference(symRefIndex);
@@ -33,38 +37,37 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 			//	symRefIndex, symRef.referencedSymbol, symRef.refOffset,
 			//	symRef.extraOffset, symRef.refKind);
 
+			ObjectSymbol* toSymbol = &context.objSymTab.getSymbol(symRef.referencedSymbol);
+			ObjectSection* toSection = &context.objSymTab.getSection(toSymbol.sectionIndex);
+			//writefln("      toSection %s %X", context.idString(toSection.id), toSection.sectionData);
+
+			// section + symbol offset + reference offset
+			ulong fromAddr = fromSymAddr + symRef.refOffset;
+			ulong toAddr = toSection.sectionAddress + toSymbol.sectionOffset;
+			//writefln("      refAddr %X", fromAddr);
+			//writefln("      toAddr %X", toAddr);
+
+			void* fixupLocation = cast(void*)(fromSection.sectionData + fromSymbol.sectionOffset + symRef.refOffset);
+
 			final switch(symRef.refKind) with(ObjectSymbolRefKind)
 			{
 				case absolute64:
-					context.unreachable; // TODO
+					ulong value = toAddr - symRef.extraOffset;
+					ulong* fixup = cast(ulong*)fixupLocation;
+					//writefln("      value %X -> %X", *fixup, value);
+					*fixup = value; // write
 					break;
 
 				case relative32:
-					ObjectSymbol* fromSymbol = &context.objSymTab.getSymbol(symRef.fromSymbol);
-					ObjectSymbol* toSymbol = &context.objSymTab.getSymbol(symRef.referencedSymbol);
-					ObjectSection* fromSection = &context.objSymTab.getSection(fromSymbol.sectionIndex);
-					ObjectSection* toSection = &context.objSymTab.getSection(toSymbol.sectionIndex);
-
-					// section + symbol offset + reference offset
-					ulong fromAddr = fromSection.sectionAddress + fromSymbol.sectionOffset + symRef.refOffset;
-					ulong toAddr = toSection.sectionAddress + toSymbol.sectionOffset;
-
-					int* fixup = cast(int*)(fromSection.sectionData + fromSymbol.sectionOffset + symRef.refOffset);
-
 					int value = cast(int)(toAddr - fromAddr) - symRef.extraOffset;
-					//writefln("fromSection %s %X", context.idString(fromSection.id), fromSection.sectionData);
-					//writefln("toSection %s %X", context.idString(toSection.id), toSection.sectionData);
-					//writefln("fromAddr %X", fromAddr);
-					//writefln("toAddr %X", toAddr);
-					//writefln("value %X -> %X", *fixup, value);
-
-					*fixup = value;
-
+					int* fixup = cast(int*)fixupLocation;
+					//writefln("      value %X -> %X", *fixup, value);
+					*fixup = value; // write
 					break;
 			}
 
 			symRefIndex = symRef.nextReference;
 		}
-		symIndex = sym.nextSymbol;
+		symIndex = fromSymbol.nextSymbol;
 	}
 }

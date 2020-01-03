@@ -60,6 +60,7 @@ struct CompilationContext
 
 	// storage
 
+	/// Source file info storage
 	Arena!SourceFileInfo files;
 	/// Buffer for sources of all modules
 	Arena!char sourceBuffer;
@@ -78,7 +79,7 @@ struct CompilationContext
 	Arena!uint tempBuffer;
 	/// Buffer for function IR generation
 	IrFuncStorage irStorage;
-	///
+	/// Type storage
 	IrTypeStorage types;
 	/// Global constant storage
 	IrConstantStorage constants;
@@ -98,11 +99,12 @@ struct CompilationContext
 	/// Buffer for import section when in exe mode
 	Arena!ubyte importBuffer;
 
-	/// Symbols provided by the environment
+	/// Symbols provided by the environment (host/dll symbols)
 	LinkIndex[Identifier] externalSymbols;
 	/// Symbols, sections and references
 	ObjectSymbolTable objSymTab;
 
+	/// Buffer for executable generation
 	Arena!ubyte binaryBuffer;
 
 	// Stores astBuffer.length after initialize() call
@@ -624,6 +626,7 @@ struct CompilationContext
 		printArena(staticDataBuffer, "static RW data");
 		printArena(roStaticDataBuffer, "static RO data");
 		printArena(globals.buffer, "globals");
+		printArena(globals.initializerBuffer, "global initializers");
 		printArena(constants.buffer, "constants");
 		printArena(constants.aggregateBuffer, "aggregates");
 		printArena(importBuffer, "imports");
@@ -731,6 +734,7 @@ struct CompilationContext
 		objSymTab.buffer.clear;
 		objSymTab.firstModule = LinkIndex();
 		globals.buffer.clear;
+		globals.initializerBuffer.clear;
 		constants.buffer.clear;
 		constants.aggregateBuffer.clear;
 		astBuffer.length = initializedAstBufSize;

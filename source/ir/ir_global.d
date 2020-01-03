@@ -22,58 +22,25 @@ enum IrGlobalFlags : uint {
 @(IrValueKind.global)
 struct IrGlobal
 {
-	/// Is null, or
-	/// Points to source code for string literals, or
-	/// Points to static data buffer
-	ubyte* initializerPtr;
-	ubyte[] initializer() {
-		if (initializerPtr is null) return null;
-		return initializerPtr[0..length];
-	}
-	// TODO: add IrIndex of data for initializer
-
 	/// Type of global. Must be a pointer type
 	IrIndex type;
-	/// set of IrGlobalFlags
-	uint flags;
-	/// Is zero until static data layout is finalized (isInBuffer will be set)
-	uint staticBufferOffset;
-	/// doesn't include zero terminator when needsZeroTermination is set
-	/// Must be equal to initializer.length if it is set
-	uint length;
-	///
-	uint alignment = 1;
-	///
 	uint numUsers;
-	///
 	LinkIndex objectSymIndex;
-	LinkIndex moduleSymIndex; // remove this since object already has module index
-
-	bool isMutable() { return (flags & IrGlobalFlags.isMutable) != 0; }
-	bool isAllZero() { return (flags & IrGlobalFlags.isAllZero) != 0; }
-	bool needsZeroTermination() { return (flags & IrGlobalFlags.needsZeroTermination) != 0; }
-	bool isInBuffer() { return (flags & IrGlobalFlags.isInBuffer) != 0; }
-	bool isString() { return (flags & IrGlobalFlags.isString) != 0; }
+	//bool isMutable() { return (flags & IrGlobalFlags.isMutable) != 0; }
+	//bool isAllZero() { return (flags & IrGlobalFlags.isAllZero) != 0; }
+	//bool needsZeroTermination() { return (flags & IrGlobalFlags.needsZeroTermination) != 0; }
+	//bool isInBuffer() { return (flags & IrGlobalFlags.isInBuffer) != 0; }
+	//bool isString() { return (flags & IrGlobalFlags.isString) != 0; }
 
 	void addUser(IrIndex user) { ++numUsers; }
 	void removeUser(IrIndex user) { --numUsers; }
-	void setInitializer(ubyte[] data) {
-		initializerPtr = data.ptr;
-		assert(data.length <= 1024UL*1024*1024*1, "initializer is bigger than 1GB");
-		length = cast(uint)data.length;
-	}
-
-	void validate(IrIndex globalIndex, CompilationContext* context)
-	{
-		context.assertf(type.isDefined, "Global %s has no type", globalIndex);
-		context.assertf(length != 0, "Global %s has 0 length", globalIndex);
-	}
 }
 
 ///
 struct IrGlobalStorage
 {
 	Arena!IrGlobal buffer;
+	Arena!ubyte initializerBuffer;
 
 	///
 	IrIndex add()
@@ -83,11 +50,18 @@ struct IrGlobalStorage
 		return globalIndex;
 	}
 
+	/// Allocate space for compiletime generated initializers (struct initializers for example)
+	/// String literals without escape sequences are sliced directly from source code
+	ubyte[] allocateInitializer(uint length)
+	{
+		return initializerBuffer.voidPut(length);
+	}
+
 	///
-	ref IrGlobal get(IrIndex index)
+	IrGlobal* get(IrIndex index)
 	{
 		assert(index.kind == IrValueKind.global);
 		assert(index.storageUintIndex < buffer.length);
-		return buffer.data[index.storageUintIndex];
+		return &buffer.data[index.storageUintIndex];
 	}
 }

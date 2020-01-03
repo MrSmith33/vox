@@ -134,13 +134,21 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 						case AstType.decl_function:
 							// type is not pointer to function sig, but sig itself
 							return entity.as!FunctionDeclNode(c).getIrIndex(c);
+						case AstType.decl_var:
+							// must be global
+							auto v = entity.as!VariableDeclNode(c);
+							if (v.isGlobal)
+								return v.getIrIndex(c);
+							else
+								c.unrecoverable_error(node.loc, "Can only take address of global variable while in CTFE");
+							assert(false);
 						default:
-							c.internal_error(node.loc, "Cannot take address of %s while in CTFE", entity.astType);
+							c.unrecoverable_error(node.loc, "Cannot take address of %s while in CTFE", entity.astType);
 							assert(false);
 					}
 					assert(false);
 				default:
-					c.internal_error(node.loc, "Cannot take address of %s while in CTFE", child.astType);
+					c.unrecoverable_error(node.loc, "Cannot take address of %s while in CTFE", child.astType);
 					assert(false);
 			}
 			break;

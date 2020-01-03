@@ -114,13 +114,14 @@ struct ObjectSymbol
 	/// Offset from the start of section. Is equal to dataPtr if host symbol
 	ulong sectionOffset;
 	/// Length in bytes. Doesn't include padding and zero termination
+	/// Is set in setInitializer (when has initializer), or manually (when zero inited, or is external host symbol)
 	uint length;
 	/// Symbol is inside this module
 	LinkIndex moduleIndex;
 	/// Symbol is inside this section
 	LinkIndex sectionIndex;
 	/// How symbol must be aligned
-	uint alignment;
+	uint alignment = 1;
 	/// List of references coming from this symbol
 	LinkIndex firstRef;
 	/// List of module symbols
@@ -134,6 +135,16 @@ struct ObjectSymbol
 	bool isIndirect() { return cast(bool)(flags & ObjectSymbolFlags.isIndirect); }
 	bool isString() { return cast(bool)(flags & ObjectSymbolFlags.isString); }
 	bool isReferenced() { return cast(bool)(flags & ObjectSymbolFlags.isReferenced); }
+
+	void setInitializer(ubyte[] data) {
+		dataPtr = data.ptr;
+		assert(data.length <= 1024UL*1024*1024*1, "initializer is bigger than 1GB");
+		length = cast(uint)data.length;
+	}
+	ubyte[] initializer() {
+		if (dataPtr is null) return null;
+		return dataPtr[0..length];
+	}
 }
 
 enum ObjectModuleKind : ubyte {
@@ -190,7 +201,7 @@ enum ObjectSymbolRefKind : ubyte {
 @(LinkIndexKind.reference)
 struct ObjectSymbolReference
 {
-	///
+	/// TODO: not needed. We get to references through `fromSymbol` already
 	LinkIndex fromSymbol;
 	///
 	LinkIndex referencedSymbol;
@@ -204,6 +215,8 @@ struct ObjectSymbolReference
 	/// Fixup address is (fromSymbol_address + refOffset)
 	/// Fixup offset is calculated as (referencedSymbol_address - (fromSymbol_address + refOffset + extraOffset))
 	/// In call example extraOffset = 4
+
+	// TODO: store extra offset inside memory being fixed
 	short extraOffset;
 	/// Describes type of reference and its size in bytes
 	ObjectSymbolRefKind refKind;
@@ -226,25 +239,25 @@ struct ObjectSymbolTable
 		result.kind = getLinkIndexKind!T;
 
 		enum numAllocatedSlots = divCeil(T.sizeof, uint.sizeof);
-		T* type = cast(T*)buffer.voidPut(numAllocatedSlots).ptr;
-		*type = value;
+		T* item = cast(T*)buffer.voidPut(numAllocatedSlots).ptr;
+		*item = value;
 
 		static if (is(T == ObjectSymbolReference))
 		{
-			ObjectSymbol* sym = &getSymbol(type.fromSymbol);
-			type.nextReference = sym.firstRef;
+			ObjectSymbol* sym = &getSymbol(item.fromSymbol);
+			item.nextReference = sym.firstRef;
 			sym.firstRef = result;
-			getSymbol(type.referencedSymbol).markReferenced;
+			getSymbol(item.referencedSymbol).markReferenced;
 		}
 		else static if (is(T == ObjectModule))
 		{
-			type.nextModule = firstModule;
+			item.nextModule = firstModule;
 			firstModule = result;
 		}
 		else static if (is(T == ObjectSymbol))
 		{
-			ObjectModule* mod = &getModule(type.moduleIndex);
-			type.nextSymbol = mod.firstSymbol;
+			ObjectModule* mod = &getModule(item.moduleIndex);
+			item.nextSymbol = mod.firstSymbol;
 			mod.firstSymbol = result;
 		}
 		//writefln("add %s %s", result.kind, result.bufferIndex);

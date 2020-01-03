@@ -3003,3 +3003,87 @@ immutable test117 = q{--- test117
 void tester117(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(ulong)("test")() == 0xFFFF_FFFF);
 }
+
+
+@TestInfo(&tester118)
+immutable test118 = q{--- test118
+	// Test global ptr deref assign
+	u32* glob_ptr;
+	u32** get_ptr() { return &glob_ptr; }
+	void set_value(u32 val) { *glob_ptr = val; }
+};
+void tester118(ref TestContext ctx) {
+	auto get_ptr = ctx.getFunctionPtr!(uint**)("get_ptr");
+	auto set_value = ctx.getFunctionPtr!(void, uint)("set_value");
+	uint val;
+	(*get_ptr()) = &val;
+	set_value(100);
+	assert(val == 100);
+}
+
+
+@TestInfo(&tester119)
+immutable test119 = q{--- test119
+	// Test global scalar initialization
+	u32 glob = 42;
+	u32 read_global() { return glob; }
+	void set_global(u32 val) { glob = val; }
+};
+void tester119(ref TestContext ctx) {
+	auto read_global = ctx.getFunctionPtr!(uint)("read_global");
+	auto set_global = ctx.getFunctionPtr!(void, uint)("set_global");
+	assert(read_global() == 42);
+	set_global(100);
+	assert(read_global() == 100);
+}
+
+/* TODO
+@TestInfo(&tester120)
+immutable test120 = q{--- test120
+	// Test global struct initialization
+	struct S {
+		u32 a;
+		u32 b;
+		u32 c;
+		u32 d;
+	}
+	S glob = S(1, 2, 3, 4);
+	S read_global() { return glob; }
+	void set_global(S val) { glob = val; }
+};
+void tester120(ref TestContext ctx) {
+	struct S {
+		uint a;
+		uint b;
+		uint c;
+		uint d;
+	}
+	auto read_global = ctx.getFunctionPtr!(S)("read_global");
+	auto set_global = ctx.getFunctionPtr!(void, S)("set_global");
+	assert(read_global() == S(1, 2, 3, 4));
+	set_global(S(10, 20, 30, 40));
+	assert(read_global() == S(10, 20, 30, 40));
+}*/
+
+
+@TestInfo(&tester121)
+immutable test121 = q{--- test121
+	// Test global pointer initialization
+	u32 glob = 42;
+	u32* glob_ptr = &glob;
+	u32* get_ptr() { return glob_ptr; }
+	u32 read_global() { return *glob_ptr; }
+	void set_global(u32 val) { *glob_ptr = val; }
+};
+void tester121(ref TestContext ctx) {
+	auto get_ptr = ctx.getFunctionPtr!(uint*)("get_ptr");
+	auto read_global = ctx.getFunctionPtr!(uint)("read_global");
+	auto set_global = ctx.getFunctionPtr!(void, uint)("set_global");
+	//writefln("%X %s", get_ptr(), *get_ptr());
+	//writefln("%s", read_global());
+	assert(read_global() == 42);
+	set_global(100);
+	//writefln("%X %s", get_ptr(), *get_ptr());
+	//writefln("%s", read_global());
+	assert(read_global() == 100);
+}

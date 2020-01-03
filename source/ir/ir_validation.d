@@ -180,6 +180,28 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 {
 	switch(instrHeader.op)
 	{
+		case IrOpcode.load:
+			IrIndex ptr = instrHeader.arg(ir, 0);
+			IrIndex value = instrHeader.result(ir);
+			IrIndex ptrType = getValueType(ptr, ir, c);
+			c.assertf(ptrType.isTypePointer, "%s: first argument must be pointer, not: %s", instrIndex, ptrType.kind);
+			IrIndex valueType = getValueType(value, ir, c);
+			IrIndex baseType = c.types.getPointerBaseType(ptrType);
+			c.assertf(c.types.isSameType(baseType, valueType), "%s: cannot load %s from %s",
+				instrIndex, IrIndexDump(valueType, c, ir), IrIndexDump(ptrType, c, ir));
+			break;
+
+		case IrOpcode.store:
+			IrIndex ptr = instrHeader.arg(ir, 0);
+			IrIndex value = instrHeader.arg(ir, 1);
+			IrIndex ptrType = getValueType(ptr, ir, c);
+			c.assertf(ptrType.isTypePointer, "%s: first argument must be pointer, not: %s", instrIndex, ptrType.kind);
+			IrIndex valueType = getValueType(value, ir, c);
+			IrIndex baseType = c.types.getPointerBaseType(ptrType);
+			c.assertf(c.types.isSameType(baseType, valueType), "%s: cannot store %s into %s",
+				instrIndex, IrIndexDump(valueType, c, ir), IrIndexDump(ptrType, c, ir));
+			break;
+
 		case IrOpcode.create_aggregate:
 			c.assertf(instrHeader.hasResult, "%s: create_aggregate has no result", instrIndex);
 
@@ -187,7 +209,7 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			c.assertf(result.isVirtReg, "%s: create_aggregate result is %s. virtualRegister expected", instrIndex, result.kind);
 
 			IrVirtualRegister* vreg = &ir.getVirtReg(result);
-			c.assertf(vreg.type.isType, "%s result type is not a type: %s", instrIndex, vreg.type.kind);
+			c.assertf(vreg.type.isType, "%s: result type is not a type: %s", instrIndex, vreg.type.kind);
 
 			if (vreg.type.isTypeStruct)
 			{

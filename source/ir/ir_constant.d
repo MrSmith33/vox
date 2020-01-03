@@ -204,7 +204,8 @@ private IrIndex makeConst(uint val, IrConstantKind kind) {
 }
 
 /// Stores constant into buffer
-void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c)
+alias UnknownValueHandler = void delegate(ubyte[] buffer, IrIndex index, CompilationContext* c);
+void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, UnknownValueHandler handler = null)
 {
 	if (index.isConstant)
 	{
@@ -254,7 +255,7 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c)
 				{
 					uint memberOffset = member.offset;
 					uint memberSize = c.types.typeSize(member.type);
-					constantToMem(buffer[memberOffset..memberOffset+memberSize], args[i], c);
+					constantToMem(buffer[memberOffset..memberOffset+memberSize], args[i], c, handler);
 				}
 				break;
 			case array:
@@ -268,12 +269,15 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c)
 				foreach (i; 0..arrayType.size)
 				{
 					uint memberOffset = i * elemSize;
-					constantToMem(buffer[memberOffset..memberOffset+elemSize], args[i], c);
+					constantToMem(buffer[memberOffset..memberOffset+elemSize], args[i], c, handler);
 				}
 				break;
 			default: assert(false);
 		}
 	}
 	else
-		c.internal_error("%s is not a constant", index);
+	{
+		if (handler) handler(buffer, index, c);
+		else c.internal_error("%s is not a constant", index);
+	}
 }

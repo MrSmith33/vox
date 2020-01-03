@@ -16,9 +16,7 @@ void pass_emit_mc_amd64(ref CompilationContext context, CompilePassPerModule[] s
 {
 	auto emitter = CodeEmitter(&context);
 
-	// Add all symbols first, so they can be referenced during code emission
-	addStaticDataSymbols(context);
-	finalizeStaticData(context);
+	fillStaticDataSections(context);
 
 	if (context.printStaticData) {
 		writefln("// Data: addr 0x%X, %s bytes",
@@ -38,77 +36,39 @@ void pass_emit_mc_amd64(ref CompilationContext context, CompilePassPerModule[] s
 	}
 }
 
-void finalizeStaticData(ref CompilationContext context)
+// Arranges static data inside static data sections
+void fillStaticDataSections(ref CompilationContext c)
 {
 	// copy static data into buffer and set offsets
-	foreach(size_t i, ref IrGlobal global; context.globals.buffer.data)
+	foreach(size_t i, ref IrGlobal global; c.globals.buffer.data)
 	{
 		IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
-		global.validate(globalIndex, &context);
 
-		if (global.isInBuffer) continue; // already in buffer
-		if (global.numUsers == 0) continue; // no users
-
-		ObjectSymbol* globalSym = &context.objSymTab.getSymbol(global.objectSymIndex);
-		ObjectSection* symSection = &context.objSymTab.getSection(globalSym.sectionIndex);
+		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
+		ObjectSection* symSection = &c.objSymTab.getSection(globalSym.sectionIndex);
 
 		// alignment
-		uint padding = paddingSize!uint(cast(uint)symSection.buffer.length, global.alignment);
+		uint padding = paddingSize!uint(cast(uint)symSection.buffer.length, globalSym.alignment);
 		symSection.buffer.pad(padding);
 
 		// offset
-		global.staticBufferOffset = cast(uint)symSection.buffer.length;
-		globalSym.sectionOffset = global.staticBufferOffset;
+		globalSym.sectionOffset = cast(uint)symSection.buffer.length;
 
-		// copy
-		if (global.initializerPtr !is null) {
-			symSection.buffer.put(global.initializer);
+		// copy data
+		if (globalSym.isAllZero) {
+			// TODO: do not emit zeroes, only track them. Important for executables
+			symSection.buffer.voidPut(globalSym.length)[] = 0;
 		} else {
-			symSection.buffer.voidPut(global.length)[] = 0;
+			c.assertf(globalSym.dataPtr !is null, "null initializer");
+			symSection.buffer.put(globalSym.initializer);
 		}
 
 		// zero termination
-		if (global.needsZeroTermination)
+		if (globalSym.needsZeroTermination)
 			symSection.buffer.put(0);
 
-		global.flags |= IrGlobalFlags.isInBuffer;
 		//writefln("Global %s, size %s, zero %s, offset %s, buf size %s",
-		//	global.initializer, global.length, global.needsZeroTermination, global.staticBufferOffset, symSection.buffer.length);
-	}
-}
-
-void addStaticDataSymbols(ref CompilationContext context)
-{
-	Identifier dataId = context.idMap.getOrRegNoDup(":data");
-	foreach(size_t i, ref IrGlobal global; context.globals.buffer.data)
-	{
-		IrIndex globalIndex = IrIndex(cast(uint)i, IrValueKind.global);
-		global.validate(globalIndex, &context);
-
-		ushort symFlags;
-
-		LinkIndex sectionIndex = context.rdataSectionIndex;
-		if (global.isMutable) {
-			symFlags |= ObjectSymbolFlags.isMutable;
-			sectionIndex = context.dataSectionIndex;
-		}
-		if (global.isAllZero) symFlags |= ObjectSymbolFlags.isAllZero;
-		if (global.needsZeroTermination) symFlags |= ObjectSymbolFlags.needsZeroTermination;
-		if (global.isString) symFlags |= ObjectSymbolFlags.isString;
-
-		ObjectSymbol sym = {
-			kind : ObjectSymbolKind.isLocal,
-			flags : symFlags,
-			sectionOffset : 0, // set later
-			dataPtr : global.initializerPtr,
-			sectionIndex : sectionIndex,
-			moduleIndex : global.moduleSymIndex,
-			length : global.length,
-			alignment : global.alignment,
-			id : dataId,
-		};
-
-		global.objectSymIndex = context.objSymTab.addSymbol(sym);
+		//	globalSym.initializer, globalSym.length, globalSym.needsZeroTermination, globalSym.sectionOffset, symSection.buffer.length);
 	}
 }
 
@@ -718,7 +678,7 @@ struct CodeEmitter
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.lea(dstReg, addr, ArgType.QWORD);
 
-				IrGlobal* global = &context.globals.get(src);
+				IrGlobal* global = context.globals.get(src);
 				ObjectSymbolReference r = {
 					fromSymbol : fun.backendData.objectSymIndex,
 					referencedSymbol : global.objectSymIndex,
@@ -792,8 +752,7 @@ struct CodeEmitter
 				break;
 
 			case global:
-				IrGlobal* global = &context.globals.get(src);
-				context.assertf(global.isInBuffer, "Global is not in static data buffer");
+				IrGlobal* global = context.globals.get(src);
 
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.mov(dstReg, addr, argType);
@@ -869,8 +828,7 @@ struct CodeEmitter
 				break;
 			case const_to_global:
 				uint con = context.constants.get(src).i32;
-				IrGlobal* global = &context.globals.get(dst);
-				context.assertf(global.isInBuffer, "Global is not in static data buffer");
+				IrGlobal* global = context.globals.get(dst);
 
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.mov(addr, Imm32(con), argType);
@@ -886,8 +844,7 @@ struct CodeEmitter
 				break;
 			case reg_to_global:
 				Register srcReg = indexToRegister(src);
-				IrGlobal* global = &context.globals.get(dst);
-				context.assertf(global.isInBuffer, "Global is not in static data buffer");
+				IrGlobal* global = context.globals.get(dst);
 
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.mov(addr, srcReg, argType);

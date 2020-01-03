@@ -367,7 +367,7 @@ IrIndex getValueType(IrIndex value, IrFunction* ir, CompilationContext* context)
 			value.kind = IrValueKind.type;
 			return value;
 		case global:
-			IrGlobal* global = &context.globals.get(value);
+			IrGlobal* global = context.globals.get(value);
 			context.assertf(global.type.isDefined, "Global has no type");
 			return global.type;
 		case stackSlot:

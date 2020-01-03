@@ -21,11 +21,20 @@ struct VariableDeclNode
 	Identifier id;
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
 	ExprValue initValue;
-	ExprValue irValue; // kind is variable or stackSlot, unique id of variable within a function
+	// for local vars kind is variable or stackSlot, unique id of variable within a function
+	// for global it is IrValueKind.global
+	// nothing is generated for members
+	ExprValue irValue;
 	IrIndex defaultVal;
 	bool forceMemoryStorage() { return cast(bool)(flags & VariableFlags.forceMemoryStorage); }
 	bool isParameter() { return cast(bool)(flags & VariableFlags.isParameter); }
 	bool isAddressTaken() { return cast(bool)(flags & VariableFlags.isAddressTaken); }
+
+	IrIndex getIrIndex(CompilationContext* c)
+	{
+		c.assertf(isGlobal, "Must be used for globals only");
+		return irValue.irValue;
+	}
 }
 
 void post_clone_var(VariableDeclNode* node, ref CloneState state)
@@ -99,11 +108,11 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-// only called for members and parameters
+// only called for members, parameters and globals
 IrIndex gen_default_value_var(VariableDeclNode* node, CompilationContext* c)
 {
 	if (node.defaultVal.isDefined) return node.defaultVal;
-	c.assertf(node.isParameter || node.isMember, node.loc, "gen_default_value_var");
+	c.assertf(node.isParameter || node.isMember || node.isGlobal, node.loc, "gen_default_value_var");
 	if (node.initializer)
 	{
 		node.defaultVal = eval_static_expr(node.initializer, c);
@@ -209,17 +218,57 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 	CompilationContext* c = gen.context;
 	if (v.isGlobal)
 	{
-		// TODO: initializers
-		IrIndex globalIndex = c.globals.add();
-		v.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
-		IrGlobal* global = &c.globals.get(globalIndex);
-		global.flags |= IrGlobalFlags.isAllZero | IrGlobalFlags.isMutable;
+		IrIndex globalIndex = v.getIrIndex(c);
+
 		TypeNode* varType = c.getAstType(v.type).foldAliases(c);
 		IrIndex valueType = varType.gen_ir_type(c);
+
+		IrGlobal* global = c.globals.get(globalIndex);
 		global.type = c.types.appendPtr(valueType);
+
 		uint valueSize = c.types.typeSize(valueType);
-		global.length = valueSize;
-		global.moduleSymIndex = gen.mod.objectSymIndex;
+
+		// symbol is created in parser
+		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
+		globalSym.length = valueSize;
+		globalSym.alignment = c.types.typeAlignment(valueType);
+
+		IrIndex initializer = gen_default_value_var(v, c);
+		if (initializer.isConstantZero)
+		{
+			globalSym.flags |= ObjectSymbolFlags.isAllZero;
+		}
+		else
+		{
+			ubyte[] buffer = c.globals.allocateInitializer(valueSize);
+			void onGlobal(ubyte[] subbuffer, IrIndex index, CompilationContext* c)
+			{
+				c.assertf(index.isGlobal, "%s is not a constant", index);
+
+				// initialize with 0
+				// generate ObjectSymbolReference for linker to fix
+				subbuffer[] = 0;
+
+				assert(subbuffer.ptr >= buffer.ptr);
+				size_t offset = subbuffer.ptr - buffer.ptr;
+				assert(offset <= uint.max);
+
+				IrGlobal* toGlobal = c.globals.get(index);
+				assert(toGlobal.objectSymIndex.isDefined);
+
+				ObjectSymbolReference r = {
+					fromSymbol : global.objectSymIndex,
+					referencedSymbol : toGlobal.objectSymIndex,
+					refOffset : cast(uint)offset,
+					extraOffset : 0,
+					refKind : ObjectSymbolRefKind.absolute64,
+				};
+				c.objSymTab.addReference(r);
+			}
+			constantToMem(buffer, initializer, c, &onGlobal);
+			globalSym.setInitializer(buffer);
+		}
+
 		return;
 	}
 }

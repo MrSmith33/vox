@@ -205,9 +205,27 @@ struct Parser
 			AstIndex declIndex = parse_declaration;
 			AstNode* declNode = context.getAstNode(declIndex);
 			declNode.flags |= declFlags;
-			if (declNode.astType == AstType.decl_var) {
+			if (declNode.astType == AstType.decl_var)
+			{
 				auto var = declNode.as!VariableDeclNode(context);
 				var.scopeIndex = varIndex++;
+				if (declNode.isGlobal)
+				{
+					// register global variable, type is not set yet
+					IrIndex globalIndex = context.globals.add();
+					IrGlobal* global = context.globals.get(globalIndex);
+					var.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
+
+					ObjectSymbol sym = {
+						kind : ObjectSymbolKind.isLocal,
+						sectionIndex : context.dataSectionIndex,
+						moduleIndex : currentModule.objectSymIndex,
+						flags : ObjectSymbolFlags.isMutable,
+						id : var.id,
+					};
+
+					global.objectSymIndex = context.objSymTab.addSymbol(sym);
+				}
 			}
 			declarations.put(context.arrayArena, declIndex);
 		}
@@ -1143,11 +1161,20 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			else
 			{
 				irValue = p.context.globals.add();
-				IrGlobal* global = &p.context.globals.get(irValue);
-				global.setInitializer(cast(ubyte[])value);
-				global.flags |= IrGlobalFlags.needsZeroTermination | IrGlobalFlags.isString;
+				IrGlobal* global = p.context.globals.get(irValue);
 				global.type = p.context.u8Ptr.gen_ir_type(p.context);
-				global.moduleSymIndex = p.currentModule.objectSymIndex;
+
+				ObjectSymbol sym = {
+					kind : ObjectSymbolKind.isLocal,
+					sectionIndex : p.context.rdataSectionIndex,
+					moduleIndex : p.currentModule.objectSymIndex,
+					flags : ObjectSymbolFlags.needsZeroTermination | ObjectSymbolFlags.isString,
+					id : p.context.idMap.getOrRegNoDup(":string"),
+				};
+				global.objectSymIndex = p.context.objSymTab.addSymbol(sym);
+
+				ObjectSymbol* globalSym = &p.context.objSymTab.getSymbol(global.objectSymIndex);
+				globalSym.setInitializer(cast(ubyte[])value);
 			}
 			IrIndex irValueLength = p.context.constants.add(value.length, IsSigned.no, IrArgSize.size64);
 			irValue = p.context.constants.addAggrecateConstant(type.gen_ir_type(p.context), irValueLength, irValue);

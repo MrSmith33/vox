@@ -200,6 +200,10 @@ void store(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue d
 	//writefln("store %s %s", destination, value);
 	switch (destination.kind)
 	{
+		case ExprValueKind.ptr_to_ptr_to_data:
+			destination.irValue = load(gen, loc, currentBlock, destination.irValue);
+			goto case;
+
 		case ExprValueKind.ptr_to_data:
 			switch (destination.irValue.kind) with(IrValueKind)
 			{
@@ -216,6 +220,7 @@ void store(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue d
 				default: break;
 			}
 			break;
+
 		default:
 			switch (destination.irValue.kind) with(IrValueKind)
 			{
