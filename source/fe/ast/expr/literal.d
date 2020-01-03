@@ -67,8 +67,7 @@ IrIndex ir_gen_literal_null(CompilationContext* context, NullLiteralExprNode* n)
 	if (n.type.get_type(c).isPointer) {
 		return c.constants.add(0, IsSigned.no, SIZET_SIZE);
 	} else if (n.type.get_type(c).isSlice) {
-		IrIndex irValue = c.constants.add(0, IsSigned.no, SIZET_SIZE); // ptr and length
-		return c.constants.addAggrecateConstant(n.type.gen_ir_type(c), irValue, irValue);
+		return c.constants.addZeroConstant(n.type.gen_ir_type(c));
 	} else c.internal_error(n.loc, "%s", n.type.printer(c));
 	assert(false);
 }
