@@ -2,9 +2,15 @@
 
 [![Build status](https://ci.appveyor.com/api/projects/status/3os1s4a34hl83r0b?svg=true)](https://ci.appveyor.com/project/MrSmith33/tiny-jit)
 
-Project/language name is still missing.
+WIP language name is `Vox`, file extension is `.vx`.
 
 [Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
+
+# Major features
+
+- Can be embedded into D programs (can call host functions)
+- Works as a regular AOT compiler producing precoff excutables (with dll importing)
+- Only requires D compiler, no other dependencies
 
 # Project goals
 
@@ -79,8 +85,8 @@ Target platforms (Only win64 is supported now):
 In `main.d` uncomment one of the following lines:
 ```D
 //version = bench; // Runs benchmark
-//version = devtest; // Run single test with fine-tuned logging. Useful for development.
-//version = test; // Runs test suite
+//version = devtest; // Run single test with fine-tuned logging. Useful for development. Uses tester.runDevTests(). Toggle options there for precise analisys while developing.
+//version = test; // Runs test suite. Uses tester.runAllTests().
 ```
 
 Run with: `source> dmd -m64 -i main.d && main`
