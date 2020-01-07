@@ -25,19 +25,19 @@ struct IrMirror(T)
 	private T[] instrMirror;
 
 	void createVirtRegMirror(CompilationContext* context, IrFunction* ir) {
-		virtRegMirror = makeParallelArray!T(context, ir, ir.numVirtualRegisters);
+		virtRegMirror = makeParallelArray!T(context, ir.numVirtualRegisters);
 	}
 
 	void createBasicBlockMirror(CompilationContext* context, IrFunction* ir) {
-		basicBlockMirror = makeParallelArray!T(context, ir, ir.numBasicBlocks);
+		basicBlockMirror = makeParallelArray!T(context, ir.numBasicBlocks);
 	}
 
 	void createPhiMirror(CompilationContext* context, IrFunction* ir) {
-		phiMirror = makeParallelArray!T(context, ir, ir.numPhis);
+		phiMirror = makeParallelArray!T(context, ir.numPhis);
 	}
 
 	void createInstrMirror(CompilationContext* context, IrFunction* ir) {
-		instrMirror = makeParallelArray!T(context, ir, ir.numInstructions);
+		instrMirror = makeParallelArray!T(context, ir.numInstructions);
 	}
 
 	void createAll(CompilationContext* context, IrFunction* ir)
@@ -77,7 +77,7 @@ struct IrMirror(T)
 	}
 }
 
-T[] makeParallelArray(T)(CompilationContext* context, IrFunction* ir, uint size)
+T[] makeParallelArray(T)(CompilationContext* context, uint size)
 {
 	auto result = cast(T[])context.tempBuffer.voidPut(size);
 	result[] = T.init;
@@ -105,6 +105,8 @@ struct IrFunction
 	IrIndex* instrPrevPtr;
 	IrPhi* phiPtr;
 	uint* arrayPtr;
+	// parameter vregs must come first in order of definition
+	// only releveant when IrOpcode.parameter instructions are used
 	IrVirtualRegister* vregPtr;
 	// index 0 must be always start block
 	// index 1 must be always exit block

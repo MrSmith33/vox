@@ -99,8 +99,9 @@ struct TypeNode
 	bool isStruct() { return astType == AstType.decl_struct; }
 	bool isFuncSignature() { return astType == AstType.type_func_sig; }
 
-	bool isUnsigned() {
-		return astType == AstType.type_basic && as_basic.isUnsigned;
+	IsSigned isSigned() {
+		if (astType == AstType.type_basic) return as_basic.isSigned;
+		return IsSigned.no;
 	}
 
 	AstIndex getElementType(CompilationContext* c) {

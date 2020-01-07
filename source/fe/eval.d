@@ -168,10 +168,20 @@ IrIndex eval_static_expr_call(CallExprNode* node, CompilationContext* c)
 {
 	AstIndex callee = node.callee.get_effective_node(c);
 
-	if (callee.astType(c) != AstType.decl_struct)
-		c.assertf(callee.astType(c) == AstType.decl_struct, node.loc,
-			"Calls are not implemented in CTFE yet");
+	switch (callee.astType(c))
+	{
+		case AstType.decl_struct:
+			return eval_constructor(node, callee, c);
+		case AstType.decl_function:
+			return eval_call(node, callee, c);
+		default:
+			c.internal_error(node.loc, "Cannot call %s at compile-time", callee.get_node_type(c).get_type(c).printer(c));
+			assert(false);
+	}
+}
 
+IrIndex eval_constructor(CallExprNode* node, AstIndex callee, CompilationContext* c)
+{
 	StructDeclNode* s = callee.get!StructDeclNode(c);
 
 	if (node.args.length == 0) {
@@ -203,4 +213,56 @@ IrIndex eval_static_expr_call(CallExprNode* node, CompilationContext* c)
 	}
 
 	return c.constants.addAggrecateConstant(structType, args);
+}
+
+IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
+{
+	auto func = callee.get!FunctionDeclNode(c);
+
+	if (func.state != AstNodeState.ir_gen_done)
+		c.internal_error(node.loc,
+			"Function's IR is not yet generated");
+
+	auto signature = func.signature.get!FunctionSignatureNode(c);
+	uint numArgs = node.args.length;
+	uint numParams = signature.parameters.length;
+	IrIndex[] args = c.allocateTempArray!IrIndex(numParams);
+	scope(exit) c.freeTempArray(args);
+
+	foreach (i, AstIndex arg; node.args)
+	{
+		args[i] = eval_static_expr(arg, c);
+	}
+
+	foreach(i; numArgs..numParams)
+	{
+		// use default argument value
+		VariableDeclNode* param = c.getAst!VariableDeclNode(signature.parameters[i]);
+		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
+		args[i] = param.gen_default_value_var(c);
+	}
+
+	IrFunction* irData = c.getAst!IrFunction(func.backendData.irData);
+	ubyte* vmBuffer = c.vmBuffer.bufPtr;
+
+	IrIndex retType = c.types.getReturnType(irData.type, c);
+	c.assertf(!retType.isTypeVoid, node.loc, "Cannot eval call to function returning void");
+
+	uint retSize = c.types.typeSize(retType);
+	IrVmSlotInfo returnMem = c.pushVmStack(retSize);
+	scope(exit) c.popVmStack(returnMem);
+
+	IrVm vm = IrVm(c, irData);
+	vm.setupFrame;
+	foreach(uint index, IrVmSlotInfo slot; vm.parameters)
+	{
+		ubyte[] mem = vmBuffer[slot.offset..slot.offset+slot.length];
+		constantToMem(mem, args[index], c);
+	}
+	vm.run(returnMem);
+
+	ubyte[] returnSlice = vmBuffer[returnMem.offset..returnMem.offset+returnMem.length];
+	IrIndex result = memToConstant(returnSlice, retType, c, signature.returnType.isSigned(c));
+
+	return result;
 }

@@ -77,6 +77,8 @@ struct CompilationContext
 
 	/// Buffer for intra-pass temporary data
 	Arena!uint tempBuffer;
+	/// Buffer for frame data of IR interpreter
+	Arena!ubyte vmBuffer;
 	/// Buffer for function IR generation
 	IrFuncStorage irStorage;
 	/// Type storage
@@ -368,6 +370,22 @@ struct CompilationContext
 		analisysStack.unput(1);
 	}
 
+	IrVmSlotInfo pushVmStack(uint numBytes)
+	{
+		IrVmSlotInfo result;
+		result.offset = vmBuffer.uintLength;
+		result.length = numBytes;
+		vmBuffer.voidPut(numBytes);
+		return result;
+	}
+
+	void popVmStack(IrVmSlotInfo slot)
+	{
+		vmBuffer.unput(slot.length);
+		assertf(slot.offset == vmBuffer.uintLength,
+			"popped item is in the middle of the stack");
+	}
+
 	IrIndex appendTemp(T)(uint howMany = 1)
 	{
 		static assert(T.alignof <= 4, "Can only store types aligned to 4 bytes");
@@ -622,6 +640,7 @@ struct CompilationContext
 		printArena(irStorage.arrayBuffer, "IR arrays");
 		irStorage.printMemSize(sink);
 
+		printArena(vmBuffer, "vm");
 		printArena(tempBuffer, "temp");
 		printArena(types.buffer, "types");
 		printArena(staticDataBuffer, "static RW data");
@@ -668,15 +687,15 @@ struct CompilationContext
 			makeBasic(1, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean),
 			makeBasic(8, 0, 0, BasicType.t_null),
 
-			makeBasic(1, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger),
-			makeBasic(2, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger),
-			makeBasic(4, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger),
-			makeBasic(8, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger),
+			makeBasic(1, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned),
+			makeBasic(2, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned),
+			makeBasic(4, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned),
+			makeBasic(8, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned),
 
-			makeBasic(1, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-			makeBasic(2, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-			makeBasic(4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
-			makeBasic(8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger | BasicTypeFlag.isUnsigned),
+			makeBasic(1, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger),
+			makeBasic(2, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger),
+			makeBasic(4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger),
+			makeBasic(8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger),
 
 			makeBasic(4, 0, 0, BasicType.t_f32, BasicTypeFlag.isFloat),
 			makeBasic(8, 0, 0, BasicType.t_f64, BasicTypeFlag.isFloat),
@@ -729,6 +748,7 @@ struct CompilationContext
 		irStorage.basicBlockBuffer.clear;
 		irStorage.arrayBuffer.clear;
 		types.buffer.length = initializedIrTypeBufSize;
+		vmBuffer.clear;
 		tempBuffer.clear;
 		roStaticDataBuffer.clear;
 		staticDataBuffer.clear;

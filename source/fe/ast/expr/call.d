@@ -201,10 +201,10 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 	{
 		case AstType.decl_function:
 			auto func = callee.get!FunctionDeclNode(c);
-			AstIndex returnType = func.signature.get!FunctionSignatureNode(c).returnType;
 			IrIndex irIndex = func.getIrIndex(c);
 			return visitCall(gen, func.signature, irIndex, currentBlock, nextStmt, node);
-		case AstType.decl_struct: return visitConstructor(gen, callee.get!StructDeclNode(c), currentBlock, nextStmt, node);
+		case AstType.decl_struct:
+			return visitConstructor(gen, callee.get!StructDeclNode(c), currentBlock, nextStmt, node);
 		case AstType.decl_enum_member:
 			// TODO: clean up
 			TypeNode* varType = callee.get_node_type(c).get_type(c);

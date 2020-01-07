@@ -79,16 +79,17 @@ int runCli(string[] args)
 	{
 		writeln("Usage: tiny_jit [options]... [source|.dll|.har]...");
 
-		size_t ls, ll;
+		size_t maxShortLength;
+		size_t maxLongLength;
 		foreach (it; optResult.options)
 		{
-			ls = max(ls, it.optShort.length);
-			ll = max(ll, it.optLong.length);
+			maxShortLength = max(maxShortLength, it.optShort.length);
+			maxLongLength = max(maxLongLength, it.optLong.length);
 		}
 
 		foreach (it; optResult.options)
 		{
-			writefln("%-*s %-*s  %s", ls, it.optShort, ll, it.optLong, it.help);
+			writefln("%-*s %-*s  %s", maxShortLength, it.optShort, maxLongLength, it.optLong, it.help);
 		}
 
 		return 0;

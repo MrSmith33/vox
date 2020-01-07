@@ -285,7 +285,7 @@ struct IrTypeStorage
 		return member.type;
 	}
 
-	IrIndex getReturnType(IrIndex funcSigType, ref CompilationContext c)
+	IrIndex getReturnType(IrIndex funcSigType, CompilationContext* c)
 	{
 		auto func = &get!IrTypeFunction(funcSigType);
 		if (func.numResults == 0)

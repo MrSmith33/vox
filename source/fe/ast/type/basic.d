@@ -19,8 +19,7 @@ struct BasicTypeNode {
 
 	bool isFloat() { return cast(bool)(typeFlags & BasicTypeFlag.isFloat); }
 	bool isInteger() { return cast(bool)(typeFlags & BasicTypeFlag.isInteger); }
-	bool isUnsigned() { return cast(bool)(typeFlags & BasicTypeFlag.isUnsigned); }
-	IsSigned isSigned() { if (isUnsigned) return IsSigned.no; else return IsSigned.yes; }
+	IsSigned isSigned() { return cast(IsSigned)cast(bool)(typeFlags & BasicTypeFlag.isSigned); }
 	bool isBoolean() { return cast(bool)(typeFlags & BasicTypeFlag.isBoolean); }
 
 	IrIndex gen_default_value(CompilationContext* c)
@@ -51,7 +50,7 @@ BasicTypeNode basicTypeNode(uint size, ulong minValue, ulong maxValue, BasicType
 enum BasicTypeFlag : ubyte {
 	isFloat    = 1 << 0,
 	isInteger  = 1 << 1,
-	isUnsigned = 1 << 2,
+	isSigned   = 1 << 2,
 	isBoolean  = 1 << 3,
 }
 

@@ -94,7 +94,7 @@ struct IrBuilder
 
 		setupEntryExitBlocks();
 
-		IrIndex returnType = context.types.getReturnType(ir.type, *context);
+		IrIndex returnType = context.types.getReturnType(ir.type, context);
 		if (!returnType.isTypeVoid)
 		{
 			returnVar = newIrVarIndex(returnType);
@@ -644,7 +644,7 @@ struct IrBuilder
 	void addReturn(IrIndex blockIndex, IrIndex returnValue)
 	{
 		context.assertf(returnValue.isDefined, "addReturn %s", returnValue);
-		IrIndex returnType = context.types.getReturnType(ir.type, *context);
+		IrIndex returnType = context.types.getReturnType(ir.type, context);
 		context.assertf(!returnType.isTypeVoid, "Trying to return value from void function");
 		writeVariable(blockIndex, returnVar, returnValue);
 		addJump(blockIndex);
@@ -653,7 +653,7 @@ struct IrBuilder
 
 	void addReturn(IrIndex blockIndex)
 	{
-		IrIndex returnType = context.types.getReturnType(ir.type, *context);
+		IrIndex returnType = context.types.getReturnType(ir.type, context);
 		context.assertf(returnType.isTypeVoid, "Trying to return void from non-void function");
 		addJump(blockIndex);
 		addBlockTarget(blockIndex, ir.exitBasicBlock);

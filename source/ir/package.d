@@ -24,6 +24,7 @@ public import ir.ir_validation;
 public import ir.ir_value_kind;
 public import ir.ir_variable;
 public import ir.ir_virt_reg;
+public import ir.ir_vm;
 public import ir.small_vector;
 
 import all;

@@ -138,6 +138,9 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 	CompilationContext* c = gen.context;
 	IrBuilder* builder = &gen.builder;
 
+	f.state = AstNodeState.ir_gen;
+	scope(exit) f.state = AstNodeState.ir_gen_done;
+
 	// skip external functions, they don't have a body
 	if (f.isExternal) return;
 

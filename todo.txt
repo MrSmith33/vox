@@ -24,7 +24,13 @@
 - CTFE
 	+ constant to mem
 	- mem to constant
-	- constructors
+		+ basic type
+	+ constructors
+	- frame layout for CTFE
+		- register offsets
+		- stack slot offsets
+	- force semantic analisys of function on call
+	- move eval calls to semantic pass
 
 - conditional compilation
 	+ #if

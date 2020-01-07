@@ -104,7 +104,7 @@ ExprValue ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref Ir
 			else
 			{
 				ExtraInstrArgs extra = {
-					opcode : binOpcode(b.op, leftExpr.type.get_type(c).isUnsigned, b.loc, c),
+					opcode : binOpcode(b.op, leftExpr.type.get_type(c).isSigned, b.loc, c),
 					type : leftExpr.type.gen_ir_type(c),
 					argSize : leftExpr.type.typeArgSize(c)
 				};
@@ -240,7 +240,7 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 			// TODO
 			case PLUS, MINUS, DIV, REMAINDER, MULT, SHL, SHR, ASHR, XOR, BITWISE_AND, BITWISE_OR:
 				ExtraInstrArgs extra = {
-					opcode : binOpcode(b.op, leftExpr.type.get_type(c).isUnsigned, b.loc, c),
+					opcode : binOpcode(b.op, leftExpr.type.get_type(c).isSigned, b.loc, c),
 					type : b.type.gen_ir_type(c),
 					argSize : b.type.typeArgSize(c)
 				};
@@ -268,21 +268,27 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 	}
 }
 
-IrOpcode binOpcode(BinOp binop, bool isUnsigned, TokenIndex loc, CompilationContext* context)
+IrOpcode binOpcode(BinOp binop, IsSigned isSigned, TokenIndex loc, CompilationContext* context)
 {
 	switch(binop) with(BinOp)
 	{
 		case PLUS, PLUS_ASSIGN: return IrOpcode.add;
 		case MINUS, MINUS_ASSIGN: return IrOpcode.sub;
 		case DIV, DIV_ASSIGN:
-			if (isUnsigned) return IrOpcode.udiv;
-			else return IrOpcode.sdiv;
+			if (isSigned)
+				return IrOpcode.sdiv;
+			else
+				return IrOpcode.udiv;
 		case REMAINDER, REMAINDER_ASSIGN:
-			if (isUnsigned) return IrOpcode.urem;
-			else return IrOpcode.srem;
+			if (isSigned)
+				return IrOpcode.srem;
+			else
+				return IrOpcode.urem;
 		case MULT, MULT_ASSIGN:
-			if (isUnsigned) return IrOpcode.umul;
-			else return IrOpcode.smul;
+			if (isSigned)
+				return IrOpcode.smul;
+			else
+				return IrOpcode.umul;
 		case SHL, SHL_ASSIGN: return IrOpcode.shl;
 		case SHR, SHR_ASSIGN: return IrOpcode.lshr;
 		case ASHR, ASHR_ASSIGN: return IrOpcode.ashr;

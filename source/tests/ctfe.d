@@ -7,3 +7,16 @@ import tester;
 
 Test[] ctfeTests() { return collectTests!(tests.ctfe)(); }
 
+
+@TestInfo(&tester1)
+immutable ctfe1 = q{--- ctfe1
+	// Test CTFE
+	i32 func() { return 42; }
+	enum i32 val = func(); // CTFE is performed at IR gen of `run`, `func` already has IR
+	i32 run() {
+		return val;
+	}
+};
+void tester1(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("run")() == 42);
+}

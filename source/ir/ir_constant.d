@@ -281,3 +281,42 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 		else c.internal_error("%s is not a constant", index);
 	}
 }
+
+IrIndex memToConstant(ubyte[] buffer, IrIndex type, CompilationContext* c, IsSigned signed)
+{
+	c.assertf(type.isTypeBasic, "%s", type);
+
+	ulong value;
+	IrArgSize constSize;
+	switch(type.typeIndex)
+	{
+		case IrValueType.i8:
+			c.assertf(1 == buffer.length,
+				"Cannot load i8 constant from memory of size %s bytes", buffer.length);
+			value = *(cast(byte*)buffer.ptr);
+			constSize = IrArgSize.size8;
+			break;
+		case IrValueType.i16:
+			c.assertf(2 == buffer.length,
+				"Cannot load i8 constant from memory of size %s bytes", buffer.length);
+			value = *(cast(short*)buffer.ptr);
+			constSize = IrArgSize.size16;
+			break;
+		case IrValueType.i32:
+			c.assertf(4 == buffer.length,
+				"Cannot load i8 constant from memory of size %s bytes", buffer.length);
+			value = *(cast(int*)buffer.ptr);
+			constSize = IrArgSize.size32;
+			break;
+		case IrValueType.i64:
+			c.assertf(8 == buffer.length,
+				"Cannot load i8 constant from memory of size %s bytes", buffer.length);
+			value = *(cast(long*)buffer.ptr);
+			constSize = IrArgSize.size64;
+			break;
+		default:
+			c.internal_error("memToConstant %s", cast(IrValueType)type.typeIndex);
+			assert(false);
+	}
+	return c.constants.add(value, signed, constSize);
+}
