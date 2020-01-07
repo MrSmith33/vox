@@ -376,11 +376,13 @@ struct CompilationContext
 		result.offset = vmBuffer.uintLength;
 		result.length = numBytes;
 		vmBuffer.voidPut(numBytes);
+		//writefln("pushVmStack %s %s", result, vmBuffer.uintLength);
 		return result;
 	}
 
 	void popVmStack(IrVmSlotInfo slot)
 	{
+		//writefln("popVmStack %s %s", slot, vmBuffer.uintLength);
 		vmBuffer.unput(slot.length);
 		assertf(slot.offset == vmBuffer.uintLength,
 			"popped item is in the middle of the stack");

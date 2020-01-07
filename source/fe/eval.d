@@ -250,12 +250,12 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 
 	uint retSize = c.types.typeSize(retType);
 	IrVmSlotInfo returnMem = c.pushVmStack(retSize);
-	scope(exit) c.popVmStack(returnMem);
 
 	IrVm vm = IrVm(c, irData);
-	vm.setupFrame;
+	vm.pushFrame;
 	foreach(uint index, IrVmSlotInfo slot; vm.parameters)
 	{
+		//writefln("param %s %s", index, slot);
 		ubyte[] mem = vmBuffer[slot.offset..slot.offset+slot.length];
 		constantToMem(mem, args[index], c);
 	}
@@ -263,6 +263,8 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 
 	ubyte[] returnSlice = vmBuffer[returnMem.offset..returnMem.offset+returnMem.length];
 	IrIndex result = memToConstant(returnSlice, retType, c, signature.returnType.isSigned(c));
+	vm.popFrame;
+	c.popVmStack(returnMem);
 
 	return result;
 }

@@ -27,11 +27,35 @@ struct IrVm
 	/// Maps each stack slot to frame slot
 	uint* stackSlotOffsets;
 	uint frameOffset;
+	uint frameSize;
 
-	void setupFrame()
+	void pushFrame()
 	{
-		frameOffset = c.vmBuffer.uintLength;
-		// allocate space for virt regs and stack slots
+		if (!func.vregSlotOffsets)
+		{
+			// allocate space for virt regs and stack slots
+			func.vregSlotOffsets = c.allocateTempArray!uint(func.numVirtualRegisters+1).ptr;
+			uint offset = 0;
+			func.vregSlotOffsets[0] = offset;
+			//writefln("vreg %s %s", 0, offset);
+			foreach(i; 0..func.numVirtualRegisters)
+			{
+				offset += c.types.typeSize(func.vregPtr[i].type);
+				//writefln("vreg %s %s", i+1, offset);
+				func.vregSlotOffsets[i+1] = offset;
+			}
+			func.frameSize = offset;
+		}
+		vregSlotOffsets = func.vregSlotOffsets;
+		frameSize = func.frameSize;
+
+		frameOffset = c.pushVmStack(frameSize).offset;
+		//writefln("pushFrame %s %s %s", frameSize, frameOffset, c.vmBuffer.uintLength);
+	}
+
+	void popFrame()
+	{
+		c.popVmStack(IrVmSlotInfo(frameOffset, frameSize));
 	}
 
 	ParameterSlotIterator parameters() {
@@ -41,7 +65,7 @@ struct IrVm
 	IrVmSlotInfo vregSlot(IrIndex vreg) {
 		uint from = frameOffset + vregSlotOffsets[vreg.storageUintIndex];
 		uint to = frameOffset + vregSlotOffsets[vreg.storageUintIndex+1];
-		return IrVmSlotInfo(from, from - to);
+		return IrVmSlotInfo(from, to - from);
 	}
 
 	ubyte[] slotToSlice(IrVmSlotInfo slot)
@@ -114,8 +138,15 @@ struct IrVm
 		{
 			constantToMem(slotToSlice(mem), value, c);
 		}
+		else if (value.isVirtReg)
+		{
+			slotToSlice(mem)[] = slotToSlice(vregSlot(value));
+		}
 		else
+		{
+			writefln("%s", value);
 			assert(false);
+		}
 	}
 }
 
