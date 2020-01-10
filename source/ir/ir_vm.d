@@ -119,10 +119,138 @@ struct IrVm
 						copyToMem(outputMem, instrHeader.arg(func, 0));
 						break block_loop;
 
+					case IrOpcode.add:  binop!"+"(instrHeader); break;
+					case IrOpcode.sub:  binop!"-"(instrHeader); break;
+					case IrOpcode.and:  binop!"&"(instrHeader); break;
+					case IrOpcode.or:   binop!"|"(instrHeader); break;
+					case IrOpcode.xor:  binop!"^"(instrHeader); break;
+					case IrOpcode.umul: binop!"*"(instrHeader); break;
+					case IrOpcode.smul: binop!"*"(instrHeader); break;
+					case IrOpcode.udiv: binop!"/"(instrHeader); break;
+					case IrOpcode.sdiv: binop!"/"(instrHeader); break;
+					case IrOpcode.shl:  binop!"<<"(instrHeader); break;
+					case IrOpcode.lshr: binop!">>>"(instrHeader); break;
+					case IrOpcode.ashr: binop!">>"(instrHeader); break;
+
+					case IrOpcode.not:
+						long a = readInt(instrHeader.arg(func, 0));
+						long result = !a;
+						writeInt(instrHeader.result(func), result);
+						break;
+
+					case IrOpcode.neg:
+						long a = readInt(instrHeader.arg(func, 0));
+						long result = -a;
+						writeInt(instrHeader.result(func), result);
+						break;
+
+					case IrOpcode.conv:
+						long result = readInt(instrHeader.arg(func, 0));
+						writeInt(instrHeader.result(func), result);
+						break;
+
+					case IrOpcode.zext:
+						long result = readInt(instrHeader.arg(func, 0));
+						writeInt(instrHeader.result(func), result);
+						break;
+
+					case IrOpcode.sext:
+						long result = readInt(instrHeader.arg(func, 0));
+						writeInt(instrHeader.result(func), result);
+						break;
+
+					case IrOpcode.trunc:
+						long result = readInt(instrHeader.arg(func, 0));
+						writeInt(instrHeader.result(func), result);
+						break;
+
+					case IrOpcode.branch_binary:
+						long a = readInt(instrHeader.arg(func, 0));
+						long b = readInt(instrHeader.arg(func, 1));
+						//writefln("br %s %s : %s %s", a, b, block.successors[0, func], block.successors[1, func]);
+						bool result;
+						final switch(cast(IrBinaryCondition)instrHeader.cond)
+						{
+							case IrBinaryCondition.eq: result = a == b; break;
+							case IrBinaryCondition.ne: result = a != b; break;
+							case IrBinaryCondition.g:  result = a > b;  break;
+							case IrBinaryCondition.ge: result = a >= b; break;
+							case IrBinaryCondition.l:  result = a < b;  break;
+							case IrBinaryCondition.le: result = a <= b; break;
+						}
+						prevBlock = curBlock;
+						if (result)
+							curBlock = block.successors[0, func];
+						else
+							curBlock = block.successors[1, func];
+						//writefln("jump %s -> %s", prevBlock, curBlock);
+						block = &func.getBlock(curBlock);
+						break instr_loop;
+
+					case IrOpcode.branch_unary:
+						long a = readInt(instrHeader.arg(func, 0));
+						//writefln("br %s : %s %s", a, block.successors[0, func], block.successors[1, func]);
+						bool result;
+						final switch(cast(IrUnaryCondition)instrHeader.cond)
+						{
+							case IrUnaryCondition.zero:     result = a == 0; break;
+							case IrUnaryCondition.not_zero: result = a != 0; break;
+						}
+						prevBlock = curBlock;
+						if (result)
+							curBlock = block.successors[0, func];
+						else
+							curBlock = block.successors[1, func];
+						//writefln("jump %s -> %s", prevBlock, curBlock);
+						block = &func.getBlock(curBlock);
+						break instr_loop;
+
 					default:
 						c.internal_error("interpret %s", cast(IrOpcode)instrHeader.op);
 				}
 			}
+		}
+	}
+
+	void binop(string op)(ref IrInstrHeader instrHeader)
+	{
+		long a = readInt(instrHeader.arg(func, 0));
+		long b = readInt(instrHeader.arg(func, 1));
+		mixin(`long result = a `~op~` b;`);
+		writeInt(instrHeader.result(func), result);
+	}
+
+	long readInt(IrIndex index)
+	{
+		switch (index.kind) with(IrValueKind) {
+			case constant, constantZero: return c.constants.get(index).i64;
+			case virtualRegister: return readInt(vregSlot(index));
+			default: c.internal_error("readInt %s", index); assert(false);
+		}
+	}
+
+	long readInt(IrVmSlotInfo mem)
+	{
+		switch(mem.length)
+		{
+			case 1: return *cast( byte*)slotToSlice(mem).ptr;
+			case 2: return *cast(short*)slotToSlice(mem).ptr;
+			case 4: return *cast(  int*)slotToSlice(mem).ptr;
+			case 8: return *cast( long*)slotToSlice(mem).ptr;
+			default: c.internal_error("readInt %s", mem); assert(false);
+		}
+	}
+
+	void writeInt(IrIndex index, long value)
+	{
+		IrVmSlotInfo mem = vregSlot(index);
+		switch(mem.length)
+		{
+			case 1: *cast( byte*)slotToSlice(mem).ptr = cast( byte)value; break;
+			case 2: *cast(short*)slotToSlice(mem).ptr = cast(short)value; break;
+			case 4: *cast(  int*)slotToSlice(mem).ptr = cast(  int)value; break;
+			case 8: *cast( long*)slotToSlice(mem).ptr = cast( long)value; break;
+			default: c.internal_error("writeInt %s", mem); assert(false);
 		}
 	}
 

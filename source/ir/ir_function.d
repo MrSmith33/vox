@@ -109,8 +109,11 @@ struct IrFunction
 	// index 0 must be always start block
 	// index 1 must be always exit block
 	IrBasicBlock* basicBlockPtr;
+
 	// Optional. Used for IR interpretation
 	uint* vregSlotOffsets;
+	// Optional. Used for IR interpretation
+	uint frameSize;
 
 	/// Used for instrPtr, instrNextPtr, instrPrevPtr
 	uint numInstructions;
@@ -119,8 +122,6 @@ struct IrFunction
 	uint arrayLength;
 	uint numVirtualRegisters;
 	uint numBasicBlocks;
-	// Used for IR interpretation
-	uint frameSize;
 
 	IrBasicBlock[] blocksArray() {
 		return basicBlockPtr[0..numBasicBlocks];
