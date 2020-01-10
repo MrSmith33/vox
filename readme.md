@@ -8,8 +8,8 @@ WIP language name is `Vox`, file extension is `.vx`.
 
 # Major features
 
-- Can be embedded into D programs (can call host functions)
-- Works as a regular AOT compiler producing precoff excutables (with dll importing)
+- Can be embedded into D programs as JIT-compiler (can call host functions)
+- Works as a regular AOT compiler producing Win64 executables (with dll importing)
 - Only requires D compiler, no other dependencies
 
 # Project goals
