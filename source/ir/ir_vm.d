@@ -63,6 +63,7 @@ struct IrVm
 	}
 
 	IrVmSlotInfo vregSlot(IrIndex vreg) {
+		assert(vreg.isVirtReg);
 		uint from = frameOffset + vregSlotOffsets[vreg.storageUintIndex];
 		uint to = frameOffset + vregSlotOffsets[vreg.storageUintIndex+1];
 		return IrVmSlotInfo(from, to - from);
@@ -204,6 +205,37 @@ struct IrVm
 						//writefln("jump %s -> %s", prevBlock, curBlock);
 						block = &func.getBlock(curBlock);
 						break instr_loop;
+
+					case IrOpcode.call:
+						IrIndex callee = instrHeader.arg(func, 0);
+						if (!callee.isFunction)
+						{
+							writefln("call of %s is not implemented", callee);
+							assert(false);
+						}
+
+						FunctionDeclNode* calleeFunc = c.getFunction(callee);
+						if (calleeFunc.state != AstNodeState.ir_gen_done)
+							c.internal_error(calleeFunc.loc,
+								"Function's IR is not yet generated");
+
+						IrFunction* irData = c.getAst!IrFunction(calleeFunc.backendData.irData);
+
+						IrIndex retType = c.types.getReturnType(irData.type, c);
+						IrVmSlotInfo returnMem;
+						if (!retType.isTypeVoid) {
+							IrIndex result = instrHeader.result(func);
+							returnMem = vregSlot(result);
+						}
+						IrVm vm = IrVm(c, irData);
+						vm.pushFrame;
+						foreach(uint index, IrVmSlotInfo slot; vm.parameters)
+						{
+							copyToMem(slot, instrHeader.arg(func, index+1)); // Account for callee in 0 arg
+						}
+						vm.run(returnMem);
+						vm.popFrame;
+						break;
 
 					default:
 						c.internal_error("interpret %s", cast(IrOpcode)instrHeader.op);

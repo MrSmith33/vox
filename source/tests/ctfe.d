@@ -72,3 +72,19 @@ void tester4(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("get_val1")() ==  0);
 	assert(ctx.getFunctionPtr!(int)("get_val2")() ==  1);
 }
+
+
+@TestInfo(&tester5)
+immutable ctfe5 = q{--- ctfe5
+	// call
+	i32 fib(i32 number) {
+		if (number < 1) return 0;
+		if (number < 3) return 1;
+		return fib(number-1) + fib(number-2);
+	}
+	enum i32 val = fib(6); // CTFE
+	i32 get() { return val; } // 8
+};
+void tester5(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("get")() == 8);
+}
