@@ -80,7 +80,7 @@ int numDigitsInNumber10(Num)(const Num val)
 int calcScale10(Num)(Num val)
 {
 	import std.algorithm: clamp;
-	import std.math: abs, floor, ceil, log10;
+	import std.math: abs, round, log10;
 	static int signum(T)(const T x) pure nothrow
 	{
 		return (x > 0) - (x < 0);
@@ -90,11 +90,7 @@ int calcScale10(Num)(Num val)
 	int logSign = signum(lg);
 	double absLog = abs(lg);
 
-	int scale;
-	if (lg < 0)
-		scale = cast(int)(ceil(absLog/3.0))*3;
-	else
-		scale = cast(int)(floor(absLog/3.0))*3;
+	int scale = cast(int)(round(absLog/3.0))*3;
 
 	int clampedScale = scale * logSign;
 	if (clampedScale < MIN_SCALE_PREFIX)
@@ -109,7 +105,7 @@ int calcScale10(Num)(Num val)
 int calcScale2(Num)(Num val)
 {
 	import std.algorithm: clamp;
-	import std.math: abs, floor, ceil, log2;
+	import std.math: abs, round, log2;
 	static int signum(T)(const T x) pure nothrow
 	{
 		return (x > 0) - (x < 0);
@@ -119,11 +115,7 @@ int calcScale2(Num)(Num val)
 	int logSign = signum(lg);
 	double absLog = abs(lg);
 
-	int scale;
-	if (lg < 0)
-		scale = cast(int)(ceil(absLog/10.0))*10;
-	else
-		scale = cast(int)(floor(absLog/10.0))*10;
+	int scale = cast(int)(round(absLog/10.0))*10;
 
 	int clampedScale = scale * logSign;
 	if (clampedScale < 0)
