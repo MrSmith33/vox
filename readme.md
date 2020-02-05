@@ -100,6 +100,12 @@ Debug CLI build:
 Release CLI build:
     `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d -of=tjc.exe && move /Y tjc.exe ../test_work_dir/tjc.exe`
 
+# Stats
+
+- test build time: 5s
+- release cli build time: 34s
+- jit tests: 151 tests in 33ms
+
 # What works
 
 - win64 executable generation

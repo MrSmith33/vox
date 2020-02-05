@@ -793,11 +793,13 @@ private bool isIdSecond(dchar chr) pure nothrow {
 unittest
 {
 	CompilationContext ctx;
-	TokenType[4] tokenBuffer;
-	SourceLocation[4] locs;
+	ubyte[64] tokenBuffer;
+	ubyte[64] locs;
 
 	Lexer makeLexer(string input) {
-		return Lexer(&ctx, input~EOI_CHAR, tokenBuffer, locs);
+		ctx.tokenBuffer.setBuffer(tokenBuffer[], 64);
+		ctx.tokenLocationBuffer.setBuffer(locs[], 64);
+		return Lexer(&ctx, input~EOI_CHAR, &ctx.tokenBuffer, &ctx.tokenLocationBuffer);
 	}
 
 	foreach(i, string keyword; keyword_strings)
@@ -817,14 +819,13 @@ unittest
 
 	{
 		string[] ops = ["&","&&","&=","@","\\",":",",","$",".","..","...",
-			"=","==",">",">=",">>",">>=",">>>",">>>=","#","<","<=","<<","<<=","-",
+			"=","==",">",">=",">>",">>=",">>>",">>>=","<","<=","<<","<<=","-",
 			"-=","--","!","!=","|","|=","||","%","%=","+","+=","++","?",";","/",
 			"/=","*","*=","~","~=","^","^=","(",")","[","]","{","}",];
 		TokenType[] tokens_ops = [TT.AND,TT.AND_AND,TT.AND_EQUAL,TT.AT,TT.BACKSLASH,
 			TT.COLON,TT.COMMA,TT.DOLLAR,TT.DOT,TT.DOT_DOT,TT.DOT_DOT_DOT,TT.EQUAL,
 			TT.EQUAL_EQUAL,TT.MORE,TT.MORE_EQUAL,TT.MORE_MORE,
-			TT.MORE_MORE_EQUAL,TT.MORE_MORE_MORE,
-			TT.MORE_MORE_MORE_EQUAL,TT.HASH,
+			TT.MORE_MORE_EQUAL,TT.MORE_MORE_MORE,TT.MORE_MORE_MORE_EQUAL,
 			TT.LESS,TT.LESS_EQUAL,TT.LESS_LESS,TT.LESS_LESS_EQUAL,TT.MINUS,
 			TT.MINUS_EQUAL,TT.MINUS_MINUS,TT.NOT,TT.NOT_EQUAL,TT.OR,TT.OR_EQUAL,
 			TT.OR_OR,TT.PERCENT,TT.PERCENT_EQUAL,TT.PLUS,TT.PLUS_EQUAL,TT.PLUS_PLUS,
@@ -862,31 +863,31 @@ unittest
 		Lexer lexer = makeLexer(source);
 		lexer.lex;
 		assert(tokenBuffer[0] == TT.COMMENT);
-		assert(locs[0].getTokenString(source) == "/*\n*/", format("%s", locs[0]));
+		assert(ctx.tokenLocationBuffer[0].getTokenString(source) == "/*\n*/", format("%s", ctx.tokenLocationBuffer[0]));
 		assert(tokenBuffer[1] == TT.IDENTIFIER);
-		assert(locs[1].getTokenString(source) == "test");
+		assert(ctx.tokenLocationBuffer[1].getTokenString(source) == "test");
 	}
 	{
 		string source = "//test\nhello";
 		Lexer lexer = makeLexer(source);
 		lexer.lex;
 		assert(tokenBuffer[0] == TT.COMMENT);
-		assert(locs[0].getTokenString(source) == "//test\n");
+		assert(ctx.tokenLocationBuffer[0].getTokenString(source) == "//test\n");
 		assert(tokenBuffer[1] == TT.IDENTIFIER);
-		assert(locs[1].getTokenString(source) == "hello");
+		assert(ctx.tokenLocationBuffer[1].getTokenString(source) == "hello");
 	}
 	{
 		string source = `"literal"`;
 		Lexer lexer = makeLexer(source);
 		lexer.lex;
 		assert(tokenBuffer[0] == TT.STRING_LITERAL);
-		assert(locs[0].getTokenString(source) == `"literal"`, format("%s", tokenBuffer[0]));
+		assert(ctx.tokenLocationBuffer[0].getTokenString(source) == `"literal"`, format("%s", tokenBuffer[0]));
 	}
 	{
 		string source = `'@'`;
 		Lexer lexer = makeLexer(source);
 		lexer.lex;
 		assert(tokenBuffer[0] == TT.CHAR_LITERAL);
-		assert(locs[0].getTokenString(source) == `'@'`, format("%s", tokenBuffer[0]));
+		assert(ctx.tokenLocationBuffer[0].getTokenString(source) == `'@'`, format("%s", tokenBuffer[0]));
 	}
 }

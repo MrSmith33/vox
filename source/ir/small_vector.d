@@ -201,12 +201,12 @@ unittest
 	CompilationContext context;
 	IrBuilder builder;
 
-	context.irBuffer.setBuffer(irBuf[]);
-	context.tempBuffer.setBuffer(tempBuf[]);
+	context.irStorage.arrayBuffer.setBuffer(irBuf[], 1024);
+	context.tempBuffer.setBuffer(tempBuf[], 1024);
 
 	builder.context = &context;
 	builder.ir = &ir;
-	ir.storage = context.irBuffer.freePart[0..0];
+	ir.arrayPtr = context.irStorage.arrayBuffer.nextPtr;
 
 	SmallVector vec;
 

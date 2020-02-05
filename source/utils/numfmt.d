@@ -11,7 +11,7 @@ import utils : Duration;
 /// Use '#' flag to get greek letter in the output (not compatible with 'i')
 struct ScaledNumberFmt(T)
 {
-	import utils : min;
+	import utils : min, max;
 	import std.format : formattedWrite, FormatSpec;
 	T value;
 	void toString(scope void delegate(const(char)[]) sink, const ref FormatSpec!char fmt)
@@ -25,8 +25,8 @@ struct ScaledNumberFmt(T)
 			double scaledValue = value / divisor;
 			int digits = numDigitsInNumber10(scaledValue);
 			string prefix = scalePrefixesAscii[scaleToScaleIndex2(scale)]; // length is 1 or 0
-			int precision = min(3-digits, fmt.precision); // gives 0 or 1
-			int width = fmt.width - (cast(int)prefix.length * 2); // account for 'i' prefix
+			int width = max(fmt.width - (cast(int)prefix.length * 2), 0); // account for 'i' prefix
+			int precision = max(min(3-digits, fmt.precision), 0); // gives 0 or 1
 			string fmtString = (scale == 0) ? "%*.*f%s" : "%*.*f%si";
 			sink.formattedWrite(fmtString, width, precision, scaledValue, prefix);
 		} else {
@@ -35,8 +35,8 @@ struct ScaledNumberFmt(T)
 			int digits = numDigitsInNumber10(scaledValue);
 			immutable string[] prefixes = (fmt.flHash) ? scalePrefixesGreek : scalePrefixesAscii;
 			string prefix = prefixes[scaleToScaleIndex10(scale)]; // length is 1 or 0
-			int width = fmt.width - cast(int)prefix.length;
-			int precision = min(3-digits, fmt.precision); // gives 0 or 1
+			int width = max(fmt.width - cast(int)prefix.length, 0);
+			int precision = max(min(3-digits, fmt.precision), 0); // gives 0 or 1
 			sink.formattedWrite("%*.*f%s", width, precision, scaledValue, prefix);
 		}
 	}
@@ -88,7 +88,7 @@ int calcScale10(Num)(Num val)
 
 	auto lg = log10(abs(val));
 	int logSign = signum(lg);
-	double absLog = abs(lg);
+	double absLog = abs(lg)-1;
 
 	int scale = cast(int)(round(absLog/3.0))*3;
 
@@ -138,4 +138,91 @@ double scaled10(Num)(Num num, int scale)
 {
 	import std.math: pow;
 	return num * pow(10.0, scale);
+}
+
+unittest
+{
+	void test(T)(T num, string expected, string file = __MODULE__, int line = __LINE__) {
+		import std.format;
+		string res = format("%s", scaledNumberFmt(num));
+		assert(res == expected,
+			format("%s:%s %s != %s", file, line, res, expected));
+	}
+
+	test(-10_000_000_000_000_000_000_000_000_000_000_000.0, "-10000Q");
+	test(-1_000_000_000_000_000_000_000_000_000_000_000.0, "-1000Q");
+	test(-100_000_000_000_000_000_000_000_000_000_000.0, "-100Q");
+	test(-10_000_000_000_000_000_000_000_000_000_000.0, "-10.0Q");
+	test(-1_000_000_000_000_000_000_000_000_000_000.0, "-1.00Q");
+	test(-100_000_000_000_000_000_000_000_000_000.0, "-100R");
+	test(-10_000_000_000_000_000_000_000_000_000.0, "-10.0R");
+	test(-1_000_000_000_000_000_000_000_000_000.0, "-1.00R");
+	test(-100_000_000_000_000_000_000_000_000.0, "-100Y");
+	test(-10_000_000_000_000_000_000_000_000.0, "-10.0Y");
+	test(-1_000_000_000_000_000_000_000_000.0, "-1.00Y");
+	test(-100_000_000_000_000_000_000_000.0, "-100Z");
+	test(-10_000_000_000_000_000_000_000.0, "-10.0Z");
+	test(-1_000_000_000_000_000_000_000.0, "-1.00Z");
+	test(-100_000_000_000_000_000_000.0, "-100E");
+	test(-10_000_000_000_000_000_000.0, "-10.0E");
+
+	//test(long.min, "-9.22E");
+	test(-9_223_372_036_854_775_807, "-9.22E");
+	test(-1_000_000_000_000_000_000, "-1.00E");
+	test(-100_000_000_000_000_000, "-100P");
+	test(-10_000_000_000_000_000, "-10.0P");
+	test(-1_000_000_000_000_000, "-1.00P");
+	test(-100_000_000_000_000, "-100T");
+	test(-10_000_000_000_000, "-10.0T");
+	test(-1_000_000_000_000, "-1.00T");
+	test(-100_000_000_000, "-100G");
+	test(-10_000_000_000, "-10.0G");
+	test(-1_000_000_000, "-1.00G");
+	test(-100_000_000, "-100M");
+	test(-10_000_000, "-10.0M");
+	test(-1_000_000, "-1.00M");
+	test(-100_000, "-100K");
+	test(-10_000, "-10.0K");
+	test(-1_000, "-1.00K");
+	test(-100, "-100");
+	test(-10, "-10.0");
+	test(-1, "-1.00");
+	test(0, "0.00");
+	test(1, "1.00");
+	test(10, "10.0");
+	test(100, "100");
+	test(1_000, "1.00K");
+	test(10_000, "10.0K");
+	test(100_000, "100K");
+	test(1_000_000, "1.00M");
+	test(10_000_000, "10.0M");
+	test(100_000_000, "100M");
+	test(1_000_000_000, "1.00G");
+	test(10_000_000_000, "10.0G");
+	test(100_000_000_000, "100G");
+	test(1_000_000_000_000, "1.00T");
+	test(10_000_000_000_000, "10.0T");
+	test(100_000_000_000_000, "100T");
+	test(1_000_000_000_000_000, "1.00P");
+	test(10_000_000_000_000_000, "10.0P");
+	test(100_000_000_000_000_000, "100P");
+	test(1_000_000_000_000_000_000, "1.00E");
+	test(ulong.max, "18.4E");
+
+	test(10_000_000_000_000_000_000.0, "10.0E");
+	test(100_000_000_000_000_000_000.0, "100E");
+	test(1_000_000_000_000_000_000_000.0, "1.00Z");
+	test(10_000_000_000_000_000_000_000.0, "10.0Z");
+	test(100_000_000_000_000_000_000_000.0, "100Z");
+	test(1_000_000_000_000_000_000_000_000.0, "1.00Y");
+	test(10_000_000_000_000_000_000_000_000.0, "10.0Y");
+	test(100_000_000_000_000_000_000_000_000.0, "100Y");
+	test(1_000_000_000_000_000_000_000_000_000.0, "1.00R");
+	test(10_000_000_000_000_000_000_000_000_000.0, "10.0R");
+	test(100_000_000_000_000_000_000_000_000_000.0, "100R");
+	test(1_000_000_000_000_000_000_000_000_000_000.0, "1.00Q");
+	test(10_000_000_000_000_000_000_000_000_000_000.0, "10.0Q");
+	test(100_000_000_000_000_000_000_000_000_000_000.0, "100Q");
+	test(1_000_000_000_000_000_000_000_000_000_000_000.0, "1000Q");
+	test(10_000_000_000_000_000_000_000_000_000_000_000.0, "10000Q");
 }
