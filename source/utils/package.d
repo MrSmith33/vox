@@ -19,7 +19,6 @@ public import utils.arenapool;
 public import utils.array;
 public import utils.arrayarena;
 public import utils.buffer;
-public import utils.fixedbuffer;
 public import utils.har : parseHar;
 public import utils.hash;
 public import utils.mem;
