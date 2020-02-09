@@ -63,7 +63,8 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 
 	// Exe gen
 	Section*[4] sectionsBuf;
-	FixedBuffer!(Section*) sections = fixedBuffer!(Section*)(sectionsBuf);
+	Arena!(Section*) sections;
+	sections.setBuffer(cast(ubyte[])sectionsBuf);
 
 	void addSection(Section* section)
 	{
@@ -93,7 +94,9 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	context.objSymTab.getSection(context.rdataSectionIndex).sectionAddress = rdataSection.header.VirtualAddress;
 
 	// uses sectionAddress
-	fillImports(importMapping, &context);
+	if (importMapping.sectionData.length > 0) {
+		fillImports(importMapping, &context);
+	}
 
 	if (context.printSymbols) context.objSymTab.dump(&context);
 
@@ -182,7 +185,11 @@ struct CoffImportSectionSize
 	size_t totalTableBytes() { return totalImportEntries * IAT_ILT_ENTRY_BYTES; }
 	size_t totalDllNamesBytes; // with leading zero and 2 byte alignment padding
 	size_t totalDllHintsBytes; // with leading zero and 2 byte alignment padding
-	size_t totalSectionBytes() { return importDirectoryTableBytes + totalTableBytes * 2 + totalDllHintsBytes + totalDllNamesBytes; }
+	size_t totalSectionBytes() {
+		// without check importDirectoryTableBytes is adding 1 to numLibs, resulting in non-zero size for empty idata section
+		if (numLibs == 0) return 0;
+		return importDirectoryTableBytes + totalTableBytes * 2 + totalDllHintsBytes + totalDllNamesBytes;
+	}
 }
 
 /// A set of slices on top of single memory buffer
@@ -193,6 +200,8 @@ struct CoffImportSectionMapping
 		this.importSizes = _importSizes;
 		this.sectionData = _sectionBuffer[0..importSizes.totalSectionBytes];
 		assert(sectionData.length == importSizes.totalSectionBytes);
+
+		if (sectionData.length == 0) return;
 
 		size_t dirsEnd = importSizes.importDirectoryTableBytes;
 		directories = cast(ImportDirectoryTableEntry[])(sectionData[0..dirsEnd]);
