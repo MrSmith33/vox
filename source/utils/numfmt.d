@@ -11,6 +11,7 @@ import utils : Duration;
 /// Use '#' flag to get greek letter in the output (not compatible with 'i')
 struct ScaledNumberFmt(T)
 {
+	import std.stdio;
 	import utils : min, max;
 	import std.format : formattedWrite, FormatSpec;
 	T value;
@@ -79,6 +80,7 @@ int numDigitsInNumber10(Num)(const Num val)
 /// Returns number in range of [-30; 30]
 int calcScale10(Num)(Num val)
 {
+	import std.stdio;
 	import std.algorithm: clamp;
 	import std.math: abs, round, log10;
 	static int signum(T)(const T x) pure nothrow
@@ -86,17 +88,46 @@ int calcScale10(Num)(Num val)
 		return (x > 0) - (x < 0);
 	}
 
-	auto lg = log10(abs(val));
-	int logSign = signum(lg);
-	double absLog = abs(lg)-1;
+	//writefln("value %s", val);
+	// cast to double is necessary in case of long.min, which overflows integral abs
+	auto lg = log10(abs(cast(double)val));
+	//writefln("  lg %s is -inf %s", lg, lg == -double.infinity);
 
+	// handle value of zero
+	if (lg == -double.infinity) return 0;
+
+	int logSign = signum(lg);
+	//writefln("  logSign %s", logSign);
+
+	double absLog = abs(lg);
+	//writefln("  absLog %s", absLog);
+
+	//writefln("  absLog/3.0 %s", absLog/3.0);
+	//writefln("  ceil(absLog/3.0) %s", round(absLog/3.0));
 	int scale = cast(int)(round(absLog/3.0))*3;
+	//writefln("  scale %s", scale);
 
 	int clampedScale = scale * logSign;
+	//writefln("  clampedScale %s", clampedScale);
+
+	//writefln("  scaled %s", scaled10(val, -clampedScale));
+
+	// we want
+	//  0.9994 to be formatted as 999m
+	//  0.9995 to be formatted as 1.0
+	//  0.9996 to be formatted as 1.0
+
+	//writefln("  diff %.20s %s", abs(scaled10(val, -clampedScale)), abs(scaled10(val, -clampedScale)) < 0.9995);
+	if (abs(scaled10(val, -clampedScale)) < 0.9995) clampedScale -= 3;
+	//writefln("  clampedScale %s", clampedScale);
+
+	//writefln("  scaled fixed %s", scaled10(val, -clampedScale));
+
 	if (clampedScale < MIN_SCALE_PREFIX)
 		clampedScale = 0; // prevent zero, or values smaller that min scale to display with min scale
 	else if (clampedScale > MAX_SCALE_PREFIX)
 		clampedScale = MAX_SCALE_PREFIX;
+	//writefln("  clampedScale %s", clampedScale);
 
 	return clampedScale;
 }
@@ -140,6 +171,9 @@ double scaled10(Num)(Num num, int scale)
 	return num * pow(10.0, scale);
 }
 
+// Criteria:
+// Should not produce `0.xx`
+// must be `xxxm` instead
 unittest
 {
 	void test(T)(T num, string expected, string file = __MODULE__, int line = __LINE__) {
@@ -166,7 +200,7 @@ unittest
 	test(-100_000_000_000_000_000_000.0, "-100E");
 	test(-10_000_000_000_000_000_000.0, "-10.0E");
 
-	//test(long.min, "-9.22E");
+	test(long.min, "-9.22E");
 	test(-9_223_372_036_854_775_807, "-9.22E");
 	test(-1_000_000_000_000_000_000, "-1.00E");
 	test(-100_000_000_000_000_000, "-100P");
@@ -225,4 +259,25 @@ unittest
 	test(100_000_000_000_000_000_000_000_000_000_000.0, "100Q");
 	test(1_000_000_000_000_000_000_000_000_000_000_000.0, "1000Q");
 	test(10_000_000_000_000_000_000_000_000_000_000_000.0, "10000Q");
+
+	// numbers less than 1.0 or close to 1
+	test(1.234, "1.23");
+	test(1.000, "1.00");
+	test(0.9994, "999m");
+	test(0.9995, "1.00");
+	test(0.9996, "1.00");
+	test(0.1234, "123m");
+	test(0.01234, "12.3m");
+	test(0.001234, "1.23m");
+	test(0.0001234, "123u");
+
+	test(-1.234, "-1.23");
+	test(-1.000, "-1.00");
+	test(-0.9994, "-999m");
+	test(-0.9995, "-1.00");
+	test(-0.9996, "-1.00");
+	test(-0.1234, "-123m");
+	test(-0.01234, "-12.3m");
+	test(-0.001234, "-1.23m");
+	test(-0.0001234, "-123u");
 }
