@@ -117,43 +117,83 @@ enum IrOpcode : ushort
 	@_ii(1, IFLG.hasCondition | IFLG.isBlockExit) branch_unary,
 	@_ii(2, IFLG.hasCondition | IFLG.isBlockExit) branch_binary,
 	@_ii(0, IFLG.isBlockExit) ret,
+	/// Only for ABI handling
 	@_ii(1, IFLG.isBlockExit) ret_val,
 
+	/// Emitted by frontend and replaced in lowering pass
 	/// Extra argument represents parameter index and stored as plain uint
 	@_ii(0, IFLG.hasResult, 1) parameter,
 	// first argument is function or function pointer
 	@_ii(0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) call,
 
-	/// Returns boolean result of binary comparison
+	/// Args: iNN a, iNN b
+	/// Returns boolean result of binary comparison: a cond b
 	@_ii(2, IFLG.hasResult | IFLG.hasCondition) set_binary_cond,
-	/// Returns boolean result of unary comparison
+	/// Args: iNN a
+	/// Returns boolean result of unary comparison: cond a
 	@_ii(1, IFLG.hasResult | IFLG.hasCondition) set_unary_cond,
 
+	/// Only for ABI handling
+	/// Args: T
+	/// Returns: T
+	@_ii(1, IFLG.hasResult) move,
+	/// Lowered into load+store sequence
+	/// Args: T* dst, T* src
+	@_ii(2) copy,
+	/// Only for ABI handling
+	/// Args: int that is added to stack pointer
+	@_ii(1) shrink_stack,
+	/// Only for ABI handling
+	/// Args: int that is substracted from stack pointer
+	@_ii(1) grow_stack,
+	/// Only for ABI handling
+	/// Args: iNN
+	@_ii(1) push,
+
+	/// Args: T*, T
 	@_ii(2) store,
+	/// Args: T*
+	/// Returns: T
 	@_ii(1, IFLG.hasResult) load,
 	/// Args: aggregate pointer, 1 or more index
+	/// Returns: member pointer
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element_ptr,
-	@_ii(1, IFLG.hasResult) load_aggregate,
+	/// Args: aggregate pointer, 1 or more index
+	/// Returns: member pointer
+	/// Same as get_element_ptr, but first index is hardcoded to be 0.
+	/// 0 indixies do not make sense, because then instuction is no op and can replaced with first arg
+	/// Indicies are compatible with ones from get_element and insert_element
+	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element_ptr_0,
+	@_ii(1, IFLG.hasResult) load_aggregate, // TODO: remove. Use load instead
 	/// Args: aggregate members
 	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasResult) create_aggregate,
 	/// Args: aggregate, 1 or more index
+	/// Returns: member of aggregate
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element,
 	/// Args: aggregate, new element value, 1 or more index
 	/// Returns: aggregate with replaced element
 	@_ii(3, IFLG.hasVariadicArgs | IFLG.hasResult) insert_element,
 
-	// One's complement negation
+	/// One's complement negation
+	/// Args: iNN a
+	/// Returns ~a
 	@_ii(1, IFLG.hasResult) not,
-	// Two's complement negation
+	/// Two's complement negation
+	/// Args: iNN a
+	/// Returns -a
 	@_ii(1, IFLG.hasResult) neg,
 
 	/// Args: source value, target size is represented with argSize field
+	/// Currently is used as bitcast. Need clearer semantics
 	@_ii(1, IFLG.hasResult) conv,
-	/// Args: source value, argSize sets target size. Target size must be > source size
+	/// Args: iNN a, argSize sets MM. MM must be > NN
+	/// Returns iMM
 	@_ii(1, IFLG.hasResult) zext,
-	/// Args: source value, argSize sets target size. Target size must be > source size
+	/// Args: iNN a, argSize sets MM. MM must be > NN
+	/// Returns iMM
 	@_ii(1, IFLG.hasResult) sext,
-	/// Args: source value, argSize sets target size. Target size must be < source size
+	/// Args: iNN a, argSize sets MM. MM must be < NN
+	/// Returns iMM
 	@_ii(1, IFLG.hasResult) trunc,
 
 	/// Used when generating any of binary instructions.
@@ -223,11 +263,15 @@ struct IrInstrHeader
 
 	union {
 		mixin(bitfields!(
+			// Always used
 			bool,       "hasResult", 1,
+			// Only used when IrInstrFlags.hasCondition is set
 			ubyte,      "cond",      3,
 			// Not always possible to infer arg size from arguments (like in store ptr, imm)
 			IrArgSize,  "argSize",   2,
-			uint, "",                2
+			// Only used for loads to mark source pointer as uniqely owned by load
+			bool, "isUniqueLoad",    1,
+			uint, "",                1
 		));
 
 		mixin(bitfields!(
@@ -271,6 +315,7 @@ struct IrInstrHeader
 	}
 
 	ref IrIndex arg(IrFunction* ir, uint index) {
+		assert(index < numArgs, "arg index out of bounds");
 		return ir.instrPayloadPtr[_payloadOffset + index];
 	}
 

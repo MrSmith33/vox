@@ -52,7 +52,7 @@ void pass_linear_scan(LinearScan* linearScan)
 
 	if (c.printLirRA && c.printDumpOf(linearScan.fun)) {
 		IrFunction* lirData = c.getAst!IrFunction(linearScan.fun.backendData.lirData);
-		dumpFunction(c, lirData);
+		dumpFunction(c, lirData, "RA");
 		linearScan.livePtr.dump(c, lirData);
 	}
 }

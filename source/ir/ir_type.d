@@ -273,16 +273,38 @@ struct IrTypeStorage
 		return get!IrTypeArray(arrayType).elemType;
 	}
 
-	IrIndex getStructMemberType(IrIndex structType, uint memberIndex, ref CompilationContext context)
+	/// Returns offset + type of member indicated by indicies
+	IrTypeStructMember getAggregateMember(IrIndex aggrType, CompilationContext* c, IrIndex[] indicies...)
 	{
-		IrTypeStructMember[] members = get!IrTypeStruct(structType).members;
+		ulong offset = 0;
+		foreach(IrIndex memberIndex; indicies)
+		{
+			c.assertf(memberIndex.isSimpleConstant, "Aggregates can only be indexed with constants, not with %s", memberIndex);
+			ulong indexVal = c.constants.get(memberIndex).i64;
+			switch(aggrType.typeKind)
+			{
+				case IrTypeKind.array:
+					IrIndex elemType = getArrayElementType(aggrType);
+					offset += indexVal * typeSize(elemType);
+					aggrType = elemType;
+					break;
 
-		context.assertf(memberIndex < members.length,
-			"Indexing member %s of %s-member struct",
-			memberIndex, members.length);
+				case IrTypeKind.struct_t:
+					IrTypeStructMember[] members = get!IrTypeStruct(aggrType).members;
+					c.assertf(indexVal < members.length,
+						"Indexing member %s of %s-member struct",
+						indexVal, members.length);
+					IrTypeStructMember member = members[indexVal];
+					offset += member.offset;
+					aggrType = member.type;
+					break;
 
-		IrTypeStructMember member = members[memberIndex];
-		return member.type;
+				default:
+					c.internal_error("Cannot index into %s", aggrType.typeKind);
+					break;
+			}
+		}
+		return IrTypeStructMember(aggrType, cast(uint)offset);
 	}
 
 	IrIndex getReturnType(IrIndex funcSigType, CompilationContext* c)
@@ -389,7 +411,7 @@ IrArgSize getValueTypeArgSize(IrIndex value, IrFunction* ir, CompilationContext*
 	return sizeToIrArgSize(context.types.typeSize(type), context);
 }
 
-IrArgSize getTypeArgSize(IrIndex type, IrFunction* ir, CompilationContext* context)
+IrArgSize getTypeArgSize(IrIndex type, CompilationContext* context)
 {
 	return sizeToIrArgSize(context.types.typeSize(type), context);
 }

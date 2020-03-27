@@ -7,7 +7,6 @@ module fe.type_check;
 
 import std.stdio;
 import std.string : format;
-import std.typecons : Flag, Yes, No;
 import all;
 
 void pass_type_check(ref CompilationContext context, CompilePassPerModule[] subPasses)

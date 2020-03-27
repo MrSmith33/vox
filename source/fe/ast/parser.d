@@ -1425,7 +1425,7 @@ AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp,
 	return assignExpr;
 }
 
-// <id> "(" <expr_list> ")"
+// <expr> "(" <expr_list> ")"
 AstIndex leftFuncCall(ref Parser p, PreferType preferType, Token token, int unused_rbp, AstIndex callee) {
 	AstNodes args;
 	p.parse_expr_list(args, TokenType.RPAREN);

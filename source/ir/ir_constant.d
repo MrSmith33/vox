@@ -192,7 +192,7 @@ struct IrConstantStorage
 			assert(false, format("Not a constant (%s)", index));
 	}
 
-	enum IrIndex ZERO = makeConst(0, IrConstantKind.intSignedSmall);
+	enum IrIndex ZERO = IrIndex.fromUint(IrValueKind.constantZero << 28 | IrTypeKind.basic << 24 | IrValueType.i8);
 	enum IrIndex ONE = makeConst(1, IrConstantKind.intSignedSmall);
 }
 

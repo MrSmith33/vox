@@ -16,8 +16,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(test116);
-	//driver.context.setDumpFilter("test");
+	Test test = makeTest!(test64);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -30,6 +29,7 @@ void runDevTests()
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
 	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
+	//driver.context.setDumpFilter("returnBigStruct");
 
 	scope(exit) {
 		//driver.context.printMemSize;
@@ -45,9 +45,11 @@ void runDevTests()
 	//driver.context.printAstSema = true;
 	//driver.context.printIr = true;
 	//driver.context.printIrOpt = true;
+	//driver.context.printIrLower = true;
 	//driver.context.printLir = true;
 	//driver.context.printLiveIntervals = true;
 	//driver.context.printLirRA = true;
+	//driver.context.printStackLayout = true;
 	//driver.context.printStaticData = true;
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
@@ -324,7 +326,6 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 				if (dumpTest) writefln("Running: %s tester", curTest.testName);
 				curTest.tester(testContext);
 			}
-
 			break;
 
 		case BuildType.exe:

@@ -80,7 +80,8 @@ struct IrIndex
 		// is 0 for undefined index
 		uint asUint;
 	}
-	static assert(IrValueKind.max <= 0b1111, "4 bits are reserved");
+	static assert(IrValueKind.max <= 0b1111, "4 bits are reserved for IrValueKind");
+
 	bool isDefined() { return asUint != 0; }
 	bool isUndefined() { return asUint == 0; }
 
@@ -93,7 +94,7 @@ struct IrIndex
 		switch(kind) with(IrValueKind) {
 			default: sink.formattedWrite("0x%X", asUint); break;
 			case listItem: sink.formattedWrite("l.%s", storageUintIndex); break;
-			case instruction: sink.formattedWrite("i%s", storageUintIndex); break;
+			case instruction: sink.formattedWrite("i.%s", storageUintIndex); break;
 			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
 			case constant:
 				final switch(constantKind) with(IrConstantKind) {
@@ -105,6 +106,13 @@ struct IrIndex
 				break;
 
 			case constantAggregate: sink.formattedWrite("caggr.%s", storageUintIndex); break;
+			case constantZero:
+				if (typeKind == IrTypeKind.basic)
+					sink("0");
+				else
+					sink("zeroinit");
+				break;
+
 			case global: sink.formattedWrite("g%s", storageUintIndex); break;
 			case phi: sink.formattedWrite("phi%s", storageUintIndex); break;
 			case stackSlot: sink.formattedWrite("s%s", storageUintIndex); break;

@@ -166,7 +166,8 @@ struct SourceFileInfo
 	uint start;
 	/// Length of source code
 	uint length;
-	///
+	/// Tokens of all files are stored linearly inside CompilationContext.tokenBuffer
+	/// and CompilationContext.tokenLocationBuffer. Token file can be found with binary search
 	TokenIndex firstTokenIndex;
 
 	/// Module declaration

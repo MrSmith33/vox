@@ -10,6 +10,7 @@ module be;
 public:
 import be.amd64asm;
 import be.emit_mc_amd64;
+import be.ir_lower;
 import be.ir_to_lir_amd64;
 import be.link;
 import be.link_jit;

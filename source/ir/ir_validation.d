@@ -198,8 +198,18 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			c.assertf(ptrType.isTypePointer, "%s: first argument must be pointer, not: %s", instrIndex, ptrType.kind);
 			IrIndex valueType = getValueType(value, ir, c);
 			IrIndex baseType = c.types.getPointerBaseType(ptrType);
-			c.assertf(c.types.isSameType(baseType, valueType), "%s: cannot store %s into %s",
-				instrIndex, IrIndexDump(valueType, c, ir), IrIndexDump(ptrType, c, ir));
+			if (c.types.isSameType(baseType, valueType)) {
+				break; // ok
+			} else if (value.isSimpleConstant) {
+				// constant is stored into memory
+				if (baseType.isTypeBasic && valueType.typeIndex <= baseType.typeIndex) {
+					break; // ok. Constant is stored into big enough memory slot
+				} else if (baseType.isTypePointer) {
+					break; // ok. Constant is stored into ptr sized slot
+				}
+			}
+			c.internal_error("%s: cannot store %s %s into %s",
+				instrIndex, IrIndexDump(value, c, ir), IrIndexDump(valueType, c, ir), IrIndexDump(ptrType, c, ir));
 			break;
 
 		case IrOpcode.create_aggregate:

@@ -8,17 +8,23 @@
 		- #type
 		- #value
 		- #code
+		- #parameter
+		- #function
 	- # introspection
 		- #allMembers(symbol) -> #alias[]
 		- #getAttributes(symbol) -> #alias[]
 		- #is* -> bool
+		- get parameter list with access to name, type, attributes and default value
 	- # attributes
 		- #likely
 		- #unlikely
 		- #likely_when(<expr>)
 		- #dllimport(id)
-	- template parameter inference (for function templates)
+	- template parameter inference (for function templates) IFTI
 	- variadic template arguments (requires inference)
+	- a way to perform IFTI from user code (pass template args with names and runtime types and get)
+	- #parameter(#type type, string name, type default_value, #alias[] attributes)
+	- #function(string name, #type return_type, #parameter[] parameters, #alias[] attributes)
 - attributes
 	- User Defined Attributes UDAs
 - CTFE
@@ -66,7 +72,8 @@
 	+ UFCS functions
 	+ return small complex structs
 	- lower aggregates in IR by replacing phis taking in aggregates with scalar phis. Only non-phi users must remain.
-	- detect all zero members and emit constantZero
+	+ detect all zero members and emit constantZero
+	+ separate func_pass_lower_aggregates pass
 + pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 - array literal
 - slices (need better structs)
@@ -110,9 +117,11 @@ o dll linking
 	- enum type
 - constant folding << >> >>> shifts needs to know type of left operand to mask the shift size
 
+
 [CLI]
 - -run option
 - -i option (compile all imported files)
+
 
 [Testing]
 - test escape sequences
@@ -127,20 +136,31 @@ o dll linking
 - test all expressions that compile with error being used inside other expressions (semantic check must correctly assign error type and check it when necessary)
 - make sure that `this` is being used outside methods
 - test that sections get correct offsets in executable
+- split struct tests
+
 
 [Backend]
 - implement _chkstk and call it at the start of functions with frame size > 1 page
 
+
+[ABI]
++ separate ABI lowering pass for win64
+
+
 [Error messages]
 - in error on unexpected EOF show unterminated ([{ symbol
+
 
 [Optimizations]
 - optimize pointer arithmetic into lea
 - optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
+- tail call
+
 
 [Debug info]
 - Propagate loc through instructions
 - Implement pdb format write/read
+
 
 [Linking / Static data / Globals]
 - Absolute references need relocations emitted (ObjectSymbolRefKind.absolute64)
@@ -155,24 +175,27 @@ o dll linking
 + globals need to be initialized
 x globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
 
+
 [IR]
 - Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
 - IrBuilder must prevent adding instructions from wrong instruction set
 - inline instructions in IR for representing memory operands in x86 LIR
-- small pointer type when basic type is store inline + pointer level for more than 1 indirection level
-- stack layout per IR (use alloca?)
+- IrIndex: small pointer type when basic type is store inline + pointer level for more than 1 indirection level
+- stack layout per IrFunction (use alloca?)
 - don't store self-reference arguments in phi functions
 + store virtual registers, phi functions with arguments in separate arenas
 	vreg will shrink from 7 slots to 4 slots
 	+ need array arena for IR with per-function slices
 - make sure that blocks for splitting critical edges are inserted after successor
 + Remove IR instruction structs, use enum values directly in emitInstr
-- Automatically use zero initialization when possible
++ Automatically use zero initialization when possible
 - Constants
 	- Zeroinitializer
 	- Add constant kind that inits all elements of an array with the same value
 	- expression constant (required for expressions involving link-time constants like global address)
 - Validate all instructions
+- use actual arrays for users instead of linked lists
+
 
 [Register allocator]
 + Do liveness + RA together on each function
@@ -191,7 +214,10 @@ x globals need to have IrIndex to initializer and coexist with raw data initiali
 - Stack parameters need to have cached stack slot
 - optimize multiple spills into single spill at definition
 - For stack to stack moves in move solver we always spill scratch register. Check if there is free register available.
+- Spilling into xmm registers
 
+
+[Old / Done]
 + default arguments
 + mutable globals need their own read-write section
 + AST Index
@@ -317,8 +343,3 @@ arrays
 + break continue for loops
 
 + pointer
-
-
-Optimizations:
-- tail call
-- merge stack allocations for local vars and parameters

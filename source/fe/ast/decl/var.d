@@ -130,70 +130,39 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 	TypeNode* varType = c.getAstType(v.type).foldAliases(c);
 	c.assertf(!v.isGlobal, v.loc, "Variable is global");
 
-	if (c.buildDebug)
-		v.flags |= VariableFlags.forceMemoryStorage;
-
-	// Allocate stack slot for parameter that is passed via stack
-	bool isParamWithSlot = v.isParameter && gen.fun.backendData.getCallConv(c).isParamOnStack(v.scopeIndex);
-	bool needsStackSlot = v.forceMemoryStorage || isParamWithSlot || v.isAddressTaken;
-	//bool needsStackSlot = v.forceMemoryStorage || v.isAddressTaken;
-
-	IrIndex initializer;
-	if (needsStackSlot)
+	IrIndex valueType = varType.gen_ir_type(c);
+	if (v.isParameter)
 	{
-		auto slotKind = v.isParameter ? StackSlotKind.parameter : StackSlotKind.local;
-		IrIndex irType = varType.gen_ir_type(c);
-		ExprValueKind valueKind = ExprValueKind.ptr_to_data;
+		// allocate new variable
+		v.irValue = ExprValue(gen.builder.newIrVarIndex(valueType), ExprValueKind.value, IsLvalue.yes);
 
-		// pointer is pushed on the stack, so pointer to pointer to data
-		if (v.isParameter && varType.isPassByPtr(c)) {
-			irType = c.types.appendPtr(irType);
-			valueKind = ExprValueKind.ptr_to_ptr_to_data;
-		}
-
-		// allocate stack slot
-		IrIndex slot = gen.fun.backendData.stackLayout.addStackItem(c, irType, slotKind, v.scopeIndex);
-		v.irValue = ExprValue(slot, valueKind, IsLvalue.yes);
+		ExtraInstrArgs extra = {type : valueType};
+		InstrWithResult param = gen.builder.emitInstr!(IrOpcode.parameter)(gen.ir.entryBasicBlock, extra);
+		gen.ir.get!IrInstr_parameter(param.instruction).index(gen.ir) = v.scopeIndex;
+		store(gen, v.loc, curBlock, v.irValue, param.result);
 	}
 	else
 	{
-		IrIndex valueType = varType.gen_ir_type(c);
-		if (v.isParameter)
+		if (c.buildDebug)
+			v.flags |= VariableFlags.forceMemoryStorage;
+
+		bool needsStackSlot = v.forceMemoryStorage || v.isAddressTaken;
+
+		if (needsStackSlot)
 		{
-			// register parameter input
-			IrIndex type = valueType;
-			if (varType.isPassByPtr(c)) // value is already passed as a pointer
-			{
-				type = c.types.appendPtr(type);
-				IrArgSize argSize = sizeToIrArgSize(c.types.typeSize(type), c);
-				ExtraInstrArgs extra = {type : type, argSize : argSize};
-				InstrWithResult param = gen.builder.emitInstr!(IrOpcode.parameter)(gen.ir.entryBasicBlock, extra);
-				gen.ir.get!IrInstr_parameter(param.instruction).index(gen.ir) = v.scopeIndex;
-				v.irValue = ExprValue(param.result, ExprValueKind.ptr_to_data, IsLvalue.yes);
-			}
-			else
-			{
-				IrArgSize argSize = sizeToIrArgSize(c.types.typeSize(type), c);
+			IrIndex irType = varType.gen_ir_type(c);
+			ExprValueKind valueKind = ExprValueKind.ptr_to_data;
 
-				// allocate new variable
-				v.irValue = ExprValue(gen.builder.newIrVarIndex(type), ExprValueKind.value, IsLvalue.yes);
-
-				ExtraInstrArgs extra = {type : type, argSize : argSize};
-				InstrWithResult param = gen.builder.emitInstr!(IrOpcode.parameter)(gen.ir.entryBasicBlock, extra);
-				gen.ir.get!IrInstr_parameter(param.instruction).index(gen.ir) = v.scopeIndex;
-
-				store(gen, v.loc, curBlock, v.irValue, param.result);
-			}
+			// allocate stack slot
+			IrIndex slot = gen.fun.backendData.stackLayout.addStackItem(c, irType, StackSlotKind.local, v.scopeIndex);
+			v.irValue = ExprValue(slot, valueKind, IsLvalue.yes);
 		}
 		else
 		{
 			// allocate new variable
 			v.irValue = ExprValue(gen.builder.newIrVarIndex(valueType), ExprValueKind.value, IsLvalue.yes);
 		}
-	}
 
-	if (!v.isParameter)
-	{
 		// initialize variable by default or with user-specified value
 		if (v.initializer)
 		{

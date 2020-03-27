@@ -79,7 +79,9 @@ struct IrMirror(T)
 
 T[] makeParallelArray(T)(CompilationContext* context, uint size)
 {
-	auto result = cast(T[])context.tempBuffer.voidPut(size);
+	static assert(T.sizeof % uint.sizeof == 0, "T.sizeof is not multiple of uint.sizeof");
+	enum size_t numSlotsPerItem = divCeil(T.sizeof, uint.sizeof);
+	auto result = cast(T[])context.tempBuffer.voidPut(size * numSlotsPerItem);
 	result[] = T.init;
 	return result;
 }
@@ -169,7 +171,7 @@ struct IrFunction
 	{
 		enum IrValueKind kind = getIrValueKind!T;
 		assert(index.kind != IrValueKind.none, "null index");
-		assert(index.kind == kind, format("%s != %s", index.kind, kind));
+		assert(index.kind == kind, format("expected %s, got %s", kind, index.kind));
 		static if (kind == IrValueKind.instruction)
 			return *cast(T*)(&instrPtr[index.storageUintIndex]);
 		else static if (kind == IrValueKind.listItem)
@@ -327,6 +329,25 @@ void removeInstruction(IrFunction* ir, IrIndex instrIndex)
 		ir.prevInstr(ir.nextInstr(instrIndex)) = ir.prevInstr(instrIndex);
 	else if (ir.nextInstr(instrIndex).isBasicBlock)
 		ir.getBlock(ir.nextInstr(instrIndex)).lastInstr = ir.prevInstr(instrIndex);
+	else assert(false);
+}
+
+// ditto
+void replaceInstruction(IrFunction* ir, IrIndex instrIndex, IrIndex replaceBy)
+{
+	ir.prevInstr(replaceBy) = ir.prevInstr(instrIndex);
+	ir.nextInstr(replaceBy) = ir.nextInstr(instrIndex);
+
+	if (ir.prevInstr(instrIndex).isInstruction)
+		ir.nextInstr(ir.prevInstr(instrIndex)) = replaceBy;
+	else if (ir.prevInstr(instrIndex).isBasicBlock)
+		ir.getBlock(ir.prevInstr(instrIndex)).firstInstr = replaceBy;
+	else assert(false);
+
+	if (ir.nextInstr(instrIndex).isInstruction)
+		ir.prevInstr(ir.nextInstr(instrIndex)) = replaceBy;
+	else if (ir.nextInstr(instrIndex).isBasicBlock)
+		ir.getBlock(ir.nextInstr(instrIndex)).lastInstr = replaceBy;
 	else assert(false);
 }
 

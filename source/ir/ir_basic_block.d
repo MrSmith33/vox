@@ -152,7 +152,7 @@ struct InstrIterator
 	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
 		IrIndex current = firstInstr;
 		// will be 'none' if no instructions in basic block
-		// fisrt and last instructions point to basick block in prevInstr, nextInstr
+		// first and last instructions point to basick block in prevInstr, nextInstr
 		while (current.isInstruction)
 		{
 			IrIndex indexCopy = current;

@@ -54,13 +54,3 @@ struct IrPhiArg
 	IrIndex basicBlock;
 	IrIndex nextListItem;
 }
-
-/// Per Basic Block info for unresolved Phi functions, when CFG is incomplete.
-/// Finished IR contains no such values
-@(IrValueKind.listItem)
-struct IrIncompletePhi
-{
-	IrIndex var;
-	IrIndex phi;
-	IrIndex nextListItem;
-}

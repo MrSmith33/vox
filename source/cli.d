@@ -47,6 +47,8 @@ int runCli(string[] args)
 			"print-ast-sema", "Print AST after semantic analisys.", &driver.context.printAstSema,
 			"print-ir", "Print IR after AST to IR pass.", &driver.context.printIr,
 			"print-ir-opt", "Print IR after optimization.", &driver.context.printIrOpt,
+			"print-ir-lower", "Print IR after all lowering passes.", &driver.context.printIrLower,
+			"print-ir-lower-each", "Print IR after each lowering pass.", &driver.context.printIrLowerEach,
 			"print-lir", "Print Print LIR after IR to LIR pass.", &driver.context.printLir,
 			"print-lir-ra", "Print LIR after register allocation pass.", &driver.context.printLirRA,
 			"print-liveness", "Print liveness analisys info.", &driver.context.printLiveIntervals,

@@ -19,6 +19,7 @@ struct IrDumpContext
 	FuncDumpSettings* settings; // nullable, uses default if null
 	TextSink* sink; // nullable, writes to stdout if null
 	LivenessInfo* liveness; // nullable, doesn't print liveness if null
+	string passName; // string to printed after function signature. Optional
 }
 
 struct InstrPrintInfo
@@ -101,9 +102,9 @@ void dumpTypes(ref TextSink sink, ref CompilationContext ctx)
 	}
 }
 
-void dumpFunction(CompilationContext* context, IrFunction* ir)
+void dumpFunction(CompilationContext* context, IrFunction* ir, string passName = null)
 {
-	IrDumpContext dumpCtx = { context : context, ir : ir };
+	IrDumpContext dumpCtx = { context : context, ir : ir, passName : passName };
 	dumpFunction(&dumpCtx);
 }
 
@@ -288,9 +289,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 	}
 
 	void printRegUses(IrIndex result) {
-		if (result.isPhysReg) return;
-		if (result.isStackSlot) return;
-
+		if (!result.isVirtReg) return;
 		auto vreg = &ir.getVirtReg(result);
 		sink.put(" users [");
 		foreach (i, index; vreg.users.range(ir))
@@ -496,7 +495,7 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref CompilationContext
 		case phi: sink.formattedWrite("phi%s", index.storageUintIndex); break;
 		case stackSlot: sink.formattedWrite("s%s", index.storageUintIndex); break;
 		case virtualRegister: sink.formattedWrite("v%s", index.storageUintIndex); break;
-		case physicalRegister: sink.formattedWrite("r%s", index.storageUintIndex); break;
+		case physicalRegister: sink.formattedWrite("r%s<c%s s%s>", index.physRegIndex, index.physRegClass, index.physRegSize); break;
 		case type: dumpIrType(sink, context, index); break;
 		case variable: assert(false);
 		case func: sink.formattedWrite("f%s", index.storageUintIndex); break;
@@ -580,7 +579,7 @@ void dumpIrInstr(ref InstrPrintInfo p)
 			break;
 
 		case IrOpcode.ret:
-			p.sink.put("     return");
+			p.sink.put("    return");
 			break;
 
 		case IrOpcode.ret_val:

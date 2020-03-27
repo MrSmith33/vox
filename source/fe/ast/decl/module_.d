@@ -83,7 +83,7 @@ void ir_gen_module(ref IrGenState gen, ModuleDeclNode* m)
 		{
 			m.irModule.addFunction(c, irData);
 			if (c.validateIr) validateIrFunction(c, irData);
-			if (c.printIr && c.printDumpOf(func)) dumpFunction(c, irData);
+			if (c.printIr && c.printDumpOf(func)) dumpFunction(c, irData, "IR gen");
 		}
 	}
 }

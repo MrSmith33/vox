@@ -7,7 +7,6 @@ module fe.names_register;
 
 import std.stdio;
 import std.string : format;
-public import std.typecons : Flag, Yes, No;
 import all;
 
 

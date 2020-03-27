@@ -48,7 +48,7 @@ import all;
 enum STACK_ITEM_SIZE = 8; // x86_64
 
 /// Arranges items on the stack according to calling convention
-void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode func)
+void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 {
 	if (func.isExternal) return;
 
@@ -83,7 +83,7 @@ void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, r
 		baseReg = func.callingConvention.framePointer;
 	}*/
 
-	CallConv* callConv = func.backendData.getCallConv(&context);
+	CallConv* callConv = func.backendData.getCallConv(context);
 	IrIndex baseReg = callConv.stackPointer;
 
 	// 1, 2, 4, 8, 16
@@ -164,7 +164,7 @@ void pass_stack_layout(ref CompilationContext context, ref ModuleDeclNode mod, r
 		slot.baseReg = baseReg;
 	}
 
-	if (context.printStackLayout) layout.dump(&context);
+	if (context.printStackLayout) layout.dump(context);
 }
 
 enum StackSlotKind : ubyte {

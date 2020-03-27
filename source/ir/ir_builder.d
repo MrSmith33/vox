@@ -43,6 +43,7 @@ struct ExtraInstrArgs
 	IrIndex result;
 
 	/// When instruction has virtual regiter as result, result.type is set to 'type'
+	/// Not set if 'result' is present
 	IrIndex type;
 }
 
@@ -292,7 +293,7 @@ struct IrBuilder
 	/// Sealed block is not necessarily filled.
 	/// Ignores already sealed blocks.
 	void sealBlock(IrIndex basicBlockToSeal) {
-		//dumpFunction(context, ir);
+		//dumpFunction(context, ir, "IR gen(Seal block)");
 		version(IrPrint) writefln("[IR] seal %s", basicBlockToSeal);
 
 		IrBasicBlock* bb = &ir.getBlock(basicBlockToSeal);
@@ -348,7 +349,7 @@ struct IrBuilder
 
 	/// Puts `user` into a list of users of `used` value
 	void addUser(IrIndex user, IrIndex used) {
-		//if (!used.isDefined) dumpFunction(*ir, *context);
+		//if (!used.isDefined) dumpFunction(*ir, *context, "IR gen(addUser));
 		context.assertf(user.isDefined && used.isDefined, "%s addUser(%s, %s)",
 			context.idString(ir.backendData.name), user, used);
 		final switch (used.kind) with(IrValueKind) {
@@ -377,6 +378,7 @@ struct IrBuilder
 	/// Returns InstrWithResult (if instr has result) or IrIndex instruction otherwise
 	/// Always returns InstrWithResult when instruction has variadic result
 	///   in this case result can be null if no result is requested
+	/// Inserts instruction at the end of blockIndex
 	/// See: ExtraInstrArgs
 	auto emitInstr(alias I)(IrIndex blockIndex, IrIndex[] args ...)
 	{
@@ -394,6 +396,34 @@ struct IrBuilder
 		} else {
 			IrIndex result = emitInstr!I(extra, args);
 			appendBlockInstr(blockIndex, result);
+			return result;
+		}
+	}
+
+	/// ditto, but inserts before instruction
+	auto emitInstrBefore(alias I)(IrIndex instrBefore, ExtraInstrArgs extra, IrIndex[] args ...)
+	{
+		static if (getInstrInfo!I.mayHaveResult) {
+			InstrWithResult result = emitInstr!I(extra, args);
+			insertBeforeInstr(instrBefore, result.instruction);
+			return result;
+		} else {
+			IrIndex result = emitInstr!I(extra, args);
+			insertBeforeInstr(instrBefore, result);
+			return result;
+		}
+	}
+
+	/// ditto, but inserts after instruction instead of block
+	auto emitInstrAfter(alias I)(IrIndex instrAfter, ExtraInstrArgs extra, IrIndex[] args ...)
+	{
+		static if (getInstrInfo!I.mayHaveResult) {
+			InstrWithResult result = emitInstr!I(extra, args);
+			insertAfterInstr(instrAfter, result.instruction);
+			return result;
+		} else {
+			IrIndex result = emitInstr!I(extra, args);
+			insertAfterInstr(instrAfter, result);
 			return result;
 		}
 	}
@@ -450,10 +480,9 @@ struct IrBuilder
 					if (extra.result.isVirtReg) {
 						IrVirtualRegister* virtReg = &ir.getVirtReg(extra.result);
 						virtReg.definition = instr;
-						assert(extra.type.isType, format("Invalid extra.type (%s)", extra.type));
-						virtReg.type = extra.type;
 					}
 				} else {
+					assert(extra.type.isType, format("Invalid extra.type (%s)", extra.type));
 					instrHeader.result(ir) = addVirtualRegister(instr, extra.type);
 				}
 			}
@@ -770,12 +799,7 @@ struct IrBuilder
 		// redirect users
 		redirectVregUsersTo(fromSlot, toSlot);
 		// redirect definition (phi or instr)
-		IrIndex definition = ir.getVirtReg(fromSlot).definition;
-		switch (definition.kind) {
-			case IrValueKind.phi: ir.getPhi(definition).result = toSlot; break;
-			case IrValueKind.instruction: ir.get!IrInstrHeader(definition).result(ir) = toSlot; break;
-			default: context.internal_error("Invalid definition %s of %s", definition.kind, fromSlot);
-		}
+		redirectVregDefinitionTo(fromSlot, toSlot);
 		// move data
 		version(IrPrint) writefln("[IR] moveVreg %s -> %s", fromSlot, toSlot);
 		ir.getVirtReg(toSlot) = ir.getVirtReg(fromSlot);
@@ -865,7 +889,7 @@ struct IrBuilder
 	private IrIndex addPhiOperands(IrIndex blockIndex, IrIndex variable, IrIndex phi)
 	{
 		version(IrPrint) writefln("[IR] addPhiOperands %s %s %s %s", blockIndex, variable, phi, ir.get!IrPhi(phi).result);
-		//dumpFunction(context, ir);
+		//dumpFunction(context, ir, "IR gen(addPhiOperands)");
 		// Determine operands from predecessors
 		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(ir))
 		{
@@ -998,10 +1022,10 @@ struct IrBuilder
 		}
 	}
 
-	/// Replaces all 'vreg' uses with `byWhat`
-	void redirectVregUsersTo(IrIndex vreg, IrIndex byWhat) {
+	/// Replaces all 'vreg' uses with `redirectTo`
+	void redirectVregUsersTo(IrIndex vreg, IrIndex redirectTo) {
 		context.assertf(vreg.isVirtReg, "'vreg' must be virtual register, not %s", vreg.kind);
-		version(IrPrint) writefln("[IR] redirectVregUsersTo %s -> %s", vreg, byWhat);
+		version(IrPrint) writefln("[IR] redirectVregUsersTo %s -> %s", vreg, redirectTo);
 
 		SmallVector users = ir.getVirtReg(vreg).users;
 		foreach (size_t i, IrIndex userIndex; users.range(ir))
@@ -1010,19 +1034,29 @@ struct IrBuilder
 				case instruction:
 					foreach (ref IrIndex arg; ir.get!IrInstrHeader(userIndex).args(ir))
 						if (arg == vreg) {
-							arg = byWhat;
-							addUser(userIndex, byWhat);
+							arg = redirectTo;
+							addUser(userIndex, redirectTo);
 						}
 					break;
 				case phi:
 					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(ir))
 						if (phiArg.value == vreg) {
-							phiArg.value = byWhat;
-							addUser(userIndex, byWhat);
+							phiArg.value = redirectTo;
+							addUser(userIndex, redirectTo);
 						}
 					break;
 				default: assert(false);
 			}
+		}
+	}
+
+	/// Redirects `vreg` definition to point to `redirectTo`
+	void redirectVregDefinitionTo(IrIndex vreg, IrIndex redirectTo) {
+		IrIndex definition = ir.getVirtReg(vreg).definition;
+		switch (definition.kind) {
+			case IrValueKind.phi: ir.getPhi(definition).result = redirectTo; break;
+			case IrValueKind.instruction: ir.get!IrInstrHeader(definition).result(ir) = redirectTo; break;
+			default: context.internal_error("Invalid definition %s of %s", definition.kind, vreg);
 		}
 	}
 

@@ -6,7 +6,6 @@ Authors: Andrey Penechko.
 module fe.basictype;
 
 import std.string : format;
-import std.typecons : Flag, Yes, No;
 import all;
 
 enum IrArgSize SIZET_SIZE = IrArgSize.size64;

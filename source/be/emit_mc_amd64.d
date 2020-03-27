@@ -440,14 +440,7 @@ struct CodeEmitter
 							else
 								gen.call(Imm32(0)); // call relative to next instruction
 
-							ObjectSymbolReference r = {
-								fromSymbol : fun.backendData.objectSymIndex,
-								referencedSymbol : callee.backendData.objectSymIndex,
-								refOffset : referenceOffset() - 4,
-								4,
-								ObjectSymbolRefKind.relative32,
-							};
-							context.objSymTab.addReference(r);
+							addRefTo(calleeIndex);
 						}
 						else
 						{
@@ -543,6 +536,19 @@ struct CodeEmitter
 								Register reg = indexToRegister(src);
 								gen.pushq(reg);
 								break;
+
+							// those wont push the address itself, but memory contents
+							/*case stackSlot:
+								MemAddress addr = localVarMemAddress(src);
+								gen.pushq(addr);
+								break;
+
+							case global, func:
+								MemAddress addr = memAddrRipDisp32(0);
+								gen.pushq(addr);
+								addRefTo(src);
+								break;*/
+
 							default:
 								context.internal_error("Cannot encode %s %s in %s %s",
 									cast(Amd64Opcode)instrHeader.op, src, context.idString(fun.backendData.name), instrIndex);
@@ -558,6 +564,36 @@ struct CodeEmitter
 
 			context.assertf(stackPointerExtraOffset == 0, "Unmatched stack size modification");
 		}
+	}
+
+	void addRefTo(IrIndex entity, short offset = 4)
+	{
+		LinkIndex entityIndex;
+		switch (entity.kind) with(IrValueKind)
+		{
+			case global:
+				IrGlobal* global = context.globals.get(entity);
+				entityIndex = global.objectSymIndex;
+				break;
+
+			case func:
+				FunctionDeclNode* func = context.getFunction(entity);
+				entityIndex = func.backendData.objectSymIndex;
+				break;
+
+			default:
+				context.internal_error("addRefTo %s %s", entity, offset);
+				assert(false);
+		}
+
+		ObjectSymbolReference r = {
+			fromSymbol : fun.backendData.objectSymIndex,
+			referencedSymbol : entityIndex,
+			refOffset : referenceOffset() - offset,
+			offset,
+			ObjectSymbolRefKind.relative32,
+		};
+		context.objSymTab.addReference(r);
 	}
 
 	void fixJump(PC fixup, lazy IrIndex targetBlock)
@@ -694,16 +730,7 @@ struct CodeEmitter
 				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.lea(dstReg, addr, ArgType.QWORD);
-
-				IrGlobal* global = context.globals.get(src);
-				ObjectSymbolReference r = {
-					fromSymbol : fun.backendData.objectSymIndex,
-					referencedSymbol : global.objectSymIndex,
-					refOffset : referenceOffset() - 4,
-					4,
-					ObjectSymbolRefKind.relative32,
-				};
-				context.objSymTab.addReference(r);
+				addRefTo(src);
 				break;
 
 			// copy address of function into register
@@ -711,16 +738,7 @@ struct CodeEmitter
 				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.lea(dstReg, addr, ArgType.QWORD);
-
-				FunctionDeclNode* func = context.getFunction(src);
-				ObjectSymbolReference r = {
-					fromSymbol : fun.backendData.objectSymIndex,
-					referencedSymbol : func.backendData.objectSymIndex,
-					refOffset : referenceOffset() - 4,
-					4,
-					ObjectSymbolRefKind.relative32,
-				};
-				context.objSymTab.addReference(r);
+				addRefTo(src);
 				break;
 
 			case MoveType.reg_to_reg:
@@ -752,6 +770,7 @@ struct CodeEmitter
 	// dst must be phys reg
 	void genLoad(IrIndex dst, IrIndex src, ArgType argType)
 	{
+		//argType = cast(ArgType)dst.physRegSize; // TODO: this should be enough for loads
 		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot || src.isGlobal);
 		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
 
@@ -769,19 +788,9 @@ struct CodeEmitter
 				break;
 
 			case global:
-				IrGlobal* global = context.globals.get(src);
-
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.mov(dstReg, addr, argType);
-
-				ObjectSymbolReference r = {
-					fromSymbol : fun.backendData.objectSymIndex,
-					referencedSymbol : global.objectSymIndex,
-					refOffset : referenceOffset() - 4,
-					4,
-					ObjectSymbolRefKind.relative32,
-				};
-				context.objSymTab.addReference(r);
+				addRefTo(src);
 				break;
 
 			default:
@@ -845,35 +854,15 @@ struct CodeEmitter
 				break;
 			case const_to_global:
 				uint con = context.constants.get(src).i32;
-				IrGlobal* global = context.globals.get(dst);
-
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.mov(addr, Imm32(con), argType);
-
-				ObjectSymbolReference r = {
-					fromSymbol : fun.backendData.objectSymIndex,
-					referencedSymbol : global.objectSymIndex,
-					refOffset : referenceOffset() - 8,
-					8,
-					ObjectSymbolRefKind.relative32,
-				};
-				context.objSymTab.addReference(r);
+				addRefTo(dst, 8);
 				break;
 			case reg_to_global:
 				Register srcReg = indexToRegister(src);
-				IrGlobal* global = context.globals.get(dst);
-
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.mov(addr, srcReg, argType);
-
-				ObjectSymbolReference r = {
-					fromSymbol : fun.backendData.objectSymIndex,
-					referencedSymbol : global.objectSymIndex,
-					refOffset : referenceOffset() - 4,
-					4,
-					ObjectSymbolRefKind.relative32,
-				};
-				context.objSymTab.addReference(r);
+				addRefTo(dst);
 				break;
 			default:
 				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);

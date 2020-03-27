@@ -48,7 +48,7 @@ void pass_live_intervals(CompilationContext* context, ModuleDeclNode* mod, Funct
 	IrFunction* lirData = context.getAst!IrFunction(fun.backendData.lirData);
 	lirData.orderBlocks;
 	lirData.assignSequentialBlockIndices;
-	//dumpFunction(context, lirData);
+	//dumpFunction(context, lirData, "Live");
 	pass_live_intervals_func(context, lirData, liveness);
 
 	if (context.printLiveIntervals && context.printDumpOf(fun))
@@ -66,7 +66,8 @@ void pass_live_intervals(CompilationContext* context, ModuleDeclNode* mod, Funct
 			context : context,
 			ir : lirData,
 			settings : &set,
-			liveness : liveness
+			liveness : liveness,
+			passName : "Live"
 		};
 		dumpFunction(&dumpCtx);
 	}

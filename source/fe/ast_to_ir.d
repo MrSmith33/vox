@@ -288,7 +288,7 @@ IrIndex load(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrIndex s
 				return gen.builder.emitInstr!(IrOpcode.load_aggregate)(currentBlock, extra, source).result;
 			else
 			{
-				extra.argSize = resultType.getTypeArgSize(gen.ir, c);
+				extra.argSize = resultType.getTypeArgSize(c);
 				return gen.builder.emitInstr!(IrOpcode.load)(currentBlock, extra, source).result;
 			}
 
@@ -331,23 +331,37 @@ IrIndex getStructMember(ref IrGenState gen, IrIndex currentBlock, IrIndex aggr, 
 {
 	CompilationContext* c = gen.context;
 	IrIndex aggrType = gen.ir.getValueType(c, aggr);
-	c.assertf(aggr.isConstantAggregate, "%s", aggr.kind);
+
 	foreach (i, IrIndex memberIndex; indicies)
 	{
-		switch(aggrType.typeKind)
-		{
-			case IrTypeKind.struct_t:
-				c.assertf(memberIndex.isSimpleConstant,
-					"Structs can only be indexed with constants, not with %s", memberIndex);
-				uint memberIndexVal = c.constants.get(memberIndex).i32;
-				aggrType = c.types.getStructMemberType(aggrType, memberIndexVal, *c);
-				aggr = c.constants.getAggregateMember(aggr, memberIndexVal);
-				break;
+		c.assertf(memberIndex.isSimpleConstant,
+			"Structs can only be indexed with constants, not with %s", memberIndex);
+		gen.gepBuf[i+1] = memberIndex;
+		c.assertf(aggrType.isTypeStruct, "Cannot index %s", IrIndexDump(aggrType, c, gen.ir));
 
-			default: c.internal_error("Cannot index %s", IrIndexDump(aggrType, c, gen.ir)); assert(false);
+		aggrType = c.types.getAggregateMember(aggrType, c, memberIndex).type;
+
+		if (aggr.kind == IrValueKind.constantAggregate || aggr.kind == IrValueKind.constantZero)
+		{
+			uint memberIndexVal = c.constants.get(memberIndex).i32;
+			aggr = c.constants.getAggregateMember(aggr, memberIndexVal);
 		}
 	}
-	assert(aggr.isDefined);
+
+	switch (aggr.kind) with(IrValueKind) {
+		case constantAggregate, constantZero, global:
+			assert(aggr.isDefined);
+			break;
+		case virtualRegister:
+			ExtraInstrArgs extra = { type : aggrType };
+			IrIndex[] args = gen.gepBuf[0..indicies.length+1];
+			args[0] = aggr;
+			aggr = gen.builder.emitInstr!(IrOpcode.get_element)(currentBlock, extra, args).result;
+			break;
+		default:
+			c.internal_error("Cannot read struct member from %s", aggr.kind); assert(false);
+	}
+
 	return aggr;
 }
 
@@ -385,8 +399,7 @@ IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrInd
 			case IrTypeKind.struct_t:
 				c.assertf(memberIndex.isSimpleConstant, loc,
 					"Structs can only be indexed with constants, not with %s", memberIndex);
-				uint memberIndexVal = c.constants.get(memberIndex).i32;
-				aggrType = c.types.getStructMemberType(aggrType, memberIndexVal, *c);
+				aggrType = c.types.getAggregateMember(aggrType, c, memberIndex).type;
 				break;
 
 			case IrTypeKind.func_t:
@@ -394,6 +407,9 @@ IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrInd
 				break;
 		}
 	}
+
+	if (indicies.length == 0 && ptrIndex.isConstantZero)
+		return aggrPtr; // skip no op GEP
 
 	ExtraInstrArgs extra = { type : c.types.appendPtr(aggrType) };
 	IrIndex[] args = gen.gepBuf[0..indicies.length+2];

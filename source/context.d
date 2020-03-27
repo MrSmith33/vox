@@ -153,6 +153,11 @@ struct CompilationContext
 	bool printAstSema = false;
 	/// Print IR after AST to IR pass
 	bool printIr = false;
+	/// Print IR after all IR lowering passes
+	/// Will not activate if printIrLowerEach is true
+	bool printIrLower = false;
+	/// Print IR after each IR lowering pass
+	bool printIrLowerEach = false;
 	/// Print IR after optimization pass
 	bool printIrOpt = false;
 	/// Print LIR after IR to LIR pass

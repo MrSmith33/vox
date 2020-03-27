@@ -1328,10 +1328,26 @@ immutable test64 = q{--- test64
 		Micro a;
 		Micro b;
 	}
+	struct Single_u8  { u8  a; }
+	struct Single_u16 { u16 a; }
+	struct Single_u32 { u32 a; }
+	struct Single_u64 { u64 a; }
 	// constructor is a function (expression) that returns struct type
 	// can compile it into create_aggregate instruction
 	// - default initialization of members
 	// + return result (by ptr)
+	Small returnSmallStruct() {
+		return Small(10, 42);
+	}
+	Single_u8  return_Single_u8_const () { return Single_u8 (42); }
+	Single_u16 return_Single_u16_const() { return Single_u16(42); }
+	Single_u32 return_Single_u32_const() { return Single_u32(42); }
+	Single_u64 return_Single_u64_const() { return Single_u64(42); }
+
+	Single_u8  return_Single_u8 (u8  val) { return Single_u8 (val); }
+	Single_u16 return_Single_u16(u16 val) { return Single_u16(val); }
+	Single_u32 return_Single_u32(u32 val) { return Single_u32(val); }
+	Single_u64 return_Single_u64(u64 val) { return Single_u64(val); }
 	// return aggregate by storing into hidden first parameter
 	Big returnBigStruct() {
 		return Big(10, 42);
@@ -1339,9 +1355,6 @@ immutable test64 = q{--- test64
 	Big returnBigStruct2() {
 		Big res = Big(10, 42);
 		return res;
-	}
-	Small returnSmallStruct() {
-		return Small(10, 42);
 	}
 	Small buildSmallStruct(i32 a, i32 b) {
 		return Small(a, b);
@@ -1425,8 +1438,31 @@ void tester64(ref TestContext ctx) {
 		Micro a;
 		Micro b;
 	}
+	static struct Single_u8  { ubyte  a; }
+	static struct Single_u16 { ushort a; }
+	static struct Single_u32 { uint   a; }
+	static struct Single_u64 { ulong  a; }
+
 	auto returnSmallStruct = ctx.getFunctionPtr!(Small)("returnSmallStruct");
 	assert(returnSmallStruct() == Small(10, 42));
+
+	auto return_Single_u8_const = ctx.getFunctionPtr!(Single_u8)("return_Single_u8_const");
+	assert(return_Single_u8_const() == Single_u8(42));
+	auto return_Single_u16_const = ctx.getFunctionPtr!(Single_u16)("return_Single_u16_const");
+	assert(return_Single_u16_const() == Single_u16(42));
+	auto return_Single_u32_const = ctx.getFunctionPtr!(Single_u32)("return_Single_u32_const");
+	assert(return_Single_u32_const() == Single_u32(42));
+	auto return_Single_u64_const = ctx.getFunctionPtr!(Single_u64)("return_Single_u64_const");
+	assert(return_Single_u64_const() == Single_u64(42));
+
+	auto return_Single_u8 = ctx.getFunctionPtr!(Single_u8, ubyte)("return_Single_u8");
+	assert(return_Single_u8(42) == Single_u8(42));
+	auto return_Single_u16 = ctx.getFunctionPtr!(Single_u16, ushort)("return_Single_u16");
+	assert(return_Single_u16(42) == Single_u16(42));
+	auto return_Single_u32 = ctx.getFunctionPtr!(Single_u32, uint)("return_Single_u32");
+	assert(return_Single_u32(42) == Single_u32(42));
+	auto return_Single_u64 = ctx.getFunctionPtr!(Single_u64, ulong)("return_Single_u64");
+	assert(return_Single_u64(42) == Single_u64(42));
 
 	auto returnBigStruct = ctx.getFunctionPtr!(Big)("returnBigStruct");
 	assert(returnBigStruct() == Big(10, 42));

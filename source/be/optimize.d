@@ -26,7 +26,7 @@ void pass_optimize_ir(ref CompilationContext context, ref ModuleDeclNode mod, re
 {
 	if (func.isExternal) return;
 
-	FuncPassIr[] passes = [&func_pass_invert_conditions, &func_pass_remove_dead_code, &func_pass_lower_gep];
+	FuncPassIr[] passes = [&func_pass_invert_conditions, &func_pass_remove_dead_code];
 	IrBuilder builder;
 
 	IrFunction* irData = context.getAst!IrFunction(func.backendData.irData);
@@ -35,7 +35,7 @@ void pass_optimize_ir(ref CompilationContext context, ref ModuleDeclNode mod, re
 		pass(&context, irData, builder);
 		if (context.validateIr)
 			validateIrFunction(&context, irData);
-		if (context.printIrOpt && context.printDumpOf(&func)) dumpFunction(&context, irData);
+		if (context.printIrOpt && context.printDumpOf(&func)) dumpFunction(&context, irData, "IR opt");
 	}
 	builder.finalizeIr;
 }
@@ -94,137 +94,6 @@ void func_pass_remove_dead_code(CompilationContext* context, IrFunction* ir, ref
 			}
 			removeInstruction(ir, instrIndex);
 			//writefln("remove dead %s", instrIndex);
-		}
-	}
-}
-
-// TODO some typecasts are needed for correct typing
-void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrIndex, ref IrInstrHeader instrHeader)
-{
-	IrIndex buildOffset(IrIndex basePtr, long offsetVal, IrIndex resultType) {
-		if (offsetVal == 0) {
-			// Shortcut for 0-th index
-			IrIndex basePtrType = getValueType(basePtr, builder.ir, context);
-			// TODO: prefer proper typing for now, until IR lowering is implemented
-			//if (basePtrType == resultType) return basePtr;
-
-			ExtraInstrArgs extra = { type : resultType };
-			InstrWithResult instr = builder.emitInstr!(IrOpcode.conv)(extra, basePtr);
-			builder.insertBeforeInstr(instrIndex, instr.instruction);
-			return instr.result;
-		} else {
-			IrIndex offset = context.constants.add(offsetVal, IsSigned.yes);
-
-			ExtraInstrArgs extra = { type : resultType };
-			InstrWithResult addressInstr = builder.emitInstr!(IrOpcode.add)(extra, basePtr, offset);
-			builder.insertBeforeInstr(instrIndex, addressInstr.instruction);
-
-			return addressInstr.result;
-		}
-	}
-
-	IrIndex buildIndex(IrIndex basePtr, IrIndex index, uint elemSize, IrIndex resultType)
-	{
-		IrIndex scale = context.constants.add(elemSize, IsSigned.no);
-		IrIndex indexVal = index;
-
-		if (elemSize > 1) {
-			ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
-			InstrWithResult offsetInstr = builder.emitInstr!(IrOpcode.umul)(extra1, index, scale);
-			builder.insertBeforeInstr(instrIndex, offsetInstr.instruction);
-			indexVal = offsetInstr.result;
-		}
-
-		ExtraInstrArgs extra2 = { type : resultType };
-		InstrWithResult addressInstr = builder.emitInstr!(IrOpcode.add)(extra2, basePtr, indexVal);
-		builder.insertBeforeInstr(instrIndex, addressInstr.instruction);
-
-		return addressInstr.result;
-	}
-
-	IrIndex aggrPtr = instrHeader.arg(builder.ir, 0); // aggregate ptr
-	IrIndex aggrPtrType = getValueType(aggrPtr, builder.ir, context);
-
-	context.assertf(aggrPtrType.isTypePointer,
-		"First argument to GEP instruction must be pointer, not %s", aggrPtr.typeKind);
-
-	IrIndex aggrType = context.types.getPointerBaseType(aggrPtrType);
-	uint aggrSize = context.types.typeSize(aggrType);
-
-	IrIndex firstIndex = instrHeader.arg(builder.ir, 1);
-
-	if (firstIndex.isSimpleConstant) {
-		long indexVal = context.constants.get(firstIndex).i64;
-		long offset = indexVal * aggrSize;
-		aggrPtr = buildOffset(aggrPtr, offset, aggrPtrType);
-	} else {
-		aggrPtr = buildIndex(aggrPtr, firstIndex, aggrSize, aggrPtrType);
-	}
-
-	foreach(IrIndex memberIndex; instrHeader.args(builder.ir)[2..$])
-	{
-		final switch(aggrType.typeKind)
-		{
-			case IrTypeKind.basic:
-				context.internal_error("Cannot index basic type %s", aggrType.typeKind);
-				break;
-
-			case IrTypeKind.pointer:
-				context.internal_error("Cannot index pointer with GEP instruction, use load first");
-				break;
-
-			case IrTypeKind.array:
-				IrIndex elemType = context.types.getArrayElementType(aggrType);
-				IrIndex elemPtrType = context.types.appendPtr(elemType);
-				uint elemSize = context.types.typeSize(elemType);
-
-				if (memberIndex.isSimpleConstant) {
-					long indexVal = context.constants.get(memberIndex).i64;
-					long offset = indexVal * elemSize;
-					aggrPtr = buildOffset(aggrPtr, offset, elemPtrType);
-				} else {
-					aggrPtr = buildIndex(aggrPtr, memberIndex, elemSize, elemPtrType);
-				}
-
-				aggrType = elemType;
-				break;
-
-			case IrTypeKind.struct_t:
-				context.assertf(memberIndex.isSimpleConstant, "Structs can only be indexed with constants, not with %s", memberIndex);
-
-				long memberIndexVal = context.constants.get(memberIndex).i64;
-				IrTypeStructMember[] members = context.types.get!IrTypeStruct(aggrType).members;
-
-				context.assertf(memberIndexVal < members.length,
-					"Indexing member %s of %s-member struct",
-					memberIndexVal, members.length);
-
-				IrTypeStructMember member = members[memberIndexVal];
-				IrIndex memberPtrType = context.types.appendPtr(member.type);
-
-				aggrPtr = buildOffset(aggrPtr, member.offset, memberPtrType);
-				aggrType = member.type;
-				break;
-
-			case IrTypeKind.func_t:
-				context.internal_error("Cannot index function type");
-				break;
-		}
-	}
-
-	builder.redirectVregUsersTo(instrHeader.result(builder.ir), aggrPtr);
-	removeInstruction(builder.ir, instrIndex);
-}
-
-void func_pass_lower_gep(CompilationContext* context, IrFunction* ir, ref IrBuilder builder)
-{
-	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
-	{
-		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
-		{
-			if (cast(IrOpcode)instrHeader.op == IrOpcode.get_element_ptr) {
-				lowerGEP(context, builder, instrIndex, instrHeader);
-			}
 		}
 	}
 }

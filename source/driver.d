@@ -72,14 +72,15 @@ immutable CompilePassGlobal[] commonPasses = [
 	global_pass("Optimize", &pass_optimize_ir),
 
 	global_pass(null, &run_ir_to_lir_liveness_and_reg_alloc, [
+		CompilePassPerFunction("IR lower", null),
 		CompilePassPerFunction("IR to LIR AMD64", null),
 		// IR liveness
 		CompilePassPerFunction("Live intervals", null),
 		// IR regalloc
-		CompilePassPerFunction("Linear scan", null)
+		CompilePassPerFunction("Linear scan", null),
+		// Stack layout
+		CompilePassPerFunction("Stack layout", null),
 	]),
-	// Stack layout
-	global_pass("Stack layout", &pass_stack_layout),
 
 	// LIR -> machine code
 	global_pass("Code gen", &pass_emit_mc_amd64),
@@ -145,9 +146,11 @@ void run_module_pass(ref CompilationContext context, ref ModuleDeclNode mod, Com
 
 void run_ir_to_lir_liveness_and_reg_alloc(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
-	CompilePassPerFunction* ir_to_lir_pass = &subPasses[0].subPasses[0];
-	CompilePassPerFunction* liveness_pass = &subPasses[0].subPasses[1];
-	CompilePassPerFunction* ra_pass = &subPasses[0].subPasses[2];
+	CompilePassPerFunction* ir_lower_pass = &subPasses[0].subPasses[0];
+	CompilePassPerFunction* ir_to_lir_pass = &subPasses[0].subPasses[1];
+	CompilePassPerFunction* liveness_pass = &subPasses[0].subPasses[2];
+	CompilePassPerFunction* ra_pass = &subPasses[0].subPasses[3];
+	CompilePassPerFunction* stack_layout_pass = &subPasses[0].subPasses[4];
 
 	// gets reused for all functions
 	LivenessInfo liveness;
@@ -168,11 +171,19 @@ void run_ir_to_lir_liveness_and_reg_alloc(ref CompilationContext context, Compil
 
 			context.tempBuffer.clear;
 
-			IrBuilder builder;
 
 			{
 				auto time1 = currTime;
-				pass_ir_to_lir_amd64(&context, &builder, file.mod, func); // throws immediately on unrecoverable error or ICE
+				pass_ir_lower(&context, file.mod, func); // throws immediately on unrecoverable error or ICE
+				auto time2 = currTime;
+				ir_lower_pass.duration += time2-time1;
+				context.throwOnErrors; // throws if there were recoverable error in the pass
+			}
+
+			IrBuilder lirBuilder;
+			{
+				auto time1 = currTime;
+				pass_ir_to_lir_amd64(&context, &lirBuilder, file.mod, func); // throws immediately on unrecoverable error or ICE
 				auto time2 = currTime;
 				ir_to_lir_pass.duration += time2-time1;
 				context.throwOnErrors; // throws if there were recoverable error in the pass
@@ -189,12 +200,20 @@ void run_ir_to_lir_liveness_and_reg_alloc(ref CompilationContext context, Compil
 			{
 				auto time1 = currTime;
 
-				linearScan.builder = &builder;
+				linearScan.builder = &lirBuilder;
 				linearScan.fun = func;
 				pass_linear_scan(&linearScan); // throws immediately on unrecoverable error or ICE
 
 				auto time2 = currTime;
 				ra_pass.duration += time2-time1;
+				context.throwOnErrors; // throws if there were recoverable error in the pass
+			}
+
+			{
+				auto time1 = currTime;
+				pass_stack_layout(&context, func); // throws immediately on unrecoverable error or ICE
+				auto time2 = currTime;
+				stack_layout_pass.duration += time2-time1;
 				context.throwOnErrors; // throws if there were recoverable error in the pass
 			}
 		}
@@ -675,14 +694,14 @@ struct TimeMeasurements
 	void print()
 	{
 		if (numIters == 1) {
-			writef(" % 6.1ss", scaledNumberFmt(iterTimes[0]));
+			writef(" % 6.2ss", scaledNumberFmt(iterTimes[0]));
 		} else {
 			foreach (i; 0..min(numIters, showNumFirstIters))
-				writef(" % 6.1ss", scaledNumberFmt(iterTimes[i]));
-			writef(" % 6.1ss", scaledNumberFmt(totalTime));
-			writef(" % 6.1ss", scaledNumberFmt(avgTime));
-			writef(" % 6.1ss", scaledNumberFmt(minTime));
-			writef(" % 6.1ss", scaledNumberFmt(maxTime));
+				writef(" % 6.2ss", scaledNumberFmt(iterTimes[i]));
+			writef(" % 6.2ss", scaledNumberFmt(totalTime));
+			writef(" % 6.2ss", scaledNumberFmt(avgTime));
+			writef(" % 6.2ss", scaledNumberFmt(minTime));
+			writef(" % 6.2ss", scaledNumberFmt(maxTime));
 		}
 	}
 
