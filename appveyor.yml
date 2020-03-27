@@ -1,0 +1,82 @@
+platform: x64
+environment:
+ matrix:
+  - DC: ldc
+    DVersion: 1.20.1
+    arch: x64
+
+deploy:
+  # Continuous integration builds. New release per tag
+  - provider: GitHub               # Deploy to GitHub Releases
+    description: tag build
+    artifact: tjc.exe
+    auth_token:
+      secure: nyTuWzTasI3OKAKeKG2rfkcvB0nF0R9sY4CqznXGKXJQmiBOp2018pP6AuWC+mxe
+    draft: false
+    prerelease: true
+    on:
+      APPVEYOR_REPO_TAG: true      # deploy on tag push only
+
+  # Continuous integration builds. Updates CI tag release
+  - provider: GitHub
+    release: CI build
+    description: 'CI build $(APPVEYOR_REPO_COMMIT_TIMESTAMP) $(APPVEYOR_REPO_COMMIT)'
+    tag: CI
+    artifact: tjc.exe
+    auth_token:
+      secure: nyTuWzTasI3OKAKeKG2rfkcvB0nF0R9sY4CqznXGKXJQmiBOp2018pP6AuWC+mxe
+    draft: false
+    prerelease: true
+    force_update: true
+    on:
+      branch: master               # release from master branch only
+
+install:
+  - ps: function ResolveLDC
+        {
+            $version = $env:DVersion;
+            $arch = $env:arch;
+            $latest = $version;
+            $urls = @("https://github.com/ldc-developers/ldc/releases/download/v$($version)/ldc2-$($version)-windows-multilib.7z");
+            $env:PATH += ";C:\ldc2-$($version)-windows-multilib\bin";
+            $env:DC = "ldc2";
+            return $urls;
+        }
+  - ps: function SetUpDCompiler
+        {
+            if($env:DC -eq "ldc"){
+                $env:DC = "ldmd2";
+                $env:DMD = "ldmd2";
+                $urls = ResolveLDC;
+            }
+            echo "downloading...";
+            echo urls=$urls;
+            foreach($tryUrl in $urls){
+                $dloadOk = $true;
+                echo Trying $tryUrl;
+                try{
+                    Invoke-WebRequest $tryUrl -OutFile "c:\compiler.archive";
+                }
+                catch [Net.WebException]{
+                    $dloadOk = $false;
+                }
+                if($dloadOk -eq $true){
+                    break;
+                }
+            }
+            echo "extracting...";
+            pushd c:\\;
+            7z x compiler.archive > $null;
+            popd;
+            echo "finished.";
+        }
+  - ps: SetUpDCompiler
+
+build_script:
+  - cmd: cd source
+  - cmd: ldc2 -m64 -g -i main.d -unittest -of=test.exe
+  - cmd: ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=tjc.exe -i main.d
+  - ps: Push-AppveyorArtifact tjc.exe
+
+test_script:
+  - cmd: test.exe

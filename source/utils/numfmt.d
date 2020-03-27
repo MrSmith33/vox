@@ -5,21 +5,19 @@ Authors: Andrey Penechko.
 */
 module utils.numfmt;
 
-import utils : Duration;
+import core.time : Duration;
 
 /// Use 'i' format char to get binary prefixes (like Ki, instead of K), only for integers
 /// Use '#' flag to get greek letter in the output (not compatible with 'i')
 struct ScaledNumberFmt(T)
 {
-	import std.stdio;
-	import utils : min, max;
+	import std.algorithm : min, max;
 	import std.format : formattedWrite, FormatSpec;
 	T value;
 	void toString(scope void delegate(const(char)[]) sink, const ref FormatSpec!char fmt)
 	{
 		if (fmt.spec == 'i') {
 			// Use binary prefixes instead of decimal prefixes
-			import std.math: abs;
 			long intVal = cast(long)value;
 			int scale = calcScale2(intVal);
 			double divisor = 1 << scale;
@@ -77,57 +75,39 @@ int numDigitsInNumber10(Num)(const Num val)
 	return numDigits;
 }
 
+private int signum(T)(const T x) pure nothrow
+{
+	return (x > 0) - (x < 0);
+}
+
 /// Returns number in range of [-30; 30]
 int calcScale10(Num)(Num val)
 {
-	import std.stdio;
 	import std.algorithm: clamp;
 	import std.math: abs, round, log10;
-	static int signum(T)(const T x) pure nothrow
-	{
-		return (x > 0) - (x < 0);
-	}
 
-	//writefln("value %s", val);
 	// cast to double is necessary in case of long.min, which overflows integral abs
 	auto lg = log10(abs(cast(double)val));
-	//writefln("  lg %s is -inf %s", lg, lg == -double.infinity);
 
-	// handle value of zero
+	// handle very small values and zero
 	if (lg == -double.infinity) return 0;
 
-	int logSign = signum(lg);
-	//writefln("  logSign %s", logSign);
-
 	double absLog = abs(lg);
-	//writefln("  absLog %s", absLog);
-
-	//writefln("  absLog/3.0 %s", absLog/3.0);
-	//writefln("  ceil(absLog/3.0) %s", round(absLog/3.0));
 	int scale = cast(int)(round(absLog/3.0))*3;
-	//writefln("  scale %s", scale);
 
+	int logSign = signum(lg);
 	int clampedScale = scale * logSign;
-	//writefln("  clampedScale %s", clampedScale);
-
-	//writefln("  scaled %s", scaled10(val, -clampedScale));
 
 	// we want
 	//  0.9994 to be formatted as 999m
 	//  0.9995 to be formatted as 1.0
 	//  0.9996 to be formatted as 1.0
-
-	//writefln("  diff %.20s %s", abs(scaled10(val, -clampedScale)), abs(scaled10(val, -clampedScale)) < 0.9995);
 	if (abs(scaled10(val, -clampedScale)) < 0.9995) clampedScale -= 3;
-	//writefln("  clampedScale %s", clampedScale);
-
-	//writefln("  scaled fixed %s", scaled10(val, -clampedScale));
 
 	if (clampedScale < MIN_SCALE_PREFIX)
 		clampedScale = 0; // prevent zero, or values smaller that min scale to display with min scale
 	else if (clampedScale > MAX_SCALE_PREFIX)
 		clampedScale = MAX_SCALE_PREFIX;
-	//writefln("  clampedScale %s", clampedScale);
 
 	return clampedScale;
 }
@@ -137,20 +117,16 @@ int calcScale2(Num)(Num val)
 {
 	import std.algorithm: clamp;
 	import std.math: abs, round, log2;
-	static int signum(T)(const T x) pure nothrow
-	{
-		return (x > 0) - (x < 0);
-	}
 
 	auto lg = log2(abs(val));
-	int logSign = signum(lg);
 	double absLog = abs(lg);
 
 	int scale = cast(int)(round(absLog/10.0))*10;
 
+	int logSign = signum(lg);
 	int clampedScale = scale * logSign;
 	if (clampedScale < 0)
-		clampedScale = 0; // negative scale should not happen for integer numbers
+		clampedScale = 0; // negative scale should not happen for binary numbers
 	else if (clampedScale > MAX_SCALE_PREFIX)
 		clampedScale = MAX_SCALE_PREFIX;
 
