@@ -174,6 +174,7 @@ struct CompilationContext
 	// limit number of regs for allocation
 	bool debugRegAlloc = false;
 	Identifier printOnlyFun;
+	size_t numCtfeRuns = 0;
 	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegNoDup(name); }
 
 	/// Check if printing of this function needed (including if all functions are requested)

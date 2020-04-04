@@ -82,9 +82,46 @@ immutable ctfe5 = q{--- ctfe5
 		if (number < 3) return 1;
 		return fib(number-1) + fib(number-2);
 	}
-	enum i32 val = fib(6); // CTFE
-	i32 get() { return val; } // 8
+	// loop
+	i32 fib2(i32 number) {
+		i32 lo = 0;
+		i32 hi = 1;
+		for (i32 i = 0; i < number; ++i) {
+			hi = hi + lo;
+			lo = hi - lo;
+		}
+		return lo;
+	}
+
+	i32 get() {
+		enum i32 val = fib(6); // CTFE
+		return val; // 8
+	}
+
+	i32 get2() {
+		enum i32 val = fib2(30); // CTFE
+		return val; // 8
+	}
 };
 void tester5(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("get")() == 8);
+	assert(ctx.getFunctionPtr!(int)("get2")() == 832040);
+}
+
+@TestInfo(&tester6)
+immutable ctfe6 = q{--- ctfe6
+	i64 fib(i64 number) {
+		i64 lo = 0;
+		i64 hi = 1;
+		for (i64 i = 0; i < number; ++i) {
+			hi = hi + lo;
+			lo = hi - lo;
+		}
+		return lo;
+	}
+	enum i64 val = fib(62); // CTFE
+	i64 get() { return val; }
+};
+void tester6(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(long)("get")() == 4052739537881UL);
 }

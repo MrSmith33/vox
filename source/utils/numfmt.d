@@ -20,8 +20,7 @@ struct ScaledNumberFmt(T)
 			// Use binary prefixes instead of decimal prefixes
 			long intVal = cast(long)value;
 			int scale = calcScale2(intVal);
-			double divisor = 1 << scale;
-			double scaledValue = value / divisor;
+			double scaledValue = scaled2(value, scale);
 			int digits = numDigitsInNumber10(scaledValue);
 			string prefix = scalePrefixesAscii[scaleToScaleIndex2(scale)]; // length is 1 or 0
 			int width = max(fmt.width - (cast(int)prefix.length * 2), 0); // account for 'i' prefix
@@ -125,6 +124,13 @@ int calcScale2(Num)(Num val)
 
 	int logSign = signum(lg);
 	int clampedScale = scale * logSign;
+
+	// we want
+	//  0.9994 to be formatted as 999m
+	//  0.9995 to be formatted as 1.0
+	//  0.9996 to be formatted as 1.0
+	if (abs(scaled2(val, clampedScale)) < 0.9995) clampedScale -= 10;
+
 	if (clampedScale < 0)
 		clampedScale = 0; // negative scale should not happen for binary numbers
 	else if (clampedScale > MAX_SCALE_PREFIX)
@@ -145,6 +151,12 @@ double scaled10(Num)(Num num, int scale)
 {
 	import std.math: pow;
 	return num * pow(10.0, scale);
+}
+
+double scaled2(Num)(Num num, int scale)
+{
+	double divisor = 1 << scale;
+	return num / divisor;
 }
 
 // Criteria:

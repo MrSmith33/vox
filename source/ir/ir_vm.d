@@ -77,6 +77,7 @@ struct IrVm
 	/// outputMem : Memory that holds the return value
 	void run(IrVmSlotInfo outputMem)
 	{
+		++c.numCtfeRuns;
 		// skip first block as it only contains IrOpcode.parameter instructions
 		IrIndex curBlock = func.getBlock(func.entryBasicBlock).successors[0, func];
 		IrIndex prevBlock;

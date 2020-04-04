@@ -55,6 +55,7 @@ void runDevTests()
 	//driver.context.printTimings = true;
 
 	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test);
+	//writefln("%s", driver.context.numCtfeRuns);
 }
 
 enum StopOnFirstFail : bool { no = false, yes = true }
@@ -312,9 +313,8 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 		driver.markCodeAsExecutable();
 
 	auto time2 = currTime;
-	times.onIteration(0, time2-time1);
-
-	if (dumpTest && driver.context.printTimings) times.print;
+	if (dumpTest && driver.context.printTimings)
+		writefln("Compiled in %ss", scaledNumberFmt(time2-time1));
 
 	if (!driver.context.runTesters) return TestResult.success;
 
@@ -324,7 +324,11 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 			if (curTest.tester) {
 				auto testContext = TestContext(&driver);
 				if (dumpTest) writefln("Running: %s tester", curTest.testName);
+				auto time3 = currTime;
 				curTest.tester(testContext);
+				auto time4 = currTime;
+				if (dumpTest && driver.context.printTimings)
+					writefln("Run in %ss", scaledNumberFmt(time4-time3));
 			}
 			break;
 
@@ -335,7 +339,11 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 			if(exists(driver.context.outputFilename))
 			{
 				if (dumpTest) writef("Running: %s", driver.context.outputFilename.absolutePath);
+				auto time3 = currTime;
 				auto result = execute(driver.context.outputFilename);
+				auto time4 = currTime;
+				if (dumpTest && driver.context.printTimings)
+					writefln("Run in %ss", scaledNumberFmt(time4-time3));
 				if (dumpTest) writefln(", status %s, output '%s'", result.status, result.output);
 			}
 			else
