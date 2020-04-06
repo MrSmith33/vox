@@ -141,7 +141,7 @@ struct LivenessInfo
 	void setIntervalUsesLength(CompilationContext* context, IrFunction* ir) {
 		foreach (ref LiveInterval it; virtualIntervals)
 		{
-			IrVirtualRegister* vreg = &ir.getVirtReg(it.definition);
+			IrVirtualRegister* vreg = ir.getVirtReg(it.definition);
 			context.assertf(it.uses.length == 0, "non empty uses %s of %s; %s", it.uses.length, it.definition, it.uses);
 			uint numUses = vreg.definition.isPhi ? vreg.users.length : vreg.users.length + 1; // with definition
 			it.uses = cast(UsePosition[])context.tempBuffer.voidPut(numUses);
@@ -153,7 +153,7 @@ struct LivenessInfo
 	void resetIntervalUsesLength(CompilationContext* context, IrFunction* ir) {
 		foreach (ref LiveInterval it; virtualIntervals)
 		{
-			IrVirtualRegister* vreg = &ir.getVirtReg(it.definition);
+			IrVirtualRegister* vreg = ir.getVirtReg(it.definition);
 			context.assertf(it.uses.length == 0, "non empty uses %s of %s; %s", it.uses.length, it.definition, it.uses);
 			uint numUses = vreg.definition.isPhi ? vreg.users.length : vreg.users.length + 1; // with definition
 			it.uses = it.uses.ptr[0..numUses];
@@ -169,7 +169,7 @@ struct LivenessInfo
 
 		while (next.isDefined)
 		{
-			IrBasicBlock* block = &ir.getBlock(next);
+			IrBasicBlock* block = ir.getBlock(next);
 			uint blockFromPos = linearIndicies.basicBlock(next);
 			if (pos == blockFromPos) return true;
 			uint blockToPos = linearIndicies.instr(block.lastInstr);

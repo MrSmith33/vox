@@ -113,15 +113,24 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		// for each phi function phi of successors of block do
 		//     live.add(phi.inputOf(block))
 		foreach (IrIndex succIndex; block.successors.range(ir))
+		{
 			foreach (IrIndex phiIndex, ref IrPhi phi; ir.getBlock(succIndex).phis(ir))
-				foreach (i, ref IrPhiArg arg; phi.args(ir))
-					if (arg.basicBlock == blockIndex)
-						if (arg.value.isVirtReg)
+			{
+				IrIndex[] phiPreds = ir.getBlock(phi.blockIndex).predecessors.data(ir);
+				foreach (i, ref IrIndex phiArg; phi.args(ir))
+				{
+					if (phiPreds[i] == blockIndex)
+					{
+						if (phiArg.isVirtReg)
 						{
-							liveAdd(arg.value);
-							LiveInterval* it = liveness.vint(arg.value);
+							liveAdd(phiArg);
+							LiveInterval* it = liveness.vint(phiArg);
 							it.prependUse(UsePosition(blockToPos+2, UseKind.phi));
 						}
+					}
+				}
+			}
+		}
 
 		//writef("in %s %s live:", blockIndex, liveness.linearIndicies.basicBlock(blockIndex));
 		//foreach (size_t index; liveness.bitmap.live.bitsSet)
@@ -278,7 +287,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			if (loopEnd != blockIndex) // skip if header jumps to itself
 			for (IrIndex loopBlockIndex = block.nextBlock;;)
 			{
-				IrBasicBlock* loopBlock = &ir.getBlock(loopBlockIndex);
+				IrBasicBlock* loopBlock = ir.getBlock(loopBlockIndex);
 				size_t[] liveIns = liveness.bitmap.blockLiveInBuckets(loopBlockIndex, ir);
 				// add live in of loop header to all blocks of the loop
 				foreach(i, ref size_t bucket; liveIns)

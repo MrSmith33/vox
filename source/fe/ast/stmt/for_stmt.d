@@ -99,7 +99,7 @@ void ir_gen_for(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, 
 		currentBlock = bodyLabel.blockIndex;
 		gen.builder.sealBlock(currentBlock);
 
-		IrBasicBlock* block = &gen.ir.getBlock(currentBlock);
+		IrBasicBlock* block = gen.ir.getBlock(currentBlock);
 		assert(!block.isFinished);
 		genBlock(gen, n.as!AstNode(c), n.body_statements, currentBlock, incrementLabel);
 

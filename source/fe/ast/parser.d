@@ -26,12 +26,12 @@ import all;
 	<declaration> = <alias_decl> / <func_decl> / <var_decl> / <struct_decl> / <enum_decl>
 
 	<alias_decl> = "alias" <id> "=" <expr> ";"
-	<func_decl> = <type> <identifier> "(" <param_list> ")" (<block_statement> / ';')
+	<func_decl> = <type> <identifier> ("[" <template_args> "]")? "(" <param_list> ")" (<block_statement> / ';')
 	<param_list> = <parameter> "," <parameter_list> / <parameter>?
 	<parameter> = <type> <identifier>?
 
 	<var_decl> = <type> <identifier> ("=" <expression>)? ";"
-	<struct_decl> = "struct" <identifier> "{" <declaration>* "}"
+	<struct_decl> = "struct" <identifier> ("[" <template_args> "]")? "{" <declaration>* "}"
 	<enum_decl> = <enum_decl_single> / <enum_decl_multi>
 	<enum_decl_multi> = "enum" [<identifier>] [":" <type>] "{" (<identifier> ["=" <expr>] ",") * "}"
 	<enum_decl_single> = "enum" <identifier> [ "=" <expr> ] ";"

@@ -150,7 +150,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				{
 					case virtualRegister:
 						IrIndex origin = ir.getVirtReg(irValue).definition;
-						IrInstrHeader* instr = &ir.get!IrInstrHeader(origin);
+						IrInstrHeader* instr = ir.getInstr(origin);
 
 						switch (instr.op)
 						{
@@ -215,7 +215,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				{
 					case virtualRegister:
 						IrIndex origin = ir.getVirtReg(irValue).definition;
-						IrInstrHeader* instr = &ir.get!IrInstrHeader(origin);
+						IrInstrHeader* instr = ir.getInstr(origin);
 
 						switch (instr.op)
 						{
@@ -341,16 +341,16 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		// Add phis with old args
 		foreach(IrIndex phiIndex, ref IrPhi phi; irBlock.phis(ir))
 		{
-			IrVirtualRegister* oldReg = &ir.getVirtReg(phi.result);
+			IrVirtualRegister* oldReg = ir.getVirtReg(phi.result);
 			IrIndex newPhi = builder.addPhi(lirBlock, oldReg.type, phi.var);
 			IrIndex newResult = lir.getPhi(newPhi).result;
-			IrVirtualRegister* newReg = &lir.getVirtReg(newResult);
+			IrVirtualRegister* newReg = lir.getVirtReg(newResult);
 			newReg.type = oldReg.type;
 
 			recordIndex(phi.result, lir.getPhi(newPhi).result);
-			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+			foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir))
 			{
-				builder.addPhiArg(newPhi, phiArg.basicBlock, phiArg.value);
+				builder.addPhiArg(newPhi, phiArg);
 			}
 		}
 	}
@@ -441,9 +441,9 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					};
 					InstrWithResult callInstr = builder.emitInstr!(Amd64Opcode.call)(
 						lirBlockIndex, callExtra, argBuffer[0..instrHeader.numArgs]);
-					lir.get!IrInstrHeader(callInstr.instruction).extendFixedArgRange = true;
+					lir.getInstr(callInstr.instruction).extendFixedArgRange = true;
 					if (instrHeader.hasResult) {
-						lir.get!IrInstrHeader(callInstr.instruction).extendFixedResultRange = true;
+						lir.getInstr(callInstr.instruction).extendFixedResultRange = true;
 					}
 					break;
 
@@ -723,10 +723,10 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		// fix phi args and add users
 		foreach(IrIndex phiIndex, ref IrPhi phi; lirBlock.phis(lir))
 		{
-			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(lir))
+			foreach(size_t arg_i, ref IrIndex phiArg; phi.args(lir))
 			{
-				fixIndex(phiArg.value);
-				builder.addUser(phiIndex, phiArg.value);
+				fixIndex(phiArg);
+				builder.addUser(phiIndex, phiArg);
 			}
 		}
 	}

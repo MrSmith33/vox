@@ -166,24 +166,30 @@ struct IrFunction
 	alias getBlock = get!IrBasicBlock;
 	alias getPhi = get!IrPhi;
 	alias getVirtReg = get!IrVirtualRegister;
+	alias getInstr = get!IrInstrHeader;;
 
-	ref T get(T)(IrIndex index)
+	T* get(T)(IrIndex index)
 	{
 		enum IrValueKind kind = getIrValueKind!T;
 		assert(index.kind != IrValueKind.none, "null index");
 		assert(index.kind == kind, format("expected %s, got %s", kind, index.kind));
 		static if (kind == IrValueKind.instruction)
-			return *cast(T*)(&instrPtr[index.storageUintIndex]);
-		else static if (kind == IrValueKind.listItem)
-			return *cast(T*)(&arrayPtr[index.storageUintIndex]);
+			return cast(T*)(&instrPtr[index.storageUintIndex]);
 		else static if (kind == IrValueKind.basicBlock)
-			return basicBlockPtr[index.storageUintIndex];
+			return &basicBlockPtr[index.storageUintIndex];
 		else static if (kind == IrValueKind.phi)
-			return phiPtr[index.storageUintIndex];
+			return &phiPtr[index.storageUintIndex];
 		else static if (kind == IrValueKind.virtualRegister)
-			return vregPtr[index.storageUintIndex];
+			return &vregPtr[index.storageUintIndex];
 		else
 			static assert(false, format("Cannot get %s from IrFunction", T.stringof));
+	}
+
+	IrIndex* getArray(IrIndex index)
+	{
+		assert(index.kind != IrValueKind.none, "null index");
+		assert(index.kind == IrValueKind.array, format("expected %s, got %s", IrValueKind.array, index.kind));
+		return cast(IrIndex*)(&arrayPtr[index.storageUintIndex]);
 	}
 
 	// In correct code there must be no dangling basic blocks left
@@ -195,7 +201,7 @@ struct IrFunction
 
 		void walk(IrIndex node)
 		{
-			IrBasicBlock* block = &getBlock(node);
+			IrBasicBlock* block = getBlock(node);
 			block.visitFlag = true;
 			foreach(ref IrIndex succ; block.successors.range(&this))
 				if (!getBlock(succ).visitFlag)
@@ -223,6 +229,11 @@ struct IrFunction
 	void removeAllPhis() {
 		foreach (IrIndex index, ref IrBasicBlock block; blocks)
 			block.removeAllPhis;
+	}
+
+	void freeIrArray(IrIndex offset, uint capacity)
+	{
+		// noop for now
 	}
 
 	void assignSequentialBlockIndices()
@@ -286,7 +297,7 @@ struct IrFuncStorage
 	Arena!IrIndex instrPrevBuffer; // index of previous instruction
 	Arena!IrPhi phiBuffer;
 	Arena!IrVirtualRegister vregBuffer;
-	Arena!uint arrayBuffer; // stores data of SmallVector
+	Arena!uint arrayBuffer; // stores data of IrSmallArray
 	Arena!IrBasicBlock basicBlockBuffer;
 
 	void printMemSize(ref TextSink sink)
@@ -355,7 +366,7 @@ void removeUser(CompilationContext* context, IrFunction* ir, IrIndex user, IrInd
 	assert(used.isDefined, "used is undefined");
 	final switch (used.kind) with(IrValueKind) {
 		case none: assert(false, "removeUser none");
-		case listItem: assert(false, "removeUser listItem");
+		case array: assert(false, "removeUser array");
 		case instruction: assert(false, "removeUser instruction");
 		case basicBlock: break; // allowed. As argument of jmp jcc
 		case constant, constantAggregate, constantZero: break; // allowed, noop
@@ -365,7 +376,7 @@ void removeUser(CompilationContext* context, IrFunction* ir, IrIndex user, IrInd
 		case phi: assert(false, "removeUser phi"); // must be virt reg instead
 		case stackSlot: break; // allowed, noop
 		case virtualRegister:
-			ir.getVirtReg(used).users.remove(ir, user);
+			ir.getVirtReg(used).users.removeStable(ir, user);
 			break;
 		case physicalRegister: break; // allowed, noop
 		case type: break; // no user tracking
@@ -381,7 +392,7 @@ struct BlockIterator
 		IrIndex next = ir.entryBasicBlock;
 		while (next.isDefined)
 		{
-			IrBasicBlock* block = &ir.getBlock(next);
+			IrBasicBlock* block = ir.getBlock(next);
 			if (int res = dg(next, *block))
 				return res;
 			next = block.nextBlock;
@@ -408,7 +419,7 @@ struct BlockReverseIterator
 		IrIndex prev = ir.exitBasicBlock;
 		while (prev.isDefined)
 		{
-			IrBasicBlock* block = &ir.getBlock(prev);
+			IrBasicBlock* block = ir.getBlock(prev);
 			if (int res = dg(prev, *block))
 				return res;
 			prev = block.prevBlock;

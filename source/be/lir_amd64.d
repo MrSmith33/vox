@@ -286,7 +286,7 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref CompilationC
 
 	final switch(i.kind) with(IrValueKind) {
 		case none: sink.formattedWrite("0x%X", i.asUint); break;
-		case listItem: sink.formattedWrite("l%s", i.storageUintIndex); break;
+		case array: sink.formattedWrite("arr%s", i.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i%s", i.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
 		case constant: sink.formattedWrite("%s", context.constants.get(i).i64); break;

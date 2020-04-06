@@ -17,40 +17,10 @@ struct IrPhi
 	IrIndex var;
 	IrIndex nextPhi;
 	IrIndex prevPhi;
-	IrIndex firstArgListItem;
-
-	PhiArgIterator args(IrFunction* ir) { return PhiArgIterator(ir, firstArgListItem); }
+	// order of arguments is the same as blockIndex.predecessors
+	IrSmallArray args;
 
 	bool isRemoved() {
 		return blockIndex.isUndefined;
 	}
-}
-
-struct PhiArgIterator
-{
-	IrFunction* ir;
-	IrIndex firstArgListItem;
-	int opApply(scope int delegate(size_t, ref IrPhiArg) dg) {
-		IrIndex next = firstArgListItem;
-		size_t i = 0;
-		while (next.isDefined)
-		{
-			IrPhiArg* arg = &ir.get!IrPhiArg(next);
-			if (int res = dg(i, *arg))
-				return res;
-			++i;
-			next = arg.nextListItem;
-		}
-		return 0;
-	}
-}
-
-///
-@(IrValueKind.listItem)
-struct IrPhiArg
-{
-	IrIndex value;
-	/// Immediate predecessor that provides the value
-	IrIndex basicBlock;
-	IrIndex nextListItem;
 }

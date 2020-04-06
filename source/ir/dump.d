@@ -196,7 +196,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 		if (settings.printVregLiveness)
 		foreach(ref LiveInterval interval; liveness.virtualIntervals)
 		{
-			auto vreg = &ir.getVirtReg(interval.definition);
+			auto vreg = ir.getVirtReg(interval.definition);
 
 			if (interval.hasUseAt(linearInstrIndex))
 			{
@@ -215,27 +215,41 @@ void dumpFunctionImpl(IrDumpContext* c)
 					}
 					else if (instrIndex.isBasicBlock)
 					{
+						// phi uses are located on the next basic block linear position
 						// this is a use in phi function
-						// it is phi function
 						IrIndex prevBlock = ir.getBlock(instrIndex).prevBlock;
+						enum UseState : ubyte {
+							none = 0b00,
+							above = 0b01,
+							below = 0b10,
+							above_and_below = 0b11
+						}
+						UseState useState;
 						foreach (i, index; vreg.users.range(ir))
 						{
 							if (index.isPhi)
 							{
-								IrPhi* phi = &ir.getPhi(index);
-								foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+								IrPhi* phi = ir.getPhi(index);
+								IrIndex[] preds = ir.getBlock(phi.blockIndex).predecessors.data(ir);
+								foreach(size_t arg_i, IrIndex phiArg; phi.args(ir))
 								{
-									if (phiArg.basicBlock == prevBlock && phiArg.value == interval.definition)
+									// we only want phi functions that are in blocks that have this block as predecessor
+									if (preds[arg_i] == prevBlock && phiArg == interval.definition)
 									{
 										uint phiPos = liveness.linearIndicies[phi.blockIndex];
 										if (phiPos < linearInstrIndex)
-											sink.put("^"); // vreg is used by phi above
+											useState |= UseState.above; // vreg is used by phi above
 										else
-											sink.put("v"); // vreg is used by phi below
-										break;
+											useState |= UseState.below; // vreg is used by phi below
 									}
 								}
 							}
+						}
+						final switch(useState) {
+							case UseState.none: sink.put(" "); break;
+							case UseState.above: sink.put("^"); break;
+							case UseState.below: sink.put("v"); break;
+							case UseState.above_and_below: sink.put("x"); break;
 						}
 					}
 					else
@@ -290,7 +304,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 
 	void printRegUses(IrIndex result) {
 		if (!result.isVirtReg) return;
-		auto vreg = &ir.getVirtReg(result);
+		auto vreg = ir.getVirtReg(result);
 		sink.put(" users [");
 		foreach (i, index; vreg.users.range(ir))
 		{
@@ -310,7 +324,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 			break;
 		}
 
-		block = &ir.getBlock(blockIndex);
+		block = ir.getBlock(blockIndex);
 		scope(exit) blockIndex = block.nextBlock;
 
 		printer.blockIndex = blockIndex;
@@ -363,7 +377,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 				break;
 			}
 
-			phi = &ir.getPhi(phiIndex);
+			phi = ir.getPhi(phiIndex);
 			scope(exit) phiIndex = phi.nextPhi;
 
 			printInstrLiveness(blockIndex, phiIndex);
@@ -372,11 +386,12 @@ void dumpFunctionImpl(IrDumpContext* c)
 				IrIndexDump(phi.result, printer),
 				IrIndexDump(ir.getVirtReg(phi.result).type, printer),
 				IrIndexDump(phiIndex, printer));
-			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+			IrIndex[] phiPreds = ir.getBlock(phi.blockIndex).predecessors.data(ir);
+			foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir))
 			{
 				if (arg_i > 0) sink.put(", ");
-				sink.putf("%s", IrIndexDump(phiArg.basicBlock, printer));
-				dumpArg(phiArg.value, printer);
+				sink.putf("%s", IrIndexDump(phiPreds[arg_i], printer));
+				dumpArg(phiArg, printer);
 			}
 			sink.put(")");
 			if (settings.printUses) printRegUses(phi.result);
@@ -440,10 +455,11 @@ void dumpFunctionCFG(IrFunction* ir, ref TextSink sink, CompilationContext* ctx,
 				IrIndexDump(phi.result, p),
 				IrIndexDump(ir.getVirtReg(phi.result).type, p),
 				IrIndexDump(phiIndex, p));
-			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+			IrIndex[] phiPreds = ir.getBlock(phi.blockIndex).predecessors.data(ir);
+			foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir))
 			{
 				if (arg_i > 0) sink.put(", ");
-				sink.putf("%s %s", IrIndexDump(phiArg.value, p), IrIndexDump(phiArg.basicBlock, p));
+				sink.putf("%s %s", IrIndexDump(phiArg, p), IrIndexDump(phiPreds[arg_i], p));
 			}
 			sink.put(")");
 			sink.put(`\l`);
@@ -473,7 +489,7 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref CompilationContext
 
 	final switch(index.kind) with(IrValueKind) {
 		case none: sink.formattedWrite("0x%X", index.asUint); break;
-		case listItem: sink.formattedWrite("l.%s", index.storageUintIndex); break;
+		case array: sink.formattedWrite("arr%s", index.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i.%s", index.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
 		case constant: sink.formattedWrite("%s", context.constants.get(index).i64); break;

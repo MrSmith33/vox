@@ -74,7 +74,7 @@ void ir_gen_while(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt
 		currentBlock = bodyLabel.blockIndex;
 		gen.builder.sealBlock(currentBlock);
 
-		IrBasicBlock* block = &gen.ir.getBlock(currentBlock);
+		IrBasicBlock* block = gen.ir.getBlock(currentBlock);
 		assert(!block.isFinished);
 		genBlock(gen, n.as!AstNode(gen.context), n.statements, currentBlock, loopHeaderLabel);
 	}

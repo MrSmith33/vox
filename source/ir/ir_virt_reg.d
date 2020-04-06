@@ -16,8 +16,8 @@ struct IrVirtualRegister
 	IrIndex definition;
 	///
 	IrIndex type;
-	/// List of instruction indicies that use this register
-	SmallVector users;
+	/// Instruction indicies that use this register
+	IrSmallArray users;
 
 	bool isRemoved() {
 		return type.kind == IrValueKind.virtualRegister;

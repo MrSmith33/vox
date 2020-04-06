@@ -102,7 +102,7 @@ void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, ref IrBuil
 			switch(instrHeader.op)
 			{
 				case IrOpcode.parameter:
-					IrInstr_parameter* param = &ir.get!IrInstr_parameter(instrIndex);
+					IrInstr_parameter* param = ir.get!IrInstr_parameter(instrIndex);
 					if (numHiddenParams == 1) param.index(ir) += 1;
 					uint paramIndex = param.index(ir);
 
@@ -133,7 +133,7 @@ void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, ref IrBuil
 
 							ExtraInstrArgs extra2 = { result : instrHeader.result(ir) };
 							IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra2, moveInstr.result).instruction;
-							ir.get!IrInstrHeader(loadInstr).isUniqueLoad = true;
+							ir.getInstr(loadInstr).isUniqueLoad = true;
 							builder.insertAfterInstr(moveInstr.instruction, loadInstr);
 						}
 					}
@@ -163,7 +163,7 @@ void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, ref IrBuil
 							// load aggregate
 							ExtraInstrArgs extra2 = { result : instrHeader.result(ir) };
 							InstrWithResult loadInstr2 = builder.emitInstr!(IrOpcode.load_aggregate)(extra2, loadInstr.result);
-							ir.get!IrInstrHeader(loadInstr2.instruction).isUniqueLoad = true;
+							ir.getInstr(loadInstr2.instruction).isUniqueLoad = true;
 							builder.insertAfterInstr(loadInstr.instruction, loadInstr2.instruction);
 						}
 					}
@@ -294,7 +294,7 @@ void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, ref IrBuil
 						} else if (hasHiddenPtr) {
 							ExtraInstrArgs extra = { result : originalResult };
 							IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra, hiddenPtr).instruction;
-							ir.get!IrInstrHeader(loadInstr).isUniqueLoad = true;
+							ir.getInstr(loadInstr).isUniqueLoad = true;
 							builder.insertAfterInstr(shrinkStackInstr, loadInstr);
 						}
 					}
@@ -411,7 +411,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, ref IrBui
 		{
 			//writefln("- vreg %s", vregIndex);
 
-			IrInstrHeader* definition = &ir.get!IrInstrHeader(vreg.definition);
+			IrInstrHeader* definition = ir.getInstr(vreg.definition);
 			if (definition.op == IrOpcode.load_aggregate)
 			{
 				// we can omit stack allocation and reuse source memory
@@ -434,7 +434,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, ref IrBui
 			if (!type.isPassByValue(c)) {
 				//writefln("- phi %s", phiIndex);
 			}
-			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+			foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir))
 			{
 			}
 		}

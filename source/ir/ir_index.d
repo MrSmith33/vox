@@ -93,7 +93,7 @@ struct IrIndex
 
 		switch(kind) with(IrValueKind) {
 			default: sink.formattedWrite("0x%X", asUint); break;
-			case listItem: sink.formattedWrite("l.%s", storageUintIndex); break;
+			case array: sink.formattedWrite("arr%s", storageUintIndex); break;
 			case instruction: sink.formattedWrite("i.%s", storageUintIndex); break;
 			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
 			case constant:

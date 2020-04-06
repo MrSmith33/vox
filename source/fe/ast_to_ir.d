@@ -489,10 +489,10 @@ IrIndex makeBoolValue(ref IrGenState gen, ExpressionNode* n, IrIndex currentBloc
 
 			IrIndex phiIndex = builder.addPhi(nextBlock, n.type.gen_ir_type(c), IrIndex.init);
 			IrIndex trueValue = c.constants.add(1, IsSigned.no, n.type.typeArgSize(c));
-			builder.addPhiArg(phiIndex, trueBlock, trueValue);
+			builder.addPhiArg(phiIndex, trueValue);
 			IrIndex falseValue = c.constants.add(0, IsSigned.no, n.type.typeArgSize(c));
-			builder.addPhiArg(phiIndex, falseBlock, falseValue);
-			value = builder.ir.get!IrPhi(phiIndex).result;
+			builder.addPhiArg(phiIndex, falseValue);
+			value = builder.ir.getPhi(phiIndex).result;
 		}
 		else // only true block exists
 		{

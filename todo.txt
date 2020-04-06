@@ -37,7 +37,7 @@
 		- stack slot offsets
 	+ control flow
 	+ arithmetics (need to check signedness)
-	- call
+	+ call
 	- force semantic analisys of function on call
 	- move eval calls to semantic pass
 
@@ -182,7 +182,7 @@ x globals need to have IrIndex to initializer and coexist with raw data initiali
 - inline instructions in IR for representing memory operands in x86 LIR
 - IrIndex: small pointer type when basic type is store inline + pointer level for more than 1 indirection level
 - stack layout per IrFunction (use alloca?)
-- don't store self-reference arguments in phi functions
+x don't store self-reference arguments in phi functions (we cannot alter order of args now, must have same order as blockIndex.predecessors)
 + store virtual registers, phi functions with arguments in separate arenas
 	vreg will shrink from 7 slots to 4 slots
 	+ need array arena for IR with per-function slices
@@ -194,7 +194,7 @@ x globals need to have IrIndex to initializer and coexist with raw data initiali
 	- Add constant kind that inits all elements of an array with the same value
 	- expression constant (required for expressions involving link-time constants like global address)
 - Validate all instructions
-- use actual arrays for users instead of linked lists
++ use actual arrays for users instead of linked lists
 
 
 [Register allocator]

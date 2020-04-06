@@ -80,23 +80,17 @@ struct IrVm
 		++c.numCtfeRuns;
 		// skip first block as it only contains IrOpcode.parameter instructions
 		IrIndex curBlock = func.getBlock(func.entryBasicBlock).successors[0, func];
-		IrIndex prevBlock;
-		IrBasicBlock* block = &func.getBlock(curBlock);
+		IrIndex prevBlock = func.entryBasicBlock;
+		IrBasicBlock* block = func.getBlock(curBlock);
 
 		block_loop:
 		while (true)
 		{
+			uint predIndex = block.predecessors.findFirst(func, prevBlock);
 			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(func))
 			{
-				// TODO: need array for args for O(1) indexing
-				foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(func))
-				{
-					if (phiArg.basicBlock == prevBlock)
-					{
-						copyToVreg(phi.result, phiArg.value);
-						break;
-					}
-				}
+				IrIndex phiArg = phi.args[predIndex, func];
+				copyToVreg(phi.result, phiArg);
 			}
 
 			instr_loop:
@@ -105,7 +99,7 @@ struct IrVm
 				switch(instrHeader.op)
 				{
 					case IrOpcode.parameter:
-						uint paramIndex = func.get!IrInstrHeader(instrIndex).extraPayload(func, 1)[0].asUint;
+						uint paramIndex = func.getInstr(instrIndex).extraPayload(func, 1)[0].asUint;
 						//writefln("param %s", paramIndex);
 						break;
 
@@ -113,7 +107,7 @@ struct IrVm
 						prevBlock = curBlock;
 						curBlock = block.successors[0, func];
 						//writefln("jump %s -> %s", prevBlock, curBlock);
-						block = &func.getBlock(curBlock);
+						block = func.getBlock(curBlock);
 						break instr_loop;
 
 					case IrOpcode.ret_val:
@@ -186,7 +180,7 @@ struct IrVm
 						else
 							curBlock = block.successors[1, func];
 						//writefln("jump %s -> %s", prevBlock, curBlock);
-						block = &func.getBlock(curBlock);
+						block = func.getBlock(curBlock);
 						break instr_loop;
 
 					case IrOpcode.branch_unary:
@@ -204,7 +198,7 @@ struct IrVm
 						else
 							curBlock = block.successors[1, func];
 						//writefln("jump %s -> %s", prevBlock, curBlock);
-						block = &func.getBlock(curBlock);
+						block = func.getBlock(curBlock);
 						break instr_loop;
 
 					case IrOpcode.call:
@@ -316,7 +310,7 @@ struct ParameterSlotIterator
 	IrVm* vm;
 	int opApply(scope int delegate(uint, IrVmSlotInfo) dg)
 	{
-		IrBasicBlock* block = &vm.func.getBlock(vm.func.entryBasicBlock);
+		IrBasicBlock* block = vm.func.getBlock(vm.func.entryBasicBlock);
 		uint index;
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(vm.func))
 		{

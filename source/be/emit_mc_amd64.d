@@ -643,7 +643,7 @@ struct CodeEmitter
 
 		final switch (src.kind) with(IrValueKind)
 		{
-			case none, listItem, instruction, basicBlock, phi, type, virtualRegister, variable, func, constantAggregate: assert(false);
+			case none, array, instruction, basicBlock, phi, type, virtualRegister, variable, func, constantAggregate: assert(false);
 			case constantZero:
 			case constant:
 				IrConstant con = context.constants.get(src);
@@ -874,7 +874,7 @@ struct CodeEmitter
 MoveType calcMoveType(IrValueKind dst, IrValueKind src)
 {
 	switch(dst) with(IrValueKind) {
-		case none, listItem, constant: return MoveType.invalid;
+		case none, array, constant: return MoveType.invalid;
 		case virtualRegister: return MoveType.invalid;
 		case physicalRegister:
 			switch(src) with(IrValueKind) {

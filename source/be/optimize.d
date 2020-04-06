@@ -48,7 +48,7 @@ void func_pass_invert_conditions(CompilationContext* context, IrFunction* ir, re
 	{
 		if (!block.lastInstr.isDefined) continue;
 
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(block.lastInstr);
+		IrInstrHeader* instrHeader = ir.getInstr(block.lastInstr);
 		ubyte invertedCond;
 
 		switch(instrHeader.op) with(IrOpcode)
@@ -135,7 +135,7 @@ void pass_optimize_lir_func(CompilationContext* context, IrFunction* ir)
 	{
 		if (!block.lastInstr.isDefined) continue;
 
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(block.lastInstr);
+		IrInstrHeader* instrHeader = ir.getInstr(block.lastInstr);
 		auto isJump = context.machineInfo.instrInfo[instrHeader.op].isJump;
 
 		if (isJump)

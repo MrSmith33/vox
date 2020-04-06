@@ -620,7 +620,7 @@ struct CompilationContext
 		size_t byteLength;
 		size_t committedBytes;
 		size_t reservedBytes;
-		sink.putfln("Arena sizes:       used  committed  reserved");
+		sink.putfln("Arena sizes:         used  committed  reserved");
 		void printArena(A)(ref A arena, string name) {
 			sink.putfln("  %-16s%-6iB    %-6iB   %-6iB",
 				name,
@@ -654,7 +654,7 @@ struct CompilationContext
 		printArena(staticDataBuffer, "static RW data");
 		printArena(roStaticDataBuffer, "static RO data");
 		printArena(globals.buffer, "globals");
-		printArena(globals.initializerBuffer, "global initializers");
+		printArena(globals.initializerBuffer, "global ini-rs");
 		printArena(constants.buffer, "constants");
 		printArena(constants.aggregateBuffer, "aggregates");
 		printArena(importBuffer, "imports");

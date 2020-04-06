@@ -30,8 +30,8 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 			context.internal_error("Unfinished basic block %s", blockIndex);
 		}
 
-		IrInstrHeader* firstInstr = &ir.get!IrInstrHeader(block.firstInstr);
-		IrInstrHeader* lastInstr = &ir.get!IrInstrHeader(block.lastInstr);
+		IrInstrHeader* firstInstr = ir.getInstr(block.firstInstr);
+		IrInstrHeader* lastInstr = ir.getInstr(block.lastInstr);
 		context.assertf(funcInstrInfos[lastInstr.op].isBlockExit,
 			"Basic block %s does not end with jump, branch or return instruction",
 			blockIndex);
@@ -41,7 +41,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 		{
 			if (!arg.isVirtReg) return;
 
-			IrVirtualRegister* vreg = &ir.getVirtReg(arg);
+			IrVirtualRegister* vreg = ir.getVirtReg(arg);
 
 			// Check case when virtual register is in use,
 			// but it's definition point is not set
@@ -60,14 +60,14 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 
 			if (argUser.isInstruction)
 			{
-				foreach (i, IrIndex instrArg; ir.get!IrInstrHeader(argUser).args(ir))
+				foreach (i, IrIndex instrArg; ir.getInstr(argUser).args(ir))
 					if (instrArg == arg)
 						++timesUsed;
 			}
 			else if (argUser.isPhi)
 			{
-				foreach(size_t arg_i, ref IrPhiArg phiArg; ir.getPhi(argUser).args(ir))
-					if (phiArg.value == arg)
+				foreach(size_t arg_i, ref IrIndex phiArg; ir.getPhi(argUser).args(ir))
+					if (phiArg == arg)
 						++timesUsed;
 			}
 			else
@@ -85,7 +85,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 		{
 			if (!result.isVirtReg) return;
 
-			IrVirtualRegister* vreg = &ir.getVirtReg(result);
+			IrVirtualRegister* vreg = ir.getVirtReg(result);
 
 			// Type must be set for every virtual register
 			context.assertf(vreg.type.isType,
@@ -106,18 +106,18 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 			size_t numPhiArgs = 0;
 			size_t numUniqueArgs = 0; // not an exact count, but precise in [0..2] range
 			IrIndex uniqueValue;
-			foreach(size_t arg_i, ref IrPhiArg phiArg; phi.args(ir))
+			foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir))
 			{
 				++numPhiArgs;
-				checkArg(phiIndex, phiArg.value);
+				checkArg(phiIndex, phiArg);
 
-				if (phiArg.value == uniqueValue || phiArg.value == phi.result) {
+				if (phiArg == uniqueValue || phiArg == phi.result) {
 					continue;
 				}
-				// assignment will be done first time when uniqueValue is undefined and phiArg.value != phi.result
-				// second time when phiArg.value != uniqueValue and phiArg.value != phi.result,
+				// assignment will be done first time when uniqueValue is undefined and phiArg != phi.result
+				// second time when phiArg != uniqueValue and phiArg != phi.result,
 				// so, we are looking for numUniqueArgs > 1
-				uniqueValue = phiArg.value;
+				uniqueValue = phiArg;
 				++numUniqueArgs;
 			}
 
@@ -125,6 +125,8 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 			context.assertf(numUniqueArgs > 1, "%s is redundant", phiIndex);
 
 			// TODO: check that all types of args match type of result
+
+			// TODO: check correspondense of basic block indicies with phi arg indicies
 
 			// check that phi-function receives values from all predecessors
 			size_t numPredecessors = 0;
@@ -218,7 +220,7 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			IrIndex result = instrHeader.result(ir);
 			c.assertf(result.isVirtReg, "%s: create_aggregate result is %s. virtualRegister expected", instrIndex, result.kind);
 
-			IrVirtualRegister* vreg = &ir.getVirtReg(result);
+			IrVirtualRegister* vreg = ir.getVirtReg(result);
 			c.assertf(vreg.type.isType, "%s: result type is not a type: %s", instrIndex, vreg.type.kind);
 
 			if (vreg.type.isTypeStruct)

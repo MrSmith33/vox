@@ -244,20 +244,26 @@ struct IrBuilder
 		return result;
 	}
 
-	IrIndex appendListItem(T)(uint numItems)
+	IrIndex allocateIrArray(uint capacity)
 	{
-		static assert(T.alignof == 4, "Can only store types aligned to 4 bytes");
-		static assert(getIrValueKind!T == IrValueKind.listItem, "Can only store list types");
+		IrIndex result = IrIndex(ir.arrayLength, IrValueKind.array);
 
-		IrIndex result = IrIndex(ir.arrayLength, IrValueKind.listItem);
-
-		enum uint allocSize = divCeil(T.sizeof, uint.sizeof);
-		uint numSlots = numItems * allocSize;
-		context.irStorage.arrayBuffer.voidPut(numSlots);
-		ir.get!T(result) = T.init;
-		ir.arrayLength += numSlots;
+		context.irStorage.arrayBuffer.voidPut(capacity);
+		ir.arrayLength += capacity;
 
 		return result;
+	}
+
+	// Returns true if array can be extended in-place. If successful double the capacity
+	bool tryExtendArray(IrIndex offset, uint capacity)
+	{
+		if (offset.storageUintIndex + capacity == ir.arrayLength)
+		{
+			context.irStorage.arrayBuffer.voidPut(capacity);
+			ir.arrayLength += capacity;
+			return true;
+		}
+		return false;
 	}
 
 	/// Adds control-flow edge pointing `fromBlock` -> `toBlock`.
@@ -296,7 +302,7 @@ struct IrBuilder
 		//dumpFunction(context, ir, "IR gen(Seal block)");
 		version(IrPrint) writefln("[IR] seal %s", basicBlockToSeal);
 
-		IrBasicBlock* bb = &ir.getBlock(basicBlockToSeal);
+		IrBasicBlock* bb = ir.getBlock(basicBlockToSeal);
 		if (bb.isSealed) return;
 
 		// all phis added to this block are incomplete and need to get their arguments
@@ -354,7 +360,7 @@ struct IrBuilder
 			context.idString(ir.backendData.name), user, used);
 		final switch (used.kind) with(IrValueKind) {
 			case none: assert(false, "addUser none");
-			case listItem: assert(false, "addUser listItem");
+			case array: assert(false, "addUser array");
 			case instruction: assert(false, "addUser instruction");
 			case basicBlock: break; // allowed. As argument of jmp jcc
 			case constant: break; // allowed, noop
@@ -435,7 +441,7 @@ struct IrBuilder
 		IrIndex instr = IrIndex(ir.numInstructions, IrValueKind.instruction);
 		appendInstructionSlots(1);
 
-		IrInstrHeader* instrHeader = &ir.get!IrInstrHeader(instr);
+		IrInstrHeader* instrHeader = ir.getInstr(instr);
 		*instrHeader = IrInstrHeader.init;
 
 		enum iinfo = getInstrInfo!I;
@@ -478,7 +484,7 @@ struct IrBuilder
 					instrHeader.result(ir) = extra.result;
 					// fix definition
 					if (extra.result.isVirtReg) {
-						IrVirtualRegister* virtReg = &ir.getVirtReg(extra.result);
+						IrVirtualRegister* virtReg = ir.getVirtReg(extra.result);
 						virtReg.definition = instr;
 					}
 				} else {
@@ -550,7 +556,7 @@ struct IrBuilder
 	/// Doesn't set any instruction info except prevInstr, nextInstr index
 	void appendBlockInstr(IrIndex blockIndex, IrIndex instr)
 	{
-		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = ir.getBlock(blockIndex);
 
 		ir.nextInstr(instr) = blockIndex;
 
@@ -570,7 +576,7 @@ struct IrBuilder
 	/// Doesn't set any instruction info except prevInstr, nextInstr index
 	void prependBlockInstr(IrIndex blockIndex, IrIndex instr)
 	{
-		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = ir.getBlock(blockIndex);
 
 		ir.prevInstr(instr) = blockIndex;
 
@@ -605,7 +611,7 @@ struct IrBuilder
 	/// Inserts 'instr' before lastInstr of basic block 'blockIndex'
 	void insertBeforeLastInstr(IrIndex blockIndex, IrIndex instr)
 	{
-		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = ir.getBlock(blockIndex);
 		if (block.lastInstr.isDefined) {
 			insertBeforeInstr(block.lastInstr, instr);
 		} else {
@@ -616,7 +622,7 @@ struct IrBuilder
 	/// Inserts 'instr' before 'beforeInstr'
 	void insertBeforeInstr(IrIndex beforeInstr, IrIndex instr)
 	{
-		IrInstrHeader* beforeInstrHeader = &ir.get!IrInstrHeader(beforeInstr);
+		IrInstrHeader* beforeInstrHeader = ir.getInstr(beforeInstr);
 
 		ir.nextInstr(instr) = beforeInstr;
 		ir.prevInstr(instr) = ir.prevInstr(beforeInstr);
@@ -644,7 +650,7 @@ struct IrBuilder
 
 	IrIndex addBinBranch(IrIndex blockIndex, IrBinaryCondition cond, IrArgSize argSize, IrIndex arg0, IrIndex arg1)
 	{
-		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
 		ExtraInstrArgs extra = { cond : cond, argSize : argSize };
@@ -663,7 +669,7 @@ struct IrBuilder
 
 	IrIndex addUnaryBranch(IrIndex blockIndex, IrUnaryCondition cond, IrArgSize argSize, IrIndex arg0)
 	{
-		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = ir.getBlock(blockIndex);
 		assert(!block.isFinished);
 		block.isFinished = true;
 		ExtraInstrArgs extra = { cond : cond, argSize : argSize };
@@ -690,7 +696,7 @@ struct IrBuilder
 
 	IrIndex addJump(IrIndex blockIndex)
 	{
-		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		IrBasicBlock* block = ir.getBlock(blockIndex);
 		context.assertf(!block.isFinished, "%s.%s is already finished", context.idString(ir.backendData.name), blockIndex);
 		block.isFinished = true;
 		return emitInstr!(IrOpcode.jump)(blockIndex);
@@ -777,7 +783,7 @@ struct IrBuilder
 		IrIndex virtRegIndex = appendVirtRegSlot();
 
 		assert(type.isType, format("Invalid type (%s)", type));
-		ir.getVirtReg(virtRegIndex) = IrVirtualRegister(definition, type);
+		*ir.getVirtReg(virtRegIndex) = IrVirtualRegister(definition, type);
 
 		return virtRegIndex;
 	}
@@ -802,7 +808,7 @@ struct IrBuilder
 		redirectVregDefinitionTo(fromSlot, toSlot);
 		// move data
 		version(IrPrint) writefln("[IR] moveVreg %s -> %s", fromSlot, toSlot);
-		ir.getVirtReg(toSlot) = ir.getVirtReg(fromSlot);
+		*ir.getVirtReg(toSlot) = *ir.getVirtReg(fromSlot);
 	}
 
 	// Adds phi function to specified block
@@ -812,11 +818,11 @@ struct IrBuilder
 
 		IrIndex vreg = addVirtualRegister(phiIndex, type);
 		version(IrPrint) writefln("[IR] add %s %s", vreg, phiIndex);
-		ir.get!IrPhi(phiIndex) = IrPhi(blockIndex, vreg, var);
-		IrBasicBlock* block = &ir.getBlock(blockIndex);
+		*ir.getPhi(phiIndex) = IrPhi(blockIndex, vreg, var);
+		IrBasicBlock* block = ir.getBlock(blockIndex);
 		if (block.firstPhi.isDefined) {
-			ir.get!IrPhi(block.firstPhi).prevPhi = phiIndex;
-			ir.get!IrPhi(phiIndex).nextPhi = block.firstPhi;
+			ir.getPhi(block.firstPhi).prevPhi = phiIndex;
+			ir.getPhi(phiIndex).nextPhi = block.firstPhi;
 		}
 		block.firstPhi = phiIndex;
 		return phiIndex;
@@ -825,8 +831,8 @@ struct IrBuilder
 	private void removePhi(IrIndex phiIndex)
 	{
 		version(IrPrint) writefln("[IR] remove phi %s", phiIndex);
-		IrPhi* phi = &ir.get!IrPhi(phiIndex);
-		IrBasicBlock* block = &ir.getBlock(phi.blockIndex);
+		IrPhi* phi = ir.getPhi(phiIndex);
+		IrBasicBlock* block = ir.getBlock(phi.blockIndex);
 		version(IrPrint) {
 			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
 				writefln("[IR]   %s = %s", phi.result, phiIndex);
@@ -834,8 +840,8 @@ struct IrBuilder
 		}
 		// TODO: free list of phis
 		if (block.firstPhi == phiIndex) block.firstPhi = phi.nextPhi;
-		if (phi.nextPhi.isDefined) ir.get!IrPhi(phi.nextPhi).prevPhi = phi.prevPhi;
-		if (phi.prevPhi.isDefined) ir.get!IrPhi(phi.prevPhi).nextPhi = phi.nextPhi;
+		if (phi.nextPhi.isDefined) ir.getPhi(phi.nextPhi).prevPhi = phi.prevPhi;
+		if (phi.prevPhi.isDefined) ir.getPhi(phi.prevPhi).nextPhi = phi.nextPhi;
 		version(IrPrint) writefln("[IR] after remove phi %s", phiIndex);
 		version(IrPrint) {
 			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
@@ -845,6 +851,7 @@ struct IrBuilder
 
 		// mark as removed
 		phi.blockIndex = IrIndex();
+		phi.args.free(ir);
 	}
 
 	// Algorithm 2: Implementation of global value numbering
@@ -854,11 +861,11 @@ struct IrBuilder
 		if (!ir.getBlock(blockIndex).isSealed) {
 			// Incomplete CFG
 			IrIndex phiIndex = addPhi(blockIndex, getVarType(variable), variable);
-			value = ir.get!IrPhi(phiIndex).result;
+			value = ir.getPhi(phiIndex).result;
 		}
 		else
 		{
-			SmallVector preds = ir.getBlock(blockIndex).predecessors;
+			IrSmallArray preds = ir.getBlock(blockIndex).predecessors;
 			if (preds.length == 1) {
 				// Optimize the common case of one predecessor: No phi needed
 				value = readVariable(preds[0, ir], variable);
@@ -867,7 +874,7 @@ struct IrBuilder
 			{
 				// Break potential cycles with operandless phi
 				IrIndex phiIndex = addPhi(blockIndex, getVarType(variable), variable);
-				value = ir.get!IrPhi(phiIndex).result;
+				value = ir.getPhi(phiIndex).result;
 				writeVariable(blockIndex, variable, value);
 				value = addPhiOperands(blockIndex, variable, phiIndex);
 			}
@@ -888,28 +895,29 @@ struct IrBuilder
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex addPhiOperands(IrIndex blockIndex, IrIndex variable, IrIndex phi)
 	{
-		version(IrPrint) writefln("[IR] addPhiOperands %s %s %s %s", blockIndex, variable, phi, ir.get!IrPhi(phi).result);
+		version(IrPrint) writefln("[IR] addPhiOperands %s %s %s %s", blockIndex, variable, phi, ir.getPhi(phi).result);
 		//dumpFunction(context, ir, "IR gen(addPhiOperands)");
 		// Determine operands from predecessors
-		foreach (i, predIndex; ir.getBlock(blockIndex).predecessors.range(ir))
+		foreach (i, IrIndex predIndex; ir.getBlock(blockIndex).predecessors.range(ir))
 		{
 			IrIndex value = readVariable(predIndex, variable);
 			version(IrPrint) writefln("[IR] phi operand %s %s", predIndex, value);
 			// Phi should not be cached before loop, since readVariable can add phi to phis, reallocating the array
-			addPhiArg(phi, predIndex, value);
+			addPhiArg(phi, value);
 			addUser(phi, value);
 		}
 		return tryRemoveTrivialPhi(phi);
 	}
 
-	void addPhiArg(IrIndex phiIndex, IrIndex blockIndex, IrIndex value)
+	void addPhiArg(IrIndex phiIndex, IrIndex value)
 	{
-		IrIndex phiArg = appendListItem!IrPhiArg(1);
-		IrPhi* phi = &ir.get!IrPhi(phiIndex);
+		IrPhi* phi = ir.getPhi(phiIndex);
+		// since we are iterating predecessors in addPhiOperands, appending is correct
+		phi.args.append(&this, value);
 		// try to set phi's type if parameter is not a self reference
 		if (value != phi.result)
 		{
-			IrVirtualRegister* resReg = &ir.getVirtReg(phi.result);
+			IrVirtualRegister* resReg = ir.getVirtReg(phi.result);
 			// type is already set. Check if types match
 			if (resReg.type.isDefined)
 			{
@@ -925,51 +933,48 @@ struct IrBuilder
 				resReg.type = argType;
 			}
 		}
-
-		ir.get!IrPhiArg(phiArg) = IrPhiArg(value, blockIndex, phi.firstArgListItem);
-		phi.firstArgListItem = phiArg;
 	}
 
 	// Algorithm 3: Detect and recursively remove a trivial φ function
 	// Returns either φ result virtual register or one of its arguments if φ is trivial
 	private IrIndex tryRemoveTrivialPhi(IrIndex phiIndex) {
 		// skip removed phi
-		if (ir.get!IrPhi(phiIndex).isRemoved) return IrIndex();
+		if (ir.getPhi(phiIndex).isRemoved) return IrIndex();
 
-		IrPhiArg same;
-		IrIndex phiResultIndex = ir.get!IrPhi(phiIndex).result;
-		foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiIndex).args(ir))
+		IrIndex same; // undefined
+		IrIndex phiResultIndex = ir.getPhi(phiIndex).result;
+		foreach (size_t i, ref IrIndex phiArg; ir.getPhi(phiIndex).args(ir))
 		{
-			version(IrPrint) writefln("[IR] arg %s %s", phiArg.value, phiArg.basicBlock);
-			if (phiArg.value == same.value || phiArg.value == phiResultIndex) {
+			version(IrPrint) writefln("[IR] arg %s %s", phiArg, phiArg.basicBlock);
+			if (phiArg == same || phiArg == phiResultIndex) {
 				version(IrPrint) writefln("[IR]   same");
 				continue; // Unique value or self−reference
 			}
-			if (same != IrPhiArg()) {
+			if (same.isDefined) {
 				version(IrPrint) writefln("[IR]   %s is non-trivial", phiIndex);
 				return phiResultIndex; // The phi merges at least two values: not trivial
 			}
-			version(IrPrint) writefln("[IR]   same = %s", phiArg.value);
+			version(IrPrint) writefln("[IR]   same = %s", phiArg);
 			same = phiArg;
 		}
 		version(IrPrint) writefln("[IR]   %s is trivial", phiIndex);
-		assert(same.value.isDefined, "Phi function got no arguments");
+		assert(same.isDefined, "Phi function got no arguments");
 
 		// Remember all users except the phi itself
 		assert(phiResultIndex.kind == IrValueKind.virtualRegister, format("%s", phiResultIndex));
 
-		SmallVector users = ir.getVirtReg(phiResultIndex).users;
+		IrSmallArray users = ir.getVirtReg(phiResultIndex).users;
 
 		// Reroute all uses of phi to same and remove phi
 		replaceBy(phiIndex, users, phiResultIndex, same);
 
 		// Update mapping from old phi result to same, since we may need to read
 		// this variable in later blocks, which will cause us to read removed phi
-		IrIndex maybePhiVar = ir.get!IrPhi(phiIndex).var;
+		IrIndex maybePhiVar = ir.getPhi(phiIndex).var;
 		if (maybePhiVar.isDefined)
 		{
-			IrIndex blockIndex = ir.get!IrPhi(phiIndex).blockIndex;
-			updatePhiVarDefs(blockIndex, maybePhiVar, phiResultIndex, same.value);
+			IrIndex blockIndex = ir.getPhi(phiIndex).blockIndex;
+			updatePhiVarDefs(blockIndex, maybePhiVar, phiResultIndex, same);
 		}
 
 		removePhi(phiIndex);
@@ -980,7 +985,7 @@ struct IrBuilder
 				tryRemoveTrivialPhi(index);
 
 		removeVirtualRegister(phiResultIndex);
-		return same.value;
+		return same;
 	}
 
 	private void updatePhiVarDefs(IrIndex blockIndex, IrIndex var, IrIndex oldValue, IrIndex newValue)
@@ -1005,7 +1010,7 @@ struct IrBuilder
 	{
 		final switch (someIndex.kind) with(IrValueKind) {
 			case none: assert(false);
-			case listItem: assert(false);
+			case array: assert(false);
 			case instruction: return someIndex;
 			case basicBlock: assert(false);
 			case constant: assert(false);
@@ -1027,21 +1032,21 @@ struct IrBuilder
 		context.assertf(vreg.isVirtReg, "'vreg' must be virtual register, not %s", vreg.kind);
 		version(IrPrint) writefln("[IR] redirectVregUsersTo %s -> %s", vreg, redirectTo);
 
-		SmallVector users = ir.getVirtReg(vreg).users;
+		IrSmallArray users = ir.getVirtReg(vreg).users;
 		foreach (size_t i, IrIndex userIndex; users.range(ir))
 		{
 			switch (userIndex.kind) with(IrValueKind) {
 				case instruction:
-					foreach (ref IrIndex arg; ir.get!IrInstrHeader(userIndex).args(ir))
+					foreach (ref IrIndex arg; ir.getInstr(userIndex).args(ir))
 						if (arg == vreg) {
 							arg = redirectTo;
 							addUser(userIndex, redirectTo);
 						}
 					break;
 				case phi:
-					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(userIndex).args(ir))
-						if (phiArg.value == vreg) {
-							phiArg.value = redirectTo;
+					foreach (size_t i, ref IrIndex phiArg; ir.getPhi(userIndex).args(ir))
+						if (phiArg == vreg) {
+							phiArg = redirectTo;
 							addUser(userIndex, redirectTo);
 						}
 					break;
@@ -1055,7 +1060,7 @@ struct IrBuilder
 		IrIndex definition = ir.getVirtReg(vreg).definition;
 		switch (definition.kind) {
 			case IrValueKind.phi: ir.getPhi(definition).result = redirectTo; break;
-			case IrValueKind.instruction: ir.get!IrInstrHeader(definition).result(ir) = redirectTo; break;
+			case IrValueKind.instruction: ir.getInstr(definition).result(ir) = redirectTo; break;
 			default: context.internal_error("Invalid definition %s of %s", definition.kind, vreg);
 		}
 	}
@@ -1063,7 +1068,7 @@ struct IrBuilder
 	// ditto
 	/// Rewrites all users of phi to point to `byWhat` instead of its result `what`.
 	/// `what` is the result of phi (vreg), `phiUsers` is users of `what`
-	private void replaceBy(IrIndex phiIndex, SmallVector phiUsers, IrIndex what, IrPhiArg byWhat) {
+	private void replaceBy(IrIndex phiIndex, IrSmallArray phiUsers, IrIndex what, IrIndex byWhat) {
 		version(IrPrint) writefln("[IR]     replaceBy %s %s -> %s", phiIndex, what, byWhat);
 
 		foreach (size_t i, IrIndex phiUserIndex; phiUsers.range(ir))
@@ -1075,27 +1080,26 @@ struct IrBuilder
 
 			final switch (phiUserIndex.kind) with(IrValueKind) {
 				case none: assert(false);
-				case listItem: assert(false);
+				case array: assert(false);
 				case instruction:
-					foreach (ref IrIndex arg; ir.get!IrInstrHeader(phiUserIndex).args(ir))
+					foreach (ref IrIndex arg; ir.getInstr(phiUserIndex).args(ir))
 						if (arg == what)
 						{
-							arg = byWhat.value;
-							replaceUserWith(byWhat.value, phiIndex, phiUserIndex);
+							arg = byWhat;
+							replaceUserWith(byWhat, phiIndex, phiUserIndex);
 						}
 					break;
 				case basicBlock: assert(false);
 				case constant, constantAggregate, constantZero: assert(false);
 				case global: assert(false);
 				case phi:
-					if (ir.get!IrPhi(phiUserIndex).isRemoved) continue; // skip
-					foreach (size_t i, ref IrPhiArg phiArg; ir.get!IrPhi(phiUserIndex).args(ir))
+					if (ir.getPhi(phiUserIndex).isRemoved) continue; // skip removed phi
+					foreach (size_t i, ref IrIndex phiArg; ir.getPhi(phiUserIndex).args(ir))
 					{
-						if (phiArg.value == what)
+						if (phiArg == what)
 						{
-							phiArg.value = byWhat.value;
-							phiArg.basicBlock = byWhat.basicBlock;
-							replaceUserWith(byWhat.value, phiIndex, phiUserIndex);
+							phiArg = byWhat;
+							replaceUserWith(byWhat, phiIndex, phiUserIndex);
 						}
 					}
 					break;
@@ -1115,16 +1119,16 @@ struct IrBuilder
 		// When replacing users with phi users, replacement wil occur only for first phi user.
 		// Other phi users will not find any users to replace.
 		// So add append users instead if no replacement was done.
-		void replaceVregUser(ref IrVirtualRegister vreg) {
+		void replaceVregUser(IrVirtualRegister* vreg) {
 			bool replaced = vreg.users.replaceFirst(ir, what, byWhat);
 			if (!replaced) vreg.users.append(&this, byWhat);
 		}
 		final switch (used.kind) with(IrValueKind) {
-			case none, listItem, basicBlock, physicalRegister: assert(false);
-			case instruction: return replaceVregUser(ir.getVirtReg(ir.get!IrInstrHeader(used).result(ir)));
+			case none, array, basicBlock, physicalRegister: assert(false);
+			case instruction: return replaceVregUser(ir.getVirtReg(ir.getInstr(used).result(ir)));
 			case constant, constantAggregate, constantZero: return; // constants dont track individual users
 			case global: return; // globals dont track individual users
-			case phi: return replaceVregUser(ir.getVirtReg(ir.get!IrPhi(used).result));
+			case phi: return replaceVregUser(ir.getVirtReg(ir.getPhi(used).result));
 			case stackSlot: assert(false); // TODO
 			case virtualRegister: return replaceVregUser(ir.getVirtReg(used));
 			case type: return; // no user tracking

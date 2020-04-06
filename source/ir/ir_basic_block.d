@@ -26,8 +26,8 @@ struct IrBasicBlock
 	InstrReverseIterator instructionsReverse(IrFunction* ir) { return InstrReverseIterator(ir, lastInstr); }
 	bool hasPhis() { return firstPhi.isDefined; }
 
-	SmallVector predecessors;
-	SmallVector successors;
+	IrSmallArray predecessors;
+	IrSmallArray successors;
 
 	uint seqIndex;
 
@@ -63,13 +63,13 @@ void removeBlockFromChain(IrFunction* ir, IrBasicBlock* block)
 {
 	if (block.prevBlock.isDefined)
 	{
-		IrBasicBlock* left = &ir.getBlock(block.prevBlock);
+		IrBasicBlock* left = ir.getBlock(block.prevBlock);
 		left.nextBlock = block.nextBlock;
 	}
 
 	if (block.nextBlock.isDefined)
 	{
-		IrBasicBlock* right = &ir.getBlock(block.nextBlock);
+		IrBasicBlock* right = ir.getBlock(block.nextBlock);
 		right.prevBlock = block.prevBlock;
 	}
 }
@@ -78,8 +78,8 @@ void removeBlockFromChain(IrFunction* ir, IrBasicBlock* block)
 // used for block ordering
 void linkBlockBefore(IrFunction* ir, IrIndex blockIndex, IrIndex beforeIndex)
 {
-	IrBasicBlock* before = &ir.getBlock(beforeIndex);
-	IrBasicBlock* block = &ir.getBlock(blockIndex);
+	IrBasicBlock* before = ir.getBlock(beforeIndex);
+	IrBasicBlock* block = ir.getBlock(blockIndex);
 
 	// check if already in correct order
 	if (before.prevBlock == blockIndex) return;
@@ -91,7 +91,7 @@ void linkBlockBefore(IrFunction* ir, IrIndex blockIndex, IrIndex beforeIndex)
 		block.prevBlock = before.prevBlock;
 		if (before.prevBlock.isDefined)
 		{
-			IrBasicBlock* left = &ir.getBlock(before.prevBlock);
+			IrBasicBlock* left = ir.getBlock(before.prevBlock);
 			left.nextBlock = blockIndex;
 		}
 		before.prevBlock = blockIndex;
@@ -103,8 +103,8 @@ void linkBlockBefore(IrFunction* ir, IrIndex blockIndex, IrIndex beforeIndex)
 // used for block ordering
 void linkBlockAfter(IrFunction* ir, IrIndex blockIndex, IrIndex afterIndex)
 {
-	IrBasicBlock* after = &ir.getBlock(afterIndex);
-	IrBasicBlock* block = &ir.getBlock(blockIndex);
+	IrBasicBlock* after = ir.getBlock(afterIndex);
+	IrBasicBlock* block = ir.getBlock(blockIndex);
 
 	// check if already in correct order
 	if (after.nextBlock == blockIndex) return;
@@ -116,7 +116,7 @@ void linkBlockAfter(IrFunction* ir, IrIndex blockIndex, IrIndex afterIndex)
 		block.nextBlock = after.nextBlock;
 		if (after.nextBlock.isDefined)
 		{
-			IrBasicBlock* right = &ir.getBlock(after.nextBlock);
+			IrBasicBlock* right = ir.getBlock(after.nextBlock);
 			right.prevBlock = blockIndex;
 		}
 		after.nextBlock = blockIndex;
@@ -132,7 +132,7 @@ struct PhiIterator
 		IrIndex next = block.firstPhi;
 		while (next.isDefined)
 		{
-			IrPhi* phi = &ir.get!IrPhi(next);
+			IrPhi* phi = ir.getPhi(next);
 			IrIndex indexCopy = next;
 
 			// save current before invoking delegate, which can remove current phi
@@ -156,7 +156,7 @@ struct InstrIterator
 		while (current.isInstruction)
 		{
 			IrIndex indexCopy = current;
-			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
+			IrInstrHeader* header = ir.getInstr(current);
 
 			// save current before invoking delegate, which can remove current instruction
 			current = header.nextInstr(ir, indexCopy);
@@ -178,7 +178,7 @@ struct InstrReverseIterator
 		while (current.isInstruction)
 		{
 			IrIndex indexCopy = current;
-			IrInstrHeader* header = &ir.get!IrInstrHeader(current);
+			IrInstrHeader* header = ir.getInstr(current);
 
 			// save current before invoking delegate, which can remove current instruction
 			current = header.prevInstr(ir, indexCopy);

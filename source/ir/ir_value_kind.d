@@ -11,7 +11,6 @@ module ir.ir_value_kind;
 enum IrValueKind : ubyte
 {
 	none, /// Used for undefined indicies
-	listItem, /// Indicates items of linked list in SmallVector
 	instruction,
 	basicBlock,
 	constant,
@@ -25,5 +24,6 @@ enum IrValueKind : ubyte
 	type,
 	variable, /// Represents variable index while converting into SSA-form
 	// temporarily IrIndex.storageUintIndex contains AstIndex of FunctionDeclNode
-	func
+	func,
+	array, /// Indicates reference to big array in IrSmallArray
 }

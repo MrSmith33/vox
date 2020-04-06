@@ -768,25 +768,28 @@ struct LinearScan
 			{
 				final switch (userIndex.kind) with(IrValueKind)
 				{
-					case none, listItem, virtualRegister, physicalRegister, constant, constantAggregate, constantZero, global, basicBlock, stackSlot, type, func: assert(false);
+					case none, array, virtualRegister, physicalRegister, constant, constantAggregate, constantZero, global, basicBlock, stackSlot, type, func: assert(false);
 					case instruction:
 						uint pos = live.linearIndicies.instr(userIndex);
 						IrIndex reg = live.getRegFor(vregIndex, pos);
-						foreach (ref IrIndex arg; lir.get!IrInstrHeader(userIndex).args(lir))
+						foreach (ref IrIndex arg; lir.getInstr(userIndex).args(lir))
 							if (arg == vregIndex)
 							{
 								arg = reg;
 							}
 						break;
+
 					case phi:
-						foreach (size_t i, ref IrPhiArg phiArg; lir.get!IrPhi(userIndex).args(lir))
-							if (phiArg.value == vregIndex)
+						IrPhi* phi = lir.getPhi(userIndex);
+						IrIndex[] preds = lir.getBlock(phi.blockIndex).predecessors.data(lir);
+						foreach (size_t i, ref IrIndex phiArg; phi.args(lir))
+							if (phiArg == vregIndex)
 							{
-								IrIndex lastInstr = lir.getBlock(phiArg.basicBlock).lastInstr;
+								IrIndex lastInstr = lir.getBlock(preds[i]).lastInstr;
 								uint pos = live.linearIndicies.instr(lastInstr);
 								IrIndex reg = live.getRegFor(vregIndex, pos);
-								//writefln("set %s arg reg %s -> %s at %s", userIndex, phiArg.value, reg, pos);
-								phiArg.value = reg;
+								//writefln("set %s arg reg %s -> %s at %s", userIndex, phiArg, reg, pos);
+								phiArg = reg;
 							}
 						break;
 					case variable: assert(false);
@@ -808,7 +811,7 @@ struct LinearScan
 					IrIndex resultReg = live.getRegFor(vregIndex, pos);
 
 					IrIndex instrIndex = vreg.definition;
-					IrInstrHeader* instrHeader = &lir.get!IrInstrHeader(instrIndex);
+					IrInstrHeader* instrHeader = lir.getInstr(instrIndex);
 					instrHeader.result(lir) = resultReg;
 
 					InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
@@ -835,7 +838,7 @@ struct LinearScan
 					break;
 
 				case phi:
-					IrPhi* irPhi = &lir.get!IrPhi(vreg.definition);
+					IrPhi* irPhi = lir.getPhi(vreg.definition);
 					uint pos = live.linearIndicies.basicBlock(irPhi.blockIndex);
 					IrIndex reg = live.getRegFor(vregIndex, pos);
 					irPhi.result = reg;
@@ -1007,7 +1010,7 @@ struct LinearScan
 		{
 			foreach (IrIndex predIndex; succBlock.predecessors.range(lir))
 			{
-				IrBasicBlock* predBlock = &lir.getBlock(predIndex);
+				IrBasicBlock* predBlock = lir.getBlock(predIndex);
 				resolveEdge(moveSolver, predIndex, *predBlock, succIndex, succBlock);
 			}
 		}
@@ -1062,15 +1065,17 @@ struct LinearScan
 		foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(lir))
 		{
 			version(RAPrint_resolve) writef("    phi %s res %s", phiIndex, IrIndexDump(phi.result, context, lir));
-			foreach (size_t arg_i, ref IrPhiArg arg; phi.args(lir))
+			IrIndex[] preds = lir.getBlock(phi.blockIndex).predecessors.data(lir);
+			foreach (size_t arg_i, ref IrIndex arg; phi.args(lir))
 			{
-				if (arg.basicBlock == predIndex)
+				IrIndex argBlock = preds[arg_i];
+				if (argBlock == predIndex)
 				{
-					IrIndex moveFrom = arg.value;
+					IrIndex moveFrom = arg;
 					IrIndex moveTo = phi.result;
 
 					IrArgSize argSize = getMoveArgSize(phi.result);
-					version(RAPrint_resolve) writefln(" arg %s %s size %s", arg.basicBlock, IrIndexDump(arg.value, context, lir), argSize);
+					version(RAPrint_resolve) writefln(" arg %s %s size %s", argBlock, IrIndexDump(arg, context, lir), argSize);
 
 					moveSolver.addMove(moveFrom, moveTo, argSize);
 				}
