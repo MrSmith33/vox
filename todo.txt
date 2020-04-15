@@ -121,6 +121,7 @@ o dll linking
 [CLI]
 - -run option
 - -i option (compile all imported files)
+- stats about LoC compiled, time per entity
 
 
 [Testing]
@@ -170,6 +171,7 @@ o dll linking
 	*- https://docs.microsoft.com/en-us/cpp/build/reference/dynamicbase-use-address-space-layout-randomization?view=vs-2019
 	* https://github.com/bitcoin/bitcoin/issues/8248
 - First arrange globals by alignment for tighter packing, then fill sections with data.
+- Perform full reachability analisys before codegen runs to not generate unused symbols (functions)
 + Do not emit zero inited globals, only track them. Important for executables.
 + Implement zero initialized data section (at the end of rw section)
 + globals need to be initialized

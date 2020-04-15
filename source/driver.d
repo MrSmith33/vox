@@ -631,10 +631,10 @@ struct PerPassTimeMeasurements
 
 		writef("Iterations % 5.0s    ", scaledNumberFmt(totalTimes.numIters));
 		totalTimes.printHeader; writeln;
-		printRow("Total", totalTimes);
 		foreach (passIndex, string name, Duration dur; PassMetaIterator(passes))
 			if (name)
 				printRow(name, passTimes[passIndex]);
+		printRow("Total", totalTimes);
 	}
 
 	void printTsv()
@@ -648,10 +648,10 @@ struct PerPassTimeMeasurements
 
 		writef("Iterations %s", scaledNumberFmt(totalTimes.numIters));
 		totalTimes.printHeaderTsv; writeln;
-		printRow("Total", totalTimes);
 		foreach (passIndex, string name, Duration dur; PassMetaIterator(passes))
 			if (name)
 				printRow(name, passTimes[passIndex]);
+		printRow("Total", totalTimes);
 	}
 }
 

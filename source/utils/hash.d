@@ -27,12 +27,13 @@ struct KeyBucket(Key, Key emptyKey)
 }
 
 /// If store_values = no then table works like hashset
+// Compiler doesn't optimize `index % _capacity` into `index & (_capacity - 1)`
 mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 {
 	import utils : isPowerOfTwo, nextPOT, PAGE_SIZE, max, writefln, ArrayArena;
 
 	private uint _length; // num of used buckets
-	private uint _capacity; // capacity
+	private uint _capacity; // capacity. Always power of two
 	private enum MIN_CAPACITY = 4;
 	private enum bool SINGLE_ALLOC = Key.sizeof == Value.sizeof;
 
@@ -52,22 +53,22 @@ mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 	/// Returns false if no value was deleted, true otherwise
 	bool remove(ref ArrayArena arena, Key key) {
 		if (_length == 0) return false;
-		size_t index = getHash(key) % _capacity;
+		size_t index = getHash(key) & (_capacity - 1); // % capacity
 		size_t searched_dib = 0;
 		while (true) { // Find entry to delete
 			if (keyBuckets[index].empty) return false;
 			if (keyBuckets[index].key == key) break; // found the item
-			size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
+			size_t current_initial_bucket = getHash(keyBuckets[index].key) & (_capacity - 1); // % capacity
 			ptrdiff_t current_dib = index - current_initial_bucket;
 			if (current_dib < 0) current_dib += _capacity;
 			if (searched_dib > current_dib) return false; // item must have been inserted here
 			++searched_dib;
-			index = (index + 1) % _capacity;
+			index = (index + 1) & (_capacity - 1); // % capacity
 		}
 		while (true) { // Backward shift
-			size_t nextIndex = (index + 1) % _capacity;
+			size_t nextIndex = (index + 1) & (_capacity - 1); // % capacity
 			if (keyBuckets[nextIndex].empty) break; // Found stop bucket (empty)
-			size_t current_initial_bucket = getHash(keyBuckets[nextIndex].key) % _capacity;
+			size_t current_initial_bucket = getHash(keyBuckets[nextIndex].key) & (_capacity - 1); // % capacity
 			if (current_initial_bucket == nextIndex) break; // Found stop bucket (0 DIB)
 			keyBuckets[index].key = keyBuckets[nextIndex].key; // shift item left
 			values[index] = values[nextIndex]; // shift item left
@@ -88,17 +89,17 @@ mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 	private size_t findIndex(Key key) inout
 	{
 		if (_length == 0) return size_t.max;
-		auto index = getHash(key) % _capacity;
+		auto index = getHash(key) & (_capacity - 1); // % capacity
 		size_t searched_dib = 0;
 		while (true) {
 			if (keyBuckets[index].empty) return size_t.max;
 			if (keyBuckets[index].key == key) return index;
-			size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
+			size_t current_initial_bucket = getHash(keyBuckets[index].key) & (_capacity - 1); // % capacity
 			ptrdiff_t current_dib = index - current_initial_bucket;
 			if (current_dib < 0) current_dib += _capacity;
 			if (searched_dib > current_dib) return size_t.max; // item must have been inserted here
 			++searched_dib;
-			index = (index + 1) % _capacity;
+			index = (index + 1) & (_capacity - 1); // % capacity
 		}
 	}
 
@@ -196,7 +197,7 @@ mixin template HashMapImpl()
 	{
 		assert(KeyBucketT.isValidKey(key), "Invalid key");
 		if (_length == maxLength) extend(arena);
-		size_t index = getHash(key) % _capacity;
+		size_t index = getHash(key) & (_capacity - 1); // % capacity
 		size_t inserted_dib = 0;
 		while (true) {
 			if (keyBuckets[index].key == key) { // same key
@@ -209,7 +210,7 @@ mixin template HashMapImpl()
 				values[index] = value;
 				return &values[index];
 			}
-			size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
+			size_t current_initial_bucket = getHash(keyBuckets[index].key) & (_capacity - 1); // % capacity
 			ptrdiff_t current_dib = index - current_initial_bucket;
 			if (current_dib < 0) current_dib += _capacity;
 			// swap inserted item with current only if DIB(current) < DIB(inserted item)
@@ -219,7 +220,7 @@ mixin template HashMapImpl()
 				inserted_dib = current_dib;
 			}
 			++inserted_dib;
-			index = (index + 1) % _capacity;
+			index = (index + 1) & (_capacity - 1); // % capacity
 		}
 	}
 
@@ -230,7 +231,7 @@ mixin template HashMapImpl()
 			return put(arena, key, default_value);
 		}
 
-		auto index = getHash(key) % _capacity;
+		auto index = getHash(key) & (_capacity - 1); // % capacity
 		size_t inserted_dib = 0;
 		Value value;
 		while (true) {
@@ -242,7 +243,7 @@ mixin template HashMapImpl()
 				return &values[index];
 			}
 			if (keyBuckets[index].key == key) return &values[index];
-			size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
+			size_t current_initial_bucket = getHash(keyBuckets[index].key) & (_capacity - 1); // % capacity
 			ptrdiff_t current_dib = index - current_initial_bucket;
 			if (current_dib < 0) current_dib += _capacity;
 			if (inserted_dib > current_dib) {
@@ -252,11 +253,11 @@ mixin template HashMapImpl()
 				swap(value, values[index]);
 				inserted_dib = current_dib;
 				++inserted_dib;
-				index = (index + 1) % _capacity;
+				index = (index + 1) & (_capacity - 1); // % capacity
 				break; // item must have been inserted here
 			}
 			++inserted_dib;
-			index = (index + 1) % _capacity;
+			index = (index + 1) & (_capacity - 1); // % capacity
 		}
 
 		while (true) {
@@ -266,7 +267,7 @@ mixin template HashMapImpl()
 				values[index] = value;
 				return &values[index];
 			}
-			size_t current_initial_bucket = getHash(keyBuckets[index].key) % _capacity;
+			size_t current_initial_bucket = getHash(keyBuckets[index].key) & (_capacity - 1); // % capacity
 			ptrdiff_t current_dib = index - current_initial_bucket;
 			if (current_dib < 0) current_dib += _capacity;
 			// swap inserted item with current only if DIB(current) < DIB(inserted item)
@@ -276,7 +277,7 @@ mixin template HashMapImpl()
 				inserted_dib = current_dib;
 			}
 			++inserted_dib;
-			index = (index + 1) % _capacity;
+			index = (index + 1) & (_capacity - 1); // % capacity
 		}
 
 		return &values[index];
