@@ -192,7 +192,7 @@ void set_instance_id(AstIndex instance_index, AstNodes instance_args, Compilatio
 	}
 	sink.put("]");
 	const(char)[] idString = sink.data.data;
-	*id = c.idMap.getOrReg(idString);
+	*id = c.idMap.getOrReg(c, idString);
 }
 
 /// Perform copiying of AST subtree and index fixing

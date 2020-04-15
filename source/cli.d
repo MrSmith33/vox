@@ -105,7 +105,7 @@ int runCli(string[] args)
 	if (outputFilename) driver.context.outputFilename = outputFilename;
 	else driver.context.outputFilename = filenames[0].baseName.setExtension(".exe"); // GC
 
-	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(filterFuncName);
+	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(&driver.context, filterFuncName);
 
 	auto times = PerPassTimeMeasurements(1, driver.passes);
 	auto endInitTime = currTime;

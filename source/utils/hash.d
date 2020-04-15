@@ -30,7 +30,7 @@ struct KeyBucket(Key, Key emptyKey)
 // Compiler doesn't optimize `index % _capacity` into `index & (_capacity - 1)`
 mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 {
-	import utils : isPowerOfTwo, nextPOT, PAGE_SIZE, max, writefln, ArrayArena;
+	import utils : isPowerOfTwo, max, writefln, ArrayArena;
 
 	private uint _length; // num of used buckets
 	private uint _capacity; // capacity. Always power of two

@@ -396,7 +396,7 @@ struct Driver
 		context.files.put(moduleFile);
 		SourceFileInfo* file = &context.files.back();
 
-		Identifier id = context.idMap.getOrRegNoDup(file.name.baseName.stripExtension);
+		Identifier id = context.idMap.getOrRegNoDup(&context, file.name.baseName.stripExtension);
 		ObjectModule localModule = {
 			kind : ObjectModuleKind.isLocal,
 			id : id
@@ -463,7 +463,7 @@ struct Driver
 			sectionAddress : 0,
 			length : 0,
 			alignment : 1,
-			id : context.idMap.getOrRegNoDup(":host")
+			id : context.idMap.getOrRegNoDup(&context, ":host")
 		};
 		context.hostSectionIndex = context.objSymTab.addSection(hostSection);
 
@@ -471,7 +471,7 @@ struct Driver
 			sectionAddress : 0,
 			length : 0,
 			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".idata"),
+			id : context.idMap.getOrRegNoDup(&context, ".idata"),
 			buffer : &context.importBuffer,
 		};
 		context.importSectionIndex = context.objSymTab.addSection(importSection);
@@ -481,7 +481,7 @@ struct Driver
 			sectionData : context.staticDataBuffer.bufPtr,
 			length : 0,
 			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".data"),
+			id : context.idMap.getOrRegNoDup(&context, ".data"),
 			buffer : &context.staticDataBuffer,
 		};
 		context.dataSectionIndex = context.objSymTab.addSection(dataSection);
@@ -491,7 +491,7 @@ struct Driver
 			sectionData : context.roStaticDataBuffer.bufPtr,
 			length : 0,
 			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".rdata"),
+			id : context.idMap.getOrRegNoDup(&context, ".rdata"),
 			buffer : &context.roStaticDataBuffer,
 		};
 		context.rdataSectionIndex = context.objSymTab.addSection(rdataSection);
@@ -501,7 +501,7 @@ struct Driver
 			sectionData : context.codeBuffer.bufPtr,
 			length : 0,
 			alignment : 1,
-			id : context.idMap.getOrRegNoDup(".text"),
+			id : context.idMap.getOrRegNoDup(&context, ".text"),
 			buffer : &context.codeBuffer,
 		};
 		context.textSectionIndex = context.objSymTab.addSection(textSection);
@@ -514,13 +514,13 @@ struct Driver
 
 		ObjectModule hostModule = {
 			kind : ObjectModuleKind.isHost,
-			id : context.idMap.getOrRegNoDup(":host")
+			id : context.idMap.getOrRegNoDup(&context, ":host")
 		};
 		LinkIndex hostModuleIndex = context.objSymTab.addModule(hostModule);
 
 		foreach (HostSymbol hostSym; hostSymbols)
 		{
-			Identifier symId = context.idMap.getOrRegNoDup(hostSym.name);
+			Identifier symId = context.idMap.getOrRegNoDup(&context, hostSym.name);
 
 			if (canReferenceFromCode(hostSym.ptr))
 			{
@@ -560,14 +560,14 @@ struct Driver
 	{
 		ObjectModule importedModule = {
 			kind : ObjectModuleKind.isImported,
-			id : context.idMap.getOrRegNoDup(libName)
+			id : context.idMap.getOrRegNoDup(&context, libName)
 		};
 		return context.objSymTab.addModule(importedModule);
 	}
 
 	void addDllModuleSymbol(LinkIndex dllModuleIndex, string symName)
 	{
-		Identifier symId = context.idMap.getOrReg(symName);
+		Identifier symId = context.idMap.getOrReg(&context, symName);
 		ObjectSymbol importedSymbol = {
 			kind : ObjectSymbolKind.isImported,
 			flags : ObjectSymbolFlags.isIndirect,

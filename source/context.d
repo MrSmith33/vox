@@ -175,7 +175,7 @@ struct CompilationContext
 	bool debugRegAlloc = false;
 	Identifier printOnlyFun;
 	size_t numCtfeRuns = 0;
-	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegNoDup(name); }
+	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegNoDup(&this, name); }
 
 	/// Check if printing of this function needed (including if all functions are requested)
 	bool printDumpOf(FunctionDeclNode* fun) {
@@ -672,7 +672,7 @@ struct CompilationContext
 	void initialize()
 	{
 		// populates idMap with common identifiers like this, length, ptr, min, max, sizeof...
-		idMap.regCommonIds();
+		idMap.regCommonIds(&this);
 
 		astBuffer.voidPut(1); // 0th slot is reserved for undefined index
 
@@ -771,7 +771,13 @@ struct CompilationContext
 		entryPoint = null;
 		sink.clear;
 		errorSink.clear;
+		idMap.stringDataBuffer.clear;
+		idMap.strings.clear;
+		idMap.map = typeof(idMap.map).init;
 
 		externalSymbols.clear();
+
+		// needed because all arrays are cleared
+		idMap.regCommonIds(&this);
 	}
 }

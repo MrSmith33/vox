@@ -143,7 +143,7 @@ struct Parser
 	Identifier makeIdentifier(TokenIndex index)
 	{
 		const(char)[] str = context.getTokenString(index);
-		return context.idMap.getOrRegNoDup(str);
+		return context.idMap.getOrRegNoDup(context, str);
 	}
 
 	Identifier expectIdentifier()
@@ -414,7 +414,7 @@ struct Parser
 				paramId = expectIdentifier();
 			else // anon parameter
 			{
-				paramId = context.idMap.getOrRegFormatted("__param_%s", paramIndex);
+				paramId = context.idMap.getOrRegFormatted(context, "__param_%s", paramIndex);
 			}
 
 			// default argument
@@ -1169,7 +1169,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 					sectionIndex : p.context.rdataSectionIndex,
 					moduleIndex : p.currentModule.objectSymIndex,
 					flags : ObjectSymbolFlags.needsZeroTermination | ObjectSymbolFlags.isString,
-					id : p.context.idMap.getOrRegNoDup(":string"),
+					id : p.context.idMap.getOrRegNoDup(p.context, ":string"),
 				};
 				global.objectSymIndex = p.context.objSymTab.addSymbol(sym);
 
