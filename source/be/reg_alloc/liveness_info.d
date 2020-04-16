@@ -6,12 +6,7 @@
 /// Phi functions use their arguments at the last instruction of corresponding basic block
 module be.reg_alloc.liveness_info;
 
-import std.algorithm : min, max, sort, swap;
 import std.array : empty;
-import std.bitmanip : BitArray, bitfields;
-import std.format : formattedWrite, FormatSpec;
-import std.range : chain;
-import std.range : repeat;
 import std.stdio : writeln, write, writef, writefln, stdout;
 import std.string : format;
 
@@ -32,7 +27,6 @@ struct LiveBitmap
 
 	// [vreg index..., padding]
 	size_t[] liveBuckets;
-	BitArray live;
 
 	void allocSets(CompilationContext* c, uint numBucketsPerBlock, uint numBlocks) {
 		this.numBucketsPerBlock = numBucketsPerBlock;
@@ -42,21 +36,13 @@ struct LiveBitmap
 
 		liveBuckets = c.allocateTempArray!size_t(numBucketsPerBlock);
 		liveBuckets[] = 0;
-		live = BitArray(liveBuckets, numBucketsPerBlock * size_t.sizeof * 8);
 	}
 
-	size_t[] blockLiveInBuckets(IrIndex blockIndex, IrFunction* ir)
+	size_t[] blockLiveInBuckets(IrIndex blockIndex)
 	{
 		size_t from = blockIndex.storageUintIndex * numBucketsPerBlock;
 		size_t to = from + numBucketsPerBlock;
 		return liveInBuckets[from..to];
-	}
-
-	BitArray blockLiveInBits(IrIndex blockIndex, IrFunction* ir)
-	{
-		size_t from = blockIndex.storageUintIndex * numBucketsPerBlock;
-		size_t to = from + numBucketsPerBlock;
-		return BitArray(liveInBuckets[from..to], numBucketsPerBlock * size_t.sizeof * 8);
 	}
 }
 

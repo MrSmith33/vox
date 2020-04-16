@@ -186,11 +186,10 @@ void dumpFunctionImpl(IrDumpContext* c)
 			if (settings.printVregLiveness) sink.put("#");
 		}
 
-		import std.bitmanip : BitArray;
-		BitArray blockLiveIn;
+		size_t[] blockLiveIn;
 		if (instrIndex.isBasicBlock)
 		{
-			blockLiveIn = liveness.bitmap.blockLiveInBits(instrIndex, ir);
+			blockLiveIn = liveness.bitmap.blockLiveInBuckets(instrIndex);
 		}
 
 		if (settings.printVregLiveness)
@@ -264,7 +263,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 				{
 					if (instrIndex.isBasicBlock)
 					{
-						if (blockLiveIn[interval.definition.storageUintIndex])
+						if (blockLiveIn.getBitAt(interval.definition.storageUintIndex))
 							sink.put("+"); // virtual register is in "live in" of basic block
 						else
 							sink.put(" "); // phi result

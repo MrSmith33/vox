@@ -148,3 +148,38 @@ struct FileDataSlicer
 
 	void advanceToAlignment(size_t alignment) { fileCursor += paddingSize(fileCursor, alignment); }
 }
+
+import core.bitop : bsf, bt, bts, btr;
+bool setBitAt(T)(T[] bitmap, size_t at) { return bts(cast(size_t*)bitmap.ptr, at) != 0; }
+bool resetBitAt(T)(T[] bitmap, size_t at) { return btr(cast(size_t*)bitmap.ptr, at) != 0; }
+bool getBitAt(T)(T[] bitmap, size_t at) { return bt(cast(size_t*)bitmap.ptr, at) != 0; }
+
+// Most efficient with ulong
+// Iterates all set bits in increasing order
+BitsSet!T bitsSet(T)(T[] bitmap) { return BitsSet!T(bitmap); }
+
+struct BitsSet(T)
+{
+	T[] bitmap;
+
+	int opApply(scope int delegate(size_t) dg)
+	{
+		foreach (size_t slotIndex, T slotBits; bitmap)
+		{
+			while (slotBits != 0)
+			{
+				// Extract lowest set isolated bit
+				// 111000 -> 001000; 0 -> 0
+				T lowestSetBit = slotBits & -slotBits;
+
+				size_t lowestSetBitIndex = bsf(slotBits);
+				if (int res = dg(slotIndex * T.sizeof * 8 + lowestSetBitIndex)) return res;
+
+				// Disable lowest set isolated bit
+				slotBits ^= lowestSetBit;
+			}
+		}
+
+		return 0;
+	}
+}

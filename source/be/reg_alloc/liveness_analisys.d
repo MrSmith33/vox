@@ -83,14 +83,14 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 	{
 		context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
 		version(LivePrint) writefln("[LIVE] liveAdd %s #%s", someOperand, someOperand.storageUintIndex);
-		liveness.bitmap.live[someOperand.storageUintIndex] = true;
+		liveness.bitmap.liveBuckets.setBitAt(someOperand.storageUintIndex);
 	}
 
 	void liveRemove(IrIndex someOperand)
 	{
 		context.assertf(someOperand.isVirtReg, "not vreg, but %s", someOperand.kind);
 		version(LivePrint) writefln("[LIVE] liveRemove %s #%s", someOperand, someOperand.storageUintIndex);
-		liveness.bitmap.live[someOperand.storageUintIndex] = false;
+		liveness.bitmap.liveBuckets.resetBitAt(someOperand.storageUintIndex);
 	}
 
 	// algorithm start
@@ -106,7 +106,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		liveness.bitmap.liveBuckets[] = 0;
 		foreach (IrIndex succIndex; block.successors.range(ir))
 		{
-			foreach (size_t i, size_t bucket; liveness.bitmap.blockLiveInBuckets(succIndex, ir))
+			foreach (size_t i, size_t bucket; liveness.bitmap.blockLiveInBuckets(succIndex))
 				liveness.bitmap.liveBuckets[i] |= bucket;
 		}
 
@@ -138,7 +138,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		//writeln;
 
 		// for each opd in live do
-		foreach (size_t index; liveness.bitmap.live.bitsSet)
+		foreach (size_t index; liveness.bitmap.liveBuckets.bitsSet)
 		{
 			// intervals[opd].addRange(block.from, block.to)
 			liveness.vint(index).addRange(context, blockFromPos, blockToPos+2);
@@ -288,26 +288,26 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			for (IrIndex loopBlockIndex = block.nextBlock;;)
 			{
 				IrBasicBlock* loopBlock = ir.getBlock(loopBlockIndex);
-				size_t[] liveIns = liveness.bitmap.blockLiveInBuckets(loopBlockIndex, ir);
+				size_t[] liveIns = liveness.bitmap.blockLiveInBuckets(loopBlockIndex);
+
 				// add live in of loop header to all blocks of the loop
-				foreach(i, ref size_t bucket; liveIns)
-					bucket |= liveness.bitmap.liveBuckets[i];
+				liveIns[] |= liveness.bitmap.liveBuckets[];
+
 				if (loopBlockIndex == loopEnd) break;
 				loopBlockIndex = loopBlock.nextBlock;
 			}
 
 			//     for each opd in live do
 			//         intervals[opd].addRange(b.from, loopEnd.to)
-			foreach (size_t index; liveness.bitmap.live.bitsSet)
+			foreach (size_t index; liveness.bitmap.liveBuckets.bitsSet)
 			{
 				liveness.vint(index).addRange(context, blockFromPos, maxPos);
 			}
 		}
 
 		// b.liveIn = live
-		size_t[] liveIns = liveness.bitmap.blockLiveInBuckets(blockIndex, ir);
+		size_t[] liveIns = liveness.bitmap.blockLiveInBuckets(blockIndex);
 		liveIns[] = liveness.bitmap.liveBuckets;
-		//writefln("liveBuckets %s %s %s", blockIndex, liveIns.ptr, liveness.bitmap.blockLiveInBits(blockIndex, ir));
 	}
 
 	// create ranges for parameter registers in start block

@@ -1038,8 +1038,7 @@ struct LinearScan
 
 		moveSolver.reset();
 
-		import std.bitmanip : BitArray;
-		BitArray succLiveIn = live.bitmap.blockLiveInBits(succIndex, lir);
+		size_t[] succLiveIn = live.bitmap.blockLiveInBuckets(succIndex);
 
 		//
 		version(RAPrint_resolve) writefln("  edge %s -> %s", predIndex, succIndex);
