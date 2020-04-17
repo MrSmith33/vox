@@ -95,10 +95,10 @@ Benchmarking:
     `ldc2 -d-version=bench -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d && main`
 
 Debug CLI build:
-    `dmd -i -g -m64 -version=cli main.d -of=tjc.exe && move /Y tjc.exe ../test_work_dir/tjc.exe`
+    `dmd -i -g -m64 -version=cli main.d -of=../test_work_dir/tjc.exe`
     
 Release CLI build:
-    `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d -of=tjc.exe && move /Y tjc.exe ../test_work_dir/tjc.exe`
+    `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d -of=../test_work_dir/tjc.exe`
 
 Pretty asserts with stack traces are disabled in non-debug builds by default.
 * Add `--d-debug=PRETTY_ASSERT` flag to enable pretty asserts in ldc release build.
@@ -106,7 +106,7 @@ Pretty asserts with stack traces are disabled in non-debug builds by default.
 
 # Stats
 
-- test build time: 5s
+- test build time: 3.5s
 - release cli build time: 34s
 - jit tests: 151 tests in 33ms
 

@@ -185,7 +185,7 @@ struct CodeEmitter
 		blockStarts = cast(PC[])context.tempBuffer.voidPut(lir.numBasicBlocks * (PC.sizeof / uint.sizeof));
 
 		uint[] buf = context.tempBuffer.voidPut(lir.numBasicBlocks * 2 * (PC.sizeof / uint.sizeof)); // TODO: free mem
-		buf[] = 0;
+		// buf[] = 0; //zeroing is not needed, because both slots are correctly filled by jump instruction emitters
 		jumpFixups = cast(PC[2][])buf;
 
 		compileFuncProlog();
@@ -244,13 +244,18 @@ struct CodeEmitter
 		return cast(uint)diff;
 	}
 
-	void genJumpToSuccessor(ref IrBasicBlock fromBlock, ubyte successorIndex)
+	// successorBIndex is 0 or 1
+	void genJumpToSuccessors(ref IrBasicBlock fromBlock, ubyte successorBIndex, PC successorA = null)
 	{
-		if (fromBlock.seqIndex + 1 != lir.getBlock(fromBlock.successors[successorIndex, lir]).seqIndex)
-		{
+		if (fromBlock.seqIndex + 1 != lir.getBlock(fromBlock.successors[successorBIndex, lir]).seqIndex) {
 			gen.jmp(Imm32(0));
-			jumpFixups[fromBlock.seqIndex][successorIndex] = gen.pc;
+			jumpFixups[fromBlock.seqIndex][successorBIndex] = gen.pc;
+		} else {
+			// zero out the successor fixup
+			jumpFixups[fromBlock.seqIndex][successorBIndex] = null;
 		}
+		// zero out the other fixup
+		jumpFixups[fromBlock.seqIndex][1 - successorBIndex] = successorA;
 	}
 
 	void compileBody()
@@ -459,7 +464,7 @@ struct CodeEmitter
 						break;
 
 					case Amd64Opcode.jmp:
-						genJumpToSuccessor(lirBlock, 0);
+						genJumpToSuccessors(lirBlock, 0);
 						break;
 					case Amd64Opcode.bin_branch:
 						IrIndex arg0 = instrHeader.arg(lir, 0);
@@ -471,9 +476,9 @@ struct CodeEmitter
 							if (arg1.isSimpleConstant)
 							{
 								if (evalBinCondition(*context, cond, arg0, arg1))
-									genJumpToSuccessor(lirBlock, 0);
+									genJumpToSuccessors(lirBlock, 0);
 								else
-									genJumpToSuccessor(lirBlock, 1);
+									genJumpToSuccessors(lirBlock, 1);
 								break;
 							}
 
@@ -486,8 +491,7 @@ struct CodeEmitter
 						genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(ArgType)instrHeader.argSize, instrIndex);
 						Condition mach_cond = IrBinCondToAmd64Condition[cond];
 						gen.jcc(mach_cond, Imm32(0));
-						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
-						genJumpToSuccessor(lirBlock, 1);
+						genJumpToSuccessors(lirBlock, 1, gen.pc);
 						break;
 					case Amd64Opcode.un_branch:
 						if (instrHeader.arg(lir, 0).isSimpleConstant)
@@ -495,17 +499,16 @@ struct CodeEmitter
 							IrConstant con = context.constants.get(instrHeader.arg(lir, 0)).i64;
 							if (con.i64 && instrHeader.cond == IrUnaryCondition.not_zero ||
 								(!con.i64) && instrHeader.cond == IrUnaryCondition.zero)
-								genJumpToSuccessor(lirBlock, 0);
+								genJumpToSuccessors(lirBlock, 0);
 							else
-								genJumpToSuccessor(lirBlock, 1);
+								genJumpToSuccessors(lirBlock, 1);
 							break;
 						}
 						Register reg = indexToRegister(instrHeader.arg(lir, 0));
 						gen.test(reg, reg, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						Condition cond = IrUnCondToAmd64Condition[instrHeader.cond];
 						gen.jcc(cond, Imm32(0));
-						jumpFixups[lirBlock.seqIndex][0] = gen.pc;
-						genJumpToSuccessor(lirBlock, 1);
+						genJumpToSuccessors(lirBlock, 1, gen.pc);
 						break;
 					case Amd64Opcode.set_unary_cond:
 						Register reg = indexToRegister(instrHeader.arg(lir, 0));
@@ -521,6 +524,8 @@ struct CodeEmitter
 						gen.setcc(cond, dst);
 						break;
 					case Amd64Opcode.ret:
+						jumpFixups[lirBlock.seqIndex][0] = null;
+						jumpFixups[lirBlock.seqIndex][1] = null;
 						compileFuncEpilog();
 						break;
 					case Amd64Opcode.push:
