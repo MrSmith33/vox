@@ -1,4 +1,4 @@
-/// Copyright: Copyright (c) 2018-2019 Andrey Penechko.
+/// Copyright: Copyright (c) 2018-2020 Penechko.
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
 
@@ -158,6 +158,8 @@ struct LinearScan
 	Array!IntervalIndex activeFixed;
 	Array!IntervalIndex inactiveVirtual;
 	Array!IntervalIndex inactiveFixed;
+	// unhandled = list of intervals sorted by increasing start positions
+	IntervalPriorityQueue unhandled;
 	// List of handled split intervals that begin in the middle of basic block
 	// Intervals are with increasing start position
 	Array!IntervalIndex pendingMoveSplits;
@@ -178,6 +180,7 @@ struct LinearScan
 		inactiveVirtual.free(context.arrayArena);
 		inactiveFixed.free(context.arrayArena);
 		pendingMoveSplits.free(context.arrayArena);
+		unhandled.free(context.arrayArena);
 	}
 
 	void checkActiveImpl(uint position, ref Array!IntervalIndex active, ref Array!IntervalIndex inactive) {
@@ -306,20 +309,17 @@ struct LinearScan
 			return live.intervals[a].from > live.intervals[b].from;
 		}
 
-		// unhandled = list of intervals sorted by increasing start positions
 		// active = { }; inactive = { }; handled = { }
-		BinaryHeap!(IntervalIndex[], cmp) unhandled;
-		unhandled.assume(assumeSafeAppend(unhandledStorage), 0);
 		activeVirtual.clear;
 		activeFixed.clear;
 		inactiveVirtual.clear;
 		inactiveFixed.clear;
 		pendingMoveSplits.clear;
+		unhandled.clear;
 
-		unhandled.acquire(null);
 		foreach (ref LiveInterval it; live.virtualIntervals)
 			if (!it.ranges.empty)
-				unhandled.insert(live.indexOf(&it));
+				unhandled.insert(context.arrayArena, live.indexOf(&it), it.from);
 
 		foreach (ref LiveInterval it; live.physicalIntervals)
 			if (!it.ranges.empty)
@@ -331,9 +331,8 @@ struct LinearScan
 		while (!unhandled.empty)
 		{
 			// current = pick and remove first interval from unhandled
-			IntervalIndex currentIndex = unhandled.front;
+			IntervalIndex currentIndex = unhandled.removeFront;
 			LiveInterval* currentInterval = &live.intervals[currentIndex];
-			unhandled.removeFront;
 
 			// position = start position of current
 			uint position = currentInterval.from;
@@ -359,11 +358,11 @@ struct LinearScan
 			}
 
 			// find a register for current
-			bool success = tryAllocateFreeReg(currentIndex, unhandled);
+			bool success = tryAllocateFreeReg(currentIndex);
 
 			// if allocation failed then AllocateBlockedReg
 			if (!success) {
-				allocateBlockedReg(fun, currentIndex, position, unhandled);
+				allocateBlockedReg(fun, currentIndex, position);
 			}
 
 			currentInterval = &live.intervals[currentIndex]; // intervals may have reallocated
@@ -399,8 +398,6 @@ struct LinearScan
 
 		if (context.validateIr) validateIrFunction(context, lir);
 
-		unhandledStorage = unhandled.release;
-
 		//writefln("finished scan of %s\n", context.idString(lir.backendData.name));
 	}
 
@@ -426,7 +423,7 @@ struct LinearScan
 			current.reg = reg
 			split current before freeUntilPos[reg]
 	*/
-	bool tryAllocateFreeReg(T)(IntervalIndex currentId, ref T unhandled)
+	bool tryAllocateFreeReg(IntervalIndex currentId)
 	{
 		// set usePos of all physical registers to maxInt
 		physRegs.resetUsePos;
@@ -564,7 +561,7 @@ struct LinearScan
 				// prevent split at even x when interval starts at x-1
 				if (currentIt.from + 1 == maxPos) return false;
 
-				splitBefore(currentId, maxPos, unhandled);
+				splitBefore(currentId, maxPos);
 				currentIt = &live.intervals[currentId]; // intervals may have reallocated
 
 				currentIt.reg = reg;
@@ -602,7 +599,7 @@ struct LinearScan
 			split current before this intersection
 	*/
 	// Returns new interval
-	void allocateBlockedReg(T)(FunctionDeclNode* fun, IntervalIndex currentId, uint currentStart, ref T unhandled)
+	void allocateBlockedReg(FunctionDeclNode* fun, IntervalIndex currentId, uint currentStart)
 	{
 		physRegs.resetBlockPos;
 
@@ -662,7 +659,7 @@ struct LinearScan
 			// all other intervals are used before current, so it is best to spill current itself
 			assignSpillSlot(fun.backendData.stackLayout, currentIt);
 			// split current before its first use position that requires a register
-			splitBefore(currentId, firstUse, unhandled);
+			splitBefore(currentId, firstUse);
 			currentIt = &live.intervals[currentId]; // intervals may have reallocated
 			version(RAPrint) writefln("    spill current %s", currentId);
 		}
@@ -679,7 +676,7 @@ struct LinearScan
 				LiveInterval* activeIt = &live.intervals[index];
 				// split before current start. Add to unhandled so we get split move registered
 				version(RAPrint) writefln("      split before current start %s", currentStart);
-				IntervalIndex newInterval = splitBefore(index, currentStart, unhandled);
+				IntervalIndex newInterval = splitBefore(index, currentStart);
 
 				LiveInterval* splitActiveIt = &live.intervals[newInterval];
 				assignSpillSlot(fun.backendData.stackLayout, splitActiveIt);
@@ -689,7 +686,7 @@ struct LinearScan
 				if (nextActiveUse != MAX_USE_POS)
 				{
 					version(RAPrint) writefln("      split before use %s", newInterval);
-					splitBefore(newInterval, nextActiveUse, unhandled);
+					splitBefore(newInterval, nextActiveUse);
 				}
 			}
 
@@ -711,7 +708,7 @@ struct LinearScan
 
 			if (currentIt.exclusivePosition(physRegs[reg].blockPos))
 			{
-				splitBefore(currentId, physRegs[reg].blockPos, unhandled);
+				splitBefore(currentId, physRegs[reg].blockPos);
 			}
 
 			version(RAPrint) writefln("    spill currently active interval %s before %s for %s",
@@ -720,17 +717,21 @@ struct LinearScan
 	}
 
 	// auto adds new interval to unhandled
-	IntervalIndex splitBefore(T)(IntervalIndex it, uint before, ref T unhandled)
+	IntervalIndex splitBefore(IntervalIndex it, uint before)
 	{
 		IntervalIndex newInterval = live.splitBefore(context, lir, it, before);
-		if (newInterval != it) unhandled.insert(newInterval);
+		if (newInterval != it) {
+			unhandled.insert(context.arrayArena, newInterval, live.intervals[newInterval].from);
+		}
 		return newInterval;
 	}
 
-	IntervalIndex splitBefore(T)(IntervalIndex it, uint before, LiveRangeIndex rangeIndex, ref T unhandled)
+	IntervalIndex splitBefore(IntervalIndex it, uint before, LiveRangeIndex rangeIndex)
 	{
 		IntervalIndex newInterval = live.splitBefore(context, it, before, rangeIndex);
-		if (newInterval != it) unhandled.insert(newInterval);
+		if (newInterval != it) {
+			unhandled.insert(context.arrayArena, newInterval, live.intervals[newInterval].from);
+		}
 		return newInterval;
 	}
 
@@ -1216,4 +1217,73 @@ struct LinearScan
 		}
 		return scratchSpillSlot;
 	}
+}
+
+struct IntervalPriority
+{
+	uint from;
+	IntervalIndex interval;
+}
+
+// Tweaked to prefer sequential inserts
+struct IntervalPriorityQueue
+{
+	Array!IntervalPriority queue;
+	uint maxFrom = 0;
+	uint numRemoved = 0;
+
+	void clear()
+	{
+		queue.clear;
+		maxFrom = 0;
+		numRemoved = 0;
+	}
+
+	void free(ref ArrayArena arrayArena)
+	{
+		queue.free(arrayArena);
+	}
+
+	void insert(ref ArrayArena arrayArena, IntervalIndex interval, uint from)
+	{
+		if (from >= maxFrom)
+		{
+			// fast path for append (happens most of the time
+			queue.put(arrayArena, IntervalPriority(from, interval));
+			maxFrom = from;
+		}
+		else
+		{
+			for(size_t i = numRemoved; i < queue.length; ++i)
+			{
+				if (queue[i].from > from)
+				{
+					// insert before i
+					if (numRemoved > 0)
+					{
+						// shift to the left using one of removed slots
+						for(size_t j = numRemoved; j < i; ++j)
+							queue[j-1] = queue[j];
+						--numRemoved;
+						queue[i-1] = IntervalPriority(from, interval);
+					}
+					else
+					{
+						// shift to the right
+						queue.putAt(arrayArena, i, IntervalPriority(from, interval));
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	IntervalIndex removeFront()
+	{
+		auto res = queue[numRemoved].interval;
+		++numRemoved;
+		return res;
+	}
+
+	bool empty() { return numRemoved == queue.length; }
 }
