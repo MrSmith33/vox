@@ -34,6 +34,16 @@ enum IceBehavior : ubyte {
 	breakpoint
 }
 
+debug (PRETTY_ASSERT) {
+	enum PRETTY_ASSERT = true;
+} else {
+	debug {
+		enum PRETTY_ASSERT = true;
+	} else {
+		enum PRETTY_ASSERT = false;
+	}
+}
+
 ///
 struct CompilationContext
 {
@@ -260,46 +270,68 @@ struct CompilationContext
 		throw new CompilationException();
 	}
 
-	void assertf(Args...)(bool cond, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
+	void assertf(Args...)(bool cond, string fmt, Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
-		size_t startLen = sink.data.length;
-		sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
-		sink.putfln(fmt, args);
-		errorSink.put(sink.data[startLen..$]);
-		hasErrors = true;
-		handleICE;
-		throw new CompilationException(true);
+
+		static if (PRETTY_ASSERT)
+		{
+			size_t startLen = sink.data.length;
+			sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
+			sink.putfln(fmt, args);
+			errorSink.put(sink.data[startLen..$]);
+			hasErrors = true;
+			handleICE;
+			throw new CompilationException(true);
+		}
+		else assert(false);
 	}
 
-	void assertf(Args...)(bool cond, TokenIndex tokIdx, string fmt, lazy Args args, string file = __MODULE__, int line = __LINE__)
+	void assertf(Args...)(bool cond, TokenIndex tokIdx, string fmt, Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
-		size_t startLen = sink.data.length;
-		sink.putf("%s(%s): %s: ICE: Assertion failure: ", file, line, FmtSrcLoc(tokIdx, &this));
-		sink.putfln(fmt, args);
-		errorSink.put(sink.data[startLen..$]);
-		hasErrors = true;
-		handleICE;
-		throw new CompilationException(true);
+
+		static if (PRETTY_ASSERT)
+		{
+			size_t startLen = sink.data.length;
+			sink.putf("%s(%s): %s: ICE: Assertion failure: ", file, line, FmtSrcLoc(tokIdx, &this));
+			sink.putfln(fmt, args);
+			errorSink.put(sink.data[startLen..$]);
+			hasErrors = true;
+			handleICE;
+			throw new CompilationException(true);
+		}
+		else assert(false);
 	}
 
 	void unreachable(string file = __MODULE__, int line = __LINE__)
 	{
-		internal_error_impl("Unreachable", file, line);
+		static if (PRETTY_ASSERT)
+		{
+			internal_error_impl("Unreachable", file, line);
+		}
+		else assert(false);
 	}
 
 	void internal_error(Args...)(TokenIndex tokIdx, string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
-		size_t startLen = sink.data.length;
-		sink.putf("%s: ", FmtSrcLoc(tokIdx, &this));
-		errorSink.put(sink.data[startLen..$]);
-		internal_error_impl(format, file, line, args);
+		static if (PRETTY_ASSERT)
+		{
+			size_t startLen = sink.data.length;
+			sink.putf("%s: ", FmtSrcLoc(tokIdx, &this));
+			errorSink.put(sink.data[startLen..$]);
+			internal_error_impl(format, file, line, args);
+		}
+		else assert(false);
 	}
 
 	void internal_error(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
-		internal_error_impl(format, file, line, args);
+		static if (PRETTY_ASSERT)
+		{
+			internal_error_impl(format, file, line, args);
+		}
+		else assert(false);
 	}
 
 	void circular_dependency()
