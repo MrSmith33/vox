@@ -77,7 +77,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 
 			// For each use of arg by argUser there must one item in users list of vreg and in args list of user
 			context.assertf(numVregUses == timesUsed,
-				"Virtual register %s appears %s times as argument of %s, but instruction appears as user only %s times",
+				"Virtual register %s appears %s times as argument of %s, but instruction appears as user %s times",
 					arg, timesUsed, argUser, numVregUses);
 		}
 

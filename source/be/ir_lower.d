@@ -535,6 +535,52 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, ref IrBui
 					//writefln("- insert_element %s", instrIndex);
 					break;
 
+				case IrOpcode.branch_switch:
+					// unroll switch into a chain of compare branches
+					IrIndex[] args = instrHeader.args(ir);
+					IrSmallArray successors = block.successors;
+					block.successors = IrSmallArray.init;
+					IrIndex[] succ = successors.data(ir);
+
+					assert(args.length == succ.length);
+					assert(args.length > 0);
+					IrIndex value = args[0];
+					IrIndex valueType = ir.getValueType(c, value);
+					IrArgSize argSize = typeToIrArgSize(valueType, c);
+					IrIndex defaultBlock = succ[0];
+
+					// replace switch with branch to first case block
+					ExtraInstrArgs extra = { cond : IrBinaryCondition.eq, argSize : argSize };
+					IrIndex firstInstr = builder.emitInstr!(IrOpcode.branch_binary)(extra, value, args[1]);
+					replaceInstruction(ir, instrIndex, firstInstr);
+					block.successors.append(&builder, succ[1]);
+					// predecessor is already correct for this block
+
+					// build a chain
+					IrIndex lastBlock = blockIndex;
+					foreach(i; 2..args.length)
+					{
+						IrIndex branchBlockIndex = builder.addBasicBlock;
+						IrBasicBlock* branchBlock = ir.getBlock(branchBlockIndex);
+						branchBlock.isSealed = true;
+						branchBlock.isFinished = true;
+
+						builder.addBlockTarget(lastBlock, branchBlockIndex);
+						ir.getBlock(succ[i]).predecessors[0, ir] = branchBlockIndex;
+						branchBlock.successors.append(&builder, succ[i]);
+
+						builder.emitInstr!(IrOpcode.branch_binary)(branchBlockIndex, extra, value, args[i]);
+						linkBlockAfter(ir, branchBlockIndex, lastBlock);
+						lastBlock = branchBlockIndex;
+					}
+
+					successors.free(ir);
+					block.successors.append(&builder, succ[1]);
+
+					ir.getBlock(lastBlock).successors.append(&builder, defaultBlock);
+					ir.getBlock(defaultBlock).predecessors[0, ir] = lastBlock;
+					break;
+
 				default:
 					//c.internal_error("IR lower unimplemented IR instr %s", cast(IrOpcode)instrHeader.op);
 					break;

@@ -94,6 +94,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case stmt_while:       ir_gen_while   (gen, curBlock, nextStmt, cast(WhileStmtNode*)n); break;
 		case stmt_do_while:    ir_gen_do      (gen, curBlock, nextStmt, cast(DoWhileStmtNode*)n); break;
 		case stmt_for:         ir_gen_for     (gen, curBlock, nextStmt, cast(ForStmtNode*)n); break;
+		case stmt_switch:      ir_gen_switch  (gen, curBlock, nextStmt, cast(SwitchStmtNode*)n); break;
 		case stmt_return:      ir_gen_return  (gen, curBlock, nextStmt, cast(ReturnStmtNode*)n); break;
 		case stmt_break:       ir_gen_break   (gen, curBlock, nextStmt, cast(BreakStmtNode*)n); break;
 		case stmt_continue:    ir_gen_continue(gen, curBlock, nextStmt, cast(ContinueStmtNode*)n); break;

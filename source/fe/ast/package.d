@@ -43,6 +43,7 @@ enum AstType : ubyte
 	stmt_while,
 	stmt_do_while,
 	stmt_for,
+	stmt_switch,
 	stmt_return,
 	stmt_break,
 	stmt_continue,

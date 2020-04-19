@@ -114,6 +114,18 @@ struct AstPrinter {
 		print("INC");
 		pr_nodes(n.increment_statements);
 		pr_nodes(n.body_statements); }
+	void visit(SwitchStmtNode* n) {
+		print("SWITCH"); pr_node(n.condition);
+		foreach (SwitchCase c; n.cases) {
+			print("CASE");
+			pr_node(c.expr);
+			pr_node(c.stmt);
+		}
+		if (n.elseStmt) {
+			print("ELSE");
+			pr_node(n.elseStmt);
+		}
+	}
 	void visit(ReturnStmtNode* r) {
 		print("RETURN");
 		if (r.expression) pr_node(r.expression); }
@@ -275,6 +287,17 @@ struct AstDotPrinter {
 		if (n.condition) pr_node_edge(n, n.condition);
 		pr_node_edges(n, n.increment_statements);
 		pr_node_edges(n, n.body_statements); }
+	void visit(SwitchStmtNode* n) {
+		printLabel(n, "SWITCH");
+		pr_node_edge(n, n.condition);
+		foreach (SwitchCase c; n.cases) {
+			pr_node_edge(n, c.expr);
+			pr_node_edge(n, c.stmt);
+		}
+		if (n.elseStmt) {
+			pr_node_edge(n, n.elseStmt);
+		}
+	}
 	void visit(ReturnStmtNode* r) {
 		printLabel(r, "RETURN");
 		if (r.expression) pr_node_edge(r, r.expression); }

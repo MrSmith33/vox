@@ -256,6 +256,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case stmt_while: post_clone_while(cast(WhileStmtNode*)node, state); break;
 		case stmt_do_while: post_clone_do(cast(DoWhileStmtNode*)node, state); break;
 		case stmt_for: post_clone_for(cast(ForStmtNode*)node, state); break;
+		case stmt_switch: post_clone_switch(cast(SwitchStmtNode*)node, state); break;
 		case stmt_return: post_clone_return(cast(ReturnStmtNode*)node, state); break;
 		case stmt_break: break;
 		case stmt_continue: break;

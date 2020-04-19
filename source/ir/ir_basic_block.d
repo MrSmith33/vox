@@ -99,8 +99,8 @@ void linkBlockBefore(IrFunction* ir, IrIndex blockIndex, IrIndex beforeIndex)
 	}
 }
 
-// blockIndex must not be start block, but may be exit block of IrFunction
-// used for block ordering
+// blockIndex must not be start block, but may be exit block of IrFunction.
+// used for block ordering.
 void linkBlockAfter(IrFunction* ir, IrIndex blockIndex, IrIndex afterIndex)
 {
 	IrBasicBlock* after = ir.getBlock(afterIndex);

@@ -119,7 +119,6 @@ private struct StringKey
 
 	bool opEquals(StringKey other) const
 	{
-		//writefln("opEquals (%s %X) (%s %X)", this.data, hash, other.data, other.hash);
 		if (hash != other.hash) return false;
 		return this.data == other.data;
 	}

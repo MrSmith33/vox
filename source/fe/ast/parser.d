@@ -873,6 +873,8 @@ struct Parser
 				return make!DoWhileStmtNode(start, condition, statements);
 			case TokenType.FOR_SYM:  /* "for" "(" <statement> ";" <statement> ";" "while" <paren_expr> ";" */
 				return parse_for;
+			case TokenType.SWITCH_SYM:
+				return parse_switch;
 			case TokenType.RETURN_SYM:  /* return <expr> */
 				nextToken;
 				AstIndex expression = tok.type != TokenType.SEMICOLON ? expr(PreferType.no) : AstIndex.init;
@@ -952,6 +954,43 @@ struct Parser
 		AstNodes statements = statement_as_array;
 
 		return make!ForStmtNode(start, init_statements, condition, increment_statements, statements);
+	}
+
+	AstIndex parse_switch() /* "switch" "(" <expr> ")" "{" <switch_case> "}" */
+	{
+		TokenIndex start = tok.index;
+		nextToken; // skip "switch"
+
+		AstIndex condition = paren_expr();
+
+		Array!SwitchCase cases;
+		AstIndex elseBlock;
+		expectAndConsume(TokenType.LCURLY);
+		while (tok.type != TokenType.RCURLY)
+		{
+			if (tok.type == TokenType.EOI) break;
+
+			// case expression
+			if (tok.type != TokenType.ELSE_SYM) /* <expr> <block> */
+			{
+				auto expr = expr(PreferType.no);
+				auto block = block_stmt();
+				cases.put(context.arrayArena, SwitchCase(expr, block));
+			}
+			else /* "else" <block> */
+			{
+				nextToken; // skip "else"
+				if (elseBlock.isDefined)
+				{
+					// todo: error
+					// must occur 0 or 1 times
+				}
+				elseBlock = block_stmt();
+			}
+		}
+		expectAndConsume(TokenType.RCURLY);
+
+		return make!SwitchStmtNode(start, condition, elseBlock, cases);
 	}
 
 	AstIndex paren_expr() { /* <paren_expr> ::= "(" <expr> ")" */

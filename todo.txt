@@ -99,6 +99,13 @@
 	- ref in foreach
 	- this is ref in methods (it is ptr atm)
 - member alias
++ switch
+	- exhaustive switch (aka final switch)
+	- switch over enum
+	- test parsing errors
+		- duplicate case
+		- missing else
+		- duplicate else
 
 - multi-indexing operator x[1, 2, 3]
 - in passes with state pass context separately

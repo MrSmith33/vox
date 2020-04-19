@@ -3157,3 +3157,26 @@ void tester122(ref TestContext ctx) {
 	//writefln("%s", read_global());
 	assert(read_global() == 100);
 }
+
+
+@TestInfo(&tester123)
+immutable test123 = q{--- test123
+	// Test switch
+	i32 fun(i32 val) {
+		switch (val) {
+			0 { return 40; }
+			1 { return 10; }
+			2 { return 15; }
+			else { return 0; }
+		}
+	}
+};
+void tester123(ref TestContext ctx) {
+	auto fun = ctx.getFunctionPtr!(int, int)("fun");
+	assert(fun(0) == 40);
+	assert(fun(1) == 10);
+	assert(fun(2) == 15);
+	assert(fun(100) == 0);
+	assert(fun(200) == 0);
+	assert(fun(-200) == 0);
+}

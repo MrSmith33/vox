@@ -512,6 +512,7 @@ struct CodeGen_x86_64
 	mixin unaryInstr_RM!("sar", [0xD2,0xD3], 7); // sar dst, cl
 
 	void nop() { encoder.putInstrNullary(OP1(0x90)); }
+	void ud2() { encoder.putInstrNullary(OP2(0x0F, 0x0B)); }
 
 	/// relative call to target virtual address.
 	void call(Imm32 targetOffset) { encoder.putInstrNullaryImm(OP1(0xE8), targetOffset); } // relative to next instr

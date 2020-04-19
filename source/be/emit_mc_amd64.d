@@ -528,6 +528,11 @@ struct CodeEmitter
 						jumpFixups[lirBlock.seqIndex][1] = null;
 						compileFuncEpilog();
 						break;
+					case Amd64Opcode.ud2:
+						jumpFixups[lirBlock.seqIndex][0] = null;
+						jumpFixups[lirBlock.seqIndex][1] = null;
+						gen.ud2;
+						break;
 					case Amd64Opcode.push:
 						IrIndex src = instrHeader.arg(lir, 0);
 						switch (src.kind) with(IrValueKind)

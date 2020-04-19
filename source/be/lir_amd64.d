@@ -237,6 +237,8 @@ enum Amd64Opcode : ushort {
 
 	@_ii(0,IFLG.hasResult) pop,
 	@_ii(1) push,
+
+	@_ii(0,IFLG.isBlockExit) ud2,
 }
 
 Condition[] IrBinCondToAmd64Condition = [

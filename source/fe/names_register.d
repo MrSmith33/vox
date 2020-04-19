@@ -166,6 +166,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case stmt_while: name_register_nested_while(cast(WhileStmtNode*)node, state); break;
 		case stmt_do_while: name_register_nested_do(cast(DoWhileStmtNode*)node, state); break;
 		case stmt_for: name_register_nested_for(cast(ForStmtNode*)node, state); break;
+		case stmt_switch: name_register_nested_switch(cast(SwitchStmtNode*)node, state); break;
 		case stmt_return: assert(false);
 		case stmt_break: assert(false);
 		case stmt_continue: assert(false);

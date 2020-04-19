@@ -97,6 +97,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case stmt_while: type_check_while(cast(WhileStmtNode*)node, state); break;
 		case stmt_do_while: type_check_do(cast(DoWhileStmtNode*)node, state); break;
 		case stmt_for: type_check_for(cast(ForStmtNode*)node, state); break;
+		case stmt_switch: type_check_switch(cast(SwitchStmtNode*)node, state); break;
 		case stmt_return: type_check_return(cast(ReturnStmtNode*)node, state); break;
 		case stmt_break: assert(false);
 		case stmt_continue: assert(false);

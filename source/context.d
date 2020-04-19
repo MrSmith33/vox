@@ -34,10 +34,10 @@ enum IceBehavior : ubyte {
 	breakpoint
 }
 
-debug (PRETTY_ASSERT) {
+debug (ASSERTF) {
 	enum PRETTY_ASSERT = true;
 } else {
-	debug {
+	version (assert) {
 		enum PRETTY_ASSERT = true;
 	} else {
 		enum PRETTY_ASSERT = false;

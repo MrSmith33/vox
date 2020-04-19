@@ -700,6 +700,10 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					builder.emitInstr!(Amd64Opcode.ret)(lirBlockIndex);
 					break;
 
+				case IrOpcode.unreachable:
+					builder.emitInstr!(Amd64Opcode.ud2)(lirBlockIndex);
+					break;
+
 				default:
 					context.internal_error("IrToLir unimplemented IR instr %s", cast(IrOpcode)instrHeader.op);
 			}

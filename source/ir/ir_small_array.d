@@ -53,6 +53,8 @@ struct IrSmallArray
 		{
 			ir.freeIrArray(arrayIndex, bigCapacity);
 		}
+		items[0] = IrIndex();
+		items[1] = IrIndex();
 	}
 
 	bool isBig()

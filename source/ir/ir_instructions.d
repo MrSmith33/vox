@@ -114,11 +114,20 @@ enum IrOpcode : ushort
 	@_ii() invalid,
 
 	@_ii(0, IFLG.isBlockExit) jump,
+	/// Uses IrUnaryCondition inside IrInstrHeader.cond
 	@_ii(1, IFLG.hasCondition | IFLG.isBlockExit) branch_unary,
+	/// Uses IrBinaryCondition inside IrInstrHeader.cond
 	@_ii(2, IFLG.hasCondition | IFLG.isBlockExit) branch_binary,
+	/// Args:
+	///   iNN value
+	///   _k_ integer constants (_k_ is 0 or more, no duplicated constants allowed)
+	///   default basic block
+	///   0 or more case blocks
+	@_ii(1, IFLG.hasVariadicArgs | IFLG.isBlockExit) branch_switch,
 	@_ii(0, IFLG.isBlockExit) ret,
 	/// Only for ABI handling
 	@_ii(1, IFLG.isBlockExit) ret_val,
+	@_ii(0, IFLG.isBlockExit) unreachable,
 
 	/// Emitted by frontend and replaced in lowering pass
 	/// Extra argument represents parameter index and stored as plain uint

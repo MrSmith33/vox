@@ -127,7 +127,7 @@ struct IrBuilder
 
 	/// perfoms GC of removed entities
 	void finalizeIr() {
-		version(IrPrint) writefln("[IR] finalizeIr removed %s", numRemovedVregs);
+		version(IrPrint) writefln("[IR] finalizeIr removed %s vreg", numRemovedVregs);
 
 		// --------------- GC REMOVED VREGS ---------------
 		IrIndex lastUsedReg = ir.lastVirtReg;
@@ -694,6 +694,14 @@ struct IrBuilder
 		addBlockTarget(blockIndex, ir.exitBasicBlock);
 	}
 
+	void addUnreachable(IrIndex blockIndex)
+	{
+		IrBasicBlock* block = ir.getBlock(blockIndex);
+		context.assertf(!block.isFinished, "%s.%s is already finished", context.idString(ir.backendData.name), blockIndex);
+		block.isFinished = true;
+		emitInstr!(IrOpcode.unreachable)(blockIndex);
+	}
+
 	IrIndex addJump(IrIndex blockIndex)
 	{
 		IrBasicBlock* block = ir.getBlock(blockIndex);
@@ -851,6 +859,11 @@ struct IrBuilder
 
 		// mark as removed
 		phi.blockIndex = IrIndex();
+
+		// remove args
+		foreach(IrIndex arg; phi.args(ir)) {
+			removeUser(context, ir, phiIndex, arg);
+		}
 		phi.args.free(ir);
 	}
 
@@ -945,7 +958,7 @@ struct IrBuilder
 		IrIndex phiResultIndex = ir.getPhi(phiIndex).result;
 		foreach (size_t i, ref IrIndex phiArg; ir.getPhi(phiIndex).args(ir))
 		{
-			version(IrPrint) writefln("[IR] arg %s %s", phiArg, phiArg.basicBlock);
+			version(IrPrint) writefln("[IR] arg %s", phiArg);
 			if (phiArg == same || phiArg == phiResultIndex) {
 				version(IrPrint) writefln("[IR]   same");
 				continue; // Unique value or self−reference

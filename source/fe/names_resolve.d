@@ -85,6 +85,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case stmt_while: name_resolve_while(cast(WhileStmtNode*)node, state); break;
 		case stmt_do_while: name_resolve_do(cast(DoWhileStmtNode*)node, state); break;
 		case stmt_for: name_resolve_for(cast(ForStmtNode*)node, state); break;
+		case stmt_switch: name_resolve_switch(cast(SwitchStmtNode*)node, state); break;
 		case stmt_return: name_resolve_return(cast(ReturnStmtNode*)node, state); break;
 		case stmt_break: assert(false);
 		case stmt_continue: assert(false);

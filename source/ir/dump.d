@@ -586,6 +586,7 @@ void dumpIrInstr(ref InstrPrintInfo p)
 		case IrOpcode.branch_unary: dumpUnBranch(p); break;
 		case IrOpcode.branch_binary: dumpBinBranch(p); break;
 		case IrOpcode.jump: dumpJmp(p); break;
+		case IrOpcode.branch_switch: dumpSwitch(p); break;
 
 		case IrOpcode.parameter:
 			uint paramIndex = p.ir.get!IrInstr_parameter(p.instrIndex).index(p.ir);
@@ -668,6 +669,27 @@ void dumpJmp(ref InstrPrintInfo p)
 		p.sink.putf("%s", IrIndexDump(p.block.successors[0, p.ir], p));
 	else
 		p.sink.put(p.settings.escapeForDot ? `\<null\>` : "<null>");
+}
+
+void dumpSwitch(ref InstrPrintInfo p)
+{
+	p.sink.put("    switch ");
+	IrIndex[] succ = p.block.successors.data(p.ir);
+	IrIndex[] args = p.instrHeader.args(p.ir);
+
+	if (args.length > 0) p.sink.putf("%s, ", IrIndexDump(args[0], p));
+	else p.sink.put(p.settings.escapeForDot ? `\<null\>, ` : "<null>, ");
+	if (succ.length > 0) p.sink.putf("%s", IrIndexDump(succ[0], p));
+	else p.sink.put(p.settings.escapeForDot ? `\<null\>` : "<null>");
+
+	foreach(i; 1..max(succ.length, args.length))
+	{
+		p.sink.put(", ");
+		if (succ.length > i) p.sink.putf("%s ", IrIndexDump(succ[i], p));
+		else p.sink.put(p.settings.escapeForDot ? `\<null\> ` : "<null> ");
+		if (args.length > i) p.sink.putf("%s", IrIndexDump(args[i], p));
+		else p.sink.put(p.settings.escapeForDot ? `\<null\>` : "<null>");
+	}
 }
 
 void dumpUnBranch(ref InstrPrintInfo p)
