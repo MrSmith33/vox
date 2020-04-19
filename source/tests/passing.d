@@ -3180,3 +3180,17 @@ void tester123(ref TestContext ctx) {
 	assert(fun(200) == 0);
 	assert(fun(-200) == 0);
 }
+
+@TestInfo(&tester124)
+immutable test124 = q{--- test124
+	// Test global in separate module
+	import file2;
+	i64 read_global() { return noop(glob); }
+	i64 noop(i64 val) { return val; }
+--- file2
+	i64 glob = 42;
+};
+void tester124(ref TestContext ctx) {
+	auto read_global = ctx.getFunctionPtr!(uint)("read_global");
+	assert(read_global() == 42);
+}

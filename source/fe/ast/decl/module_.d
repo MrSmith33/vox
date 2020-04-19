@@ -61,7 +61,7 @@ void type_check_module(ModuleDeclNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_module(ref IrGenState gen, ModuleDeclNode* m)
+void ir_gen_module_globals(ref IrGenState gen, ModuleDeclNode* m)
 {
 	CompilationContext* c = gen.context;
 	gen.mod = m;
@@ -70,6 +70,12 @@ void ir_gen_module(ref IrGenState gen, ModuleDeclNode* m)
 	{
 		ir_gen_decl(gen, decl);
 	}
+}
+
+void ir_gen_module_func(ref IrGenState gen, ModuleDeclNode* m)
+{
+	CompilationContext* c = gen.context;
+	gen.mod = m;
 
 	foreach (AstIndex decl; m.functions)
 	{

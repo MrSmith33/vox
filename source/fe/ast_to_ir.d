@@ -14,7 +14,10 @@ void pass_ir_gen(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 		context : &ctx
 	};
 	foreach (ref SourceFileInfo file; ctx.files.data) {
-		ir_gen_module(state, file.mod);
+		ir_gen_module_globals(state, file.mod);
+	}
+	foreach (ref SourceFileInfo file; ctx.files.data) {
+		ir_gen_module_func(state, file.mod);
 	}
 }
 
