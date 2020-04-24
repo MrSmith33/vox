@@ -3194,3 +3194,53 @@ void tester124(ref TestContext ctx) {
 	auto read_global = ctx.getFunctionPtr!(uint)("read_global");
 	assert(read_global() == 42);
 }
+
+
+@TestInfo()
+immutable test125 = q{--- test125
+	// Index expression over template should copy isType of template body
+	void freeArray[T](T[] array) {}
+
+	struct Array[T]
+	{
+		T* bufPtr;
+		u32 length;
+		u32 capacity;
+
+		void free()
+		{
+			freeArray[T](bufPtr[0..length]);
+		}
+	}
+	alias int_array = Array[i32];
+};
+
+@TestInfo()
+immutable test126 = q{--- test126
+	// Template bug. .ptr PtrTypeNode was not marked as type checked
+	void run() {
+		i32[] slice;
+		freeArray[i32](slice);
+	}
+
+	void freeArray[T](T[] array)
+	{
+		if (array.ptr == null) return;
+	}
+};
+
+@TestInfo(&tester127)
+immutable test127 = q{--- test127
+	// Small struct store
+	void put(Point* bufPtr, Point item) {
+		bufPtr[0] = item;
+	}
+	struct Point { i32 x; i32 y; }
+};
+void tester127(ref TestContext ctx) {
+	static struct Point { int x; int y; }
+	auto put = ctx.getFunctionPtr!(void, Point*, Point)("put");
+	Point point;
+	put(&point, Point(42, 90));
+	assert(point == Point(42, 90));
+}

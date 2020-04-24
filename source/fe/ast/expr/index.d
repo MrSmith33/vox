@@ -34,7 +34,9 @@ void name_resolve_index(IndexExprNode* node, ref NameResolveState state)
 	require_name_resolve(node.array, state);
 	require_name_resolve(node.indicies, state);
 
-	if (node.array.isType(c))
+	AstIndex effective_array = node.array.get_effective_node(c);
+
+	if (effective_array.isType(c))
 	{
 		// convert to static array type inplace
 
@@ -56,8 +58,14 @@ void name_resolve_index(IndexExprNode* node, ref NameResolveState state)
 		else
 		{
 			c.error(node.loc, "Invalid number of indicies: %s", copy.indicies.length);
-			node.type = node.type = c.basicTypeNodes(BasicType.t_error);
+			node.type = c.basicTypeNodes(BasicType.t_error);
 		}
+	}
+	else if (effective_array.astType(c) == AstType.decl_template)
+	{
+		// must be template instantiation. Copy isType
+		if (effective_array.get!TemplateDeclNode(c).body.isType(c))
+			node.flags |= AstFlags.isType;
 	}
 	node.state = AstNodeState.name_resolve_done;
 }

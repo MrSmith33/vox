@@ -114,8 +114,7 @@ void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeChe
 	node.state = AstNodeState.type_check;
 
 	// try member
-	require_type_check(node.aggregate, state);
-
+	// performs require_type_check on aggregate
 	LookupResult res = lookupMember(node, state);
 
 	if (res == LookupResult.success) {
@@ -166,7 +165,7 @@ LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref
 	CompilationContext* c = state.context;
 
 	AstIndex ufcsNodeIndex = lookupScopeIdRecursive(memberNode.parentScope.get_scope(c), memberNode.memberId(c), memberNode.loc, c);
-	if (ufcsNodeIndex == c.errorNode) return LookupResult.failure;
+	if (ufcsNodeIndex == CommonAstNodes.node_error) return LookupResult.failure;
 
 	AstType ufcsAstType = ufcsNodeIndex.astType(c);
 
@@ -306,12 +305,14 @@ LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, I
 	{
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_ptr), 1, c);
 		expr.type = c.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
+		expr.type.setState(c, AstNodeState.type_check_done);
 		return LookupResult.success;
 	}
 	else if (id == CommonIds.id_length)
 	{
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_length), 0, c);
 		expr.type = c.basicTypeNodes(BasicType.t_u64);
+		expr.type.setState(c, AstNodeState.type_check_done);
 		return LookupResult.success;
 	}
 
@@ -324,12 +325,14 @@ LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* 
 	{
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.array_ptr), 0, c);
 		expr.type = c.appendAst!PtrTypeNode(arrType.loc, arrType.base);
+		expr.type.setState(c, AstNodeState.type_check_done);
 		return LookupResult.success;
 	}
 	else if (id == CommonIds.id_length)
 	{
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.array_length), 0, c);
 		expr.type = c.basicTypeNodes(BasicType.t_u64);
+		expr.type.setState(c, AstNodeState.type_check_done);
 		return LookupResult.success;
 	}
 

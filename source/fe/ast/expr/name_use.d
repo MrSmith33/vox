@@ -93,9 +93,11 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 
 	AstIndex entity = lookupScopeIdRecursive(currentScope, id, node.loc, c);
 
-	if (entity == c.errorNode)
+	if (entity == CommonAstNodes.node_error)
 	{
 		c.error(node.loc, "undefined identifier `%s`", c.idString(id));
+		node.flags |= AstFlags.isError;
+		node.resolve(CommonAstNodes.node_error, c);
 		return;
 	}
 
@@ -131,7 +133,7 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 			nodeIndex = entity;
 			break;
 		case decl_template:
-			if (entity.isType(c)) node.flags |= AstFlags.isType;
+			node.flags |= AstFlags.isTemplate;
 			break;
 		default:
 			c.internal_error("Unknown entity %s", entityNode.astType);

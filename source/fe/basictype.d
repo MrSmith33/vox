@@ -11,6 +11,7 @@ import all;
 enum IrArgSize SIZET_SIZE = IrArgSize.size64;
 
 // The order is the same as in TokenType enum
+// The order is the same as in CommonAstNodes enum
 enum BasicType : ubyte {
 	t_error,
 	t_void,

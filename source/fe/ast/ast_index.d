@@ -14,6 +14,10 @@ struct AstIndex
 	bool opCast(T : bool)() const {
 		return storageIndex != 0;
 	}
+	// used to cast from enum of AstIndex to AstIndex.
+	AstIndex opCast(T : AstIndex)() const {
+		return this;
+	}
 
 	T* get(T)(CompilationContext* c) { return c.getAst!T(this); }
 	AstNode* get_node(CompilationContext* c) { return c.getAstNode(this); }
@@ -49,6 +53,7 @@ struct AstIndex
 	bool isType(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isType); }
 	bool isLvalue(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLvalue); }
 	bool isAssignment(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isAssignment); }
+	bool isTemplate(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isTemplate); }
 
 	// type functions
 	AstIndex getElementType(CompilationContext* c) { return get_type(c).getElementType(c); }

@@ -716,7 +716,7 @@ struct CodeEmitter
 				{
 					AsmArg argDst = {reg : dstReg};
 					AsmArg argSrc = {reg : dstReg};
-					AsmOpParam param = AsmOpParam(AsmArgKind.REG, AsmArgKind.REG, AMD64OpRegular.xor, argType);
+					AsmOpParam param = AsmOpParam(AsmArgKind.REG, AsmArgKind.REG, AMD64OpRegular.xor, ArgType.DWORD);
 					gen.encodeRegular(argDst, argSrc, param);
 				}
 				else

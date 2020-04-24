@@ -86,9 +86,11 @@ enum AstFlags : ushort
 	isGlobal         = 1 << 7,          // used for setting flags
 	isMember         = 2 << 7,          // used for setting flags
 
-	isTemplateInstance = 1 << 9,
+	isTemplate       = 1 << 9,
+	isTemplateInstance = 1 << 10,
+	isError          = 1 << 11,
 	// used for node specific flags
-	userFlag         = 1 << 10,
+	userFlag         = 1 << 12,
 }
 
 enum hasAstNodeType(T) = getUDAs!(T, AstType).length > 0;
@@ -165,6 +167,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
 	bool isLvalue()     { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
+	bool isTemplate() { return cast(bool)(flags & AstFlags.isTemplate); }
 	bool isTemplateInstance() { return cast(bool)(flags & AstFlags.isTemplateInstance); }
 	bool isGlobal()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isGlobal; }
 	bool isMember()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isMember; }
@@ -252,7 +255,7 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
 		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return nodeIndex;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_type(c);
-		case literal_int, literal_string, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_int, literal_string, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return node.as!ExpressionNode(c).type.get_node_type(c);
 
 		default: assert(false, format("get_node_type used on %s", node.astType));
@@ -277,7 +280,7 @@ AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return nodeIndex;
 		case type_basic, type_ptr, type_slice, type_static_array: return nodeIndex;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_effective_node(c);
-		case literal_int, literal_string, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_int, literal_string, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return nodeIndex;
 
 		default: assert(false, format("get_effective_node used on %s", node.astType));

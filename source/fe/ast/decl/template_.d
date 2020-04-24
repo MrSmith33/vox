@@ -8,7 +8,7 @@ import all;
 @(AstType.decl_template)
 struct TemplateDeclNode
 {
-	mixin AstNodeData!(AstType.decl_template, AstFlags.isDeclaration);
+	mixin AstNodeData!(AstType.decl_template, AstFlags.isDeclaration | AstFlags.isTemplate);
 	/// For template name register
 	AstIndex parentScope;
 	/// Template parameters

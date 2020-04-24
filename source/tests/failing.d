@@ -307,3 +307,13 @@ immutable fail28 = q{
 --- <error>
 fail28(2, 24): Error: Cannot use `;` as an empty statement. Use `{}` instead
 };
+
+@TestInfo()
+immutable fail29 = q{
+--- fail29
+	// Unknown identifiers
+	Array[Point] array;
+--- <error>
+fail29(2, 2): Error: undefined identifier `Array`
+fail29(2, 8): Error: undefined identifier `Point`
+};

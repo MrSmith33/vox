@@ -217,15 +217,12 @@ struct CompilationContext
 	///
 	string idString(const Identifier id) { return idMap.get(id); }
 
-	AstIndex errorNode;
-	AstIndex u8Ptr;
-	AstIndex u8Slice;
-
-	private AstIndex[BasicType.max + 1] basicTypes;
-	private AstIndex[BuiltinId.max + 1] builtins;
-
-	AstIndex basicTypeNodes(BasicType basicType) { return basicTypes[basicType]; }
-	AstIndex builtinNodes(BuiltinId builtinId) { return builtins[builtinId]; }
+	AstIndex basicTypeNodes(BasicType basicType) {
+		return basicTypesArray[basicType];
+	}
+	AstIndex builtinNodes(BuiltinId builtinId) {
+		return builtinsArray[builtinId];
+	}
 
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
@@ -706,10 +703,17 @@ struct CompilationContext
 		// populates idMap with common identifiers like this, length, ptr, min, max, sizeof...
 		idMap.regCommonIds(&this);
 
+		// Next we create ast node per CommonAstNodes entry. Make sure the order is the same
+
+		// CommonAstNodes.undefined
 		astBuffer.voidPut(1); // 0th slot is reserved for undefined index
 
+		// CommonAstNodes.node_error
+		AstIndex node_error = appendAst!ErrorAstNode();
+		assertf(node_error == CommonAstNodes.node_error, "AstIndex mismatch for node_error %s != %s", node_error, cast(AstIndex)CommonAstNodes.node_error);
+
 		// add basic types
-		AstIndex makeBasic(uint size, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
+		void makeBasic(AstIndex reqIndex, uint size, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
 		{
 			uint startPos = sourceBuffer.uintLength;
 			string str = basicTypeNames[basicType];
@@ -718,48 +722,61 @@ struct CompilationContext
 			TokenIndex tokIndex = TokenIndex(tokenLocationBuffer.uintLength);
 			tokenLocationBuffer.put(SourceLocation(startPos, endPos, 0, 0));
 			tokenBuffer.voidPut(1); // bump token buf too
-			return appendAst!BasicTypeNode(tokIndex, size, minValue, maxValue, basicType, cast(ubyte)typeFlags);
+
+			// we want the index returned from appendAst to be equal to reqIndex
+			// because we have CommonAstNodes enum
+			AstIndex index = appendAst!BasicTypeNode(tokIndex, size, minValue, maxValue, basicType, cast(ubyte)typeFlags);
+			assertf(index == reqIndex,
+				"Result AstIndex of basic type (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
+				index, reqIndex);
 		}
 
-		basicTypes = [
-			makeBasic(0, 0, 0, BasicType.t_error),
-			makeBasic(0, 0, 0, BasicType.t_void),
-			makeBasic(1, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean),
-			makeBasic(8, 0, 0, BasicType.t_null),
+		// type nodes
+		makeBasic(CommonAstNodes.type_error, 0, 0, 0, BasicType.t_error);
+		makeBasic(CommonAstNodes.type_void,  0, 0, 0, BasicType.t_void);
+		makeBasic(CommonAstNodes.type_bool,  1, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean);
+		makeBasic(CommonAstNodes.type_null,  8, 0, 0, BasicType.t_null);
 
-			makeBasic(1, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned),
-			makeBasic(2, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned),
-			makeBasic(4, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned),
-			makeBasic(8, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned),
+		// basic type nodes
+		makeBasic(CommonAstNodes.type_i8,  1, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
+		makeBasic(CommonAstNodes.type_i16, 2, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
+		makeBasic(CommonAstNodes.type_i32, 4, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
+		makeBasic(CommonAstNodes.type_i64, 8, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
 
-			makeBasic(1, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger),
-			makeBasic(2, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger),
-			makeBasic(4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger),
-			makeBasic(8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger),
+		makeBasic(CommonAstNodes.type_u8,  1, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger);
+		makeBasic(CommonAstNodes.type_u16, 2, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger);
+		makeBasic(CommonAstNodes.type_u32, 4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger);
+		makeBasic(CommonAstNodes.type_u64, 8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger);
 
-			makeBasic(4, 0, 0, BasicType.t_f32, BasicTypeFlag.isFloat),
-			makeBasic(8, 0, 0, BasicType.t_f64, BasicTypeFlag.isFloat),
-		];
+		makeBasic(CommonAstNodes.type_f32, 4, 0, 0, BasicType.t_f32, BasicTypeFlag.isFloat);
+		makeBasic(CommonAstNodes.type_f64, 8, 0, 0, BasicType.t_f64, BasicTypeFlag.isFloat);
 
-		AstIndex makeBuiltin(Identifier id, BuiltinId builtin) {
-			return appendAst!BuiltinNode(TokenIndex(), id, builtin);
+		// custom types
+		auto type_u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
+		assertf(type_u8Ptr == CommonAstNodes.type_u8Ptr, "AstIndex mismatch for type_u8Ptr %s != %s", type_u8Ptr, cast(AstIndex)CommonAstNodes.type_u8Ptr);
+		type_u8Ptr.gen_ir_type(&this); // we need to cache IR types too
+
+		auto type_u8Slice = appendAst!SliceTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
+		assertf(type_u8Slice == CommonAstNodes.type_u8Slice, "AstIndex mismatch for type_u8Slice %s != %s", type_u8Slice, cast(AstIndex)CommonAstNodes.type_u8Slice);
+		type_u8Slice.gen_ir_type(&this); // we need to cache IR types too
+
+		// builtin nodes
+		void makeBuiltin(AstIndex reqIndex, Identifier id, BuiltinId builtin) {
+			AstIndex index = appendAst!BuiltinNode(TokenIndex(), id, builtin);
+			assertf(index == reqIndex,
+				"Result AstIndex of builtin node (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
+				index, reqIndex);
 		}
 
-		builtins = [
-			makeBuiltin(CommonIds.id_min, BuiltinId.int_min),
-			makeBuiltin(CommonIds.id_max, BuiltinId.int_max),
-			makeBuiltin(CommonIds.id_length, BuiltinId.slice_length),
-			makeBuiltin(CommonIds.id_ptr, BuiltinId.slice_ptr),
-			makeBuiltin(CommonIds.id_length, BuiltinId.array_length),
-			makeBuiltin(CommonIds.id_ptr, BuiltinId.array_ptr),
-			makeBuiltin(CommonIds.id_sizeof, BuiltinId.type_sizeof),
-		];
+		makeBuiltin(CommonAstNodes.builtin_min, CommonIds.id_min, BuiltinId.int_min);
+		makeBuiltin(CommonAstNodes.builtin_max, CommonIds.id_max, BuiltinId.int_max);
+		makeBuiltin(CommonAstNodes.builtin_slice_length, CommonIds.id_length, BuiltinId.slice_length);
+		makeBuiltin(CommonAstNodes.builtin_slice_ptr, CommonIds.id_ptr, BuiltinId.slice_ptr);
+		makeBuiltin(CommonAstNodes.builtin_array_length, CommonIds.id_length, BuiltinId.array_length);
+		makeBuiltin(CommonAstNodes.builtin_array_ptr, CommonIds.id_ptr, BuiltinId.array_ptr);
+		makeBuiltin(CommonAstNodes.builtin_sizeof, CommonIds.id_sizeof, BuiltinId.type_sizeof);
 
-		errorNode = appendAst!ErrorAstNode();
-		u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
-		u8Ptr.gen_ir_type(&this); // we need to cache IR types too
-		u8Slice = appendAst!SliceTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
-		u8Slice.gen_ir_type(&this); // we need to cache IR types too
+		// CommonAstNodes end
 
 		initializedAstBufSize = astBuffer.length;
 		initializedIrTypeBufSize = types.buffer.length;
@@ -813,3 +830,75 @@ struct CompilationContext
 		idMap.regCommonIds(&this);
 	}
 }
+
+enum CommonAstNodes : AstIndex
+{
+	// reserved for undefined
+	undefined                = AstIndex(0),
+
+	// error. Nodes can point to error when name resolution failed
+	node_error               = AstIndex(1),
+
+	// basic type nodes
+	// The order is the same as in TokenType enum
+	// The order is the same as in BasicType enum
+	type_error               = AstIndex(3),
+	type_void                = AstIndex(13),
+	type_bool                = AstIndex(23),
+	type_null                = AstIndex(33),
+
+	type_i8                  = AstIndex(43),
+	type_i16                 = AstIndex(53),
+	type_i32                 = AstIndex(63),
+	type_i64                 = AstIndex(73),
+
+	type_u8                  = AstIndex(83),
+	type_u16                 = AstIndex(93),
+	type_u32                 = AstIndex(103),
+	type_u64                 = AstIndex(113),
+
+	type_f32                 = AstIndex(123),
+	type_f64                 = AstIndex(133),
+	// basic type nodes end
+
+	// common custom types
+	type_u8Ptr               = AstIndex(143),
+	type_u8Slice             = AstIndex(147),
+
+	// builtin nodes
+	// The order is the same as in BuiltinId enum
+	builtin_min              = AstIndex(152),
+	builtin_max              = AstIndex(156),
+	builtin_slice_length     = AstIndex(160),
+	builtin_slice_ptr        = AstIndex(164),
+	builtin_array_length     = AstIndex(168),
+	builtin_array_ptr        = AstIndex(172),
+	builtin_sizeof           = AstIndex(176),
+	// builtin nodes end
+}
+
+private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
+	CommonAstNodes.type_error,
+	CommonAstNodes.type_void,
+	CommonAstNodes.type_bool,
+	CommonAstNodes.type_null,
+	CommonAstNodes.type_i8,
+	CommonAstNodes.type_i16,
+	CommonAstNodes.type_i32,
+	CommonAstNodes.type_i64,
+	CommonAstNodes.type_u8,
+	CommonAstNodes.type_u16,
+	CommonAstNodes.type_u32,
+	CommonAstNodes.type_u64,
+	CommonAstNodes.type_f32,
+	CommonAstNodes.type_f64,
+];
+private immutable AstIndex[BuiltinId.max + 1] builtinsArray = [
+	CommonAstNodes.builtin_min,
+	CommonAstNodes.builtin_max,
+	CommonAstNodes.builtin_slice_length,
+	CommonAstNodes.builtin_slice_ptr,
+	CommonAstNodes.builtin_array_length,
+	CommonAstNodes.builtin_array_ptr,
+	CommonAstNodes.builtin_sizeof,
+];

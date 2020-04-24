@@ -187,7 +187,7 @@ AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, Compil
 					"`%s.%s` at %s conflicts with `%s.%s` at %s",
 					mod1Id, sym1Id, FmtSrcLoc(context.getAstNode(symIndex).loc, context),
 					mod2Id, sym2Id, FmtSrcLoc(context.getAstNode(scopeSym).loc, context));
-				return context.errorNode;
+				return CommonAstNodes.node_error;
 			}
 
 			symIndex = scopeSym;
@@ -199,6 +199,6 @@ AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, Compil
 		scop = scop.parentScope.get_scope(context);
 	}
 
-	return context.errorNode;
+	return CommonAstNodes.node_error;
 }
 

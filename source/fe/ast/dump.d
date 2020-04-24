@@ -25,12 +25,16 @@ struct AstPrinter {
 
 	void pr_node(AstIndex nodeIndex) { // print node
 		AstNode* node = context.getAstNode(nodeIndex);
-		indent += indentSize; _visit(node); indent -= indentSize;
+		indent += indentSize;
+		print("state: ", node.state);
+		_visit(node);
+		indent -= indentSize;
 	}
 	void pr_nodes(AstNodes nodes) { // print node
 		indent += indentSize;
 		foreach (AstIndex nodeIndex; nodes) {
 			AstNode* node = context.getAstNode(nodeIndex);
+			print("state: ", node.state);
 			_visit(node);
 		}
 		indent -= indentSize;
@@ -83,6 +87,11 @@ struct AstPrinter {
 		print("TEMPLATE ", context.idString(n.id));
 		pr_nodes(n.parameters);
 		pr_node(n.body);
+		foreach (ref TemplateInstance inst; n.instances)
+		{
+			print("INSTANCE: ", context.idString(inst.entity.get_node_id(context)));
+			pr_node(inst.entity);
+		}
 	}
 	void visit(TemplateParamDeclNode* n) {
 		print("TEMPLATE PARAM ", context.idString(n.id));
@@ -138,7 +147,7 @@ struct AstPrinter {
 			print("NAME_USE ", context.idString(v.id(context)));
 	}
 	void visit(MemberExprNode* m) {
-		print("MEMBER ", m.type.printer(context), " ", context.idString(m.memberId(context)));
+		print("MEMBER ", m.type.printer(context), " ", context.idString(m.memberId(context)), " ", cast(MemberSubType)m.subType);
 		pr_node(m.aggregate);
 	}
 	void visit(IntLiteralExprNode* lit) {

@@ -1189,7 +1189,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 		case STRING_LITERAL:
 			// omit " at the start and end of token
 			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
-			AstIndex type = p.context.u8Slice;
+			AstIndex type = CommonAstNodes.type_u8Slice;
 
 			IrIndex irValue;
 			// dont create empty global for empty string. Globalsare required to have non-zero length
@@ -1201,7 +1201,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			{
 				irValue = p.context.globals.add();
 				IrGlobal* global = p.context.globals.get(irValue);
-				global.type = p.context.u8Ptr.gen_ir_type(p.context);
+				global.type = CommonAstNodes.type_u8Ptr.gen_ir_type(p.context);
 
 				ObjectSymbol sym = {
 					kind : ObjectSymbolKind.isLocal,

@@ -5,6 +5,7 @@ module fe.ast.decl.builtin;
 
 import all;
 
+// The order is the same as in CommonAstNodes enum
 enum BuiltinId : ubyte {
 	@("min")    int_min,
 	@("max")    int_max,
