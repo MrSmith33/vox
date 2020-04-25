@@ -178,6 +178,7 @@ enum IrOpcode : ushort
 	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasResult) create_aggregate,
 	/// Args: aggregate, 1 or more index
 	/// Returns: member of aggregate
+	/// For now indicies must be constant
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element,
 	/// Args: aggregate, new element value, 1 or more index
 	/// Returns: aggregate with replaced element

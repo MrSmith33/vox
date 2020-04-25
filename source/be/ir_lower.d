@@ -514,9 +514,48 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, ref IrBui
 					break;
 
 				case IrOpcode.get_element:
+					// if source is stored inside register - extract with bit manipulation, otherwise lower to GEP
+
 					//writefln("- get_element %s", instrIndex);
 					// instruction is reused
-					IrIndex resultType = getValueType(instrHeader.result(ir), ir, c);
+
+					IrIndex[] args = instrHeader.args(ir);
+					IrIndex sourceType = getValueType(args[0], ir, c);
+					IrTypeStructMember member = c.types.getAggregateMember(sourceType, c, args[1..$]);
+					IrIndex resultType = member.type;
+					uint resultSize = c.types.typeSize(resultType);
+
+					if (sourceType.isPassByValue(c))
+					{
+						// do simple variant where all indicies are constant
+						IrIndex value = args[0];
+						if (member.offset > 0)
+						{
+							// shift right
+							IrIndex rightArg = c.constants.add(member.offset, IsSigned.no);
+							ExtraInstrArgs extra = { type : member.type };
+							value = builder.emitInstrBefore!(IrOpcode.lshr)(instrIndex, extra, value, rightArg).result;
+						}
+
+						// mask if not 1, 2, 4 or 8 bytes in size
+						if (!resultType.isPassByValue(c))
+						{
+							// and
+							IrIndex mask = c.constants.add((1 << (resultSize * 8)) - 1, IsSigned.no);
+							ExtraInstrArgs extra = { type : member.type };
+							value = builder.emitInstrBefore!(IrOpcode.and)(instrIndex, extra, value, mask).result;
+						}
+						else
+						{
+							ExtraInstrArgs extra = { argSize : sizeToIrArgSize(resultSize, c), type : member.type };
+							value = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, value).result;
+						}
+
+						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = value;
+						removeInstruction(ir, instrIndex);
+						break;
+					}
+
 					instrHeader.op = IrOpcode.get_element_ptr_0;
 
 					if (resultType.isPassByValue(c))

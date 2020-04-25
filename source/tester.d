@@ -4,6 +4,7 @@
 module tester;
 
 import all;
+import tests.aggregates;
 import tests.ctfe;
 import tests.passing;
 import tests.failing;
@@ -16,7 +17,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(test64);
+	Test test = makeTest!(aggr130);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -46,6 +47,7 @@ void runDevTests()
 	//driver.context.printIr = true;
 	//driver.context.printIrOpt = true;
 	//driver.context.printIrLower = true;
+	//driver.context.printIrLowerEach = true;
 	//driver.context.printLir = true;
 	//driver.context.printLiveIntervals = true;
 	//driver.context.printLirRA = true;
@@ -80,7 +82,11 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
 
-	Test[] jitTests = tests.passing.passingTests ~ tests.ctfe.ctfeTests ~ tests.failing.failingTests;
+	Test[] jitTests =
+		tests.passing.passingTests ~
+		tests.aggregates.aggregatesTests ~
+		tests.ctfe.ctfeTests ~
+		tests.failing.failingTests;
 	Test[] regAllocTests = tests.reg_alloc.regAllocTests;
 	Test[] exeTests = tests.exe.exeTests;
 
