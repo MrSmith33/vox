@@ -251,3 +251,21 @@ void tester130(ref TestContext ctx) {
 	run(&point, Point(0, 0));
 	assert(point == Point(0, 42));
 }
+
+
+@TestInfo(&tester131)
+immutable aggr131 = q{--- aggr131
+	// Construct and store into ptr
+	struct Point { i32 x; i32 y; }
+	void run(Point* point, i32 x, i32 y)
+	{
+		*point = Point(x, y);
+	}
+};
+void tester131(ref TestContext ctx) {
+	static struct Point { int x; int y; }
+	auto run = ctx.getFunctionPtr!(void, Point*, int, int)("run");
+	Point point;
+	run(&point, 42, 90);
+	assert(point == Point(42, 90));
+}

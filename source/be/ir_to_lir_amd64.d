@@ -177,7 +177,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 								}
 								return;
 
-							case IrOpcode.move:
+							case IrOpcode.move, IrOpcode.or:
 								// value fits into register, store as is
 								IrIndex rvalue = getFixedIndex(irValue);
 								IrArgSize argSize = typeToIrArgSize(valueType, context);
