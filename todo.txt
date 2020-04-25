@@ -199,9 +199,11 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 + Remove IR instruction structs, use enum values directly in emitInstr
 + Automatically use zero initialization when possible
 - Constants
-	- Zeroinitializer
+	+ Zeroinitializer
 	- Add constant kind that inits all elements of an array with the same value
 	- expression constant (required for expressions involving link-time constants like global address)
+	- pointer constants are represented as numeric constants which do not have type associated.
+	  zeroinit however does have a type.
 - Validate all instructions
 + use actual arrays for users instead of linked lists
 

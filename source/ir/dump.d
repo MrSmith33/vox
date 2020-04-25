@@ -59,6 +59,11 @@ struct IrIndexDump
 		this.context = context;
 		this.instrSet = ir.instructionSet;
 	}
+	this(IrIndex index, IrBuilder* builder) {
+		this.index = index;
+		this.context = builder.context;
+		this.instrSet = builder.ir.instructionSet;
+	}
 	IrIndex index;
 	IrInstructionSet instrSet;
 	CompilationContext* context;

@@ -3244,3 +3244,20 @@ void tester127(ref TestContext ctx) {
 	put(&point, Point(42, 90));
 	assert(point == Point(42, 90));
 }
+
+
+@TestInfo()
+immutable test128 = q{--- test128
+	// Test member access on null constant
+	struct Tile {
+		u16 a;
+		u16 b;
+	}
+	Tile* get() { return null; }
+	void run1()
+	{
+		Tile* t;
+		t.b = 42; // member of null pointer
+	}
+};
+

@@ -308,7 +308,7 @@ ExprValue getAggregateMember(ref IrGenState gen, TokenIndex loc, IrIndex current
 	//writefln("getAggregateMember %s", aggr);
 	if (aggr.irValue.isVariable) {
 		aggr.irValue = gen.builder.readVariable(currentBlock, aggr.irValue);
-		//writefln("  %s", aggr.irValue);
+		//writefln("  %s", IrIndexDump(aggr.irValue, &gen.builder));
 	}
 
 	switch (aggr.kind) with(ExprValueKind)
@@ -320,7 +320,7 @@ ExprValue getAggregateMember(ref IrGenState gen, TokenIndex loc, IrIndex current
 	}
 
 	IrIndex aggrType = gen.ir.getValueType(c, aggr.irValue);
-	//writefln("  %s", aggrType.typeKind);
+	//writefln("  %s", IrIndexDump(aggrType, &gen.builder));
 
 	switch (aggrType.typeKind) {
 		case IrTypeKind.pointer: return ExprValue(buildGEP(gen, loc, currentBlock, aggr.irValue, c.constants.ZERO, indicies), ExprValueKind.ptr_to_data, IsLvalue.yes);
