@@ -302,10 +302,30 @@ struct Parser
 		return parse_var_func_declaration_after_type(start, body_start, typeIndex, consume_terminator, var_terminator);
 	}
 
+	bool canBeType(AstIndex someExpr)
+	{
+		switch(someExpr.astType(context)) with(AstType)
+		{
+			case type_basic, type_ptr, type_static_array, type_slice, type_func_sig:
+			case expr_name_use, expr_member, expr_index, expr_slice:
+				return true;
+			default:
+				return false;
+		}
+	}
+
 	AstIndex parse_var_func_declaration_after_type(TokenIndex start, AstIndex body_start, AstIndex typeIndex, ConsumeTerminator consume_terminator, TokenType var_terminator = TokenType.init)
 	{
 		version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
+
+		TokenIndex idPos = tok.index;
 		Identifier declarationId = expectIdentifier();
+
+		if (!canBeType(typeIndex))
+		{
+			context.error(idPos,
+				"Invalid expression. Missing `;` before `%s`", context.idString(declarationId));
+		}
 
 		AstIndex initializerIndex;
 		if (tok.type == TokenType.EQUAL) // "=" <expression>

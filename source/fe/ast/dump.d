@@ -26,7 +26,7 @@ struct AstPrinter {
 	void pr_node(AstIndex nodeIndex) { // print node
 		AstNode* node = context.getAstNode(nodeIndex);
 		indent += indentSize;
-		print("state: ", node.state);
+		//print("state: ", node.state);
 		_visit(node);
 		indent -= indentSize;
 	}
@@ -34,7 +34,7 @@ struct AstPrinter {
 		indent += indentSize;
 		foreach (AstIndex nodeIndex; nodes) {
 			AstNode* node = context.getAstNode(nodeIndex);
-			print("state: ", node.state);
+			//print("state: ", node.state);
 			_visit(node);
 		}
 		indent -= indentSize;

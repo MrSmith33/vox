@@ -317,3 +317,17 @@ immutable fail29 = q{
 fail29(2, 2): Error: undefined identifier `Array`
 fail29(2, 8): Error: undefined identifier `Point`
 };
+
+
+@TestInfo()
+immutable fail30 = q{
+--- fail30
+	// Call used as a type. Example
+	// a()  <-- missing semicolon
+	// b ...
+	void run() {
+		a() b;
+	}
+--- <error>
+fail30(5, 7): Error: Invalid expression. Missing `;` before `b`
+};
