@@ -101,6 +101,7 @@ int runCli(string[] args)
 
 	driver.initialize(exePasses);
 	driver.context.buildType = BuildType.exe;
+	driver.beginCompilation();
 
 	if (outputFilename) driver.context.outputFilename = outputFilename;
 	else driver.context.outputFilename = filenames[0].baseName.setExtension(".exe"); // GC
@@ -112,7 +113,6 @@ int runCli(string[] args)
 
 	try
 	{
-		driver.beginCompilation();
 
 		foreach(filename; filenames)
 		{

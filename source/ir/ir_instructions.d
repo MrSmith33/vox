@@ -276,12 +276,11 @@ struct IrInstrHeader
 			// Always used
 			bool,       "hasResult", 1,
 			// Only used when IrInstrFlags.hasCondition is set
-			ubyte,      "cond",      3,
+			ubyte,      "cond",      4,
 			// Not always possible to infer arg size from arguments (like in store ptr, imm)
 			IrArgSize,  "argSize",   2,
 			// Only used for loads to mark source pointer as uniqely owned by load
 			bool, "isUniqueLoad",    1,
-			uint, "",                1
 		));
 
 		mixin(bitfields!(
@@ -294,8 +293,8 @@ struct IrInstrHeader
 		));
 	}
 
-	static assert(IrBinaryCondition.max <= 0b111, "3 bits are reserved");
-	static assert(IrUnaryCondition.max <= 0b111, "3 bits are reserved");
+	static assert(IrBinaryCondition.max <= 0b1111, "4 bits are reserved");
+	static assert(IrUnaryCondition.max <= 0b1111, "4 bits are reserved");
 
 	// points to first argument (result is immediately before first arg)
 	uint _payloadOffset;
@@ -339,14 +338,20 @@ struct IrInstrHeader
 enum IrBinaryCondition : ubyte {
 	eq,
 	ne,
-	g,
-	ge,
-	l,
-	le,
+
+	ugt,
+	uge,
+	ult,
+	ule,
+
+	sgt,
+	sge,
+	slt,
+	sle,
 }
 
-string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", ">", ">=", "<", "<="];
-string[] binaryCondStringsEscapedForDot = cast(string[IrBinaryCondition.max+1])[`==`, `!=`, `\>`, `\>=`, `\<`, `\<=`];
+string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", "u>", "u>=", "u<", "u<=", "s>", "s>=", "s<", "s<="];
+string[] binaryCondStringsEscapedForDot = cast(string[IrBinaryCondition.max+1])[`==`, `!=`, `u\>`, `u\>=`, `u\<`, `u\<=`, `s\>`, `s\>=`, `s\<`, `s\<=`];
 
 bool evalBinCondition(ref CompilationContext context, IrBinaryCondition cond, IrIndex conLeft, IrIndex conRight)
 {
@@ -356,10 +361,16 @@ bool evalBinCondition(ref CompilationContext context, IrBinaryCondition cond, Ir
 	{
 		case eq: return left.i64 == right.i64;
 		case ne: return left.i64 != right.i64;
-		case g:  return left.i64 >  right.i64;
-		case ge: return left.i64 >= right.i64;
-		case l:  return left.i64 <  right.i64;
-		case le: return left.i64 <= right.i64;
+
+		case ugt: return left.u64 >  right.u64;
+		case uge: return left.u64 >= right.u64;
+		case ult: return left.u64 <  right.u64;
+		case ule: return left.u64 <= right.u64;
+
+		case sgt: return left.i64 >  right.i64;
+		case sge: return left.i64 >= right.i64;
+		case slt: return left.i64 <  right.i64;
+		case sle: return left.i64 <= right.i64;
 	}
 }
 
@@ -369,10 +380,16 @@ IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
 	{
 		case eq: return ne;
 		case ne: return eq;
-		case g:  return le;
-		case ge: return l;
-		case l:  return ge;
-		case le: return g;
+
+		case ugt: return ule;
+		case uge: return ult;
+		case ult: return uge;
+		case ule: return ugt;
+
+		case sgt: return sle;
+		case sge: return slt;
+		case slt: return sge;
+		case sle: return sgt;
 	}
 }
 

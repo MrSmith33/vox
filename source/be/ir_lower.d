@@ -532,8 +532,8 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, ref IrBui
 						if (member.offset > 0)
 						{
 							// shift right
-							IrIndex rightArg = c.constants.add(member.offset, IsSigned.no);
-							ExtraInstrArgs extra = { type : member.type };
+							IrIndex rightArg = c.constants.add(member.offset * 8, IsSigned.no);
+							ExtraInstrArgs extra = { argSize : getTypeArgSize(sourceType, c), type : sourceType };
 							value = builder.emitInstrBefore!(IrOpcode.lshr)(instrIndex, extra, value, rightArg).result;
 						}
 
@@ -548,7 +548,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, ref IrBui
 						else
 						{
 							ExtraInstrArgs extra = { argSize : sizeToIrArgSize(resultSize, c), type : member.type };
-							value = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, value).result;
+							value = builder.emitInstrBefore!(IrOpcode.trunc)(instrIndex, extra, value).result;
 						}
 
 						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = value;

@@ -211,7 +211,11 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 		switch(b.op) with(BinOp)
 		{
 			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
-				ExtraInstrArgs extra = {cond : convertBinOpToIrCond(b.op), type : b.type.gen_ir_type(c), argSize : leftExpr.type.typeArgSize(c) };
+				ExtraInstrArgs extra = {
+					cond : convertBinOpToIrCond(b.op, leftExpr.type.isSigned(c)),
+					type : b.type.gen_ir_type(c),
+					argSize : leftExpr.type.typeArgSize(c)
+				};
 				irValue = gen.builder.emitInstr!(IrOpcode.set_binary_cond)(
 					currentBlock, extra, leftValue, rightValue).result;
 				break;
@@ -259,7 +263,7 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 		{
 			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 				auto branch = gen.builder.addBinBranch(
-					currentBlock, convertBinOpToIrCond(b.op), leftExpr.type.typeArgSize(c),
+					currentBlock, convertBinOpToIrCond(b.op, leftExpr.type.isSigned(c)), leftExpr.type.typeArgSize(c),
 					leftValue, rightValue, trueExit, falseExit);
 				break;
 			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
@@ -354,10 +358,18 @@ IrIndex calcBinOp(BinOp op, IrIndex left, IrIndex right, IrArgSize argSize, Comp
 	}
 }
 
-IrBinaryCondition convertBinOpToIrCond(BinOp op)
+IrBinaryCondition convertBinOpToIrCond(BinOp op, bool isSigned)
 {
-	assert(op >= BinOp.EQUAL && op <= BinOp.LESS_EQUAL);
-	return cast(IrBinaryCondition)(op - BinOp.EQUAL);
+	switch(op) with(BinOp) with(IrBinaryCondition)
+	{
+		case EQUAL:         return eq;
+		case NOT_EQUAL:     return ne;
+		case GREATER:       return cast(IrBinaryCondition)(ugt + cast(ubyte)isSigned * 4); // ugt or sgt
+		case GREATER_EQUAL: return cast(IrBinaryCondition)(uge + cast(ubyte)isSigned * 4); // uge or sge
+		case LESS:          return cast(IrBinaryCondition)(ult + cast(ubyte)isSigned * 4); // ult or slt
+		case LESS_EQUAL:    return cast(IrBinaryCondition)(ule + cast(ubyte)isSigned * 4); // ule or sle
+		default: assert(false, "Unexpected BinOp");
+	}
 }
 
 void setResultType(BinaryExprNode* b, CompilationContext* context)

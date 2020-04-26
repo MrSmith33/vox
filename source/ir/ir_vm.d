@@ -167,12 +167,18 @@ struct IrVm
 						bool result;
 						final switch(cast(IrBinaryCondition)instrHeader.cond)
 						{
-							case IrBinaryCondition.eq: result = a == b; break;
-							case IrBinaryCondition.ne: result = a != b; break;
-							case IrBinaryCondition.g:  result = a > b;  break;
-							case IrBinaryCondition.ge: result = a >= b; break;
-							case IrBinaryCondition.l:  result = a < b;  break;
-							case IrBinaryCondition.le: result = a <= b; break;
+							case IrBinaryCondition.eq:  result = a == b; break;
+							case IrBinaryCondition.ne:  result = a != b; break;
+
+							case IrBinaryCondition.ugt: result = cast(ulong)a >  cast(ulong)b; break;
+							case IrBinaryCondition.uge: result = cast(ulong)a >= cast(ulong)b; break;
+							case IrBinaryCondition.ult: result = cast(ulong)a <  cast(ulong)b; break;
+							case IrBinaryCondition.ule: result = cast(ulong)a <= cast(ulong)b; break;
+
+							case IrBinaryCondition.sgt: result = cast(long)a >  cast(long)b; break;
+							case IrBinaryCondition.sge: result = cast(long)a >= cast(long)b; break;
+							case IrBinaryCondition.slt: result = cast(long)a <  cast(long)b; break;
+							case IrBinaryCondition.sle: result = cast(long)a <= cast(long)b; break;
 						}
 						prevBlock = curBlock;
 						if (result)

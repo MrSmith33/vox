@@ -52,6 +52,7 @@ struct IrConstant
 		short i16;
 		int i32;
 		long i64;
+		ulong u64;
 	}
 }
 

@@ -91,6 +91,9 @@ immutable aggr64 = q{--- aggr64
 	Small passArgSmallStruct() {
 		return receiveArgSmallStruct(Small(10, 42));
 	}
+	Small passArgSmallStructVar(i32 x, i32 y) {
+		return receiveArgSmallStruct(Small(x+1, y+1));
+	}
 	// - pass as arg (fits in register, pushed)
 	Small passArgSmallStructPush() {
 		return receiveArgSmallStructPush(1,2,3,4,Small(10, 42));
@@ -195,6 +198,9 @@ void tester64(ref TestContext ctx) {
 	auto passArgSmallStruct = ctx.getFunctionPtr!(Small)("passArgSmallStruct");
 	assert(passArgSmallStruct() == Small(10, 42));
 
+	auto passArgSmallStructVar = ctx.getFunctionPtr!(Small, int, int)("passArgSmallStructVar");
+	assert(passArgSmallStructVar(10, 42) == Small(11, 43));
+
 	auto passArgSmallStructPush = ctx.getFunctionPtr!(Small)("passArgSmallStructPush");
 	assert(passArgSmallStructPush() == Small(10, 42));
 
@@ -269,3 +275,51 @@ void tester131(ref TestContext ctx) {
 	run(&point, 42, 90);
 	assert(point == Point(42, 90));
 }
+
+
+@TestInfo(&tester132, [HostSymbol("consume", cast(void*)&aggr132_external_consume)])
+immutable aggr132 = q{--- aggr132
+	// Bug. Wrong size of shl used when building small aggregate
+	struct Point { i32 x; i32 y; }
+	void consume(i32, i32);
+	void run(Point* player)
+	{
+		Point point;
+		Point* ptr = &point;
+		*ptr = Point(player.x, player.y);
+		consume(point.x, point.y);
+	}
+};
+extern(C) void aggr132_external_consume(int x, int y) {
+	assert(x == 42);
+	assert(y == 90);
+}
+void tester132(ref TestContext ctx) {
+	static struct Point { int x; int y; }
+	auto run = ctx.getFunctionPtr!(void, Point*)("run");
+	Point p = Point(42, 90);
+	run(&p);
+}
+
+
+@TestInfo(&tester133, [HostSymbol("consume", cast(void*)&aggr133_external_consume)])
+immutable aggr133 = q{--- aggr133
+	// Bug. Wrong size of shr used when deconstructing small aggregate
+	struct Point { i32 x; i32 y; }
+	void consume(i32, i32);
+	void run(Point point)
+	{
+		consume(point.x, point.y);
+	}
+};
+extern(C) void aggr133_external_consume(int x, int y) {
+	assert(x == 42);
+	assert(y == 90);
+}
+void tester133(ref TestContext ctx) {
+	static struct Point { int x; int y; }
+	auto run = ctx.getFunctionPtr!(void, Point)("run");
+	Point p = Point(42, 90);
+	run(p);
+}
+

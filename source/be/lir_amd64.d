@@ -244,10 +244,14 @@ enum Amd64Opcode : ushort {
 Condition[] IrBinCondToAmd64Condition = [
 	Condition.E,  // eq
 	Condition.NE, // ne
-	Condition.G,  // g
-	Condition.GE, // ge
-	Condition.L,  // l
-	Condition.LE, // le
+	Condition.A,  // ugt
+	Condition.AE, // uge
+	Condition.B,  // ult
+	Condition.BE, // ule
+	Condition.G,  // sgt
+	Condition.GE, // sge
+	Condition.L,  // slt
+	Condition.LE, // sle
 ];
 
 Condition[] IrUnCondToAmd64Condition = [

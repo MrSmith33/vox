@@ -390,12 +390,12 @@ struct CodeEmitter
 						if (src.isConstant) {
 							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
-								gen.shl1(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+								gen.shl1(dst, cast(ArgType)instrHeader.argSize);
 							else
-								gen.shli(dst, Imm8(con.i8), cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+								gen.shli(dst, Imm8(con.i8), cast(ArgType)instrHeader.argSize);
 						}
 						else
-							gen.shl(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+							gen.shl(dst, cast(ArgType)instrHeader.argSize);
 						break;
 					case Amd64Opcode.shr:
 						Register dst = indexToRegister(instrHeader.arg(lir, 0));
@@ -403,12 +403,12 @@ struct CodeEmitter
 						if (src.isConstant) {
 							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
-								gen.shr1(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+								gen.shr1(dst, cast(ArgType)instrHeader.argSize);
 							else
-								gen.shri(dst, Imm8(con.i8), cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+								gen.shri(dst, Imm8(con.i8), cast(ArgType)instrHeader.argSize);
 						}
 						else
-							gen.shr(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+							gen.shr(dst, cast(ArgType)instrHeader.argSize);
 						break;
 					case Amd64Opcode.sar:
 						Register dst = indexToRegister(instrHeader.arg(lir, 0));
@@ -416,12 +416,12 @@ struct CodeEmitter
 						if (src.isConstant) {
 							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
-								gen.sar1(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+								gen.sar1(dst, cast(ArgType)instrHeader.argSize);
 							else
-								gen.sari(dst, Imm8(con.i8), cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+								gen.sari(dst, Imm8(con.i8), cast(ArgType)instrHeader.argSize);
 						}
 						else
-							gen.sar(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
+							gen.sar(dst, cast(ArgType)instrHeader.argSize);
 						break;
 					case Amd64Opcode.not:
 						Register dst = indexToRegister(instrHeader.arg(lir, 0));
