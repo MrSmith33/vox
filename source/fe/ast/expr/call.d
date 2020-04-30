@@ -243,11 +243,14 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 	scope(exit) c.freeTempArray(args);
 
 	args[0] = callee;
+	bool alwaysInline;
 
 	if (callee.kind == IrValueKind.func)
 	{
 		// force creation of function type for external functions
 		gen_ir_type(signatureIndex, c);
+		FunctionDeclNode* calleeFunc = c.getFunction(callee);
+		alwaysInline = calleeFunc.isInline;
 	}
 
 	foreach (i, AstIndex arg; n.args)
@@ -278,6 +281,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 	if (signature.returnType.isVoidType(c))
 	{
 		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, args);
+		gen.builder.ir.getInstr(res.instruction).alwaysInline = alwaysInline;
 		c.assertf(!res.result.isDefined, "Call has result");
 		gen.builder.addJumpToLabel(currentBlock, nextStmt);
 		return ExprValue();
@@ -288,6 +292,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 
 		ExtraInstrArgs extra = { hasResult : true, type : callResultType };
 		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, extra, args);
+		gen.builder.ir.getInstr(res.instruction).alwaysInline = alwaysInline;
 		gen.builder.addJumpToLabel(currentBlock, nextStmt);
 		return ExprValue(res.result);
 	}

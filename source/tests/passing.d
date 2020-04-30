@@ -3053,3 +3053,32 @@ immutable test128 = q{--- test128
 		t.b = 42; // member of null pointer
 	}
 };
+
+
+@TestInfo()
+immutable test129 = q{--- test129
+	// Test inlining a recursive function inside non-recursive caller
+	i32 caller(i32 param) {
+		return callee(param) + 10;
+	}
+
+	i32 callee(i32 param) #inline {
+		if (param == 0) return 42;
+		return callee(param - 1);
+	}
+};
+
+@TestInfo()
+immutable test130 = q{--- test130
+	// Test inlining with phi function
+	// Test inlining with array used
+	i32 caller(i32 param) {
+		return sign(param);
+	}
+
+	i32 sign(i32 number) #inline {
+		if (number < 0) return 0-1;
+		else if (number > 0) return 1;
+		else return 0;
+	}
+};

@@ -18,9 +18,10 @@ void pass_ir_lower(CompilationContext* c, ModuleDeclNode* mod, FunctionDeclNode*
 	*loweredIrData = *optimizedIrData; // copy
 
 	builder.beginDup(loweredIrData, c);
+	IrIndex funcIndex = func.getIrIndex(c);
 	foreach (FuncPassIr pass; passes)
 	{
-		pass(c, loweredIrData, builder);
+		pass(c, loweredIrData, funcIndex, builder);
 		if (c.validateIr)
 			validateIrFunction(c, loweredIrData);
 		if (c.printIrLowerEach && c.printDumpOf(func)) dumpFunction(c, loweredIrData, "IR lowering each");
@@ -43,7 +44,7 @@ bool isPassByValue(IrIndex type, CompilationContext* c) {
 	return true;
 }
 
-void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, ref IrBuilder builder)
+void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
 	//writefln("lower_abi %s", builder.context.idString(ir.backendData.name));
 	// buffer for call/instruction arguments
@@ -395,7 +396,7 @@ struct LowerVreg
 	IrIndex redirectTo;
 }
 
-void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, ref IrBuilder builder)
+void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
 	//writefln("lower_aggregates %s", c.idString(ir.backendData.name));
 
@@ -744,7 +745,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 	removeInstruction(ir, instrIndex);
 }
 
-void func_pass_lower_gep(CompilationContext* context, IrFunction* ir, ref IrBuilder builder)
+void func_pass_lower_gep(CompilationContext* context, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{

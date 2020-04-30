@@ -23,10 +23,9 @@ IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrI
 	// this will place data of each buffer at the end of buffer for current function
 	// update length of current function buffers
 	// fix all indicies
-	IrFunction calleeIrCopy = *calleeIr;
 	appendIrStorage(ir, calleeIr, c);
 
-	// gather blocks
+	// Gather blocks
 	IrBasicBlock* callerBlock = ir.getBlock(callerBlockIndex);
 	IrIndex callerNextBlock = callerBlock.nextBlock;
 	IrBasicBlock* calleeEntry = ir.getBlock(calleeEntryBlock);
@@ -34,7 +33,7 @@ IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrI
 	IrBasicBlock* calleeBody = ir.getBlock(calleeBodyIndex);
 	IrBasicBlock* calleeExit = ir.getBlock(calleeExitIndex);
 
-	// split basic block before call instruction
+	// Split basic block before call instruction
 	//   part before call remains in the same BB (callerBlockIndex)
 	//   part after call is moved into exit block of callee (calleeExitIndex)
 	//   callee entry block is dropped
@@ -42,11 +41,11 @@ IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrI
 	IrInstrHeader* callInstr = ir.getInstr(callInstrIndex);
 	IrIndex[] callArgs = callInstr.args(ir)[1..$];
 
+	// redirect parameter users to call argument
 	foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; calleeEntry.instructions(ir))
 	{
 		if (instrHeader.op == IrOpcode.parameter)
 		{
-			// redirect parameter users to call argument
 			IrInstr_parameter* param = ir.get!IrInstr_parameter(instrIndex);
 			uint paramIndex = param.index(ir);
 			IrIndex result = instrHeader.result(ir);
@@ -78,7 +77,6 @@ IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrI
 	}
 
 	// Cache instructions of caller block
-	IrIndex instrAfterCall = ir.nextInstr(callInstrIndex);
 	IrIndex instrBeforeCall = ir.prevInstr(callInstrIndex); // may be block if call is firstInstr
 	IrIndex callerLastInstr = callerBlock.lastInstr;
 
@@ -96,14 +94,15 @@ IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrI
 	}
 
 	// append instructions after call to the callee exit block, replacing the jump instruction
+	// we include the call instruction as a marker of the end of inlined code
 	if (calleeExitIndex == calleeBodyIndex)
 	{
 		// callee consists of a single basic block
-		concatBlockInstructions(ir, callerBlockIndex, calleeExit.lastInstr, instrAfterCall, callerLastInstr);
+		concatBlockInstructions(ir, callerBlockIndex, calleeExit.lastInstr, callInstrIndex, callerLastInstr);
 	}
 	else
 	{
-		concatBlockInstructions(ir, calleeExitIndex, calleeExit.lastInstr, instrAfterCall, callerLastInstr);
+		concatBlockInstructions(ir, calleeExitIndex, calleeExit.lastInstr, callInstrIndex, callerLastInstr);
 		// Fix successors and predecessors
 		fixBlockSucc(ir, calleeBodyIndex, callerBlockIndex, calleeBody.successors);
 		fixBlockSucc(ir, callerBlockIndex, calleeExitIndex, callerSuccessors);
@@ -112,6 +111,10 @@ IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrI
 		removeBlockFromChain(ir, calleeBody);
 		makeBlocksSequential(ir, calleeExitIndex, callerNextBlock);
 	}
+
+	// repurpose call instruction as marker for walk loop to look for
+	// it triggers removal of currently walked function from the stack of functions
+	*ir.getInstr(callInstrIndex) = IrInstrHeader(IrOpcode.inline_marker);
 
 	// Find the next instruction to visit
 	if (instrBeforeCall.isBasicBlock) {

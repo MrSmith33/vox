@@ -135,6 +135,8 @@ enum IrOpcode : ushort
 	@_ii(0, IFLG.hasResult, 1) parameter,
 	// first argument is function or function pointer
 	@_ii(0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) call,
+	// Special instruction used during inlining. Should not occur in other places.
+	@_ii(0) inline_marker,
 
 	/// Args: iNN a, iNN b
 	/// Returns boolean result of binary comparison: a cond b

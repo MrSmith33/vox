@@ -345,7 +345,8 @@ struct IrBuilder
 
 	/// Puts `user` into a list of users of `used` value
 	void addUser(IrIndex user, IrIndex used) {
-		//if (!used.isDefined) dumpFunction(*ir, *context, "IR gen(addUser));
+		//if (!used.isDefined) dumpFunction(context, ir, "IR gen(addUser)");
+		//writefln("addUser %s %s", used, user);
 		context.assertf(user.isDefined && used.isDefined, "%s addUser(%s, %s)",
 			context.idString(ir.backendData.name), user, used);
 		final switch (used.kind) with(IrValueKind) {

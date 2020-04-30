@@ -53,7 +53,7 @@ struct AstPrinter {
 	}
 	void visit(FunctionDeclNode* f) {
 		auto sig = f.signature.get!FunctionSignatureNode(context);
-		print("FUNC ", sig.returnType.printer(context), " ", context.idString(f.id));
+		print("FUNC ", sig.returnType.printer(context), " ", context.idString(f.id), f.isInline ? " #inline" : null);
 		pr_nodes(sig.parameters);
 		if (f.block_stmt) pr_node(f.block_stmt);
 	}

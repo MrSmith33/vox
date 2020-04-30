@@ -398,7 +398,12 @@ struct Parser
 		AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params, numDefaultArgs);
 		AstIndex func = make!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
 
-		AstIndex block;
+		if (tok.type == TokenType.HASH_INLINE)
+		{
+			nextToken; // skip #inline
+			func.get!FunctionDeclNode(context).flags |= FuncDeclFlags.isInline;
+		}
+
 		if (tok.type != TokenType.SEMICOLON)
 		{
 			AstIndex prevOwner = declarationOwner;

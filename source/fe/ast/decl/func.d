@@ -5,6 +5,11 @@ module fe.ast.decl.func;
 
 import all;
 
+enum FuncDeclFlags : ushort
+{
+	isInline = AstFlags.userFlag << 0,
+}
+
 /// Refers to a function inside a module
 struct FunctionIndex
 {
@@ -44,6 +49,8 @@ struct FunctionDeclNode {
 	AstIndex signature; // FunctionSignatureNode
 	AstIndex block_stmt; // null if external
 	FunctionBackendData backendData;
+
+	bool isInline() { return cast(bool)(flags & FuncDeclFlags.isInline); }
 
 	this(TokenIndex loc, AstIndex _module, AstIndex parentScope, AstIndex signature, Identifier id)
 	{

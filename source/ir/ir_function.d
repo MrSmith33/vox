@@ -125,14 +125,27 @@ struct IrFunction
 	uint numVirtualRegisters; /// vregPtr
 	uint numBasicBlocks; /// basicBlockPtr
 
-	IrBasicBlock[] blocksArray() {
-		return basicBlockPtr[0..numBasicBlocks];
-	}
 
 	/// Special block. Automatically created. Program start. Created first.
 	enum IrIndex entryBasicBlock = IrIndex(0, IrValueKind.basicBlock);
 	/// Special block. Automatically created. All returns must jump to it.
 	enum IrIndex exitBasicBlock = IrIndex(1, IrValueKind.basicBlock);
+
+
+	/// IrTypeFunction index
+	IrIndex type;
+	///
+	IrInstructionSet instructionSet;
+
+	VregIterator virtualRegsiters() { return VregIterator(&this); }
+
+	///
+	FunctionBackendData* backendData;
+
+
+	IrBasicBlock[] blocksArray() {
+		return basicBlockPtr[0..numBasicBlocks];
+	}
 
 	IrIndex lastBasicBlock() {
 		if (numBasicBlocks < 2) return IrIndex();
@@ -148,17 +161,6 @@ struct IrFunction
 		if (numVirtualRegisters == 0) return IrIndex();
 		return IrIndex(numVirtualRegisters - 1, IrValueKind.virtualRegister);
 	}
-
-	/// IrTypeFunction index
-	IrIndex type;
-	///
-	IrInstructionSet instructionSet;
-
-	VregIterator virtualRegsiters() { return VregIterator(&this); }
-
-	///
-	FunctionBackendData* backendData;
-
 
 	BlockIterator blocks() { return BlockIterator(&this); }
 	BlockReverseIterator blocksReverse() { return BlockReverseIterator(&this); }

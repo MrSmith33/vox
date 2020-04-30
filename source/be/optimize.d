@@ -9,7 +9,7 @@ module be.optimize;
 import std.stdio;
 import all;
 
-alias FuncPassIr = void function(CompilationContext*, IrFunction*, ref IrBuilder);
+alias FuncPassIr = void function(CompilationContext*, IrFunction*, IrIndex, ref IrBuilder);
 alias FuncPass = void function(CompilationContext*, IrFunction*);
 
 void apply_lir_func_pass(CompilationContext* context, FuncPass pass)
@@ -36,8 +36,10 @@ void pass_optimize_ir(ref CompilationContext c, ref ModuleDeclNode mod, ref Func
 
 	builder.beginDup(optimizedIrData, &c);
 
+	IrIndex funcIndex = func.getIrIndex(&c);
+
 	foreach (FuncPassIr pass; passes) {
-		pass(&c, optimizedIrData, builder);
+		pass(&c, optimizedIrData, funcIndex, builder);
 		if (c.validateIr)
 			validateIrFunction(&c, optimizedIrData);
 		if (c.printIrOptEach && c.printDumpOf(&func)) dumpFunction(&c, optimizedIrData, "IR opt");
@@ -46,8 +48,26 @@ void pass_optimize_ir(ref CompilationContext c, ref ModuleDeclNode mod, ref Func
 	builder.finalizeIr;
 }
 
-void func_pass_inline(CompilationContext* c, IrFunction* ir, ref IrBuilder builder)
+void func_pass_inline(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
+	IrIndex* inlineStack = cast(IrIndex*)c.tempBuffer.nextPtr;
+	uint inlineStackLen = 0;
+	void pushFunc(IrIndex index) {
+		c.tempBuffer.put(index.asUint);
+		++inlineStackLen;
+	}
+	void popFunc() {
+		c.tempBuffer.unput(1);
+		--inlineStackLen;
+	}
+	bool isOnStack(IrIndex index)
+	{
+		foreach(IrIndex slot; inlineStack[0..inlineStackLen])
+			if (slot == index) return true;
+		return false;
+	}
+	pushFunc(funcIndex);
+
 	IrIndex blockIndex = ir.entryBasicBlock;
 	while (blockIndex.isDefined)
 	{
@@ -57,12 +77,10 @@ void func_pass_inline(CompilationContext* c, IrFunction* ir, ref IrBuilder build
 		while (instrIndex.isInstruction)
 		{
 			IrIndex nextInstr = ir.nextInstr(instrIndex);
-			// TODO: call graph is needed to detect recursive calls
+			IrInstrHeader* instrHeader = ir.getInstr(instrIndex);
+
 			void try_inline()
 			{
-				IrInstrHeader* instrHeader = ir.getInstr(instrIndex);
-
-				if (cast(IrOpcode)instrHeader.op != IrOpcode.call) return; // not a call
 				if (!instrHeader.alwaysInline) return; // inlining is not requested for this call
 
 				IrIndex calleeIndex = instrHeader.arg(ir, 0);
@@ -71,22 +89,36 @@ void func_pass_inline(CompilationContext* c, IrFunction* ir, ref IrBuilder build
 				FunctionDeclNode* callee = c.getFunction(calleeIndex);
 				if (callee.isExternal) return; // cannot inline external functions
 
+				if (isOnStack(calleeIndex)) return; // recursive call
+
 				IrFunction* calleeIr = c.getAst!IrFunction(callee.backendData.irData);
 
 				// Inliner returns the next instruction to visit
 				// We will visit inlined code next
 				nextInstr = inline_call(&builder, calleeIr, instrIndex, blockIndex);
+				pushFunc(calleeIndex);
 			}
 
-			try_inline();
+			switch(cast(IrOpcode)instrHeader.op)
+			{
+				case IrOpcode.call: try_inline(); break;
+				case IrOpcode.inline_marker:
+					removeInstruction(ir, instrIndex);
+					popFunc;
+					break;
+				default:
+					break;
+			}
+
 			instrIndex = nextInstr;
 		}
 
 		blockIndex = block.nextBlock;
 	}
+	popFunc;
 }
 
-void func_pass_invert_conditions(CompilationContext* context, IrFunction* ir, ref IrBuilder builder)
+void func_pass_invert_conditions(CompilationContext* context, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
 	ir.assignSequentialBlockIndices();
 
@@ -122,7 +154,7 @@ void func_pass_invert_conditions(CompilationContext* context, IrFunction* ir, re
 	}
 }
 
-void func_pass_remove_dead_code(CompilationContext* context, IrFunction* ir, ref IrBuilder builder)
+void func_pass_remove_dead_code(CompilationContext* context, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{

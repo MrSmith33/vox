@@ -75,6 +75,7 @@ enum TokenType : ubyte {
 
 
 	@("#if")      HASH_IF,
+	@("#inline")  HASH_INLINE,
 
 	@("alias")    ALIAS_SYM,
 	@("break")    BREAK_SYM,
@@ -597,6 +598,7 @@ struct Lexer
 				nextChar;
 				switch(c) {
 					case 'f': if (match("f")) return TT.HASH_IF; break;
+					case 'n': if (match("nline")) return TT.HASH_INLINE; break;
 					default: break;
 				}
 				break;

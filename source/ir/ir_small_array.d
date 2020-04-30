@@ -25,6 +25,8 @@ struct IrSmallArray
 				uint, "capacityPower",  4,
 				// 4 bits need to be clear, so IrIndex.kind == IrvalueKind.none
 				// important for automatic index fixing after moving
+				// when switching from built-in items to external array
+				// item[1] must cleared
 				uint, "", 4
 			));
 		}
@@ -311,6 +313,7 @@ struct IrSmallArray
 				newArray[2] = itemData;
 
 				// update instance
+				items[1] = IrIndex(); // clear bitfields
 				arrayIndex = newArrayIndex;
 				capacityPower = 2; // 1 << 2 == 4
 				arrayLength = 3;
