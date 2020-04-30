@@ -12,10 +12,10 @@ void pass_ir_lower(CompilationContext* c, ModuleDeclNode* mod, FunctionDeclNode*
 	FuncPassIr[] passes = [&func_pass_lower_abi_win64, &func_pass_lower_aggregates, &func_pass_lower_gep];
 	IrBuilder builder;
 
-	IrFunction* irData = c.getAst!IrFunction(func.backendData.irData);
+	IrFunction* optimizedIrData = c.getAst!IrFunction(func.backendData.optimizedIrData);
 	func.backendData.loweredIrData = c.appendAst!IrFunction;
 	IrFunction* loweredIrData = c.getAst!IrFunction(func.backendData.loweredIrData);
-	*loweredIrData = *irData; // copy
+	*loweredIrData = *optimizedIrData; // copy
 
 	builder.beginDup(loweredIrData, c);
 	foreach (FuncPassIr pass; passes)
@@ -609,7 +609,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, ref IrBui
 						branchBlock.successors.append(&builder, succ[i]);
 
 						builder.emitInstr!(IrOpcode.branch_binary)(branchBlockIndex, extra, value, args[i]);
-						linkBlockAfter(ir, branchBlockIndex, lastBlock);
+						moveBlockAfter(ir, branchBlockIndex, lastBlock);
 						lastBlock = branchBlockIndex;
 					}
 

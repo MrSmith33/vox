@@ -284,16 +284,6 @@ struct IrBuilder
 		return newBlock;
 	}
 
-	/// Does not remove its instructions/phis
-	/*void removeBasicBlock(IrIndex basicBlockToRemove) {
-		--numBasicBlocks;
-		IrBasicBlock* bb = &get!IrBasicBlock(basicBlockToRemove);
-		if (bb.prevBlock.isDefined)
-			getBlock(bb.prevBlock).nextBlock = bb.nextBlock;
-		if (bb.nextBlock.isDefined)
-			getBlock(bb.nextBlock).prevBlock = bb.prevBlock;
-	}*/
-
 	// Algorithm 4: Handling incomplete CFGs
 	/// Basic block is sealed if no further predecessors will be added to the block.
 	/// Sealed block is not necessarily filled.
@@ -796,8 +786,8 @@ struct IrBuilder
 		return virtRegIndex;
 	}
 
-	// ignores null opdId
-	private void removeVirtualRegister(IrIndex virtRegIndex)
+	// Checks if already removed
+	void removeVirtualRegister(IrIndex virtRegIndex)
 	{
 		version(IrPrint) writefln("[IR] remove vreg %s", virtRegIndex);
 		if (!ir.getVirtReg(virtRegIndex).isRemoved)
@@ -1071,6 +1061,7 @@ struct IrBuilder
 	/// Redirects `vreg` definition to point to `redirectTo`
 	void redirectVregDefinitionTo(IrIndex vreg, IrIndex redirectTo) {
 		IrIndex definition = ir.getVirtReg(vreg).definition;
+		//writefln("%s %s -> %s", definition, vreg, redirectTo);
 		switch (definition.kind) {
 			case IrValueKind.phi: ir.getPhi(definition).result = redirectTo; break;
 			case IrValueKind.instruction: ir.getInstr(definition).result(ir) = redirectTo; break;

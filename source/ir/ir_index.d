@@ -31,6 +31,7 @@ struct IrIndex
 		kind = IrValueKind.physicalRegister;
 	}
 
+	// Create from uint representation
 	static IrIndex fromUint(uint data)
 	{
 		IrIndex res;

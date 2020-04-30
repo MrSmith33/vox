@@ -4,8 +4,7 @@ License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
 
-/// IR that implements idea of storing everything (almost)
-/// inside a single array;
+/// IR is stored in a set of arenas. One per item type.
 /// Stores instructions in a linked list
 module ir;
 
@@ -16,6 +15,7 @@ public import ir.ir_constant;
 public import ir.ir_function;
 public import ir.ir_global;
 public import ir.ir_index;
+public import ir.ir_inline;
 public import ir.ir_instructions;
 public import ir.ir_module;
 public import ir.ir_phi;

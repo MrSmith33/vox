@@ -20,9 +20,12 @@ struct IrSmallArray
 			IrIndex arrayIndex;
 			mixin(bitfields!(
 				// Number of items inside array
-				uint, "arrayLength",   26,
+				uint, "arrayLength",   24,
 				// capacity is bigCapacity
-				uint, "capacityPower",  6,
+				uint, "capacityPower",  4,
+				// 4 bits need to be clear, so IrIndex.kind == IrvalueKind.none
+				// important for automatic index fixing after moving
+				uint, "", 4
 			));
 		}
 	}

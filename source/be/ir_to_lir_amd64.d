@@ -334,7 +334,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		IrIndex blockIndex = IrIndex(cast(uint)i, IrValueKind.basicBlock);
 		IrIndex lirBlock = builder.appendBasicBlockSlot;
 
-		lir.getBlock(lirBlock).name = irBlock.name;
 		lir.getBlock(lirBlock).isLoopHeader = irBlock.isLoopHeader;
 
 		foreach(IrIndex pred; irBlock.predecessors.range(ir)) {

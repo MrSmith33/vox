@@ -28,6 +28,7 @@ struct InstrInfo
 
 	/// those are allocated after results and arguments
 	/// Doesn't affect IrInstrHeader.numArgs
+	/// If contains non IrIndex data, then must be of type IrValueKind.none. (Only lowest 28 bits can be used)
 	ubyte numHiddenArgs;
 
 	/// Set of IrInstrFlags
@@ -120,7 +121,7 @@ enum IrOpcode : ushort
 	@_ii(2, IFLG.hasCondition | IFLG.isBlockExit) branch_binary,
 	/// Args:
 	///   iNN value
-	///   _k_ integer constants (_k_ is 0 or more, no duplicated constants allowed)
+	///   _k_ >= 0 integer constants (no duplicated constants allowed)
 	///   default basic block
 	///   0 or more case blocks
 	@_ii(1, IFLG.hasVariadicArgs | IFLG.isBlockExit) branch_switch,
@@ -130,7 +131,7 @@ enum IrOpcode : ushort
 	@_ii(0, IFLG.isBlockExit) unreachable,
 
 	/// Emitted by frontend and replaced in lowering pass
-	/// Extra argument represents parameter index and stored as plain uint
+	/// Extra argument represents parameter index and stored as plain uint of type IrValueKind.none.
 	@_ii(0, IFLG.hasResult, 1) parameter,
 	// first argument is function or function pointer
 	@_ii(0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) call,
@@ -289,7 +290,9 @@ struct IrInstrHeader
 			bool, "extendFixedArgRange",    1,
 			// marks instruction that has non-mov instruction between result movs and itself
 			bool, "extendFixedResultRange", 1,
-			uint, "",                       5
+			// Used on call instruction
+			bool, "alwaysInline",           1,
+			uint, "",                       4
 		));
 	}
 

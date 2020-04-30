@@ -168,8 +168,11 @@ struct CompilationContext
 	bool printIrLower = false;
 	/// Print IR after each IR lowering pass
 	bool printIrLowerEach = false;
-	/// Print IR after optimization pass
+	/// Print IR after all optimization passes
+	/// Will not activate if printIrOptEach is true
 	bool printIrOpt = false;
+	/// Print IR after each optimization pass
+	bool printIrOptEach = false;
 	/// Print LIR after IR to LIR pass
 	bool printLir = false;
 	/// Print liveness analisys info

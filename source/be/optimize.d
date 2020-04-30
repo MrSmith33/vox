@@ -22,22 +22,63 @@ void apply_lir_func_pass(CompilationContext* context, FuncPass pass)
 	}
 }
 
-void pass_optimize_ir(ref CompilationContext context, ref ModuleDeclNode mod, ref FunctionDeclNode func)
+void pass_optimize_ir(ref CompilationContext c, ref ModuleDeclNode mod, ref FunctionDeclNode func)
 {
 	if (func.isExternal) return;
 
-	FuncPassIr[] passes = [&func_pass_invert_conditions, &func_pass_remove_dead_code];
+	FuncPassIr[] passes = [&func_pass_inline, &func_pass_invert_conditions, &func_pass_remove_dead_code];
 	IrBuilder builder;
 
-	IrFunction* irData = context.getAst!IrFunction(func.backendData.irData);
-	builder.beginDup(irData, &context);
+	IrFunction* irData = c.getAst!IrFunction(func.backendData.irData);
+	func.backendData.optimizedIrData = c.appendAst!IrFunction;
+	IrFunction* optimizedIrData = c.getAst!IrFunction(func.backendData.optimizedIrData);
+	*optimizedIrData = *irData; // copy
+
+	builder.beginDup(optimizedIrData, &c);
+
 	foreach (FuncPassIr pass; passes) {
-		pass(&context, irData, builder);
-		if (context.validateIr)
-			validateIrFunction(&context, irData);
-		if (context.printIrOpt && context.printDumpOf(&func)) dumpFunction(&context, irData, "IR opt");
+		pass(&c, optimizedIrData, builder);
+		if (c.validateIr)
+			validateIrFunction(&c, optimizedIrData);
+		if (c.printIrOptEach && c.printDumpOf(&func)) dumpFunction(&c, optimizedIrData, "IR opt");
 	}
+	if (!c.printIrOptEach && c.printIrOpt && c.printDumpOf(&func)) dumpFunction(&c, optimizedIrData, "IR opt all");
 	builder.finalizeIr;
+}
+
+void func_pass_inline(CompilationContext* c, IrFunction* ir, ref IrBuilder builder)
+{
+	IrIndex blockIndex = ir.entryBasicBlock;
+	while (blockIndex.isDefined)
+	{
+		IrBasicBlock* block = ir.getBlock(blockIndex);
+		IrIndex instrIndex = block.firstInstr;
+
+		for (; instrIndex.isInstruction; instrIndex = ir.nextInstr(instrIndex))
+		{
+			IrIndex indexCopy = instrIndex;
+			IrInstrHeader* instrHeader = ir.getInstr(instrIndex);
+
+			if (cast(IrOpcode)instrHeader.op != IrOpcode.call) continue; // not a call
+			if (!instrHeader.alwaysInline) continue; // inlining is not requested for this call
+
+			IrIndex calleeIndex = instrHeader.arg(ir, 0);
+			if (!calleeIndex.isFunction) continue; // cannot inline indirect calls
+
+			FunctionDeclNode* callee = c.getFunction(calleeIndex);
+			if (callee.isExternal) continue; // cannot inline external functions
+
+			IrFunction* calleeIr = c.getAst!IrFunction(callee.backendData.irData);
+
+			// After inline happens `instrIndex` becomes block index
+			// We will visit inlined code next
+			inline_call(&builder, calleeIr, instrIndex, blockIndex);
+
+			//dumpFunction(c, ir, "IR inline");
+		}
+
+		blockIndex = block.nextBlock;
+	}
 }
 
 void func_pass_invert_conditions(CompilationContext* context, IrFunction* ir, ref IrBuilder builder)

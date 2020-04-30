@@ -46,9 +46,10 @@ int runCli(string[] args)
 			"print-ast-fresh", "Print AST after parsing.", &driver.context.printAstFresh,
 			"print-ast-sema", "Print AST after semantic analisys.", &driver.context.printAstSema,
 			"print-ir", "Print IR after AST to IR pass.", &driver.context.printIr,
-			"print-ir-opt", "Print IR after optimization.", &driver.context.printIrOpt,
-			"print-ir-lower", "Print IR after all lowering passes.", &driver.context.printIrLower,
+			"print-ir-opt-each", "Print IR after each optimization pass.", &driver.context.printIrOptEach,
+			"print-ir-opt", "Print IR after all optimization passes.", &driver.context.printIrOpt,
 			"print-ir-lower-each", "Print IR after each lowering pass.", &driver.context.printIrLowerEach,
+			"print-ir-lower", "Print IR after all lowering passes.", &driver.context.printIrLower,
 			"print-lir", "Print Print LIR after IR to LIR pass.", &driver.context.printLir,
 			"print-lir-ra", "Print LIR after register allocation pass.", &driver.context.printLirRA,
 			"print-liveness", "Print liveness analisys info.", &driver.context.printLiveIntervals,
@@ -59,7 +60,7 @@ int runCli(string[] args)
 			"print-filter", "Print only info about <function name>.", &filterFuncName,
 			"print-error-trace", "Print stack trace for every error", &driver.context.printTraceOnError,
 			"subsystem", "Select windows subsystem. [CUI(default), GUI].", &subSystem,
-			);
+		);
 
 		final switch (subSystem) {
 			case WindowsSubsystemCli.CUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_CUI; break;

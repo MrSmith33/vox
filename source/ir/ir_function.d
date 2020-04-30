@@ -119,11 +119,11 @@ struct IrFunction
 
 	/// Used for instrPtr, instrNextPtr, instrPrevPtr
 	uint numInstructions;
-	uint numPayloadSlots;
-	uint numPhis;
-	uint arrayLength;
-	uint numVirtualRegisters;
-	uint numBasicBlocks;
+	uint numPayloadSlots; /// instrPayloadPtr
+	uint numPhis; /// phiPtr
+	uint arrayLength; /// arrayPtr
+	uint numVirtualRegisters; /// vregPtr
+	uint numBasicBlocks; /// basicBlockPtr
 
 	IrBasicBlock[] blocksArray() {
 		return basicBlockPtr[0..numBasicBlocks];
@@ -166,7 +166,7 @@ struct IrFunction
 	alias getBlock = get!IrBasicBlock;
 	alias getPhi = get!IrPhi;
 	alias getVirtReg = get!IrVirtualRegister;
-	alias getInstr = get!IrInstrHeader;;
+	alias getInstr = get!IrInstrHeader;
 
 	T* get(T)(IrIndex index)
 	{
@@ -207,7 +207,7 @@ struct IrFunction
 				if (!getBlock(succ).visitFlag)
 					walk(succ);
 			if (first.isDefined)
-				linkBlockBefore(&this, node, first);
+				linkSingleBlockBefore(&this, node, first);
 			else
 				firstLink = node;
 			first = node;
@@ -217,7 +217,7 @@ struct IrFunction
 
 		// bring exit block to the end of function
 		if (firstLink != exitBasicBlock)
-			linkBlockBefore(&this, firstLink, exitBasicBlock);
+			linkSingleBlockBefore(&this, firstLink, exitBasicBlock);
 
 		// clear all flags
 		foreach (idx, ref IrBasicBlock block; blocks)
@@ -287,6 +287,61 @@ void dupIrStorage(IrFunction* ir, CompilationContext* c)
 	dupStorage(c.irStorage.vregBuffer, ir.vregPtr, ir.numVirtualRegisters);
 	dupStorage(c.irStorage.arrayBuffer, ir.arrayPtr, ir.arrayLength);
 	dupStorage(c.irStorage.basicBlockBuffer, ir.basicBlockPtr, ir.numBasicBlocks);
+}
+
+// mainIr must be in editable state, at the end of all arenas
+// irToCopy is appended after mainIr and mainIr length is updated.
+// Appended slots are iterated and all references are updated
+void appendIrStorage(IrFunction* mainIr, const IrFunction* irToCopy, CompilationContext* c)
+{
+	uint instrOffset = cast(uint)((mainIr.instrPtr - irToCopy.instrPtr) + mainIr.numInstructions);
+	uint phiOffset = cast(uint)((mainIr.phiPtr - irToCopy.phiPtr) + mainIr.numPhis);
+	uint vregOffset = cast(uint)((mainIr.vregPtr - irToCopy.vregPtr) + mainIr.numVirtualRegisters);
+	uint arrayOffset = cast(uint)((mainIr.arrayPtr - irToCopy.arrayPtr) + mainIr.arrayLength);
+	uint bbOffset = cast(uint)((mainIr.basicBlockPtr - irToCopy.basicBlockPtr) + mainIr.numBasicBlocks);
+
+	// create table of offsets per IrValueKind
+	// align to cache line
+	align(64) uint[16] offsets;
+	offsets[IrValueKind.instruction]     = mainIr.numInstructions;
+	offsets[IrValueKind.basicBlock]      = mainIr.numBasicBlocks;
+	offsets[IrValueKind.phi]             = mainIr.numPhis;
+	offsets[IrValueKind.virtualRegister] = mainIr.numVirtualRegisters;
+	offsets[IrValueKind.array]           = mainIr.arrayLength;
+	// others remain 0 and do not affect IrIndex being fixed
+
+	void dupAndFixStorage(T)(ref Arena!T arena, const T* ptr, uint length) {
+		const(IrIndex)[] oldData = cast(const(IrIndex)[])ptr[0..length];
+		IrIndex[] newDataBuf = cast(IrIndex[])arena.voidPut(length);
+
+		foreach(i, ref IrIndex index; newDataBuf) {
+			IrIndex oldIndex = oldData[i];
+			// Fix each IrIndex. Only affects IrIndex when offset is non-zero. Otherwise copies without modification
+			// Incrementing the whole uint is safe as long as `storageUintIndex` part doesn't overflow
+			index.asUint = oldIndex.asUint + offsets[oldIndex.kind];
+		}
+	}
+
+	IrInstrHeader[] instrs = c.irStorage.instrHeaderBuffer.put(irToCopy.instrPtr[0..irToCopy.numInstructions]); // dup
+	foreach(ref IrInstrHeader instr; instrs) instr._payloadOffset += mainIr.numPayloadSlots; // fix
+	// phis, vregs and basic block consist out of IrIndex entries or have integer data of type IrValueKind.none.
+	// The bitflags are designed so that 4 bits are 0 at the time of this operation
+	dupAndFixStorage(c.irStorage.instrPayloadBuffer, irToCopy.instrPayloadPtr, irToCopy.numPayloadSlots);
+	dupAndFixStorage(c.irStorage.instrNextBuffer, irToCopy.instrNextPtr, irToCopy.numInstructions);
+	dupAndFixStorage(c.irStorage.instrPrevBuffer, irToCopy.instrPrevPtr, irToCopy.numInstructions);
+	dupAndFixStorage(c.irStorage.phiBuffer, irToCopy.phiPtr, irToCopy.numPhis);
+	dupAndFixStorage(c.irStorage.vregBuffer, irToCopy.vregPtr, irToCopy.numVirtualRegisters);
+	dupAndFixStorage(c.irStorage.arrayBuffer, irToCopy.arrayPtr, irToCopy.arrayLength);
+	dupAndFixStorage(c.irStorage.basicBlockBuffer, irToCopy.basicBlockPtr, irToCopy.numBasicBlocks);
+
+	// make sure numInstructions is incremented once
+	mainIr.numInstructions += irToCopy.numInstructions;
+	mainIr.numPayloadSlots += irToCopy.numPayloadSlots;
+	mainIr.numPhis += irToCopy.numPhis;
+	mainIr.numVirtualRegisters += irToCopy.numVirtualRegisters;
+	mainIr.arrayLength += irToCopy.arrayLength;
+	mainIr.numBasicBlocks += irToCopy.numBasicBlocks;
+
 }
 
 struct IrFuncStorage

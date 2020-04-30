@@ -29,9 +29,10 @@ struct IrBasicBlock
 	IrSmallArray predecessors;
 	IrSmallArray successors;
 
-	uint seqIndex;
-
+	// Top 4 bits must be 0 at the time of inlining, so that IrIndex fixing can be performed
 	mixin(bitfields!(
+		/// used for sequential block indexing
+		uint, "seqIndex",    23,
 		/// True if all predecessors was added
 		bool, "isSealed",     1,
 		/// True if block_exit instruction is in place
@@ -41,11 +42,9 @@ struct IrBasicBlock
 		// true if block was created to split critial edge
 		bool, "replacesCriticalEdge", 1,
 		// used for block ordering
-		bool, "visitFlag", 1,
-		uint, "",             3
+		bool, "visitFlag",    1,
+		uint, "",             4,
 	));
-
-	IrName name;
 }
 //pragma(msg, "BB size: ", cast(int)IrBasicBlock.sizeof, " bytes");
 
@@ -54,11 +53,20 @@ void removeAllPhis(ref IrBasicBlock block)
 	block.firstPhi = IrIndex();
 }
 
+/// INPUT:
+///           D >----,
+///   A --critical--> B
+///    `----> C
+/// Edge from A to B is critical when A has 2+ successors and B has 2+ predecessors
 bool isCriticalEdge(ref IrBasicBlock predBlock, ref IrBasicBlock succBlock)
 {
 	return predBlock.successors.length > 1 && succBlock.predecessors.length > 1;
 }
 
+/// INPUT:
+///   A1 -> A -> A2  or  A1 -> A  or  A -> A2
+/// OUTPUT:
+///     A1 --> A2    or     A1    or    A2
 void removeBlockFromChain(IrFunction* ir, IrBasicBlock* block)
 {
 	if (block.prevBlock.isDefined)
@@ -74,54 +82,84 @@ void removeBlockFromChain(IrFunction* ir, IrBasicBlock* block)
 	}
 }
 
-// blockIndex must not be start block, but may be exit block of IrFunction
-// used for block ordering
-void linkBlockBefore(IrFunction* ir, IrIndex blockIndex, IrIndex beforeIndex)
+/// blockB must not be an entry block, but may be exit block of IrFunction
+/// used for block ordering
+/// INPUT:
+///   A1 -> A -> A2  or  A1 -> A
+///   B1 -> B
+/// OUTPUT:
+///   A1 -> A2  or  A1
+///   B1 -> A -> B -> B2
+void linkSingleBlockBefore(IrFunction* ir, IrIndex blockA, IrIndex blockB)
 {
-	IrBasicBlock* before = ir.getBlock(beforeIndex);
-	IrBasicBlock* block = ir.getBlock(blockIndex);
+	IrBasicBlock* b = ir.getBlock(blockB);
+	IrBasicBlock* a = ir.getBlock(blockA);
 
 	// check if already in correct order
-	if (before.prevBlock == blockIndex) return;
+	if (b.prevBlock == blockA) return;
 
-	removeBlockFromChain(ir, block);
+	removeBlockFromChain(ir, a);
 
-	// insert before 'before' block
+	// insert 'a' before 'b'
 	{
-		block.prevBlock = before.prevBlock;
-		if (before.prevBlock.isDefined)
+		a.prevBlock = b.prevBlock;
+		if (b.prevBlock.isDefined)
 		{
-			IrBasicBlock* left = ir.getBlock(before.prevBlock);
-			left.nextBlock = blockIndex;
+			IrBasicBlock* left = ir.getBlock(b.prevBlock);
+			left.nextBlock = blockA;
 		}
-		before.prevBlock = blockIndex;
-		block.nextBlock = beforeIndex;
+		b.prevBlock = blockA;
+		a.nextBlock = blockB;
 	}
 }
 
-// blockIndex must not be start block, but may be exit block of IrFunction.
+// blockA must not be an entry block, but may be exit block of IrFunction.
 // used for block ordering.
-void linkBlockAfter(IrFunction* ir, IrIndex blockIndex, IrIndex afterIndex)
+// INPUT:
+//   A1 -> A -> A2
+//   B -> B2  or  B
+// OUTPUT:
+//   A1 -> A2
+//   B -> A -> B2  or  B -> A
+void moveBlockAfter(IrFunction* ir, IrIndex blockA, IrIndex blockB)
 {
-	IrBasicBlock* after = ir.getBlock(afterIndex);
-	IrBasicBlock* block = ir.getBlock(blockIndex);
+	IrBasicBlock* a = ir.getBlock(blockA);
+	IrBasicBlock* b = ir.getBlock(blockB);
 
 	// check if already in correct order
-	if (after.nextBlock == blockIndex) return;
+	if (b.nextBlock == blockA) return;
 
-	removeBlockFromChain(ir, block);
+	removeBlockFromChain(ir, a);
 
-	// insert after 'after' block
+	// insert 'a' after 'b'
 	{
-		block.nextBlock = after.nextBlock;
-		if (after.nextBlock.isDefined)
+		a.nextBlock = b.nextBlock;
+		if (b.nextBlock.isDefined)
 		{
-			IrBasicBlock* right = ir.getBlock(after.nextBlock);
-			right.prevBlock = blockIndex;
+			IrBasicBlock* right = ir.getBlock(b.nextBlock);
+			right.prevBlock = blockA;
 		}
-		after.nextBlock = blockIndex;
-		block.prevBlock = afterIndex;
+		b.nextBlock = blockA;
+		a.prevBlock = blockB;
 	}
+}
+
+// blockB must not be an entry block
+// INPUT:
+//   A1 -> A -> A2
+//   B1 -> B -> B2
+// OUTPUT:
+//   -> A2 (A2.prevBlock is untouched)
+//   B1 -> (B1.nextBlock is untouched)
+//   A1 -> A -> B -> B2
+void makeBlocksSequential(IrFunction* ir, IrIndex blockA, IrIndex blockB)
+{
+	IrBasicBlock* a = ir.getBlock(blockA);
+	IrBasicBlock* b = ir.getBlock(blockB);
+
+	a.nextBlock = blockB;
+	b.prevBlock = blockA;
+	//writefln("%s -> %s", blockA, blockB);
 }
 
 struct PhiIterator
@@ -152,7 +190,7 @@ struct InstrIterator
 	int opApply(scope int delegate(IrIndex, ref IrInstrHeader) dg) {
 		IrIndex current = firstInstr;
 		// will be 'none' if no instructions in basic block
-		// first and last instructions point to basick block in prevInstr, nextInstr
+		// first / last instructions point to basic block in prevInstr / nextInstr respectively
 		while (current.isInstruction)
 		{
 			IrIndex indexCopy = current;

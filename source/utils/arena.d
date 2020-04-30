@@ -5,6 +5,8 @@ Authors: Andrey Penechko.
 */
 module utils.arena;
 
+import std.stdio;
+
 ///
 struct Arena(T)
 {
@@ -49,16 +51,20 @@ struct Arena(T)
 	}
 	void clear() { length = 0; }
 
-	void put(T[] items ...) {
+	T[] put(T[] items ...) {
+		size_t initialLength = length;
 		if (capacity - length < items.length) makeSpace(items.length);
-		//writefln("assign %X.%s @ %s..%s+%s = %s", bufPtr, T.sizeof, length, length, items.length, items);
+		//writefln("assign %X.%s @ %s..%s+%s cap %s", bufPtr, T.sizeof, length, length, items.length, capacity);
 		bufPtr[length..length+items.length] = items;
 		length += items.length;
+		return bufPtr[initialLength..length];
 	}
 
-	void put(R)(R itemRange) if (isInputRange!R) {
+	T[] put(R)(R itemRange) if (isInputRange!R) {
+		size_t initialLength = length;
 		foreach(item; itemRange)
 			put(item);
+		return bufPtr[initialLength..length];
 	}
 
 	void stealthPut(T item) {

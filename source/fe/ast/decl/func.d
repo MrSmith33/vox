@@ -17,6 +17,7 @@ struct FunctionBackendData
 {
 	/// Machine-independent IR
 	AstIndex irData; // IrFunction
+	AstIndex optimizedIrData; // IrFunction
 	AstIndex loweredIrData; // IrFunction
 	/// Machine-level IR
 	AstIndex lirData; // IrFunction

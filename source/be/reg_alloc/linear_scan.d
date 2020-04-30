@@ -1120,21 +1120,12 @@ struct LinearScan
 		// place block right after precessor to get better codegen
 		// TODO: may need to invert branch conditions for that
 		IrIndex newBlock = builder.appendBasicBlockSlot;
-		linkBlockAfter(lir, newBlock, predIndex);
+		moveBlockAfter(lir, newBlock, predIndex);
 
 		version(RAPrint_resolve) writefln("Split critical edge %s -> %s with %s", predIndex, succIndex, newBlock);
-		foreach (ref IrIndex succ; predBlock.successors.range(lir)) {
-			if (succ == succIndex) {
-				succ = newBlock;
-				break;
-			}
-		}
-		foreach (ref IrIndex pred; succBlock.predecessors.range(lir)) {
-			if (pred == predIndex) {
-				pred = newBlock;
-				break;
-			}
-		}
+		predBlock.successors.replaceFirst(lir, succIndex, newBlock);
+		succBlock.predecessors.replaceFirst(lir, predIndex, newBlock);
+
 		lir.getBlock(newBlock).predecessors.append(builder, predIndex);
 		lir.getBlock(newBlock).successors.append(builder, succIndex);
 		lir.getBlock(newBlock).isSealed = true;
