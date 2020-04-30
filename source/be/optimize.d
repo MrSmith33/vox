@@ -54,27 +54,32 @@ void func_pass_inline(CompilationContext* c, IrFunction* ir, ref IrBuilder build
 		IrBasicBlock* block = ir.getBlock(blockIndex);
 		IrIndex instrIndex = block.firstInstr;
 
-		for (; instrIndex.isInstruction; instrIndex = ir.nextInstr(instrIndex))
+		while (instrIndex.isInstruction)
 		{
-			IrIndex indexCopy = instrIndex;
-			IrInstrHeader* instrHeader = ir.getInstr(instrIndex);
+			IrIndex nextInstr = ir.nextInstr(instrIndex);
+			// TODO: call graph is needed to detect recursive calls
+			void try_inline()
+			{
+				IrInstrHeader* instrHeader = ir.getInstr(instrIndex);
 
-			if (cast(IrOpcode)instrHeader.op != IrOpcode.call) continue; // not a call
-			if (!instrHeader.alwaysInline) continue; // inlining is not requested for this call
+				if (cast(IrOpcode)instrHeader.op != IrOpcode.call) return; // not a call
+				if (!instrHeader.alwaysInline) return; // inlining is not requested for this call
 
-			IrIndex calleeIndex = instrHeader.arg(ir, 0);
-			if (!calleeIndex.isFunction) continue; // cannot inline indirect calls
+				IrIndex calleeIndex = instrHeader.arg(ir, 0);
+				if (!calleeIndex.isFunction) return; // cannot inline indirect calls
 
-			FunctionDeclNode* callee = c.getFunction(calleeIndex);
-			if (callee.isExternal) continue; // cannot inline external functions
+				FunctionDeclNode* callee = c.getFunction(calleeIndex);
+				if (callee.isExternal) return; // cannot inline external functions
 
-			IrFunction* calleeIr = c.getAst!IrFunction(callee.backendData.irData);
+				IrFunction* calleeIr = c.getAst!IrFunction(callee.backendData.irData);
 
-			// After inline happens `instrIndex` becomes block index
-			// We will visit inlined code next
-			inline_call(&builder, calleeIr, instrIndex, blockIndex);
+				// Inliner returns the next instruction to visit
+				// We will visit inlined code next
+				nextInstr = inline_call(&builder, calleeIr, instrIndex, blockIndex);
+			}
 
-			//dumpFunction(c, ir, "IR inline");
+			try_inline();
+			instrIndex = nextInstr;
 		}
 
 		blockIndex = block.nextBlock;

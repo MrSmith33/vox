@@ -8,5 +8,6 @@
 *.obj
 *.o
 *.exe
+*.lst
 *.sublime-project
 *.sublime-workspace

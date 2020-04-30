@@ -161,9 +161,13 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 
 			if (funcInstrInfos[instrHeader.op].isBlockExit)
 			{
-				context.assertf(&instrHeader == lastInstr,
-					"Branch %s is in the middle of basic block %s",
-					instrIndex, blockIndex);
+				context.assertf(block.lastInstr == instrIndex,
+					"Basic block %s has %s as last instruction, not branch %s",
+					blockIndex, block.lastInstr, instrIndex);
+
+				context.assertf(ir.nextInstr(instrIndex) == blockIndex,
+					"Branch %s has %s as next instruction, not basic block %s",
+					instrIndex, ir.nextInstr(instrIndex), blockIndex);
 			}
 
 			instrValidator(context, ir, instrIndex, instrHeader);

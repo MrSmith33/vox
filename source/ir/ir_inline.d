@@ -8,14 +8,14 @@ module ir.ir_inline;
 import all;
 
 // will split basic block and replace call instruction with jump to callee body
-// TODO: call graph is needed to detect recursive calls
-void inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrIndex, IrIndex callerBlockIndex)
+// Returns first inserted instruction, with which to continue IR walk
+IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrIndex, IrIndex callerBlockIndex)
 {
 	CompilationContext* c = builder.context;
 	IrFunction* ir = builder.ir;
 
 	IrIndex calleeEntryBlock = IrIndex(ir.numBasicBlocks + 0, IrValueKind.basicBlock);
-	IrIndex calleeExitBlock  = IrIndex(ir.numBasicBlocks + 1, IrValueKind.basicBlock);
+	IrIndex calleeExitIndex  = IrIndex(ir.numBasicBlocks + 1, IrValueKind.basicBlock);
 
 	//writefln("inline %s into %s", c.idString(calleeIr.backendData.name), c.idString(ir.backendData.name));
 
@@ -26,15 +26,22 @@ void inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrInde
 	IrFunction calleeIrCopy = *calleeIr;
 	appendIrStorage(ir, calleeIr, c);
 
+	// gather blocks
+	IrBasicBlock* callerBlock = ir.getBlock(callerBlockIndex);
+	IrIndex callerNextBlock = callerBlock.nextBlock;
+	IrBasicBlock* calleeEntry = ir.getBlock(calleeEntryBlock);
+	IrIndex calleeBodyIndex = calleeEntry.successors[0, ir];
+	IrBasicBlock* calleeBody = ir.getBlock(calleeBodyIndex);
+	IrBasicBlock* calleeExit = ir.getBlock(calleeExitIndex);
+
 	// split basic block before call instruction
 	//   part before call remains in the same BB (callerBlockIndex)
-	//   part after call is moved into exit block of callee (calleeExitBlock)
+	//   part after call is moved into exit block of callee (calleeExitIndex)
 	//   callee entry block is dropped
 
 	IrInstrHeader* callInstr = ir.getInstr(callInstrIndex);
 	IrIndex[] callArgs = callInstr.args(ir)[1..$];
 
-	IrBasicBlock* calleeEntry = ir.getBlock(calleeEntryBlock);
 	foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; calleeEntry.instructions(ir))
 	{
 		if (instrHeader.op == IrOpcode.parameter)
@@ -43,8 +50,8 @@ void inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrInde
 			IrInstr_parameter* param = ir.get!IrInstr_parameter(instrIndex);
 			uint paramIndex = param.index(ir);
 			IrIndex result = instrHeader.result(ir);
-			builder.redirectVregUsersTo(result, callArgs[paramIndex]);
 			removeUser(c, ir, callInstrIndex, callArgs[paramIndex]);
+			builder.redirectVregUsersTo(result, callArgs[paramIndex]);
 			builder.removeVirtualRegister(result);
 		}
 		else if (instrHeader.op == IrOpcode.jump)
@@ -57,43 +64,63 @@ void inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrInde
 		}
 	}
 
-	IrBasicBlock* calleeExit = ir.getBlock(calleeExitBlock);
-	IrIndex retInstrIndex = calleeExit.lastInstr;
-	IrInstrHeader* calleeRetInstr = ir.getInstr(retInstrIndex);
-
 	// rewire return value to return register
 	if (callInstr.hasResult)
 	{
+		IrIndex retInstrIndex = calleeExit.lastInstr;
+		IrInstrHeader* calleeRetInstr = ir.getInstr(retInstrIndex);
+
 		assert(calleeRetInstr.op == IrOpcode.ret_val);
 		IrIndex returnVal = calleeRetInstr.arg(ir, 0);
-		builder.redirectVregUsersTo(callInstr.result(ir), returnVal);
 		removeUser(c, ir, retInstrIndex, returnVal);
+		builder.redirectVregUsersTo(callInstr.result(ir), returnVal);
 		builder.removeVirtualRegister(callInstr.result(ir));
 	}
 
-	// replace call instruction with jump
-	*callInstr = IrInstrHeader(IrOpcode.jump);
+	// Cache instructions of caller block
+	IrIndex instrAfterCall = ir.nextInstr(callInstrIndex);
+	IrIndex instrBeforeCall = ir.prevInstr(callInstrIndex); // may be block if call is firstInstr
+	IrIndex callerLastInstr = callerBlock.lastInstr;
 
-	IrBasicBlock* callerBlock = ir.getBlock(callerBlockIndex);
+	// Cache successors of callerBlock. They will be owerwritten with concat
+	IrSmallArray callerSuccessors = callerBlock.successors;
 
-	// callee exit block inherits all instructions after the call
-	// return instruction is dropped
-	calleeExit.lastInstr = callerBlock.lastInstr;
-	calleeExit.firstInstr = ir.nextInstr(callInstrIndex);
-	ir.nextInstr(callInstrIndex) = callerBlockIndex;
-	callerBlock.lastInstr = callInstrIndex;
+	// Insert callee body instructions insead of call instruction
+	concatBlockInstructions(ir, callerBlockIndex, callInstrIndex, calleeBody.firstInstr, calleeBody.lastInstr);
 
-	// Fix successors and predecessors
-	calleeExit.successors = callerBlock.successors;
-	foreach (ref IrIndex succ; callerBlock.successors.range(ir)) {
-		ir.getBlock(succ).predecessors.replaceFirst(ir, callerBlockIndex, calleeExitBlock);
+	// If callee exit has single predecessor, then make it callee exit block
+	if (calleeExit.predecessors.length == 1)
+	{
+		calleeExitIndex = calleeExit.predecessors[0, ir];
+		calleeExit = ir.getBlock(calleeExitIndex);
 	}
-	callerBlock.successors = calleeEntry.successors;
-	IrIndex calleeBodyIndex = calleeEntry.successors[0, ir];
-	ir.getBlock(calleeBodyIndex).predecessors[0, ir] = callerBlockIndex;
 
-	// reorder blocks
-	IrIndex callerNextBlock = callerBlock.nextBlock;
-	makeBlocksSequential(ir, callerBlockIndex, calleeBodyIndex);
-	makeBlocksSequential(ir, calleeExitBlock, callerNextBlock);
+	// append instructions after call to the callee exit block, replacing the jump instruction
+	if (calleeExitIndex == calleeBodyIndex)
+	{
+		// callee consists of a single basic block
+		concatBlockInstructions(ir, callerBlockIndex, calleeExit.lastInstr, instrAfterCall, callerLastInstr);
+	}
+	else
+	{
+		concatBlockInstructions(ir, calleeExitIndex, calleeExit.lastInstr, instrAfterCall, callerLastInstr);
+		// Fix successors and predecessors
+		fixBlockSucc(ir, calleeBodyIndex, callerBlockIndex, calleeBody.successors);
+		fixBlockSucc(ir, callerBlockIndex, calleeExitIndex, callerSuccessors);
+		// Reorder blocks
+		makeBlocksSequential(ir, callerBlockIndex, calleeBodyIndex);
+		removeBlockFromChain(ir, calleeBody);
+		makeBlocksSequential(ir, calleeExitIndex, callerNextBlock);
+	}
+
+	// Find the next instruction to visit
+	if (instrBeforeCall.isBasicBlock) {
+		// basic block means that no instructions preceded the call
+		// inlined code begins with first instruction
+		return callerBlock.firstInstr;
+	}
+	else {
+		// inlined code replaced the call instruction
+		return ir.nextInstr(instrBeforeCall);
+	}
 }

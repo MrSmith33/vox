@@ -67,18 +67,18 @@ bool isCriticalEdge(ref IrBasicBlock predBlock, ref IrBasicBlock succBlock)
 ///   A1 -> A -> A2  or  A1 -> A  or  A -> A2
 /// OUTPUT:
 ///     A1 --> A2    or     A1    or    A2
-void removeBlockFromChain(IrFunction* ir, IrBasicBlock* block)
+void removeBlockFromChain(IrFunction* ir, IrBasicBlock* blockA)
 {
-	if (block.prevBlock.isDefined)
+	if (blockA.prevBlock.isDefined)
 	{
-		IrBasicBlock* left = ir.getBlock(block.prevBlock);
-		left.nextBlock = block.nextBlock;
+		IrBasicBlock* left = ir.getBlock(blockA.prevBlock);
+		left.nextBlock = blockA.nextBlock;
 	}
 
-	if (block.nextBlock.isDefined)
+	if (blockA.nextBlock.isDefined)
 	{
-		IrBasicBlock* right = ir.getBlock(block.nextBlock);
-		right.prevBlock = block.prevBlock;
+		IrBasicBlock* right = ir.getBlock(blockA.nextBlock);
+		right.prevBlock = blockA.prevBlock;
 	}
 }
 
@@ -160,6 +160,75 @@ void makeBlocksSequential(IrFunction* ir, IrIndex blockA, IrIndex blockB)
 	a.nextBlock = blockB;
 	b.prevBlock = blockA;
 	//writefln("%s -> %s", blockA, blockB);
+}
+
+
+// INPUT:
+//   A(IAF, IAL): IAF...IAN1,IAN2...IAL
+//   B(IBF, IBL): IBF...IBL
+//   - IAF First Instruction of block A
+//   - IAL Last Instruction of block A
+//   - IAN1,IAN2 instructions between IAF and IAL, IAN1 is followed by IAN2
+//   - IBF First Instruction of block B
+//   - IBL Last Instruction of block B
+//   - IAF...IAN1 may be empty sequence, which means IAN2 == IAF, IAN1 == A
+//   - IAN2 may equal IAL or IAF
+//   - IBF may equal IBL
+// OUTPUT:
+//   A(IAF, IBL): IAF...IAN1,IBF...IBL
+// Instructions of block B are now owned by block A.
+// Fixes nextInstr / prevInstr of instrucitons.
+// Fixes firstInstr / lastInstr of block A.
+void concatBlockInstructions(IrFunction* ir, IrIndex blockA, IrIndex IAN2, IrIndex IBF, IrIndex IBL)
+{
+	IrBasicBlock* a = ir.getBlock(blockA);
+
+	//writefln("A %s %s...%s,%s...%s", blockA, a.firstInstr, ir.prevInstr(IAN2), IAN2, a.lastInstr);
+	//writefln("B %s...%s", IBF, IBL);
+
+	if (a.firstInstr == IAN2)
+	{
+		a.firstInstr = IBF;
+		ir.prevInstr(a.firstInstr) = blockA;
+	}
+	else
+	{
+		IrIndex IAN1 = ir.prevInstr(IAN2);
+		ir.nextInstr(IAN1) = IBF;
+		ir.prevInstr(IBF) = IAN1;
+	}
+
+	a.lastInstr = IBL;
+	ir.nextInstr(a.lastInstr) = blockA;
+	//writefln("A %s %s...%s", blockA, a.firstInstr, a.lastInstr);
+}
+
+// Block B replaced some other block A
+// Fixes predecessors of B with provided array
+// Fixes successors of predecessors of A to point to B
+void fixBlockPreds(IrFunction* ir, IrIndex blockA, IrIndex blockB, IrSmallArray predecessorsA)
+{
+	IrBasicBlock* b = ir.getBlock(blockB);
+
+	b.predecessors = predecessorsA;
+	foreach (ref IrIndex pred; b.predecessors.range(ir)) {
+		ir.getBlock(pred).successors.replaceFirst(ir, blockA, blockB);
+	}
+}
+
+// Block B replaced some other block A
+// Fixes successors of B
+// Fixes predecessors of successors of A to point to B
+void fixBlockSucc(IrFunction* ir, IrIndex blockA, IrIndex blockB, IrSmallArray successorsA)
+{
+	IrBasicBlock* b = ir.getBlock(blockB);
+
+	//writefln("fixBlockSucc %s -> %s %s -> %s", blockA, blockB, b.successors, successorsA);
+
+	b.successors = successorsA;
+	foreach (ref IrIndex succ; b.successors.range(ir)) {
+		ir.getBlock(succ).predecessors.replaceFirst(ir, blockA, blockB);
+	}
 }
 
 struct PhiIterator

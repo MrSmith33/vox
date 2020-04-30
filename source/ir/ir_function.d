@@ -171,7 +171,7 @@ struct IrFunction
 	T* get(T)(IrIndex index)
 	{
 		enum IrValueKind kind = getIrValueKind!T;
-		assert(index.kind != IrValueKind.none, "null index");
+		assert(index.kind != IrValueKind.none, "get!"~T.stringof~" null index");
 		assert(index.kind == kind, format("expected %s, got %s", kind, index.kind));
 		static if (kind == IrValueKind.instruction)
 			return cast(T*)(&instrPtr[index.storageUintIndex]);
