@@ -315,6 +315,54 @@ align(1) struct DefRangeRegisterRelSym
     LocalVariableAddrRange range;      // Range of addresses where this program is valid
 }
 
+// struct COMPILESYM3
+// S_COMPILE3
+align(1) struct CompileSym3 {
+	mixin(bitfields!(
+		CV_SourceLanguage, "sourceLanguage",  8, // Language index
+		bool,  "EC",              1, // Compiled for edit and continue
+		bool,  "NoDbgInfo",       1, // Compiled without debugging info
+		bool,  "LTCG",            1, // Compiled with LTCG
+		bool,  "NoDataAlign",     1, // Compiled with /bzalign
+		bool,  "ManagedPresent",  1, // Managed code/data present
+		bool,  "SecurityChecks",  1, // Compiled with /GS
+		bool,  "HotPatch",        1, // Compiled with /hotpatch
+		bool,  "CVTCIL",          1, // Converted with CVTCIL
+		bool,  "MSILModule",      1, // MSIL module
+		bool,  "Sdl",             1, // Compiled with /sdl
+		bool,  "PGO",             1, // Compiled with /ltcg:pgo or pgu
+		bool,  "Exp",             1, // .exp module
+		uint,  "padding",        12, // padding
+	));
+    CV_CPUType machine;    // Target processor
+    ushort verFEMajor; // Front end major version #
+    ushort verFEMinor; // Front end minor version #
+    ushort verFEBuild; // Front end build version #
+    ushort verFEQFE;   // Front end QFE version #
+    ushort verMajor;   // Back end major version #
+    ushort verMinor;   // Back end minor version #
+    ushort verBuild;   // Back end build version #
+    ushort verQFE;     // Back end QFE version #
+	// next follows zero-terminated string, Version string
+}
+
+// struct ENVBLOCKSYM
+// S_ENVBLOCK
+align(1) struct EnvBlockSym {
+	mixin(bitfields!(
+		bool,  "EC",        1, // Compiled for edit and continue
+		uint,  "pad",        7, // padding
+	));
+	// next follows sequence of pairs of zero-terminated strings, terminated by empty string
+}
+
+// struct OBJNAMESYM
+// S_OBJNAME
+align(1) struct ObjNameSym {
+	uint signature;
+	// next follows zero-terminated string of name
+}
+
 // CV_LVAR_ADDR_RANGE
 // represents an address range, used for optimized code debug info
 struct LocalVariableAddrRange

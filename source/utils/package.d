@@ -176,6 +176,7 @@ struct BitsSet(T)
 				if (int res = dg(slotIndex * T.sizeof * 8 + lowestSetBitIndex)) return res;
 
 				// Disable lowest set isolated bit
+				// 111000 -> 110000
 				slotBits ^= lowestSetBit;
 			}
 		}
