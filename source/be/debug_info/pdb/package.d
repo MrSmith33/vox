@@ -16,6 +16,7 @@ import std.bitmanip : bitfields;
 import std.file;
 import std.format : formattedWrite;
 import std.path;
+import std.range : repeat;
 import std.string : fromStringz;
 
 import utils;
@@ -189,14 +190,15 @@ struct PdbReader
 		writeln;
 
 
+		writefln("#   PDB stream %s", cast(uint)FixedStream.pdb_stream);
 		StreamReader* pdbStream = &streams[FixedStream.pdb_stream];
 		auto pdbStreamHeader = pdbStream.read!PdbStreamHeader;
 		writefln("PDB stream header %s", pdbStreamHeader);
 
 		writefln("  Named streams hashmap");
 		uint stringBufLength = pdbStream.read!uint;
-		string stringBuf = cast(string)pdbStream.readArray!char(stringBufLength);
-		writefln("    string buffer %s", stringBuf);
+		string namedStreamStringBuf = cast(string)pdbStream.readArray!char(stringBufLength);
+		writefln("    string buffer %s", namedStreamStringBuf);
 
 		// size == number of present keys == number of present values
 		uint hashmapSize = pdbStream.read!uint;
@@ -223,7 +225,7 @@ struct PdbReader
 			uint nameBufOffset = pdbStream.read!uint;
 			uint streamIndex = pdbStream.read!uint;
 
-			string name = stringBuf[nameBufOffset..$].ptr.fromStringz;
+			string name = namedStreamStringBuf[nameBufOffset..$].ptr.fromStringz;
 			writefln("  % 4s %s", streamIndex, name);
 
 			switch(name)
@@ -258,8 +260,9 @@ struct PdbReader
 
 
 		StreamReader* tpiStream = &streams[FixedStream.tpi_stream];
+		writefln("#   TPI stream %s, %s bytes", cast(uint)FixedStream.tpi_stream, tpiStream.remainingBytes);
 		auto tpiStreamHeader = tpiStream.read!TpiStreamHeader;
-		writefln("TPI stream header %s, %s", tpiStreamHeader, tpiStream.remainingBytes);
+		tpiStreamHeader.print;
 		pdb.setStreamName(tpiStreamHeader.hashStreamIndex, "TPI Hash stream");
 		pdb.setStreamName(tpiStreamHeader.hashAuxStreamIndex, "TPI Hash aux stream");
 
@@ -310,8 +313,9 @@ struct PdbReader
 
 
 		StreamReader* ipiStream = &streams[FixedStream.ipi_stream];
+		writefln("#   IPI stream header %s, %s bytes", cast(uint)FixedStream.ipi_stream, ipiStream.remainingBytes);
 		auto ipiStreamHeader = ipiStream.read!TpiStreamHeader;
-		writefln("IPI stream header %s, %s", ipiStreamHeader, ipiStream.remainingBytes);
+		ipiStreamHeader.print;
 		pdb.setStreamName(ipiStreamHeader.hashStreamIndex, "IPI Hash stream");
 		pdb.setStreamName(ipiStreamHeader.hashAuxStreamIndex, "IPI Hash aux stream");
 
@@ -380,7 +384,9 @@ struct PdbReader
 
 		StreamReader* dbiStream = &streams[FixedStream.dbi_stream];
 		auto dbiStreamHeader = dbiStream.read!DbiStreamHeader;
-		writefln("DBI stream header %s, %s %s", dbiStreamHeader, DbiStreamHeader.sizeof, dbiStream.remainingBytes);
+		writefln("#   DBI stream %s, %s bytes", cast(uint)FixedStream.dbi_stream, dbiStream.remainingBytes);
+		writefln("  DbiStreamHeader %s", dbiStreamHeader);
+
 		pdb.globalStreamIndex = dbiStreamHeader.GlobalStreamIndex;
 		pdb.publicStreamIndex = dbiStreamHeader.PublicStreamIndex;
 		pdb.symRecordStream = dbiStreamHeader.SymRecordStream;
@@ -401,54 +407,82 @@ struct PdbReader
 			substreamsSize, dbiStream.remainingBytes));
 
 		StreamReader dbiModInfoStream = dbiStream.substream(dbiStreamHeader.ModInfoSize);
-		writefln("  dbiModInfoStream %s", dbiModInfoStream.remainingBytes);
 		StreamReader dbiSectionContributionStream = dbiStream.substream(dbiStreamHeader.SectionContributionSize);
-		writefln("  dbiSectionContributionStream %s", dbiSectionContributionStream.remainingBytes);
 		StreamReader dbiSectionMapStream = dbiStream.substream(dbiStreamHeader.SectionMapSize);
-		writefln("  dbiSectionMapStream %s", dbiSectionMapStream.remainingBytes);
 		StreamReader dbiSourceInfoStream = dbiStream.substream(dbiStreamHeader.SourceInfoSize);
-		writefln("  dbiSourceInfoStream %s", dbiSourceInfoStream.remainingBytes);
 		StreamReader dbiTypeServerMapStream = dbiStream.substream(dbiStreamHeader.TypeServerMapSize);
-		writefln("  dbiTypeServerMapStream %s", dbiTypeServerMapStream.remainingBytes);
 		StreamReader dbiECSubstreamStream = dbiStream.substream(dbiStreamHeader.ECSubstreamSize);
-		writefln("  dbiECSubstreamStream %s", dbiECSubstreamStream.remainingBytes);
 		StreamReader dbiOptionalDbgHeaderStream = dbiStream.substream(dbiStreamHeader.OptionalDbgHeaderSize);
-		writefln("  dbiOptionalDbgHeaderStream %s", dbiOptionalDbgHeaderStream.remainingBytes);
 		enforce(dbiStream.remainingBytes == 0);
 		writeln;
 
 
+		writefln("##  dbiModInfo substream: %s bytes", dbiModInfoStream.remainingBytes);
 		while(dbiModInfoStream.remainingBytes)
 		{
+			auto modInfoStart = dbiModInfoStream.streamCursor;
 			auto modInfo = dbiModInfoStream.read!ModInfo;
-			writefln("- modInfo %s, %s %s", modInfo, ModInfo.sizeof, dbiModInfoStream.remainingBytes);
+			writefln("(%06X) ModInfo", modInfoStart);
 			string moduleName = dbiModInfoStream.readZString;
 			pdb.setStreamName(modInfo.ModuleSymStream, format("module sym stream: %s", moduleName));
 			writefln("    moduleName %s", moduleName);
 			string objFileName = dbiModInfoStream.readZString;
 			writefln("    objFileName %s", objFileName);
 			dbiModInfoStream.dropPadding(4);
+			writefln("    % 8s module sym stream", modInfo.ModuleSymStream);
+			writefln("    %04X Flags", modInfo.Flags);
+			writefln("    SectionContr %s", modInfo.SectionContr);
+			writefln("    % 8s SymByteSize", modInfo.SymByteSize);
+			writefln("    % 8s C11ByteSize", modInfo.C11ByteSize);
+			writefln("    % 8s C13ByteSize", modInfo.C13ByteSize);
+			writefln("    % 8s SourceFileCount", modInfo.SourceFileCount);
+			writefln("    % 8s SourceFileNameIndex", modInfo.SourceFileNameIndex);
+			writefln("    % 8s PdbFilePathNameIndex", modInfo.PdbFilePathNameIndex);
 
 			if (modInfo.ModuleSymStream != ushort.max)
 			{
 				StreamReader modSymStream = streams[modInfo.ModuleSymStream];
-				writefln("    mod sym stream %s: %s bytes", modInfo.ModuleSymStream, modSymStream.remainingBytes);
-				auto debugMagic = modSymStream.read!uint;
+				writefln("#   Module symbol stream %s: %s bytes", modInfo.ModuleSymStream, modSymStream.remainingBytes);
+
+				// SYMBOLS
+				StreamReader symSubstream = modSymStream.substream(modInfo.SymByteSize);
+				auto debugMagic = symSubstream.read!uint;
 				enforce(debugMagic == COFF_DEBUG_SECTION_MAGIC,
 					format("Invalid magic (%s), expected %s",
 						debugMagic, COFF_DEBUG_SECTION_MAGIC));
+				parseSymbols(symSubstream);
+				enforce(symSubstream.remainingBytes == 0);
+				writeln;
 
-				parseSymbols(modSymStream);
+				// C11, legacy
+				StreamReader c11Substream = modSymStream.substream(modInfo.C11ByteSize);
+				if (c11Substream.remainingBytes) {
+					writefln("--- C11 DEBUG SUBSECTIONS: %s bytes ---", modInfo.C11ByteSize);
+					printHex(c11Substream.readArray!ubyte(c11Substream.remainingBytes), 16, PrintAscii.yes);
+				}
 
-				// read C13 debug subsections
-				while(modSymStream.remainingBytes)
-				{
-					// read DebugSubsectionHeader
-					auto kind = modSymStream.read!DebugSubsectionKind;
-					if (kind == DebugSubsectionKind.none) break; // last entry
-					auto length = modSymStream.read!uint;
-					writefln("    debug subsection %s: %s bytes", kind, length);
-					modSymStream.drop(length);
+				// C13
+				StreamReader c13Substream = modSymStream.substream(modInfo.C13ByteSize);
+				if (c13Substream.remainingBytes) {
+					writefln("--- C13 DEBUG SUBSECTIONS: %s bytes ---", modInfo.C13ByteSize);
+					// read C13 debug subsections
+					while(c13Substream.remainingBytes)
+					{
+						// read DebugSubsectionHeader
+						auto kind = c13Substream.read!DebugSubsectionKind;
+						if (kind == DebugSubsectionKind.none) break; // last entry
+						auto length = c13Substream.read!uint;
+						writefln("  - %s: %s bytes", kind, length);
+						printHex(c13Substream.readArray!ubyte(length), 16, PrintAscii.yes);
+					}
+					enforce(c13Substream.remainingBytes == 0);
+				}
+
+				// GlobalRefs, unknown purpose
+				uint GlobalRefsSize = modSymStream.read!uint;
+				if (GlobalRefsSize) {
+					writefln("--- GlobalRefs: %s bytes ---", GlobalRefsSize);
+					printHex(modSymStream.readArray!ubyte(GlobalRefsSize), 16, PrintAscii.yes);
 				}
 
 				enforce(modSymStream.remainingBytes == 0);
@@ -459,8 +493,9 @@ struct PdbReader
 		writeln;
 
 
+		writefln("##  dbiSectionContribution substream: %s bytes", dbiSectionContributionStream.remainingBytes);
 		auto secContribVer = dbiSectionContributionStream.read!SectionContrSubstreamVersion;
-		writefln("Section Contr Substream Version %s", secContribVer);
+		writefln("  Section Contr Substream Version %s", secContribVer);
 		enforce(secContribVer == SectionContrSubstreamVersion.Ver60, "only SectionContrSubstreamVersion.Ver60 is supported");
 		while(dbiSectionContributionStream.remainingBytes) {
 			auto entry = dbiSectionContributionStream.read!SectionContribEntry;
@@ -470,6 +505,7 @@ struct PdbReader
 		writeln;
 
 
+		writefln("##  dbiSectionMap substream: %s bytes", dbiSectionMapStream.remainingBytes);
 		auto sectionMapHeader = dbiSectionMapStream.read!SectionMapHeader;
 		writefln("Section map header %s", sectionMapHeader);
 		while(dbiSectionMapStream.remainingBytes) {
@@ -479,6 +515,7 @@ struct PdbReader
 		writeln;
 
 
+		writefln("##  dbiSourceInfo substream: %s bytes", dbiSourceInfoStream.remainingBytes);
 		auto sourceInfoHeader = dbiSourceInfoStream.read!SourceInfoHeader;
 		writefln("Source info %s", dbiSourceInfoStream.remainingBytes);
 		writefln("  num modules %s", sourceInfoHeader.numModules);
@@ -506,9 +543,13 @@ struct PdbReader
 		writeln;
 
 
+		writefln("##  dbiTypeServerMap substream: %s bytes", dbiTypeServerMapStream.remainingBytes);
 		// dbiTypeServerMapStream unknown purpose
+		writefln("##  dbiECSubstream subtream: %s bytes", dbiECSubstreamStream.remainingBytes);
 		// dbiECSubstreamStream edit and continue in MSVC
 
+
+		writefln("##  dbiOptionalDbgHeader subtream: %s bytes", dbiOptionalDbgHeaderStream.remainingBytes);
 		ushort[11] dbgStreamArray;
 		dbgStreamArray[] = ushort.max; // init with unknown stream id if less than 11 recors present
 		uint numDbgStreamIndicies = min(dbiOptionalDbgHeaderStream.remainingBytes / 2, 11); // we only understand 11 records, ignore if more present
@@ -544,7 +585,7 @@ struct PdbReader
 
 
 		StreamReader globalStream = streams[pdb.globalStreamIndex];
-		writefln("Globals symbol stream %s: %s bytes", pdb.globalStreamIndex, globalStream.remainingBytes);
+		writefln("#   Globals symbol stream %s: %s bytes", pdb.globalStreamIndex, globalStream.remainingBytes);
 		readGSIHashTable(globalStream);
 		enforce(globalStream.remainingBytes == 0);
 		writeln;
@@ -552,12 +593,12 @@ struct PdbReader
 
 		// Publics stream
 		StreamReader publicStream = streams[pdb.publicStreamIndex];
-		writefln("Publics sym stream %s: %s bytes", pdb.publicStreamIndex, publicStream.remainingBytes);
+		writefln("#   Publics sym stream %s: %s bytes", pdb.publicStreamIndex, publicStream.remainingBytes);
 		enforce(publicStream.remainingBytes >= PublicsStreamHeader.sizeof,
 			format("Cannot read PublicsStreamHeader from Publics stream, not enough bytes left (%s)",
 			publicStream.remainingBytes));
 		auto publicsHeader = publicStream.read!PublicsStreamHeader;
-		writefln("  PublicsStreamHeader", publicsHeader);
+		writefln("  PublicsStreamHeader:");
 		writefln("    symHash %s", publicsHeader.symHash);
 		writefln("    address map bytes %s", publicsHeader.addrMap);
 		writefln("    numThunks %s", publicsHeader.numThunks);
@@ -572,30 +613,58 @@ struct PdbReader
 		writefln("  thunk map %(0x%X, %)", thunkMap);
 		SectionOffset[] sectionOffsets = publicStream.readArray!SectionOffset(publicsHeader.numSections);
 		writefln("  section map:");
-		foreach(sect; sectionOffsets) writefln("    isect 0x%04X offset 0x%08X");
+		foreach(sect; sectionOffsets) writefln("    isect 0x%04X offset 0x%08X", sect.isect, sect.offset);
 		enforce(publicStream.remainingBytes == 0);
 		writeln;
 
 
-		StreamReader tpiHashStreamIndex = streams[tpiStreamHeader.hashStreamIndex];
-		writefln("TPI hash stream %s: %s bytes", tpiStreamHeader.hashStreamIndex, tpiHashStreamIndex.remainingBytes);
-		ubyte[] buf2 = new ubyte[tpiHashStreamIndex.remainingBytes];
-		tpiHashStreamIndex.readIntoArray(buf2);
-		printHex(buf2, 16);
-		enforce(tpiHashStreamIndex.remainingBytes == 0, "Found bytes past the stream data");
+		StreamReader tpiHashStream = streams[tpiStreamHeader.hashStreamIndex];
+		writefln("#   TPI hash stream %s: %s bytes", tpiStreamHeader.hashStreamIndex, tpiHashStream.remainingBytes);
+		ubyte[] buf2 = tpiHashStream.readArray!ubyte(tpiHashStream.remainingBytes);
+		printHex(buf2, 16, PrintAscii.yes);
+		enforce(tpiHashStream.remainingBytes == 0, "Found bytes past the stream data");
+		writeln;
+
+
+		StreamReader ipiHashStream = streams[ipiStreamHeader.hashStreamIndex];
+		writefln("#   IPI hash stream %s: %s bytes", ipiStreamHeader.hashStreamIndex, ipiHashStream.remainingBytes);
+		ubyte[] buf3 = ipiHashStream.readArray!ubyte(ipiHashStream.remainingBytes);
+		printHex(buf3, 16, PrintAscii.yes);
+		enforce(ipiHashStream.remainingBytes == 0, "Found bytes past the stream data");
 		writeln;
 
 
 		StreamReader symRecordStream = streams[pdb.symRecordStream];
-		writefln("Symbol record stream %s: %s bytes", pdb.symRecordStream, symRecordStream.remainingBytes);
+		writefln("#   Symbol record stream %s: %s bytes", pdb.symRecordStream, symRecordStream.remainingBytes);
 		parseSymbols(symRecordStream);
 		enforce(symRecordStream.remainingBytes == 0, "Found bytes past the stream data");
 		writeln;
 
 
 		StreamReader namesStream = streams[pdb.namesStreamIndex];
-		writefln("Names stream %s: %s bytes", pdb.namesStreamIndex, namesStream.remainingBytes);
-		printHex(namesStream.readArray!ubyte(namesStream.remainingBytes), 16);
+		auto stringtableHeader = namesStream.read!StringTableHeader;
+		writefln("#   Names stream %s: %s bytes", pdb.namesStreamIndex, namesStream.remainingBytes);
+		writeln ("  StringTableHeader:");
+		writefln("    signature    0x%X", stringtableHeader.signature);
+		writefln("    hashVersion  %s", stringtableHeader.hashVersion);
+		writefln("    byteSize     %s", stringtableHeader.byteSize);
+		enforce(stringtableHeader.hashVersion == 1 || stringtableHeader.hashVersion == 2,
+			format("Unsupported hash version %s", stringtableHeader.hashVersion));
+
+		ubyte[] stringBuf = namesStream.readArray!ubyte(stringtableHeader.byteSize);
+		writeln ("  String buffer:");
+		printHex(stringBuf, 16, PrintAscii.yes);
+
+		uint numHashSlots = namesStream.read!uint;
+		writefln("  Num hash slots: %s", numHashSlots);
+
+		uint[] hashSlots = namesStream.readArray!uint(numHashSlots);
+		writefln("  Slots: %s", hashSlots);
+
+		uint numNames = namesStream.read!uint;
+		writefln("  Num names: %s", numNames);
+
+		enforce(namesStream.remainingBytes == 0);
 		writeln;
 	}
 
@@ -641,48 +710,76 @@ struct PdbReader
 
 	void parseSymbols(ref StreamReader stream)
 	{
-		writefln("  SYMBOLS  %s bytes", stream.remainingBytes);
+		int indentLevel = 0;
+		writefln("--- SYMBOLS %s bytes ---", stream.remainingBytes);
 		while(stream.remainingBytes)
 		{
-			auto len = stream.read!ushort;
 			auto start = stream.streamCursor;
-			auto end = start + len;
+			auto len = stream.read!ushort;
+			auto end = start + len + 2;
 			SymbolKind kind = stream.read!SymbolKind;
+
+			writef("(%06X)%s%s", start, ' '.repeat(indentLevel * 2 + 1), kind);
 
 			switch(kind)
 			{
-				case 0:
-					// * Linker * symbols do not terminate with S_END, 0x0000 follows instead
-					stream.unread(4);
-					return;
-
 				case SymbolKind.S_PUB32:
 					auto pubsym = stream.read!PublicSym32;
 					string name = stream.readNameBefore(end);
-					writefln("  %s [%04X:%08X] flags %04b %s", kind, pubsym.segment, pubsym.offset, pubsym.flags, name);
+					writefln(": [%04X:%08X] flags %04b %s", pubsym.segment, pubsym.offset, pubsym.flags, name);
 					break;
 
 				case SymbolKind.S_GPROC32:
+				case SymbolKind.S_LPROC32:
+				case SymbolKind.S_GPROC32_ID:
+				case SymbolKind.S_LPROC32_ID:
+				case SymbolKind.S_LPROC32_DPC:
+				case SymbolKind.S_LPROC32_DPC_ID:
 					auto procsym = stream.read!ProcSym;
 					string name = stream.readNameBefore(end);
-					writefln("  %s [%04X:%08X] flags %08b %s", kind, procsym.segment, procsym.offset, procsym.flags, name);
+					writefln(": [%04X:%08X] flags %08b %s", procsym.segment, procsym.offset, procsym.flags, name);
 					writefln("    parent %s end %s next %s", procsym.parent, procsym.end, procsym.next);
 					writefln("    length %s dbgStart %s dbgEnd %s type %s",
 						procsym.length, procsym.dbgStart, procsym.dbgEnd, procsym.typeIndex);
+					writeln;
+					++indentLevel;
+					break;
+
+				case SymbolKind.S_REGREL32:
+					// (0000C8) S_REGREL32: rsp+00000008, Type:    T_64PVOID(0603), hInstance
+					auto regRelative = stream.read!RegRelativeSym;
+					string name = stream.readNameBefore(end);
+					writefln(": %s+%08X, Type: %s, %s", regRelative.register, regRelative.offset, regRelative.type, name);
+					break;
+
+				case SymbolKind.S_BUILDINFO:
+					auto buildInfo = stream.read!BuildInfoSym;
+					writefln(": %s", buildInfo.buildId);
 					break;
 
 				case SymbolKind.S_LOCAL:
 					auto localsym = stream.read!LocalSym;
 					string name = stream.readNameBefore(end);
-					writefln("  %s %s", kind, name);
+					writefln(": %s", name);
 					writefln("    type: %s", localsym.typeIndex);
 					writefln("    flags: %s", localsym.flags);
+					break;
+
+				case SymbolKind.S_TRAMPOLINE:
+					// (000184) S_TRAMPOLINE: subtype Incremental, code size = 5 bytes
+					//          Thunk address: [0001:00000005]
+					//          Thunk target:  [0001:00000010]
+					auto trampSym = stream.read!TrampolineSym;
+					writefln(": subtype %s, code size = %s bytes", trampSym.type, trampSym.size);
+					writefln("         Thunk address: [%04X:%08X]", trampSym.thunkSection, trampSym.thunkOffset);
+					writefln("         Thunk target:  [%04X:%08X]", trampSym.targetSection, trampSym.targetOffset);
+					writeln;
 					break;
 
 				case SymbolKind.S_COMPILE3:
 					auto compilesym = stream.read!CompileSym3;
 					string verstring = stream.readNameBefore(end);
-					writefln("  %s", kind);
+					writefln(":");
 					writefln("    Language: %s", compilesym.sourceLanguage);
 					writefln("    Target processor: %s", compilesym.machine);
 					writefln("    Compiled for edit and continue: %s", compilesym.EC);
@@ -698,17 +795,25 @@ struct PdbReader
 					writefln("    Compiled with pgo: %s", compilesym.PGO);
 					writefln("    .EXP module: %s", compilesym.Exp);
 					writefln("    Pad bits = 0x%04X", compilesym.padding);
+					writefln("    Frontend Version: Major = %s, Minor = %s, Build = %s, QFE = %s",
+						compilesym.verFEMajor, compilesym.verFEMinor, compilesym.verFEBuild, compilesym.verFEQFE);
+					writefln("    Backend Version: Major = %s, Minor = %s, Build = %s, QFE = %s",
+						compilesym.verMajor, compilesym.verMinor, compilesym.verBuild, compilesym.verQFE);
+					writefln("    Version string: %s", verstring);
+					writeln;
 					break;
 
 				case SymbolKind.S_OBJNAME:
+					// (000004) S_OBJNAME: Signature: 00000000, * Linker *
 					auto objname = stream.read!ObjNameSym;
 					string name = stream.readNameBefore(end);
-					writefln("  %s: Signature: %08X, %s", kind, objname.signature, name);
+					writefln(": Signature: %08X, %s", objname.signature, name);
+					writeln;
 					break;
 
 				case SymbolKind.S_ENVBLOCK:
 					auto env = stream.read!EnvBlockSym;
-					writefln("  %s", kind);
+					writefln(":");
 					writefln("    Compiled for edit and continue: %s", env.EC);
 					writefln("    Command block:");
 
@@ -721,44 +826,60 @@ struct PdbReader
 						string cmd = stream.readZString;
 						writefln("     %s = '%s'", cmdName, cmd);
 					}
+					writeln;
 					break;
 
 				case SymbolKind.S_SECTION:
+					// (000198) S_SECTION: [0001], RVA = 00001000, Cb = 00001030, Align = 00001000, Characteristics = 60000020, .text
 					auto sectionsym = stream.read!SectionSym;
 					string name = stream.readNameBefore(end);
-					writefln("  %s %s align %s rva %s len %s char %s %s",
-						kind, sectionsym.section, sectionsym.alignment, sectionsym.rva, sectionsym.length, sectionsym.characteristics, name);
+					writefln(": [%04X], RVA %08X, %08X bytes, Align %08X, Char %08X, %s",
+						sectionsym.section, sectionsym.rva, sectionsym.length,
+						1 << sectionsym.alignmentPower, sectionsym.characteristics, name);
+					break;
+
+				case SymbolKind.S_COFFGROUP:
+					// (0001B4) S_COFFGROUP: [0001:00000000], Cb: 00001030, Characteristics = 60000020, .text$mn
+					auto coffGroupSym = stream.read!CoffGroupSym;
+					string name = stream.readNameBefore(end);
+					writefln(": [%04X:%08X], %08X bytes, Char %08X, %s",
+						coffGroupSym.symbolSegment, coffGroupSym.symbolOffset,
+						coffGroupSym.length, coffGroupSym.characteristics, name);
 					break;
 
 				case SymbolKind.S_DEFRANGE_REGISTER_REL:
 					auto reg = stream.read!DefRangeRegisterRelSym;
-					writefln("  %s base reg: %s udt: %s offset in parent: %s base ptr offset %s %s",
-						kind, reg.baseReg, reg.spilledUdtMember, reg.offsetInParent, reg.basePointerOffset, reg.range);
+					writefln(": base reg: %s udt: %s offset in parent: %s base ptr offset %s %s",
+						reg.baseReg, reg.spilledUdtMember, reg.offsetInParent,
+						reg.basePointerOffset, reg.range);
 					break;
 
 				case SymbolKind.S_PROCREF:
 					auto procref = stream.read!ProcRefSym;
 					string name = stream.readNameBefore(end);
-					writefln("  %s [%04X:%08X] sum name %s %s", kind, procref.mod, procref.symOffset, procref.sumName, name);
+					writefln(": [%04X:%08X] sum name %s %s", procref.mod,
+						procref.symOffset, procref.sumName, name);
 					break;
 
 				case SymbolKind.S_END:
-					writefln("  END");
-					return;
+					writeln;
+					enforce(indentLevel > 0, "S_END found when depth is 0");
+					--indentLevel;
+					break;
 
 				default:
 					string stringBuf2 = new char[len - 2];
 					stream.readIntoArray(cast(char[])stringBuf2);
-					writefln("  %s `%s`", kind, stringBuf2);
+					writefln(": `%s`", stringBuf2);
 			}
 
 			auto padding = end - stream.streamCursor;
-			assert(padding < 4);
-			if (padding) writefln("  padding: %s bytes", padding);
+			if (padding >= 4) writefln("  padding: %s bytes", padding);
 
 			// skip padding
 			stream.streamCursor = end;
 		}
+		enforce(indentLevel == 0, format("Wrong nesting detected, depth is %s", indentLevel));
 	}
 }
 
@@ -834,8 +955,8 @@ struct StreamReader
 	void drop(size_t bytesToDrop)
 	{
 		enforce(streamCursor + bytesToDrop <= streamBytes,
-				format("attempt to drop past the end of stream, %s %s %s",
-					streamCursor, bytesToDrop, streamBytes));
+				format("attempt to drop past the end of stream, (stream cursor %s, bytes to drop %s, bytes left %s)",
+					streamCursor, bytesToDrop, remainingBytes));
 		streamCursor += bytesToDrop;
 	}
 
@@ -1011,6 +1132,26 @@ struct TpiStreamHeader {
 
 	int hashAdjBufferOffset;
 	uint hashAdjBufferLength;
+
+	void print()
+	{
+		writefln("  Stream header:");
+		writefln("  % 10s ver", ver);
+		writefln("  % 10s headerSize", headerSize);
+		writefln("  % 10s typeIndexBegin", typeIndexBegin);
+		writefln("  % 10s typeIndexEnd", typeIndexEnd);
+		writefln("  % 10s typeRecordBytes", typeRecordBytes);
+		writefln("  % 10s hashStreamIndex", hashStreamIndex);
+		writefln("  % 10s hashAuxStreamIndex", hashAuxStreamIndex);
+		writefln("  % 10s hashKeySize", hashKeySize);
+		writefln("  % 10s numHashBuckets", numHashBuckets);
+		writefln("  % 10s hashValueBufferOffset", hashValueBufferOffset);
+		writefln("  % 10s hashValueBufferLength", hashValueBufferLength);
+		writefln("  % 10s indexOffsetBufferOffset", indexOffsetBufferOffset);
+		writefln("  % 10s indexOffsetBufferLength", indexOffsetBufferLength);
+		writefln("  % 10s hashAdjBufferOffset", hashAdjBufferOffset);
+		writefln("  % 10s hashAdjBufferLength", hashAdjBufferLength);
+	}
 }
 
 struct DbiStreamHeader {
@@ -1352,18 +1493,18 @@ struct CVType_STRING_ID
 // LF_BUILDINFO
 struct CVType_BUILDINFO
 {
-    ushort count; // number of arguments
-    TypeIndex[CV_BuildInfo.KNOWN] args;
+	ushort count; // number of arguments
+	TypeIndex[CV_BuildInfo.KNOWN] args;
 }
 
 enum CV_BuildInfo
 {
-    CurrentDirectory    = 0,
-    BuildTool           = 1, // Cl.exe
-    SourceFile          = 2, // foo.cpp
-    ProgramDatabaseFile = 3, // foo.pdb
-    CommandArguments    = 4, // -I etc
-    KNOWN
+	CurrentDirectory    = 0,
+	BuildTool           = 1, // Cl.exe
+	SourceFile          = 2, // foo.cpp
+	ProgramDatabaseFile = 3, // foo.pdb
+	CommandArguments    = 4, // -I etc
+	KNOWN
 }
 
 // --------------------------------------------
@@ -1401,8 +1542,82 @@ struct PSHashRecord
 }
 
 // struct SO in langapi/include/pdb.h
-struct SectionOffset {
+struct SectionOffset
+{
 	uint offset;
 	ushort isect;
 	ubyte[2] pad;
 };
+
+
+// The header preceeding the /names stream.
+struct StringTableHeader
+{
+	uint signature = 0xEFFEEFFE;
+	uint hashVersion; // 1 or 2
+	uint byteSize;    // Number of bytes of names buffer.
+
+	uint stringTableHashString(const(char)[] str) {
+		if (hashVersion == 1) return stringTableHashStringV1(str);
+		if (hashVersion == 2) return stringTableHashStringV2(str);
+		assert(false);
+	}
+};
+
+// Corresponds to `Hasher::lhashPbCb` in PDB/include/misc.h.
+// Used for name hash table and TPI/IPI hashes.
+uint stringTableHashStringV1(const(char)[] str) {
+	uint hash = 0;
+	uint length = cast(uint)str.length;
+
+	uint[] uints = (cast(uint*)str.ptr)[0..str.length / uint.sizeof];
+	foreach (u; uints)
+		hash ^= u;
+
+	const(ubyte)* remainder = cast(const(ubyte)*)(uints.ptr + uints.length);
+	uint remainderSize = length % 4;
+
+	// Maximum of 3 bytes left.  Hash a 2 byte word if possible, then hash the
+	// possibly remaining 1 byte.
+	if (remainderSize >= 2) {
+		ushort value = *cast(ushort*)(remainder);
+		hash ^= value;
+		remainder += 2;
+		remainderSize -= 2;
+	}
+
+	// hash possible odd byte
+	if (remainderSize == 1) {
+		hash ^= *(remainder++);
+	}
+
+	immutable uint toLowerMask = 0x20202020;
+	hash |= toLowerMask;
+	hash ^= (hash >> 11);
+
+	return hash ^ (hash >> 16);
+}
+
+// Corresponds to `HasherV2::HashULONG` in PDB/include/misc.h.
+// Used for name hash table.
+uint stringTableHashStringV2(const(char)[] str) {
+	uint hash = 0xb170a1bf;
+
+	// hash whole uints from the start of the string
+	uint[] uints = (cast(uint*)str.ptr)[0..str.length / uint.sizeof];
+	foreach (uint item; uints) {
+		hash += item;
+		hash += (hash << 10);
+		hash ^= (hash >> 6);
+	}
+
+	// hash remaining bytes
+	const(ubyte)[] remainingBytes = cast(const(ubyte)[])str[uints.length * uint.sizeof..$];
+	foreach (ubyte item; remainingBytes) {
+		hash += item;
+		hash += (hash << 10);
+		hash ^= (hash >> 6);
+	}
+
+	return hash * 1664525U + 1013904223U;
+}

@@ -7,7 +7,7 @@ module utils;
 
 public import core.bitop : bsr;
 public import core.time : MonoTime, Duration, usecs, dur;
-public import std.algorithm : min, max, swap;
+public import std.algorithm : min, max, swap, map;
 public import std.conv : to;
 public import std.exception : enforce;
 public import std.format : formattedWrite;
@@ -38,21 +38,40 @@ string[] gatherEnumStrings(E)()
 	return res;
 }
 
-void printHex(ubyte[] buffer, size_t lineLength)
+enum PrintAscii { no = false, yes = true }
+void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAscii.no)
 {
 	import std.stdio;
 
 	size_t index = 0;
 
+	static char toAscii(ubyte b) {
+		if (b < 32) return '.';
+		if (b > 126) return '.';
+		return cast(char)b;
+	}
+
 	if (lineLength) {
 		while (index + lineLength <= buffer.length) {
-			writefln("%(%02X %)", buffer[index..index+lineLength]);
+			writef("%(%02X %)", buffer[index..index+lineLength]);
+			if (printAscii) {
+				write(' ');
+				buffer[index..index+lineLength].map!toAscii.write;
+			}
+			writeln;
 			index += lineLength;
 		}
 	}
 
 	if (index < buffer.length)
-		writefln("%(%02X %)", buffer[index..buffer.length]);
+	{
+		writef("%(%02X %)", buffer[index..buffer.length]);
+		if (printAscii) {
+			foreach(_; 0..(index + lineLength - buffer.length)*3 + 1) write(' ');
+			buffer[index..buffer.length].map!toAscii.write;
+		}
+		writeln;
+	}
 }
 
 T divCeil(T)(T a, T b)

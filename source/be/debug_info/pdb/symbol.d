@@ -276,43 +276,23 @@ enum ProcSymFlags : ubyte {
 	hasOptimizedDebugInfo = 1 << 7,
 }
 
-// struct LOCALSYM
-// S_LOCAL
-align(1) struct LocalSym
-{
-    TypeIndex typeIndex; // type index
-    ushort    flags;     // set of LocalSymFlags
-	// next follows zero-terminated string
+// S_REGREL32
+align(1) struct RegRelativeSym {
+	uint offset; // offset of symbol
+	TypeIndex type; // Type index or metadata token
+	RegisterId register; // register index for symbol
+	// next follows zero-terminated string (name)
 }
 
-enum LocalSymFlags : ushort {
-	none = 0,
-	isParameter = 1 << 0,
-	isAddressTaken = 1 << 1,
-	isCompilerGenerated = 1 << 2,
-	isAggregate = 1 << 3,
-	isAggregated = 1 << 4,
-	isAliased = 1 << 5,
-	isAlias = 1 << 6,
-	isReturnValue = 1 << 7,
-	isOptimizedOut = 1 << 8,
-	isEnregisteredGlobal = 1 << 9,
-	isEnregisteredStatic = 1 << 10,
-}
-
-// S_DEFRANGE_REGISTER_REL
-// struct DEFRANGESYMREGISTERREL
-align(1) struct DefRangeRegisterRelSym
-{
-	ushort baseReg;                    // Register to hold the base pointer of the symbol
-	mixin(bitfields!(
-		bool,  "spilledUdtMember",  1, // Spilled member for s.i.
-		ubyte, "",                  3,
-		ubyte, "offsetInParent",   12, // Offset in parent variable.
-	));
-    int basePointerOffset;             // offset to register
-
-    LocalVariableAddrRange range;      // Range of addresses where this program is valid
+// struct TRAMPOLINESYM
+// S_TRAMPOLINE
+align(1) struct TrampolineSym {
+	TrampolineType type;  // trampoline sym subtype
+	ushort size;          // size of the thunk
+	uint   thunkOffset;   // offset of the thunk
+	uint   targetOffset;  // offset of the target of the thunk
+	ushort thunkSection;  // section index of the thunk
+	ushort targetSection; // section index of the target of the thunk
 }
 
 // struct COMPILESYM3
@@ -356,11 +336,79 @@ align(1) struct EnvBlockSym {
 	// next follows sequence of pairs of zero-terminated strings, terminated by empty string
 }
 
+// struct BUILDINFOSYM
+// S_BUILDINFO
+align(1) struct BuildInfoSym {
+	TypeIndex buildId; // CV_ItemId of Build Info.
+}
+
+// struct LOCALSYM
+// S_LOCAL
+align(1) struct LocalSym
+{
+	TypeIndex typeIndex; // type index
+	ushort    flags;     // set of LocalSymFlags
+	// next follows zero-terminated string
+}
+
+enum LocalSymFlags : ushort {
+	none = 0,
+	isParameter = 1 << 0,
+	isAddressTaken = 1 << 1,
+	isCompilerGenerated = 1 << 2,
+	isAggregate = 1 << 3,
+	isAggregated = 1 << 4,
+	isAliased = 1 << 5,
+	isAlias = 1 << 6,
+	isReturnValue = 1 << 7,
+	isOptimizedOut = 1 << 8,
+	isEnregisteredGlobal = 1 << 9,
+	isEnregisteredStatic = 1 << 10,
+}
+
 // struct OBJNAMESYM
 // S_OBJNAME
 align(1) struct ObjNameSym {
 	uint signature;
-	// next follows zero-terminated string of name
+	// next follows zero-terminated string (name)
+}
+
+// struct SECTIONSYM
+// S_SECTION
+align(1) struct SectionSym
+{
+    ushort section;   // Section number
+    ubyte  alignmentPower; // Alignment of this section == (1 << alignmentPower)
+    ubyte  reserved;  // Reserved.  Must be zero.
+    uint   rva;
+    uint   length;
+    uint   characteristics;
+	// next follows zero-terminated string (name)
+}
+
+// struct COFFGROUPSYM
+// S_COFFGROUP
+align(1) struct CoffGroupSym {
+	uint      length;
+	uint      characteristics;
+	uint      symbolOffset;
+	ushort    symbolSegment;
+	// next follows zero-terminated string (name)
+}
+
+// struct DEFRANGESYMREGISTERREL
+// S_DEFRANGE_REGISTER_REL
+align(1) struct DefRangeRegisterRelSym
+{
+	ushort baseReg;                    // Register to hold the base pointer of the symbol
+	mixin(bitfields!(
+		bool,  "spilledUdtMember",  1, // Spilled member for s.i.
+		ubyte, "",                  3,
+		ubyte, "offsetInParent",   12, // Offset in parent variable.
+	));
+    int basePointerOffset;             // offset to register
+
+    LocalVariableAddrRange range;      // Range of addresses where this program is valid
 }
 
 // CV_LVAR_ADDR_RANGE
@@ -370,17 +418,4 @@ struct LocalVariableAddrRange
 	uint offsetStart;
 	ushort isectStart;
 	ushort range;
-}
-
-// struct SECTIONSYM
-// S_SECTION
-align(1) struct SectionSym
-{
-    ushort section;               // Section number
-    ubyte  alignment;              // Alignment of this section (power of 2)
-    ubyte  reserved;          // Reserved.  Must be zero.
-    uint   rva;
-    uint   length;
-    uint   characteristics;
-	// next follows zero-terminated string
 }
