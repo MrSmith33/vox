@@ -94,6 +94,14 @@ struct PdbReader
 	ubyte[] fileData;
 
 	MsfHeader* msfHeader;
+	string[100] longestNames;
+
+	void visitString(string str)
+	{
+		foreach(ref longStr; longestNames)
+			if (str.length > longStr.length)
+				swap(longStr, str);
+	}
 
 	static PdbReader fromFile(string filename)
 	{
@@ -116,11 +124,12 @@ struct PdbReader
 	/// Performs actual processing of .pdb data stored in fileData
 	void load()
 	{
-		writefln("load %s %s bytes", filename, fileData.length);
+		writefln("Load %s %s bytes", filename, fileData.length);
 
 		auto slicer = FileDataSlicer(fileData);
 
 		// MSF Magic
+		enforce(slicer.fileData.length >= MsfMagic.length, format("%s: Error: Invalid PDB file, MSF magic is truncated", filename));
 		ubyte[] msfMagic = slicer.getArrayOf!ubyte(MsfMagic.length);
 		enforce(msfMagic == MsfMagic, "Invalid magic");
 
@@ -321,28 +330,46 @@ struct PdbReader
 
 		while(ipiStream.remainingBytes)
 		{
-			auto len = ipiStream.read!ushort;
 			auto start = ipiStream.streamCursor;
-			auto end = start + len;
+			auto len = ipiStream.read!ushort;
+			auto end = start + len + 2;
 
 			auto kind = ipiStream.read!ushort;
-			writefln("- IPI:%s length %s kind %s", typeIndex + 0x1000, len, cast(TypeRecordKind)kind);
+			writefln("- IPI:%s (%06X) length %s kind %s", typeIndex + 0x1000, start, len, cast(TypeRecordKind)kind);
 
 			switch(kind) with(TypeRecordKind)
 			{
 				case LF_FUNC_ID:
 					auto funcId = ipiStream.read!CVType_FUNC_ID;
 					writefln("    scope id %s", funcId.scopeId);
-					writefln("    type %s", funcId.type);
+					writefln("    type %s, size %s", funcId.type, CVType_FUNC_ID.sizeof);
 					string name = ipiStream.readNameBefore(end);
+					visitString(name);
 					writefln("    name `%s`", name);
 					break;
+
+				case LF_MFUNC_ID:
+					auto funcId = ipiStream.read!CVType_MFUNC_ID;
+					writefln("    type %s", funcId.type);
+					writefln("    parent type %s", funcId.parentType);
+					string name = ipiStream.readNameBefore(end);
+					visitString(name);
+					writefln("    name `%s`", name);
+					break;
+
 				case LF_STRING_ID:
 					auto stringId = ipiStream.read!CVType_STRING_ID;
 					writefln("    id 0x%X", stringId.id);
 					string name = ipiStream.readNameBefore(end);
+					visitString(name);
 					writefln("    name `%s`", name);
 					break;
+
+				case LF_UDT_SRC_LINE:
+					auto udtSrcLine = ipiStream.read!UdtSrcLine;
+					writefln("    type = %s, source file = %s, line = %s", udtSrcLine.udt, udtSrcLine.sourceFile, udtSrcLine.lineNumber);
+					break;
+
 				case LF_SUBSTR_LIST:
 					auto argcount = ipiStream.read!uint;
 					writefln("    number of substrings %s", argcount);
@@ -352,6 +379,7 @@ struct PdbReader
 						writefln("      substr %s", arg);
 					}
 					break;
+
 				case LF_BUILDINFO:
 					auto buildInfo = ipiStream.read!CVType_BUILDINFO;
 					writefln("    number of args %s", buildInfo.count);
@@ -361,12 +389,11 @@ struct PdbReader
 					writefln("    ProgramDatabaseFile %s", buildInfo.args[CV_BuildInfo.ProgramDatabaseFile]);
 					writefln("    CommandArguments %s", buildInfo.args[CV_BuildInfo.CommandArguments]);
 					break;
+
 				default:
 					string stringBuf2 = new char[len - 2];
 					ipiStream.readIntoArray(cast(char[])stringBuf2);
 					writefln("    buf `%s`", stringBuf2);
-					//ipiStream.drop(len - 2);
-
 					break;
 			}
 
@@ -514,6 +541,9 @@ struct PdbReader
 		}
 		writeln;
 
+		//writefln("Longest string:");
+		//import std.algorithm : uniq;
+		//foreach(str; longestNames[].uniq) writeln(str);
 
 		writefln("##  dbiSourceInfo substream: %s bytes", dbiSourceInfoStream.remainingBytes);
 		auto sourceInfoHeader = dbiSourceInfoStream.read!SourceInfoHeader;
@@ -534,9 +564,19 @@ struct PdbReader
 			numSourceFiles += count;
 		uint[] fileNameOffsets = new uint[numSourceFiles];
 		dbiSourceInfoStream.readIntoArray(fileNameOffsets);
-		writefln("  file name offsets %s", fileNameOffsets);
-		foreach(i; 0..numSourceFiles) {
-			writefln("    %s %s", i, dbiSourceInfoStream.readZString);
+		writefln("  File name offsets %s", fileNameOffsets);
+
+		{
+			writefln("  File name strings:");
+			uint numStrings;
+			uint stringsStart = dbiSourceInfoStream.streamCursor;
+			while (!dbiSourceInfoStream.empty)
+			{
+				++numStrings;
+				uint offset = dbiSourceInfoStream.streamCursor - stringsStart;
+				writefln("    %s %s", offset, dbiSourceInfoStream.readZString);
+			}
+			writefln("  Num name strings: %s", numStrings);
 		}
 		dbiSourceInfoStream.dropPadding(4);
 		enforce(dbiSourceInfoStream.remainingBytes == 0);
@@ -640,7 +680,6 @@ struct PdbReader
 		enforce(symRecordStream.remainingBytes == 0, "Found bytes past the stream data");
 		writeln;
 
-
 		StreamReader namesStream = streams[pdb.namesStreamIndex];
 		auto stringtableHeader = namesStream.read!StringTableHeader;
 		writefln("#   Names stream %s: %s bytes", pdb.namesStreamIndex, namesStream.remainingBytes);
@@ -711,6 +750,9 @@ struct PdbReader
 	void parseSymbols(ref StreamReader stream)
 	{
 		int indentLevel = 0;
+		void ind() { // prints indentation
+			write(' '.repeat(indentLevel * 2));
+		}
 		writefln("--- SYMBOLS %s bytes ---", stream.remainingBytes);
 		while(stream.remainingBytes)
 		{
@@ -719,14 +761,22 @@ struct PdbReader
 			auto end = start + len + 2;
 			SymbolKind kind = stream.read!SymbolKind;
 
-			writef("(%06X)%s%s", start, ' '.repeat(indentLevel * 2 + 1), kind);
+			ind; writef("(%06X) %s", start, kind);
 
 			switch(kind)
 			{
+				case SymbolKind.S_UDT:
+					auto udtsym = stream.read!UdtSym;
+					string name = stream.readNameBefore(end);
+					visitString(name);
+					writefln(": Type %s, %s", udtsym.type, name);
+					break;
+
 				case SymbolKind.S_PUB32:
 					auto pubsym = stream.read!PublicSym32;
 					string name = stream.readNameBefore(end);
-					writefln(": [%04X:%08X] flags %04b %s", pubsym.segment, pubsym.offset, pubsym.flags, name);
+					visitString(name);
+					writefln(": [%04X:%08X] Flags %04b, %s", pubsym.segment, pubsym.offset, pubsym.flags, name);
 					break;
 
 				case SymbolKind.S_GPROC32:
@@ -737,19 +787,46 @@ struct PdbReader
 				case SymbolKind.S_LPROC32_DPC_ID:
 					auto procsym = stream.read!ProcSym;
 					string name = stream.readNameBefore(end);
-					writefln(": [%04X:%08X] flags %08b %s", procsym.segment, procsym.offset, procsym.flags, name);
-					writefln("    parent %s end %s next %s", procsym.parent, procsym.end, procsym.next);
-					writefln("    length %s dbgStart %s dbgEnd %s type %s",
+					visitString(name);
+					writefln(": [%04X:%08X] Flags %08b, %s", procsym.segment, procsym.offset, procsym.flags, name);
+					ind; writefln("         Parent %06X End %06X Next %06X", procsym.parent, procsym.end, procsym.next);
+					ind; writefln("         Length %s, Dbg Start %08X, Dbg End %08X, Type %s",
 						procsym.length, procsym.dbgStart, procsym.dbgEnd, procsym.typeIndex);
 					writeln;
 					++indentLevel;
+					break;
+
+				case SymbolKind.S_ENDARG:
+					writeln;
+					//--indentLevel;
 					break;
 
 				case SymbolKind.S_REGREL32:
 					// (0000C8) S_REGREL32: rsp+00000008, Type:    T_64PVOID(0603), hInstance
 					auto regRelative = stream.read!RegRelativeSym;
 					string name = stream.readNameBefore(end);
-					writefln(": %s+%08X, Type: %s, %s", regRelative.register, regRelative.offset, regRelative.type, name);
+					visitString(name);
+					writefln(": %s+%08X, Type %s, %s", regRelative.register, regRelative.offset, regRelative.type, name);
+					break;
+
+				case SymbolKind.S_LDATA32:
+				case SymbolKind.S_GDATA32:
+				case SymbolKind.S_LMANDATA:
+				case SymbolKind.S_GMANDATA:
+					// S_GDATA32: [0002:000236E8], Type:             0x1A60, RTInfoImpl
+					auto dataSym = stream.read!DataSym;
+					string name = stream.readNameBefore(end);
+					visitString(name);
+					writefln(": [%04X:%08X] Type %s, %s", dataSym.segment, dataSym.dataOffset, dataSym.type, name);
+					break;
+
+				case SymbolKind.S_LTHREAD32:
+				case SymbolKind.S_GTHREAD32:
+					// (1FCD30) S_GTHREAD32: [0006:00000270], Type:             0x168D, binaryCondStrings
+					auto threadData = stream.read!ThreadDataSym;
+					string name = stream.readNameBefore(end);
+					visitString(name);
+					writefln(": [%04X:%08X] Type %s, %s", threadData.segment, threadData.dataOffset, threadData.type, name);
 					break;
 
 				case SymbolKind.S_BUILDINFO:
@@ -757,12 +834,154 @@ struct PdbReader
 					writefln(": %s", buildInfo.buildId);
 					break;
 
+				case SymbolKind.S_INLINESITE:
+					// (0002D8)  S_INLINESITE: Parent: 000001E8, End: 00000354, Inlinee:             0x259F
+					//     BinaryAnnotations:    CodeLengthAndCodeOffset 29 20
+					//     BinaryAnnotation Length: 4 bytes (1 bytes padding)
+					auto inlineSite = stream.read!InlineSiteSym;
+					writefln(": Parent %06X, End %06X, Inlinee %s", inlineSite.parent, inlineSite.end, inlineSite.inlinee);
+					printHex(stream.readArray!ubyte(end - stream.streamCursor), 16, PrintAscii.yes, 9 + indentLevel * 2);
+					++indentLevel;
+					break;
+
+				case SymbolKind.S_CONSTANT:
+				case SymbolKind.S_MANCONSTANT:
+					auto con = stream.read!ConstSym;
+					writef(": Type: %s, Value: ", con.type);
+					void printNum()
+					{
+						if (con.value < CV_TYPE.LF_NUMERIC)
+						{
+							// `con.value` is a value
+							writef("%s", con.value);
+							return;
+						}
+
+						// `con.value` is a type of value
+						switch(cast(CV_TYPE)con.value)
+						{
+							case CV_TYPE.LF_CHAR: writef("(LF_CHAR) 0x%02X", stream.read!ubyte); break;
+							case CV_TYPE.LF_SHORT: writef("(LF_SHORT) 0x%04X", stream.read!short); break;
+							case CV_TYPE.LF_USHORT: writef("(LF_USHORT) 0x%04X", stream.read!ushort); break;
+							case CV_TYPE.LF_LONG: writef("(LF_LONG) 0x%08X", stream.read!int); break;
+							case CV_TYPE.LF_ULONG: writef("(LF_ULONG) 0x%08X", stream.read!uint); break;
+							case CV_TYPE.LF_QUADWORD: writef("(LF_QUADWORD) 0x%016X", stream.read!long); break;
+							case CV_TYPE.LF_UQUADWORD: writef("(LF_UQUADWORD) 0x%016X", stream.read!ulong); break;
+							case CV_TYPE.LF_OCTWORD:
+								writef("(LF_OCTWORD) [%(%02X %)]", stream.read!(ubyte[16]));
+								break;
+							case CV_TYPE.LF_UOCTWORD:
+								writef("(LF_UOCTWORD) [%(%02X %)]", stream.read!(ubyte[16]));
+								break;
+							case CV_TYPE.LF_REAL16:
+								writef("(LF_REAL16) 0x04X", stream.read!ushort);
+								break;
+							case CV_TYPE.LF_REAL32:
+								union U {
+									ubyte[4] bytes;
+									float f;
+								}
+								U u;
+								u.bytes = stream.read!(ubyte[4]);
+								writef("(LF_REAL32) [%(%02X %)] %s", u.bytes, u.f);
+								break;
+							case CV_TYPE.LF_REAL64:
+								union U2 {
+									ubyte[8] bytes;
+									double f;
+								}
+								U2 u;
+								u.bytes = stream.read!(ubyte[8]);
+								writef("(LF_REAL64) [%(%02X %)] %s", u.bytes, u.f);
+								break;
+							case CV_TYPE.LF_REAL80:
+								writef("(LF_REAL80) [%(%02X %)]", stream.read!(ubyte[10]));
+								break;
+							case CV_TYPE.LF_REAL128:
+								writef("(LF_REAL128) [%(%02X %)]", stream.read!(ubyte[16]));
+								break;
+							case CV_TYPE.LF_REAL48:
+								writef("(LF_REAL48) [%(%02X %)]", stream.read!(ubyte[6]));
+								break;
+							case CV_TYPE.LF_COMPLEX32:
+								writef("(LF_COMPLEX32) [%(%02X %)]", stream.read!(ubyte[8]));
+								break;
+							case CV_TYPE.LF_COMPLEX64:
+								writef("(LF_COMPLEX64) [%(%02X %)]", stream.read!(ubyte[16]));
+								break;
+							case CV_TYPE.LF_COMPLEX80:
+								writef("(LF_COMPLEX80) [%(%02X %)]", stream.read!(ubyte[20]));
+								break;
+							case CV_TYPE.LF_COMPLEX128:
+								writef("(LF_COMPLEX128) [%(%02X %)]", stream.read!(ubyte[32]));
+								break;
+							case CV_TYPE.LF_VARSTRING:
+								ushort len = stream.read!ushort;
+								writef("(LF_VARSTRING) %s", stream.readArray!char(len));
+								break;
+							case CV_TYPE.LF_DATE:
+								writef("(LF_DATE) 0x%016X", stream.read!ulong); // DATE is alias of double
+								break;
+							case CV_TYPE.LF_DECIMAL:
+								writef("(LF_DECIMAL) [%(%02X %)]", stream.read!(ubyte[12])); // DECIMAL is 12 bytes
+								break;
+							case CV_TYPE.LF_UTF8STRING:
+								writef("(LF_UTF8STRING) %s", stream.readZString);
+								break;
+							default:
+								write("Invalid Numeric Leaf");
+								break;
+						}
+					}
+					printNum;
+					writefln(", %s", stream.readZString);
+					break;
+
 				case SymbolKind.S_LOCAL:
 					auto localsym = stream.read!LocalSym;
 					string name = stream.readNameBefore(end);
-					writefln(": %s", name);
-					writefln("    type: %s", localsym.typeIndex);
-					writefln("    flags: %s", localsym.flags);
+					visitString(name);
+					writefln(": Type: %s, Flags: %s, %s", localsym.typeIndex, localsym.flags, name);
+					break;
+
+				case SymbolKind.S_FRAMEPROC:
+					// (0000A0)  S_FRAMEPROC:
+					//           Frame size = 0x00000028 bytes
+					//           Pad size = 0x00000000 bytes
+					//           Offset of pad in frame = 0x00000000
+					//           Size of callee save registers = 0x00000000
+					//           Address of exception handler = 0000:00000000
+					//           Function info: invalid_pgo_counts opt_for_speed Local=rsp Param=rsp (0x00114000)
+					auto frameProc = stream.read!FrameProcSym;
+					writefln(":");
+					writefln("         Frame size = 0x%08X bytes", frameProc.totalFrameBytes);
+					writefln("         Pad size = 0x%08X bytes", frameProc.paddingFrameBytes);
+					writefln("         Offset of pad in frame = 0x%08X", frameProc.offsetToPadding);
+					writefln("         Size of callee save registers = 0x%08X", frameProc.bytesOfCalleeSavedRegisters);
+					writefln("         Address of exception handler = %04X:%08X", frameProc.sectionIdOfExceptionHandler, frameProc.offsetOfExceptionHandler);
+					write("         Function info:");
+					if (frameProc.hasAlloca) write(" alloca");
+					if (frameProc.hasSetJmp) write(" setjmp");
+					if (frameProc.hasLongJmp) write(" longjmp");
+					if (frameProc.hasInlineAssembly) write(" inlasm");
+					if (frameProc.hasExceptionHandling) write(" EH");
+					if (frameProc.markedInline) write(" marked_inline");
+					if (frameProc.hasStructuredExceptionHandling) write(" SEH");
+					if (frameProc.naked) write(" naked");
+					if (frameProc.securityChecks) write(" gschecks");
+					if (frameProc.asynchronousExceptionHandling) write(" asyncEH");
+					if (frameProc.noStackOrderingForSecurityChecks) write(" gs_no_stack_ordering");
+					if (frameProc.inlined) write(" wasinlined");
+					if (frameProc.strictSecurityChecks) write(" strict_gs_check");
+					if (frameProc.safeBuffers) write(" safe_buffers");
+					if (frameProc.encodedLocalBasePointer) write(" Local=%s", frameProc.encodedLocalBasePointer);
+					if (frameProc.encodedParamBasePointer) write(" Param=%s", frameProc.encodedParamBasePointer);
+					if (frameProc.profileGuidedOptimization) write(" pgo_on");
+					if (frameProc.validProfileCounts) write(" valid_pgo_counts"); else write(" invalid_pgo_counts");
+					if (frameProc.optimizedForSpeed) write(" opt_for_speed");
+					if (frameProc.guardCfg) write(" guard_cfg");
+					if (frameProc.guardCfw) write(" guard_cfw");
+					writeln;
 					break;
 
 				case SymbolKind.S_TRAMPOLINE:
@@ -770,9 +989,43 @@ struct PdbReader
 					//          Thunk address: [0001:00000005]
 					//          Thunk target:  [0001:00000010]
 					auto trampSym = stream.read!TrampolineSym;
-					writefln(": subtype %s, code size = %s bytes", trampSym.type, trampSym.size);
-					writefln("         Thunk address: [%04X:%08X]", trampSym.thunkSection, trampSym.thunkOffset);
-					writefln("         Thunk target:  [%04X:%08X]", trampSym.targetSection, trampSym.targetOffset);
+					writefln(": Subtype %s, Code size %s bytes", trampSym.type, trampSym.size);
+					ind; writefln("         Thunk address [%04X:%08X]", trampSym.thunkSection, trampSym.thunkOffset);
+					ind; writefln("         Thunk target  [%04X:%08X]", trampSym.targetSection, trampSym.targetOffset);
+					writeln;
+					break;
+
+				case SymbolKind.S_THUNK32:
+					// (000048) S_THUNK32: [0001:004B4984], Cb: 00000006, CommandLineToArgvW
+					//          Parent: 00000000, End: 00000074, Next: 00000000
+					auto thunk = stream.read!ThunkSym;
+					string name = stream.readZString;
+					visitString(name);
+					//ubyte[] variantData = stream.readArrayBefore!ubyte(end);
+					writefln(": [%04X:%08X] Length %08X, Type %s, %s", thunk.segment, thunk.offset, thunk.length, thunk.type, name);
+					ind; writefln("         Parent %06X, End %06X, Next %06X", thunk.parent, thunk.end, thunk.next);
+					//writefln("    variant data: %(%02x %)", variantData);
+					++indentLevel;
+					break;
+
+				case SymbolKind.S_COMPILE:
+					auto compilesym = stream.read!CompileSym;
+					string verstring = stream.readNameBefore(end);
+					writefln(":");
+					ind; writefln("         Language: %s", compilesym.sourceLanguage);
+					ind; writefln("         Target processor: %s", cast(CV_CPUType)compilesym.machine);
+					ind; writefln("         Floating-point precision: %s", compilesym.floatprec);
+					static immutable string[4] floatPackageStrings = ["hardware", "emulator", "altmath", "???"];
+					ind; writefln("         Floating-point package: %s", floatPackageStrings[compilesym.floatpkg]);
+					static immutable string[4] modelStrings = ["near", "far", "huge", "???"];
+					ind; writefln("         Ambient data: %s", modelStrings[compilesym.ambdata]);
+					ind; writefln("         Ambient code: %s", modelStrings[compilesym.ambcode]);
+					ind; writefln("         PCode present: %s", compilesym.pcode);
+					ind; writefln("         mode32: %s", compilesym.mode32);
+					if (compilesym.pad) {
+						ind; writefln("         pad: 0x%03X", compilesym.pad);
+					}
+					ind; writefln("         Compiler Version: %s", verstring);
 					writeln;
 					break;
 
@@ -780,42 +1033,55 @@ struct PdbReader
 					auto compilesym = stream.read!CompileSym3;
 					string verstring = stream.readNameBefore(end);
 					writefln(":");
-					writefln("    Language: %s", compilesym.sourceLanguage);
-					writefln("    Target processor: %s", compilesym.machine);
-					writefln("    Compiled for edit and continue: %s", compilesym.EC);
-					writefln("    Compiled without debugging info: %s", compilesym.NoDbgInfo);
-					writefln("    Compiled with LTCG: %s", compilesym.LTCG);
-					writefln("    Compiled with /bzalign: %s", compilesym.NoDataAlign);
-					writefln("    Managed code present: %s", compilesym.ManagedPresent);
-					writefln("    Compiled with /GS: %s", compilesym.SecurityChecks);
-					writefln("    Compiled with /hotpatch: %s", compilesym.HotPatch);
-					writefln("    Converted by CVTCIL: %s", compilesym.CVTCIL);
-					writefln("    MSIL module: %s", compilesym.MSILModule);
-					writefln("    Compiled with /sdl: %s", compilesym.Sdl);
-					writefln("    Compiled with pgo: %s", compilesym.PGO);
-					writefln("    .EXP module: %s", compilesym.Exp);
-					writefln("    Pad bits = 0x%04X", compilesym.padding);
-					writefln("    Frontend Version: Major = %s, Minor = %s, Build = %s, QFE = %s",
+					ind; writefln("         Language: %s", compilesym.sourceLanguage);
+					ind; writefln("         Target processor: %s", compilesym.machine);
+					ind; writefln("         Compiled for edit and continue: %s", compilesym.EC);
+					ind; writefln("         Compiled without debugging info: %s", compilesym.NoDbgInfo);
+					ind; writefln("         Compiled with LTCG: %s", compilesym.LTCG);
+					ind; writefln("         Compiled with /bzalign: %s", compilesym.NoDataAlign);
+					ind; writefln("         Managed code present: %s", compilesym.ManagedPresent);
+					ind; writefln("         Compiled with /GS: %s", compilesym.SecurityChecks);
+					ind; writefln("         Compiled with /hotpatch: %s", compilesym.HotPatch);
+					ind; writefln("         Converted by CVTCIL: %s", compilesym.CVTCIL);
+					ind; writefln("         MSIL module: %s", compilesym.MSILModule);
+					ind; writefln("         Compiled with /sdl: %s", compilesym.Sdl);
+					ind; writefln("         Compiled with pgo: %s", compilesym.PGO);
+					ind; writefln("         .EXP module: %s", compilesym.Exp);
+					ind; writefln("         Pad bits = 0x%04X", compilesym.padding);
+					ind; writefln("         Frontend Version: Major = %s, Minor = %s, Build = %s, QFE = %s",
 						compilesym.verFEMajor, compilesym.verFEMinor, compilesym.verFEBuild, compilesym.verFEQFE);
-					writefln("    Backend Version: Major = %s, Minor = %s, Build = %s, QFE = %s",
+					ind; writefln("         Backend Version: Major = %s, Minor = %s, Build = %s, QFE = %s",
 						compilesym.verMajor, compilesym.verMinor, compilesym.verBuild, compilesym.verQFE);
-					writefln("    Version string: %s", verstring);
+					ind; writefln("         Version string: %s", verstring);
 					writeln;
+					break;
+
+				case SymbolKind.S_BLOCK32:
+					// (000930)  S_BLOCK32: [0001:0005AE21], Cb: 00000027,
+					//           Parent: 00000118, End: 00000964
+					auto blockSym = stream.read!BlockSym;
+					string name = stream.readNameBefore(end);
+					visitString(name);
+					writefln(": [%04X:%08X] Code size %08X bytes, %s", blockSym.codeSegment, blockSym.codeOffset, blockSym.codeSize, name);
+					ind; writefln("         Parent %06X, End %06X", blockSym.parent, blockSym.end);
+					assert(len == 22);
+					++indentLevel;
 					break;
 
 				case SymbolKind.S_OBJNAME:
 					// (000004) S_OBJNAME: Signature: 00000000, * Linker *
 					auto objname = stream.read!ObjNameSym;
 					string name = stream.readNameBefore(end);
-					writefln(": Signature: %08X, %s", objname.signature, name);
+					visitString(name);
+					writefln(": Signature %08X, %s", objname.signature, name);
 					writeln;
 					break;
 
 				case SymbolKind.S_ENVBLOCK:
 					auto env = stream.read!EnvBlockSym;
 					writefln(":");
-					writefln("    Compiled for edit and continue: %s", env.EC);
-					writefln("    Command block:");
+					ind; writefln("         Compiled for edit and continue: %s", env.EC);
+					ind; writefln("         Command block:");
 
 					// at least 4 bytes are needed for 2 non-empty strings
 					while(stream.remainingBytes >= 4)
@@ -824,7 +1090,7 @@ struct PdbReader
 						if (cmdName is null) break; // terminated by empty string
 
 						string cmd = stream.readZString;
-						writefln("     %s = '%s'", cmdName, cmd);
+						ind; writefln("         %s = '%s'", cmdName, cmd);
 					}
 					writeln;
 					break;
@@ -833,7 +1099,8 @@ struct PdbReader
 					// (000198) S_SECTION: [0001], RVA = 00001000, Cb = 00001030, Align = 00001000, Characteristics = 60000020, .text
 					auto sectionsym = stream.read!SectionSym;
 					string name = stream.readNameBefore(end);
-					writefln(": [%04X], RVA %08X, %08X bytes, Align %08X, Char %08X, %s",
+					visitString(name);
+					writefln(": [%04X] RVA %08X, %08X bytes, Align %08X, Char %08X, %s",
 						sectionsym.section, sectionsym.rva, sectionsym.length,
 						1 << sectionsym.alignmentPower, sectionsym.characteristics, name);
 					break;
@@ -842,39 +1109,106 @@ struct PdbReader
 					// (0001B4) S_COFFGROUP: [0001:00000000], Cb: 00001030, Characteristics = 60000020, .text$mn
 					auto coffGroupSym = stream.read!CoffGroupSym;
 					string name = stream.readNameBefore(end);
-					writefln(": [%04X:%08X], %08X bytes, Char %08X, %s",
+					visitString(name);
+					writefln(": [%04X:%08X] %08X bytes, Char %08X, %s",
 						coffGroupSym.symbolSegment, coffGroupSym.symbolOffset,
 						coffGroupSym.length, coffGroupSym.characteristics, name);
 					break;
 
+				case SymbolKind.S_DEFRANGE_REGISTER:
+					// (000230)  S_DEFRANGE_REGISTER: rcx
+					//     Range: [0001:004A706C] - [0001:004A708C], 0 Gaps
+					auto reg = stream.read!DefRangeRegisterSym;
+					auto gaps = stream.readArrayBefore!LocalVariableAddrGap(end);
+					writefln(": %s", reg.register);
+					ind; writef("         Range %s, %s Gaps", reg.range, gaps.length);
+					if (gaps.length) write(" (Start offset, Length):");
+					foreach(gap; gaps) writef(" (%04X, %02X)", gap.startOffset, gap.length);
+					writeln;
+					break;
+
+				case SymbolKind.S_DEFRANGE_SUBFIELD_REGISTER:
+					auto reg = stream.read!DefRangeSubfieldRegisterSym;
+					auto gaps = stream.readArrayBefore!LocalVariableAddrGap(end);
+					writefln(": offset at %04X: %s", reg.offsetInParent, reg.register);
+					ind; writef("         Range %s, %s Gaps", reg.range, gaps.length);
+					if (gaps.length) write(" (Start offset, Length):");
+					foreach(gap; gaps) writef(" (%04X, %02X)", gap.startOffset, gap.length);
+					writeln;
+					break;
+
 				case SymbolKind.S_DEFRANGE_REGISTER_REL:
 					auto reg = stream.read!DefRangeRegisterRelSym;
-					writefln(": base reg: %s udt: %s offset in parent: %s base ptr offset %s %s",
+					writefln(": Base reg %s, UDT %s, Offset in parent %s, Base ptr offset %s",
 						reg.baseReg, reg.spilledUdtMember, reg.offsetInParent,
-						reg.basePointerOffset, reg.range);
+						reg.basePointerOffset);
+					ind; writefln("         Range: %s", reg.range);
+					break;
+
+				case SymbolKind.S_DEFRANGE_FRAMEPOINTER_REL:
+					auto reg = stream.read!DefRangeFramePointerRelSym;
+					auto gaps = stream.readArrayBefore!LocalVariableAddrGap(end);
+					writefln(": FrameOffset: %04X ", reg.offFramePointer);
+					ind; writef("         Range: %s, %s Gaps", reg.range, gaps.length);
+					if (gaps.length) write(" (Start offset, Length):");
+					foreach(gap; gaps) writef(" (%04X, %02X)", gap.startOffset, gap.length);
+					writeln;
+					break;
+
+				case SymbolKind.S_DEFRANGE_FRAMEPOINTER_REL_FULL_SCOPE:
+					auto reg = stream.read!DefRangeFramePointerRelFullScopeSym;
+					writefln(": FrameOffset: %04X", reg.offFramePointer);
 					break;
 
 				case SymbolKind.S_PROCREF:
+				case SymbolKind.S_LPROCREF:
 					auto procref = stream.read!ProcRefSym;
 					string name = stream.readNameBefore(end);
-					writefln(": [%04X:%08X] sum name %s %s", procref.mod,
+					visitString(name);
+					writefln(": [%04X:%08X] Sum name %s, %s", procref.mod,
 						procref.symOffset, procref.sumName, name);
 					break;
 
+				case SymbolKind.S_CALLERS:
+				case SymbolKind.S_CALLEES:
+				case SymbolKind.S_INLINEES:
+					auto funclist = stream.read!FunctionListSym;
+					TypeIndex[] funcs = stream.readArray!TypeIndex(funclist.numFuncs);
+					uint[] numInvocationsPerFunc = stream.readArrayBefore!uint(end);
+					writefln(": count %s", funclist.numFuncs);
+					foreach(i, func; funcs) {
+						uint numInvocations = 0;
+						if (i < numInvocationsPerFunc.length)
+							numInvocations = numInvocationsPerFunc[i];
+						ind; writefln("         %s (%s)", func, numInvocations);
+					}
+					break;
+
 				case SymbolKind.S_END:
-					writeln;
-					enforce(indentLevel > 0, "S_END found when depth is 0");
+					enforce(indentLevel > 0, "S_INLINESITE_END found when depth is 0");
 					--indentLevel;
+					writeln;
+					if (indentLevel == 0) writeln;
+					break;
+
+				case SymbolKind.S_INLINESITE_END:
+					enforce(indentLevel > 0, "S_INLINESITE_END found when depth is 0");
+					--indentLevel;
+					writeln;
+					if (indentLevel == 0) writeln;
 					break;
 
 				default:
 					string stringBuf2 = new char[len - 2];
 					stream.readIntoArray(cast(char[])stringBuf2);
-					writefln(": `%s`", stringBuf2);
+					writefln(": UNKNOWN `%s`", stringBuf2);
+					printHex(cast(ubyte[])stringBuf2, 16, PrintAscii.yes, 9 + indentLevel * 2);
 			}
 
 			auto padding = end - stream.streamCursor;
-			if (padding >= 4) writefln("  padding: %s bytes", padding);
+			if (padding >= 4) {
+				ind; writefln("         padding: %s bytes", padding);
+			}
 
 			// skip padding
 			stream.streamCursor = end;
@@ -914,13 +1248,25 @@ struct StreamReader
 			pageFrom += pageOffset;
 			ubyte[] pageData = fileData[pageFrom..pageTo];
 			size_t pageBytesToRead = min(pageData.length, byteBuf.length);
+			//writefln("cur %s page %s pageOffset %s read %s", streamCursor, page, pageOffset, pageBytesToRead);
+			//printHex(pageData[0..pageBytesToRead], 16, PrintAscii.yes);
 			enforce(streamCursor + pageBytesToRead <= streamBytes,
 				format("attempt to read past the end of stream, %s %s %s",
 					streamCursor, pageBytesToRead, streamBytes));
 			byteBuf[0..pageBytesToRead] = pageData[0..pageBytesToRead];
-			byteBuf.length -= pageBytesToRead;
+			byteBuf = byteBuf[pageBytesToRead..$];
 			streamCursor += pageBytesToRead;
 		}
+	}
+
+	T[] readArrayBefore(T)(uint cursorAfterArray)
+	{
+		uint numBytes = cursorAfterArray - streamCursor;
+		enforce(numBytes % T.sizeof == 0,
+			format("readArrayBefore: %s is not multiple of %s.sizeof (%s)",
+				numBytes, T.stringof, T.sizeof));
+		uint numItems = numBytes / T.sizeof;
+		return readArray!T(numItems);
 	}
 
 	T[] readArray(T)(uint size)
@@ -1000,10 +1346,35 @@ struct StreamReader
 		uint nameLength = end - streamCursor;
 		string name = new char[nameLength];
 		readIntoArray(cast(char[])name);
-		while (name[$-1] != '\0')
+		while (true)
+		{
+			if (name.length == 0) return null; // handle empty string
+			if (name[$-1] != '\0') break; // we found non-zero
+			name = name[0..$-1]; // peel zero terminators
+		}
+		return name;
+	}
+
+	string readZNameBefore(uint end)
+	{
+		uint nameLength = end - streamCursor;
+		string name = new char[nameLength];
+		readIntoArray(cast(char[])name);
+		//printHex(cast(ubyte[])name, 16, PrintAscii.yes);
+		// find zero terminator first
+		while (true)
+		{
+			if (name.length == 0) return null; // handle empty string
+			if (name[$-1] == '\0') break; // we found non-zero
 			name = name[0..$-1]; // peel padding
-		while (name[$-1] == '\0')
-			name = name[0..$-1]; // peel zero terminator
+		}
+		// find last char
+		while (true)
+		{
+			if (name.length == 0) return null; // handle empty string
+			if (name[$-1] != '\0') break; // we found non-zero
+			name = name[0..$-1]; // peel zero terminators
+		}
 		return name;
 	}
 
@@ -1327,17 +1698,25 @@ enum TypeRecordKind : ushort {
 	LF_PROCEDURE        = 0x1008,
 	LF_MFUNCTION        = 0x1009,
 	LF_LABEL            = 0x000e,
+
 	LF_ARGLIST          = 0x1201,
 	LF_FIELDLIST        = 0x1203,
+
 	LF_ARRAY            = 0x1503,
 	LF_CLASS            = 0x1504,
+	LF_STRUCTURE        = 0x1505,
+	LF_UNION            = 0x1506,
+	LF_ENUM             = 0x1507,
+	LF_TYPESERVER2      = 0x1515,
 
 	// Those are found in IPI stream
-	LF_FUNC_ID          = 0x1601,    // global func ID
-	LF_MFUNC_ID         = 0x1602,    // member func ID
-	LF_BUILDINFO        = 0x1603,    // build info: tool, version, command line, src/pdb file
-	LF_SUBSTR_LIST      = 0x1604,    // similar to LF_ARGLIST, for list of sub strings
-	LF_STRING_ID        = 0x1605,    // string ID
+	LF_FUNC_ID          = 0x1601, // global func ID
+	LF_MFUNC_ID         = 0x1602, // member func ID
+	LF_BUILDINFO        = 0x1603, // build info: tool, version, command line, src/pdb file
+	LF_SUBSTR_LIST      = 0x1604, // similar to LF_ARGLIST, for list of sub strings
+	LF_STRING_ID        = 0x1605, // string ID
+	LF_UDT_SRC_LINE     = 0x1606, // source and line on where an UDT is defined, only generated by compiler
+	LF_UDT_MOD_SRC_LINE = 0x1607, // module, source and line on where an UDT is defined, only generated by linker
 }
 
 /// http://llvm.org/docs/PDB/TpiStream.html#id4
@@ -1479,14 +1858,29 @@ struct CVType_FUNC_ID
 {
 	uint scopeId;   // parent scope of the ID, 0 if global
 	TypeIndex type; // function type
-	// zero terminated string follows
+	// zero terminated string follows (name)
 }
 
 // LF_STRING_ID
 struct CVType_STRING_ID
 {
 	uint id; // ID to list of sub string IDs
-	// zero terminated string follows
+	// zero terminated string follows (name)
+}
+
+// struct lfUdtSrcLine
+// LF_UDT_SRC_LINE
+struct UdtSrcLine {
+	TypeIndex udt;        // UDT's type index
+	TypeIndex sourceFile; // index to LF_STRING_ID record where source file name is saved
+	uint lineNumber;      // line number
+}
+
+// LF_MFUNC_ID
+struct CVType_MFUNC_ID {
+	TypeIndex parentType; // type index of parent
+	TypeIndex type;       // function type
+	// zero terminated string follows (name)
 }
 
 

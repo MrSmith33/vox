@@ -6,12 +6,15 @@
 module be.debug_info.pdb.symbol;
 
 import std.bitmanip : bitfields;
+import std.format : formattedWrite;
 import be.debug_info.pdb;
 
 // SYM_ENUM_e
 enum SymbolKind : ushort
 {
-	S_END           = 0x0006,
+	S_COMPILE       = 0x0001,  // Compile flags symbol
+	S_END           = 0x0006,  // Block, procedure, "with" or thunk end
+	S_ENDARG        = 0x000A,  // end of argument/return list
 
 	// 16 bit symbols omitted
 
@@ -212,11 +215,28 @@ enum SymbolKind : ushort
 	S_GDATA_HLSL32_EX = 0x1164,
 	S_LDATA_HLSL32_EX = 0x1165,
 
+	S_INLINEES = 0x1168,
+
 	S_RECTYPE_MAX,               // one greater than last
 	S_RECTYPE_LAST  = S_RECTYPE_MAX - 1,
 	S_RECTYPE_PAD   = S_RECTYPE_MAX + 0x100 // Used *only* to verify symbol record types so that current PDB code can potentially read
 	                                        // future PDBs (assuming no format change, etc).
+}
 
+// struct UDTSYM
+// S_UDT, S_COBOLUDT
+align(1) struct UdtSym {
+	TypeIndex type;
+	// next follows zero-terminated string (name)
+}
+
+// struct INLINESITESYM
+// S_INLINESITE
+align(1) struct InlineSiteSym {
+	uint parent; // pointer to the inliner
+	uint end;    // pointer to this block's end of S_INLINESITE_END kind
+	TypeIndex inlinee;
+	// next follows an array of compressed binary annotations
 }
 
 // S_PUB32
@@ -225,7 +245,7 @@ align(2) struct PublicSym32
 	PublicSymFlags flags;
 	uint offset;
 	ushort segment;
-	// next follows zero-terminated string
+	// next follows zero-terminated string (name)
 }
 static assert(PublicSym32.sizeof == 10);
 
@@ -249,10 +269,10 @@ align(2) struct ProcRefSym
 static assert(ProcRefSym.sizeof == 10);
 
 // struct PROCSYM32
-// S_GPROC32, S_LPROC32, S_GPROC32_ID, S_LPROC32_ID, S_LPROC32_DPC or S_LPROC32_DPC_ID
+// S_GPROC32, S_LPROC32, S_GPROC32_ID, S_LPROC32_ID, S_LPROC32_DPC, S_LPROC32_DPC_ID
 align(1) struct ProcSym {
 	uint parent;         // pointer to the parent
-	uint end;            // pointer to this blocks end
+	uint end;            // pointer to this blocks end (S_END)
 	uint next;           // pointer to next symbol
 	uint length;         // Proc length
 	uint dbgStart;       // Debug start offset
@@ -284,6 +304,73 @@ align(1) struct RegRelativeSym {
 	// next follows zero-terminated string (name)
 }
 
+// S_LDATA32, S_GDATA32, S_LMANDATA, S_GMANDATA
+align(1) struct DataSym {
+	TypeIndex type;
+	uint dataOffset;
+	ushort segment;
+	// next follows zero-terminated string (name)
+}
+
+// S_LTHREAD32, S_GTHREAD32
+align(1) struct ThreadDataSym {
+	TypeIndex type;
+	uint dataOffset;
+	ushort segment;
+	// next follows zero-terminated string (name)
+}
+
+// struct FRAMEPROCSYM
+// S_FRAMEPROC
+align(1) struct FrameProcSym {
+	uint totalFrameBytes;
+	uint paddingFrameBytes;
+	uint offsetToPadding;
+	uint bytesOfCalleeSavedRegisters;
+	uint offsetOfExceptionHandler;
+	ushort sectionIdOfExceptionHandler;
+
+	mixin(bitfields!(
+		bool,  "hasAlloca",                        1, // function uses _alloca()
+		bool,  "hasSetJmp",                        1, // function uses setjmp()
+		bool,  "hasLongJmp",                       1, // function uses longjmp()
+		bool,  "hasInlineAssembly",                1, // function uses inline asm
+		bool,  "hasExceptionHandling",             1, // function has EH states
+		bool,  "markedInline",                     1, // function was speced as inline
+		bool,  "hasStructuredExceptionHandling",   1, // function has SEH
+		bool,  "naked",                            1, // function is __declspec(naked)
+		bool,  "securityChecks",                   1, // function has buffer security check introduced by /GS.
+		bool,  "asynchronousExceptionHandling",    1, // function compiled with /EHa
+		bool,  "noStackOrderingForSecurityChecks", 1, // function has /GS buffer checks, but stack ordering couldn't be done
+		bool,  "inlined",                          1, // function was inlined within another function
+		bool,  "strictSecurityChecks",             1, // function is __declspec(strict_gs_check)
+		bool,  "safeBuffers",                      1, // function is __declspec(safebuffers)
+		uint,  "encodedLocalBasePointer",          2, // record function's local pointer explicitly.
+		uint,  "encodedParamBasePointer",          2, // record function's parameter pointer explicitly.
+		bool,  "profileGuidedOptimization",        1, // function was compiled with PGO/PGU
+		bool,  "validProfileCounts",               1, // Do we have valid Pogo counts?
+		bool,  "optimizedForSpeed",                1, // Did we optimize for speed?
+		bool,  "guardCfg",                         1, // function contains CFG checks (and no write checks)
+		bool,  "guardCfw",                         1, // function contains CFW checks and/or instrumentation
+
+		uint,  "pad",                              9,
+	));
+};
+
+// struct THUNKSYM32
+// S_THUNK32
+struct ThunkSym {
+	uint parent; // pointer to the parent
+	uint end;    // pointer to this blocks end
+	uint next;   // pointer to next symbol
+	uint offset;
+	ushort segment;
+	ushort length;
+	ThunkOrdinal type;
+	// next follows zero-terminated string (name)
+	// next follows variant portion of thunk (ubyte[])
+}
+
 // struct TRAMPOLINESYM
 // S_TRAMPOLINE
 align(1) struct TrampolineSym {
@@ -294,6 +381,25 @@ align(1) struct TrampolineSym {
 	ushort thunkSection;  // section index of the thunk
 	ushort targetSection; // section index of the target of the thunk
 }
+
+// struct CFLAGSYM
+// S_COMPILE
+align(1) struct CompileSym {
+	align(1):
+	ubyte machine; // target processor CV_CPUType
+	mixin(bitfields!(
+		CV_SourceLanguage, "sourceLanguage", 8, // language index
+		bool,   "pcode",       1, // true if pcode present
+		ubyte,  "floatprec",   2, // floating precision
+		ubyte,  "floatpkg",    2, // float package
+		ubyte,  "ambdata",     3, // ambient data model
+		ubyte,  "ambcode",     3, // ambient code model
+		bool,   "mode32",      1, // true if compiled 32 bit mode
+		ubyte,  "pad",         12, // reserved
+	));
+	// next follows compiler version string
+}
+static assert(CompileSym.sizeof == 5);
 
 // struct COMPILESYM3
 // S_COMPILE3
@@ -314,16 +420,16 @@ align(1) struct CompileSym3 {
 		bool,  "Exp",             1, // .exp module
 		uint,  "padding",        12, // padding
 	));
-    CV_CPUType machine;    // Target processor
-    ushort verFEMajor; // Front end major version #
-    ushort verFEMinor; // Front end minor version #
-    ushort verFEBuild; // Front end build version #
-    ushort verFEQFE;   // Front end QFE version #
-    ushort verMajor;   // Back end major version #
-    ushort verMinor;   // Back end minor version #
-    ushort verBuild;   // Back end build version #
-    ushort verQFE;     // Back end QFE version #
-	// next follows zero-terminated string, Version string
+	CV_CPUType machine;    // Target processor
+	ushort verFEMajor; // Front end major version #
+	ushort verFEMinor; // Front end minor version #
+	ushort verFEBuild; // Front end build version #
+	ushort verFEQFE;   // Front end QFE version #
+	ushort verMajor;   // Back end major version #
+	ushort verMinor;   // Back end minor version #
+	ushort verBuild;   // Back end build version #
+	ushort verQFE;     // Back end QFE version #
+	// next follows Version string
 }
 
 // struct ENVBLOCKSYM
@@ -366,6 +472,17 @@ enum LocalSymFlags : ushort {
 	isEnregisteredStatic = 1 << 10,
 }
 
+// struct BLOCKSYM32
+// S_BLOCK32
+align(1) struct BlockSym {
+	uint parent;     // pointer to the parent
+	uint end;        // pointer to this blocks end (S_END)
+	uint codeSize;   // Block length
+	uint codeOffset; // Offset in code segment
+	ushort codeSegment;  // segment of block
+	// next follows string (name)
+}
+
 // struct OBJNAMESYM
 // S_OBJNAME
 align(1) struct ObjNameSym {
@@ -377,12 +494,12 @@ align(1) struct ObjNameSym {
 // S_SECTION
 align(1) struct SectionSym
 {
-    ushort section;   // Section number
-    ubyte  alignmentPower; // Alignment of this section == (1 << alignmentPower)
-    ubyte  reserved;  // Reserved.  Must be zero.
-    uint   rva;
-    uint   length;
-    uint   characteristics;
+	ushort section;   // Section number
+	ubyte  alignmentPower; // Alignment of this section == (1 << alignmentPower)
+	ubyte  reserved;  // Reserved.  Must be zero.
+	uint   rva;
+	uint   length;
+	uint   characteristics;
 	// next follows zero-terminated string (name)
 }
 
@@ -396,26 +513,92 @@ align(1) struct CoffGroupSym {
 	// next follows zero-terminated string (name)
 }
 
+// struct CV_LVAR_ADDR_RANGE
+// represents an address range, used for optimized code debug info
+struct LocalVariableAddrRange {
+	uint offsetStart;
+	ushort iSectStart;
+	ushort range;
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		sink.formattedWrite("[%04X:%08X] - [%04X:%08X]",
+			iSectStart, offsetStart, iSectStart, offsetStart+range);
+	}
+}
+
+// struct CV_LVAR_ADDR_GAP
+struct LocalVariableAddrGap {
+	ushort startOffset; // relative offset from the beginning of the live range.
+	ushort length; // length of this gap.
+}
+
+// struct DEFRANGESYMREGISTER
+// S_DEFRANGE_REGISTER
+struct DefRangeRegisterSym {
+	RegisterId register; // Register to hold the value of the symbol
+	ushort mayHaveNoName; // May have no user name on one of control flow path.
+	LocalVariableAddrRange range; // Range of addresses where this program is valid
+	// The value is not available in following gaps.
+	// LocalVariableAddrGap[] gaps; follows
+}
+
+// struct DEFRANGESYMSUBFIELDREGISTER
+// S_DEFRANGE_SUBFIELD_REGISTER
+struct DefRangeSubfieldRegisterSym {
+	RegisterId register;
+	ushort mayHaveNoName; // May have no user name on one of control flow path.
+	uint offsetInParent;
+	LocalVariableAddrRange range;
+	// LocalVariableAddrGap[] gaps; follows
+}
+
 // struct DEFRANGESYMREGISTERREL
 // S_DEFRANGE_REGISTER_REL
-align(1) struct DefRangeRegisterRelSym
-{
+align(1) struct DefRangeRegisterRelSym {
 	ushort baseReg;                    // Register to hold the base pointer of the symbol
 	mixin(bitfields!(
 		bool,  "spilledUdtMember",  1, // Spilled member for s.i.
 		ubyte, "",                  3,
 		ubyte, "offsetInParent",   12, // Offset in parent variable.
 	));
-    int basePointerOffset;             // offset to register
+	int basePointerOffset;             // offset to register
 
-    LocalVariableAddrRange range;      // Range of addresses where this program is valid
+	LocalVariableAddrRange range;      // Range of addresses where this program is valid
 }
 
-// CV_LVAR_ADDR_RANGE
-// represents an address range, used for optimized code debug info
-struct LocalVariableAddrRange
-{
-	uint offsetStart;
-	ushort isectStart;
-	ushort range;
+// struct DEFRANGESYM
+// S_DEFRANGE_FRAMEPOINTER_REL_FULL_SCOPE
+struct DefRangeFramePointerRelFullScopeSym { // A frame variable valid in all function scope
+	int offFramePointer;  // offset to frame pointer
 }
+
+// struct DEFRANGESYM
+// S_DEFRANGE_FRAMEPOINTER_REL
+struct DefRangeFramePointerRelSym { // A live range of frame variable
+	int offFramePointer;  // offset to frame pointer
+	LocalVariableAddrRange range; // Range of addresses where this program is valid
+	// The value is not available in following gaps.
+	// LocalVariableAddrGap[] follows
+}
+
+
+// struct FUNCTIONLIST
+// S_CALLERS, S_CALLEES, S_INLINEES
+struct FunctionListSym {
+	uint numFuncs; // Number of functions
+	// TypeIndex[numFuncs] funcs;
+	// uint[] numInvocations; numInvocations.length may be < numFuncs.
+	// For all (i >= numInvocations.length && i < numFuncs), numInvocations[i] == 0
+}
+
+// S_CONSTANT, S_MANCONSTANT
+align(2) struct ConstSym {
+	TypeIndex type; // Type index (containing enum if enumerate) or metadata token
+	ushort value; // numeric leaf containing value (if less than LF_NUMERIC) or CV_TYPE otherwise
+	// followed by payload, depending on `value` content
+	// followed by zero-terminated string (name)
+}
+static assert(ConstSym.sizeof == 6);
+
+
+// S_UNAMESPACE

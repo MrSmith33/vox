@@ -36,10 +36,11 @@ struct ArrayArena
 	private size_t[NUM_ARENAS] arenaLengths;
 	private FreeList[NUM_ARENAS] freeLists;
 
-	void setBuffer(ubyte[] reservedBuffer) {
-		size_t sizePerArena = reservedBuffer.length / NUM_ARENAS;
-		foreach(i, ref arena; arenas)
-			arena.setBuffer(reservedBuffer[i*sizePerArena..(i+1)*sizePerArena], 0);
+	void setBuffers(ubyte[] smallBuffers, ubyte[] pageBuffer) {
+		size_t sizePerArena = smallBuffers.length / NUM_ARENAS;
+		foreach(i, ref arena; arenas[0..$-1])
+			arena.setBuffer(smallBuffers[i*sizePerArena..(i+1)*sizePerArena], 0);
+		arenas[$-1].setBuffer(pageBuffer, 0); // separate buffer for big pages
 	}
 
 	size_t byteLength() {
