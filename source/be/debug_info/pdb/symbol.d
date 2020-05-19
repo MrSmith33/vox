@@ -599,6 +599,3 @@ align(2) struct ConstSym {
 	// followed by zero-terminated string (name)
 }
 static assert(ConstSym.sizeof == 6);
-
-
-// S_UNAMESPACE

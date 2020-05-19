@@ -111,7 +111,7 @@ int runCli(string[] args)
 
 	if (printHelp)
 	{
-		writeln("Usage: tiny_jit [tool] [options]... [source|.dll|.har]...");
+		writeln("Usage: tjc [tool] [options]... [source|.dll|.har]...");
 		writeln("   Tools: pdb_dump");
 
 		size_t maxShortLength;

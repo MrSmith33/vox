@@ -185,7 +185,15 @@ o dll linking
 x globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
 
 
+[Optimization]
+- Inlining
+	+ IR inliner is done
+	- Deciding when to inline is not implemented
+- DCE exhibits O(n^2) behavior, because for each removed instruction (O(n)), we remove user from the vreg user list (O(n)).
+
+
 [IR]
+- Consider storing vreg users in hash map instead of array.
 - Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
 - IrBuilder must prevent adding instructions from wrong instruction set
 - inline instructions in IR for representing memory operands in x86 LIR

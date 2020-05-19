@@ -7,6 +7,14 @@
 /// MSF docs http://llvm.org/docs/PDB/MsfFile.html
 /// CodeView http://pierrelib.pagesperso-orange.fr/exec_formats/MS_Symbol_Type_v1.0.pdf
 /// https://github.com/mountainstorm/pdbfile
+
+/// todo:
+///   - S_UNAMESPACE
+///   - S_CALLSITEINFO
+///   - S_LABEL32
+///   - S_FRAMECOOKIE
+///   - S_INLINESITE payload
+///   - C13 DEBUG SUBSECTIONS: fileChecksums, line numbers
 module be.debug_info.pdb;
 
 public import be.debug_info.pdb.symbol;
@@ -749,9 +757,18 @@ struct PdbReader
 
 	void parseSymbols(ref StreamReader stream)
 	{
+		char[] indentation;
 		int indentLevel = 0;
-		void ind() { // prints indentation
-			write(' '.repeat(indentLevel * 2));
+		void ind(char[] i = indentation) { // prints indentation
+			write(i);
+		}
+		void indPush() {
+			++indentLevel;
+			indentation ~= "| ";
+		}
+		void indPop() {
+			--indentLevel;
+			indentation = indentation[0..$-2];
 		}
 		writefln("--- SYMBOLS %s bytes ---", stream.remainingBytes);
 		while(stream.remainingBytes)
@@ -761,24 +778,25 @@ struct PdbReader
 			auto end = start + len + 2;
 			SymbolKind kind = stream.read!SymbolKind;
 
-			ind; writef("(%06X) %s", start, kind);
-
 			switch(kind)
 			{
 				case SymbolKind.S_UDT:
 					auto udtsym = stream.read!UdtSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": Type %s, %s", udtsym.type, name);
+					ind; writefln("(%06X) %s: Type %s, %s", start, kind, udtsym.type, name);
 					break;
 
 				case SymbolKind.S_PUB32:
 					auto pubsym = stream.read!PublicSym32;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": [%04X:%08X] Flags %04b, %s", pubsym.segment, pubsym.offset, pubsym.flags, name);
+					ind; writefln("(%06X) %s: [%04X:%08X] Flags %04b, %s", start, kind, pubsym.segment, pubsym.offset, pubsym.flags, name);
 					break;
 
+				// Those start a new level of indentation
+				// then follow arguments terminated with S_ENDARG
+				// then other data terminated with S_END
 				case SymbolKind.S_GPROC32:
 				case SymbolKind.S_LPROC32:
 				case SymbolKind.S_GPROC32_ID:
@@ -788,17 +806,16 @@ struct PdbReader
 					auto procsym = stream.read!ProcSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": [%04X:%08X] Flags %08b, %s", procsym.segment, procsym.offset, procsym.flags, name);
-					ind; writefln("         Parent %06X End %06X Next %06X", procsym.parent, procsym.end, procsym.next);
-					ind; writefln("         Length %s, Dbg Start %08X, Dbg End %08X, Type %s",
+					ind; writefln("(%06X) %s: [%04X:%08X] Flags %08b, %s", start, kind, procsym.segment, procsym.offset, procsym.flags, name);
+					ind; writefln("|        Parent %06X End %06X Next %06X", procsym.parent, procsym.end, procsym.next);
+					ind; writefln("|        Length %s, Dbg Start %08X, Dbg End %08X, Type %s",
 						procsym.length, procsym.dbgStart, procsym.dbgEnd, procsym.typeIndex);
-					writeln;
-					++indentLevel;
+					indPush;
+					ind; writeln;
 					break;
 
 				case SymbolKind.S_ENDARG:
-					writeln;
-					//--indentLevel;
+					ind(indentation[0..$-2]); writefln("+-(%06X) %s", start, kind);
 					break;
 
 				case SymbolKind.S_REGREL32:
@@ -806,7 +823,7 @@ struct PdbReader
 					auto regRelative = stream.read!RegRelativeSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": %s+%08X, Type %s, %s", regRelative.register, regRelative.offset, regRelative.type, name);
+					ind; writefln("(%06X) %s: %s+%08X, Type %s, %s", start, kind, regRelative.register, regRelative.offset, regRelative.type, name);
 					break;
 
 				case SymbolKind.S_LDATA32:
@@ -817,7 +834,7 @@ struct PdbReader
 					auto dataSym = stream.read!DataSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": [%04X:%08X] Type %s, %s", dataSym.segment, dataSym.dataOffset, dataSym.type, name);
+					ind; writefln("(%06X) %s: [%04X:%08X] Type %s, %s", start, kind, dataSym.segment, dataSym.dataOffset, dataSym.type, name);
 					break;
 
 				case SymbolKind.S_LTHREAD32:
@@ -826,12 +843,12 @@ struct PdbReader
 					auto threadData = stream.read!ThreadDataSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": [%04X:%08X] Type %s, %s", threadData.segment, threadData.dataOffset, threadData.type, name);
+					ind; writefln("(%06X) %s: [%04X:%08X] Type %s, %s", start, kind, threadData.segment, threadData.dataOffset, threadData.type, name);
 					break;
 
 				case SymbolKind.S_BUILDINFO:
 					auto buildInfo = stream.read!BuildInfoSym;
-					writefln(": %s", buildInfo.buildId);
+					ind; writefln("(%06X) %s: %s", start, kind, buildInfo.buildId);
 					break;
 
 				case SymbolKind.S_INLINESITE:
@@ -839,15 +856,15 @@ struct PdbReader
 					//     BinaryAnnotations:    CodeLengthAndCodeOffset 29 20
 					//     BinaryAnnotation Length: 4 bytes (1 bytes padding)
 					auto inlineSite = stream.read!InlineSiteSym;
-					writefln(": Parent %06X, End %06X, Inlinee %s", inlineSite.parent, inlineSite.end, inlineSite.inlinee);
-					printHex(stream.readArray!ubyte(end - stream.streamCursor), 16, PrintAscii.yes, 9 + indentLevel * 2);
-					++indentLevel;
+					ind; writefln("(%06X) %s: Parent %06X, End %06X, Inlinee %s", start, kind, inlineSite.parent, inlineSite.end, inlineSite.inlinee);
+					indPush;
+					printHex(stream.readArray!ubyte(end - stream.streamCursor), 16, PrintAscii.yes, indentation, 9);
 					break;
 
 				case SymbolKind.S_CONSTANT:
 				case SymbolKind.S_MANCONSTANT:
 					auto con = stream.read!ConstSym;
-					writef(": Type: %s, Value: ", con.type);
+					ind; writef("(%06X) %s: Type: %s, Value: ", start, kind, con.type);
 					void printNum()
 					{
 						if (con.value < CV_TYPE.LF_NUMERIC)
@@ -941,7 +958,7 @@ struct PdbReader
 					auto localsym = stream.read!LocalSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": Type: %s, Flags: %s, %s", localsym.typeIndex, localsym.flags, name);
+					ind; writefln("(%06X) %s: Type: %s, Flags: %s, %s", start, kind, localsym.typeIndex, localsym.flags, name);
 					break;
 
 				case SymbolKind.S_FRAMEPROC:
@@ -953,13 +970,13 @@ struct PdbReader
 					//           Address of exception handler = 0000:00000000
 					//           Function info: invalid_pgo_counts opt_for_speed Local=rsp Param=rsp (0x00114000)
 					auto frameProc = stream.read!FrameProcSym;
-					writefln(":");
-					writefln("         Frame size = 0x%08X bytes", frameProc.totalFrameBytes);
-					writefln("         Pad size = 0x%08X bytes", frameProc.paddingFrameBytes);
-					writefln("         Offset of pad in frame = 0x%08X", frameProc.offsetToPadding);
-					writefln("         Size of callee save registers = 0x%08X", frameProc.bytesOfCalleeSavedRegisters);
-					writefln("         Address of exception handler = %04X:%08X", frameProc.sectionIdOfExceptionHandler, frameProc.offsetOfExceptionHandler);
-					write("         Function info:");
+					ind; writefln("(%06X) %s:", start, kind);
+					ind; writefln("         Frame size = 0x%08X bytes", frameProc.totalFrameBytes);
+					ind; writefln("         Pad size = 0x%08X bytes", frameProc.paddingFrameBytes);
+					ind; writefln("         Offset of pad in frame = 0x%08X", frameProc.offsetToPadding);
+					ind; writefln("         Size of callee save registers = 0x%08X", frameProc.bytesOfCalleeSavedRegisters);
+					ind; writefln("         Address of exception handler = %04X:%08X", frameProc.sectionIdOfExceptionHandler, frameProc.offsetOfExceptionHandler);
+					ind; write("         Function info:");
 					if (frameProc.hasAlloca) write(" alloca");
 					if (frameProc.hasSetJmp) write(" setjmp");
 					if (frameProc.hasLongJmp) write(" longjmp");
@@ -989,10 +1006,10 @@ struct PdbReader
 					//          Thunk address: [0001:00000005]
 					//          Thunk target:  [0001:00000010]
 					auto trampSym = stream.read!TrampolineSym;
-					writefln(": Subtype %s, Code size %s bytes", trampSym.type, trampSym.size);
+					ind; writefln("(%06X) %s: Subtype %s, Code size %s bytes", start, kind, trampSym.type, trampSym.size);
 					ind; writefln("         Thunk address [%04X:%08X]", trampSym.thunkSection, trampSym.thunkOffset);
 					ind; writefln("         Thunk target  [%04X:%08X]", trampSym.targetSection, trampSym.targetOffset);
-					writeln;
+					ind; writeln;
 					break;
 
 				case SymbolKind.S_THUNK32:
@@ -1002,16 +1019,16 @@ struct PdbReader
 					string name = stream.readZString;
 					visitString(name);
 					//ubyte[] variantData = stream.readArrayBefore!ubyte(end);
-					writefln(": [%04X:%08X] Length %08X, Type %s, %s", thunk.segment, thunk.offset, thunk.length, thunk.type, name);
-					ind; writefln("         Parent %06X, End %06X, Next %06X", thunk.parent, thunk.end, thunk.next);
-					//writefln("    variant data: %(%02x %)", variantData);
-					++indentLevel;
+					ind; writefln("(%06X) %s: [%04X:%08X] Length %08X, Type %s, %s", start, kind, thunk.segment, thunk.offset, thunk.length, thunk.type, name);
+					ind; writefln("|        Parent %06X, End %06X, Next %06X", thunk.parent, thunk.end, thunk.next);
+					//ind; writefln("    variant data: %(%02x %)", variantData);
+					indPush;
 					break;
 
 				case SymbolKind.S_COMPILE:
 					auto compilesym = stream.read!CompileSym;
 					string verstring = stream.readNameBefore(end);
-					writefln(":");
+					ind; writefln("(%06X) %s:", start, kind);
 					ind; writefln("         Language: %s", compilesym.sourceLanguage);
 					ind; writefln("         Target processor: %s", cast(CV_CPUType)compilesym.machine);
 					ind; writefln("         Floating-point precision: %s", compilesym.floatprec);
@@ -1026,13 +1043,13 @@ struct PdbReader
 						ind; writefln("         pad: 0x%03X", compilesym.pad);
 					}
 					ind; writefln("         Compiler Version: %s", verstring);
-					writeln;
+					ind; writeln;
 					break;
 
 				case SymbolKind.S_COMPILE3:
 					auto compilesym = stream.read!CompileSym3;
 					string verstring = stream.readNameBefore(end);
-					writefln(":");
+					ind; writefln("(%06X) %s:", start, kind);
 					ind; writefln("         Language: %s", compilesym.sourceLanguage);
 					ind; writefln("         Target processor: %s", compilesym.machine);
 					ind; writefln("         Compiled for edit and continue: %s", compilesym.EC);
@@ -1053,7 +1070,7 @@ struct PdbReader
 					ind; writefln("         Backend Version: Major = %s, Minor = %s, Build = %s, QFE = %s",
 						compilesym.verMajor, compilesym.verMinor, compilesym.verBuild, compilesym.verQFE);
 					ind; writefln("         Version string: %s", verstring);
-					writeln;
+					ind; writeln;
 					break;
 
 				case SymbolKind.S_BLOCK32:
@@ -1062,10 +1079,11 @@ struct PdbReader
 					auto blockSym = stream.read!BlockSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": [%04X:%08X] Code size %08X bytes, %s", blockSym.codeSegment, blockSym.codeOffset, blockSym.codeSize, name);
-					ind; writefln("         Parent %06X, End %06X", blockSym.parent, blockSym.end);
+					ind; writefln("(%06X) %s: [%04X:%08X] Code size %08X bytes, %s",
+						start, kind, blockSym.codeSegment, blockSym.codeOffset, blockSym.codeSize, name);
+					ind; writefln("|        Parent %06X, End %06X", blockSym.parent, blockSym.end);
 					assert(len == 22);
-					++indentLevel;
+					indPush;
 					break;
 
 				case SymbolKind.S_OBJNAME:
@@ -1073,13 +1091,13 @@ struct PdbReader
 					auto objname = stream.read!ObjNameSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": Signature %08X, %s", objname.signature, name);
-					writeln;
+					ind; writefln("(%06X) %s: Signature %08X, %s", start, kind, objname.signature, name);
+					ind; writeln;
 					break;
 
 				case SymbolKind.S_ENVBLOCK:
 					auto env = stream.read!EnvBlockSym;
-					writefln(":");
+					ind; writefln("(%06X) %s:", start, kind);
 					ind; writefln("         Compiled for edit and continue: %s", env.EC);
 					ind; writefln("         Command block:");
 
@@ -1092,7 +1110,7 @@ struct PdbReader
 						string cmd = stream.readZString;
 						ind; writefln("         %s = '%s'", cmdName, cmd);
 					}
-					writeln;
+					ind; writeln;
 					break;
 
 				case SymbolKind.S_SECTION:
@@ -1100,7 +1118,7 @@ struct PdbReader
 					auto sectionsym = stream.read!SectionSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": [%04X] RVA %08X, %08X bytes, Align %08X, Char %08X, %s",
+					ind; writefln("(%06X) %s: [%04X] RVA %08X, %08X bytes, Align %08X, Char %08X, %s", start, kind,
 						sectionsym.section, sectionsym.rva, sectionsym.length,
 						1 << sectionsym.alignmentPower, sectionsym.characteristics, name);
 					break;
@@ -1110,7 +1128,7 @@ struct PdbReader
 					auto coffGroupSym = stream.read!CoffGroupSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": [%04X:%08X] %08X bytes, Char %08X, %s",
+					ind; writefln("(%06X) %s: [%04X:%08X] %08X bytes, Char %08X, %s", start, kind,
 						coffGroupSym.symbolSegment, coffGroupSym.symbolOffset,
 						coffGroupSym.length, coffGroupSym.characteristics, name);
 					break;
@@ -1120,7 +1138,7 @@ struct PdbReader
 					//     Range: [0001:004A706C] - [0001:004A708C], 0 Gaps
 					auto reg = stream.read!DefRangeRegisterSym;
 					auto gaps = stream.readArrayBefore!LocalVariableAddrGap(end);
-					writefln(": %s", reg.register);
+					ind; writefln("(%06X) %s: %s", start, kind, reg.register);
 					ind; writef("         Range %s, %s Gaps", reg.range, gaps.length);
 					if (gaps.length) write(" (Start offset, Length):");
 					foreach(gap; gaps) writef(" (%04X, %02X)", gap.startOffset, gap.length);
@@ -1130,7 +1148,7 @@ struct PdbReader
 				case SymbolKind.S_DEFRANGE_SUBFIELD_REGISTER:
 					auto reg = stream.read!DefRangeSubfieldRegisterSym;
 					auto gaps = stream.readArrayBefore!LocalVariableAddrGap(end);
-					writefln(": offset at %04X: %s", reg.offsetInParent, reg.register);
+					ind; writefln("(%06X) %s: offset at %04X: %s", start, kind, reg.offsetInParent, reg.register);
 					ind; writef("         Range %s, %s Gaps", reg.range, gaps.length);
 					if (gaps.length) write(" (Start offset, Length):");
 					foreach(gap; gaps) writef(" (%04X, %02X)", gap.startOffset, gap.length);
@@ -1139,7 +1157,7 @@ struct PdbReader
 
 				case SymbolKind.S_DEFRANGE_REGISTER_REL:
 					auto reg = stream.read!DefRangeRegisterRelSym;
-					writefln(": Base reg %s, UDT %s, Offset in parent %s, Base ptr offset %s",
+					ind; writefln("(%06X) %s: Base reg %s, UDT %s, Offset in parent %s, Base ptr offset %s", start, kind,
 						reg.baseReg, reg.spilledUdtMember, reg.offsetInParent,
 						reg.basePointerOffset);
 					ind; writefln("         Range: %s", reg.range);
@@ -1148,7 +1166,7 @@ struct PdbReader
 				case SymbolKind.S_DEFRANGE_FRAMEPOINTER_REL:
 					auto reg = stream.read!DefRangeFramePointerRelSym;
 					auto gaps = stream.readArrayBefore!LocalVariableAddrGap(end);
-					writefln(": FrameOffset: %04X ", reg.offFramePointer);
+					ind; writefln("(%06X) %s: FrameOffset: %04X ", start, kind, reg.offFramePointer);
 					ind; writef("         Range: %s, %s Gaps", reg.range, gaps.length);
 					if (gaps.length) write(" (Start offset, Length):");
 					foreach(gap; gaps) writef(" (%04X, %02X)", gap.startOffset, gap.length);
@@ -1157,7 +1175,7 @@ struct PdbReader
 
 				case SymbolKind.S_DEFRANGE_FRAMEPOINTER_REL_FULL_SCOPE:
 					auto reg = stream.read!DefRangeFramePointerRelFullScopeSym;
-					writefln(": FrameOffset: %04X", reg.offFramePointer);
+					ind; writefln("(%06X) %s: FrameOffset: %04X", start, kind, reg.offFramePointer);
 					break;
 
 				case SymbolKind.S_PROCREF:
@@ -1165,7 +1183,7 @@ struct PdbReader
 					auto procref = stream.read!ProcRefSym;
 					string name = stream.readNameBefore(end);
 					visitString(name);
-					writefln(": [%04X:%08X] Sum name %s, %s", procref.mod,
+					ind; writefln("(%06X) %s: [%04X:%08X] Sum name %s, %s", start, kind, procref.mod,
 						procref.symOffset, procref.sumName, name);
 					break;
 
@@ -1175,7 +1193,7 @@ struct PdbReader
 					auto funclist = stream.read!FunctionListSym;
 					TypeIndex[] funcs = stream.readArray!TypeIndex(funclist.numFuncs);
 					uint[] numInvocationsPerFunc = stream.readArrayBefore!uint(end);
-					writefln(": count %s", funclist.numFuncs);
+					ind; writefln("(%06X) %s: count %s", start, kind, funclist.numFuncs);
 					foreach(i, func; funcs) {
 						uint numInvocations = 0;
 						if (i < numInvocationsPerFunc.length)
@@ -1184,25 +1202,23 @@ struct PdbReader
 					}
 					break;
 
+				// terminates S_*PROC*, S_THUNK32, S_BLOCK32
 				case SymbolKind.S_END:
-					enforce(indentLevel > 0, "S_INLINESITE_END found when depth is 0");
-					--indentLevel;
-					writeln;
-					if (indentLevel == 0) writeln;
-					break;
-
+				// terminates S_INLINESITE
 				case SymbolKind.S_INLINESITE_END:
-					enforce(indentLevel > 0, "S_INLINESITE_END found when depth is 0");
-					--indentLevel;
-					writeln;
-					if (indentLevel == 0) writeln;
+					enforce(indentLevel > 0, format("%s found when depth is 0", kind));
+					indPop;
+					ind; writefln("`-(%06X) %s", start, kind);
+					if (indentLevel == 0) {
+						ind; writeln;
+					}
 					break;
 
 				default:
 					string stringBuf2 = new char[len - 2];
 					stream.readIntoArray(cast(char[])stringBuf2);
-					writefln(": UNKNOWN `%s`", stringBuf2);
-					printHex(cast(ubyte[])stringBuf2, 16, PrintAscii.yes, 9 + indentLevel * 2);
+					ind; writefln("(%06X) %s: UNKNOWN `%s`", start, kind, stringBuf2);
+					printHex(cast(ubyte[])stringBuf2, 16, PrintAscii.yes, indentation, 9);
 			}
 
 			auto padding = end - stream.streamCursor;

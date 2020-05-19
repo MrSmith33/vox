@@ -40,7 +40,8 @@ string[] gatherEnumStrings(E)()
 }
 
 enum PrintAscii { no = false, yes = true }
-void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAscii.no, uint indentation = 0)
+// prints indentStr, then indentation number of spaces, then data.
+void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAscii.no, const(char)[] indentStr = null, uint indentation = 0)
 {
 	import std.stdio;
 	import std.range : repeat;
@@ -55,6 +56,7 @@ void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAs
 
 	if (lineLength) {
 		while (index + lineLength <= buffer.length) {
+			write(indentStr);
 			write(' '.repeat(indentation));
 			writef("%(%02X %)", buffer[index..index+lineLength]);
 			if (printAscii) {
@@ -68,6 +70,7 @@ void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAs
 
 	if (index < buffer.length)
 	{
+		write(indentStr);
 		write(' '.repeat(indentation));
 		writef("%(%02X %)", buffer[index..buffer.length]);
 		if (printAscii) {
