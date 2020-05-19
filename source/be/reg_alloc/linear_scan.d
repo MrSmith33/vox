@@ -305,10 +305,6 @@ struct LinearScan
 			lir = null;
 		}
 
-		int cmp(IntervalIndex a, IntervalIndex b) {
-			return live.intervals[a].from > live.intervals[b].from;
-		}
-
 		// active = { }; inactive = { }; handled = { }
 		activeVirtual.clear;
 		activeFixed.clear;
@@ -317,13 +313,18 @@ struct LinearScan
 		pendingMoveSplits.clear;
 		unhandled.clear;
 
-		foreach (ref LiveInterval it; live.virtualIntervals)
+		size_t i = 0;
+		foreach (ref LiveInterval it; live.virtualIntervals) {
 			if (!it.ranges.empty)
-				unhandled.insert(context.arrayArena, live.indexOf(&it), it.from);
-
-		foreach (ref LiveInterval it; live.physicalIntervals)
+				unhandled.insert(context.arrayArena, live.vindex(i), it.from);
+			++i;
+		}
+		i = 0;
+		foreach (ref LiveInterval it; live.physicalIntervals) {
 			if (!it.ranges.empty)
-				inactiveFixed.put(context.arrayArena, live.indexOf(&it));
+				inactiveFixed.put(context.arrayArena, live.pindex(i));
+			++i;
+		}
 
 		IrIndex currentBlock = lir.entryBasicBlock;
 
@@ -1239,7 +1240,7 @@ struct IntervalPriorityQueue
 	{
 		if (from >= maxFrom)
 		{
-			// fast path for append (happens most of the time
+			// fast path for append (happens most of the time)
 			queue.put(arrayArena, IntervalPriority(from, interval));
 			maxFrom = from;
 		}
@@ -1277,4 +1278,5 @@ struct IntervalPriorityQueue
 	}
 
 	bool empty() { return numRemoved == queue.length; }
+	uint length() { return queue.length - numRemoved; }
 }

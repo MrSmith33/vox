@@ -230,7 +230,7 @@ struct IntervalIndex
 	this(size_t idx) { index = cast(uint)idx; }
 	uint index = uint.max;
 	alias index this;
-	enum NULL = IntervalIndex();
+	enum NULL = IntervalIndex(uint.max);
 	bool isNull() { return index == uint.max; }
 	void toString(scope void delegate(const(char)[]) sink) {
 		import std.format : formattedWrite;

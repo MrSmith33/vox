@@ -433,7 +433,7 @@ void removeUser(CompilationContext* context, IrFunction* ir, IrIndex user, IrInd
 		case phi: assert(false, "removeUser phi"); // must be virt reg instead
 		case stackSlot: break; // allowed, noop
 		case virtualRegister:
-			ir.getVirtReg(used).users.removeStable(ir, user);
+			ir.getVirtReg(used).users.removeUnstable(ir, user);
 			break;
 		case physicalRegister: break; // allowed, noop
 		case type: break; // no user tracking

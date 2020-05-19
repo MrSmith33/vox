@@ -181,7 +181,6 @@ immutable void function(CompilationContext*, IrFunction*, IrIndex, ref IrInstrHe
 ];
 
 // TODO: check all instructions
-// only checks create_aggregate for now
 void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrIndex, ref IrInstrHeader instrHeader)
 {
 	switch(instrHeader.op)

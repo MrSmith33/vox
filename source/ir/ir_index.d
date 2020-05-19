@@ -183,7 +183,7 @@ struct IrIndex
 		return copy;
 	}
 
-	IrIndex typeZeroConstant() {
+	IrIndex typeOfZeroConstant() {
 		assert(isType);
 		IrIndex copy = this;
 		copy.kind = IrValueKind.constantZero;

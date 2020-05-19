@@ -102,13 +102,19 @@ enum IrInstrFlags : uint {
 	isGeneric = 1 << 16,
 }
 
+// shortcut
 alias IFLG = IrInstrFlags;
 
 enum getInstrInfo(alias T) = getUDAs!(T, InstrInfo)[0];
 enum getIrValueKind(T) = getUDAs!(T, IrValueKind)[0];
 
+// InstrInfo array gathered from IrOpcode enum
 immutable InstrInfo[] irInstrInfos = gatherInstrInfos!IrOpcode;
+
+// shortcut
 private alias _ii = InstrInfo;
+
+/// List of machine-independent opcodes
 enum IrOpcode : ushort
 {
 	// used as placeholder inside generic instructions. Must not remain in IR.

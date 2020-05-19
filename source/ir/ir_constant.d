@@ -99,10 +99,10 @@ struct IrConstantStorage
 
 		if (value == 0) {
 			final switch(constantSize) with(IrArgSize) {
-				case size8: return makeBasicTypeIndex(IrValueType.i8).typeZeroConstant;
-				case size16: return makeBasicTypeIndex(IrValueType.i16).typeZeroConstant;
-				case size32: return makeBasicTypeIndex(IrValueType.i32).typeZeroConstant;
-				case size64: return makeBasicTypeIndex(IrValueType.i64).typeZeroConstant;
+				case size8: return makeBasicTypeIndex(IrValueType.i8).typeOfZeroConstant;
+				case size16: return makeBasicTypeIndex(IrValueType.i16).typeOfZeroConstant;
+				case size32: return makeBasicTypeIndex(IrValueType.i32).typeOfZeroConstant;
+				case size64: return makeBasicTypeIndex(IrValueType.i64).typeOfZeroConstant;
 			}
 		}
 

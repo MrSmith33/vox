@@ -19,10 +19,10 @@ struct IrSmallArray
 			// offset into IrFuncStorage.arrayBuffer
 			IrIndex arrayIndex;
 			mixin(bitfields!(
-				// Number of items inside array
-				uint, "arrayLength",   24,
+				// Number of items inside big array
+				uint, "arrayLength",   23,
 				// capacity is bigCapacity
-				uint, "capacityPower",  4,
+				uint, "capacityPower",  5,
 				// 4 bits need to be clear, so IrIndex.kind == IrvalueKind.none
 				// important for automatic index fixing after moving
 				// when switching from built-in items to external array
@@ -125,74 +125,104 @@ struct IrSmallArray
 	}
 
 	/// Removes all occurences of what
+	/// Preserves order of items
 	uint removeStable(IrFunction* ir, IrIndex what)
 	{
 		if (isBig) // external array
 		{
-			uint oldLength = this.length;
 			uint numRemoved = 0;
 			IrIndex* array = ir.getArray(arrayIndex);
 
-			foreach(i, ref IrIndex item; array[0..length])
+			foreach(i, ref IrIndex item; array[0..arrayLength])
 			{
 				if (item == what)
-				{
 					++numRemoved;
-					arrayLength = arrayLength - 1;
-				}
 				else
-				{
 					array[i - numRemoved] = item;
-				}
 			}
-			switch (arrayLength)
-			{
-				case 0:
-					IrIndex arrayIndexCopy = arrayIndex;
-					ir.freeIrArray(arrayIndex, bigCapacity);
-					items[0] = IrIndex();
-					items[1] = IrIndex();
-					break;
-				case 1:
-					IrIndex arrayIndexCopy = arrayIndex;
-					uint _capacity = bigCapacity;
-					items[0] = array[0];
-					items[1] = IrIndex();
-					ir.freeIrArray(arrayIndexCopy, _capacity);
-					break;
-				case 2:
-					IrIndex arrayIndexCopy = arrayIndex;
-					uint _capacity = bigCapacity;
-					items[0] = array[0];
-					items[1] = array[1];
-					ir.freeIrArray(arrayIndexCopy, _capacity);
-					break;
-				default: break;
-			}
+			arrayLength = arrayLength - numRemoved;
+			afterRemoveBig(ir, array); // free array if needed
 			return numRemoved;
 		}
-		else // 0, 1, 2
+		else return removeSmall(ir, what); // 0, 1, 2
+	}
+
+	/// Removes all occurences of what
+	/// Alters order of items
+	uint removeUnstable(IrFunction* ir, IrIndex what)
+	{
+		if (isBig) // external array
 		{
-			// no harm if what or items[0/1] is null here
-			if (items[0] == what) {
-				// remove first item in-place
-				if (items[1] == what) {
-					// and second too
-					items[0] = IrIndex();
-					items[1] = IrIndex();
-					return 2;
-				} else {
-					// only first
-					items[0] = items[1];
-					items[1] = IrIndex();
-					return 1;
+			uint tempLength = arrayLength;
+			IrIndex* array = ir.getArray(arrayIndex);
+
+			uint i = 0;
+			while (i < tempLength)
+			{
+				if (array[i] == what) {
+					--tempLength;
+					array[i] = array[tempLength];
 				}
-			} else if (items[1] == what) {
-				// remove second item in-place
+				else
+					++i;
+			}
+			uint numRemoved = arrayLength - tempLength;
+			arrayLength = tempLength;
+			afterRemoveBig(ir, array); // free array if needed
+			return numRemoved;
+		}
+		else return removeSmall(ir, what); // 0, 1, 2
+	}
+
+	private uint removeSmall(IrFunction* ir, IrIndex what)
+	{
+		// no harm if what or items[0/1] is null here
+		if (items[0] == what) {
+			// remove first item in-place
+			if (items[1] == what) {
+				// and second too
+				items[0] = IrIndex();
+				items[1] = IrIndex();
+				return 2;
+			} else {
+				// only first
+				items[0] = items[1];
 				items[1] = IrIndex();
 				return 1;
 			}
-			return 0;
+		} else if (items[1] == what) {
+			// remove second item in-place
+			items[1] = IrIndex();
+			return 1;
+		}
+		return 0;
+	}
+
+	private void afterRemoveBig(IrFunction* ir, IrIndex* array)
+	{
+		switch (arrayLength)
+		{
+			case 0:
+				IrIndex arrayIndexCopy = arrayIndex;
+				ir.freeIrArray(arrayIndex, bigCapacity);
+				items[0] = IrIndex();
+				items[1] = IrIndex();
+				break;
+			case 1:
+				IrIndex arrayIndexCopy = arrayIndex;
+				uint _capacity = bigCapacity;
+				items[0] = array[0];
+				items[1] = IrIndex();
+				ir.freeIrArray(arrayIndexCopy, _capacity);
+				break;
+			case 2:
+				IrIndex arrayIndexCopy = arrayIndex;
+				uint _capacity = bigCapacity;
+				items[0] = array[0];
+				items[1] = array[1];
+				ir.freeIrArray(arrayIndexCopy, _capacity);
+				break;
+			default: break;
 		}
 	}
 

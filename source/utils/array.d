@@ -312,7 +312,7 @@ struct Array(T)
 			}
 		}
 
-		if (_capacity < NUM_ITEMS_PER_PAGE)
+		if (_capacity <= NUM_ITEMS_PER_PAGE)
 		{
 			foreach (ref T item; externalArray[0.._length])
 				if (int res = dg(item))

@@ -12,6 +12,9 @@ Test[] passingTests() { return collectTests!(tests.passing)(); }
 extern(C) void external_print_i32_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
+extern(C) void external_print_i64_func(long par1) {
+	formattedWrite(testSink, "%s ", par1);
+}
 
 @TestInfo(&tester7)
 immutable test7 = q{--- test7
@@ -3080,5 +3083,21 @@ immutable test130 = q{--- test130
 		if (number < 0) return 0-1;
 		else if (number > 0) return 1;
 		else return 0;
+	}
+};
+
+
+@TestInfo(null, [HostSymbol("log", cast(void*)&external_print_i64_func)])
+immutable test131 = q{--- test131
+	i64 fac(i64 x) {
+		if (x < 2) {
+			return 1;
+		} else {
+			return fac(x - 1) * x;
+		}
+	}
+	void log(i64);
+	void run() {
+		log(fac(5));
 	}
 };

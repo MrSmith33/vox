@@ -64,11 +64,12 @@ struct LivenessInfo
 
 	auto virtualIntervals() { return intervals[numFixedIntervals..$]; }
 	auto physicalIntervals() { return intervals[0..numFixedIntervals]; }
-	auto splitIntervals(IrFunction* ir) { return intervals[numFixedIntervals+ir.numVirtualRegisters..$]; }
 
 	LiveInterval* vint(size_t virtSeqIndex) { return &intervals[numFixedIntervals+virtSeqIndex]; }
 	LiveInterval* vint(IrIndex index) { return &intervals[numFixedIntervals + index.storageUintIndex]; }
 	LiveInterval* pint(IrIndex physReg) { return &intervals[physReg.physRegIndex]; }
+	IntervalIndex vindex(size_t virtSeqIndex) { return IntervalIndex(numFixedIntervals+virtSeqIndex); }
+	IntervalIndex pindex(size_t physSeqIndex) { return IntervalIndex(physSeqIndex); }
 
 	void initStorage(CompilationContext* context, IrFunction* ir) {
 
@@ -144,10 +145,6 @@ struct LivenessInfo
 			uint numUses = vreg.definition.isPhi ? vreg.users.length : vreg.users.length + 1; // with definition
 			it.uses = it.uses.ptr[0..numUses];
 		}
-	}
-
-	IntervalIndex indexOf(LiveInterval* it) {
-		return IntervalIndex(it - &intervals.front());
 	}
 
 	bool isBlockStartAt(IrFunction* ir, uint pos, ref IrIndex next) {

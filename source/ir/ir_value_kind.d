@@ -7,7 +7,7 @@ Authors: Andrey Penechko.
 module ir.ir_value_kind;
 
 /// Describes what IrIndex is pointing at
-/// Is used as UDA on instructions
+/// Is used as UDA on IR entities
 enum IrValueKind : ubyte
 {
 	none, /// Used for undefined indicies

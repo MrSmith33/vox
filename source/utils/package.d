@@ -39,9 +39,10 @@ string[] gatherEnumStrings(E)()
 }
 
 enum PrintAscii { no = false, yes = true }
-void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAscii.no)
+void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAscii.no, uint indentation = 0)
 {
 	import std.stdio;
+	import std.range : repeat;
 
 	size_t index = 0;
 
@@ -53,6 +54,7 @@ void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAs
 
 	if (lineLength) {
 		while (index + lineLength <= buffer.length) {
+			write(' '.repeat(indentation));
 			writef("%(%02X %)", buffer[index..index+lineLength]);
 			if (printAscii) {
 				write(' ');
@@ -65,6 +67,7 @@ void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAs
 
 	if (index < buffer.length)
 	{
+		write(' '.repeat(indentation));
 		writef("%(%02X %)", buffer[index..buffer.length]);
 		if (printAscii) {
 			foreach(_; 0..(index + lineLength - buffer.length)*3 + 1) write(' ');
@@ -153,7 +156,7 @@ struct FileDataSlicer
 	// Returns array of Ts of length 'length' stating from fileCursor offset in fileData
 	T[] getArrayOf(T)(size_t length)
 	{
-		enforce(fileData.length >= fileCursor + T.sizeof * length);
+		enforce(fileData.length >= fileCursor + T.sizeof * length, format("Not enough bytes in the file"));
 		auto res = (cast(T*)(fileData.ptr + fileCursor))[0..length];
 		fileCursor += T.sizeof * length;
 		return res;
