@@ -12,4 +12,5 @@ import ir;
 
 import context;
 import driver;
+import passes;
 import utils;

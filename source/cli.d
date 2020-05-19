@@ -34,12 +34,39 @@ int runCli(string[] args)
 	bool printHelp;
 	GetoptResult optResult;
 
+	// Look for tool usage
+	if (args.length > 1)
+	{
+		switch(args[1])
+		{
+			case "pdb_dump":
+				if (args.length == 1) {
+					writeln("Usage: tiny_jit pdb_dump file.pdb");
+					return 1;
+				}
+				string filename = absolutePath(args[2]);
+				if (!exists(filename))
+				{
+					writefln("File `%s` not found", absolutePath(filename));
+					return 1;
+				}
+				import be.debug_info.pdb;
+				PdbReader.fromFile(filename);
+				return 0;
+
+			default:
+				break; // regular compiler invocation
+		}
+	}
+
+	// Regular compiler invocation
 	try
 	{
 		// GC
 		optResult = getopt(
 			args,
 			"of", "Write output to file.", &outputFilename,
+
 			"print-time", "Print time of compilation.", &printTime,
 			"print-source", "Print source code.", &driver.context.printSource,
 			"print-lexemes", "Print lexemes.", &driver.context.printLexemes,
@@ -51,14 +78,18 @@ int runCli(string[] args)
 			"print-ir-lower-each", "Print IR after each lowering pass.", &driver.context.printIrLowerEach,
 			"print-ir-lower", "Print IR after all lowering passes.", &driver.context.printIrLower,
 			"print-lir", "Print Print LIR after IR to LIR pass.", &driver.context.printLir,
-			"print-lir-ra", "Print LIR after register allocation pass.", &driver.context.printLirRA,
 			"print-liveness", "Print liveness analisys info.", &driver.context.printLiveIntervals,
+			"print-lir-ra", "Print LIR after register allocation pass.", &driver.context.printLirRA,
 			"print-stack-layout", "Print stack layout.", &driver.context.printStackLayout,
 			"print-code-hex", "Print code hex.", &driver.context.printCodeHex,
 			"print-symbols", "Print symbols.", &driver.context.printSymbols,
 			"print-mem", "Print memory consumtion.", &printMem,
 			"print-filter", "Print only info about <function name>.", &filterFuncName,
 			"print-error-trace", "Print stack trace for every error", &driver.context.printTraceOnError,
+
+			"no-dce", "Disable Dead Code Elimination", &driver.context.disableDCE,
+			"no-inline", "Disable Inlining", &driver.context.disableInline,
+
 			"subsystem", "Select windows subsystem. [CUI(default), GUI].", &subSystem,
 		);
 
@@ -80,7 +111,8 @@ int runCli(string[] args)
 
 	if (printHelp)
 	{
-		writeln("Usage: tiny_jit [options]... [source|.dll|.har]...");
+		writeln("Usage: tiny_jit [tool] [options]... [source|.dll|.har]...");
+		writeln("   Tools: pdb_dump");
 
 		size_t maxShortLength;
 		size_t maxLongLength;

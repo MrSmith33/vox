@@ -186,6 +186,12 @@ struct CompilationContext
 	bool printTimings = false;
 	// limit number of regs for allocation
 	bool debugRegAlloc = false;
+
+	// Disables Dead Code Elimination
+	bool disableDCE = false;
+	// Disables inlining
+	bool disableInline = false;
+
 	Identifier printOnlyFun;
 	size_t numCtfeRuns = 0;
 	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegNoDup(&this, name); }

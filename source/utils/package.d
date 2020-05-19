@@ -24,6 +24,7 @@ public import utils.hash;
 public import utils.mem;
 public import utils.numfmt;
 public import utils.textsink;
+public import utils.time_measure;
 
 enum PAGE_SIZE = 4096;
 enum ulong GiB = 1024UL*1024*1024;

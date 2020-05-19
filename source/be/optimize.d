@@ -26,7 +26,12 @@ void pass_optimize_ir(ref CompilationContext c, ref ModuleDeclNode mod, ref Func
 {
 	if (func.isExternal) return;
 
-	FuncPassIr[] passes = [&func_pass_inline, &func_pass_invert_conditions, &func_pass_remove_dead_code];
+	FuncPassIr[3] passes = [
+		c.disableInline ? null : &func_pass_inline,
+		&func_pass_invert_conditions,
+		c.disableDCE ? null : &func_pass_remove_dead_code,
+	];
+
 	IrBuilder builder;
 
 	IrFunction* irData = c.getAst!IrFunction(func.backendData.irData);
@@ -39,6 +44,7 @@ void pass_optimize_ir(ref CompilationContext c, ref ModuleDeclNode mod, ref Func
 	IrIndex funcIndex = func.getIrIndex(&c);
 
 	foreach (FuncPassIr pass; passes) {
+		if (pass is null) continue;
 		pass(&c, optimizedIrData, funcIndex, builder);
 		if (c.validateIr)
 			validateIrFunction(&c, optimizedIrData);
