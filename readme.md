@@ -6,6 +6,8 @@ WIP language name is `Vox`, file extension is `.vx`.
 
 [Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
 
+
+
 # Major features
 
 - Can be embedded into D programs as JIT-compiler (can call host functions)
@@ -104,6 +106,51 @@ Pretty asserts with stack traces are disabled in non-debug builds by default.
 * Add `--d-debug=PRETTY_ASSERT` flag to enable pretty asserts in ldc release build.
 * Add `-debug=PRETTY_ASSERT` flag to enable pretty asserts in dmd release build.
 
+# Using Commandline interface
+
+## Getting help
+Gives full list of flags
+```D
+tjc --help
+```
+
+## Hello world
+Produces hello.exe
+
+```
+tjc hello.vx C:\Windows\System32\kernel32.dll
+```
+
+## Input files
+
+* `.vx` files are source code files.
+* `.har` files, aka [Human Readable Archive files](https://github.com/marler8997/har). Text file that combines multiple textual files.
+
+Each file must begin with `--- <name>`, three dashes, space and name.
+
+Files can be nested inside directories `--- dir/dir2/file.txt`.
+
+Example:
+```D
+--- main.vx
+import utils;
+void main() { ExitProcess(42); }
+--- kernel32.vx
+void ExitProcess(u32 uExitCode);
+```
+Can be compiled with `tjc program.har C:\Windows\System32\kernel32.dll`
+
+* `.dll` files. Compiler will link external functions by searching symbols inside provided `.dll` file(s).
+
+# CLI Tools
+Compiler contains embedded tools:
+
+## PDB dump
+Prints content of tjc.pdb file into stdout.
+```
+tjc pdb_dump tjc.pdb
+```
+
 # Stats
 
 - test build time: 3.5s
@@ -115,6 +162,10 @@ Pretty asserts with stack traces are disabled in non-debug builds by default.
 - win64 executable generation
 - dll importing
 - Example of JIT compilation for amd64 from D code:
+
+<details>
+  <summary>code</summary>
+  
 ```D
 // Source code
 string source = q{
@@ -140,5 +191,8 @@ int[2] val = [42, 56];
 testFun(val.ptr, 1, 10);
 assert(val[1] == 10);
 ```
+  
+</details>
+
 
 - Roguelike tutorial using SDL2 - [repo](https://github.com/MrSmith33/rltut_2019)
