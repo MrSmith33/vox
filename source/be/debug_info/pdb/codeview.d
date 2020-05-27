@@ -8,6 +8,8 @@
 ///
 module be.debug_info.pdb.codeview;
 
+import be.debug_info.pdb : StreamReader;
+
 // enum CV_CPU_TYPE_e
 // https://docs.microsoft.com/en-us/visualstudio/debugger/debug-interface-access/cv-cpu-type-e
 enum CV_CPUType : ushort {
@@ -430,7 +432,7 @@ MEMBER_RECORD_ALIAS(LF_BINTERFACE, 0x151a, BaseInterface, BaseClass)
 
 MEMBER_RECORD(LF_VBCLASS, 0x1401, VirtualBaseClass)
 MEMBER_RECORD_ALIAS(LF_IVBCLASS, 0x1402, IndirectVirtualBaseClass,
-                    VirtualBaseClass)
+					VirtualBaseClass)
 
 MEMBER_RECORD(LF_VFUNCTAB, 0x1409, VFPtr)
 MEMBER_RECORD(LF_STMEMBER, 0x150e, StaticDataMember)
@@ -605,4 +607,90 @@ TYPE_RECORD(LF_METHODLIST, 0x1206, MethodOverloadList)
 	LF_PAD13 = 0xfd,
 	LF_PAD14 = 0xfe,
 	LF_PAD15 = 0xff,
+}
+
+// enum CV_cookietype_e
+enum FrameCookieType : ubyte {
+	copy,
+	xorStackPointer,
+	xorFramePointer,
+	xorR13,
+};
+
+// enum BinaryAnnotationOpcode
+enum BinaryAnnotationsOpcode : uint
+{
+	invalid,              // link time pdb contains PADDINGs
+	codeOffset,           // param : start offset
+	changeCodeOffsetBase, // param : nth separated code chunk (main code chunk == 0)
+	changeCodeOffset,     // param : delta of offset
+	changeCodeLength,     // param : length of code, default next start
+	changeFile,           // param : fileId
+	changeLineOffset,     // param : line offset (signed)
+	changeLineEndDelta,   // param : how many lines, default 1
+	changeRangeKind,      // param : either 1 (default, for statement) or 0 (for expression)
+
+	changeColumnStart,    // param : start column number, 0 means no column info
+	changeColumnEndDelta, // param : end column number delta (signed)
+
+	// Combo opcodes for smaller encoding size.
+	changeCodeOffsetAndLineOffset, // param : ((sourceDelta << 4) | CodeDelta)
+	changeCodeLengthAndCodeOffset, // param : codeLength, codeOffset
+
+	changeColumnEnd,      // param : end column number
+}
+
+// CVUncompressData
+uint cvReadCompressedUint(ref StreamReader stream)
+{
+	ubyte data = stream.read!ubyte;
+
+	if ((data & 0b1000_0000) == 0x00) {
+		// 0??? ???? - 1 byte
+		return data;
+	}
+	else if ((data & 0b1100_0000) == 0b1000_0000) {
+		// 10?? ???? - 2 bytes
+
+		if (stream.remainingBytes < 1) return uint.max; // invalid value
+
+		uint res = (data & 0b0011_1111) << 8;
+		res |= stream.read!ubyte;
+		return res;
+	}
+	else if ((data & 0b1110_0000) == 0b1100_0000) {
+		// 110? ???? - 4 bytes
+
+		if (stream.remainingBytes < 3) return uint.max; // invalid value
+
+		uint res = (data & 0b0001_1111) << 24;
+		res |= stream.read!ubyte << 16;
+		res |= stream.read!ubyte << 8;
+		res |= stream.read!ubyte;
+		return res;
+	}
+
+	return uint.max; // invalid value
+}
+
+uint numBinaryAnnotationsOpcodeArgs(BinaryAnnotationsOpcode op) {
+	return op == BinaryAnnotationsOpcode.changeCodeLengthAndCodeOffset ? 2 : 1;
+}
+
+bool binaryAnnotationsIsIntArg(BinaryAnnotationsOpcode op) {
+	return op == BinaryAnnotationsOpcode.changeLineOffset ||
+		op == BinaryAnnotationsOpcode.changeColumnEndDelta;
+}
+
+// encodes negative int as positive int. Uses 0th bit as sign.
+uint cvEncodeSignedInt32(int input) {
+	return (input >= 0)
+		? (( input) << 1) | 0
+		: ((-input) << 1) | 1;
+}
+
+int cvDecodeSignedInt32(uint input) {
+	return (input & 1)
+		? -cast(int)(input >> 1)
+		:  cast(int)(input >> 1);
 }

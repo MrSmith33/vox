@@ -117,6 +117,8 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	CompilationContext* c = state.context;
 	auto templ = templateIndex.get!TemplateDeclNode(c);
 
+	++c.numTemplateInstanceLookups;
+
 	// Verify arguments. For now only types are supported
 	foreach(size_t i, AstIndex arg; args)
 	{
@@ -143,6 +145,8 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 
 	// No matching instances found
 	// Create new instance
+
+	++c.numTemplateInstantiations;
 
 	// Create scope for arguments
 	AstIndex instance_scope = c.appendAst!Scope;

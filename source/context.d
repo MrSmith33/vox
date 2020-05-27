@@ -193,8 +193,12 @@ struct CompilationContext
 	bool disableInline = false;
 
 	Identifier printOnlyFun;
-	size_t numCtfeRuns = 0;
 	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegNoDup(&this, name); }
+
+	// Counters
+	uint numCtfeRuns = 0;
+	uint numTemplateInstanceLookups = 0;
+	uint numTemplateInstantiations = 0;
 
 	/// Check if printing of this function needed (including if all functions are requested)
 	bool printDumpOf(FunctionDeclNode* fun) {
@@ -486,13 +490,6 @@ struct CompilationContext
 		if (!index) return null;
 		T* result = cast(T*)(&astBuffer.bufPtr[index.storageIndex]);
 		static if (hasAstNodeType!T)
-			//!(
-			//	is(T == Scope) ||          // no astType field
-			//	is(T == IrFunction) ||     // no astType field
-			//	is(T == AstNode) ||        // abstract node
-			//	is(T == ExpressionNode) || // abstract node
-			//	is(T == TypeNode)          // abstract node
-			//))
 		{
 			assertf(result.astType == getAstNodeType!T, "getAst(%s) got %s", T.stringof, result.astType);
 		}

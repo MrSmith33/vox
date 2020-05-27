@@ -7,14 +7,13 @@
 /// MSF docs http://llvm.org/docs/PDB/MsfFile.html
 /// CodeView http://pierrelib.pagesperso-orange.fr/exec_formats/MS_Symbol_Type_v1.0.pdf
 /// https://github.com/mountainstorm/pdbfile
+/// https://github.com/willglynn/pdb
+/// https://github.com/smx-smx/PDBSharp
 
 /// todo:
-///   - S_UNAMESPACE
-///   - S_CALLSITEINFO
-///   - S_LABEL32
-///   - S_FRAMECOOKIE
-///   - S_INLINESITE payload
-///   - C13 DEBUG SUBSECTIONS: fileChecksums, line numbers
+///   - S_BPREL32
+///   - C13 DEBUG SUBSECTIONS: fileChecksums, line numbers, GlobalRefs
+///   - TPI hash stream, IPI hash stream
 module be.debug_info.pdb;
 
 public import be.debug_info.pdb.symbol;
@@ -698,9 +697,17 @@ struct PdbReader
 		enforce(stringtableHeader.hashVersion == 1 || stringtableHeader.hashVersion == 2,
 			format("Unsupported hash version %s", stringtableHeader.hashVersion));
 
-		ubyte[] stringBuf = namesStream.readArray!ubyte(stringtableHeader.byteSize);
+		StreamReader stringsSubstream = namesStream.substream(stringtableHeader.byteSize);
 		writeln ("  String buffer:");
-		printHex(stringBuf, 16, PrintAscii.yes);
+		size_t strOffset;
+		size_t strIndex;
+		while (!stringsSubstream.empty)
+		{
+			string str = stringsSubstream.readZString;
+			writefln("    % 6s %08X %s", strIndex, strOffset, str);
+			strOffset += str.length + 1;
+			++strIndex;
+		}
 
 		uint numHashSlots = namesStream.read!uint;
 		writefln("  Num hash slots: %s", numHashSlots);
@@ -782,14 +789,14 @@ struct PdbReader
 			{
 				case SymbolKind.S_UDT:
 					auto udtsym = stream.read!UdtSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: Type %s, %s", start, kind, udtsym.type, name);
 					break;
 
 				case SymbolKind.S_PUB32:
 					auto pubsym = stream.read!PublicSym32;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: [%04X:%08X] Flags %04b, %s", start, kind, pubsym.segment, pubsym.offset, pubsym.flags, name);
 					break;
@@ -804,9 +811,11 @@ struct PdbReader
 				case SymbolKind.S_LPROC32_DPC:
 				case SymbolKind.S_LPROC32_DPC_ID:
 					auto procsym = stream.read!ProcSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
-					ind; writefln("(%06X) %s: [%04X:%08X] Flags %08b, %s", start, kind, procsym.segment, procsym.offset, procsym.flags, name);
+					ind; writef("(%06X) %s: [%04X:%08X] Flags:", start, kind, procsym.segment, procsym.offset);
+					printProcSymFlags(procsym.flags);
+					writefln(", %s", name);
 					ind; writefln("|        Parent %06X End %06X Next %06X", procsym.parent, procsym.end, procsym.next);
 					ind; writefln("|        Length %s, Dbg Start %08X, Dbg End %08X, Type %s",
 						procsym.length, procsym.dbgStart, procsym.dbgEnd, procsym.typeIndex);
@@ -821,7 +830,7 @@ struct PdbReader
 				case SymbolKind.S_REGREL32:
 					// (0000C8) S_REGREL32: rsp+00000008, Type:    T_64PVOID(0603), hInstance
 					auto regRelative = stream.read!RegRelativeSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: %s+%08X, Type %s, %s", start, kind, regRelative.register, regRelative.offset, regRelative.type, name);
 					break;
@@ -832,7 +841,7 @@ struct PdbReader
 				case SymbolKind.S_GMANDATA:
 					// S_GDATA32: [0002:000236E8], Type:             0x1A60, RTInfoImpl
 					auto dataSym = stream.read!DataSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: [%04X:%08X] Type %s, %s", start, kind, dataSym.segment, dataSym.dataOffset, dataSym.type, name);
 					break;
@@ -841,7 +850,7 @@ struct PdbReader
 				case SymbolKind.S_GTHREAD32:
 					// (1FCD30) S_GTHREAD32: [0006:00000270], Type:             0x168D, binaryCondStrings
 					auto threadData = stream.read!ThreadDataSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: [%04X:%08X] Type %s, %s", start, kind, threadData.segment, threadData.dataOffset, threadData.type, name);
 					break;
@@ -857,14 +866,101 @@ struct PdbReader
 					//     BinaryAnnotation Length: 4 bytes (1 bytes padding)
 					auto inlineSite = stream.read!InlineSiteSym;
 					ind; writefln("(%06X) %s: Parent %06X, End %06X, Inlinee %s", start, kind, inlineSite.parent, inlineSite.end, inlineSite.inlinee);
+
+					// binary annotations stream
+					StreamReader binAnnot = stream.substreamUntil(end);
+					uint annotationsBytes = binAnnot.remainingBytes;
+					ind; writefln("|        BinaryAnnotations: %s bytes", annotationsBytes);
+
+					while (!binAnnot.empty)
+					{
+						auto instr = cast(BinaryAnnotationsOpcode)cvReadCompressedUint(binAnnot);
+						enforce(instr != uint.max, "Invalid value inside binary annotations");
+						if (instr == BinaryAnnotationsOpcode.invalid) {
+							// only happens when first byte of an instruction is 0, which is a padding at the end of data
+							binAnnot.unread(1);
+							break;
+						}
+
+						ind; write("|          ");
+
+						switch (instr) with(BinaryAnnotationsOpcode)
+						{
+							case codeOffset:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writefln("code offset: %s", arg);
+								break;
+							case changeCodeOffsetBase:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writefln("segment number: %s", arg);
+								break;
+							case changeCodeOffset:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writefln("change code offset: %s (delta)", arg);
+								break;
+							case changeCodeLength:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writefln("change code length: %s", arg);
+								break;
+							case changeFile:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writefln("change file: fileId %s", arg);
+								break;
+							case changeLineOffset:
+								uint arg = cvDecodeSignedInt32(cvReadCompressedUint(binAnnot));
+								writefln("change line offset: %s (signed)", arg);
+								break;
+							case changeLineEndDelta:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writefln("change line end: %s (delta)", arg);
+								break;
+							case changeRangeKind:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writef("change range kind to %s", arg);
+								switch(arg) {
+									case 0: writeln(" (expression)"); break;
+									case 1: writeln(" (statement)"); break;
+									default: writeln; break;
+								}
+								break;
+							case changeColumnStart:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writef("change column start: %s", arg);
+								if (arg == 0) writeln(" (0 means no column info)");
+								else writeln;
+								break;
+							case changeColumnEndDelta:
+								uint arg = cvDecodeSignedInt32(cvReadCompressedUint(binAnnot));
+								writefln("end column number delta: %s (signed)", arg);
+								break;
+							case changeCodeOffsetAndLineOffset:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writefln("end column number delta: %s (signed)", arg & 0b1111);
+								ind; writefln("|          and change code offset: %s (delta)", arg >> 4);
+								break;
+							case changeCodeLengthAndCodeOffset:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writefln("change code length: %s", arg);
+								uint arg2 = cvReadCompressedUint(binAnnot);
+								ind; writefln("|          and change code offset: %s (delta)", arg2);
+								break;
+							case changeColumnEnd:
+								uint arg = cvReadCompressedUint(binAnnot);
+								writef("end column number: %s", arg);
+								break;
+							default:
+								writefln("??? 0x%04X", cast(uint)instr); break;
+						}
+					}
+					ind; writefln("|        BinaryAnnotations padding: %s bytes", binAnnot.remainingBytes);
+
 					indPush;
-					printHex(stream.readArray!ubyte(end - stream.streamCursor), 16, PrintAscii.yes, indentation, 9);
 					break;
 
 				case SymbolKind.S_CONSTANT:
-				case SymbolKind.S_MANCONSTANT:
+				case SymbolKind.S_MANCONSTANT: // was not observed
 					auto con = stream.read!ConstSym;
-					ind; writef("(%06X) %s: Type: %s, Value: ", start, kind, con.type);
+					ind; writef("(%06X) %s: Type %s, Value: ", start, kind, con.type);
 					void printNum()
 					{
 						if (con.value < CV_TYPE.LF_NUMERIC)
@@ -956,9 +1052,11 @@ struct PdbReader
 
 				case SymbolKind.S_LOCAL:
 					auto localsym = stream.read!LocalSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
-					ind; writefln("(%06X) %s: Type: %s, Flags: %s, %s", start, kind, localsym.typeIndex, localsym.flags, name);
+					ind; writef("(%06X) %s: Type %s, Flags:", start, kind, localsym.typeIndex);
+					printLocalSymFlags(localsym.flags);
+					writefln(", %s", name);
 					break;
 
 				case SymbolKind.S_FRAMEPROC:
@@ -1027,7 +1125,7 @@ struct PdbReader
 
 				case SymbolKind.S_COMPILE:
 					auto compilesym = stream.read!CompileSym;
-					string verstring = stream.readNameBefore(end);
+					string verstring = stream.readZString;
 					ind; writefln("(%06X) %s:", start, kind);
 					ind; writefln("         Language: %s", compilesym.sourceLanguage);
 					ind; writefln("         Target processor: %s", cast(CV_CPUType)compilesym.machine);
@@ -1046,9 +1144,42 @@ struct PdbReader
 					ind; writeln;
 					break;
 
+				case SymbolKind.S_COMPILE2:
+					auto compilesym = stream.read!CompileSym2;
+					string verstring = stream.readZString;
+					ind; writefln("(%06X) %s:", start, kind);
+					ind; writefln("         Language: %s", compilesym.sourceLanguage);
+					ind; writefln("         Target processor: %s", compilesym.machine);
+					ind; writefln("         Compiled for edit and continue: %s", compilesym.EC);
+					ind; writefln("         Compiled without debugging info: %s", compilesym.NoDbgInfo);
+					ind; writefln("         Compiled with LTCG: %s", compilesym.LTCG);
+					ind; writefln("         Compiled with /bzalign: %s", compilesym.NoDataAlign);
+					ind; writefln("         Managed code present: %s", compilesym.ManagedPresent);
+					ind; writefln("         Compiled with /GS: %s", compilesym.SecurityChecks);
+					ind; writefln("         Compiled with /hotpatch: %s", compilesym.HotPatch);
+					ind; writefln("         Converted by CVTCIL: %s", compilesym.CVTCIL);
+					ind; writefln("         MSIL module: %s", compilesym.MSILModule);
+					ind; writefln("         Pad bits = 0x%04X", compilesym.padding);
+					ind; writefln("         Frontend Version: Major = %s, Minor = %s, Build = %s",
+						compilesym.verFEMajor, compilesym.verFEMinor, compilesym.verFEBuild);
+					ind; writefln("         Backend Version: Major = %s, Minor = %s, Build = %s",
+						compilesym.verMajor, compilesym.verMinor, compilesym.verBuild);
+					ind; writefln("         Version string: %s", verstring);
+					ind; writefln("         Command block: %s", verstring);
+					while(!stream.empty)
+					{
+						string cmdName = stream.readZString;
+						if (cmdName is null) break; // terminated by empty string
+
+						string cmd = stream.readZString;
+						ind; writefln("         %s = '%s'", cmdName, cmd);
+					}
+					ind; writeln;
+					break;
+
 				case SymbolKind.S_COMPILE3:
 					auto compilesym = stream.read!CompileSym3;
-					string verstring = stream.readNameBefore(end);
+					string verstring = stream.readZString;
 					ind; writefln("(%06X) %s:", start, kind);
 					ind; writefln("         Language: %s", compilesym.sourceLanguage);
 					ind; writefln("         Target processor: %s", compilesym.machine);
@@ -1073,11 +1204,21 @@ struct PdbReader
 					ind; writeln;
 					break;
 
+				case SymbolKind.S_LABEL32:
+					auto labelSym = stream.read!LabelSym;
+					string name = stream.readZString;
+					visitString(name);
+					ind; writef("(%06X) %s: [%04X:%08X] Flags:",
+						start, kind, labelSym.segment, labelSym.offset);
+					printProcSymFlags(labelSym.flags);
+					writefln(", %s", name);
+					break;
+
 				case SymbolKind.S_BLOCK32:
 					// (000930)  S_BLOCK32: [0001:0005AE21], Cb: 00000027,
 					//           Parent: 00000118, End: 00000964
 					auto blockSym = stream.read!BlockSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: [%04X:%08X] Code size %08X bytes, %s",
 						start, kind, blockSym.codeSegment, blockSym.codeOffset, blockSym.codeSize, name);
@@ -1089,7 +1230,7 @@ struct PdbReader
 				case SymbolKind.S_OBJNAME:
 					// (000004) S_OBJNAME: Signature: 00000000, * Linker *
 					auto objname = stream.read!ObjNameSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: Signature %08X, %s", start, kind, objname.signature, name);
 					ind; writeln;
@@ -1102,7 +1243,7 @@ struct PdbReader
 					ind; writefln("         Command block:");
 
 					// at least 4 bytes are needed for 2 non-empty strings
-					while(stream.remainingBytes >= 4)
+					while(!stream.empty)
 					{
 						string cmdName = stream.readZString;
 						if (cmdName is null) break; // terminated by empty string
@@ -1116,7 +1257,7 @@ struct PdbReader
 				case SymbolKind.S_SECTION:
 					// (000198) S_SECTION: [0001], RVA = 00001000, Cb = 00001030, Align = 00001000, Characteristics = 60000020, .text
 					auto sectionsym = stream.read!SectionSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: [%04X] RVA %08X, %08X bytes, Align %08X, Char %08X, %s", start, kind,
 						sectionsym.section, sectionsym.rva, sectionsym.length,
@@ -1126,11 +1267,26 @@ struct PdbReader
 				case SymbolKind.S_COFFGROUP:
 					// (0001B4) S_COFFGROUP: [0001:00000000], Cb: 00001030, Characteristics = 60000020, .text$mn
 					auto coffGroupSym = stream.read!CoffGroupSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: [%04X:%08X] %08X bytes, Char %08X, %s", start, kind,
 						coffGroupSym.symbolSegment, coffGroupSym.symbolOffset,
 						coffGroupSym.length, coffGroupSym.characteristics, name);
+					break;
+
+				case SymbolKind.S_EXPORT:
+					auto exportSym = stream.read!ExportSym;
+					string name = stream.readZString;
+					visitString(name);
+					ind; writef("(%06X) %s: Ordinal %s, Flags:", start, kind, exportSym.ordinal);
+					if (exportSym.isConstant) write(" isConstant");
+					if (exportSym.isData) write(" isData");
+					if (exportSym.isPrivate) write(" isPrivate");
+					if (exportSym.hasNoName) write(" hasNoName");
+					if (exportSym.hasExplicitOrdinal) write(" hasExplicitOrdinal");
+					if (exportSym.isForwarder) write(" isForwarder");
+					if (exportSym.pad) writef(" pad = 0x%X", exportSym.pad);
+					writefln(", %s", name);
 					break;
 
 				case SymbolKind.S_DEFRANGE_REGISTER:
@@ -1157,9 +1313,8 @@ struct PdbReader
 
 				case SymbolKind.S_DEFRANGE_REGISTER_REL:
 					auto reg = stream.read!DefRangeRegisterRelSym;
-					ind; writefln("(%06X) %s: Base reg %s, UDT %s, Offset in parent %s, Base ptr offset %s", start, kind,
-						reg.baseReg, reg.spilledUdtMember, reg.offsetInParent,
-						reg.basePointerOffset);
+					ind; writefln("(%06X) %s: %s+%08X, UDT %s, Offset in parent %s", start, kind,
+						reg.baseReg, reg.basePointerOffset, reg.spilledUdtMember, reg.offsetInParent);
 					ind; writefln("         Range: %s", reg.range);
 					break;
 
@@ -1181,7 +1336,7 @@ struct PdbReader
 				case SymbolKind.S_PROCREF:
 				case SymbolKind.S_LPROCREF:
 					auto procref = stream.read!ProcRefSym;
-					string name = stream.readNameBefore(end);
+					string name = stream.readZString;
 					visitString(name);
 					ind; writefln("(%06X) %s: [%04X:%08X] Sum name %s, %s", start, kind, procref.mod,
 						procref.symOffset, procref.sumName, name);
@@ -1202,6 +1357,30 @@ struct PdbReader
 					}
 					break;
 
+				case SymbolKind.S_FRAMECOOKIE:
+					auto cookie = stream.read!FrameCookieSym;
+					ind; writefln("(%06X) %s: %s+%08X, Type %s, Flags 0x%02X", start, kind,
+						cookie.reg, cookie.offset, cookie.type, cookie.flags);
+					break;
+
+				case SymbolKind.S_HEAPALLOCSITE:
+					auto heapAlloc = stream.read!HeapAllocationSiteSym;
+					ind; writefln("(%06X) %s: [%04X:%08X] Instr length %08X bytes, Type %s", start, kind,
+						heapAlloc.section, heapAlloc.offset, heapAlloc.instrBytes, heapAlloc.type);
+					break;
+
+				case SymbolKind.S_CALLSITEINFO:
+					auto callSite = stream.read!CallSiteInfoSym;
+					ind; writefln("(%06X) %s: [%04X:%08X] Type %s", start, kind,
+						callSite.section, callSite.offset, callSite.type);
+					break;
+
+				case SymbolKind.S_UNAMESPACE:
+					string name = stream.readZString;
+					visitString(name);
+					ind; writefln("(%06X) %s: %s", start, kind, name);
+					break;
+
 				// terminates S_*PROC*, S_THUNK32, S_BLOCK32
 				case SymbolKind.S_END:
 				// terminates S_INLINESITE
@@ -1212,6 +1391,15 @@ struct PdbReader
 					if (indentLevel == 0) {
 						ind; writeln;
 					}
+					break;
+
+				case SymbolKind.S_FILESTATIC:
+					auto fileStatic = stream.read!FileStaticSym;
+					string name = stream.readZString;
+					ind; writef("(%06X) %s: Mod name offset %08X, Type %s, Flags:", start, kind,
+						fileStatic.modOffset, fileStatic.type);
+					printLocalSymFlags(fileStatic.flags);
+					writefln(", %s", name);
 					break;
 
 				default:
@@ -1310,6 +1498,17 @@ struct StreamReader
 	{
 		StreamReader sub = this;
 		sub.streamBytes = streamCursor + byteSize;
+		drop(byteSize);
+		return sub;
+	}
+
+	StreamReader substreamUntil(uint end)
+	{
+		StreamReader sub = this;
+		sub.streamBytes = end;
+		assert(end >= streamCursor);
+		assert(end <= streamBytes);
+		uint byteSize = end - streamCursor;
 		drop(byteSize);
 		return sub;
 	}

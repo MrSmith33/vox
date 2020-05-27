@@ -296,6 +296,23 @@ enum ProcSymFlags : ubyte {
 	hasOptimizedDebugInfo = 1 << 7,
 }
 
+void printProcSymFlags(ubyte set)
+{
+	import std.stdio : write;
+	if (set == 0) {
+		write(" none");
+		return;
+	}
+	if (set & ProcSymFlags.hasFP) write(" hasFP");
+	if (set & ProcSymFlags.hasIRET) write(" hasIRET");
+	if (set & ProcSymFlags.hasFRET) write(" hasFRET");
+	if (set & ProcSymFlags.isNoReturn) write(" isNoReturn");
+	if (set & ProcSymFlags.isUnreachable) write(" isUnreachable");
+	if (set & ProcSymFlags.hasCustomCallingConv) write(" hasCustomCallingConv");
+	if (set & ProcSymFlags.isNoInline) write(" isNoInline");
+	if (set & ProcSymFlags.hasOptimizedDebugInfo) write(" hasOptimizedDebugInfo");
+}
+
 // S_REGREL32
 align(1) struct RegRelativeSym {
 	uint offset; // offset of symbol
@@ -401,6 +418,32 @@ align(1) struct CompileSym {
 }
 static assert(CompileSym.sizeof == 5);
 
+// struct COMPILESYM
+// S_COMPILE2
+struct CompileSym2 {
+	mixin(bitfields!(
+		CV_SourceLanguage, "sourceLanguage",  8, // Language index
+		bool,  "EC",              1, // Compiled for edit and continue
+		bool,  "NoDbgInfo",       1, // Compiled without debugging info
+		bool,  "LTCG",            1, // Compiled with LTCG
+		bool,  "NoDataAlign",     1, // Compiled with /bzalign
+		bool,  "ManagedPresent",  1, // Managed code/data present
+		bool,  "SecurityChecks",  1, // Compiled with /GS
+		bool,  "HotPatch",        1, // Compiled with /hotpatch
+		bool,  "CVTCIL",          1, // Converted with CVTCIL
+		bool,  "MSILModule",      1, // MSIL module
+		uint,  "padding",        15, // padding
+	));
+	CV_CPUType machine;    // Target processor
+	ushort verFEMajor; // Front end major version #
+	ushort verFEMinor; // Front end minor version #
+	ushort verFEBuild; // Front end build version #
+	ushort verMajor;   // Back end major version #
+	ushort verMinor;   // Back end minor version #
+	ushort verBuild;   // Back end build version #
+	// next follows sequence of pairs of zero-terminated strings, terminated by empty string
+}
+
 // struct COMPILESYM3
 // S_COMPILE3
 align(1) struct CompileSym3 {
@@ -437,7 +480,7 @@ align(1) struct CompileSym3 {
 align(1) struct EnvBlockSym {
 	mixin(bitfields!(
 		bool,  "EC",        1, // Compiled for edit and continue
-		uint,  "pad",        7, // padding
+		uint,  "pad",       7, // padding
 	));
 	// next follows sequence of pairs of zero-terminated strings, terminated by empty string
 }
@@ -470,6 +513,35 @@ enum LocalSymFlags : ushort {
 	isOptimizedOut = 1 << 8,
 	isEnregisteredGlobal = 1 << 9,
 	isEnregisteredStatic = 1 << 10,
+}
+
+void printLocalSymFlags(ushort set)
+{
+	import std.stdio : write;
+	if (set == 0) {
+		write(" none");
+		return;
+	}
+	if (set & LocalSymFlags.isParameter) write(" isParameter");
+	if (set & LocalSymFlags.isAddressTaken) write(" isAddressTaken");
+	if (set & LocalSymFlags.isCompilerGenerated) write(" isCompilerGenerated");
+	if (set & LocalSymFlags.isAggregate) write(" isAggregate");
+	if (set & LocalSymFlags.isAggregated) write(" isAggregated");
+	if (set & LocalSymFlags.isAliased) write(" isAliased");
+	if (set & LocalSymFlags.isAlias) write(" isAlias");
+	if (set & LocalSymFlags.isReturnValue) write(" isReturnValue");
+	if (set & LocalSymFlags.isOptimizedOut) write(" isOptimizedOut");
+	if (set & LocalSymFlags.isEnregisteredGlobal) write(" isEnregisteredGlobal");
+	if (set & LocalSymFlags.isEnregisteredStatic) write(" isEnregisteredStatic");
+}
+
+// struct LABELSYM32
+// S_LABEL32
+struct LabelSym {
+	uint offset;
+	ushort segment;
+	ubyte flags; // set of ProcSymFlags
+	// next follows zero-terminated string
 }
 
 // struct BLOCKSYM32
@@ -510,6 +582,23 @@ align(1) struct CoffGroupSym {
 	uint      characteristics;
 	uint      symbolOffset;
 	ushort    symbolSegment;
+	// next follows zero-terminated string (name)
+}
+
+// Comes from .exp files
+// struct EXPORTSYM
+// S_EXPORT
+struct ExportSym {
+    ushort ordinal;
+    mixin(bitfields!(
+		bool,  "isConstant",         1, // CONSTANT
+		bool,  "isData",             1, // DATA
+		bool,  "isPrivate",          1, // PRIVATE
+		bool,  "hasNoName",          1, // NONAME
+		bool,  "hasExplicitOrdinal", 1, // Ordinal was explicitly assigned
+		bool,  "isForwarder",        1, // This is a forwarder
+		ubyte, "pad",               10,
+	));
 	// next follows zero-terminated string (name)
 }
 
@@ -555,7 +644,7 @@ struct DefRangeSubfieldRegisterSym {
 // struct DEFRANGESYMREGISTERREL
 // S_DEFRANGE_REGISTER_REL
 align(1) struct DefRangeRegisterRelSym {
-	ushort baseReg;                    // Register to hold the base pointer of the symbol
+	RegisterId baseReg;                // Register to hold the base pointer of the symbol
 	mixin(bitfields!(
 		bool,  "spilledUdtMember",  1, // Spilled member for s.i.
 		ubyte, "",                  3,
@@ -599,3 +688,66 @@ align(2) struct ConstSym {
 	// followed by zero-terminated string (name)
 }
 static assert(ConstSym.sizeof == 6);
+
+// struct FRAMECOOKIE
+// S_FRAMECOOKIE
+struct FrameCookieSym {
+    uint offset;          // Frame relative offset
+    RegisterId reg;       // Register index
+    FrameCookieType type; // Type of the cookie
+    ubyte flags;          // Flags describing this cookie
+}
+
+// struct HEAPALLOCSITE
+// S_HEAPALLOCSITE
+struct HeapAllocationSiteSym {
+	uint offset;       // offset of call site
+	ushort section;    // section index of call site
+	ushort instrBytes; // length of heap allocation call instruction
+	TypeIndex type;    // type index describing function signature
+}
+
+//
+// Symbol for describing indirect calls when they are using
+// a function pointer cast on some other type or temporary.
+// Typical content will be an LF_POINTER to an LF_PROCEDURE
+// type record that should mimic an actual variable with the
+// function pointer type in question.
+//
+// Since the compiler can sometimes tail-merge a function call
+// through a function pointer, there may be more than one
+// S_CALLSITEINFO record at an address.  This is similar to what
+// you could do in your own code by:
+//
+//  if (expr)
+//      pfn = &function1;
+//  else
+//      pfn = &function2;
+//
+//  (*pfn)(arg list);
+//
+// struct CALLSITEINFO
+// S_CALLSITEINFO
+struct CallSiteInfoSym {
+	uint offset;      // offset of call site
+	ushort section;   // section index of call site
+	ushort reserved0; // alignment padding field, must be zero
+	TypeIndex type;   // type index describing function signature
+}
+
+// struct UNAMESPACE
+// S_UNAMESPACE
+struct UNamespaceSym { // using namespace
+    // followed by zero-terminated string (name)
+}
+
+// struct FILESTATICSYM
+// S_FILESTATIC
+struct FileStaticSym {
+	align(2):
+    TypeIndex type; // type index
+    uint modOffset; // index of mod filename in stringtable
+    ushort flags;   // set of LocalSymFlags
+    // followed by zero-terminated string (name)
+}
+static assert(FileStaticSym.sizeof == 10);
