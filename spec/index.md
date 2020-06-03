@@ -1,5 +1,23 @@
 # Index
-* [Metaprogramming](#metaprogramming)
+
+<!-- MarkdownTOC autolink="true" markdown_preview="github" -->
+
+- [Metaprogramming](#metaprogramming)
+    - [Compile-time assert `#assert` \(NEI\)](#compile-time-assert-assert-nei)
+    - [Conditional compilation](#conditional-compilation)
+        - [\#if](#if)
+        - [\#foreach \(NEI\)](#foreach-nei)
+    - [Templates](#templates)
+        - [Function templates](#function-templates)
+        - [Struct templates](#struct-templates)
+    - [## Meta types](#-meta-types)
+        - [$alias](#alias)
+        - [$type](#type)
+        - [Builtin functions for working with meta types](#builtin-functions-for-working-with-meta-types)
+        - [Using meta types in CTFE](#using-meta-types-in-ctfe)
+        - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
+
+<!-- /MarkdownTOC -->
 
 `NEI` marks not yet implemented features.
 
@@ -29,20 +47,20 @@ Examples:
 enum debug_cond = true;
 
 #if(debug_cond) { // Module scope
-	i32 debug_counter = 0; // Conditionally declared global variable
+    i32 debug_counter = 0; // Conditionally declared global variable
 }
 
 struct S {
-	#if(debug_cond) // Struct scope
-		u8[] debug_buffer; // Conditionally declared struct member
+    #if(debug_cond) // Struct scope
+        u8[] debug_buffer; // Conditionally declared struct member
 }
 
 void fun()
 {
-	// Condition inside function body
-	#if(debug_cond) print("debug mode");
-	else #if(debug_cond2) print("debug mode 2"); // When chaining #if must be used each time.
-	else print("no debug mode");
+    // Condition inside function body
+    #if(debug_cond) print("debug mode");
+    else #if(debug_cond2) print("debug mode 2"); // When chaining #if must be used each time.
+    else print("no debug mode");
 }
 ```
 
@@ -54,13 +72,13 @@ void fun()
 ```D
 $alias selectPrintFunc($type T) {...}
 void write[$alias[]... Args](Args args) {
-	#foreach(i, $alias argType; Args) {
-		selectPrintFunc(argType)(args[i]);
-	}
-	// or
-	#foreach($alias arg; args) {
-		selectPrintFunc(typeof(arg))(arg);
-	}
+    #foreach(i, $alias argType; Args) {
+        selectPrintFunc(argType)(args[i]);
+    }
+    // or
+    #foreach($alias arg; args) {
+        selectPrintFunc(typeof(arg))(arg);
+    }
 }
 ```
 
@@ -75,8 +93,8 @@ Function templates are defined as regular functions with additional list of comp
 
 ```D
 T min[T](T a, T b) {
-	if (a < b) return a;
-	return b;
+    if (a < b) return a;
+    return b;
 }
 #assert(min[i32](42, 2) == 2);
 ```
@@ -84,8 +102,8 @@ T min[T](T a, T b) {
 - `<T> Identifier` some compile-time known value of type `<T>`
 ```D
 T min[T](T a, T b) {
-	if (a < b) return a;
-	return b;
+    if (a < b) return a;
+    return b;
 }
 #assert(min[i32](42, 2) == 2);
 ```
@@ -96,8 +114,8 @@ T min[T](T a, T b) {
 ```D
 struct vec[ElemType, i32 dim]
 {
-	ElemType[dim] array;
-	...
+    ElemType[dim] array;
+    ...
 }
 alias ivec2 = vec2[i32, 2];
 ```
@@ -164,30 +182,30 @@ $alias[] $getStructMembersMethods($type type)
 Defining custom predicates on types:
 ```D
 bool isInteger($type type) {
-	return type == u8
-		|| type == i8
-		|| type == u16
-		|| type == i16
-		|| type == u32
-		|| type == i32
-		|| type == u64
-		|| type == i64;
+    return type == u8
+        || type == i8
+        || type == u16
+        || type == i16
+        || type == u32
+        || type == i32
+        || type == u64
+        || type == i64;
 }
 #assert(isInteger(i32));
 #assert(!isInteger(bool));
 ```
----
+
 Selecting function depending on argument type:
 ```D
 $alias selectPrintFunc($type T) {
-	if (isInteger(T)) return $alias(printInt);
-	if (T.$isSliceOf(u8) || T.$isArrayOf(u8)) return $alias(print);
-	#assert(false, "Invalid type");
+    if (isInteger(T)) return $alias(printInt);
+    if (T.$isSliceOf(u8) || T.$isArrayOf(u8)) return $alias(print);
+    #assert(false, "Invalid type");
 }
 void write[$alias[]... Args](Args args) {
-	#foreach(i, $alias argType; T) {
-		selectPrintFunc(argType)(args[i]);
-	}
+    #foreach(i, $alias argType; T) {
+        selectPrintFunc(argType)(args[i]);
+    }
 }
 ```
 
