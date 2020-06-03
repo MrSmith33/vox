@@ -10,7 +10,7 @@
     - [Templates](#templates)
         - [Function templates](#function-templates)
         - [Struct templates](#struct-templates)
-    - [## Meta types](#-meta-types)
+    - [Meta types](#meta-types)
         - [$alias](#alias)
         - [$type](#type)
         - [Builtin functions for working with meta types](#builtin-functions-for-working-with-meta-types)
@@ -121,7 +121,7 @@ alias ivec2 = vec2[i32, 2];
 ```
 
 ## Meta types
----
+
 ### $alias
 `$alias` is an alias to any symbol in the program. `$alias` values can be compared.
 ```D
