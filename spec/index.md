@@ -136,15 +136,18 @@ $alias some_type = $alias(42); // Ok. enum alias
 ```
 
 ### $type
-`$type` is a an alias that only accepts types.
-`$type` values can be compared.
-`$type` is implicitly convertible to `$alias`.
+
+- `$type` is a an alias that only accepts types.
+- `$type` values can be compared.
+- `$type` is implicitly convertible to `$alias`.
+
 ```D
-$alias some_type = i32; // Ok
-$alias some_type = 42; // Error: 42 is not a type
+$type some_type = i32; // Ok
+$type some_type = 42; // Error: 42 is not a type
 ```
 
 ### Builtin functions for working with meta types
+
 ```D
 bool $isType($alias a)
 bool $isValue($alias a)
@@ -161,7 +164,8 @@ bool $isInteger($type type)
 bool $isFloating($type type)
 bool $isSlice($type type)
 bool $isSliceOf($type slice, $type elemType)
-#assert
+#assert($isSlice(i8[]));
+#assert($isSliceOf(i8[], i8));
 
 bool $isArray($type type)
 bool $isArrayOf($type array, $type elemType)
@@ -180,6 +184,7 @@ $alias[] $getStructMembersMethods($type type)
 ### Using meta types in CTFE
 
 Defining custom predicates on types:
+
 ```D
 bool isInteger($type type) {
     return type == u8
@@ -196,6 +201,7 @@ bool isInteger($type type) {
 ```
 
 Selecting function depending on argument type:
+
 ```D
 $alias selectPrintFunc($type T) {
     if (isInteger(T)) return $alias(printInt);
