@@ -10,7 +10,7 @@
     - [Templates](#templates)
         - [Function templates](#function-templates)
         - [Struct templates](#struct-templates)
-    - [Meta types](#meta-types)
+    - [Meta types \(NEI\)](#meta-types-nei)
         - [$alias](#alias)
         - [$type](#type)
         - [Builtin functions for working with meta types](#builtin-functions-for-working-with-meta-types)
@@ -99,7 +99,8 @@ T min[T](T a, T b) {
 #assert(min[i32](42, 2) == 2);
 ```
 
-- `<T> Identifier` some compile-time known value of type `<T>`
+- `T Identifier` some compile-time known value of type `T` (NEI).
+
 ```D
 T min[T](T a, T b) {
     if (a < b) return a;
@@ -108,22 +109,26 @@ T min[T](T a, T b) {
 #assert(min[i32](42, 2) == 2);
 ```
 
-- `$alias[]...` Variadic parameters. Must be the last template argument. (args with default value may follow). Intead of `$alias` its subtypes can be used.
+- `$alias[]...` Variadic parameters. Must be the last template argument. (args with default value may follow). Intead of `$alias` its subtypes can be used.  (NEI).
 
 ### Struct templates
+
 ```D
 struct vec[ElemType, i32 dim]
 {
     ElemType[dim] array;
     ...
 }
-alias ivec2 = vec2[i32, 2];
+alias ivec2 = vec[i32, 2];
 ```
 
-## Meta types
+## Meta types (NEI)
 
 ### $alias
-`$alias` is an alias to any symbol in the program. `$alias` values can be compared.
+
+- `$alias` is an alias to any symbol in the program.
+- `$alias` values can be compared.
+
 ```D
 void fun(){}
 struct ivec2 { i32 x; i32 y; }
