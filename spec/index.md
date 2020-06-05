@@ -11,7 +11,7 @@
     - [External functions](#external-functions)
     - [Calls](#calls)
 - [Metaprogramming](#metaprogramming)
-    - [Compile-time assert `#assert` \(NEI\)](#compile-time-assert-assert-nei)
+    - [Compile-time assert `#assert`](#compile-time-assert-assert)
     - [Conditional compilation](#conditional-compilation)
         - [\#if](#if)
         - [\#foreach \(NEI\)](#foreach-nei)
@@ -166,11 +166,13 @@ $alias alias_var = func(); // alias of return value is taken
 
 # Metaprogramming
 
-## Compile-time assert `#assert` (NEI)
+## Compile-time assert `#assert`
 
 ```D
 #assert(<condition>, <items to print>...);
 ```
+
+For now only single string literal can be used as a message.
 
 ## Conditional compilation
 

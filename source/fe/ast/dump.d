@@ -39,6 +39,8 @@ void print_ast(AstNodes nodes, ref AstPrintState state)
 
 void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 {
+	if (nodeIndex.isUndefined) return;
+
 	state.indent += state.indentSize;
 	scope(exit) state.indent -= state.indentSize;
 	AstNode* node = state.context.getAstNode(nodeIndex);

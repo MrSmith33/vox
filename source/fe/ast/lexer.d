@@ -174,7 +174,17 @@ struct SourceLocation {
 	uint end;
 	uint line;
 	uint col;
-	const(char)[] getTokenString(const(char)[] input) pure const { return input[start..end]; }
+	const(char)[] getTokenString(const(char)[] input) pure const {
+		return input[start..end];
+	}
+	const(char)[] getTokenString(TokenType type, const(char)[] input) pure const {
+		switch (type) {
+			case TokenType.EOI:
+				return "end of input";
+			default:
+				return input[start..end];
+		}
+	}
 	void toString(scope void delegate(const(char)[]) sink) const {
 		sink.formattedWrite("line %s col %s start %s end %s", line+1, col+1, start, end);
 	}

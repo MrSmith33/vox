@@ -3113,5 +3113,5 @@ immutable test132 = q{--- test132
 immutable test133 = q{--- test133
 	#assert(false, "Assert test");
 --- <error>
-test133(1, 2): Error: static assert: "Assert test"
+test133(1, 2): Error: #assert: "Assert test"
 };

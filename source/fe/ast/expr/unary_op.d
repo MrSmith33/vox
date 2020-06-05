@@ -41,7 +41,7 @@ void name_resolve_unary_op(UnaryExprNode* node, ref NameResolveState state) {
 			child.flags |= AstFlags.isLvalue;
 			if (child.astType == AstType.expr_name_use)
 			{
-				child.flags |= NameUseFlags.isAddressTaken;
+				child.flags |= NameUseFlags.forbidParenthesesFreeCall;
 			}
 			break;
 		default:

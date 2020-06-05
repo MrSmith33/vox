@@ -219,7 +219,7 @@ struct CompilationContext
 
 	const(char)[] getTokenString(TokenIndex tokenIndex) pure
 	{
-		return tokenLocationBuffer[tokenIndex].getTokenString(sourceBuffer.data);
+		return tokenLocationBuffer[tokenIndex].getTokenString(tokenBuffer[tokenIndex], sourceBuffer.data);
 	}
 
 	SourceLocation tokenLoc(TokenIndex tokenIndex)

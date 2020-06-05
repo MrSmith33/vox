@@ -8,8 +8,10 @@ import all;
 enum NameUseFlags : ushort
 {
 	isSymResolved = AstFlags.userFlag << 0,
-	// used to prevent parent-less call when function address is taken
-	isAddressTaken = AstFlags.userFlag << 1,
+	// used to prevent parentheses-free call when:
+	// - function address is taken
+	// - alias is taken
+	forbidParenthesesFreeCall = AstFlags.userFlag << 1,
 }
 
 @(AstType.expr_name_use)
@@ -23,7 +25,7 @@ struct NameUseExprNode {
 	}
 
 	bool isSymResolved() { return cast(bool)(flags & NameUseFlags.isSymResolved); }
-	bool isAddressTaken() { return cast(bool)(flags & NameUseFlags.isAddressTaken); }
+	bool forbidParenthesesFreeCall() { return cast(bool)(flags & NameUseFlags.forbidParenthesesFreeCall); }
 
 	this(TokenIndex loc, AstIndex parentScope, Identifier id, AstIndex type = AstIndex.init)
 	{
@@ -176,8 +178,8 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 			break;
 
 		case AstType.decl_function:
-			// check isAddressTaken to prevent call on func address take
-			if (!node.isAddressTaken)
+			// check forbidParenthesesFreeCall to prevent call on func address take
+			if (!node.forbidParenthesesFreeCall)
 			{
 				// Call without parenthesis
 				// rewrite as call

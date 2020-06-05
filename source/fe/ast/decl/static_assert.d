@@ -51,13 +51,13 @@ void type_check_static_assert(StaticAssertDeclNode* node, ref TypeCheckState sta
 	scope(exit) node.state = AstNodeState.type_check_done;
 
 	if (node.message.astType(c) != AstType.literal_string) {
-		c.error(node.loc, "Error: static assert only supports string literal as a message");
+		c.error(node.loc, "Error: #assert only supports string literal as a message");
 		return;
 	}
 
 	IrIndex val = eval_static_expr(node.condition, c);
 	if (!c.constants.get(val).i64)
 	{
-		c.error(node.loc, "static assert: \"%s\"", node.message.get!StringLiteralExprNode(c).value);
+		c.error(node.loc, "#assert: \"%s\"", node.message.get!StringLiteralExprNode(c).value);
 	}
 }

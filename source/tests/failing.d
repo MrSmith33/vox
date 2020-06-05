@@ -30,7 +30,7 @@ immutable fail3 = r"
 --- fail3
 	struct
 --- <error>
-fail3(2, 1): Error: Expected `IDENTIFIER` token, while got `EOI` token ''
+fail3(2, 1): Error: Expected `IDENTIFIER` token, while got `EOI` token 'end of input'
 ";
 
 
@@ -75,7 +75,7 @@ immutable fail8 = r"
 --- fail8
 	struct test
 --- <error>
-fail8(2, 1): Error: Expected `LCURLY` token, while got `EOI` token ''
+fail8(2, 1): Error: Expected `LCURLY` token, while got `EOI` token 'end of input'
 ";
 
 
@@ -84,7 +84,7 @@ immutable fail9 = r"
 --- fail9
 	struct test {
 --- <error>
-fail9(2, 1): Error: Expected `RCURLY` token, while got `EOI` token ''
+fail9(2, 1): Error: Expected `RCURLY` token, while got `EOI` token 'end of input'
 ";
 
 
@@ -93,7 +93,7 @@ immutable fail10 = r"
 --- fail10
 	i32 fun(
 --- <error>
-fail10(2, 1): Error: Expected `RPAREN` token, while got `EOI` token ''
+fail10(2, 1): Error: Expected `RPAREN` token, while got `EOI` token 'end of input'
 ";
 
 
@@ -102,7 +102,7 @@ immutable fail11 = r"
 --- fail11
 	i32 fun(){
 --- <error>
-fail11(2, 1): Error: Expected `RCURLY` token, while got `EOI` token ''
+fail11(2, 1): Error: Expected `RCURLY` token, while got `EOI` token 'end of input'
 ";
 
 
@@ -122,7 +122,7 @@ immutable fail13 = r"
 	i32 fun(){
 		a = b + c
 --- <error>
-fail13(3, 1): Error: Expected `SEMICOLON` token, while got `EOI` token ''
+fail13(3, 1): Error: Expected `SEMICOLON` token, while got `EOI` token 'end of input'
 ";
 
 @TestInfo()
@@ -330,4 +330,45 @@ immutable fail30 = q{
 	}
 --- <error>
 fail30(5, 7): Error: Invalid expression. Missing `;` before `b`
+};
+
+
+@TestInfo()
+immutable fail31 = q{
+--- fail31
+	#assert 42
+--- <error>
+fail31(1, 10): Error: Expected `(` after #assert, while got `42`
+};
+
+@TestInfo()
+immutable fail32 = q{
+--- fail32
+	#assert(42
+--- <error>
+fail32(2, 1): Error: Expected `,` after condition of #assert, while got `end of input`
+};
+
+@TestInfo()
+immutable fail33 = q{
+--- fail33
+	#assert(42, )
+--- <error>
+fail33(1, 14): Error: RPAREN is not an expression
+};
+
+@TestInfo()
+immutable fail34 = q{
+--- fail34
+	#assert(42, "message")
+--- <error>
+fail34(2, 1): Error: Expected `;` after #assert, while got `end of input`
+};
+
+@TestInfo()
+immutable fail35 = q{
+--- fail35
+	#assert(42, 42);
+--- <error>
+fail35(1, 2): Error: Error: #assert only supports string literal as a message
 };
