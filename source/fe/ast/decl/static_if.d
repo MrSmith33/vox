@@ -13,9 +13,19 @@ struct StaticIfDeclNode
 	AstIndex condition;
 	AstNodes thenItems; // can be empty
 	AstNodes elseItems; // can be empty
-	AstIndex next; // used during expansion
-	AstIndex prev; // used during expansion
-	uint arrayIndex; // index into AstNodes of the parent node
+	AstIndex next; // Next static if. Used during expansion
+	AstIndex prev; // Prev static if. Used during expansion
+	uint arrayIndex; // Index into AstNodes of the parent node, where items are to be inserted
+}
+
+void print_static_if(StaticIfDeclNode* node, ref AstPrintState state)
+{
+	state.print("#IF");
+	print_ast(node.condition, state);
+	state.print("#THEN");
+	print_ast(node.thenItems, state);
+	state.print("#ELSE");
+	print_ast(node.elseItems, state);
 }
 
 void post_clone_static_if(StaticIfDeclNode* node, ref CloneState state)

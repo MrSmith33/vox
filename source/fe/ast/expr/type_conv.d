@@ -12,6 +12,12 @@ struct TypeConvExprNode {
 	AstIndex expr;
 }
 
+void print_type_conv(TypeConvExprNode* node, ref AstPrintState state)
+{
+	state.print("CAST to ", node.type.printer(state.context));
+	print_ast(node.expr, state);
+}
+
 void post_clone_type_conv(TypeConvExprNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.type);

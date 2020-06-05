@@ -19,9 +19,9 @@ void pass_type_check(ref CompilationContext context, CompilePassPerModule[] subP
 		assert(context.analisysStack.length == 0);
 
 		if (context.printAstSema && modIndex) {
-			auto astPrinter = AstPrinter(&context, 2);
+			auto printState = AstPrintState(&context, 2);
 			writefln("// AST typed `%s`", file.name);
-			astPrinter.printAst(cast(AstNode*)file.mod);
+			print_ast(context.getAstNodeIndex(file.mod), printState);
 		}
 	}
 }
@@ -88,6 +88,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case decl_struct: type_check_struct(cast(StructDeclNode*)node, state); break;
 		case decl_enum: type_check_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: type_check_enum_member(cast(EnumMemberDecl*)node, state); break;
+		case decl_static_assert: type_check_static_assert(cast(StaticAssertDeclNode*)node, state); break;
 		case decl_static_if: assert(false);
 		case decl_template: assert(false);
 		case decl_template_param: assert(false);

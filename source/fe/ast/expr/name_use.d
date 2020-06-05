@@ -73,6 +73,14 @@ struct NameUseExprNode {
 	alias tryEnumMember = tryGet!(EnumMemberDecl, AstType.decl_enum_member);
 }
 
+void print_name_use(NameUseExprNode* node, ref AstPrintState state)
+{
+	if (node.isSymResolved)
+		state.print("NAME_USE ", node.type.printer(state.context), " ", state.context.idString(node.id(state.context)));
+	else
+		state.print("NAME_USE ", state.context.idString(node.id(state.context)));
+}
+
 void post_clone_name_use(NameUseExprNode* node, ref CloneState state)
 {
 	CompilationContext* c = state.context;

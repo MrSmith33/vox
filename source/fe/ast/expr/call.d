@@ -21,6 +21,20 @@ struct CallExprNode {
 	AstNodes args;
 }
 
+void print_call(CallExprNode* node, ref AstPrintState state)
+{
+	if (node.callee && node.callee.astType(state.context) == AstType.decl_function)
+	{
+		state.print("CALL ", state.context.idString(node.callee.get_node_id(state.context)));
+	}
+	else
+	{
+		state.print("CALL");
+		print_ast(node.callee, state);
+	}
+	print_ast(node.args, state);
+}
+
 void post_clone_call(CallExprNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.callee);

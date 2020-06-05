@@ -13,6 +13,14 @@ struct DoWhileStmtNode {
 	AstNodes statements;
 }
 
+void print_do(DoWhileStmtNode* node, ref AstPrintState state)
+{
+	state.print("DO");
+	print_ast(node.condition, state);
+	state.print("WHILE");
+	print_ast(node.statements, state);
+}
+
 void post_clone_do(DoWhileStmtNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.condition);

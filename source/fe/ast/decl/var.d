@@ -37,6 +37,15 @@ struct VariableDeclNode
 	}
 }
 
+void print_var(VariableDeclNode* node, ref AstPrintState state)
+{
+	state.print(
+		node.isParameter ? "PARAM " : "VAR ",
+		node.type.printer(state.context), " ", state.context.idString(node.id));
+	if (node.type) print_ast(node.type, state);
+	if (node.initializer) print_ast(node.initializer, state);
+}
+
 void post_clone_var(VariableDeclNode* node, ref CloneState state)
 {
 	state.fixScope(node.parentScope);

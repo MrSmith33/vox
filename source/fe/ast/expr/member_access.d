@@ -86,6 +86,12 @@ struct MemberExprNode {
 	}
 }
 
+void print_member(MemberExprNode* node, ref AstPrintState state)
+{
+	state.print("MEMBER ", node.type.printer(state.context), " ", state.context.idString(node.memberId(state.context)), " ", cast(MemberSubType)node.subType);
+	print_ast(node.aggregate, state);
+}
+
 void post_clone_member(MemberExprNode* node, ref CloneState state)
 {
 	assert(!node.isSymResolved);

@@ -6,199 +6,94 @@ Authors: Andrey Penechko.
 module fe.ast.dump;
 
 import std.stdio;
-import std.range : repeat;
 
 import all;
 
-struct AstPrinter {
-	mixin AstVisitorMixin;
-
+struct AstPrintState
+{
 	CompilationContext* context;
-	int indentSize = 1;
 
+	int indentSize = 1;
 	private int indent;
 
 	void print(Args...)(Args args) {
-		auto i = ' '.repeat(indent);
-		writeln(i, args);
-	}
-
-	void pr_node(AstIndex nodeIndex) { // print node
-		AstNode* node = context.getAstNode(nodeIndex);
-		indent += indentSize;
-		//print("state: ", node.state);
-		_visit(node);
-		indent -= indentSize;
-	}
-	void pr_nodes(AstNodes nodes) { // print node
-		indent += indentSize;
-		foreach (AstIndex nodeIndex; nodes) {
-			AstNode* node = context.getAstNode(nodeIndex);
-			//print("state: ", node.state);
-			_visit(node);
-		}
-		indent -= indentSize;
-	}
-
-	void visit(AliasDeclNode* n) {
-		print("ALIAS ", context.idString(n.id));
-		pr_node(n.initializer);
-	}
-	void visit(ModuleDeclNode* m) {
-		print("MODULE ", context.files[m.moduleIndex.fileIndex].name);
-		pr_nodes(m.declarations);
-	}
-	void visit(ImportDeclNode* i) {
-		print("IMPORT ", context.idString(i.id));
-	}
-	void visit(FunctionDeclNode* f) {
-		auto sig = f.signature.get!FunctionSignatureNode(context);
-		print("FUNC ", sig.returnType.printer(context), " ", context.idString(f.id), f.isInline ? " #inline" : null);
-		pr_nodes(sig.parameters);
-		if (f.block_stmt) pr_node(f.block_stmt);
-	}
-	void visit(VariableDeclNode* v) {
-		print(v.isParameter ? "PARAM " : "VAR ", v.type.printer(context), " ", context.idString(v.id));
-		if (v.type) pr_node(v.type);
-		if (v.initializer) pr_node(v.initializer);
-	}
-	void visit(StructDeclNode* s) {
-		print("STRUCT ", context.idString(s.id));
-		pr_nodes(s.declarations); }
-	void visit(EnumDeclaration* e) {
-		if (e.isAnonymous)
-			print("ENUM ", e.memberType.printer(context));
-		else
-			print("ENUM ", e.memberType.printer(context), " ", context.idString(e.id));
-		pr_nodes(e.declarations);
-	}
-	void visit(EnumMemberDecl* m) {
-		print("ENUM MEMBER ", m.type.printer(context), " ", context.idString(m.id));
-		if (m.initializer) pr_node(m.initializer);
-	}
-	void visit(StaticIfDeclNode* n) {
-		print("#IF"); pr_node(n.condition);
-		print("#THEN");
-		pr_nodes(n.thenItems);
-		print("#ELSE");
-		pr_nodes(n.elseItems);
-	}
-	void visit(TemplateDeclNode* n) {
-		print("TEMPLATE ", context.idString(n.id));
-		pr_nodes(n.parameters);
-		pr_node(n.body);
-		foreach (ref TemplateInstance inst; n.instances)
-		{
-			print("INSTANCE: ", context.idString(inst.entity.get_node_id(context)));
-			pr_node(inst.entity);
-		}
-	}
-	void visit(TemplateParamDeclNode* n) {
-		print("TEMPLATE PARAM ", context.idString(n.id));
-	}
-	void visit(BlockStmtNode* b) {
-		print("BLOCK");
-		pr_nodes(b.statements); }
-	void visit(IfStmtNode* i) {
-		print("IF"); pr_node(i.condition);
-		print("THEN"); pr_nodes(i.thenStatements);
-		if (!i.elseStatements.empty) {
-			print("ELSE"); pr_nodes(i.elseStatements);
-		}
-	}
-	void visit(WhileStmtNode* w) {
-		print("WHILE");
-		pr_node(w.condition);
-		pr_nodes(w.statements); }
-	void visit(DoWhileStmtNode* d) {
-		print("DO");
-		pr_node(d.condition);
-		print("WHILE");
-		pr_nodes(d.statements); }
-	void visit(ForStmtNode* n) {
-		print("FOR");
-		pr_nodes(n.init_statements);
-		print("COND");
-		if (n.condition) pr_node(n.condition);
-		print("INC");
-		pr_nodes(n.increment_statements);
-		pr_nodes(n.body_statements); }
-	void visit(SwitchStmtNode* n) {
-		print("SWITCH"); pr_node(n.condition);
-		foreach (SwitchCase c; n.cases) {
-			print("CASE");
-			pr_node(c.expr);
-			pr_node(c.stmt);
-		}
-		if (n.elseStmt) {
-			print("ELSE");
-			pr_node(n.elseStmt);
-		}
-	}
-	void visit(ReturnStmtNode* r) {
-		print("RETURN");
-		if (r.expression) pr_node(r.expression); }
-	void visit(BreakStmtNode* r) { print("BREAK"); }
-	void visit(ContinueStmtNode* r) { print("CONTINUE"); }
-	void visit(NameUseExprNode* v) {
-		if (v.isSymResolved)
-			print("NAME_USE ", v.type.printer(context), " ", context.idString(v.id(context)));
-		else
-			print("NAME_USE ", context.idString(v.id(context)));
-	}
-	void visit(MemberExprNode* m) {
-		print("MEMBER ", m.type.printer(context), " ", context.idString(m.memberId(context)), " ", cast(MemberSubType)m.subType);
-		pr_node(m.aggregate);
-	}
-	void visit(IntLiteralExprNode* lit) {
-		if (lit.isSigned)
-			print("Int LITERAL ", lit.type.printer(context), " ", cast(long)lit.value);
-		else
-			print("Int LITERAL ", lit.type.printer(context), " ", lit.value);
-	}
-	void visit(StringLiteralExprNode* lit) { print("String LITERAL ", lit.type.printer(context), " ", lit.value); }
-	void visit(NullLiteralExprNode* lit) { print("null LITERAL"); }
-	void visit(BoolLiteralExprNode* lit) {
-		if (lit.value) print("TRUE ", lit.type.printer(context));
-		else print("FALSE ", lit.type.printer(context)); }
-	void visit(BinaryExprNode* b) {
-		if (b.type) print("BINOP ", b.type.printer(context), " ", b.op);
-		else print("BINOP ", b.op);
-		pr_node(b.left);
-		pr_node(b.right); }
-	void visit(UnaryExprNode* u) {
-		if (u.type) print("UNOP ", u.type.printer(context), " ", u.op);
-		else print("UNOP ", u.op);
-		pr_node(u.child); }
-	void visit(CallExprNode* c) {
-		if (c.callee && c.callee.astType(context) == AstType.decl_function)
-			print("CALL ", context.idString(c.callee.get_node_id(context)));
-		else {
-			print("CALL");
-			pr_node(c.callee);
-		}
-		pr_nodes(c.args); }
-	void visit(IndexExprNode* i) {
-		print("INDEX"); pr_node(i.array); pr_nodes(i.indicies); }
-	void visit(SliceExprNode* i) {
-		print("SLICE"); pr_node(i.array); pr_node(i.fromIndex); pr_node(i.toIndex); }
-	void visit(TypeConvExprNode* t) {
-		print("CAST to ", t.type.printer(context));
-		pr_node(t.expr); }
-	void visit(BasicTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
-	void visit(FunctionSignatureNode* t) { print("TYPE ", t.typeNode.printer(context)); }
-	void visit(PtrTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
-	void visit(StaticArrayTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
-	void visit(SliceTypeNode* t) { print("TYPE ", t.typeNode.printer(context)); }
-
-	void printAst(AstNode* n)
-	{
-		indent = -indentSize;
-		if (!n) return;
-		pr_node(context.getAstNodeIndex(n));
+		import std.range : repeat;
+		write(' '.repeat(indent)); // indent
+		writeln(args);
 	}
 }
 
+void print_ast(AstIndex nodeIndex, CompilationContext* context)
+{
+	auto state = AstPrintState(context);
+	state.indent = -state.indentSize;
+	print_ast(nodeIndex, state);
+}
+
+void print_ast(AstNodes nodes, ref AstPrintState state)
+{
+	state.indent += state.indentSize;
+	scope(exit) state.indent -= state.indentSize;
+	foreach(AstIndex item; nodes) print_ast(item, state);
+}
+
+void print_ast(AstIndex nodeIndex, ref AstPrintState state)
+{
+	state.indent += state.indentSize;
+	scope(exit) state.indent -= state.indentSize;
+	AstNode* node = state.context.getAstNode(nodeIndex);
+	final switch(node.astType) with(AstType)
+	{
+		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
+		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
+
+		case decl_alias: print_alias(cast(AliasDeclNode*)node, state); break;
+		case decl_builtin: break; // skip
+		case decl_enum: print_enum(cast(EnumDeclaration*)node, state); break;
+		case decl_enum_member: print_enum_member(cast(EnumMemberDecl*)node, state); break;
+		case decl_function: print_func(cast(FunctionDeclNode*)node, state); break;
+		case decl_import: print_import(cast(ImportDeclNode*)node, state); break;
+		case decl_module: print_module(cast(ModuleDeclNode*)node, state); break;
+		case decl_static_assert: print_static_assert(cast(StaticAssertDeclNode*)node, state); break;
+		case decl_static_if: print_static_if(cast(StaticIfDeclNode*)node, state); break;
+		case decl_struct: print_struct(cast(StructDeclNode*)node, state); break;
+		case decl_template: print_template(cast(TemplateDeclNode*)node, state); break;
+		case decl_template_param: print_template_param(cast(TemplateParamDeclNode*)node, state); break;
+		case decl_var: print_var(cast(VariableDeclNode*)node, state); break;
+
+		case stmt_block: print_block(cast(BlockStmtNode*)node, state); break;
+		case stmt_if: print_if(cast(IfStmtNode*)node, state); break;
+		case stmt_while: print_while(cast(WhileStmtNode*)node, state); break;
+		case stmt_do_while: print_do(cast(DoWhileStmtNode*)node, state); break;
+		case stmt_for: print_for(cast(ForStmtNode*)node, state); break;
+		case stmt_switch: print_switch(cast(SwitchStmtNode*)node, state); break;
+		case stmt_return: print_return(cast(ReturnStmtNode*)node, state); break;
+		case stmt_break: print_break(cast(BreakStmtNode*)node, state); break;
+		case stmt_continue: print_continue(cast(ContinueStmtNode*)node, state); break;
+
+		case expr_name_use: print_name_use(cast(NameUseExprNode*)node, state); break;
+		case expr_member: print_member(cast(MemberExprNode*)node, state); break;
+		case expr_bin_op: print_binary_op(cast(BinaryExprNode*)node, state); break;
+		case expr_un_op: print_unary_op(cast(UnaryExprNode*)node, state); break;
+		case expr_call: print_call(cast(CallExprNode*)node, state); break;
+		case expr_index: print_index(cast(IndexExprNode*)node, state); break;
+		case expr_slice: print_expr_slice(cast(SliceExprNode*)node, state); break;
+		case expr_type_conv: print_type_conv(cast(TypeConvExprNode*)node, state); break;
+
+		case literal_int: print_literal_int(cast(IntLiteralExprNode*)node, state); break;
+		case literal_string: print_literal_string(cast(StringLiteralExprNode*)node, state); break;
+		case literal_null: print_literal_null(cast(NullLiteralExprNode*)node, state); break;
+		case literal_bool: print_literal_bool(cast(BoolLiteralExprNode*)node, state); break;
+
+		case type_basic: print_type_basic(cast(BasicTypeNode*)node, state); break;
+		case type_func_sig: print_func_sig(cast(FunctionSignatureNode*)node, state); break;
+		case type_ptr: print_ptr(cast(PtrTypeNode*)node, state); break;
+		case type_static_array: print_static_array(cast(StaticArrayTypeNode*)node, state); break;
+		case type_slice: print_slice(cast(SliceTypeNode*)node, state); break;
+	}
+}
+
+/*
 struct AstDotPrinter {
 	mixin AstVisitorMixin;
 
@@ -282,10 +177,10 @@ struct AstDotPrinter {
 		pr_node_edges(i, i.thenStatements);
 		pr_node_edges(i, i.elseStatements);
 	}
-	void visit(WhileStmtNode* w) {
-		printLabel(w, "WHILE");
-		pr_node_edge(w, w.condition);
-		pr_node_edges(w, w.statements); }
+	void visit(WhileStmtNode* node) {
+		printLabel(node, "WHILE");
+		pr_node_edge(node, node.condition);
+		pr_node_edges(node, node.statements); }
 	void visit(DoWhileStmtNode* d) {
 		printLabel(d, "DO");
 		pr_node_edge(d, d.condition);
@@ -359,3 +254,4 @@ struct AstDotPrinter {
 		writeln(`}`);
 	}
 }
+*/

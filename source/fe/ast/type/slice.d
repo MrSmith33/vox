@@ -17,6 +17,11 @@ struct SliceTypeNode {
 	uint alignment() { return POINTER_SIZE; }
 }
 
+void print_slice(SliceTypeNode* node, ref AstPrintState state)
+{
+	state.print("TYPE ", node.typeNode.printer(state.context));
+}
+
 void post_clone_slice(SliceTypeNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.base);

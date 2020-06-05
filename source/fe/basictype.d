@@ -30,6 +30,11 @@ enum BasicType : ubyte {
 
 	t_f32,
 	t_f64,
+
+	// meta types
+	//t_alias,
+	//t_type,
+	//t_value,
 }
 
 bool isInteger(BasicType b) {

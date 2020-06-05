@@ -1,6 +1,10 @@
 /// Copyright: Copyright (c) 2017-2019 Andrey Penechko.
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
+
+/// We rely on the fact that nodes are allocated sequentially,
+/// which allows us to simply copy a range on slots and fix indicies,
+/// in order to create template instance.
 module fe.ast.decl.template_;
 
 import all;
@@ -33,6 +37,18 @@ struct TemplateInstance
 	AstIndex entity;
 }
 
+void print_template(TemplateDeclNode* node, ref AstPrintState state)
+{
+	state.print("TEMPLATE ", state.context.idString(node.id));
+	print_ast(node.parameters, state);
+	print_ast(node.body, state);
+	foreach (ref TemplateInstance inst; node.instances)
+	{
+		state.print("INSTANCE: ", state.context.idString(inst.entity.get_node_id(state.context)));
+		print_ast(inst.entity, state);
+	}
+}
+
 void post_clone_template(TemplateDeclNode* node, ref CloneState state)
 {
 	state.fixScope(node.parentScope);
@@ -46,7 +62,8 @@ void post_clone_template(TemplateDeclNode* node, ref CloneState state)
 	node.after_body.storageIndex += state.offset;
 }
 
-void name_register_self_template(AstIndex nodeIndex, TemplateDeclNode* node, ref NameRegisterState state) {
+void name_register_self_template(AstIndex nodeIndex, TemplateDeclNode* node, ref NameRegisterState state)
+{
 	node.state = AstNodeState.name_register_nested;
 	node.parentScope.insert_scope(node.id, nodeIndex, state.context);
 	node.state = AstNodeState.type_check_done;
@@ -58,6 +75,11 @@ struct TemplateParamDeclNode
 {
 	mixin AstNodeData!(AstType.decl_template_param, AstFlags.isDeclaration);
 	Identifier id;
+}
+
+void print_template_param(TemplateParamDeclNode* node, ref AstPrintState state)
+{
+	state.print("TEMPLATE PARAM ", state.context.idString(node.id));
 }
 
 
@@ -251,6 +273,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case decl_struct: post_clone_struct(cast(StructDeclNode*)node, state); break;
 		case decl_enum: post_clone_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: post_clone_enum_member(cast(EnumMemberDecl*)node, state); break;
+		case decl_static_assert: post_clone_static_assert(cast(StaticAssertDeclNode*)node, state); break;
 		case decl_static_if: post_clone_static_if(cast(StaticIfDeclNode*)node, state); break;
 		case decl_template: post_clone_template(cast(TemplateDeclNode*)node, state); break;
 		case decl_template_param: break;

@@ -74,6 +74,14 @@ struct FunctionDeclNode {
 	ref Identifier id() { return backendData.name; }
 }
 
+void print_func(FunctionDeclNode* node, ref AstPrintState state)
+{
+	auto sig = node.signature.get!FunctionSignatureNode(state.context);
+	state.print("FUNC ", sig.returnType.printer(state.context), " ", state.context.idString(node.id), node.isInline ? " #inline" : null);
+	print_ast(sig.parameters, state);
+	if (node.block_stmt) print_ast(node.block_stmt, state);
+}
+
 void post_clone_func(FunctionDeclNode* node, ref CloneState state)
 {
 	state.fixScope(node.parentScope);

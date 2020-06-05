@@ -2,6 +2,14 @@
 
 <!-- MarkdownTOC autolink="true" markdown_preview="github" -->
 
+- [Built-in types](#built-in-types)
+        - [Basic types](#basic-types)
+        - [Slices](#slices)
+        - [Static arrays](#static-arrays)
+    - [Function type](#function-type)
+- [Functions](#functions)
+    - [External functions](#external-functions)
+    - [Calls](#calls)
 - [Metaprogramming](#metaprogramming)
     - [Compile-time assert `#assert` \(NEI\)](#compile-time-assert-assert-nei)
     - [Conditional compilation](#conditional-compilation)
@@ -20,6 +28,141 @@
 <!-- /MarkdownTOC -->
 
 `NEI` marks not yet implemented features.
+
+# Built-in types
+
+### Basic types
+
+- `void`
+- `typeof(null)`
+- `bool`
+
+- `i8`
+- `i16`
+- `i32`
+- `i64`
+
+- `u8`
+- `u16`
+- `u32`
+- `u64`
+
+- `f32`
+- `f64`
+
+- `$alias`
+- `$type`
+- `$value`
+
+### Slices
+
+Slices are equivalent of `struct { size_t length; T* ptr; }`
+
+`<type>[]`
+
+Example:
+```D
+u8[] slice;
+```
+
+Members/operations:
+```D
+u8[] slice;
+slice.length; // u64
+slice.ptr; // u8*
+slice[1..10]; // slicing. End is exclusive
+slice[]; // slicing. Same as slice[0..slice.length]
+```
+
+### Static arrays
+
+Static array has fixed size and is passed by value as a whole.
+
+`<type>[<integer value>]`
+
+Example:
+```D
+u8[256] buffer;
+```
+
+Members/operations:
+```D
+u8[256] array;
+array.length; // Is a compile-time known constant
+array.ptr; // u8*
+array[1..10]; // slicing. End is exclusive
+array[]; // slicing. Same as array[0..array.length]
+```
+
+## Function type
+
+Represents function pointer.
+
+`<ret_type> function(<argument_list)`
+
+Example:
+```D
+i32 i32Fun() { return 42; }
+alias i32_funType = i32 function(); // alias of function type
+enum i32_funType funPtrEnum = &i32Fun; // storing function pointer inside enum
+enum i32 function() inlinefunPtrEnum = &i32Fun; // same, with explicitly specified type
+i32_funType retFuncPtr() {
+    return &i32Fun; // function returns function pointer
+}
+
+i32 sum(i32 a, i32 b) { return a + b; }
+i32 callFunc(i32 function(i32, i32) func, i32 a, i32 b) {
+    // call pointer to function with parameters
+    return func(a, b);
+}
+i32 user() {
+    return callFunc(&sum, 10, 40);
+}
+```
+
+# Functions
+
+Function declaration:
+
+```D
+<return_type> <identifier> (<arguments>) {
+    <body>
+}
+```
+
+## External functions
+
+External functions are linked by name to symbol with matching name from `.dll` or from host program.
+
+Syntax:
+
+```D
+<return_type> <identifier> (<arguments>);
+```
+
+Example:
+```D
+u8 WriteConsoleA(
+    void* hConsoleOutput,
+    u8* lpBuffer,
+    u32 nNumberOfCharsToWrite,
+    u32* lpNumberOfCharsWritten,
+    void* lpReserved
+);
+```
+
+When program is compiled like `tjc main.vx C:\Windows\System32\kernel32.dll`, `WriteConsoleA` function will bind to the symbol from `kernel32.dll`.
+
+Right now there is no precise control over the search scope per external function. 
+
+## Calls
+
+Optional parenthesis are supported in all situations except when taking alias.
+
+```D
+$alias alias_var = func; // alias is taken
+$alias alias_var = func(); // alias of return value is taken
+```
 
 # Metaprogramming
 

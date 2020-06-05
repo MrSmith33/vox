@@ -15,6 +15,18 @@ struct ForStmtNode {
 	AstNodes body_statements;
 }
 
+void print_for(ForStmtNode* node, ref AstPrintState state)
+{
+	state.print("FOR");
+	print_ast(node.init_statements, state);
+	state.print("COND");
+	if (node.condition)
+		print_ast(node.condition, state);
+	state.print("INC");
+	print_ast(node.increment_statements, state);
+	print_ast(node.body_statements, state);
+}
+
 void post_clone_for(ForStmtNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.condition);

@@ -13,6 +13,13 @@ struct IndexExprNode {
 	AstNodes indicies;
 }
 
+void print_index(IndexExprNode* node, ref AstPrintState state)
+{
+	state.print("INDEX");
+	print_ast(node.array, state);
+	print_ast(node.indicies, state);
+}
+
 void post_clone_index(IndexExprNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.array);

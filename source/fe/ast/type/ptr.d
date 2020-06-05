@@ -24,6 +24,11 @@ struct PtrTypeNode {
 	}
 }
 
+void print_ptr(PtrTypeNode* node, ref AstPrintState state)
+{
+	state.print("TYPE ", node.typeNode.printer(state.context));
+}
+
 void post_clone_ptr(PtrTypeNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.base);

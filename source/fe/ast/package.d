@@ -32,6 +32,7 @@ enum AstType : ubyte
 	decl_function,
 	decl_import,
 	decl_module,
+	decl_static_assert,
 	decl_static_if,
 	decl_struct,
 	decl_template,

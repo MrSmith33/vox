@@ -13,6 +13,13 @@ struct UnaryExprNode {
 	AstIndex child;
 }
 
+void print_unary_op(UnaryExprNode* node, ref AstPrintState state)
+{
+	if (node.type) state.print("UNOP ", node.type.printer(state.context), " ", node.op);
+	else state.print("UNOP ", node.op);
+	print_ast(node.child, state);
+}
+
 void post_clone_unary_op(UnaryExprNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.child);

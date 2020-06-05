@@ -79,9 +79,9 @@ void pass_parser(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 		parser.parseModule(file.mod, file.firstTokenIndex);
 
 		if (ctx.printAstFresh) {
-			auto astPrinter = AstPrinter(&ctx, 2);
+			auto state = AstPrintState(&ctx, 2);
 			writefln("// AST fresh `%s`", file.name);
-			astPrinter.printAst(cast(AstNode*)file.mod);
+			print_ast(ctx.getAstNodeIndex(file.mod), state);
 		}
 	}
 }
@@ -247,6 +247,8 @@ struct Parser
 				return parse_import();
 			case HASH_IF:
 				return parse_hash_if();
+			case HASH_ASSERT:
+				return parse_hash_assert();
 			default: // <func_declaration> / <var_declaration>
 				AstIndex funcIndex = parse_var_func_declaration(ConsumeTerminator.yes, TokenType.SEMICOLON);
 				AstNode* node = context.getAstNode(funcIndex);
@@ -732,6 +734,42 @@ struct Parser
 		return make!ImportDeclNode(start, currentScopeIndex, moduleId);
 	}
 
+	AstIndex parse_hash_assert() /* "#assert(" <condition>, <message> ");"*/
+	{
+		TokenIndex start = tok.index;
+		nextToken; // skip "#assert"
+
+		if (tok.type != TokenType.LPAREN)
+			context.unrecoverable_error(tok.index,
+				"Expected `(` after #assert, while got `%s`",
+				context.getTokenString(tok.index));
+		nextToken; // skip (
+
+		AstIndex condition = expr(PreferType.no);
+		if (tok.type != TokenType.COMMA)
+			context.unrecoverable_error(tok.index,
+				"Expected `,` after condition of #assert, while got `%s`",
+				context.getTokenString(tok.index));
+
+		nextToken; // skip ,
+
+		AstIndex message = expr(PreferType.no);
+
+		if (tok.type != TokenType.RPAREN)
+			context.unrecoverable_error(tok.index,
+				"Expected `)` after message of #assert, while got `%s`",
+				context.getTokenString(tok.index));
+		nextToken; // skip )
+
+		if (tok.type != TokenType.SEMICOLON)
+			context.unrecoverable_error(tok.index,
+				"Expected `;` after #assert, while got `%s`",
+				context.getTokenString(tok.index));
+		nextToken; // skip ;
+
+		return make!StaticAssertDeclNode(start, condition, message);
+	}
+
 	AstIndex parse_hash_if() /* "#if" <paren_expr> <statement/decl> */
 	{
 		AstNodes parseItems(alias itemParser)()
@@ -864,6 +902,8 @@ struct Parser
 				return parse_import();
 			case TokenType.HASH_IF:
 				return parse_hash_if();
+			case TokenType.HASH_ASSERT:
+				return parse_hash_assert();
 
 			// statements
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */

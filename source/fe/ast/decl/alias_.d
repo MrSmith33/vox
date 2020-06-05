@@ -17,6 +17,12 @@ struct AliasDeclNode
 	AstIndex initializer;
 }
 
+void print_alias(AliasDeclNode* node, ref AstPrintState state)
+{
+	state.print("ALIAS ", state.context.idString(node.id));
+	print_ast(node.initializer, state);
+}
+
 void post_clone_alias(AliasDeclNode* node, ref CloneState state)
 {
 	state.fixScope(node.parentScope);

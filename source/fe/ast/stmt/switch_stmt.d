@@ -21,6 +21,23 @@ struct SwitchCase
 	AstIndex stmt; // block stmt
 }
 
+void print_switch(SwitchStmtNode* node, ref AstPrintState state)
+{
+	state.print("SWITCH");
+	print_ast(node.condition, state);
+	foreach (SwitchCase c; node.cases)
+	{
+		state.print("CASE");
+		print_ast(c.expr, state);
+		print_ast(c.stmt, state);
+	}
+	if (node.elseStmt)
+	{
+		state.print("ELSE");
+		print_ast(node.elseStmt, state);
+	}
+}
+
 void post_clone_switch(SwitchStmtNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.condition);

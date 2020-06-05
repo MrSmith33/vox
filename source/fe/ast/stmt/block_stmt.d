@@ -13,6 +13,12 @@ struct BlockStmtNode {
 	AstNodes statements;
 }
 
+void print_block(BlockStmtNode* node, ref AstPrintState state)
+{
+	state.print("BLOCK");
+	print_ast(node.statements, state);
+}
+
 void post_clone_block(BlockStmtNode* node, ref CloneState state)
 {
 	state.fixAstNodes(node.statements);

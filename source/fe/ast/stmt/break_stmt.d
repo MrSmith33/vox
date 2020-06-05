@@ -11,6 +11,11 @@ struct BreakStmtNode {
 	mixin AstNodeData!(AstType.stmt_break, AstFlags.isStatement, AstNodeState.type_check_done);
 }
 
+void print_break(BreakStmtNode* node, ref AstPrintState state)
+{
+	state.print("BREAK");
+}
+
 void ir_gen_break(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt, BreakStmtNode* b)
 {
 	if (gen.currentLoopEnd is null) gen.context.unrecoverable_error(b.loc, "break is not within the loop");

@@ -15,6 +15,10 @@ extern(C) void external_print_i32_func(int par1) {
 extern(C) void external_print_i64_func(long par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
+extern(C) void external_print_string(Slice!char param) {
+	char[] slice = *cast(char[]*)&param;
+	testSink.put(slice);
+}
 
 @TestInfo(&tester7)
 immutable test7 = q{--- test7
@@ -372,10 +376,6 @@ immutable test25 = q{--- test25
 		print(str);
 	}
 };
-extern(C) void external_print_string(Slice!char param) {
-	char[] slice = *cast(char[]*)&param;
-	testSink.put(slice); // Hello
-}
 void tester25(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(void)("run");
 	run();
@@ -3100,4 +3100,18 @@ immutable test131 = q{--- test131
 	void run() {
 		log(fac(5));
 	}
+};
+
+
+@TestInfo()
+immutable test132 = q{--- test132
+	#assert(true, "Assert test");
+};
+
+
+@TestInfo()
+immutable test133 = q{--- test133
+	#assert(false, "Assert test");
+--- <error>
+test133(1, 2): Error: static assert: "Assert test"
 };

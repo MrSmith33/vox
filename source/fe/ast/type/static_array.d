@@ -18,6 +18,11 @@ struct StaticArrayTypeNode {
 	uint alignment(CompilationContext* context) { return base.typeAlignment(context); }
 }
 
+void print_static_array(StaticArrayTypeNode* node, ref AstPrintState state)
+{
+	state.print("TYPE ", node.typeNode.printer(state.context));
+}
+
 void post_clone_static_array(StaticArrayTypeNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.base);

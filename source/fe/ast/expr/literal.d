@@ -33,6 +33,14 @@ struct IntLiteralExprNode {
 	}
 }
 
+void print_literal_int(IntLiteralExprNode* node, ref AstPrintState state)
+{
+	if (node.isSigned)
+		state.print("LITERAL int ", node.type.printer(state.context), " ", cast(long)node.value);
+	else
+		state.print("LITERAL int ", node.type.printer(state.context), " ", node.value);
+}
+
 void type_check_literal_int(IntLiteralExprNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
@@ -52,6 +60,11 @@ IrIndex ir_gen_literal_int(CompilationContext* context, IntLiteralExprNode* n)
 @(AstType.literal_null)
 struct NullLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_null, 0, AstNodeState.name_resolve_done);
+}
+
+void print_literal_null(NullLiteralExprNode* node, ref AstPrintState state)
+{
+	state.print("LITERAL null");
 }
 
 void type_check_literal_null(NullLiteralExprNode* node, ref TypeCheckState state)
@@ -76,6 +89,12 @@ IrIndex ir_gen_literal_null(CompilationContext* context, NullLiteralExprNode* n)
 struct BoolLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_bool, 0, AstNodeState.name_resolve_done);
 	bool value;
+}
+
+void print_literal_bool(BoolLiteralExprNode* node, ref AstPrintState state)
+{
+	if (node.value) state.print("TRUE ", node.type.printer(state.context));
+	else state.print("FALSE ", node.type.printer(state.context));
 }
 
 void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state)
@@ -107,6 +126,11 @@ struct StringLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_string, 0, AstNodeState.name_resolve_done);
 	IrIndex irValue;
 	string value;
+}
+
+void print_literal_string(StringLiteralExprNode* node, ref AstPrintState state)
+{
+	state.print("LITERAL string ", node.type.printer(state.context), " ", node.value);
 }
 
 void type_check_literal_string(StringLiteralExprNode* node, ref TypeCheckState state)

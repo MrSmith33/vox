@@ -37,8 +37,8 @@ void require_name_register(ref AstNodes items, ref NameRegisterState state)
 
 // returns `items` size delta
 // walk all items in from..to range.
-// gather all static ifs into linked list
-// for each static if
+// gather all static ifs into linked list, while doing `require_name_register_self`
+// for each static if in linked list
 //   eval condition
 //   in array replace static if node with correct branch
 //   call this recursively for inserted subrange
@@ -70,6 +70,9 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 		uint insertPoint = cast(uint)(staticIfNode.arrayIndex + sizeDelta);
 		items.replaceAt(c.arrayArena, insertPoint, 1, itemsToInsert);
 
+		// we replace static if with its children
+		//   static if is removed from the list (-1)
+		//   childrent are inserted (itemsToInsert.length)
 		sizeDelta += itemsToInsert.length - 1;
 		sizeDelta += require_name_register_self_sub_array(items, insertPoint, insertPoint+itemsToInsert.length, state);
 
@@ -159,6 +162,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case decl_struct: name_register_nested_struct(nodeIndex, cast(StructDeclNode*)node, state); break;
 		case decl_enum: name_register_nested_enum(nodeIndex, cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: name_register_nested_enum_member(nodeIndex, cast(EnumMemberDecl*)node, state); break;
+		case decl_static_assert: name_register_nested_static_assert(cast(StaticAssertDeclNode*)node, state); break;
 		case decl_static_if: name_register_nested_static_if(nodeIndex, cast(StaticIfDeclNode*)node, state); break;
 
 		case stmt_block: name_register_nested_block(cast(BlockStmtNode*)node, state); break;

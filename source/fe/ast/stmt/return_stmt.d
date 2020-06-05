@@ -12,6 +12,12 @@ struct ReturnStmtNode {
 	AstIndex expression; // Nullable
 }
 
+void print_return(ReturnStmtNode* node, ref AstPrintState state)
+{
+	state.print("RETURN");
+	if (node.expression) print_ast(node.expression, state);
+}
+
 void post_clone_return(ReturnStmtNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.expression);

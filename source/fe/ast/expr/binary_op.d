@@ -14,6 +14,14 @@ struct BinaryExprNode {
 	AstIndex right;
 }
 
+void print_binary_op(BinaryExprNode* node, ref AstPrintState state)
+{
+	if (node.type) state.print("BINOP ", node.type.printer(state.context), " ", node.op);
+	else state.print("BINOP ", node.op);
+	print_ast(node.left, state);
+	print_ast(node.right, state);
+}
+
 void post_clone_binary_op(BinaryExprNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.left);

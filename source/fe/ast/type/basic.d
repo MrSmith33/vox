@@ -54,6 +54,11 @@ enum BasicTypeFlag : ubyte {
 	isBoolean  = 1 << 3,
 }
 
+void print_type_basic(BasicTypeNode* node, ref AstPrintState state)
+{
+	state.print("TYPE ", node.typeNode.printer(state.context));
+}
+
 IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 	out(res; res.isTypeBasic, "Not a basic type")
 {

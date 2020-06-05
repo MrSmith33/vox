@@ -15,6 +15,19 @@ struct IfStmtNode
 	AstNodes elseStatements; // can be empty
 }
 
+void print_if(IfStmtNode* node, ref AstPrintState state)
+{
+	state.print("IF");
+	print_ast(node.condition, state);
+	state.print("THEN");
+	print_ast(node.thenStatements, state);
+	if (!node.elseStatements.empty)
+	{
+		state.print("ELSE");
+		print_ast(node.elseStatements, state);
+	}
+}
+
 void post_clone_if(IfStmtNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.condition);

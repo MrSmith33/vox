@@ -43,6 +43,12 @@ struct StructDeclNode {
 	}
 }
 
+void print_struct(StructDeclNode* node, ref AstPrintState state)
+{
+	state.print("STRUCT ", state.context.idString(node.id));
+	print_ast(node.declarations, state);
+}
+
 void post_clone_struct(StructDeclNode* node, ref CloneState state)
 {
 	state.fixScope(node.parentScope);

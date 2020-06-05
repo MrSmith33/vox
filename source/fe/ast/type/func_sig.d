@@ -18,6 +18,11 @@ struct FunctionSignatureNode {
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 }
 
+void print_func_sig(FunctionSignatureNode* node, ref AstPrintState state)
+{
+	state.print("TYPE ", node.typeNode.printer(state.context));
+}
+
 void post_clone_func_sig(FunctionSignatureNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.returnType);

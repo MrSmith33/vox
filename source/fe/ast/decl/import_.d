@@ -13,6 +13,11 @@ struct ImportDeclNode
 	Identifier id;
 }
 
+void print_import(ImportDeclNode* node, ref AstPrintState state)
+{
+	state.print("IMPORT ", state.context.idString(node.id));
+}
+
 void post_clone_import(ImportDeclNode* node, ref CloneState state)
 {
 	state.fixScope(node.parentScope);

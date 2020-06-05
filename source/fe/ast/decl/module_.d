@@ -42,6 +42,12 @@ struct ModuleDeclNode {
 	}
 }
 
+void print_module(ModuleDeclNode* node, ref AstPrintState state)
+{
+	state.print("MODULE ", state.context.files[node.moduleIndex.fileIndex].name);
+	print_ast(node.declarations, state);
+}
+
 void name_register_nested_module(ModuleDeclNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.declarations, state);

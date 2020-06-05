@@ -76,6 +76,7 @@ enum TokenType : ubyte {
 
 	@("#if")      HASH_IF,
 	@("#inline")  HASH_INLINE,
+	@("#assert")  HASH_ASSERT,
 
 	@("alias")    ALIAS_SYM,
 	@("break")    BREAK_SYM,
@@ -601,6 +602,9 @@ struct Lexer
 					case 'n': if (match("nline")) return TT.HASH_INLINE; break;
 					default: break;
 				}
+				break;
+			case 'a':
+				if (match("assert")) return TT.HASH_ASSERT; break;
 				break;
 			default: break;
 		}

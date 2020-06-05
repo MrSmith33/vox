@@ -14,6 +14,14 @@ struct SliceExprNode {
 	AstIndex toIndex;
 }
 
+void print_expr_slice(SliceExprNode* node, ref AstPrintState state)
+{
+	state.print("SLICE");
+	print_ast(node.array, state);
+	print_ast(node.fromIndex, state);
+	print_ast(node.toIndex, state);
+}
+
 void post_clone_expr_slice(SliceExprNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.array);

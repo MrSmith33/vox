@@ -13,6 +13,13 @@ struct WhileStmtNode {
 	AstNodes statements;
 }
 
+void print_while(WhileStmtNode* node, ref AstPrintState state)
+{
+	state.print("WHILE");
+	print_ast(node.condition, state);
+	print_ast(node.statements, state);
+}
+
 void post_clone_while(WhileStmtNode* node, ref CloneState state)
 {
 	state.fixAstIndex(node.condition);
