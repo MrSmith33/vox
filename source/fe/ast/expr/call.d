@@ -108,6 +108,14 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 					return type_check_func_call(node, signature, callee.get_node_id(c), state);
 				}
 			}
+			if (varType.isAlias)
+			{
+				if (callee.astType(c) == AstType.decl_var) goto default;
+				auto enumMember = callee.get!EnumMemberDecl(c);
+				node.callee = eval_static_expr_alias(enumMember.initializer, c);
+				callee = node.callee; // used in case decl_function
+				goto case AstType.decl_function;
+			}
 			goto default;
 		case AstType.expr_index:
 			require_type_check(callee, state);
@@ -116,6 +124,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			node.callee = callee;
 			goto case AstType.decl_function;
 		default:
+			// unknown / unimplemented case
 			node.type = c.basicTypeNodes(BasicType.t_error);
 			c.error(node.loc, "Cannot call %s", callee.astType(c));
 			c.internal_error(node.loc,
@@ -172,7 +181,7 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 			c.error(arg.loc(c),
 				"Argument %s, must have type %s, not %s", i+1,
 				param.type.printer(c),
-				arg.expr_type(c).printer(c));
+				arg.get_expr_type(c).printer(c));
 	}
 }
 
@@ -195,7 +204,7 @@ void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref Type
 				c.error(node.args[numStructMembers].loc(c),
 					"Argument %s, must have type %s, not %s", numStructMembers+1,
 					memberType.printer(c),
-					node.args[numStructMembers].expr_type(c).printer(c));
+					node.args[numStructMembers].get_expr_type(c).printer(c));
 			}
 		} else { // init with initializer from struct definition
 			// skip

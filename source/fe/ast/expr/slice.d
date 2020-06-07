@@ -59,16 +59,16 @@ void type_check_expr_slice(SliceExprNode* node, ref TypeCheckState state)
 	autoconvTo(node.fromIndex, c.basicTypeNodes(BasicType.t_i64), c);
 	require_type_check(node.toIndex, state);
 	autoconvTo(node.toIndex, c.basicTypeNodes(BasicType.t_i64), c);
-	switch (node.array.expr_type(c).astType(c)) with(AstType)
+	switch (node.array.get_expr_type(c).astType(c)) with(AstType)
 	{
 		case type_ptr, type_static_array:
-			AstIndex elemType = node.array.expr_type(c).get_type(c).getElementType(c);
+			AstIndex elemType = node.array.get_expr_type(c).get_type(c).getElementType(c);
 			node.type = c.appendAst!SliceTypeNode(node.loc, elemType);
 			break;
 		case type_slice:
-			node.type = node.array.expr_type(c);
+			node.type = node.array.get_expr_type(c);
 			break;
-		default: c.internal_error("Cannot slice value of type `%s`", node.array.expr_type(c).printer(c));
+		default: c.internal_error("Cannot slice value of type `%s`", node.array.get_expr_type(c).printer(c));
 	}
 	node.state = AstNodeState.type_check_done;
 }

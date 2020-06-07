@@ -757,6 +757,9 @@ struct CompilationContext
 		makeBasic(CommonAstNodes.type_f32, 4, 0, 0, BasicType.t_f32, BasicTypeFlag.isFloat);
 		makeBasic(CommonAstNodes.type_f64, 8, 0, 0, BasicType.t_f64, BasicTypeFlag.isFloat);
 
+		makeBasic(CommonAstNodes.type_alias, 4, uint.min, uint.max, BasicType.t_alias);
+		makeBasic(CommonAstNodes.type_type, 4, uint.min, uint.max, BasicType.t_type);
+
 		// custom types
 		auto type_u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
 		assertf(type_u8Ptr == CommonAstNodes.type_u8Ptr, "AstIndex mismatch for type_u8Ptr %s != %s", type_u8Ptr, cast(AstIndex)CommonAstNodes.type_u8Ptr);
@@ -865,21 +868,24 @@ enum CommonAstNodes : AstIndex
 
 	type_f32                 = AstIndex(123),
 	type_f64                 = AstIndex(133),
+
+	type_alias               = AstIndex(143),
+	type_type                = AstIndex(153),
 	// basic type nodes end
 
 	// common custom types
-	type_u8Ptr               = AstIndex(143),
-	type_u8Slice             = AstIndex(147),
+	type_u8Ptr               = AstIndex(163),
+	type_u8Slice             = AstIndex(167),
 
 	// builtin nodes
 	// The order is the same as in BuiltinId enum
-	builtin_min              = AstIndex(152),
-	builtin_max              = AstIndex(156),
-	builtin_slice_length     = AstIndex(160),
-	builtin_slice_ptr        = AstIndex(164),
-	builtin_array_length     = AstIndex(168),
-	builtin_array_ptr        = AstIndex(172),
-	builtin_sizeof           = AstIndex(176),
+	builtin_min              = AstIndex(172),
+	builtin_max              = AstIndex(176),
+	builtin_slice_length     = AstIndex(180),
+	builtin_slice_ptr        = AstIndex(184),
+	builtin_array_length     = AstIndex(188),
+	builtin_array_ptr        = AstIndex(192),
+	builtin_sizeof           = AstIndex(196),
 	// builtin nodes end
 }
 
@@ -898,6 +904,8 @@ private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
 	CommonAstNodes.type_u64,
 	CommonAstNodes.type_f32,
 	CommonAstNodes.type_f64,
+	CommonAstNodes.type_alias,
+	CommonAstNodes.type_type,
 ];
 private immutable AstIndex[BuiltinId.max + 1] builtinsArray = [
 	CommonAstNodes.builtin_min,

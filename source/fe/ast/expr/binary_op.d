@@ -49,8 +49,8 @@ void type_check_binary_op(BinaryExprNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 	require_type_check(node.left, state);
 	require_type_check(node.right, state);
-	assert(node.left.expr_type(c), format("left(%s).type: is null", node.left.astType(c)));
-	assert(node.right.expr_type(c), format("right(%s).type: is null", node.right.astType(c)));
+	assert(node.left.get_expr_type(c), format("left(%s).type: is null", node.left.astType(c)));
+	assert(node.right.get_expr_type(c), format("right(%s).type: is null", node.right.astType(c)));
 
 	setResultType(node, c);
 	node.state = AstNodeState.type_check_done;
@@ -380,14 +380,14 @@ IrBinaryCondition convertBinOpToIrCond(BinOp op, bool isSigned)
 	}
 }
 
-void setResultType(BinaryExprNode* b, CompilationContext* context)
+void setResultType(BinaryExprNode* b, CompilationContext* c)
 {
-	AstIndex resRype = context.basicTypeNodes(BasicType.t_error);
+	AstIndex resRype = c.basicTypeNodes(BasicType.t_error);
 	b.type = resRype;
-	AstIndex leftTypeIndex = b.left.get_expr(context).type;
-	TypeNode* leftType = leftTypeIndex.get_type(context);
-	AstIndex rightTypeIndex = b.right.get_expr(context).type;
-	TypeNode* rightType = rightTypeIndex.get_type(context);
+	AstIndex leftTypeIndex = b.left.get_expr_type(c);
+	TypeNode* leftType = leftTypeIndex.get_type(c);
+	AstIndex rightTypeIndex = b.right.get_expr_type(c);
+	TypeNode* rightType = rightTypeIndex.get_type(c);
 
 	if (leftType.isError || rightType.isError) return;
 
@@ -395,50 +395,50 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 	{
 		// logic ops. Requires both operands to be bool
 		case LOGIC_AND, LOGIC_OR:
-			autoconvToBool(b.left, context);
-			autoconvToBool(b.right, context);
-			resRype = context.basicTypeNodes(BasicType.t_bool);
+			autoconvToBool(b.left, c);
+			autoconvToBool(b.right, c);
+			resRype = c.basicTypeNodes(BasicType.t_bool);
 			break;
 		// logic ops. Requires both operands to be of the same type
 		case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 			if (leftType.isPointer && rightType.isPointer)
 			{
 				if (
-					same_type(leftTypeIndex, rightTypeIndex, context) ||
-					leftType.as_ptr.isVoidPtr(context) ||
-					rightType.as_ptr.isVoidPtr(context))
+					same_type(leftTypeIndex, rightTypeIndex, c) ||
+					leftType.as_ptr.isVoidPtr(c) ||
+					rightType.as_ptr.isVoidPtr(c))
 				{
-					resRype = context.basicTypeNodes(BasicType.t_bool);
+					resRype = c.basicTypeNodes(BasicType.t_bool);
 					break;
 				}
 			}
 
-			if (autoconvToCommonType(b.left, b.right, context))
-				resRype = context.basicTypeNodes(BasicType.t_bool);
+			if (autoconvToCommonType(b.left, b.right, c))
+				resRype = c.basicTypeNodes(BasicType.t_bool);
 			else
-				context.error(b.left.get_node(context).loc, "Cannot compare `%s` and `%s`",
-					leftType.typeName(context),
-					rightType.typeName(context));
+				c.error(b.left.get_node(c).loc, "Cannot compare `%s` and `%s`",
+					leftType.typeName(c),
+					rightType.typeName(c));
 			break;
 
 		case MINUS:
 			if (leftType.isPointer && rightType.isPointer) // handle ptr - ptr
 			{
-				if (same_type(leftTypeIndex, rightTypeIndex, context))
+				if (same_type(leftTypeIndex, rightTypeIndex, c))
 				{
 					b.op = BinOp.PTR_DIFF;
-					resRype = context.basicTypeNodes(BasicType.t_i64);
+					resRype = c.basicTypeNodes(BasicType.t_i64);
 					break;
 				}
 				else
 				{
-					context.error(b.loc, "cannot subtract pointers to different types: `%s` and `%s`",
-						leftType.printer(context), rightType.printer(context));
+					c.error(b.loc, "cannot subtract pointers to different types: `%s` and `%s`",
+						leftType.printer(c), rightType.printer(c));
 					break;
 				}
 			} else if (leftType.isPointer && rightType.isInteger) { // handle ptr - int
 				b.op = BinOp.PTR_PLUS_INT;
-				(cast(IntLiteralExprNode*)b.right.get_node(context)).negate(b.loc, *context);
+				(cast(IntLiteralExprNode*)b.right.get_node(c)).negate(b.loc, *c);
 				resRype = leftTypeIndex;
 				break;
 			}
@@ -462,22 +462,22 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 
 		// arithmetic op int float
 		case DIV, REMAINDER, MULT, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
-			if (autoconvToCommonType(b.left, b.right, context))
+			if (autoconvToCommonType(b.left, b.right, c))
 			{
-				resRype = b.left.get_node_type(context);
+				resRype = b.left.get_node_type(c);
 			}
 			else
 			{
-				context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
-					leftType.typeName(context), binOpStrings[b.op],
-					rightType.typeName(context));
+				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+					leftType.typeName(c), binOpStrings[b.op],
+					rightType.typeName(c));
 			}
 			break;
 
 		case MINUS_ASSIGN:
 			if (leftType.isPointer && rightType.isInteger) {
 				b.op = BinOp.PTR_PLUS_INT_ASSIGN;
-				(cast(IntLiteralExprNode*)b.right.get_node(context)).negate(b.loc, *context);
+				(cast(IntLiteralExprNode*)b.right.get_node(c)).negate(b.loc, *c);
 				resRype = leftTypeIndex;
 				break;
 			}
@@ -493,15 +493,15 @@ void setResultType(BinaryExprNode* b, CompilationContext* context)
 
 		case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN, SHL_ASSIGN, SHR_ASSIGN,
 			ASHR_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
-			bool success = autoconvTo(b.right, leftTypeIndex, context);
+			bool success = autoconvTo(b.right, leftTypeIndex, c);
 			if (!success)
-				context.error(b.loc, "Cannot perform `%s` %s `%s` operation",
-					leftType.typeName(context), binOpStrings[b.op],
-					rightType.typeName(context));
+				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+					leftType.typeName(c), binOpStrings[b.op],
+					rightType.typeName(c));
 			break;
 
 		default:
-			context.internal_error(b.loc, "Unimplemented op %s", b.op);
+			c.internal_error(b.loc, "Unimplemented op %s", b.op);
 			assert(false);
 	}
 	b.type = resRype;

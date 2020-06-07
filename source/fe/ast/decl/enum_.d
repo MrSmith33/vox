@@ -140,7 +140,7 @@ void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 	require_type_check(node.type, state);
 
 	if (node.initializer) {
-		require_type_check(node.initializer, state);
+		require_type_check_expr(node.type, node.initializer, state);
 		autoconvTo(node.initializer, node.type, state.context);
 	}
 	node.state = AstNodeState.type_check_done;

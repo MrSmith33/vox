@@ -256,10 +256,33 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
 		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return nodeIndex;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_type(c);
-		case error, literal_int, literal_string, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_null, literal_bool, literal_int, literal_string, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return node.as!ExpressionNode(c).type.get_node_type(c);
 
 		default: assert(false, format("get_node_type used on %s", node.astType));
+	}
+}
+
+AstIndex get_expr_type(AstIndex nodeIndex, CompilationContext* c)
+{
+	if (nodeIndex.isUndefined) return nodeIndex;
+
+	AstNode* node = c.getAstNode(nodeIndex);
+
+	switch(node.astType) with(AstType)
+	{
+		case decl_alias: return node.as!AliasDeclNode(c).initializer.get_expr_type(c);
+		case decl_struct: return CommonAstNodes.type_type;
+		case decl_function: return node.as!FunctionDeclNode(c).signature.get_node_type(c);
+		case decl_var: return node.as!VariableDeclNode(c).type.get_node_type(c);
+		case decl_enum: return CommonAstNodes.type_type;
+		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
+		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return CommonAstNodes.type_type;
+		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_expr_type(c);
+		case error, literal_null, literal_bool, literal_int, literal_string, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+			return node.as!ExpressionNode(c).type.get_node_type(c);
+
+		default: assert(false, format("get_expr_type used on %s", node.astType));
 	}
 }
 

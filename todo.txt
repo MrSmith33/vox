@@ -2,6 +2,7 @@
 - meta
 	+ function template
 	+ struct/union template
+	+ #assert
 	- macros (templated function that is inlined and can access inline scope/insert stuff into outer scope)
 	- meta types
 		- #alias
@@ -39,7 +40,7 @@
 	+ arithmetics (need to check signedness)
 	+ call
 	- force semantic analisys of function on call
-	- move eval calls to semantic pass
+	- move eval calls to semantic pass (Can only do ctfe at codegen time rn)
 
 - conditional compilation
 	+ #if
@@ -145,6 +146,7 @@ o dll linking
 - make sure that `this` is being used outside methods
 - test that sections get correct offsets in executable
 - split struct tests
+- all comptime expressions that must evaluate to bool (#if, #assert etc), check what happens with struct, array, slice, string, float... Must have the same logic as regular if.
 
 
 [Backend]

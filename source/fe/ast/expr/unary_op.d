@@ -79,20 +79,20 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 					{
 						case AstType.decl_var:
 							entity.flags |= VariableFlags.isAddressTaken; // mark variable
-							node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
+							node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.get_expr_type(c));
 							break;
 						case AstType.decl_function:
-							node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
+							node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.get_expr_type(c));
 							break;
 						default:
 							c.internal_error(node.loc, "Cannot take address of %s", entity.astType);
 					}
 					break;
 				case AstType.expr_index:
-					node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
+					node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.get_expr_type(c));
 					break;
 				case AstType.expr_member:
-					node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.expr_type(c));
+					node.type = c.appendAst!PtrTypeNode(node.child.loc(c), node.child.get_expr_type(c));
 					break;
 				default:
 					c.internal_error(node.loc, "Cannot take address of %s", child.astType);
@@ -124,7 +124,7 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 			break;
 		default:
 			c.internal_error("un op %s not implemented", node.op);
-			node.type = node.child.expr_type(c);
+			node.type = node.child.get_expr_type(c);
 	}
 	node.state = AstNodeState.type_check_done;
 }

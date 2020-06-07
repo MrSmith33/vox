@@ -23,7 +23,8 @@
         - [$type](#type)
         - [Builtin functions for working with meta types](#builtin-functions-for-working-with-meta-types)
         - [Using meta types in CTFE](#using-meta-types-in-ctfe)
-        - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
+    - [CTFE-only functions](#ctfe-only-functions)
+    - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
 
 <!-- /MarkdownTOC -->
 
@@ -157,11 +158,18 @@ Right now there is no precise control over the search scope per external functio
 
 ## Calls
 
-Optional parenthesis are supported in all situations except when taking alias.
+When calling function with 0 arguments parentheses are optional, except in the following situations:
+- when taking alias of a function.
+- when calling function returning $alias or function pointer
 
 ```D
 $alias alias_var = func; // alias is taken
 $alias alias_var = func(); // alias of return value is taken
+
+$alias func2() { ... }
+$alias alias_var = func2; // take alias of func2
+$alias alias_var = func2(); // call func2
+$alias alias_var = func2()(); // call return value of func2
 ```
 
 # Metaprogramming
@@ -169,8 +177,10 @@ $alias alias_var = func(); // alias of return value is taken
 ## Compile-time assert `#assert`
 
 ```D
-#assert(<condition>, <items to print>...);
+#assert(<condition>, <message>);
 ```
+
+When condition evaluates to false triggers compilation error with provided message.
 
 For now only single string literal can be used as a message.
 
@@ -269,6 +279,24 @@ alias ivec2 = vec[i32, 2];
 
 ## Meta types (NEI)
 
+They are built-in CTFE-only types.
+
+User types that contain meta types are consiedered CTFE-only too.
+
+```D
+$alias     // built-in meta type
+$alias*    // complex meta-types
+$alias[]   // complex meta-types
+$alias[10] // complex meta-types
+$alias func() { ... } // CTFE-only function
+struct S { // CTFE-only user-defined type (struct)
+    $alias a;
+    $alias b;
+}
+S func2() { ... } // CTFE-only function
+
+```
+
 ### $alias
 
 - `$alias` is an alias to any symbol in the program.
@@ -356,7 +384,7 @@ Selecting function depending on argument type:
 $alias selectPrintFunc($type T) {
     if (isInteger(T)) return $alias(printInt);
     if (T.$isSliceOf(u8) || T.$isArrayOf(u8)) return $alias(print);
-    #assert(false, "Invalid type");
+    $assert(false, "Invalid type");
 }
 void write[$alias[]... Args](Args args) {
     #foreach(i, $alias argType; T) {
@@ -365,7 +393,24 @@ void write[$alias[]... Args](Args args) {
 }
 ```
 
-### Compile Time Function Execution (CTFE)
+## CTFE-only functions
+
+When function returns or receives one of meta-types it is consiedered CTFE-only. That means that it can only be called at compile-time. These functions will not appear in the resulting executable.
+
+When CTFE-only function is called in runtime context, this call is evaluated at compile-time.
+
+Example:
+```D
+i32 func() { return 42; } // some function
+$alias getFunc() {
+    return func; // return alias to `func`
+}
+i32 user() {
+    getFunc()
+}
+```
+
+## Compile Time Function Execution (CTFE)
 
 Expressions are evaluated at compile time in such cases:
 - enum initializer
@@ -375,3 +420,4 @@ Expressions are evaluated at compile time in such cases:
 - #assert() arguments
 - global variable initializer
 - template parameters
+- it is call of CTFE-only function

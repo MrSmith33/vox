@@ -30,6 +30,7 @@ struct TypeCheckState
 {
 	CompilationContext* context;
 	FunctionDeclNode* curFunc;
+	AstIndex parentType;
 }
 
 /// Type checking for static context
@@ -125,25 +126,51 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 	}
 }
 
-/// Returns true if types are equal or were converted to common type. False otherwise
-bool autoconvToCommonType(ref AstIndex leftIndex, ref AstIndex rightIndex, CompilationContext* context)
+void require_type_check_expr(AstIndex targetType, ref AstIndex nodeIndex, ref TypeCheckState state)
 {
-	ExpressionNode* left = leftIndex.get_expr(context);
-	ExpressionNode* right = rightIndex.get_expr(context);
-	TypeNode* leftType = left.type.get_type(context);
-	TypeNode* rightType = right.type.get_type(context);
+	auto temp = state.parentType;
+	state.parentType = targetType;
+	require_type_check(nodeIndex, state);
+	state.parentType = temp;
+}
 
-	if (leftType.astType == AstType.type_basic && rightType.astType == AstType.type_basic)
+/// Returns true if types are equal or were converted to common type. False otherwise
+bool autoconvToCommonType(ref AstIndex leftIndex, ref AstIndex rightIndex, CompilationContext* c)
+{
+	AstNode* leftNode = leftIndex.get_node(c);
+	AstNode* rightNode = rightIndex.get_node(c);
+
+	if (leftNode.isType || rightNode.isType)
 	{
-		BasicType commonType = commonBasicType[leftType.as_basic.basicType][rightType.as_basic.basicType];
-		if (commonType != BasicType.t_error)
-		{
-			AstIndex type = context.basicTypeNodes(commonType);
-			bool successLeft = autoconvTo(leftIndex, type, context);
-			bool successRight = autoconvTo(rightIndex, type, context);
+		TypeNode* leftType = leftIndex.get_expr_type(c).get_type(c);
+		TypeNode* rightType = rightIndex.get_expr_type(c).get_type(c);
+		if (leftType.isTypeBasic && rightType.isTypeBasic) {
+			BasicType commonType = commonBasicType[leftType.as_basic.basicType][rightType.as_basic.basicType];
+			if (commonType == BasicType.t_error) return false;
+
+			AstIndex type = c.basicTypeNodes(commonType);
+			bool successLeft = autoconvTo(leftIndex, type, c);
+			bool successRight = autoconvTo(rightIndex, type, c);
 			if(successLeft && successRight)
 				return true;
 		}
+	}
+
+	ExpressionNode* left = leftIndex.get_expr(c);
+	ExpressionNode* right = rightIndex.get_expr(c);
+	TypeNode* leftType = left.type.get_type(c);
+	TypeNode* rightType = right.type.get_type(c);
+
+	if (leftType.isTypeBasic && rightType.isTypeBasic)
+	{
+		BasicType commonType = commonBasicType[leftType.as_basic.basicType][rightType.as_basic.basicType];
+		if (commonType == BasicType.t_error) return false;
+
+		AstIndex type = c.basicTypeNodes(commonType);
+		bool successLeft = autoconvTo(leftIndex, type, c);
+		bool successRight = autoconvTo(rightIndex, type, c);
+		if(successLeft && successRight)
+			return true;
 	}
 	else if (leftType.isPointer && rightType.isTypeofNull) {
 		right.type = left.type;
@@ -202,8 +229,24 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 {
 	CompilationContext* c = context;
 
-	ExpressionNode* expr = exprIndex.get_expr(c);
+	AstNode* exprNode = exprIndex.get_node(c);
 	TypeNode* type = typeIndex.get_type(c);
+
+	if (exprNode.isType)
+	{
+		if (type.astType == AstType.type_basic)
+		{
+			auto basicType = type.as_basic.basicType;
+			if (basicType == BasicType.t_alias || basicType == BasicType.t_type) {
+				exprIndex = c.appendAst!TypeConvExprNode(exprNode.loc, typeIndex, exprIndex);
+				exprIndex.setState(c, AstNodeState.type_check_done);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	ExpressionNode* expr = exprIndex.get_expr(c);
 
 	if (type.isError) { // Recover
 		expr.type = c.basicTypeNodes(BasicType.t_error);
@@ -218,7 +261,6 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 	}
 
 	if (same_type(expr.type, typeIndex, c)) return true;
-	string extraError;
 
 	if (exprType.astType == AstType.type_basic && type.astType == AstType.type_basic)
 	{
@@ -295,9 +337,11 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 			return true;
 		}
 	}
-	else
+	else if (exprType.astType == AstType.type_func_sig && type.isAlias)
 	{
-		extraError = ". Cannot convert from/to user-defined type";
+		exprIndex = c.appendAst!TypeConvExprNode(expr.loc, typeIndex, exprIndex);
+		exprIndex.setState(c, AstNodeState.type_check_done);
+		return true;
 	}
 
 	return false;

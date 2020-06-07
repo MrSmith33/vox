@@ -47,7 +47,8 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 
 	if (node.expression)
 	{
-		require_type_check(node.expression, state);
+		require_type_check_expr(retTypeIndex, node.expression, state);
+
 		if (isVoidFunc)
 		{
 			c.error(node.expression.get_expr(c).loc,
@@ -60,7 +61,7 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 			if (!success)
 				c.error(node.loc,
 					"Cannot implicitly convert expression of type `%s` to `%s`",
-					node.expression.expr_type(c).printer(c),
+					node.expression.get_expr_type(c).printer(c),
 					retTypeIndex.printer(c));
 		}
 	}

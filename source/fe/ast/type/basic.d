@@ -21,6 +21,7 @@ struct BasicTypeNode {
 	bool isInteger() { return cast(bool)(typeFlags & BasicTypeFlag.isInteger); }
 	IsSigned isSigned() { return cast(IsSigned)cast(bool)(typeFlags & BasicTypeFlag.isSigned); }
 	bool isBoolean() { return cast(bool)(typeFlags & BasicTypeFlag.isBoolean); }
+	bool isAlias() { return basicType == BasicType.t_alias; }
 
 	IrIndex gen_default_value(CompilationContext* c)
 	{
@@ -74,6 +75,8 @@ IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 		case BasicType.t_u32: return makeBasicTypeIndex(IrValueType.i32);
 		case BasicType.t_i64: return makeBasicTypeIndex(IrValueType.i64);
 		case BasicType.t_u64: return makeBasicTypeIndex(IrValueType.i64);
+		case BasicType.t_alias: return makeBasicTypeIndex(IrValueType.i32);
+		case BasicType.t_type: return makeBasicTypeIndex(IrValueType.i32);
 		default:
 			context.internal_error(t.loc, "Cannot convert %s to IrIndex", t.basicType);
 			assert(false);

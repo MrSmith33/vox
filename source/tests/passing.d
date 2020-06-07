@@ -3115,3 +3115,70 @@ immutable test133 = q{--- test133
 --- <error>
 test133(1, 2): Error: #assert: "Assert test"
 };
+
+
+@TestInfo()
+immutable test134 = q{--- test134
+	$alias func() {
+		return func; // return alias to itself
+	}
+};
+
+@TestInfo()
+immutable test135 = q{--- test135
+	$alias func() {
+		return func; // return alias to itself
+	}
+};
+
+@TestInfo(&tester136)
+immutable test136 = q{--- test136
+	// Various meta types tests
+	i32 func() { return 42; }
+	$alias metaFun1() { return func; } // return $alias of func
+	$alias metaFun2() { return u8; } // return $alias of built-in
+	$type  metaFun3() { return u8; } // return $type
+	enum bool res1 = metaFun1() == u8; // false
+	enum bool res2 = metaFun2() == u8; // true
+	enum bool res3 = metaFun3() == u8; // true
+
+	enum $alias a = func;
+	//enum $type t = i32;
+	i32 run() { return a(); }
+	bool run1() { return res1; }
+	bool run2() { return res2; }
+	bool run3() { return res3; }
+
+	bool isInteger($type type) {
+		return type == u8
+			|| type == i8
+			|| type == u16
+			|| type == i16
+			|| type == u32
+			|| type == i32
+			|| type == u64
+			|| type == i64;
+	}
+	enum bool res4 =
+		isInteger(u8) &&
+		isInteger(i8) &&
+		isInteger(u16) &&
+		isInteger(i16) &&
+		isInteger(u32) &&
+		isInteger(i32) &&
+		isInteger(u64) &&
+		isInteger(i64);
+	bool run4() { return res4; }
+};
+void tester136(ref TestContext ctx) {
+	auto run = ctx.getFunctionPtr!(int)("run");
+	auto run1 = ctx.getFunctionPtr!(bool)("run1");
+	auto run2 = ctx.getFunctionPtr!(bool)("run2");
+	auto run3 = ctx.getFunctionPtr!(bool)("run3");
+	auto run4 = ctx.getFunctionPtr!(bool)("run4");
+	assert(run() == 42);
+	assert(run1() == false);
+	assert(run2() == true);
+	assert(run3() == true);
+	assert(run4() == true);
+}

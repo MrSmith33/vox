@@ -424,7 +424,7 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 					gen.builder.addJumpToLabel(currentBlock, nextStmt);
 					return ExprValue(ptr);
 				default:
-					return ExprValue(eval_builtin(builtin, m.aggregate, m.loc, c));
+					return ExprValue(eval_builtin_member(builtin, m.aggregate, m.loc, c));
 			}
 		default:
 			c.internal_error(m.loc, "Unexpected node type %s", m.astType);

@@ -170,6 +170,11 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 {
 	CompilationContext* c = state.context;
 
+	if (state.parentType.isDefined &&
+		state.parentType.get_effective_node(c) == CommonAstNodes.type_alias) {
+		node.flags |= NameUseFlags.forbidParenthesesFreeCall;
+	}
+
 	c.assertf(node.entity.isDefined, node.loc, "name null %s %s", node.isSymResolved, node.state);
 	switch(node.entity.astType(c))
 	{

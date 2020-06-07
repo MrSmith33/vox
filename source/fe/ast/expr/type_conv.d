@@ -43,11 +43,11 @@ void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
 
 	node.state = AstNodeState.type_check;
 	require_type_check(node.expr, state);
-	if (!isConvertibleTo(node.expr.expr_type(c), node.type, c))
+	if (!isConvertibleTo(node.expr.get_expr_type(c), node.type, c))
 	{
 		c.error(node.loc,
 			"Cannot convert expression of type `%s` to `%s`",
-			node.expr.expr_type(c).printer(c),
+			node.expr.get_expr_type(c).printer(c),
 			node.type.printer(c));
 	}
 	node.state = AstNodeState.type_check_done;
@@ -56,6 +56,20 @@ void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
 ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, TypeConvExprNode* t)
 {
 	CompilationContext* c = gen.context;
+
+	if (t.type == CommonAstNodes.type_alias || t.type == CommonAstNodes.type_type) {
+		AstIndex aliasedNode = get_effective_node(t.expr, c);
+		if (t.type == CommonAstNodes.type_type)
+			if (!aliasedNode.isType(c))
+				c.error(t.loc,
+					"Cannot convert expression of type `%s` to `%s`",
+					t.expr.get_expr_type(c).printer(c),
+					t.type.printer(c));
+		IrIndex result = c.constants.add(aliasedNode.storageIndex, IsSigned.no, IrArgSize.size32);
+		gen.builder.addJumpToLabel(currentBlock, nextStmt);
+		return ExprValue(result);
+	}
+
 	IrLabel afterExpr = IrLabel(currentBlock);
 	ExprValue lval = ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
 	currentBlock = afterExpr.blockIndex;

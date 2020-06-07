@@ -54,6 +54,36 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 	}
 }
 
+/// Evaluates expression that results in $alias and returns it as AstIndex
+AstIndex eval_static_expr_alias(AstIndex nodeIndex, CompilationContext* c)
+{
+	IrIndex val = eval_static_expr(nodeIndex, c);
+	AstNode* node = c.getAstNode(nodeIndex);
+	if (nodeIndex.get_node_type(c) != CommonAstNodes.type_alias)
+		c.internal_error(node.loc, "Cannot evaluate static expression %s as $alias", node.astType);
+	if (!val.isSomeConstant)
+		c.internal_error(node.loc, "Cannot obtain $alias from %s", val);
+	IrConstant con = c.constants.get(val);
+	if (con.payloadSize(val) > IrArgSize.size32)
+		c.internal_error(node.loc, "Cannot obtain $alias from %s, too big", val);
+	return AstIndex(con.i32);
+}
+
+/// Evaluates expression that results in $type and returns it as AstIndex
+AstIndex eval_static_expr_type(AstIndex nodeIndex, CompilationContext* c)
+{
+	IrIndex val = eval_static_expr(nodeIndex, c);
+	AstNode* node = c.getAstNode(nodeIndex);
+	if (nodeIndex.get_node_type(c) != CommonAstNodes.type_type)
+		c.internal_error(node.loc, "Cannot evaluate static expression %s as $type", node.astType);
+	if (!val.isSomeConstant)
+		c.internal_error(node.loc, "Cannot obtain $type from %s", val);
+	IrConstant con = c.constants.get(val);
+	if (con.payloadSize(val) > IrArgSize.size32)
+		c.internal_error(node.loc, "Cannot obtain $type from %s, too big", val);
+	return AstIndex(con.i32);
+}
+
 IrIndex eval_static_expr_enum_member(EnumMemberDecl* node, CompilationContext* context)
 {
 	if (!node.initValue.isDefined) {
@@ -74,7 +104,7 @@ IrIndex eval_static_expr_member(MemberExprNode* node, CompilationContext* c)
 		case enum_member:
 			return eval_static_expr(node.member(c), c);
 		case builtin_member:
-			return eval_builtin(node.member(c).get!BuiltinNode(c).builtin, node.aggregate, node.loc, c);
+			return eval_builtin_member(node.member(c).get!BuiltinNode(c).builtin, node.aggregate, node.loc, c);
 		default:
 			AstIndex nodeIndex = get_ast_index(node, c);
 			c.unrecoverable_error(node.loc,
@@ -85,7 +115,7 @@ IrIndex eval_static_expr_member(MemberExprNode* node, CompilationContext* c)
 	}
 }
 
-IrIndex eval_builtin(BuiltinId builtin, AstIndex obj, TokenIndex loc, CompilationContext* c)
+IrIndex eval_builtin_member(BuiltinId builtin, AstIndex obj, TokenIndex loc, CompilationContext* c)
 {
 	AstIndex objType = obj.get_node_type(c);
 	switch(builtin) with(BuiltinId)
@@ -111,11 +141,24 @@ IrIndex eval_builtin(BuiltinId builtin, AstIndex obj, TokenIndex loc, Compilatio
 	}
 }
 
-IrIndex eval_static_expr_bin_op(BinaryExprNode* node, CompilationContext* context)
+IrIndex eval_static_expr_bin_op(BinaryExprNode* node, CompilationContext* c)
 {
-	IrIndex leftVal = eval_static_expr(node.left, context);
-	IrIndex rightVal = eval_static_expr(node.right, context);
-	return calcBinOp(node.op, leftVal, rightVal, node.type.typeArgSize(context), context);
+	switch (node.op) {
+		case BinOp.LOGIC_AND:
+			IrIndex leftVal = eval_static_expr(node.left, c);
+			IrConstant leftCon = c.constants.get(leftVal);
+			if (!leftCon.i64) return c.constants.add(0, IsSigned.no, IrArgSize.size8);
+			return eval_static_expr(node.right, c);
+		case BinOp.LOGIC_OR:
+			IrIndex leftVal = eval_static_expr(node.left, c);
+			IrConstant leftCon = c.constants.get(leftVal);
+			if (leftCon.i64) return c.constants.add(1, IsSigned.no, IrArgSize.size8);
+			return eval_static_expr(node.right, c);
+		default:
+			IrIndex leftVal = eval_static_expr(node.left, c);
+			IrIndex rightVal = eval_static_expr(node.right, c);
+			return calcBinOp(node.op, leftVal, rightVal, node.type.typeArgSize(c), c);
+	}
 }
 
 IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
@@ -161,6 +204,11 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 
 IrIndex eval_static_expr_type_conv(TypeConvExprNode* node, CompilationContext* c)
 {
+	if (node.type == CommonAstNodes.type_alias || node.type == CommonAstNodes.type_type)
+	{
+		AstIndex aliasedNode = get_effective_node(node.expr, c);
+		return c.constants.add(aliasedNode.storageIndex, IsSigned.no, IrArgSize.size32);
+	}
 	return eval_static_expr(node.expr, c);
 }
 

@@ -44,8 +44,6 @@ struct AstIndex
 	void setState(CompilationContext* c, AstNodeState newState) { return c.getAstNode(this).state = newState; }
 	ref ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
 
-	ref AstIndex expr_type(CompilationContext* c) { return get_expr(c).type; }
-
 	bool isDeclaration(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isDeclaration); }
 	bool isScope(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isScope); }
 	bool isExpression(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isExpression); }
