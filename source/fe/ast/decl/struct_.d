@@ -7,7 +7,9 @@ import all;
 
 enum StructFlags
 {
-	isOpaque = AstFlags.userFlag
+	isOpaque = AstFlags.userFlag << 0,
+	// Set if struct contains meta type member variables or methods
+	isCtfeOnly = AstFlags.userFlag << 1,
 }
 
 @(AstType.decl_struct)
@@ -31,6 +33,7 @@ struct StructDeclNode {
 
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 	bool isOpaque() { return cast(bool)(flags & StructFlags.isOpaque); }
+	bool isCtfeOnly() { return cast(bool)(flags & StructFlags.isCtfeOnly); }
 	uint size(CompilationContext* c) {
 		c.assertf(state >= AstNodeState.type_check_done, loc, "size is unknown in %s state. Must be semantically analized", state);
 		IrTypeStruct* structType = &c.types.get!IrTypeStruct(irType);
@@ -45,7 +48,7 @@ struct StructDeclNode {
 
 void print_struct(StructDeclNode* node, ref AstPrintState state)
 {
-	state.print("STRUCT ", state.context.idString(node.id));
+	state.print("STRUCT ", state.context.idString(node.id), node.isCtfeOnly ? " #ctfe" : null);
 	print_ast(node.declarations, state);
 }
 
@@ -112,7 +115,7 @@ IrIndex gen_default_value_struct(StructDeclNode* node, CompilationContext* c)
 	return node.defaultVal;
 }
 
-IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
+IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* c)
 	out(res; res.isTypeStruct, "Not a struct type")
 {
 	if (s.irType.isDefined) return s.irType;
@@ -120,13 +123,13 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
 	uint numFields = 0;
 	foreach(AstIndex memberIndex; s.declarations)
 	{
-		AstNode* member = context.getAstNode(memberIndex);
+		AstNode* member = c.getAstNode(memberIndex);
 		if (member.astType == AstType.decl_var)
 			++numFields;
 	}
 
-	s.irType = context.types.appendStruct(numFields);
-	IrTypeStruct* structType = &context.types.get!IrTypeStruct(s.irType);
+	s.irType = c.types.appendStruct(numFields);
+	IrTypeStruct* structType = &c.types.get!IrTypeStruct(s.irType);
 	IrTypeStructMember[] members = structType.members;
 
 	uint memberIndex;
@@ -134,16 +137,23 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* context)
 	uint maxAlignment = 1;
 	foreach(AstIndex memberAstIndex; s.declarations)
 	{
-		AstNode* member = context.getAstNode(memberAstIndex);
+		AstNode* member = c.getAstNode(memberAstIndex);
 		if (member.astType == AstType.decl_var)
 		{
-			IrIndex type = (cast(VariableDeclNode*)member).type.gen_ir_type(context);
-			uint memberSize = context.types.typeSize(type);
-			uint memberAlignment = context.types.typeAlignment(type);
+			auto var = member.as!(VariableDeclNode)(c);
+			IrIndex type = var.type.gen_ir_type(c);
+			uint memberSize = c.types.typeSize(type);
+			uint memberAlignment = c.types.typeAlignment(type);
 			maxAlignment = max(maxAlignment, memberAlignment);
 			memberOffset = alignValue!uint(memberOffset, memberAlignment);
 			members[memberIndex++] = IrTypeStructMember(type, memberOffset);
 			memberOffset += memberSize;
+
+			if (var.type.isMetaType(c))
+				s.flags |= StructFlags.isCtfeOnly;
+		} else if (member.astType == AstType.decl_function) {
+			if (member.as!(FunctionDeclNode)(c).isCtfeOnly(c))
+				s.flags |= StructFlags.isCtfeOnly;
 		}
 	}
 

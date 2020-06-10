@@ -3182,3 +3182,15 @@ void tester136(ref TestContext ctx) {
 	assert(run3() == true);
 	assert(run4() == true);
 }
+
+
+@TestInfo()
+immutable test137 = q{--- test137
+	// ctfe only structs
+	struct S1 {
+		$alias ctfeVar;
+	}
+	struct S2 {
+		$alias ctfeFun(){ return S1; }
+	}
+};

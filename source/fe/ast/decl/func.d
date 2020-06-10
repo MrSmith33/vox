@@ -51,6 +51,9 @@ struct FunctionDeclNode {
 	FunctionBackendData backendData;
 
 	bool isInline() { return cast(bool)(flags & FuncDeclFlags.isInline); }
+	bool isCtfeOnly(CompilationContext* c) {
+		return signature.get!FunctionSignatureNode(c).isCtfeOnly;
+	}
 
 	this(TokenIndex loc, AstIndex _module, AstIndex parentScope, AstIndex signature, Identifier id)
 	{
@@ -76,9 +79,8 @@ struct FunctionDeclNode {
 
 void print_func(FunctionDeclNode* node, ref AstPrintState state)
 {
-	auto sig = node.signature.get!FunctionSignatureNode(state.context);
-	state.print("FUNC ", sig.returnType.printer(state.context), " ", state.context.idString(node.id), node.isInline ? " #inline" : null);
-	print_ast(sig.parameters, state);
+	state.print("FUNC ", state.context.idString(node.id), node.isInline ? " #inline" : null);
+	print_ast(node.signature, state);
 	if (node.block_stmt) print_ast(node.block_stmt, state);
 }
 

@@ -22,6 +22,7 @@ struct BasicTypeNode {
 	IsSigned isSigned() { return cast(IsSigned)cast(bool)(typeFlags & BasicTypeFlag.isSigned); }
 	bool isBoolean() { return cast(bool)(typeFlags & BasicTypeFlag.isBoolean); }
 	bool isAlias() { return basicType == BasicType.t_alias; }
+	bool isType() { return basicType == BasicType.t_type; }
 
 	IrIndex gen_default_value(CompilationContext* c)
 	{

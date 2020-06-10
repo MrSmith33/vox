@@ -211,12 +211,12 @@ enum char SOI_CHAR = '\2';
 enum char EOI_CHAR = '\3';
 
 immutable string[] keyword_strings = ["bool","true","false","alias","break","continue","do","else",
-	"function","f32","f64","i16","i32","i64","i8","$alias","$type","if","import","isize","return","struct","u16","u32",
+	"function","f32","f64","i16","i32","i64","i8","if","import","isize","return","struct","u16","u32",
 	"u64","u8","usize","void","while","for","switch","cast","enum","null"];
 enum NUM_KEYWORDS = keyword_strings.length;
 immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.TRUE_LITERAL,TT.FALSE_LITERAL,
 	TT.ALIAS_SYM, TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,TT.ELSE_SYM,TT.FUNCTION_SYM,TT.TYPE_F32,
-	TT.TYPE_F64,TT.TYPE_I16, TT.TYPE_I32,TT.TYPE_I64,TT.TYPE_I8,TT.TYPE_ALIAS,TT.TYPE_TYPE,TT.IF_SYM,TT.IMPORT_SYM,TT.TYPE_ISIZE,
+	TT.TYPE_F64,TT.TYPE_I16, TT.TYPE_I32,TT.TYPE_I64,TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.TYPE_ISIZE,
 	TT.RETURN_SYM, TT.STRUCT_SYM,TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
 	TT.TYPE_VOID,TT.WHILE_SYM,TT.FOR_SYM,TT.SWITCH_SYM,TT.CAST,TT.ENUM,TT.NULL];
 
@@ -850,12 +850,12 @@ unittest
 	}
 
 	{
-		string[] ops = ["&","&&","&=","@","\\",":",",","$",".","..","...",
+		string[] ops = ["&","&&","&=","@","\\",":",",",".","..","...",
 			"=","==",">",">=",">>",">>=",">>>",">>>=","<","<=","<<","<<=","-",
 			"-=","--","!","!=","|","|=","||","%","%=","+","+=","++","?",";","/",
 			"/=","*","*=","~","~=","^","^=","(",")","[","]","{","}",];
 		TokenType[] tokens_ops = [TT.AND,TT.AND_AND,TT.AND_EQUAL,TT.AT,TT.BACKSLASH,
-			TT.COLON,TT.COMMA,TT.DOLLAR,TT.DOT,TT.DOT_DOT,TT.DOT_DOT_DOT,TT.EQUAL,
+			TT.COLON,TT.COMMA,TT.DOT,TT.DOT_DOT,TT.DOT_DOT_DOT,TT.EQUAL,
 			TT.EQUAL_EQUAL,TT.MORE,TT.MORE_EQUAL,TT.MORE_MORE,
 			TT.MORE_MORE_EQUAL,TT.MORE_MORE_MORE,TT.MORE_MORE_MORE_EQUAL,
 			TT.LESS,TT.LESS_EQUAL,TT.LESS_LESS,TT.LESS_LESS_EQUAL,TT.MINUS,

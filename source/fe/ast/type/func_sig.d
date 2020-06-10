@@ -5,6 +5,12 @@ module fe.ast.type.func_sig;
 
 import all;
 
+enum FuncSignatureFlags : ushort
+{
+	// Set if at least one of return or parameter types is meta type
+	isCtfeOnly = AstFlags.userFlag << 0,
+}
+
 @(AstType.type_func_sig)
 struct FunctionSignatureNode {
 	mixin AstNodeData!(AstType.type_func_sig, AstFlags.isType, AstNodeState.name_register_self_done);
@@ -16,11 +22,13 @@ struct FunctionSignatureNode {
 	CallConvention callConvention = CallConvention.win64; // hardcoded for now
 	IrIndex irType; /// Index of function type
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+
+	bool isCtfeOnly() { return cast(bool)(flags & FuncSignatureFlags.isCtfeOnly); }
 }
 
 void print_func_sig(FunctionSignatureNode* node, ref AstPrintState state)
 {
-	state.print("TYPE ", node.typeNode.printer(state.context));
+	state.print("TYPE ", node.typeNode.printer(state.context), node.isCtfeOnly ? " #ctfe" : null);
 }
 
 void post_clone_func_sig(FunctionSignatureNode* node, ref CloneState state)
@@ -60,7 +68,17 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 
 	require_type_check(node.parameters, state);
 
+	if (caclIsCtfeOnly(node, c)) node.flags |= FuncSignatureFlags.isCtfeOnly;
+
 	node.state = AstNodeState.type_check_done;
+}
+
+private bool caclIsCtfeOnly(FunctionSignatureNode* node, CompilationContext* c) {
+	if (node.returnType.get_node_type(c).isMetaType(c)) return true;
+	foreach (AstIndex param; node.parameters) {
+		if (param.get_node_type(c).isMetaType(c)) return true;
+	}
+	return false;
 }
 
 bool same_type_func_sig(FunctionSignatureNode* t1, FunctionSignatureNode* t2, CompilationContext* c)

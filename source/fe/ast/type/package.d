@@ -98,6 +98,9 @@ struct TypeNode
 			as_basic.basicType == BasicType.t_bool; }
 	bool isStruct() { return astType == AstType.decl_struct; }
 	bool isFuncSignature() { return astType == AstType.type_func_sig; }
+	bool isMetaType() {
+		return astType == AstType.type_basic &&
+		(as_basic.isAlias || as_basic.isType); }
 	bool isAlias() { return astType == AstType.type_basic && as_basic.isAlias; }
 
 	IsSigned isSigned() {
