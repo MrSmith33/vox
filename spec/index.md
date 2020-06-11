@@ -34,6 +34,7 @@
 
 ### Basic types
 
+- `noreturn`
 - `void`
 - `typeof(null)`
 - `bool`

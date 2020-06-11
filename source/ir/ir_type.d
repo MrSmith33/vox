@@ -13,6 +13,7 @@ import all;
 /// Integers are both signed two-complement and unsigned
 enum IrValueType : ubyte
 {
+	noreturn_t,
 	void_t,
 	i8,
 	i16,
@@ -221,6 +222,7 @@ struct IrTypeStorage
 		final switch (type.typeKind) {
 			case IrTypeKind.basic:
 			final switch (cast(IrValueType)type.typeIndex) {
+				case IrValueType.noreturn_t: return 0;
 				case IrValueType.void_t: return 0;
 				case IrValueType.i8: return 1;
 				case IrValueType.i16: return 2;
@@ -245,6 +247,7 @@ struct IrTypeStorage
 		final switch (type.typeKind) {
 			case IrTypeKind.basic:
 			final switch (cast(IrValueType)type.typeIndex) {
+				case IrValueType.noreturn_t: return 0;
 				case IrValueType.void_t: return 1;
 				case IrValueType.i8: return 1;
 				case IrValueType.i16: return 2;

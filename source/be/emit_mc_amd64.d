@@ -265,6 +265,7 @@ struct CodeEmitter
 		foreach (IrIndex lirBlockIndex, ref IrBasicBlock lirBlock; lir.blocks)
 		{
 			blockStarts[lirBlock.seqIndex] = gen.pc;
+			stackPointerExtraOffset = 0;
 			foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; lirBlock.instructions(lir))
 			{
 				switch(cast(Amd64Opcode)instrHeader.op)
@@ -572,7 +573,12 @@ struct CodeEmitter
 				}
 			}
 
-			context.assertf(stackPointerExtraOffset == 0, "Unmatched stack size modification");
+			if (stackPointerExtraOffset != 0) {
+				// When we call noreturn function stack cleanup is omitted
+				// After such calls we expect unreachable
+				if (lir.getInstr(lirBlock.lastInstr).op != Amd64Opcode.ud2)
+					context.internal_error("Unmatched stack size modification");
+			}
 		}
 	}
 

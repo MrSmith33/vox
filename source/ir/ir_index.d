@@ -165,9 +165,11 @@ struct IrIndex
 	bool isTypeArray() { return kind == IrValueKind.type && typeKind == IrTypeKind.array; }
 	bool isTypeStruct() { return kind == IrValueKind.type && typeKind == IrTypeKind.struct_t; }
 	bool isTypeFunction() { return kind == IrValueKind.type && typeKind == IrTypeKind.func_t; }
-	bool isTypeVoid()
-	{
+	bool isTypeVoid() {
 		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrValueType.void_t;
+	}
+	bool isTypeNoreturn() {
+		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrValueType.noreturn_t;
 	}
 
 	bool isSignedConstant() {

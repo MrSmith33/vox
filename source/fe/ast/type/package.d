@@ -82,7 +82,15 @@ struct TypeNode
 	bool isTypeBasic() {
 		return astType == AstType.type_basic;
 	}
+	bool isNoreturn() {
+		return astType == AstType.type_basic &&
+			as_basic.basicType == BasicType.t_noreturn;
+	}
 	bool isVoid() {
+		return astType == AstType.type_basic &&
+			as_basic.basicType == BasicType.t_void;
+	}
+	bool isNoreturnOrVoid() {
 		return astType == AstType.type_basic &&
 			as_basic.basicType == BasicType.t_void;
 	}

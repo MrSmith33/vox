@@ -188,10 +188,11 @@ void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, IrIndex fu
 					// allocate stack slot for big return value
 					if (calleeType.numResults == 1)
 					{
-						originalResult = instrHeader.result(ir);
 						IrIndex resType = calleeType.resultTypes[0];
 						if (!resType.isPassByValue(c))
 						{
+							originalResult = instrHeader.result(ir); // we reuse result slot
+
 							// reuse result slot of instruction as first argument
 							instrHeader._payloadOffset -= 1;
 							instrHeader.hasResult = false;
@@ -276,6 +277,13 @@ void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, IrIndex fu
 
 					{
 						instrHeader.numArgs = cast(ubyte)(numPhysRegs + 1); // include callee
+
+						// If function is noreturn we don't need to insert cleanup code
+						if (calleeType.numResults == 1)
+						{
+							IrIndex resType = calleeType.resultTypes[0];
+							if (resType.isTypeNoreturn) break;
+						}
 
 						// Deallocate stack after call
 						IrIndex conReservedBytes = c.constants.add(stackReserve, IsSigned.no);

@@ -309,6 +309,14 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 		gen.builder.addJumpToLabel(currentBlock, nextStmt);
 		return ExprValue();
 	}
+	else if (signature.returnType.isNoreturnType(c))
+	{
+		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, args);
+		gen.builder.addUnreachable(currentBlock);
+		gen.builder.ir.getInstr(res.instruction).alwaysInline = alwaysInline;
+		c.assertf(!res.result.isDefined, "Call has result");
+		return ExprValue();
+	}
 	else
 	{
 		IrIndex callResultType = signature.returnType.gen_ir_type(c);

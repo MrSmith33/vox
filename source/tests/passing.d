@@ -9,6 +9,7 @@ import tester;
 
 Test[] passingTests() { return collectTests!(tests.passing)(); }
 
+extern(C) void external_noop() {}
 extern(C) void external_print_i32_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
@@ -3192,5 +3193,17 @@ immutable test137 = q{--- test137
 	}
 	struct S2 {
 		$alias ctfeFun(){ return S1; }
+	}
+};
+
+@TestInfo(null, [HostSymbol("assert", cast(void*)&external_noop)])
+immutable test138 = q{--- test138
+	// noreturn
+	noreturn assert();
+	void run1() {
+		assert();
+	}
+	noreturn run2() {
+		assert();
 	}
 };

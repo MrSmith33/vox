@@ -66,6 +66,7 @@ IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 {
 	switch(t.basicType)
 	{
+		case BasicType.t_noreturn: return makeBasicTypeIndex(IrValueType.noreturn_t);
 		case BasicType.t_void: return makeBasicTypeIndex(IrValueType.void_t);
 		case BasicType.t_bool: return makeBasicTypeIndex(IrValueType.i8);
 		case BasicType.t_u8: return makeBasicTypeIndex(IrValueType.i8);

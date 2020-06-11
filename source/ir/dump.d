@@ -543,7 +543,16 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 		return;
 	}
 	final switch(type.typeKind) with(IrTypeKind) {
-		case basic: sink.formattedWrite("%s", cast(IrValueType)type.typeIndex); break;
+		case basic:
+			final switch(cast(IrValueType)type.typeIndex) with(IrValueType) {
+				case noreturn_t: sink("noreturn"); break;
+				case void_t: sink("void"); break;
+				case i8: sink("i8"); break;
+				case i16: sink("i16"); break;
+				case i32: sink("i32"); break;
+				case i64: sink("i64"); break;
+			}
+			break;
 		case pointer:
 			dumpIrType(sink, ctx, ctx.types.get!IrTypePointer(type).baseType);
 			sink("*");

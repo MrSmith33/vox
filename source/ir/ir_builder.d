@@ -96,15 +96,19 @@ struct IrBuilder
 		setupEntryExitBlocks();
 
 		IrIndex returnType = context.types.getReturnType(ir.type, context);
-		if (!returnType.isTypeVoid)
+		if (returnType.isTypeNoreturn)
+		{
+			addUnreachable(ir.exitBasicBlock);
+		}
+		else if (returnType.isTypeVoid)
+		{
+			emitInstr!(IrOpcode.ret)(ir.exitBasicBlock);
+		}
+		else
 		{
 			returnVar = newIrVarIndex(returnType);
 			IrIndex retValue = readVariable(ir.exitBasicBlock, returnVar);
 			emitInstr!(IrOpcode.ret_val)(ir.exitBasicBlock, retValue);
-		}
-		else
-		{
-			emitInstr!(IrOpcode.ret)(ir.exitBasicBlock);
 		}
 		ir.getBlock(ir.exitBasicBlock).isFinished = true;
 	}

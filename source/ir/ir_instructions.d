@@ -320,7 +320,7 @@ struct IrInstrHeader
 	}
 
 	ref IrIndex result(IrFunction* ir) {
-		assert(hasResult);
+		assert(hasResult, "No result");
 		return ir.instrPayloadPtr[_payloadOffset-1];
 	}
 

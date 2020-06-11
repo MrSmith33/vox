@@ -98,6 +98,8 @@ enum TokenType : ubyte {
 	// ----------------------------------------
 	// list of basic types. The order is the same as in `enum BasicType`
 
+
+	@("noreturn") TYPE_NORETURN,        // noreturn
 	@("void") TYPE_VOID,                // void
 	@("bool") TYPE_BOOL,                // bool
 	@("null") NULL,                     // null
@@ -137,7 +139,7 @@ enum TokenType : ubyte {
 
 immutable string[] tokStrings = gatherEnumStrings!TokenType();
 
-enum TokenType TYPE_TOKEN_FIRST = TokenType.TYPE_VOID;
+enum TokenType TYPE_TOKEN_FIRST = TokenType.TYPE_NORETURN;
 enum TokenType TYPE_TOKEN_LAST = TokenType.TYPE_TYPE;
 
 
@@ -212,13 +214,13 @@ enum char EOI_CHAR = '\3';
 
 immutable string[] keyword_strings = ["bool","true","false","alias","break","continue","do","else",
 	"function","f32","f64","i16","i32","i64","i8","if","import","isize","return","struct","u16","u32",
-	"u64","u8","usize","void","while","for","switch","cast","enum","null"];
+	"u64","u8","usize","void","noreturn","while","for","switch","cast","enum","null"];
 enum NUM_KEYWORDS = keyword_strings.length;
 immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.TRUE_LITERAL,TT.FALSE_LITERAL,
 	TT.ALIAS_SYM, TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,TT.ELSE_SYM,TT.FUNCTION_SYM,TT.TYPE_F32,
 	TT.TYPE_F64,TT.TYPE_I16, TT.TYPE_I32,TT.TYPE_I64,TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.TYPE_ISIZE,
 	TT.RETURN_SYM, TT.STRUCT_SYM,TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
-	TT.TYPE_VOID,TT.WHILE_SYM,TT.FOR_SYM,TT.SWITCH_SYM,TT.CAST,TT.ENUM,TT.NULL];
+	TT.TYPE_VOID,TT.TYPE_NORETURN,TT.WHILE_SYM,TT.FOR_SYM,TT.SWITCH_SYM,TT.CAST,TT.ENUM,TT.NULL];
 
 //                          #        #######  #     #
 //                          #        #         #   #
@@ -683,7 +685,11 @@ struct Lexer
 					default: break;
 				}
 				break;
-			case 'n': if (match("null")) return TT.NULL; break;
+			case 'n':
+				nextChar;
+				if (match("ull")) return TT.NULL;
+				if (match("oreturn")) return TT.TYPE_NORETURN; break;
+				break;
 			case 'r': if (match("return")) return TT.RETURN_SYM; break;
 			case 's':
 				nextChar;

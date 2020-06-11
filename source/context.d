@@ -739,6 +739,7 @@ struct CompilationContext
 
 		// type nodes
 		makeBasic(CommonAstNodes.type_error, 0, 0, 0, BasicType.t_error);
+		makeBasic(CommonAstNodes.type_noreturn, 0, 0, 0, BasicType.t_noreturn);
 		makeBasic(CommonAstNodes.type_void,  0, 0, 0, BasicType.t_void);
 		makeBasic(CommonAstNodes.type_bool,  1, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean);
 		makeBasic(CommonAstNodes.type_null,  8, 0, 0, BasicType.t_null);
@@ -852,45 +853,47 @@ enum CommonAstNodes : AstIndex
 	// The order is the same as in TokenType enum
 	// The order is the same as in BasicType enum
 	type_error               = AstIndex(3),
-	type_void                = AstIndex(13),
-	type_bool                = AstIndex(23),
-	type_null                = AstIndex(33),
+	type_noreturn            = AstIndex(13),
+	type_void                = AstIndex(23),
+	type_bool                = AstIndex(33),
+	type_null                = AstIndex(43),
 
-	type_i8                  = AstIndex(43),
-	type_i16                 = AstIndex(53),
-	type_i32                 = AstIndex(63),
-	type_i64                 = AstIndex(73),
+	type_i8                  = AstIndex(53),
+	type_i16                 = AstIndex(63),
+	type_i32                 = AstIndex(73),
+	type_i64                 = AstIndex(83),
 
-	type_u8                  = AstIndex(83),
-	type_u16                 = AstIndex(93),
-	type_u32                 = AstIndex(103),
-	type_u64                 = AstIndex(113),
+	type_u8                  = AstIndex(93),
+	type_u16                 = AstIndex(103),
+	type_u32                 = AstIndex(113),
+	type_u64                 = AstIndex(123),
 
-	type_f32                 = AstIndex(123),
-	type_f64                 = AstIndex(133),
+	type_f32                 = AstIndex(133),
+	type_f64                 = AstIndex(143),
 
-	type_alias               = AstIndex(143),
-	type_type                = AstIndex(153),
+	type_alias               = AstIndex(153),
+	type_type                = AstIndex(163),
 	// basic type nodes end
 
 	// common custom types
-	type_u8Ptr               = AstIndex(163),
-	type_u8Slice             = AstIndex(167),
+	type_u8Ptr               = AstIndex(173),
+	type_u8Slice             = AstIndex(177),
 
 	// builtin nodes
 	// The order is the same as in BuiltinId enum
-	builtin_min              = AstIndex(172),
-	builtin_max              = AstIndex(176),
-	builtin_slice_length     = AstIndex(180),
-	builtin_slice_ptr        = AstIndex(184),
-	builtin_array_length     = AstIndex(188),
-	builtin_array_ptr        = AstIndex(192),
-	builtin_sizeof           = AstIndex(196),
+	builtin_min              = AstIndex(182),
+	builtin_max              = AstIndex(186),
+	builtin_slice_length     = AstIndex(190),
+	builtin_slice_ptr        = AstIndex(194),
+	builtin_array_length     = AstIndex(198),
+	builtin_array_ptr        = AstIndex(202),
+	builtin_sizeof           = AstIndex(206),
 	// builtin nodes end
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
 	CommonAstNodes.type_error,
+	CommonAstNodes.type_noreturn,
 	CommonAstNodes.type_void,
 	CommonAstNodes.type_bool,
 	CommonAstNodes.type_null,
