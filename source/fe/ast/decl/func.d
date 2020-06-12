@@ -8,6 +8,7 @@ import all;
 enum FuncDeclFlags : ushort
 {
 	isInline = AstFlags.userFlag << 0,
+	isBuiltin = AstFlags.userFlag << 1,
 }
 
 /// Refers to a function inside a module
@@ -51,6 +52,7 @@ struct FunctionDeclNode {
 	FunctionBackendData backendData;
 
 	bool isInline() { return cast(bool)(flags & FuncDeclFlags.isInline); }
+	bool isBuiltin() { return cast(bool)(flags & FuncDeclFlags.isBuiltin); }
 	bool isCtfeOnly(CompilationContext* c) {
 		return signature.get!FunctionSignatureNode(c).isCtfeOnly;
 	}
@@ -79,7 +81,9 @@ struct FunctionDeclNode {
 
 void print_func(FunctionDeclNode* node, ref AstPrintState state)
 {
-	state.print("FUNC ", state.context.idString(node.id), node.isInline ? " #inline" : null);
+	state.print("FUNC ", state.context.idString(node.id),
+		node.isBuiltin ? " #builtin" : null,
+		node.isInline ? " #inline" : null);
 	print_ast(node.signature, state);
 	if (node.block_stmt) print_ast(node.block_stmt, state);
 }

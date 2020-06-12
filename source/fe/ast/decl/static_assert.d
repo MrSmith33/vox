@@ -50,6 +50,9 @@ void type_check_static_assert(StaticAssertDeclNode* node, ref TypeCheckState sta
 	node.state = AstNodeState.type_check;
 	scope(exit) node.state = AstNodeState.type_check_done;
 
+	require_type_check(node.condition, state);
+	require_type_check(node.message, state);
+
 	if (node.message.astType(c) != AstType.literal_string) {
 		c.error(node.loc, "Error: #assert only supports string literal as a message");
 		return;

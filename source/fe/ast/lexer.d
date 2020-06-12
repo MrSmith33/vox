@@ -94,6 +94,7 @@ enum TokenType : ubyte {
 	@("enum")     ENUM,
 
 	@("#id")      IDENTIFIER,           // [a-zA-Z_] [a-zA-Z_0-9]*
+	@("$id")      CASH_IDENTIFIER,      // $ [a-zA-Z_0-9]*
 
 	// ----------------------------------------
 	// list of basic types. The order is the same as in `enum BasicType`
@@ -617,8 +618,8 @@ struct Lexer
 				if (match("type")) return TT.TYPE_TYPE; break;
 			default: break;
 		}
-		lexError(TT.INVALID, "Invalid $ identifier");
-		return TT.INVALID;
+		consumeId();
+		return TT.CASH_IDENTIFIER;
 	}
 
 	private TokenType lex_HASH() // #

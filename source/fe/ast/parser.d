@@ -421,7 +421,7 @@ struct Parser
 	enum NeedRegNames : bool { no, yes }
 	// nameReg can put parameters in name_register_done state
 	/// returns number of default args
-	ubyte parseParameters(ref Array!AstIndex params, NeedRegNames nameReg)
+	ubyte parseParameters(ref AstNodes params, NeedRegNames nameReg)
 	{
 		expectAndConsume(TokenType.LPAREN);
 
@@ -1228,7 +1228,7 @@ private TokenLookups cexp_parser()
 
 	// 0 precedence -- never used
 	nilfix(0, &nullLiteral, [
-		"#id",
+		"#id", "$id",
 		"noreturn","void", "bool", "null",
 		"i8", "i16", "i32", "i64",
 		"u8", "u16", "u32", "u64",
@@ -1250,6 +1250,15 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 	{
 		case IDENTIFIER:
 			Identifier id = p.makeIdentifier(token.index);
+			return p.make!NameUseExprNode(token.index, p.currentScopeIndex, id);
+		case CASH_IDENTIFIER:
+			Identifier id = p.makeIdentifier(token.index);
+			switch(id.index) with(CommonIds) {
+				case cash_compile_error.index:
+					return CommonAstNodes.compile_error;
+				default:
+					p.context.error(token.index, "Invalid $ identifier %s", p.context.idString(id));
+			}
 			return p.make!NameUseExprNode(token.index, p.currentScopeIndex, id);
 		case NULL:
 			return p.makeExpr!NullLiteralExprNode(token.index);

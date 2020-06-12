@@ -243,6 +243,8 @@ void printType(TypeNode* t, scope void delegate(const(char)[]) sink, Compilation
 			{
 				if (i > 0) sink(", ");
 				param.get_node_type(ctx).printType(sink, ctx);
+				sink(" ");
+				sink(ctx.idString(get_node_id(param, ctx)));
 			}
 			sink(")");
 			break;

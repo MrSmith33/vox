@@ -774,8 +774,8 @@ struct CompilationContext
 		void makeBuiltin(AstIndex reqIndex, Identifier id, BuiltinId builtin) {
 			AstIndex index = appendAst!BuiltinNode(TokenIndex(), id, builtin);
 			assertf(index == reqIndex,
-				"Result AstIndex of builtin node (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
-				index, reqIndex);
+				"Result AstIndex of builtin node %s (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
+				idString(id), index, reqIndex);
 		}
 
 		makeBuiltin(CommonAstNodes.builtin_min, CommonIds.id_min, BuiltinId.int_min);
@@ -785,6 +785,8 @@ struct CompilationContext
 		makeBuiltin(CommonAstNodes.builtin_array_length, CommonIds.id_length, BuiltinId.array_length);
 		makeBuiltin(CommonAstNodes.builtin_array_ptr, CommonIds.id_ptr, BuiltinId.array_ptr);
 		makeBuiltin(CommonAstNodes.builtin_sizeof, CommonIds.id_sizeof, BuiltinId.type_sizeof);
+
+		createBuiltinFunctions(&this);
 
 		// CommonAstNodes end
 
@@ -849,46 +851,53 @@ enum CommonAstNodes : AstIndex
 	// error. Nodes can point to error when name resolution failed
 	node_error               = AstIndex(1),
 
+	first_type               = AstIndex(3),
 	// basic type nodes
 	// The order is the same as in TokenType enum
 	// The order is the same as in BasicType enum
-	type_error               = AstIndex(3),
-	type_noreturn            = AstIndex(13),
-	type_void                = AstIndex(23),
-	type_bool                = AstIndex(33),
-	type_null                = AstIndex(43),
+	type_error               = AstIndex(first_type.storageIndex +   0),
+	type_noreturn            = AstIndex(first_type.storageIndex +  10),
+	type_void                = AstIndex(first_type.storageIndex +  20),
+	type_bool                = AstIndex(first_type.storageIndex +  30),
+	type_null                = AstIndex(first_type.storageIndex +  40),
 
-	type_i8                  = AstIndex(53),
-	type_i16                 = AstIndex(63),
-	type_i32                 = AstIndex(73),
-	type_i64                 = AstIndex(83),
+	type_i8                  = AstIndex(first_type.storageIndex +  50),
+	type_i16                 = AstIndex(first_type.storageIndex +  60),
+	type_i32                 = AstIndex(first_type.storageIndex +  70),
+	type_i64                 = AstIndex(first_type.storageIndex +  80),
 
-	type_u8                  = AstIndex(93),
-	type_u16                 = AstIndex(103),
-	type_u32                 = AstIndex(113),
-	type_u64                 = AstIndex(123),
+	type_u8                  = AstIndex(first_type.storageIndex +  90),
+	type_u16                 = AstIndex(first_type.storageIndex + 100),
+	type_u32                 = AstIndex(first_type.storageIndex + 110),
+	type_u64                 = AstIndex(first_type.storageIndex + 120),
 
-	type_f32                 = AstIndex(133),
-	type_f64                 = AstIndex(143),
+	type_f32                 = AstIndex(first_type.storageIndex + 130),
+	type_f64                 = AstIndex(first_type.storageIndex + 140),
 
-	type_alias               = AstIndex(153),
-	type_type                = AstIndex(163),
+	type_alias               = AstIndex(first_type.storageIndex + 150),
+	type_type                = AstIndex(first_type.storageIndex + 160),
 	// basic type nodes end
 
+	first_compound           = AstIndex(first_type.storageIndex + 170),
 	// common custom types
-	type_u8Ptr               = AstIndex(173),
-	type_u8Slice             = AstIndex(177),
+	type_u8Ptr               = AstIndex(first_compound.storageIndex + 0),
+	type_u8Slice             = AstIndex(first_compound.storageIndex + 4),
+
+	first_builtin            = AstIndex(first_compound.storageIndex + 9),
 
 	// builtin nodes
 	// The order is the same as in BuiltinId enum
-	builtin_min              = AstIndex(182),
-	builtin_max              = AstIndex(186),
-	builtin_slice_length     = AstIndex(190),
-	builtin_slice_ptr        = AstIndex(194),
-	builtin_array_length     = AstIndex(198),
-	builtin_array_ptr        = AstIndex(202),
-	builtin_sizeof           = AstIndex(206),
+	builtin_min              = AstIndex(first_builtin.storageIndex +  0),
+	builtin_max              = AstIndex(first_builtin.storageIndex +  4),
+	builtin_slice_length     = AstIndex(first_builtin.storageIndex +  8),
+	builtin_slice_ptr        = AstIndex(first_builtin.storageIndex + 12),
+	builtin_array_length     = AstIndex(first_builtin.storageIndex + 16),
+	builtin_array_ptr        = AstIndex(first_builtin.storageIndex + 20),
+	builtin_sizeof           = AstIndex(first_builtin.storageIndex + 24),
 	// builtin nodes end
+
+	// builtin functions
+	compile_error            = AstIndex(232),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
@@ -919,3 +928,55 @@ private immutable AstIndex[BuiltinId.max + 1] builtinsArray = [
 	CommonAstNodes.builtin_array_ptr,
 	CommonAstNodes.builtin_sizeof,
 ];
+
+void createBuiltinFunctions(CompilationContext* c)
+{
+	AstNodes params;
+	ubyte numDefaultParams;
+	void addParam(AstIndex type, Identifier id, AstIndex defaultValue = AstIndex())
+	{
+		ushort paramIndex = cast(ushort)params.length;
+		AstIndex param = c.appendAst!VariableDeclNode(TokenIndex(), AstIndex(), type, defaultValue, id);
+		auto paramNode = param.get!VariableDeclNode(c);
+		paramNode.flags |= VariableFlags.isParameter;
+		paramNode.scopeIndex = paramIndex;
+		paramNode.state = AstNodeState.type_check_done;
+		if (numDefaultParams > 0) c.assertf(defaultValue.isDefined, "default params cannot be followed by non-default");
+		if (defaultValue.isDefined) ++numDefaultParams;
+		params.put(c.arrayArena, param);
+	}
+	void make(AstIndex reqIndex, Identifier id, AstIndex retType) {
+		AstIndex signature = c.appendAst!FunctionSignatureNode(TokenIndex(), retType, params, numDefaultParams);
+		auto sigNode = signature.get!FunctionSignatureNode(c);
+		sigNode.state = AstNodeState.type_check_done;
+		sigNode.flags |= FuncSignatureFlags.isCtfeOnly;
+		params = AstNodes.init;
+		numDefaultParams = 0;
+
+		AstIndex func = c.appendAst!FunctionDeclNode(TokenIndex(), AstIndex(), AstIndex(), signature, id);
+		auto funcNode = func.get!FunctionDeclNode(c);
+		funcNode.state = AstNodeState.type_check_done;
+		funcNode.flags |= FuncDeclFlags.isBuiltin;
+
+		c.assertf(func == reqIndex,
+			"Result AstIndex of builtin node %s (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
+			c.idString(id), func, reqIndex);
+	}
+
+	addParam(CommonAstNodes.type_u8Slice, CommonIds.id_message);
+	make(CommonAstNodes.compile_error, CommonIds.cash_compile_error, CommonAstNodes.type_noreturn);
+
+	//print_ast(CommonAstNodes.compile_error, c);
+}
+
+struct Slice(T) {
+	this(T[] data) {
+		ptr = data.ptr;
+		length = data.length;
+	}
+	ulong length;
+	T* ptr;
+	T[] slice() { return ptr[0..length]; }
+	alias slice this;
+}
+alias SliceString = Slice!(const(char));

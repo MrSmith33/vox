@@ -3196,14 +3196,27 @@ immutable test137 = q{--- test137
 	}
 };
 
-@TestInfo(null, [HostSymbol("assert", cast(void*)&external_noop)])
+
+@TestInfo(null, [HostSymbol("crash", cast(void*)&external_noop)])
 immutable test138 = q{--- test138
 	// noreturn
-	noreturn assert();
+	noreturn crash();
 	void run1() {
-		assert();
+		crash();
 	}
 	noreturn run2() {
-		assert();
+		crash();
 	}
+};
+
+
+@TestInfo()
+immutable test139 = q{--- test139
+	// builtin functions
+	bool run() {
+		return val;
+	}
+	enum val = $compile_error("CTFE error");
+--- <error>
+test139(5, 27): Error: CTFE error
 };

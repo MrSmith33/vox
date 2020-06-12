@@ -267,6 +267,9 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 {
 	auto func = callee.get!FunctionDeclNode(c);
 
+	if (func.isBuiltin)
+		return eval_call_builtin(node, callee, c);
+
 	if (func.state != AstNodeState.ir_gen_done)
 		c.internal_error(node.loc,
 			"Function's IR is not yet generated");
@@ -315,4 +318,17 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 	c.popVmStack(returnMem);
 
 	return result;
+}
+
+IrIndex eval_call_builtin(CallExprNode* node, AstIndex callee, CompilationContext* c)
+{
+	switch (callee.storageIndex) {
+		case CommonAstNodes.compile_error.storageIndex:
+			IrIndex message = eval_static_expr(node.args[0], c);
+			c.unrecoverable_error(node.loc, "%s", stringFromConstant(message, c));
+			assert(false);
+		default:
+			c.internal_error("Unknown builtin function");
+			assert(false);
+	}
 }

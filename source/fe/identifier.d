@@ -90,12 +90,15 @@ struct IdentifierMap {
 
 enum CommonIds : Identifier
 {
-	@("ptr")    id_ptr    = Identifier(0),
-	@("length") id_length = Identifier(1),
-	@("min")    id_min    = Identifier(2),
-	@("max")    id_max    = Identifier(3),
-	@("sizeof") id_sizeof = Identifier(4),
-	@("this")   id_this   = Identifier(5),
+	@("ptr")     id_ptr     = Identifier(0),
+	@("length")  id_length  = Identifier(1),
+	@("min")     id_min     = Identifier(2),
+	@("max")     id_max     = Identifier(3),
+	@("sizeof")  id_sizeof  = Identifier(4),
+	@("this")    id_this    = Identifier(5),
+	@("message") id_message = Identifier(6),
+
+	@("$compile_error") cash_compile_error = Identifier(id_message.index + 1),
 }
 
 

@@ -321,3 +321,25 @@ IrIndex memToConstant(ubyte[] buffer, IrIndex type, CompilationContext* c, IsSig
 	}
 	return c.constants.add(value, signed, constSize);
 }
+
+string stringFromConstant(IrIndex constant, CompilationContext* c)
+{
+	static union Repr {
+		SliceString str;
+		ubyte[SliceString.sizeof] buf;
+	}
+	Repr repr;
+	void onGlobal(ubyte[] subbuffer, IrIndex index, CompilationContext* c)
+	{
+		c.assertf(index.isGlobal, "%s is not a constant", index);
+
+		IrGlobal* global = c.globals.get(index);
+		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
+		if (globalSym.isMutable) c.internal_error("%s is not a constant", index);
+
+		assert(globalSym.dataPtr.sizeof == subbuffer.length);
+		subbuffer[] = *cast(ubyte[8]*)&globalSym.dataPtr;
+	}
+	constantToMem(repr.buf, constant, c, &onGlobal);
+	return cast(string)repr.str.slice;
+}
