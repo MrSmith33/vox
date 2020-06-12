@@ -3207,6 +3207,10 @@ immutable test138 = q{--- test138
 	noreturn run2() {
 		crash();
 	}
+	// should not complain about missing return
+	i32 run3() {
+		crash();
+	}
 };
 
 

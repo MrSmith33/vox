@@ -27,8 +27,6 @@ struct IrGenState
 	CompilationContext* context;
 	alias context this;
 
-	ModuleDeclNode* mod;
-
 	IrBuilder builder;
 	IrFunction* ir;
 	FunctionDeclNode* fun;

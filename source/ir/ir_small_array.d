@@ -52,6 +52,8 @@ struct IrSmallArray
 			return 0;
 	}
 
+	bool empty() { return length == 0; }
+
 	void free(IrFunction* ir)
 	{
 		if (isBig)

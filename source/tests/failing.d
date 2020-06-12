@@ -372,3 +372,16 @@ immutable fail35 = q{
 --- <error>
 fail35(1, 2): Error: Error: #assert only supports string literal as a message
 };
+
+
+@TestInfo()
+immutable fail36 = q{
+--- fail36
+	// Should not return from noreturn
+	noreturn run() {
+		return foo;
+	}
+	i32 foo(){ return 42; }
+--- <error>
+fail36(3, 3): Error: Cannot implicitly convert expression of type `i32` to `noreturn`
+};

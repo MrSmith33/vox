@@ -53,6 +53,12 @@ void removeAllPhis(ref IrBasicBlock block)
 	block.firstPhi = IrIndex();
 }
 
+void removeAllInstrs(ref IrBasicBlock block)
+{
+	block.firstInstr = IrIndex();
+	block.lastInstr = IrIndex();
+}
+
 /// INPUT:
 ///           D >----,
 ///   A --critical--> B

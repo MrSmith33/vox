@@ -84,6 +84,7 @@ struct IrBuilder
 	private void reset() {
 		blockVarDef.clear();
 		numRemovedVregs = 0;
+		returnVar = IrIndex.init;
 	}
 
 	/// Must be called before compilation of each function. Allows reusing temp buffers.

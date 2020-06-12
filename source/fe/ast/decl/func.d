@@ -214,6 +214,15 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 				"function `%s` has no return statement, but is expected to return a value of type %s",
 				c.idString(f.id), signature.returnType.typeName(c));
 		}
+
+		auto exitBlock = ir.getBlock(ir.exitBasicBlock);
+		if (exitBlock.predecessors.empty)
+		{
+			// control flow doesn't reach exit block. Remove return var phi function.
+			removeAllPhis(*exitBlock);
+			removeAllInstrs(*exitBlock);
+			builder.emitInstr!(IrOpcode.unreachable)(ir.exitBasicBlock);
+		}
 	}
 	else
 	{
