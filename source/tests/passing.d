@@ -3256,3 +3256,25 @@ immutable test141 = q{--- test141
 --- <error>
 : Error: CTFE error
 };
+
+
+@TestInfo(&tester142)
+immutable test142 = q{--- test142
+	// Store $alias and $type in alias
+	alias type1 = getType1();
+	$alias getType1() { return u8; }
+	type1 run1() {
+		 return 42;
+	}
+	alias type2 = getType2();
+	$type getType2() { return u8; }
+	type2 run2() {
+		 return 42;
+	}
+};
+void tester142(ref TestContext ctx) {
+	auto run1 = ctx.getFunctionPtr!(ubyte)("run1");
+	auto run2 = ctx.getFunctionPtr!(ubyte)("run2");
+	assert(run1() == 42);
+	assert(run2() == 42);
+}

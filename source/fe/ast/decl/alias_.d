@@ -46,6 +46,11 @@ void name_resolve_alias(AliasDeclNode* node, ref NameResolveState state)
 	{
 		// ok
 	}
+	else if (initializer.astType == AstType.expr_call)
+	{
+		// CTFE function that returns $alias
+		node.initializer = eval_static_expr_alias(node.initializer, state.context);
+	}
 	else
 	{
 		c.error(node.loc, "Cannot create alias of %s", get_node_kind_name(node.initializer, c));

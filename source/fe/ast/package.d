@@ -245,6 +245,7 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 	if (nodeIndex.isUndefined) return nodeIndex;
 
 	AstNode* node = c.getAstNode(nodeIndex);
+	//c.assertf(node.state >= AstNodeState.type_check_done, "get_node_type on node in state %s", node.state);
 
 	switch(node.astType) with(AstType)
 	{
@@ -268,6 +269,7 @@ AstIndex get_expr_type(AstIndex nodeIndex, CompilationContext* c)
 	if (nodeIndex.isUndefined) return nodeIndex;
 
 	AstNode* node = c.getAstNode(nodeIndex);
+	//c.assertf(node.state >= AstNodeState.type_check_done, "get_expr_type on node in state %s", node.state);
 
 	switch(node.astType) with(AstType)
 	{
@@ -291,6 +293,7 @@ AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
 	if (nodeIndex.isUndefined) return nodeIndex;
 
 	AstNode* node = c.getAstNode(nodeIndex);
+	//c.assertf(node.state >= AstNodeState.type_check_done, "get_effective_node on node in state %s", node.state);
 
 	switch(node.astType) with(AstType)
 	{

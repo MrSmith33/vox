@@ -59,8 +59,10 @@ AstIndex eval_static_expr_alias(AstIndex nodeIndex, CompilationContext* c)
 {
 	IrIndex val = eval_static_expr(nodeIndex, c);
 	AstNode* node = c.getAstNode(nodeIndex);
-	if (nodeIndex.get_node_type(c) != CommonAstNodes.type_alias)
+	AstIndex retType = nodeIndex.get_node_type(c);
+	if (!(retType == CommonAstNodes.type_alias || retType == CommonAstNodes.type_type)) {
 		c.internal_error(node.loc, "Cannot evaluate static expression %s as $alias", node.astType);
+	}
 	if (!val.isSomeConstant)
 		c.internal_error(node.loc, "Cannot obtain $alias from %s", val);
 	IrConstant con = c.constants.get(val);
