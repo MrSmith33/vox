@@ -145,7 +145,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 			state.context.throwOnErrors;
 			goto case;
 		case name_register_self_done: break; // all requirement are done
-		case name_register_nested_done, name_resolve_done, type_check_done: return; // already name registered
+		case name_register_nested_done, name_resolve_done, type_check_done, ir_gen_done: return; // already name registered
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
 

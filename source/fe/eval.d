@@ -292,9 +292,6 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 {
 	auto func = callee.get!FunctionDeclNode(c);
 
-	if (func.isBuiltin)
-		return eval_call_builtin(node, callee, c);
-
 	force_callee_ir_gen(func, callee, c);
 
 	if (func.state != AstNodeState.ir_gen_done)
@@ -319,6 +316,9 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
 		args[i] = param.gen_default_value_var(c);
 	}
+
+	if (func.isBuiltin)
+		return eval_call_builtin(node.loc, callee, args, c);
 
 	IrFunction* irData = c.getAst!IrFunction(func.backendData.irData);
 	ubyte* vmBuffer = c.vmBuffer.bufPtr;
@@ -347,12 +347,12 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 	return result;
 }
 
-IrIndex eval_call_builtin(CallExprNode* node, AstIndex callee, CompilationContext* c)
+IrIndex eval_call_builtin(TokenIndex loc, AstIndex callee, IrIndex[] args, CompilationContext* c)
 {
 	switch (callee.storageIndex) {
 		case CommonAstNodes.compile_error.storageIndex:
-			IrIndex message = eval_static_expr(node.args[0], c);
-			c.unrecoverable_error(node.loc, "%s", stringFromConstant(message, c));
+			IrIndex message = args[0];
+			c.unrecoverable_error(loc, "%s", stringFromConstant(message, c));
 			assert(false);
 		default:
 			c.internal_error("Unknown builtin function");

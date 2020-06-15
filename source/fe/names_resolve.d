@@ -58,7 +58,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 			state.context.throwOnErrors;
 			break;
 		case name_register_nested_done: break; // all requirement are done
-		case name_resolve_done, type_check_done: return; // already name resolved
+		case name_resolve_done, type_check_done, ir_gen_done: return; // already name resolved
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
 

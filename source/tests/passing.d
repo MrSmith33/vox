@@ -3229,13 +3229,30 @@ test139(5, 27): Error: CTFE error
 @TestInfo()
 immutable test140 = q{--- test140
 	// CTFE in type check pass
-	#assert(calee1, "test");
-	bool calee1() {
-		return calee2();
+	#assert(callee1, "test");
+	bool callee1() {
+		return callee2();
 	}
-	bool calee2() {
+	bool callee2() {
 		return false;
 	}
 --- <error>
 test140(2, 2): Error: #assert: "test"
+};
+
+
+// TODO: no file/line number in the error
+@TestInfo()
+immutable test141 = q{--- test141
+	// builtin functions
+	#assert(callee1, "test");
+	bool callee1() {
+		return callee2();
+	}
+
+	bool callee2() {
+		$compile_error("CTFE error");
+	}
+--- <error>
+: Error: CTFE error
 };

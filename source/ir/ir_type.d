@@ -210,7 +210,7 @@ struct IrTypeStorage
 	///
 	ref T get(T)(IrIndex index)
 	{
-		assert(index.isDefined, "null index");
+		assert(index.isDefined,  format("get!%s null index", T.stringof));
 		assert(index.kind == getIrValueKind!T, format("%s != %s", index.kind, getIrValueKind!T));
 		static if (!is(T == IrTypeHeader))
 			assert(index.typeKind == getIrTypeKind!T, format("%s != %s", index.typeKind, getIrTypeKind!T));

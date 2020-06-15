@@ -216,23 +216,25 @@ struct IrVm
 						}
 
 						FunctionDeclNode* calleeFunc = c.getFunction(callee);
-						force_callee_ir_gen(calleeFunc, AstIndex(callee.storageUintIndex), c);
+						AstIndex calleeIndex = AstIndex(callee.storageUintIndex);
+						force_callee_ir_gen(calleeFunc, calleeIndex, c);
 						if (calleeFunc.state != AstNodeState.ir_gen_done)
 							c.internal_error(calleeFunc.loc,
 								"Function's IR is not yet generated");
 
-						if (calleeFunc.isBuiltin)
-							assert(false, "Cannot call builtin for now");
-							//return eval_call_builtin(node, callee, c);
-
-						IrFunction* irData = c.getAst!IrFunction(calleeFunc.backendData.irData);
-
-						IrIndex retType = c.types.getReturnType(irData.type, c);
 						IrVmSlotInfo returnMem;
-						if (!retType.isTypeVoid) {
+						if (instrHeader.hasResult) {
 							IrIndex result = instrHeader.result(func);
 							returnMem = vregSlot(result);
 						}
+
+						if (calleeFunc.isBuiltin) {
+							IrIndex result = eval_call_builtin(TokenIndex(), calleeIndex, instrHeader.args(func)[1..$], c);
+							constantToMem(slotToSlice(returnMem), result, c);
+							break;
+						}
+
+						IrFunction* irData = c.getAst!IrFunction(calleeFunc.backendData.irData);
 						IrVm vm = IrVm(c, irData);
 						vm.pushFrame;
 						foreach(uint index, IrVmSlotInfo slot; vm.parameters)
