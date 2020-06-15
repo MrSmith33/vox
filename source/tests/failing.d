@@ -385,3 +385,29 @@ immutable fail36 = q{
 --- <error>
 fail36(3, 3): Error: Cannot implicitly convert expression of type `i32` to `noreturn`
 };
+
+
+@TestInfo()
+immutable fail37 = q{
+--- fail37
+	// Non-type used as return type
+	alias type1 = getType1;
+	$alias getType1() { return u8; }
+	type1 run1() {
+		 return 42;
+	}
+--- <error>
+fail37(2, 16): Error: function is not a type
+};
+
+
+@TestInfo()
+immutable fail38 = q{
+--- fail38
+	// Non-type used as var type
+	$alias getType1() { return u8; }
+	alias type1 = getType1;
+	type1 var;
+--- <error>
+fail38(3, 16): Error: function is not a type
+};

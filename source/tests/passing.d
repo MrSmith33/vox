@@ -3278,15 +3278,3 @@ void tester142(ref TestContext ctx) {
 	assert(run1() == 42);
 	assert(run2() == 42);
 }
-
-
-@TestInfo()
-immutable test143 = q{--- test143
-	alias type1 = getType1;
-	$alias getType1() { return u8; }
-	type1 run1() {
-		 return 42;
-	}
---- <error>
-test143(1, 16): Error: function is not a type
-};

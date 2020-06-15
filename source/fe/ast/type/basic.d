@@ -28,6 +28,7 @@ struct BasicTypeNode {
 	{
 		switch(basicType)
 		{
+			case BasicType.t_error: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
 			case BasicType.t_bool: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
 			case BasicType.t_u8: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
 			case BasicType.t_i8: return c.constants.add(0, IsSigned.no, IrArgSize.size8);

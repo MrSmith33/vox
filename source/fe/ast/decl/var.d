@@ -77,6 +77,8 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 
 	node.state = AstNodeState.type_check;
 	require_type_check(node.type, state);
+	check_is_type(node.type, c);
+
 	TypeNode* type = node.type.get_type(c);
 
 	if (type.isOpaqueStruct(c)) {
