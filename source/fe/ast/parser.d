@@ -79,9 +79,8 @@ void pass_parser(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 		parser.parseModule(file.mod, file.firstTokenIndex);
 
 		if (ctx.printAstFresh) {
-			auto state = AstPrintState(&ctx, 2);
 			writefln("// AST fresh `%s`", file.name);
-			print_ast(ctx.getAstNodeIndex(file.mod), state);
+			print_ast(ctx.getAstNodeIndex(file.mod), &ctx, 2);
 		}
 	}
 }

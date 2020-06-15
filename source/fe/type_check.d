@@ -19,9 +19,8 @@ void pass_type_check(ref CompilationContext context, CompilePassPerModule[] subP
 		assert(context.analisysStack.length == 0);
 
 		if (context.printAstSema && modIndex) {
-			auto printState = AstPrintState(&context, 2);
 			writefln("// AST typed `%s`", file.name);
-			print_ast(context.getAstNodeIndex(file.mod), printState);
+			print_ast(context.getAstNodeIndex(file.mod), &context, 2);
 		}
 	}
 }

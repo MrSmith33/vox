@@ -59,6 +59,8 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 
 	require_type_check(node.returnType, state);
+	check_is_type(node.returnType, c);
+
 	TypeNode* returnType = node.returnType.get_type(c);
 	if (returnType.isOpaqueStruct(c)) {
 		c.error(node.loc,
@@ -93,25 +95,26 @@ bool same_type_func_sig(FunctionSignatureNode* t1, FunctionSignatureNode* t2, Co
 	return true;
 }
 
-IrIndex gen_ir_type_func_sig(FunctionSignatureNode* node, CompilationContext* context)
+IrIndex gen_ir_type_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 	out(res; res.isTypeFunction, "Not a function type")
 {
 	if (node.irType.isDefined) return node.irType;
 
 	uint numResults = 0;
-	if (!context.getAst!TypeNode(node.returnType).isVoid) numResults = 1;
 
-	node.irType = context.types.appendFuncSignature(numResults, node.parameters.length, node.callConvention);
-	auto funcType = &context.types.get!IrTypeFunction(node.irType);
+	if (!c.getAst!TypeNode(node.returnType).isVoid) numResults = 1;
+
+	node.irType = c.types.appendFuncSignature(numResults, node.parameters.length, node.callConvention);
+	auto funcType = &c.types.get!IrTypeFunction(node.irType);
 
 	if (numResults == 1) {
-		IrIndex returnType = node.returnType.gen_ir_type(context);
+		IrIndex returnType = node.returnType.gen_ir_type(c);
 		funcType.resultTypes[0] = returnType;
 	}
 
 	IrIndex[] parameterTypes = funcType.parameterTypes;
 	foreach(i, AstIndex parameter; node.parameters) {
-		parameterTypes[i] = parameter.get_node_type(context).gen_ir_type(context);
+		parameterTypes[i] = parameter.get_node_type(c).gen_ir_type(c);
 	}
 
 	return node.irType;

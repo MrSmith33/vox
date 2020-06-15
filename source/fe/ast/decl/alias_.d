@@ -42,14 +42,17 @@ void name_resolve_alias(AliasDeclNode* node, ref NameResolveState state)
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.initializer, state);
 	AstNode* initializer = node.initializer.get_node(c);
-	if (initializer.isType || initializer.astType == AstType.expr_name_use)
-	{
+	if (initializer.isType) {
 		// ok
+	} else if (initializer.astType == AstType.expr_name_use) {
+		// ok
+		initializer.flags |= NameUseFlags.forbidParenthesesFreeCall;
 	}
 	else if (initializer.astType == AstType.expr_call)
 	{
 		// CTFE function that returns $alias
 		node.initializer = eval_static_expr_alias(node.initializer, state.context);
+		initializer = node.initializer.get_node(c);
 	}
 	else
 	{

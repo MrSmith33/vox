@@ -63,7 +63,7 @@ void removeAllInstrs(ref IrBasicBlock block)
 ///           D >----,
 ///   A --critical--> B
 ///    `----> C
-/// Edge from A to B is critical when A has 2+ successors and B has 2+ predecessors
+/// Edge from A to B is called critical when A has 2+ successors and B has 2+ predecessors
 bool isCriticalEdge(ref IrBasicBlock predBlock, ref IrBasicBlock succBlock)
 {
 	return predBlock.successors.length > 1 && succBlock.predecessors.length > 1;

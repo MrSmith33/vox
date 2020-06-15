@@ -220,6 +220,15 @@ void print_node_name(ref TextSink sink, AstIndex nodeIndex, CompilationContext* 
 	}
 }
 
+void check_is_type(ref AstIndex nodeIndex, CompilationContext* c)
+{
+	AstNode* node = c.getAstNode(nodeIndex);
+	if (!node.isType) {
+		c.error(node.loc, "%s is not a type", get_node_kind_name(nodeIndex, c));
+		nodeIndex = CommonAstNodes.type_error;
+	}
+}
+
 ref Identifier get_node_id(AstIndex nodeIndex, CompilationContext* c)
 {
 	AstNode* node = c.getAstNode(nodeIndex);

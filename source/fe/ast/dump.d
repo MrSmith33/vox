@@ -23,17 +23,15 @@ struct AstPrintState
 	}
 }
 
-void print_ast(AstIndex nodeIndex, CompilationContext* context)
+void print_ast(AstIndex nodeIndex, CompilationContext* context, int indentSize = 1)
 {
-	auto state = AstPrintState(context);
+	auto state = AstPrintState(context, indentSize);
 	state.indent = -state.indentSize;
 	print_ast(nodeIndex, state);
 }
 
 void print_ast(AstNodes nodes, ref AstPrintState state)
 {
-	state.indent += state.indentSize;
-	scope(exit) state.indent -= state.indentSize;
 	foreach(AstIndex item; nodes) print_ast(item, state);
 }
 
