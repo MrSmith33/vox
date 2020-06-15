@@ -356,6 +356,12 @@ IrIndex eval_call_builtin(TokenIndex loc, AstIndex callee, IrIndex[] args, Compi
 			IrIndex message = args[0];
 			c.unrecoverable_error(loc, "%s", stringFromConstant(message, c));
 			assert(false);
+		case CommonAstNodes.is_slice.storageIndex:
+			AstIndex nodeIndex = aliasFromConstant(args[0], c);
+			if (nodeIndex.isUndefined) return c.constants.ZERO;
+			AstNode* node = c.getAstNode(nodeIndex);
+			if (node.astType != AstType.type_slice) return c.constants.ZERO;
+			return c.constants.ONE;
 		default:
 			c.internal_error("Unknown builtin function");
 			assert(false);

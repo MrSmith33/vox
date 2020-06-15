@@ -97,9 +97,14 @@ enum CommonIds : Identifier
 	@("sizeof")  id_sizeof  = Identifier(4),
 	@("this")    id_this    = Identifier(5),
 	@("message") id_message = Identifier(6),
+	@("type")    id_type    = Identifier(7),
 
-	@("$compile_error") cash_compile_error = Identifier(id_message.index + 1),
+	@("$compileError") cash_compile_error = Identifier(id_type.index + 1),
+	@("$isSlice") cash_is_slice = Identifier(id_type.index + 2),
 }
+
+enum uint commonId_builtin_func_first = CommonIds.cash_compile_error.index;
+enum uint commonId_builtin_func_last = CommonIds.cash_is_slice.index;
 
 
 private struct StringKey

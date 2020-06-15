@@ -898,6 +898,7 @@ enum CommonAstNodes : AstIndex
 
 	// builtin functions
 	compile_error            = AstIndex(230),
+	is_slice                 = AstIndex(272),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
@@ -927,6 +928,10 @@ private immutable AstIndex[BuiltinId.max + 1] builtinsArray = [
 	CommonAstNodes.builtin_array_length,
 	CommonAstNodes.builtin_array_ptr,
 	CommonAstNodes.builtin_sizeof,
+];
+immutable AstIndex[2] builtinFuncsArray = [
+	CommonAstNodes.compile_error,
+	CommonAstNodes.is_slice,
 ];
 
 void createBuiltinFunctions(CompilationContext* c)
@@ -966,7 +971,10 @@ void createBuiltinFunctions(CompilationContext* c)
 	addParam(CommonAstNodes.type_u8Slice, CommonIds.id_message);
 	make(CommonAstNodes.compile_error, CommonIds.cash_compile_error, CommonAstNodes.type_noreturn);
 
-	//print_ast(CommonAstNodes.compile_error, c);
+	addParam(CommonAstNodes.type_type, CommonIds.id_type);
+	make(CommonAstNodes.is_slice, CommonIds.cash_is_slice, CommonAstNodes.type_bool);
+
+	print_ast(CommonAstNodes.is_slice, c);
 }
 
 struct Slice(T) {

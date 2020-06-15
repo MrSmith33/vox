@@ -1252,12 +1252,12 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			return p.make!NameUseExprNode(token.index, p.currentScopeIndex, id);
 		case CASH_IDENTIFIER:
 			Identifier id = p.makeIdentifier(token.index);
-			switch(id.index) with(CommonIds) {
-				case cash_compile_error.index:
-					return CommonAstNodes.compile_error;
-				default:
-					p.context.error(token.index, "Invalid $ identifier %s", p.context.idString(id));
+			if (id.index >= commonId_builtin_func_first && id.index <= commonId_builtin_func_last)
+			{
+				uint builtinIndex = id.index - commonId_builtin_func_first;
+				return builtinFuncsArray[builtinIndex];
 			}
+			p.context.error(token.index, "Invalid $ identifier %s", p.context.idString(id));
 			return p.make!NameUseExprNode(token.index, p.currentScopeIndex, id);
 		case NULL:
 			return p.makeExpr!NullLiteralExprNode(token.index);

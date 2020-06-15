@@ -3220,7 +3220,7 @@ immutable test139 = q{--- test139
 	bool run() {
 		return val;
 	}
-	enum val = $compile_error("CTFE error");
+	enum val = $compileError("CTFE error");
 --- <error>
 test139(5, 27): Error: CTFE error
 };
@@ -3251,7 +3251,7 @@ immutable test141 = q{--- test141
 	}
 
 	bool callee2() {
-		$compile_error("CTFE error");
+		$compileError("CTFE error");
 	}
 --- <error>
 : Error: CTFE error
@@ -3277,4 +3277,24 @@ void tester142(ref TestContext ctx) {
 	auto run2 = ctx.getFunctionPtr!(ubyte)("run2");
 	assert(run1() == 42);
 	assert(run2() == 42);
+}
+
+
+@TestInfo(&tester143)
+immutable test143 = q{--- test143
+	// bool $isSlice($type type)
+	bool run1() {
+		enum bool val = $isSlice(u8[]);
+		return val; // true
+	}
+	bool run2() {
+		enum bool val = $isSlice(u8);
+		return val; // false
+	}
+};
+void tester143(ref TestContext ctx) {
+	auto run1 = ctx.getFunctionPtr!(bool)("run1");
+	auto run2 = ctx.getFunctionPtr!(bool)("run2");
+	assert(run1() == true);
+	assert(run2() == false);
 }

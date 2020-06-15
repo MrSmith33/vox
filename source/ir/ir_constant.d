@@ -343,3 +343,8 @@ string stringFromConstant(IrIndex constant, CompilationContext* c)
 	constantToMem(repr.buf, constant, c, &onGlobal);
 	return cast(string)repr.str.slice;
 }
+
+AstIndex aliasFromConstant(IrIndex constant, CompilationContext* c)
+{
+	return AstIndex(c.constants.get(constant).i32);
+}
