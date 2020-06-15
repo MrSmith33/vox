@@ -17,6 +17,7 @@ public import ir.ir_global;
 public import ir.ir_index;
 public import ir.ir_inline;
 public import ir.ir_instructions;
+public import ir.ir_mirror;
 public import ir.ir_module;
 public import ir.ir_phi;
 public import ir.ir_small_array;

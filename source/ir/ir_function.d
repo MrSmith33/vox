@@ -9,96 +9,13 @@ module ir.ir_function;
 import std.string : format;
 
 import all;
-import ir.ir_index;
 
-/// Allows associating a single uint sized item with any object in original IR
-/// IR must be immutable (no new items must added)
-/// Mirror is stored in temp memory of context
-struct IrMirror(T)
-{
-	static assert(T.sizeof == uint.sizeof, "T size must be equal to uint.sizeof");
-
-	// Mirror of original IR
-	private T[] virtRegMirror;
-	private T[] basicBlockMirror;
-	private T[] phiMirror;
-	private T[] instrMirror;
-
-	void createVirtRegMirror(CompilationContext* context, IrFunction* ir) {
-		virtRegMirror = makeParallelArray!T(context, ir.numVirtualRegisters);
-	}
-
-	void createBasicBlockMirror(CompilationContext* context, IrFunction* ir) {
-		basicBlockMirror = makeParallelArray!T(context, ir.numBasicBlocks);
-	}
-
-	void createPhiMirror(CompilationContext* context, IrFunction* ir) {
-		phiMirror = makeParallelArray!T(context, ir.numPhis);
-	}
-
-	void createInstrMirror(CompilationContext* context, IrFunction* ir) {
-		instrMirror = makeParallelArray!T(context, ir.numInstructions);
-	}
-
-	void createAll(CompilationContext* context, IrFunction* ir)
-	{
-		createVirtRegMirror(context, ir);
-		createBasicBlockMirror(context, ir);
-		createPhiMirror(context, ir);
-		createInstrMirror(context, ir);
-	}
-
-	ref T opIndex(IrIndex index)
-	{
-		switch (index.kind) with(IrValueKind) {
-			case basicBlock: return basicBlockMirror[index.storageUintIndex];
-			case phi: return phiMirror[index.storageUintIndex];
-			case virtualRegister: return virtRegMirror[index.storageUintIndex];
-			case instruction: return instrMirror[index.storageUintIndex];
-			default: assert(false, format("%s", index));
-		}
-	}
-
-	ref T instr(IrIndex index) {
-		assert(index.isInstruction);
-		return instrMirror[index.storageUintIndex];
-	}
-	ref T basicBlock(IrIndex index) {
-		assert(index.isBasicBlock);
-		return basicBlockMirror[index.storageUintIndex];
-	}
-	ref T phi(IrIndex index) {
-		assert(index.isPhi);
-		return phiMirror[index.storageUintIndex];
-	}
-	ref T vreg(IrIndex index) {
-		assert(index.isVirtReg);
-		return virtRegMirror[index.storageUintIndex];
-	}
-}
-
-T[] makeParallelArray(T)(CompilationContext* context, uint size)
-{
-	static assert(T.sizeof % uint.sizeof == 0, "T.sizeof is not multiple of uint.sizeof");
-	enum size_t numSlotsPerItem = divCeil(T.sizeof, uint.sizeof);
-	auto result = cast(T[])context.tempBuffer.voidPut(size * numSlotsPerItem);
-	result[] = T.init;
-	return result;
-}
-
-enum IrInstructionSet : ubyte
-{
-	ir,
-	lir_amd64
-}
-immutable string[] instr_set_names = ["IR", "LIR Amd64"];
-static assert(instr_set_names.length == IrInstructionSet.max+1);
-
-immutable InstrInfo[][] allInstrInfos = [
-	irInstrInfos,
-	amd64InstrInfos
-];
-
+/// Stores info about single function in IR
+/// All data of a function is stored in a number of arenas
+/// Every function has its data stored sequentially in each arena, and items in each function have separate indexing
+/// Indicies are relative to the pointers.
+/// All this implies that in order to modify the function's IR it needs to be at the end of each arena.
+/// Then we can freely append new items to the end of arenas.
 struct IrFunction
 {
 	IrInstrHeader* instrPtr;
