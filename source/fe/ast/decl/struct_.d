@@ -149,11 +149,13 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* c)
 			members[memberIndex++] = IrTypeStructMember(type, memberOffset);
 			memberOffset += memberSize;
 
-			if (var.type.isMetaType(c))
+			if (var.type.isMetaType(c)) {
 				s.flags |= StructFlags.isCtfeOnly;
+			}
 		} else if (member.astType == AstType.decl_function) {
-			if (member.as!(FunctionDeclNode)(c).isCtfeOnly(c))
+			if (member.as!(FunctionDeclNode)(c).isCtfeOnly(c)) {
 				s.flags |= StructFlags.isCtfeOnly;
+			}
 		}
 	}
 

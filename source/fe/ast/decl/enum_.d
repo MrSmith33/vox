@@ -99,7 +99,12 @@ struct EnumMemberDecl
 	AstIndex initializer;
 	Identifier id;
 	ushort scopeIndex;
-	IrIndex initValue; // cached value of initializer
+	IrIndex initValue; // cached value of initializer, calculated in type check
+
+	IrIndex getInitVal(CompilationContext* c) {
+		c.assertf(initValue.isDefined, loc, "Enum member value is undefined");
+		return initValue;
+	}
 }
 
 void print_enum_member(EnumMemberDecl* node, ref AstPrintState state)
@@ -142,6 +147,7 @@ void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 	if (node.initializer) {
 		require_type_check_expr(node.type, node.initializer, state);
 		autoconvTo(node.initializer, node.type, state.context);
+		node.initValue = eval_static_expr(node.initializer, state.context);
 	}
 	node.state = AstNodeState.type_check_done;
 }

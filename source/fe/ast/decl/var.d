@@ -20,7 +20,6 @@ struct VariableDeclNode
 	AstIndex initializer; // may be null, stores initializer for variables, default argument for parameters
 	Identifier id;
 	ushort scopeIndex; // stores index of parameter or index of member (for struct fields)
-	ExprValue initValue;
 	// for local vars kind is variable or stackSlot, unique id of variable within a function
 	// for global it is IrValueKind.global
 	// nothing is generated for members
@@ -114,6 +113,10 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 			default: break;
 		}
 	}
+
+	if (!node.isLocal)
+		gen_default_value_var(node, c);
+
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -139,13 +142,13 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 	TypeNode* varType = c.getAstType(v.type).foldAliases(c);
 	c.assertf(!v.isGlobal, v.loc, "Variable is global");
 
-	IrIndex valueType = varType.gen_ir_type(c);
+	IrIndex irType = varType.gen_ir_type(c);
 	if (v.isParameter)
 	{
 		// allocate new variable
-		v.irValue = ExprValue(gen.builder.newIrVarIndex(valueType), ExprValueKind.value, IsLvalue.yes);
+		v.irValue = ExprValue(gen.builder.newIrVarIndex(irType), ExprValueKind.value, IsLvalue.yes);
 
-		ExtraInstrArgs extra = {type : valueType};
+		ExtraInstrArgs extra = {type : irType};
 		InstrWithResult param = gen.builder.emitInstr!(IrOpcode.parameter)(gen.ir.entryBasicBlock, extra);
 		gen.ir.get!IrInstr_parameter(param.instruction).index(gen.ir) = v.scopeIndex;
 		store(gen, v.loc, curBlock, v.irValue, param.result);
@@ -159,7 +162,6 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 
 		if (needsStackSlot)
 		{
-			IrIndex irType = varType.gen_ir_type(c);
 			ExprValueKind valueKind = ExprValueKind.ptr_to_data;
 
 			// allocate stack slot
@@ -169,7 +171,7 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 		else
 		{
 			// allocate new variable
-			v.irValue = ExprValue(gen.builder.newIrVarIndex(valueType), ExprValueKind.value, IsLvalue.yes);
+			v.irValue = ExprValue(gen.builder.newIrVarIndex(irType), ExprValueKind.value, IsLvalue.yes);
 		}
 
 		// initialize variable by default or with user-specified value
@@ -199,19 +201,19 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 		IrIndex globalIndex = v.getIrIndex(c);
 
 		TypeNode* varType = c.getAstType(v.type).foldAliases(c);
-		IrIndex valueType = varType.gen_ir_type(c);
+		IrIndex irType = varType.gen_ir_type(c);
 
 		IrGlobal* global = c.globals.get(globalIndex);
-		global.type = c.types.appendPtr(valueType);
+		global.type = c.types.appendPtr(irType);
 
-		uint valueSize = c.types.typeSize(valueType);
+		uint valueSize = c.types.typeSize(irType);
 
 		// symbol is created in parser
 		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
 		globalSym.length = valueSize;
-		globalSym.alignment = c.types.typeAlignment(valueType);
+		globalSym.alignment = c.types.typeAlignment(irType);
 
-		IrIndex initializer = gen_default_value_var(v, c);
+		IrIndex initializer = v.defaultVal;
 		if (initializer.isConstantZero)
 		{
 			globalSym.flags |= ObjectSymbolFlags.isAllZero;
@@ -243,8 +245,6 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 				};
 				c.objSymTab.addReference(r);
 			}
-			//if (!initializer.isConstantZero)
-			//	writefln("%s %s", c.idString(v.id), IrIndexDump(initializer, c, IrInstructionSet.ir));
 			constantToMem(buffer, initializer, c, &onGlobal);
 			globalSym.setInitializer(buffer);
 		}

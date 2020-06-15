@@ -13,6 +13,7 @@ struct SwitchStmtNode
 	AstIndex condition;
 	AstIndex elseStmt; // else block stmt, nullable
 	Array!SwitchCase cases;
+	IrIndex[] argsValues;
 }
 
 struct SwitchCase
@@ -73,11 +74,15 @@ void name_resolve_switch(SwitchStmtNode* node, ref NameResolveState state)
 
 void type_check_switch(SwitchStmtNode* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
 	require_type_check(node.condition, state);
 	if (node.elseStmt.isDefined) require_type_check(node.elseStmt, state);
-	foreach(ref SwitchCase c; node.cases) {
-		require_type_check(c.expr, state);
-		require_type_check(c.stmt, state);
+	// Args: value + N integer constants
+	node.argsValues = c.allocateTempArray!IrIndex(node.cases.length + 1);
+	foreach(i, ref SwitchCase caseNode; node.cases) {
+		require_type_check(caseNode.expr, state);
+		require_type_check(caseNode.stmt, state);
+		node.argsValues[i+1] = eval_static_expr(caseNode.expr, c);
 	}
 }
 
@@ -95,13 +100,8 @@ void ir_gen_switch(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStm
 	currentBlock = afterExpr.blockIndex;
 	IrIndex rval = getRvalue(gen, node.loc, currentBlock, lval);
 
-	// Args: value + N integer constants
-	IrIndex[] args = c.allocateTempArray!IrIndex(node.cases.length + 1);
-	args[0] = rval;
-	foreach(i, ref SwitchCase switchCase; node.cases) {
-		args[i+1] = eval_static_expr(switchCase.expr, c);
-	}
-	gen.builder.emitInstr!(IrOpcode.branch_switch)(currentBlock, args);
+	node.argsValues[0] = rval;
+	gen.builder.emitInstr!(IrOpcode.branch_switch)(currentBlock, node.argsValues);
 
 	IrBasicBlock* block = gen.ir.getBlock(currentBlock);
 	assert(!block.isFinished);

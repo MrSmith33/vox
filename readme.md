@@ -5,6 +5,7 @@
 WIP language name is `Vox`, file extension is `.vx`.
 
 [Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
+[Channel on /r/ProgrammingLanguages discord](https://discord.gg/HpYYhH4)
 
 
 

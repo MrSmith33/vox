@@ -19,6 +19,7 @@ struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
 	AstIndex callee;
 	AstNodes args;
+	IrIndex[] argsValues;
 }
 
 void print_call(CallExprNode* node, ref AstPrintState state)
@@ -169,6 +170,11 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 		return;
 	}
 
+	// We need to allocate for each call, because calls can be nested
+	// We allocate here instead of in IR gen, because eval cannot happen at IR gen,
+	// and we need to call gen_default_value_var for default args, which may need to eval
+	node.argsValues = c.allocateTempArray!IrIndex(numParams + 1); // first argument is callee
+
 	// check arguments
 	// default arguments do not require checking here
 	foreach (i, ref AstIndex arg; node.args)
@@ -183,33 +189,45 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 				param.type.printer(c),
 				arg.get_expr_type(c).printer(c));
 	}
+
+	foreach(i; numArgs..numParams)
+	{
+		// eval default argument values
+		VariableDeclNode* param = c.getAst!VariableDeclNode(params[i]);
+		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
+		node.argsValues[i+1] = param.gen_default_value_var(c);
+	}
 }
 
 void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
 
-	size_t numStructMembers;
+	IrIndex structType = s.gen_ir_type_struct(c);
+	uint numStructMembers = c.types.get!IrTypeStruct(structType).numMembers;
+	node.argsValues = c.allocateTempArray!IrIndex(numStructMembers);
+
+	size_t memberIndex;
 	foreach(AstIndex arg; s.declarations)
 	{
 		AstNode* member = arg.get_node(c);
 		if (member.astType != AstType.decl_var) continue;
+		VariableDeclNode* memberVar = member.as!VariableDeclNode(c);
 
-		ExpressionNode* initializer;
-		if (node.args.length > numStructMembers) { // init from constructor argument
-			require_type_check(node.args[numStructMembers], state);
-			AstIndex memberType = member.as!VariableDeclNode(c).type;
-			bool success = autoconvTo(node.args[numStructMembers], memberType, c);
+		if (node.args.length > memberIndex) { // init from constructor argument
+			require_type_check(node.args[memberIndex], state);
+			AstIndex memberType = memberVar.type;
+			bool success = autoconvTo(node.args[memberIndex], memberType, c);
 			if (!success) {
-				c.error(node.args[numStructMembers].loc(c),
-					"Argument %s, must have type %s, not %s", numStructMembers+1,
+				c.error(node.args[memberIndex].loc(c),
+					"Argument %s, must have type %s, not %s", memberIndex+1,
 					memberType.printer(c),
-					node.args[numStructMembers].get_expr_type(c).printer(c));
+					node.args[memberIndex].get_expr_type(c).printer(c));
 			}
 		} else { // init with initializer from struct definition
-			// skip
+			node.argsValues[memberIndex] = memberVar.gen_default_value_var(c);
 		}
-		++numStructMembers;
+		++memberIndex;
 	}
 	node.type = c.getAstNodeIndex(s);
 }
@@ -234,7 +252,7 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			if (!varType.isPointer) goto default;
 			TypeNode* base = varType.as_ptr.base.get_type(c);
 			if (!base.isFuncSignature) goto default;
-			IrIndex irIndex = eval_static_expr(callee, c);
+			IrIndex irIndex = callee.get!EnumMemberDecl(c).getInitVal(c);
 			return visitCall(gen, c.getAstNodeIndex(base), irIndex, currentBlock, nextStmt, node);
 		case AstType.decl_var:
 			VariableDeclNode* var = callee.get!VariableDeclNode(c);
@@ -261,11 +279,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 		"Cannot generate a call with %s arguments, max args is %s",
 		numArgs, IrInstrHeader.MAX_ARGS-1);
 
-	// We need to allocate for each call, because calls can be nested
-	IrIndex[] args = c.allocateTempArray!IrIndex(numParams + 1); // first argument is callee
-	scope(exit) c.freeTempArray(args);
-
-	args[0] = callee;
+	n.argsValues[0] = callee;
 	bool alwaysInline;
 
 	if (callee.kind == IrValueKind.func)
@@ -279,20 +293,14 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 	foreach (i, AstIndex arg; n.args)
 	{
 		IrLabel afterArg = IrLabel(currentBlock);
-		ExpressionNode* node = arg.get_expr(c);
+		ExpressionNode* nodeArg = arg.get_expr(c);
 		ExprValue lval = ir_gen_expr(gen, arg, currentBlock, afterArg);
 		currentBlock = afterArg.blockIndex;
-		args[i+1] = getRvalue(gen, n.loc, currentBlock, lval); // account for callee in 0th index
+		n.argsValues[i+1] = getRvalue(gen, n.loc, currentBlock, lval); // account for callee in 0th index
 		debug c.assertf(node.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, node.astType, c.tokenLoc(node.loc));
 	}
 
-	foreach(i; numArgs..numParams)
-	{
-		// use default argument value
-		VariableDeclNode* param = c.getAst!VariableDeclNode(signature.parameters[i]);
-		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
-		args[i+1] = param.gen_default_value_var(c); // account for callee in 0th index
-	}
+	// default args are populated in type check
 
 	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
 	// need handling of function pointers
@@ -303,7 +311,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 
 	if (signature.returnType.isVoidType(c))
 	{
-		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, args);
+		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, n.argsValues);
 		gen.builder.ir.getInstr(res.instruction).alwaysInline = alwaysInline;
 		c.assertf(!res.result.isDefined, "Call has result");
 		gen.builder.addJumpToLabel(currentBlock, nextStmt);
@@ -311,7 +319,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 	}
 	else if (signature.returnType.isNoreturnType(c))
 	{
-		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, args);
+		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, n.argsValues);
 		gen.builder.addUnreachable(currentBlock);
 		gen.builder.ir.getInstr(res.instruction).alwaysInline = alwaysInline;
 		c.assertf(!res.result.isDefined, "Call has result");
@@ -322,7 +330,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 		IrIndex callResultType = signature.returnType.gen_ir_type(c);
 
 		ExtraInstrArgs extra = { hasResult : true, type : callResultType };
-		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, extra, args);
+		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, extra, n.argsValues);
 		gen.builder.ir.getInstr(res.instruction).alwaysInline = alwaysInline;
 		gen.builder.addJumpToLabel(currentBlock, nextStmt);
 		return ExprValue(res.result);
@@ -333,15 +341,13 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 {
 	CompilationContext* c = gen.context;
 
-	if (n.args.length == 0)
+	uint numArgs = n.args.length;
+	uint numMembers = cast(uint)n.argsValues.length;
+
+	if (numArgs == 0)
 	{
 		return ExprValue(s.gen_default_value_struct(c));
 	}
-
-	IrIndex structType = s.gen_ir_type_struct(c);
-	uint numStructMembers = c.types.get!IrTypeStruct(structType).numMembers;
-	IrIndex[] args = c.allocateTempArray!IrIndex(numStructMembers);
-	scope(exit) c.freeTempArray(args);
 
 	bool allConstants = true;
 	bool allZeroes = true;
@@ -352,41 +358,45 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 		if (memberVarNode.astType != AstType.decl_var) continue;
 		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
 
-		if (n.args.length > memberIndex) // init from constructor argument
-		{
-			IrLabel afterArg = IrLabel(currentBlock);
-			ExprValue lval = ir_gen_expr(gen, n.args[memberIndex], currentBlock, afterArg);
-			currentBlock = afterArg.blockIndex;
-			IrIndex memberValue = getRvalue(gen, n.loc, currentBlock, lval);
-			args[memberIndex] = memberValue;
+		if (numArgs == memberIndex) break; // no more args provided, others are default inited
 
-			if (memberValue.isVirtReg) allConstants = false;
-			if (!memberValue.isConstantZero) allZeroes = false;
-		}
-		else // init with initializer from struct definition
-		{
-			args[memberIndex] = memberVar.gen_default_value_var(c);
-		}
+		IrLabel afterArg = IrLabel(currentBlock);
+		ExprValue lval = ir_gen_expr(gen, n.args[memberIndex], currentBlock, afterArg);
+		currentBlock = afterArg.blockIndex;
+		IrIndex memberValue = getRvalue(gen, n.loc, currentBlock, lval);
+		if (memberValue.isVirtReg) allConstants = false;
+		if (!memberValue.isConstantZero) allZeroes = false;
+		n.argsValues[memberIndex] = memberValue;
 
 		++memberIndex;
+	}
+
+	// check the rest of args for all zeroes
+	if (allConstants)
+	foreach (uint i; numArgs..numMembers) {
+		if (!n.argsValues[i].isConstantZero) {
+			allZeroes = false;
+			break;
+		}
 	}
 
 	if (n.isLvalue) {
 		c.internal_error(n.loc, "Constructor cannot be an l-value");
 	}
+	assert(s.irType.isDefined);
 
 	if (allZeroes)
 	{
-		return ExprValue(c.constants.addZeroConstant(structType));
+		return ExprValue(c.constants.addZeroConstant(s.irType));
 	}
 	else if (allConstants)
 	{
-		return ExprValue(c.constants.addAggrecateConstant(structType, args));
+		return ExprValue(c.constants.addAggrecateConstant(s.irType, n.argsValues));
 	}
 	else
 	{
-		ExtraInstrArgs extra = { type : structType };
-		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, args);
+		ExtraInstrArgs extra = { type : s.irType };
+		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, n.argsValues);
 		return ExprValue(res.result);
 	}
 }

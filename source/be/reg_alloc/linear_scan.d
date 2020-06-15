@@ -707,8 +707,10 @@ struct LinearScan
 				}
 			}
 
+			// if current intersects with the fixed interval for reg then
 			if (currentIt.exclusivePosition(physRegs[reg].blockPos))
 			{
+				// split current before this intersection
 				splitBefore(currentId, physRegs[reg].blockPos);
 			}
 

@@ -897,7 +897,7 @@ enum CommonAstNodes : AstIndex
 	// builtin nodes end
 
 	// builtin functions
-	compile_error            = AstIndex(232),
+	compile_error            = AstIndex(230),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [

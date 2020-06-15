@@ -70,10 +70,10 @@ enum IsLvalue : bool {
 	yes = true,
 }
 
-void ir_gen_decl(ref IrGenState gen, AstIndex astIndex)
+void ir_gen_decl(ref IrGenState gen, AstIndex nodeIndex)
 {
 	CompilationContext* c = gen.context;
-	AstNode* n = c.getAstNode(astIndex);
+	AstNode* n = c.getAstNode(nodeIndex);
 	switch(n.astType) with(AstType)
 	{
 		case decl_enum, decl_enum_member, decl_function, decl_struct, decl_import, decl_alias, decl_template, decl_static_assert: break;

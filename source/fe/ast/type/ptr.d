@@ -19,8 +19,7 @@ struct PtrTypeNode {
 
 	IrIndex gen_default_value(CompilationContext* c)
 	{
-		assert(irType.isDefined);
-		return c.constants.addZeroConstant(irType);
+		return c.constants.addZeroConstant(gen_ir_type_ptr(&this, c));
 	}
 }
 

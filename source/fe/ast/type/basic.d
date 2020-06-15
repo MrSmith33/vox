@@ -37,6 +37,8 @@ struct BasicTypeNode {
 			case BasicType.t_u32: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
 			case BasicType.t_i64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
 			case BasicType.t_u64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
+			case BasicType.t_alias: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
+			case BasicType.t_type: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
 			default:
 				c.internal_error(loc, "Cannot convert %s to IrIndex", basicType);
 				assert(false);

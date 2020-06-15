@@ -37,7 +37,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 
 	switch (node.astType) with(AstType)
 	{
-		case decl_enum_member: return eval_static_expr_enum_member(cast(EnumMemberDecl*)node, context);
+		case decl_enum_member: return node.as!EnumMemberDecl(context).getInitVal(context);
 		case expr_name_use: return eval_static_expr_name_use(cast(NameUseExprNode*)node, context);
 		case expr_member: return eval_static_expr_member(cast(MemberExprNode*)node, context);
 		case expr_bin_op: return eval_static_expr_bin_op(cast(BinaryExprNode*)node, context);
@@ -82,14 +82,6 @@ AstIndex eval_static_expr_type(AstIndex nodeIndex, CompilationContext* c)
 	if (con.payloadSize(val) > IrArgSize.size32)
 		c.internal_error(node.loc, "Cannot obtain $type from %s, too big", val);
 	return AstIndex(con.i32);
-}
-
-IrIndex eval_static_expr_enum_member(EnumMemberDecl* node, CompilationContext* context)
-{
-	if (!node.initValue.isDefined) {
-		node.initValue = eval_static_expr(node.initializer, context);
-	}
-	return node.initValue;
 }
 
 IrIndex eval_static_expr_name_use(NameUseExprNode* node, CompilationContext* context)
@@ -269,6 +261,36 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 
 	if (func.isBuiltin)
 		return eval_call_builtin(node, callee, c);
+
+	switch(func.state) with(AstNodeState)
+	{
+		case name_register_self, name_register_nested, name_resolve, type_check, ir_gen:
+			c.circular_dependency; assert(false);
+		case parse_done:
+			auto name_state = NameRegisterState(c);
+			require_name_register_self(0, callee, name_state);
+			c.throwOnErrors;
+			goto case;
+		case name_register_self_done:
+			auto name_state = NameRegisterState(c);
+			require_name_register(callee, name_state);
+			c.throwOnErrors;
+			goto case;
+		case name_register_nested_done:
+			require_name_resolve(callee, c);
+			c.throwOnErrors;
+			goto case;
+		case name_resolve_done:
+			require_type_check(callee, c);
+			c.throwOnErrors;
+			goto case;
+		case type_check_done:
+			IrGenState state = IrGenState(c);
+			ir_gen_function(state, func);
+			goto case; // all requirement are done
+		case ir_gen_done: break; // already has IR
+		default: c.internal_error(func.loc, "Node %s in %s state", func.astType, func.state);
+	}
 
 	if (func.state != AstNodeState.ir_gen_done)
 		c.internal_error(node.loc,
