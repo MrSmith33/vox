@@ -216,9 +216,14 @@ struct IrVm
 						}
 
 						FunctionDeclNode* calleeFunc = c.getFunction(callee);
+						force_callee_ir_gen(calleeFunc, AstIndex(callee.storageUintIndex), c);
 						if (calleeFunc.state != AstNodeState.ir_gen_done)
 							c.internal_error(calleeFunc.loc,
 								"Function's IR is not yet generated");
+
+						if (calleeFunc.isBuiltin)
+							assert(false, "Cannot call builtin for now");
+							//return eval_call_builtin(node, callee, c);
 
 						IrFunction* irData = c.getAst!IrFunction(calleeFunc.backendData.irData);
 

@@ -25,11 +25,6 @@ void pass_emit_mc_amd64(ref CompilationContext context, CompilePassPerModule[] s
 		printHex(context.staticDataBuffer.data, 16);
 	}
 
-	foreach (ref SourceFileInfo file; context.files.data) {
-		addFunctionSymbols(context, *file.mod);
-	}
-	if (context.hasErrors) return;
-
 	// emit code
 	foreach (ref SourceFileInfo file; context.files.data) {
 		emitter.compileModule(file.mod);
@@ -87,42 +82,6 @@ void fillStaticDataSections(CompilationContext* c)
 	}
 
 	c.zeroDataLength = zeroDataOffset - cast(uint)c.staticDataBuffer.length;
-}
-
-void addFunctionSymbols(ref CompilationContext context, ref ModuleDeclNode mod)
-{
-	foreach(AstIndex funcIndex; mod.functions)
-	{
-		FunctionDeclNode* f = context.getAst!FunctionDeclNode(funcIndex);
-		LinkIndex symbolIndex;
-
-		if (f.isExternal)
-		{
-			// When JIT-compiling, host can provide a set of external functions
-			// we will use provided function pointer
-			symbolIndex = context.externalSymbols.get(f.id, LinkIndex());
-
-			if (!symbolIndex.isDefined)
-			{
-				context.error(f.loc, "Unresolved external function %s", context.idString(f.id));
-				continue;
-			}
-		}
-		else
-		{
-			ObjectSymbol sym = {
-				kind : ObjectSymbolKind.isLocal,
-				sectionIndex : context.textSectionIndex,
-				moduleIndex : mod.objectSymIndex,
-				alignment : 1,
-				id : f.id,
-			};
-			symbolIndex = context.objSymTab.addSymbol(sym);
-		}
-
-		// TODO: check that parameters match
-		f.backendData.objectSymIndex = symbolIndex;
-	}
 }
 
 //version = emit_mc_print;

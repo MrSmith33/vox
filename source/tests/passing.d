@@ -3224,3 +3224,18 @@ immutable test139 = q{--- test139
 --- <error>
 test139(5, 27): Error: CTFE error
 };
+
+
+@TestInfo()
+immutable test140 = q{--- test140
+	// CTFE in type check pass
+	#assert(calee1, "test");
+	bool calee1() {
+		return calee2();
+	}
+	bool calee2() {
+		return false;
+	}
+--- <error>
+test140(2, 2): Error: #assert: "test"
+};

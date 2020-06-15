@@ -255,6 +255,39 @@ IrIndex eval_constructor(CallExprNode* node, AstIndex callee, CompilationContext
 	return c.constants.addAggrecateConstant(structType, args);
 }
 
+void force_callee_ir_gen(FunctionDeclNode* callee, AstIndex calleeIndex, CompilationContext* c)
+{
+	switch(callee.state) with(AstNodeState)
+	{
+		case name_register_self, name_register_nested, name_resolve, type_check, ir_gen:
+			c.circular_dependency; assert(false);
+		case parse_done:
+			auto name_state = NameRegisterState(c);
+			require_name_register_self(0, calleeIndex, name_state);
+			c.throwOnErrors;
+			goto case;
+		case name_register_self_done:
+			auto name_state = NameRegisterState(c);
+			require_name_register(calleeIndex, name_state);
+			c.throwOnErrors;
+			goto case;
+		case name_register_nested_done:
+			require_name_resolve(calleeIndex, c);
+			c.throwOnErrors;
+			goto case;
+		case name_resolve_done:
+			require_type_check(calleeIndex, c);
+			c.throwOnErrors;
+			goto case;
+		case type_check_done:
+			IrGenState state = IrGenState(c);
+			ir_gen_function(state, callee);
+			goto case; // all requirement are done
+		case ir_gen_done: break; // already has IR
+		default: c.internal_error(callee.loc, "Node %s in %s state", callee.astType, callee.state);
+	}
+}
+
 IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 {
 	auto func = callee.get!FunctionDeclNode(c);
@@ -262,35 +295,7 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 	if (func.isBuiltin)
 		return eval_call_builtin(node, callee, c);
 
-	switch(func.state) with(AstNodeState)
-	{
-		case name_register_self, name_register_nested, name_resolve, type_check, ir_gen:
-			c.circular_dependency; assert(false);
-		case parse_done:
-			auto name_state = NameRegisterState(c);
-			require_name_register_self(0, callee, name_state);
-			c.throwOnErrors;
-			goto case;
-		case name_register_self_done:
-			auto name_state = NameRegisterState(c);
-			require_name_register(callee, name_state);
-			c.throwOnErrors;
-			goto case;
-		case name_register_nested_done:
-			require_name_resolve(callee, c);
-			c.throwOnErrors;
-			goto case;
-		case name_resolve_done:
-			require_type_check(callee, c);
-			c.throwOnErrors;
-			goto case;
-		case type_check_done:
-			IrGenState state = IrGenState(c);
-			ir_gen_function(state, func);
-			goto case; // all requirement are done
-		case ir_gen_done: break; // already has IR
-		default: c.internal_error(func.loc, "Node %s in %s state", func.astType, func.state);
-	}
+	force_callee_ir_gen(func, callee, c);
 
 	if (func.state != AstNodeState.ir_gen_done)
 		c.internal_error(node.loc,

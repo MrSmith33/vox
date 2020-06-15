@@ -109,7 +109,38 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 		// can't be done at parse time because of conditional compilation
 		node.parentScope.insert_scope(node.id, nodeIndex, c);
 	}
-	node._module.get!ModuleDeclNode(c).addFunction(nodeIndex, c);
+	auto mod = node._module.get!ModuleDeclNode(c);
+	mod.addFunction(nodeIndex, c);
+
+	// Create link object
+	{
+		LinkIndex symbolIndex;
+
+		if (node.isExternal)
+		{
+			// When JIT-compiling, host can provide a set of external functions
+			// we will use provided function pointer
+			symbolIndex = c.externalSymbols.get(node.id, LinkIndex());
+
+			if (!symbolIndex.isDefined) {
+				c.error(node.loc, "Unresolved external function %s", c.idString(node.id));
+			}
+		}
+		else
+		{
+			ObjectSymbol sym = {
+				kind : ObjectSymbolKind.isLocal,
+				sectionIndex : c.textSectionIndex,
+				moduleIndex : mod.objectSymIndex,
+				alignment : 1,
+				id : node.id,
+			};
+			symbolIndex = c.objSymTab.addSymbol(sym);
+		}
+
+		// TODO: check that parameters match
+		node.backendData.objectSymIndex = symbolIndex;
+	}
 
 	node.state = AstNodeState.name_register_self_done;
 }

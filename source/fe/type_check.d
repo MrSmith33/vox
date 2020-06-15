@@ -71,7 +71,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 			state.context.throwOnErrors;
 			break;
 		case name_resolve_done: break; // all requirement are done
-		case type_check_done: return; // already type checked
+		case type_check_done, ir_gen_done: return; // already type checked
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
 
