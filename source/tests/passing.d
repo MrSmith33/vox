@@ -3401,3 +3401,34 @@ immutable test149 = q{--- test149
 	void fun[T](T param1, T param2) {}
 	void run(){ fun(42, 500); }
 };
+
+
+@TestInfo(&tester150, [
+	HostSymbol("printStr", cast(void*)&external_print_string),
+	HostSymbol("printInt", cast(void*)&external_print_i64_func)])
+immutable test150 = q{--- test150
+	// $isInteger + IFTI
+	void printStr(u8[]);
+	void printInt(i64 i);
+	$alias selectPrintFunc($type T) {
+		if ($isInteger(T))
+			return printInt;
+		if ($isSlice(T))
+			return printStr;
+		$compileError("Invalid type");
+	}
+	void write[T](T val) {
+		alias func = selectPrintFunc(T);
+		func(val);
+	}
+	void run() {
+		write("Hello");
+		write(42);
+	}
+};
+void tester150(ref TestContext ctx) {
+	auto run = ctx.getFunctionPtr!(void)("run");
+	run();
+	assert(testSink.text == "Hello42");
+	testSink.clear;
+}

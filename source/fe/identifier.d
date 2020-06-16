@@ -101,10 +101,11 @@ enum CommonIds : Identifier
 
 	@("$compileError") cash_compile_error = Identifier(id_type.index + 1),
 	@("$isSlice") cash_is_slice = Identifier(id_type.index + 2),
+	@("$isInteger") cash_is_integer = Identifier(id_type.index + 3),
 }
 
 enum uint commonId_builtin_func_first = CommonIds.cash_compile_error.index;
-enum uint commonId_builtin_func_last = CommonIds.cash_is_slice.index;
+enum uint commonId_builtin_func_last = CommonIds.cash_is_integer.index;
 
 
 private struct StringKey

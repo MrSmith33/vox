@@ -362,8 +362,14 @@ IrIndex eval_call_builtin(TokenIndex loc, IrVm* vm, AstIndex callee, IrIndex[] a
 			AstNode* node = c.getAstNode(nodeIndex);
 			if (node.astType != AstType.type_slice) return c.constants.ZERO;
 			return c.constants.add(1, IsSigned.no, IrArgSize.size8);
+		case CommonAstNodes.is_integer.storageIndex:
+			AstIndex nodeIndex = astIndexFromIrValue(vm, args[0], c);
+			if (nodeIndex.isUndefined) return c.constants.ZERO;
+			AstNode* node = c.getAstNode(nodeIndex);
+			if (node.astType != AstType.type_basic) return c.constants.ZERO;
+			return c.constants.add(cast(ubyte)node.as!BasicTypeNode(c).isInteger, IsSigned.no, IrArgSize.size8);
 		default:
-			c.internal_error("Unknown builtin function");
+			c.internal_error("Unknown builtin function %s", c.idString(callee.get_node_id(c)));
 			assert(false);
 	}
 }
