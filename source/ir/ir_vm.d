@@ -229,7 +229,7 @@ struct IrVm
 						}
 
 						if (calleeFunc.isBuiltin) {
-							IrIndex result = eval_call_builtin(TokenIndex(), calleeIndex, instrHeader.args(func)[1..$], c);
+							IrIndex result = eval_call_builtin(TokenIndex(), &this, calleeIndex, instrHeader.args(func)[1..$], c);
 							constantToMem(slotToSlice(returnMem), result, c);
 							break;
 						}

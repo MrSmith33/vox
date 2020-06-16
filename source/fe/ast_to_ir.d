@@ -119,6 +119,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 			assert(false);
 
 		// declaration statement
+		case decl_alias:
 		case decl_enum:
 		case decl_enum_member:
 		case decl_function:
@@ -127,7 +128,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case decl_import:      gen.builder.addJumpToLabel(curBlock, nextStmt); break;
 		case decl_var:         ir_gen_local_var(gen, curBlock, nextStmt, cast(VariableDeclNode*)n); break;
 
-		default: c.unreachable(); assert(false);
+		default: c.internal_error("%s", n.astType); assert(false);
 	}
 }
 

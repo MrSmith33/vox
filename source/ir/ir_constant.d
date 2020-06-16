@@ -229,8 +229,8 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 				*(cast(long*)buffer.ptr) = con.i64;
 				break;
 			default:
-				c.internal_error("Cannot store constant of size %s, into memory of size %s bytes",
-					index.constantSize, buffer.length);
+				c.internal_error("Cannot store constant %s of size %s, into memory of size %s bytes",
+					con.i64, index.constantSize, buffer.length);
 		}
 	}
 	else if (index.isConstantZero)
@@ -322,13 +322,22 @@ IrIndex memToConstant(ubyte[] buffer, IrIndex type, CompilationContext* c, IsSig
 	return c.constants.add(value, signed, constSize);
 }
 
-string stringFromConstant(IrIndex constant, CompilationContext* c)
+// vm may be null, in which case only constants can be parsed
+T irValueToNative(T)(IrVm* vm, IrIndex value, CompilationContext* c)
 {
 	static union Repr {
-		SliceString str;
-		ubyte[SliceString.sizeof] buf;
+		T native;
+		ubyte[T.sizeof] buf;
 	}
 	Repr repr;
+
+	if (value.isVirtReg)
+	{
+		c.assertf(vm !is null, "Cannot read vreg without VM");
+		repr.buf[] = vm.slotToSlice(vm.vregSlot(value));
+		return repr.native;
+	}
+
 	void onGlobal(ubyte[] subbuffer, IrIndex index, CompilationContext* c)
 	{
 		c.assertf(index.isGlobal, "%s is not a constant", index);
@@ -340,11 +349,14 @@ string stringFromConstant(IrIndex constant, CompilationContext* c)
 		assert(globalSym.dataPtr.sizeof == subbuffer.length);
 		subbuffer[] = *cast(ubyte[8]*)&globalSym.dataPtr;
 	}
-	constantToMem(repr.buf, constant, c, &onGlobal);
-	return cast(string)repr.str.slice;
+	constantToMem(repr.buf, value, c, &onGlobal);
+	return repr.native;
 }
 
-AstIndex aliasFromConstant(IrIndex constant, CompilationContext* c)
-{
-	return AstIndex(c.constants.get(constant).i32);
+string stringFromIrValue(IrVm* vm, IrIndex value, CompilationContext* c) {
+	return cast(string)irValueToNative!SliceString(vm, value, c).slice;
+}
+
+AstIndex astIndexFromIrValue(IrVm* vm, IrIndex value, CompilationContext* c) {
+	return irValueToNative!AstIndex(vm, value, c);
 }

@@ -319,8 +319,9 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 		args[i] = param.gen_default_value_var(c);
 	}
 
-	if (func.isBuiltin)
-		return eval_call_builtin(node.loc, callee, args, c);
+	if (func.isBuiltin) {
+		return eval_call_builtin(node.loc, null, callee, args, c);
+	}
 
 	IrFunction* irData = c.getAst!IrFunction(func.backendData.irData);
 	ubyte* vmBuffer = c.vmBuffer.bufPtr;
@@ -349,19 +350,18 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 	return result;
 }
 
-IrIndex eval_call_builtin(TokenIndex loc, AstIndex callee, IrIndex[] args, CompilationContext* c)
+IrIndex eval_call_builtin(TokenIndex loc, IrVm* vm, AstIndex callee, IrIndex[] args, CompilationContext* c)
 {
 	switch (callee.storageIndex) {
 		case CommonAstNodes.compile_error.storageIndex:
-			IrIndex message = args[0];
-			c.unrecoverable_error(loc, "%s", stringFromConstant(message, c));
+			c.unrecoverable_error(loc, "%s", stringFromIrValue(vm, args[0], c));
 			assert(false);
 		case CommonAstNodes.is_slice.storageIndex:
-			AstIndex nodeIndex = aliasFromConstant(args[0], c);
+			AstIndex nodeIndex = astIndexFromIrValue(vm, args[0], c);
 			if (nodeIndex.isUndefined) return c.constants.ZERO;
 			AstNode* node = c.getAstNode(nodeIndex);
 			if (node.astType != AstType.type_slice) return c.constants.ZERO;
-			return c.constants.ONE;
+			return c.constants.add(1, IsSigned.no, IrArgSize.size8);
 		default:
 			c.internal_error("Unknown builtin function");
 			assert(false);

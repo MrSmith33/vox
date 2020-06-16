@@ -91,7 +91,6 @@ struct Driver
 		markAsRW(context.roStaticDataBuffer.bufPtr, divCeil(context.roStaticDataBuffer.length, PAGE_SIZE));
 		context.beginCompilation;
 		foreach(ref pass; passes) pass.clear;
-		addSections();
 	}
 
 	void addModule(SourceFileInfo moduleFile)
@@ -159,56 +158,6 @@ struct Driver
 		bool reachesFromStart = (hostSym - start) == cast(int)(hostSym - start);
 		bool reachesFromEnd = (hostSym - end) == cast(int)(hostSym - end);
 		return reachesFromStart && reachesFromEnd;
-	}
-
-	void addSections()
-	{
-		ObjectSection hostSection = {
-			sectionAddress : 0,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(&context, ":host")
-		};
-		context.hostSectionIndex = context.objSymTab.addSection(hostSection);
-
-		ObjectSection importSection = {
-			sectionAddress : 0,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(&context, ".idata"),
-			buffer : &context.importBuffer,
-		};
-		context.importSectionIndex = context.objSymTab.addSection(importSection);
-
-		ObjectSection dataSection = {
-			sectionAddress : 0,
-			sectionData : context.staticDataBuffer.bufPtr,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(&context, ".data"),
-			buffer : &context.staticDataBuffer,
-		};
-		context.dataSectionIndex = context.objSymTab.addSection(dataSection);
-
-		ObjectSection rdataSection = {
-			sectionAddress : 0,
-			sectionData : context.roStaticDataBuffer.bufPtr,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(&context, ".rdata"),
-			buffer : &context.roStaticDataBuffer,
-		};
-		context.rdataSectionIndex = context.objSymTab.addSection(rdataSection);
-
-		ObjectSection textSection = {
-			sectionAddress : 0,
-			sectionData : context.codeBuffer.bufPtr,
-			length : 0,
-			alignment : 1,
-			id : context.idMap.getOrRegNoDup(&context, ".text"),
-			buffer : &context.codeBuffer,
-		};
-		context.textSectionIndex = context.objSymTab.addSection(textSection);
 	}
 
 	void addHostSymbols(HostSymbol[] hostSymbols)

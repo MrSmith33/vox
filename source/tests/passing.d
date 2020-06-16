@@ -3222,7 +3222,7 @@ immutable test139 = q{--- test139
 	}
 	enum val = $compileError("CTFE error");
 --- <error>
-test139(5, 27): Error: CTFE error
+test139(5, 26): Error: CTFE error
 };
 
 
@@ -3297,4 +3297,43 @@ void tester143(ref TestContext ctx) {
 	auto run2 = ctx.getFunctionPtr!(bool)("run2");
 	assert(run1() == true);
 	assert(run2() == false);
+}
+
+
+@TestInfo(&tester144, [
+	HostSymbol("printStr", cast(void*)&external_print_string),
+	HostSymbol("printInt", cast(void*)&external_print_i64_func)])
+immutable test144 = q{--- test144
+	// select function
+	void printStr(u8[]);
+	void printInt(i64 i);
+	bool isInteger($type type) {
+		return type == u8
+			|| type == i8
+			|| type == u16
+			|| type == i16
+			|| type == u32
+			|| type == i32
+			|| type == u64
+			|| type == i64;
+	}
+	$alias selectPrintFunc($type T) {
+		if (isInteger(T))
+			return printInt;
+		if ($isSlice(T))
+			return printStr;
+		$compileError("Invalid type");
+	}
+	void run() {
+		alias func1 = selectPrintFunc(u8[]);
+		func1("Hello");
+		alias func2 = selectPrintFunc(i32);
+		func2(42);
+	}
+};
+void tester144(ref TestContext ctx) {
+	auto run = ctx.getFunctionPtr!(void)("run");
+	run();
+	assert(testSink.text == "Hello42");
+	testSink.clear;
 }

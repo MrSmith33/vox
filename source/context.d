@@ -134,6 +134,9 @@ struct CompilationContext
 	LinkIndex rdataSectionIndex;
 	LinkIndex textSectionIndex;
 
+	// modules
+	LinkIndex builtinModuleIndex;
+
 	// errors and debug
 
 	Array!AstIndex analisysStack;
@@ -785,9 +788,6 @@ struct CompilationContext
 		makeBuiltin(CommonAstNodes.builtin_array_length, CommonIds.id_length, BuiltinId.array_length);
 		makeBuiltin(CommonAstNodes.builtin_array_ptr, CommonIds.id_ptr, BuiltinId.array_ptr);
 		makeBuiltin(CommonAstNodes.builtin_sizeof, CommonIds.id_sizeof, BuiltinId.type_sizeof);
-
-		createBuiltinFunctions(&this);
-
 		// CommonAstNodes end
 
 		initializedAstBufSize = astBuffer.length;
@@ -840,6 +840,9 @@ struct CompilationContext
 
 		// needed because all arrays are cleared
 		idMap.regCommonIds(&this);
+
+		addSections(&this);
+		createBuiltinFunctions(&this);
 	}
 }
 
@@ -936,6 +939,12 @@ immutable AstIndex[2] builtinFuncsArray = [
 
 void createBuiltinFunctions(CompilationContext* c)
 {
+	ObjectModule builtinModule = {
+		kind : ObjectModuleKind.isHost,
+		id : c.idMap.getOrRegNoDup(c, ":builtin")
+	};
+	c.builtinModuleIndex = c.objSymTab.addModule(builtinModule);
+
 	AstNodes params;
 	ubyte numDefaultParams;
 	void addParam(AstIndex type, Identifier id, AstIndex defaultValue = AstIndex())
@@ -963,6 +972,15 @@ void createBuiltinFunctions(CompilationContext* c)
 		funcNode.state = AstNodeState.type_check_done;
 		funcNode.flags |= FuncDeclFlags.isBuiltin;
 
+		ObjectSymbol sym = {
+			kind : ObjectSymbolKind.isHost,
+			sectionIndex : c.hostSectionIndex,
+			moduleIndex : c.builtinModuleIndex,
+			alignment : 1,
+			id : id,
+		};
+		funcNode.backendData.objectSymIndex = c.objSymTab.addSymbol(sym);
+
 		c.assertf(func == reqIndex,
 			"Result AstIndex of builtin node %s (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
 			c.idString(id), func, reqIndex);
@@ -974,7 +992,57 @@ void createBuiltinFunctions(CompilationContext* c)
 	addParam(CommonAstNodes.type_type, CommonIds.id_type);
 	make(CommonAstNodes.is_slice, CommonIds.cash_is_slice, CommonAstNodes.type_bool);
 
-	print_ast(CommonAstNodes.is_slice, c);
+	//print_ast(CommonAstNodes.is_slice, c);
+}
+
+void addSections(CompilationContext* c)
+{
+	ObjectSection hostSection = {
+		sectionAddress : 0,
+		length : 0,
+		alignment : 1,
+		id : c.idMap.getOrRegNoDup(c, ":host")
+	};
+	c.hostSectionIndex = c.objSymTab.addSection(hostSection);
+
+	ObjectSection importSection = {
+		sectionAddress : 0,
+		length : 0,
+		alignment : 1,
+		id : c.idMap.getOrRegNoDup(c, ".idata"),
+		buffer : &c.importBuffer,
+	};
+	c.importSectionIndex = c.objSymTab.addSection(importSection);
+
+	ObjectSection dataSection = {
+		sectionAddress : 0,
+		sectionData : c.staticDataBuffer.bufPtr,
+		length : 0,
+		alignment : 1,
+		id : c.idMap.getOrRegNoDup(c, ".data"),
+		buffer : &c.staticDataBuffer,
+	};
+	c.dataSectionIndex = c.objSymTab.addSection(dataSection);
+
+	ObjectSection rdataSection = {
+		sectionAddress : 0,
+		sectionData : c.roStaticDataBuffer.bufPtr,
+		length : 0,
+		alignment : 1,
+		id : c.idMap.getOrRegNoDup(c, ".rdata"),
+		buffer : &c.roStaticDataBuffer,
+	};
+	c.rdataSectionIndex = c.objSymTab.addSection(rdataSection);
+
+	ObjectSection textSection = {
+		sectionAddress : 0,
+		sectionData : c.codeBuffer.bufPtr,
+		length : 0,
+		alignment : 1,
+		id : c.idMap.getOrRegNoDup(c, ".text"),
+		buffer : &c.codeBuffer,
+	};
+	c.textSectionIndex = c.objSymTab.addSection(textSection);
 }
 
 struct Slice(T) {
