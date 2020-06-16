@@ -3337,3 +3337,67 @@ void tester144(ref TestContext ctx) {
 	assert(testSink.text == "Hello42");
 	testSink.clear;
 }
+
+
+@TestInfo()
+immutable test145 = q{--- test145
+	// Test implicit function template instantiation (0 args)
+	void fun[]() {}
+	void run(){ fun(); }
+};
+
+
+@TestInfo()
+immutable test146 = q{--- test146
+	// Test implicit function template instantiation (1 arg)
+	void fun[T](T param) {}
+	void run(){ fun(42); }
+};
+
+
+@TestInfo()
+immutable test147 = q{--- test147
+	// Test implicit function template instantiation (2 equivalent types on single arg)
+	void fun[T](T param1, T param2) {}
+	void run(){ fun(42, 42); }
+};
+
+
+@TestInfo(&tester148)
+immutable test148 = q{--- test148
+	// Test implicit function template instantiation
+	T min[T](T a, T b) {
+		if (a < b) return a;
+		return b;
+	}
+	i8 test_i8(i8 a, i8 b) {
+		return min(a, b) + min(a, b);
+	}
+	i16 test_i16(i16 a, i16 b) {
+		return min(a, b) + min(a, b);
+	}
+	i32 test_i32(i32 a, i32 b) {
+		return min(a, b) + min(a, b);
+	}
+	i64 test_i64(i64 a, i64 b) {
+		return min(a, b) + min(a, b);
+	}
+};
+void tester148(ref TestContext ctx) {
+	auto test_i8 = ctx.getFunctionPtr!(byte, byte, byte)("test_i8");
+	auto test_i16 = ctx.getFunctionPtr!(short, short, short)("test_i16");
+	auto test_i32 = ctx.getFunctionPtr!(int, int, int)("test_i32");
+	auto test_i64 = ctx.getFunctionPtr!(long, long, long)("test_i64");
+	assert(test_i8(42, 120) == 42 * 2);
+	assert(test_i16(420, 1200) == 420 * 2);
+	assert(test_i32(-10_000, 10_000) == -10_000 * 2);
+	assert(test_i64(-10_000, 10_000) == -10_000 * 2);
+}
+
+
+@TestInfo()
+immutable test149 = q{--- test149
+	// Test implicit function template instantiation (2 different types that have common type)
+	void fun[T](T param1, T param2) {}
+	void run(){ fun(42, 500); }
+};

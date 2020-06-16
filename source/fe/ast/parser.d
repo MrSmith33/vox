@@ -487,8 +487,9 @@ struct Parser
 			// <type_param> ::= <identifier>
 			TokenIndex paramStart = tok.index;
 			Identifier paramId = expectIdentifier();
+			ushort paramIndex = cast(ushort)params.length;
 
-			AstIndex param = make!TemplateParamDeclNode(paramStart, paramId);
+			AstIndex param = make!TemplateParamDeclNode(paramStart, paramId, paramIndex);
 			params.put(context.arrayArena, param);
 
 			if (tok.type == TokenType.COMMA) nextToken; // skip ","

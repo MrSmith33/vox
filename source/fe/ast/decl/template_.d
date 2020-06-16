@@ -75,6 +75,7 @@ struct TemplateParamDeclNode
 {
 	mixin AstNodeData!(AstType.decl_template_param, AstFlags.isDeclaration);
 	Identifier id;
+	ushort index; // index in the list of template parameters
 }
 
 void print_template_param(TemplateParamDeclNode* node, ref AstPrintState state)
@@ -140,6 +141,15 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	auto templ = templateIndex.get!TemplateDeclNode(c);
 
 	++c.numTemplateInstanceLookups;
+
+	if (templ.parameters.length != args.length)
+	{
+		c.error(start,
+			"Wrong number of template arguments (%s), must be %s",
+			args.length,
+			templ.parameters.length);
+		return CommonAstNodes.node_error;
+	}
 
 	// Verify arguments. For now only types are supported
 	foreach(size_t i, AstIndex arg; args)

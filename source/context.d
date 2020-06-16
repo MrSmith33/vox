@@ -490,6 +490,7 @@ struct CompilationContext
 	}
 
 	T* getAst(T)(AstIndex index) {
+		//assert(index, "node is null");
 		if (!index) return null;
 		T* result = cast(T*)(&astBuffer.bufPtr[index.storageIndex]);
 		static if (hasAstNodeType!T)

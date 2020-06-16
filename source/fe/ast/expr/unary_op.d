@@ -59,7 +59,7 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 	ExpressionNode* child = node.child.get_expr(c);
 	assert(child.type, format("child(%s).type: is null", child.astType));
 
-	if (child.type.isErrorType(c))
+	if (child.type.isErrorType)
 	{
 		node.type = child.type;
 		node.state = AstNodeState.type_check_done;
@@ -113,7 +113,7 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 			node.type = child.type;
 			break;
 		case deref:
-			if (child.type.isErrorType(c)) {
+			if (child.type.isErrorType) {
 				node.type = child.type;
 				break;
 			}

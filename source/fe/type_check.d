@@ -133,6 +133,23 @@ void require_type_check_expr(AstIndex targetType, ref AstIndex nodeIndex, ref Ty
 	state.parentType = temp;
 }
 
+// Returns error if no common type can be found
+AstIndex calcCommonType(AstIndex a, AstIndex b, CompilationContext* c)
+{
+	TypeNode* typeA = a.get_type(c);
+	TypeNode* typeB = b.get_type(c);
+
+	if (typeA.isTypeBasic && typeB.isTypeBasic) {
+		BasicType commonType = commonBasicType[typeA.as_basic.basicType][typeB.as_basic.basicType];
+		return c.basicTypeNodes(commonType);
+	} else if (typeA.isPointer && typeB.isTypeofNull) {
+		return a;
+	} else if (typeA.isTypeofNull && typeB.isPointer) {
+		return b;
+	}
+	return CommonAstNodes.type_error;
+}
+
 /// Returns true if types are equal or were converted to common type. False otherwise
 bool autoconvToCommonType(ref AstIndex leftIndex, ref AstIndex rightIndex, CompilationContext* c)
 {

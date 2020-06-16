@@ -124,6 +124,24 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 				goto case AstType.decl_var;
 			node.callee = callee;
 			goto case AstType.decl_function;
+		case AstType.decl_template:
+			auto templ = callee.get!TemplateDeclNode(c);
+			if (templ.body.astType(c) != AstType.decl_function) {
+				c.unrecoverable_error(node.loc, "Cannot call template of %s", templ.body.astType(c));
+			}
+			auto func = templ.body.get!FunctionDeclNode(c);
+			auto signature = func.signature.get!FunctionSignatureNode(c);
+			bool success;
+			AstNodes types = doIfti(templ.parameters, signature.parameters, node.args, success, state);
+			if (!success)
+				c.error(node.loc, "Cannot infer template arguments from runtime arguments");
+			callee = get_template_instance(callee, node.loc, types, state);
+			node.callee = callee;
+			if (callee == CommonAstNodes.node_error) {
+				node.type = c.basicTypeNodes(BasicType.t_error);
+				return;
+			}
+			goto case AstType.decl_function;
 		default:
 			// unknown / unimplemented case
 			node.type = c.basicTypeNodes(BasicType.t_error);
@@ -133,6 +151,81 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 	}
 }
 
+
+// Returns inferred template parameters
+AstNodes doIfti(AstNodes ct_params, AstNodes rt_params, AstNodes args, out bool success, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+
+	AstNodes result;
+	success = true;
+	if (ct_params.length == 0) return result;
+
+	HashMap!(Identifier, AstIndex, Identifier.init) paramsNames;
+
+	result.voidPut(c.arrayArena, ct_params.length);
+	foreach(size_t i, ref AstIndex param; result) {
+		auto ctParam = ct_params[i].get!TemplateParamDeclNode(c);
+		paramsNames.put(c.arrayArena, ctParam.id, ct_params[i]);
+		param = AstIndex();
+	}
+
+	foreach(size_t i, ref AstIndex arg; args)
+	{
+		require_type_check(arg, state);
+		AstIndex argTypeIndex = arg.get_expr_type(c);
+		AstNode* argType = argTypeIndex.get_node(c);
+		AstNode* rtType = rt_params[i].get!VariableDeclNode(c).type.get_node(c);
+		if (rtType.astType == AstType.expr_name_use)
+		{
+			auto typeName = rtType.as!NameUseExprNode(c);
+			Identifier typeId = typeName.id(c);
+			AstIndex symIndex = paramsNames.get(typeId, AstIndex.init);
+			if (symIndex)
+			{
+				// we got template parameter
+				auto ctParam = symIndex.get!TemplateParamDeclNode(c);
+				//writefln("ct_arg%s %s <- rt_arg%s %s",
+				//	ctParam.index, c.idString(ctParam.id),
+				//	i, argTypeIndex.printer(c));
+
+				if (result[ctParam.index].isUndefined)
+				{
+					// we found first use of template param. Assign type
+					result[ctParam.index] = argTypeIndex;
+				}
+				else if (same_type(result[ctParam.index], argTypeIndex, c))
+				{
+					// ok
+				}
+				else
+				{
+					// calculate common type
+					AstIndex commonType = calcCommonType(result[ctParam.index], argTypeIndex, c);
+					if (commonType.isErrorType) {
+						c.error("Cannot infer template parameter %s, from argument types %s and %s",
+							c.idString(ctParam.id),
+							result[ctParam.index].printer(c),
+							argTypeIndex.printer(c),
+							);
+						success = false;
+					}
+					result[ctParam.index] = commonType;
+				}
+			}
+		}
+	}
+
+	// check that all parameters were inferred
+	bool reported;
+	foreach(size_t i, ref AstIndex param; result) {
+		if (param.isDefined) continue;
+		success = false;
+		return result;
+	}
+
+	return result;
+}
 
 void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, Identifier id, ref TypeCheckState state)
 {

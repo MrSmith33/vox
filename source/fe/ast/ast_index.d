@@ -55,7 +55,7 @@ struct AstIndex
 
 	// type functions
 	AstIndex getElementType(CompilationContext* c) { return get_type(c).getElementType(c); }
-	bool isErrorType(CompilationContext* c) { return get_type(c).isError; }
+	bool isErrorType() { return this == CommonAstNodes.type_error; }
 	bool isPointerType(CompilationContext* c) { return get_type(c).isPointer; }
 	bool isNoreturnType(CompilationContext* c) { return get_type(c).isNoreturn; }
 	bool isVoidType(CompilationContext* c) { return get_type(c).isVoid; }
