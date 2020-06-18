@@ -13,6 +13,7 @@ enum MemberSubType
 	static_struct_member, // including methods
 	enum_member,
 	slice_member,
+	alias_slice_length,
 }
 
 // member access of aggregate.member form
@@ -319,6 +320,8 @@ LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, I
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_length), 0, c);
 		expr.type = c.basicTypeNodes(BasicType.t_u64);
 		expr.type.setState(c, AstNodeState.type_check_done);
+		if (sliceType.base == CommonAstNodes.type_alias)
+			expr.subType = MemberSubType.alias_slice_length;
 		return LookupResult.success;
 	}
 

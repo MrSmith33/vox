@@ -99,12 +99,16 @@ IrIndex eval_static_expr_member(MemberExprNode* node, CompilationContext* c)
 			return eval_static_expr(node.member(c), c);
 		case builtin_member:
 			return eval_builtin_member(node.member(c).get!BuiltinNode(c).builtin, node.aggregate, node.loc, c);
+		case alias_slice_length:
+			auto ctParam = node.aggregate.get_effective_node(c).get!TemplateParamDeclNode(c);
+			return c.constants.add(ctParam.variadicData.length, IsSigned.no, IrArgSize.size64);
 		default:
 			AstIndex nodeIndex = get_ast_index(node, c);
 			c.unrecoverable_error(node.loc,
-				"Cannot access .%s member of %s while in CTFE",
-				get_node_id(nodeIndex, c),
-				get_node_kind_name(nodeIndex, c));
+				"Cannot access .%s member of %s while in CTFE (%s)",
+				c.idString(get_node_id(nodeIndex, c)),
+				get_node_kind_name(nodeIndex, c),
+				cast(MemberSubType)node.subType);
 			assert(false);
 	}
 }

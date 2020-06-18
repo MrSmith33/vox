@@ -125,6 +125,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case decl_function:
 		case decl_struct:
 		case decl_template:
+		case decl_static_assert:
 		case decl_import:      gen.builder.addJumpToLabel(curBlock, nextStmt); break;
 		case decl_var:         ir_gen_local_var(gen, curBlock, nextStmt, cast(VariableDeclNode*)n); break;
 

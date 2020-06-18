@@ -3432,3 +3432,159 @@ void tester150(ref TestContext ctx) {
 	assert(testSink.text == "Hello42");
 	testSink.clear;
 }
+
+
+@TestInfo()
+immutable test151 = q{--- test151
+	// Variadic template arg (0 uses, 0 args)
+	void fun[Args...]() {
+		#assert(Args.length == 0);
+	}
+	void run(){ fun(); }
+};
+
+
+@TestInfo()
+immutable test152 = q{
+--- test152
+	// Variadic template arg (0 uses, 0 args, 2 variadics)
+	void fun[Args1..., Args2...]() {}
+	void run(){ fun(); }
+--- <error>
+test152(2, 21): Error: Only single variadic template parameter allowed
+};
+
+
+@TestInfo()
+immutable test153 = q{
+--- test153
+	// Variadic template arg (0 uses, 0 args, 1 variadic, 1 param after variadic)
+	void fun[Args..., T]() {}
+	void run(){ fun(); }
+--- <error>
+test153(2, 20): Error: Cannot have template parameters after variadic parameter (WIP)
+};
+
+
+@TestInfo()
+immutable test154 = q{--- test154
+	// Variadic template arg (0 args)
+	void fun[Args...](Args args) {
+		#assert(Args.length == 0);
+	}
+	void run(){ fun(); }
+};
+
+
+@TestInfo()
+immutable test155 = q{--- test155
+	// Variadic template arg (1 arg)
+	void fun[Args...](Args args) {
+		#assert(Args.length == 1);
+	}
+	void run(){ fun(42); }
+};
+
+
+@TestInfo()
+immutable test156 = q{--- test156
+	// Variadic template arg (2 args)
+	void fun[Args...](Args args) {
+		#assert(Args.length == 2);
+	}
+	void run(){ fun(42, 4096); }
+};
+
+
+@TestInfo()
+immutable test157 = q{--- test157
+	// Variadic template arg (3 args)
+	void fun[Args...](Args args) {
+		#assert(Args.length == 3);
+	}
+	void run(){ fun(42, 4096, 200000); }
+};
+
+
+@TestInfo()
+immutable test158 = q{--- test158
+	// Variadic template arg, same instance (2 args)
+	void fun[Args...](Args args) {
+		#assert(Args.length == 3);
+	}
+	void run(){
+		fun(42, 4096, 200000);
+		fun(50, 3000, 300000);
+	}
+};
+
+
+@TestInfo()
+immutable test159 = q{--- test159
+	// Variadic template arg, 2 different instances (2 args)
+	void fun[Args...](Args args) {}
+	void run(){
+		fun(42, 4096);
+		fun(50, 3000, 300000);
+	}
+};
+
+
+@TestInfo()
+immutable test160 = q{--- test160
+	// Non-variadic + Variadic template arg
+	void fun[Args...](u8 par, Args args) {
+		#assert(Args.length == 1);
+	}
+	void run(){ fun(42, 4096); }
+};
+
+
+@TestInfo()
+immutable test161 = q{--- test161
+	// Non-variadic + 0 Variadic template args
+	void fun[Args...](u8 par, Args args) {
+		#assert(Args.length == 0);
+	}
+	void run(){ fun(42); }
+};
+
+
+@TestInfo()
+immutable test162 = q{--- test162
+	// Non-variadic + 0 Variadic template args
+	void fun[Args...](u8 par) {
+		#assert(Args.length == 0);
+	}
+	void run(){ fun(42); }
+};
+
+
+@TestInfo()
+immutable test163 = q{--- test163
+	// Non-variadic + 0 Variadic template args + default RT params
+	void fun[Args...](u8 par1, Args args, u8 par2 = 50) {
+		#assert(Args.length == 0);
+	}
+	void run(){ fun(42); }
+};
+
+
+@TestInfo()
+immutable test164 = q{--- test164
+	// Non-variadic + 0 Variadic template args + non-default RT param
+	void fun[Args...](u8 par1, Args args, u8 par2) {
+		#assert(Args.length == 0);
+	}
+	void run(){ fun(42, 50); }
+};
+
+
+@TestInfo()
+immutable test165 = q{--- test165
+	// Non-variadic + 1 Variadic template args + non-default RT param
+	void fun[Args...](u8 par1, Args args, u8 par2) {
+		#assert(Args.length == 1);
+	}
+	void run(){ fun(42, 50, 60); }
+};

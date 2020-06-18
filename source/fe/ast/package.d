@@ -268,6 +268,9 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_type(c);
 		case error, literal_null, literal_bool, literal_int, literal_string, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return node.as!ExpressionNode(c).type.get_node_type(c);
+		case decl_template_param:
+			assert(node.as!TemplateParamDeclNode(c).isVariadic);
+			return CommonAstNodes.type_aliasSlice;
 
 		default: assert(false, format("get_node_type used on %s", node.astType));
 	}
@@ -307,7 +310,7 @@ AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
 	switch(node.astType) with(AstType)
 	{
 		case decl_alias: return node.as!AliasDeclNode(c).initializer.get_effective_node(c);
-		case decl_template: return nodeIndex;
+		case decl_template, decl_template_param: return nodeIndex;
 		case decl_struct: return nodeIndex;
 		case decl_builtin: return nodeIndex;
 		case decl_function: return nodeIndex;

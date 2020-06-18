@@ -132,9 +132,9 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			auto func = templ.body.get!FunctionDeclNode(c);
 			auto signature = func.signature.get!FunctionSignatureNode(c);
 			bool success;
-			AstNodes types = doIfti(templ.parameters, signature.parameters, node.args, success, state);
+			AstNodes types = doIfti(templ, signature, node.args, success, state);
 			if (!success)
-				c.error(node.loc, "Cannot infer template arguments from runtime arguments");
+				c.unrecoverable_error(node.loc, "Cannot infer template arguments from runtime arguments");
 			callee = get_template_instance(callee, node.loc, types, state);
 			node.callee = callee;
 			if (callee == CommonAstNodes.node_error) {
@@ -153,75 +153,155 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 
 
 // Returns inferred template parameters
-AstNodes doIfti(AstNodes ct_params, AstNodes rt_params, AstNodes args, out bool success, ref TypeCheckState state)
+AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, AstNodes args, out bool success, ref TypeCheckState state)
 {
+	// - run through all provided runtime args
+	// - get type of runtime parameter, if it is template type arg (T or T... here), then
+	//   - if it is variadic template parameter T..., this and all subsequent variadic runtime argument types are appended
+	//     after non-variadic template parameters, then continue walking non-variadics
+	//   - otherwise it is type parameter T
+	//     - if no type is given yet, assign runtime arg type
+	//     - otherwise find common type between two
+	// - at the end run through all template args, and error if any arg is not inferred.
+
 	CompilationContext* c = state.context;
+
+	AstNodes ct_params = templ.parameters;
+	AstNodes rt_params = sig.parameters;
+	auto numRtParams = rt_params.length;
+	auto numCtParams = ct_params.length;
+	auto numRtArgs = args.length;
 
 	AstNodes result;
 	success = true;
-	if (ct_params.length == 0) return result;
+	if (numCtParams == 0) return result;
 
-	HashMap!(Identifier, AstIndex, Identifier.init) paramsNames;
+	HashMap!(Identifier, AstIndex, Identifier.init) paramNames;
 
-	result.voidPut(c.arrayArena, ct_params.length);
-	foreach(size_t i, ref AstIndex param; result) {
+	result.reserve(c.arrayArena, max(args.length, ct_params.length));
+
+	// only 0 or 1 variadic CT parameters allowed
+	// number of type ct params before variadic ct param
+	bool hasVariadic = templ.numParamsBeforeVariadic < numCtParams;
+
+	foreach(uint i; 0..ct_params.length)
+	{
 		auto ctParam = ct_params[i].get!TemplateParamDeclNode(c);
-		paramsNames.put(c.arrayArena, ctParam.id, ct_params[i]);
-		param = AstIndex();
+		paramNames.put(c.arrayArena, ctParam.id, ct_params[i]);
+		if (ctParam.isVariadic) break; // skip variadic and the rest of params
+		result.put(c.arrayArena, AstIndex());
 	}
 
-	foreach(size_t i, ref AstIndex arg; args)
+	void processTemplatedArg(AstIndex argTypeIndex, TemplateParamDeclNode* ctParam)
 	{
-		require_type_check(arg, state);
-		AstIndex argTypeIndex = arg.get_expr_type(c);
-		AstNode* argType = argTypeIndex.get_node(c);
-		AstNode* rtType = rt_params[i].get!VariableDeclNode(c).type.get_node(c);
-		if (rtType.astType == AstType.expr_name_use)
-		{
-			auto typeName = rtType.as!NameUseExprNode(c);
-			Identifier typeId = typeName.id(c);
-			AstIndex symIndex = paramsNames.get(typeId, AstIndex.init);
-			if (symIndex)
-			{
-				// we got template parameter
-				auto ctParam = symIndex.get!TemplateParamDeclNode(c);
-				//writefln("ct_arg%s %s <- rt_arg%s %s",
-				//	ctParam.index, c.idString(ctParam.id),
-				//	i, argTypeIndex.printer(c));
+		//writefln("ct_arg%s %s <- rt_arg %s",
+		//	ctParam.index, c.idString(ctParam.id),
+		//	argTypeIndex.printer(c));
 
-				if (result[ctParam.index].isUndefined)
+		if (result[ctParam.index].isUndefined)
+		{
+			// we found first use of template param. Assign type
+			result[ctParam.index] = argTypeIndex;
+		}
+		else if (same_type(result[ctParam.index], argTypeIndex, c))
+		{
+			// ok
+		}
+		else
+		{
+			// calculate common type
+			AstIndex commonType = calcCommonType(result[ctParam.index], argTypeIndex, c);
+			if (commonType.isErrorType) {
+				c.error("Cannot infer template parameter %s, from argument types %s and %s",
+					c.idString(ctParam.id),
+					result[ctParam.index].printer(c),
+					argTypeIndex.printer(c),
+					);
+				success = false;
+			}
+			result[ctParam.index] = commonType;
+		}
+	}
+
+	void processVariadicRtArgs(size_t group1_size)
+	{
+		uint group3_size = cast(uint)(numRtParams - group1_size - 1 - sig.numDefaultArgs);
+		uint rt_group12_size = cast(uint)(numRtArgs - group3_size);
+		uint rt_group2_size = cast(uint)(numRtArgs - group1_size - group3_size);
+		//writefln("groups 1 %s 2 %s 3 %s 4 %s", group1_size, rt_group2_size, group3_size, sig.numDefaultArgs);
+
+		// group 2
+		foreach(size_t i; group1_size..rt_group12_size)
+		{
+			AstIndex arg = args[i];
+			require_type_check(arg, state);
+			AstIndex argTypeIndex = arg.get_expr_type(c);
+			result.put(c.arrayArena, argTypeIndex);
+		}
+
+		// group 3
+		foreach(size_t i; rt_group12_size..numRtArgs)
+		{
+			AstIndex arg = args[i];
+			require_type_check(arg, state);
+			AstIndex argTypeIndex = arg.get_expr_type(c);
+			uint rtParamIndex = cast(uint)(i - rt_group2_size + 1); // 1 skips variadic param
+
+			AstNode* rtType = rt_params[rtParamIndex].get!VariableDeclNode(c).type.get_node(c);
+
+			if (rtType.astType == AstType.expr_name_use)
+			{
+				auto typeName = rtType.as!NameUseExprNode(c);
+				Identifier typeId = typeName.id(c);
+				AstIndex symIndex = paramNames.get(typeId, AstIndex.init);
+
+				if (symIndex)
 				{
-					// we found first use of template param. Assign type
-					result[ctParam.index] = argTypeIndex;
-				}
-				else if (same_type(result[ctParam.index], argTypeIndex, c))
-				{
-					// ok
-				}
-				else
-				{
-					// calculate common type
-					AstIndex commonType = calcCommonType(result[ctParam.index], argTypeIndex, c);
-					if (commonType.isErrorType) {
-						c.error("Cannot infer template parameter %s, from argument types %s and %s",
-							c.idString(ctParam.id),
-							result[ctParam.index].printer(c),
-							argTypeIndex.printer(c),
-							);
-						success = false;
-					}
-					result[ctParam.index] = commonType;
+					// we got template parameter
+					auto ctParam = symIndex.get!TemplateParamDeclNode(c);
+					assert(!ctParam.isVariadic);
+					processTemplatedArg(argTypeIndex, ctParam);
 				}
 			}
 		}
 	}
 
-	// check that all parameters were inferred
+	// group 1
+	foreach(size_t i, ref AstIndex arg; args)
+	{
+		require_type_check(arg, state);
+		AstIndex argTypeIndex = arg.get_expr_type(c);
+		AstNode* rtType = rt_params[i].get!VariableDeclNode(c).type.get_node(c);
+		if (rtType.astType == AstType.expr_name_use)
+		{
+			auto typeName = rtType.as!NameUseExprNode(c);
+			Identifier typeId = typeName.id(c);
+			AstIndex symIndex = paramNames.get(typeId, AstIndex.init);
+			if (symIndex)
+			{
+				// we got template parameter
+				auto ctParam = symIndex.get!TemplateParamDeclNode(c);
+
+				if (ctParam.isVariadic) {
+					// this and the rest of runtime args are going into CT variadic param
+					processVariadicRtArgs(i);
+					break;
+				}
+
+				processTemplatedArg(argTypeIndex, ctParam);
+			}
+		}
+	}
+
+	// check that all parameters before variadic were inferred
 	bool reported;
-	foreach(size_t i, ref AstIndex param; result) {
+	foreach(uint i; 0..templ.numParamsBeforeVariadic) {
+		AstIndex param = result[i];
 		if (param.isDefined) continue;
+
+		auto ctParam = ct_params[i].get!TemplateParamDeclNode(c);
+		c.error("Cannot infer template parameter %s", c.idString(ctParam.id));
 		success = false;
-		return result;
 	}
 
 	return result;

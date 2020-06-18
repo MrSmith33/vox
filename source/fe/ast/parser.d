@@ -353,10 +353,11 @@ struct Parser
 		else if (tok.type == TokenType.LBRACKET) // <func_declaration> ::= <type> <id> "[" <template_params> "]" "(" <param_list> ")" (<block_statement> / ';')
 		{
 			AstNodes template_params;
-			parse_template_parameters(template_params);
+			ushort numParamsBeforeVariadic;
+			parse_template_parameters(template_params, numParamsBeforeVariadic);
 			AstIndex body = parse_func(start, typeIndex, declarationId);
 			AstIndex after_body = AstIndex(context.astBuffer.uintLength);
-			return make!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, declarationId);
+			return make!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, declarationId, numParamsBeforeVariadic);
 		}
 		else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 		{
@@ -476,10 +477,11 @@ struct Parser
 		return numDefaultArgs;
 	}
 
-	void parse_template_parameters(ref AstNodes params)
+	void parse_template_parameters(ref AstNodes params, out ushort numParamsBeforeVariadic)
 	{
 		expectAndConsume(TokenType.LBRACKET);
 
+		bool hasVaridic = false;
 		while (tok.type != TokenType.RBRACKET)
 		{
 			if (tok.type == TokenType.EOI) break;
@@ -490,11 +492,30 @@ struct Parser
 			ushort paramIndex = cast(ushort)params.length;
 
 			AstIndex param = make!TemplateParamDeclNode(paramStart, paramId, paramIndex);
+			if (tok.type == TokenType.DOT_DOT_DOT) {
+				nextToken; // skip "..."
+				param.flags(context) |= TemplateParamDeclFlags.isVariadic;
+				if (hasVaridic) {
+					context.error(param.loc(context),
+						"Only single variadic template parameter allowed");
+				}
+				hasVaridic = true;
+				numParamsBeforeVariadic = paramIndex;
+			}
+			else
+			{
+				if (hasVaridic)
+					context.error(param.loc(context),
+						"Cannot have template parameters after variadic parameter (WIP)");
+			}
+
 			params.put(context.arrayArena, param);
 
 			if (tok.type == TokenType.COMMA) nextToken; // skip ","
 			else break;
 		}
+
+		if (!hasVaridic) numParamsBeforeVariadic = cast(ushort)params.length;
 
 		expectAndConsume(TokenType.RBRACKET);
 	}
@@ -556,10 +577,11 @@ struct Parser
 		AstNodes template_params;
 		if (tok.type == TokenType.LBRACKET) // <func_declaration> ::= "struct" <id> "[" <template_params> "]"
 		{
-			parse_template_parameters(template_params);
+			ushort numParamsBeforeVariadic;
+			parse_template_parameters(template_params, numParamsBeforeVariadic);
 			AstIndex body = parse_rest();
 			AstIndex after_body = AstIndex(context.astBuffer.uintLength);
-			return make!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, structId);
+			return make!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, structId, numParamsBeforeVariadic);
 		}
 
 		return parse_rest();
@@ -746,14 +768,19 @@ struct Parser
 		nextToken; // skip (
 
 		AstIndex condition = expr(PreferType.no);
-		if (tok.type != TokenType.COMMA)
-			context.unrecoverable_error(tok.index,
-				"Expected `,` after condition of #assert, while got `%s`",
-				context.getTokenString(tok.index));
+		AstIndex message;
 
-		nextToken; // skip ,
+		if (tok.type != TokenType.RPAREN)
+		{
+			if (tok.type != TokenType.COMMA)
+				context.unrecoverable_error(tok.index,
+					"Expected `,` after condition of #assert, while got `%s`",
+					context.getTokenString(tok.index));
 
-		AstIndex message = expr(PreferType.no);
+			nextToken; // skip ,
+
+			message = expr(PreferType.no);
+		}
 
 		if (tok.type != TokenType.RPAREN)
 			context.unrecoverable_error(tok.index,

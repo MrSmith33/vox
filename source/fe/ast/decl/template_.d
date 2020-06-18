@@ -25,6 +25,9 @@ struct TemplateDeclNode
 	AstIndex after_body;
 	/// Template id. Same as underlying entity.
 	Identifier id;
+	/// Number of parameters before variadic parameter
+	/// Is equal to parameters.length when no variadic is present
+	ushort numParamsBeforeVariadic;
 	/// Cached template instances
 	Array!TemplateInstance instances;
 }
@@ -70,17 +73,25 @@ void name_register_self_template(AstIndex nodeIndex, TemplateDeclNode* node, ref
 }
 
 
+enum TemplateParamDeclFlags : ushort
+{
+	isVariadic = AstFlags.userFlag << 0,
+}
+
 @(AstType.decl_template_param)
 struct TemplateParamDeclNode
 {
 	mixin AstNodeData!(AstType.decl_template_param, AstFlags.isDeclaration);
 	Identifier id;
 	ushort index; // index in the list of template parameters
+	AstNodes variadicData;
+
+	bool isVariadic() { return cast(bool)(flags & TemplateParamDeclFlags.isVariadic); }
 }
 
 void print_template_param(TemplateParamDeclNode* node, ref AstPrintState state)
 {
-	state.print("TEMPLATE PARAM ", state.context.idString(node.id));
+	state.print("TEMPLATE PARAM ", state.context.idString(node.id), node.isVariadic ? "..." : null);
 }
 
 
@@ -141,31 +152,57 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	auto templ = templateIndex.get!TemplateDeclNode(c);
 
 	++c.numTemplateInstanceLookups;
+	auto numParams = templ.parameters.length;
+	auto numArgs = args.length;
 
-	if (templ.parameters.length != args.length)
-	{
+	AstIndex errNumArgs() {
 		c.error(start,
 			"Wrong number of template arguments (%s), must be %s",
-			args.length,
-			templ.parameters.length);
+			numArgs,
+			numParams);
 		return CommonAstNodes.node_error;
 	}
 
-	// Verify arguments. For now only types are supported
-	foreach(size_t i, AstIndex arg; args)
+	void checkArg(size_t index, AstIndex arg)
 	{
 		if (!arg.isType(c))
 		{
+			// will be lifted in the future
 			c.error(arg.loc(c),
-				"Template argument %s, must be a type, not %s", i+1,
+				"Template argument %s, must be a type, not %s", index+1,
 				arg.astType(c));
 		}
+	}
+
+	// Verify arguments. For now only types are supported
+	foreach(size_t i, AstIndex arg; args) {
+		checkArg(i, arg);
+	}
+
+	bool hasVariadic = templ.numParamsBeforeVariadic < numParams;
+	if (hasVariadic) {
+		// handle variadic parameter
+		if (numArgs < numParams && numParams - numArgs > 1) return errNumArgs;
+
+		// we have variadic parameter
+		TemplateParamDeclNode* variadicParam = templ.parameters[templ.numParamsBeforeVariadic].get!TemplateParamDeclNode(c);
+		// If this is the second intance, variadicData will have data from previous instance
+		variadicParam.variadicData.clear;
+
+		foreach(size_t i; templ.numParamsBeforeVariadic..numArgs) {
+			variadicParam.variadicData.put(c.arrayArena, args[i]);
+		}
+	} else if (numArgs != numParams) {
+		return errNumArgs;
 	}
 
 	// Check if there is existing instance
 	instance_loop:
 	foreach(ref TemplateInstance instance; templ.instances)
 	{
+		// templates with variadics can have different number of instance arguments
+		if (instance.args.length != numArgs) continue;
+
 		foreach(size_t i, AstIndex arg; instance.args)
 		{
 			if (!same_type(arg, args[i], c)) continue instance_loop;
@@ -188,11 +225,20 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	newScope.kind = newScope.parentScope.get!Scope(c).kind;
 
 	// Register template instance arguments
-	foreach(size_t i, AstIndex arg; args)
+	foreach(size_t i; 0..templ.numParamsBeforeVariadic)
 	{
-		auto param = templ.parameters[i].get!TemplateParamDeclNode(c);
-		//writefln("reg %s %s into %s", c.idString(param.id), arg, instance_scope);
-		newScope.insert(param.id, arg, c);
+		AstIndex paramIndex = templ.parameters[i];
+		auto param = paramIndex.get!TemplateParamDeclNode(c);
+		newScope.insert(param.id, args[i], c);
+	}
+
+	// register variadic (must be single node)
+	if (hasVariadic)
+	{
+		AstIndex paramIndex = templ.parameters[templ.numParamsBeforeVariadic];
+		auto param = paramIndex.get!TemplateParamDeclNode(c);
+		param.state = AstNodeState.type_check_done;
+		newScope.insert(param.id, paramIndex, c);
 	}
 
 	// Clone template body and apply fixes

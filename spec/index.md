@@ -302,6 +302,7 @@ S func2() { ... } // CTFE-only function
 
 - `$alias` is an alias to any symbol in the program.
 - `$alias` values can be compared.
+- 
 
 ```D
 void fun(){}

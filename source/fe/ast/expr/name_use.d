@@ -139,6 +139,7 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 		case type_slice:
 		case expr_name_use:
 		case type_basic:
+		case decl_template_param:
 			// Happens after template arg replacement. Similar to alias
 			nodeIndex = entity;
 			break;

@@ -52,6 +52,11 @@ void name_resolve_func_sig(FunctionSignatureNode* node, ref NameResolveState sta
 	node.state = AstNodeState.name_resolve_done;
 }
 
+// Parameters consist of 4 groups:
+// 1) 0+, non-variadic, non-default
+// 2) 0+, variadic
+// 3) 0+, non-variadic, non-default
+// 4) 0+, non-variadic, default
 void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
@@ -69,6 +74,37 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 	}
 
 	require_type_check(node.parameters, state);
+
+	foreach(size_t i, AstIndex paramIndex; node.parameters)
+	{
+		auto param = paramIndex.get!VariableDeclNode(c);
+		if (param.isVariadicParam)
+		{
+			// expand variadic parameter
+			auto templParam = param.type.get!TemplateParamDeclNode(c);
+
+			uint numVariadicParams = templParam.variadicData.length;
+			node.parameters.replaceAt(c.arrayArena, i, 1, templParam.variadicData);
+			
+			foreach(size_t j, AstIndex type; templParam.variadicData)
+			{
+				AstIndex newParamIndex = c.appendAst!VariableDeclNode(param.loc, AstIndex.init, type, AstIndex.init, param.id, cast(ushort)(param.scopeIndex + j));
+				auto newParam = newParamIndex.get!VariableDeclNode(c);
+				newParam.flags |= VariableFlags.isParameter;
+				newParam.state = AstNodeState.type_check_done;
+				require_type_check(newParamIndex, state);
+				node.parameters[i + j] = newParamIndex;
+			}
+
+			// update indicies of other params
+			foreach(size_t j; i + numVariadicParams..node.parameters.length)
+			{
+				auto rtParam = node.parameters[j].get!VariableDeclNode(c);
+				rtParam.scopeIndex = cast(ushort)(rtParam.scopeIndex + numVariadicParams - 1);
+			}
+			break;
+		}
+	}
 
 	if (caclIsCtfeOnly(node, c)) node.flags |= FuncSignatureFlags.isCtfeOnly;
 

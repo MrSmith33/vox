@@ -8,7 +8,8 @@ import all;
 enum VariableFlags : ushort {
 	forceMemoryStorage = AstFlags.userFlag << 0,
 	isParameter        = AstFlags.userFlag << 1,
-	isAddressTaken     = AstFlags.userFlag << 2,
+	isVariadicParam    = AstFlags.userFlag << 2,
+	isAddressTaken     = AstFlags.userFlag << 3,
 }
 
 @(AstType.decl_var)
@@ -27,6 +28,7 @@ struct VariableDeclNode
 	IrIndex defaultVal;
 	bool forceMemoryStorage() { return cast(bool)(flags & VariableFlags.forceMemoryStorage); }
 	bool isParameter() { return cast(bool)(flags & VariableFlags.isParameter); }
+	bool isVariadicParam() { return cast(bool)(flags & VariableFlags.isVariadicParam); }
 	bool isAddressTaken() { return cast(bool)(flags & VariableFlags.isAddressTaken); }
 
 	IrIndex getIrIndex(CompilationContext* c)
@@ -76,6 +78,18 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 	CompilationContext* c = state.context;
 
 	node.state = AstNodeState.type_check;
+	scope (exit) node.state = AstNodeState.type_check_done;
+
+	if (node.isParameter)
+	{
+		if (node.type.astType(c) == AstType.decl_template_param)
+		{
+			if (node.type.get!TemplateParamDeclNode(c).isVariadic)
+				node.flags |= VariableFlags.isVariadicParam;
+			return;
+		}
+	}
+
 	require_type_check(node.type, state);
 	check_is_type(node.type, c);
 
@@ -118,8 +132,6 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 
 	if (!node.isLocal)
 		gen_default_value_var(node, c);
-
-	node.state = AstNodeState.type_check_done;
 }
 
 // only called for members, parameters and globals

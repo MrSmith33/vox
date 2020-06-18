@@ -774,6 +774,10 @@ struct CompilationContext
 		assertf(type_u8Slice == CommonAstNodes.type_u8Slice, "AstIndex mismatch for type_u8Slice %s != %s", type_u8Slice, cast(AstIndex)CommonAstNodes.type_u8Slice);
 		type_u8Slice.gen_ir_type(&this); // we need to cache IR types too
 
+		auto type_aliasSlice = appendAst!SliceTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_alias));
+		assertf(type_aliasSlice == CommonAstNodes.type_aliasSlice, "AstIndex mismatch for type_aliasSlice %s != %s", type_aliasSlice, cast(AstIndex)CommonAstNodes.type_aliasSlice);
+		type_aliasSlice.gen_ir_type(&this); // we need to cache IR types too
+
 		// builtin nodes
 		void makeBuiltin(AstIndex reqIndex, Identifier id, BuiltinId builtin) {
 			AstIndex index = appendAst!BuiltinNode(TokenIndex(), id, builtin);
@@ -886,8 +890,9 @@ enum CommonAstNodes : AstIndex
 	// common custom types
 	type_u8Ptr               = AstIndex(first_compound.storageIndex + 0),
 	type_u8Slice             = AstIndex(first_compound.storageIndex + 4),
+	type_aliasSlice          = AstIndex(first_compound.storageIndex + 9),
 
-	first_builtin            = AstIndex(first_compound.storageIndex + 9),
+	first_builtin            = AstIndex(first_compound.storageIndex + 14),
 
 	// builtin nodes
 	// The order is the same as in BuiltinId enum
@@ -901,9 +906,9 @@ enum CommonAstNodes : AstIndex
 	// builtin nodes end
 
 	// builtin functions
-	compile_error            = AstIndex(230),
-	is_slice                 = AstIndex(272),
-	is_integer               = AstIndex(314),
+	compile_error            = AstIndex(builtin_sizeof.storageIndex + 24),
+	is_slice                 = AstIndex(builtin_sizeof.storageIndex + 66),
+	is_integer               = AstIndex(builtin_sizeof.storageIndex + 108),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
