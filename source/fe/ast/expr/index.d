@@ -84,6 +84,8 @@ void name_resolve_index(ref AstIndex nodeIndex, IndexExprNode* node, ref NameRes
 			// reuse name_use
 			IrIndex indexVal = eval_static_expr(node.indicies[0], c);
 			AstIndex item = effective_array.get!AliasArrayDeclNode(c).items[c.constants.get(indexVal).i64];
+			if (item.get_effective_node(c).isType(c))
+				nameUse.flags |= AstFlags.isType;
 			nameUse.resolve(item, c);
 			nodeIndex = arrayCopy;
 		}

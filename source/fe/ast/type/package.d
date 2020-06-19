@@ -264,7 +264,10 @@ void printType(TypeNode* t, scope void delegate(const(char)[]) sink, Compilation
 			sink(ctx.idString(t.as_struct.id));
 			break;
 		case AstType.expr_name_use:
-			sink(ctx.idString(t.as_name_use.id(ctx)));
+			if (t.as_name_use.isSymResolved)
+				t.as_name_use.entity.printType(sink, ctx);
+			else
+				sink(ctx.idString(t.as_name_use.id(ctx)));
 			break;
 		case AstType.decl_enum:
 			sink(ctx.idString(t.as_enum.id));

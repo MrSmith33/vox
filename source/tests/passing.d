@@ -3598,3 +3598,16 @@ immutable test166 = q{--- test166
 	}
 	#assert(fun(42) == 42);
 };
+
+
+@TestInfo()
+immutable test167 = q{--- test167
+	// Access variadic variable
+	u8 fun[Args...](Args args) {
+		alias arg0 = args[0];
+		alias T0 = Args[0];
+		T0 result = arg0;
+		return result;
+	}
+	#assert(fun(42) == 42);
+};

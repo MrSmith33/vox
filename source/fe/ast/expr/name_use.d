@@ -77,8 +77,10 @@ struct NameUseExprNode {
 
 void print_name_use(NameUseExprNode* node, ref AstPrintState state)
 {
-	if (node.isSymResolved)
-		state.print("NAME_USE ", node.type.printer(state.context), " ", state.context.idString(node.id(state.context)));
+	if (node.isSymResolved) {
+		state.print("NAME_USE ", node.type.printer(state.context));
+		print_ast(node.entity, state);
+	}
 	else
 		state.print("NAME_USE ", state.context.idString(node.id(state.context)));
 }
