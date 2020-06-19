@@ -84,7 +84,6 @@ struct TemplateParamDeclNode
 	mixin AstNodeData!(AstType.decl_template_param, AstFlags.isDeclaration);
 	Identifier id;
 	ushort index; // index in the list of template parameters
-	AstNodes variadicData;
 
 	bool isVariadic() { return cast(bool)(flags & TemplateParamDeclFlags.isVariadic); }
 }
@@ -180,17 +179,13 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	}
 
 	bool hasVariadic = templ.numParamsBeforeVariadic < numParams;
+	AstNodes variadicTypes;
 	if (hasVariadic) {
 		// handle variadic parameter
 		if (numArgs < numParams && numParams - numArgs > 1) return errNumArgs;
 
-		// we have variadic parameter
-		TemplateParamDeclNode* variadicParam = templ.parameters[templ.numParamsBeforeVariadic].get!TemplateParamDeclNode(c);
-		// If this is the second intance, variadicData will have data from previous instance
-		variadicParam.variadicData.clear;
-
 		foreach(size_t i; templ.numParamsBeforeVariadic..numArgs) {
-			variadicParam.variadicData.put(c.arrayArena, args[i]);
+			variadicTypes.put(c.arrayArena, args[i]);
 		}
 	} else if (numArgs != numParams) {
 		return errNumArgs;
@@ -237,8 +232,12 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	{
 		AstIndex paramIndex = templ.parameters[templ.numParamsBeforeVariadic];
 		auto param = paramIndex.get!TemplateParamDeclNode(c);
-		param.state = AstNodeState.type_check_done;
-		newScope.insert(param.id, paramIndex, c);
+
+		// Create array of variadic types
+		auto arrayIndex = c.appendAst!AliasArrayDeclNode(param.loc, variadicTypes);
+		auto arrayNode = arrayIndex.get!AliasArrayDeclNode(c);
+
+		newScope.insert(param.id, arrayIndex, c);
 	}
 
 	// Clone template body and apply fixes
@@ -321,6 +320,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case abstract_node: c.internal_error(node.loc, "Visiting abstract node"); break;
 
 		case decl_alias: post_clone_alias(cast(AliasDeclNode*)node, state); break;
+		case decl_alias_array: break;
 		case decl_builtin: break;
 		case decl_module: assert(false);
 		case decl_import: post_clone_import(cast(ImportDeclNode*)node, state); break;
@@ -357,6 +357,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case literal_string: break;
 		case literal_null: break;
 		case literal_bool: break;
+		case literal_array: break;
 
 		case type_basic: break;
 		case type_func_sig: post_clone_func_sig(cast(FunctionSignatureNode*)node, state); break;

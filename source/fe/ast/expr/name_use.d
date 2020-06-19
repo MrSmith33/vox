@@ -117,11 +117,11 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 	switch(entityNode.astType) with(AstType) {
 		case decl_var:
 			auto var = entityNode.as!VariableDeclNode(c);
-			if (var.isMember) lowerToMember(nodeIndex, node, var.scopeIndex, state);
+			if (var.isMember) lowerToMember(nodeIndex, node, var.scopeIndex, MemberSubType.struct_member, state);
 			break;
 		case decl_function:
 			auto func = entityNode.as!FunctionDeclNode(c);
-			if (func.isMember) lowerToMember(nodeIndex, node, 0, state);
+			if (func.isMember) lowerToMember(nodeIndex, node, 0, MemberSubType.struct_method, state);
 			break;
 		case decl_enum_member, error:
 			// valid expr
@@ -139,7 +139,8 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 		case type_slice:
 		case expr_name_use:
 		case type_basic:
-		case decl_template_param:
+		case literal_array:
+		case decl_alias_array:
 			// Happens after template arg replacement. Similar to alias
 			nodeIndex = entity;
 			break;
@@ -151,14 +152,14 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 	}
 }
 
-private void lowerToMember(ref AstIndex nodeIndex, NameUseExprNode* node, uint scopeIndex, ref NameResolveState state)
+private void lowerToMember(ref AstIndex nodeIndex, NameUseExprNode* node, uint scopeIndex, MemberSubType subType, ref NameResolveState state)
 {
 	CompilationContext* c = state.context;
 	// rewrite as this.entity
 	// let member_access handle everything else
 	AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, node.parentScope, CommonIds.id_this);
 	require_name_resolve(thisName, state);
-	AstIndex member = c.appendAst!MemberExprNode(node.loc, node.parentScope, thisName, nodeIndex, scopeIndex, MemberSubType.nonstatic_struct_member);
+	AstIndex member = c.appendAst!MemberExprNode(node.loc, node.parentScope, thisName, nodeIndex, scopeIndex, subType);
 	if (node.isLvalue)
 		member.flags(c) |= AstFlags.isLvalue;
 	nodeIndex = member;

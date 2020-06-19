@@ -68,6 +68,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
 
 		case decl_alias: name_resolve_alias(cast(AliasDeclNode*)node, state); break;
+		case decl_alias_array: assert(false);
 		case decl_builtin: assert(false);
 		case decl_module: name_resolve_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: assert(false);
@@ -96,7 +97,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case expr_bin_op: name_resolve_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: name_resolve_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: name_resolve_call(cast(CallExprNode*)node, state); break;
-		case expr_index: name_resolve_index(cast(IndexExprNode*)node, state); break;
+		case expr_index: name_resolve_index(nodeIndex, cast(IndexExprNode*)node, state); break;
 		case expr_slice: name_resolve_expr_slice(cast(SliceExprNode*)node, state); break;
 		case expr_type_conv: name_resolve_type_conv(cast(TypeConvExprNode*)node, state); break;
 
@@ -104,6 +105,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case literal_string: assert(false);
 		case literal_null: assert(false);
 		case literal_bool: assert(false);
+		case literal_array: assert(false);
 
 		case type_basic: assert(false);
 		case type_func_sig: name_resolve_func_sig(cast(FunctionSignatureNode*)node, state); break;

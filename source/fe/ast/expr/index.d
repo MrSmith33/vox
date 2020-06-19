@@ -33,11 +33,12 @@ void name_register_nested_index(IndexExprNode* node, ref NameRegisterState state
 	node.state = AstNodeState.name_register_nested_done;
 }
 
-void name_resolve_index(IndexExprNode* node, ref NameResolveState state)
+void name_resolve_index(ref AstIndex nodeIndex, IndexExprNode* node, ref NameResolveState state)
 {
 	CompilationContext* c = state.context;
 
 	node.state = AstNodeState.name_resolve;
+	AstIndex arrayCopy = node.array; // link to node before it replaces itself
 	require_name_resolve(node.array, state);
 	require_name_resolve(node.indicies, state);
 
@@ -73,6 +74,19 @@ void name_resolve_index(IndexExprNode* node, ref NameResolveState state)
 		// must be template instantiation. Copy isType
 		if (effective_array.get!TemplateDeclNode(c).body.isType(c))
 			node.flags |= AstFlags.isType;
+	}
+	else if (effective_array.astType(c) == AstType.decl_alias_array && node.indicies.length == 1)
+	{
+		if (arrayCopy.astType(c) == AstType.expr_name_use)
+		{
+			auto nameUse = arrayCopy.get!NameUseExprNode(c);
+			// replace current node with aliased entity
+			// reuse name_use
+			IrIndex indexVal = eval_static_expr(node.indicies[0], c);
+			AstIndex item = effective_array.get!AliasArrayDeclNode(c).items[c.constants.get(indexVal).i64];
+			nameUse.resolve(item, c);
+			nodeIndex = arrayCopy;
+		}
 	}
 	node.state = AstNodeState.name_resolve_done;
 }

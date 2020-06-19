@@ -99,9 +99,9 @@ IrIndex eval_static_expr_member(MemberExprNode* node, CompilationContext* c)
 			return eval_static_expr(node.member(c), c);
 		case builtin_member:
 			return eval_builtin_member(node.member(c).get!BuiltinNode(c).builtin, node.aggregate, node.loc, c);
-		case alias_slice_length:
-			auto ctParam = node.aggregate.get_effective_node(c).get!TemplateParamDeclNode(c);
-			return c.constants.add(ctParam.variadicData.length, IsSigned.no, IrArgSize.size64);
+		case alias_array_length:
+			auto ctParam = node.aggregate.get_effective_node(c).get!AliasArrayDeclNode(c);
+			return c.constants.add(ctParam.items.length, IsSigned.no, IrArgSize.size64);
 		default:
 			AstIndex nodeIndex = get_ast_index(node, c);
 			c.unrecoverable_error(node.loc,

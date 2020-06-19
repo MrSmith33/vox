@@ -144,3 +144,24 @@ IrIndex ir_gen_literal_string(CompilationContext* context, StringLiteralExprNode
 {
 	return n.irValue;
 }
+
+
+@(AstType.literal_array)
+struct ArrayLiteralExprNode {
+	mixin ExpressionNodeData!(AstType.literal_array, 0, AstNodeState.name_resolve_done);
+	AstNodes items;
+	IrIndex irValue;
+}
+
+void print_literal_array(ArrayLiteralExprNode* node, ref AstPrintState state)
+{
+	state.print("LITERAL array ", node.type.printer(state.context), " ", node.items);
+}
+
+void type_check_literal_array(ArrayLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	require_type_check(node.items, state);
+	assert(false);
+	node.state = AstNodeState.type_check_done;
+}

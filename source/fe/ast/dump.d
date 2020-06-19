@@ -48,6 +48,7 @@ void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
 
 		case decl_alias: print_alias(cast(AliasDeclNode*)node, state); break;
+		case decl_alias_array: print_alias_array(cast(AliasArrayDeclNode*)node, state); break;
 		case decl_builtin: break; // skip
 		case decl_enum: print_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: print_enum_member(cast(EnumMemberDecl*)node, state); break;
@@ -84,6 +85,7 @@ void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 		case literal_string: print_literal_string(cast(StringLiteralExprNode*)node, state); break;
 		case literal_null: print_literal_null(cast(NullLiteralExprNode*)node, state); break;
 		case literal_bool: print_literal_bool(cast(BoolLiteralExprNode*)node, state); break;
+		case literal_array: print_literal_array(cast(ArrayLiteralExprNode*)node, state); break;
 
 		case type_basic: print_type_basic(cast(BasicTypeNode*)node, state); break;
 		case type_func_sig: print_func_sig(cast(FunctionSignatureNode*)node, state); break;

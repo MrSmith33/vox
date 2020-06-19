@@ -69,3 +69,15 @@ void type_check_alias(AliasDeclNode* node, ref TypeCheckState state)
 	// user of NameUseExprNode will require type check of initializer
 	node.state = AstNodeState.type_check_done;
 }
+
+
+@(AstType.decl_alias_array)
+struct AliasArrayDeclNode {
+	mixin AstNodeData!(AstType.decl_alias_array, 0, AstNodeState.type_check_done);
+	AstNodes items;
+}
+
+void print_alias_array(AliasArrayDeclNode* node, ref AstPrintState state)
+{
+	state.print("alias array ", node.items);
+}

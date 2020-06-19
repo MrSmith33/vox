@@ -9,11 +9,16 @@ enum MemberSubType
 {
 	unresolved,
 	builtin_member, // member is decl_builtin
-	nonstatic_struct_member,
-	static_struct_member, // including methods
+	static_struct_member,
+	struct_member,
+	struct_method,
 	enum_member,
 	slice_member,
-	alias_slice_length,
+	alias_array_length,
+}
+
+enum MemberExprFlags : ushort {
+	needsDeref = AstFlags.userFlag << 0,
 }
 
 // member access of aggregate.member form
@@ -38,6 +43,7 @@ struct MemberExprNode {
 	}
 
 	bool isSymResolved() { return subType != MemberSubType.unresolved; }
+	bool needsDeref() { return cast(bool)(flags & MemberExprFlags.needsDeref); }
 
 	void resolve(MemberSubType subType, AstIndex member, uint memberIndex, CompilationContext* c)
 	{
@@ -122,30 +128,10 @@ void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeChe
 
 	// try member
 	// performs require_type_check on aggregate
-	LookupResult res = lookupMember(node, state);
+	LookupResult res = lookupMember(nodeIndex, node, state);
 
 	if (res == LookupResult.success) {
-		AstIndex effectiveMember = node.member(c).get_effective_node(c);
-		if (effectiveMember.astType(c) == AstType.decl_function)
-		{
-			// parentheses-less method call
-			AstIndex callIndex;
-			createMethodCall(callIndex, node.loc, node.aggregate, effectiveMember, node.memberId(c), state);
-			nodeIndex = callIndex;
-			return;
-		}
-
-		TypeNode* objType = node.aggregate.get_type(c);
-		if (objType.isPointer)
-		{
-			auto baseType = objType.as_ptr.base.get_type(c);
-			if (baseType.isStruct)
-			{
-				node.aggregate = c.appendAst!UnaryExprNode(node.loc, c.getAstNodeIndex(baseType), UnOp.deref, node.aggregate);
-				node.aggregate.setState(c, AstNodeState.type_check_done);
-			}
-		}
-
+		lowerMember(nodeIndex, node, state);
 		nodeIndex.get_node(c).state = AstNodeState.type_check_done;
 		return;
 	}
@@ -222,11 +208,18 @@ void lowerThisArgument(FunctionSignatureNode* signature, ref AstIndex aggregate,
 }
 
 /// Look up member by Identifier. Searches aggregate scope for identifier.
-LookupResult lookupMember(MemberExprNode* expr, ref TypeCheckState state)
+LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
 	if (expr.isSymResolved) {
 		expr.type = expr.member(c).get_node_type(c);
+		return LookupResult.success;
+	}
+
+	if (expr.aggregate.astType(c) == AstType.decl_alias_array)
+	{
+		expr.resolve(MemberSubType.alias_array_length, c.builtinNodes(BuiltinId.array_length), 0, c);
+		expr.type = CommonAstNodes.type_u64;
 		return LookupResult.success;
 	}
 
@@ -248,6 +241,7 @@ LookupResult lookupMember(MemberExprNode* expr, ref TypeCheckState state)
 		if (baseType.isStruct)
 		{
 			objType = baseType;
+			expr.flags |= MemberExprFlags.needsDeref;
 		}
 	}
 
@@ -255,7 +249,7 @@ LookupResult lookupMember(MemberExprNode* expr, ref TypeCheckState state)
 	{
 		case AstType.type_slice: return lookupSliceMember(expr, objType.as_slice, memberId, c);
 		case AstType.type_static_array: return lookupStaticArrayMember(expr, objType.as_static_array, memberId, c);
-			case AstType.decl_struct: return lookupStructMember(expr, objType.as_struct, memberId, c);
+		case AstType.decl_struct: return lookupStructMember(nodeIndex, expr, objType.as_struct, memberId, state);
 		case AstType.decl_enum: return lookupEnumMember(expr, objType.as_enum, memberId, c);
 		case AstType.type_basic: return lookupBasicMember(expr, objType.as_basic, memberId, c);
 		default:
@@ -320,8 +314,6 @@ LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, I
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_length), 0, c);
 		expr.type = c.basicTypeNodes(BasicType.t_u64);
 		expr.type.setState(c, AstNodeState.type_check_done);
-		if (sliceType.base == CommonAstNodes.type_alias)
-			expr.subType = MemberSubType.alias_slice_length;
 		return LookupResult.success;
 	}
 
@@ -348,8 +340,9 @@ LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* 
 	return LookupResult.failure;
 }
 
-LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl, Identifier id, CompilationContext* c)
+LookupResult lookupStructMember(ref AstIndex nodeIndex, MemberExprNode* node, StructDeclNode* structDecl, Identifier id, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
 	AstIndex entity = c.getAstScope(structDecl.memberScope).symbols.get(id, AstIndex.init);
 	if (!entity) {
 		return LookupResult.failure;
@@ -359,36 +352,58 @@ LookupResult lookupStructMember(MemberExprNode* expr, StructDeclNode* structDecl
 	switch(entityAstType)
 	{
 		case AstType.decl_function:
-			expr.resolve(MemberSubType.static_struct_member, entity, 0, c);
-			expr.type = entity.get_node_type(c);
+			node.resolve(MemberSubType.struct_method, entity, 0, c);
+			node.type = entity.get_node_type(c);
 			return LookupResult.success;
 
 		case AstType.decl_var:
 			auto memberVar = entity.get!VariableDeclNode(c);
-			expr.resolve(MemberSubType.nonstatic_struct_member, entity, memberVar.scopeIndex, c);
-			expr.type = entity.get_node_type(c);
+			node.resolve(MemberSubType.struct_member, entity, memberVar.scopeIndex, c);
+			node.type = entity.get_node_type(c);
 			return LookupResult.success;
 
 		case AstType.decl_struct:
-			expr.resolve(MemberSubType.static_struct_member, entity, 0, c);
-			expr.type = entity.get_node_type(c);
+			node.resolve(MemberSubType.static_struct_member, entity, 0, c);
+			node.type = entity.get_node_type(c);
 			c.internal_error("member structs are not implemented");
 			assert(false);
 
 		case AstType.decl_enum:
-			expr.resolve(MemberSubType.static_struct_member, entity, 0, c);
-			expr.type = entity.get_node_type(c);
+			node.resolve(MemberSubType.static_struct_member, entity, 0, c);
+			node.type = entity.get_node_type(c);
 			c.internal_error("member enums are not implemented");
 			assert(false);
 
 		case AstType.decl_enum_member:
-			expr.resolve(MemberSubType.enum_member, entity, 0, c);
-			expr.type = entity.get_node_type(c);
+			node.resolve(MemberSubType.enum_member, entity, 0, c);
+			node.type = entity.get_node_type(c);
 			return LookupResult.success;
 
 		default:
 			c.internal_error("Unexpected struct member %s", entityAstType);
 			assert(false);
+	}
+}
+
+void lowerMember(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeCheckState state)
+{
+	CompilationContext* c = state.context;
+	switch(node.subType) with(MemberSubType)
+	{
+		case MemberSubType.struct_method:
+			AstIndex effectiveMember = node.member(c).get_effective_node(c);
+			// parentheses-less method call
+			AstIndex callIndex;
+			createMethodCall(callIndex, node.loc, node.aggregate, effectiveMember, node.memberId(c), state);
+			nodeIndex = callIndex;
+			return;
+		default: break;
+	}
+	if (node.needsDeref) {
+		TypeNode* objType = node.aggregate.get_type(c);
+		auto baseType = objType.as_ptr.base.get_type(c);
+		node.aggregate = c.appendAst!UnaryExprNode(node.loc, c.getAstNodeIndex(baseType), UnOp.deref, node.aggregate);
+		node.aggregate.setState(c, AstNodeState.type_check_done);
 	}
 }
 
@@ -398,7 +413,7 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 
 	switch(m.subType) with(MemberSubType)
 	{
-		case nonstatic_struct_member, slice_member:
+		case struct_member, slice_member:
 			IrLabel afterAggr = IrLabel(currentBlock);
 			ExprValue aggr = ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
 			TypeNode* objType = m.aggregate.get_type(c);
@@ -408,7 +423,7 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 			ExprValue result = getAggregateMember(gen, m.loc, currentBlock, aggr, memberIndex);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return result;
-		case static_struct_member:
+		case static_struct_member, struct_method:
 			c.unreachable("Not implemented");
 			assert(false);
 		case enum_member:

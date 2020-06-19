@@ -188,6 +188,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case literal_string: assert(false);
 		case literal_null: assert(false);
 		case literal_bool: assert(false);
+		case literal_array: assert(false);
 
 		case type_basic: assert(false);
 		case type_func_sig: name_register_nested_func_sig(cast(FunctionSignatureNode*)node, state); break;

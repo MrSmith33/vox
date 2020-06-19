@@ -48,8 +48,55 @@ void name_resolve_func_sig(FunctionSignatureNode* node, ref NameResolveState sta
 {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.returnType, state);
-	require_name_resolve(node.parameters, state);
+	uint variadicIndex;
+	bool hasVariadic = false;
+	foreach(size_t i, ref AstIndex paramIndex; node.parameters)
+	{
+		require_name_resolve(paramIndex, state);
+
+		auto param = paramIndex.get!VariableDeclNode(state.context);
+		if (param.isVariadicParam) {
+			hasVariadic = true;
+			variadicIndex = cast(uint)i;
+		}
+	}
+	if (hasVariadic) expandVariadicParam(node, variadicIndex, state.context);
 	node.state = AstNodeState.name_resolve_done;
+}
+
+void expandVariadicParam(FunctionSignatureNode* node, uint variadicIndex, CompilationContext* c)
+{
+	auto param = node.parameters[variadicIndex].get!VariableDeclNode(c);
+	auto types = param.type.get_effective_node(c).get!AliasArrayDeclNode(c);
+
+	uint numVariadicParams = types.items.length;
+	node.parameters.replaceAt(c.arrayArena, variadicIndex, 1, types.items);
+
+	AstNodes vars;
+	vars.reserve(c.arrayArena, numVariadicParams);
+
+	foreach(size_t i, AstIndex type; types.items)
+	{
+		AstIndex newParamIndex = c.appendAst!VariableDeclNode(param.loc, AstIndex.init, type, AstIndex.init, param.id, cast(ushort)(param.scopeIndex + i));
+		auto newParam = newParamIndex.get!VariableDeclNode(c);
+		newParam.flags |= VariableFlags.isParameter;
+		newParam.state = AstNodeState.name_resolve_done;
+		node.parameters[variadicIndex + i] = newParamIndex;
+		vars.put(c.arrayArena, newParamIndex);
+	}
+
+	// update indicies of other params
+	foreach(size_t i; variadicIndex + numVariadicParams..node.parameters.length)
+	{
+		auto rtParam = node.parameters[i].get!VariableDeclNode(c);
+		rtParam.scopeIndex = cast(ushort)(rtParam.scopeIndex + numVariadicParams - 1);
+	}
+
+	// rewrite variadic parameter as array literal in-place
+	static assert(VariableDeclNode.sizeof >= AliasArrayDeclNode.sizeof,
+		"VariableDeclNode.sizeof < AliasArrayDeclNode.sizeof");
+	auto arrayNode = cast(AliasArrayDeclNode*)param;
+	*arrayNode = AliasArrayDeclNode(param.loc, vars);
 }
 
 // Parameters consist of 4 groups:
@@ -74,37 +121,6 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 	}
 
 	require_type_check(node.parameters, state);
-
-	foreach(size_t i, AstIndex paramIndex; node.parameters)
-	{
-		auto param = paramIndex.get!VariableDeclNode(c);
-		if (param.isVariadicParam)
-		{
-			// expand variadic parameter
-			auto templParam = param.type.get!TemplateParamDeclNode(c);
-
-			uint numVariadicParams = templParam.variadicData.length;
-			node.parameters.replaceAt(c.arrayArena, i, 1, templParam.variadicData);
-			
-			foreach(size_t j, AstIndex type; templParam.variadicData)
-			{
-				AstIndex newParamIndex = c.appendAst!VariableDeclNode(param.loc, AstIndex.init, type, AstIndex.init, param.id, cast(ushort)(param.scopeIndex + j));
-				auto newParam = newParamIndex.get!VariableDeclNode(c);
-				newParam.flags |= VariableFlags.isParameter;
-				newParam.state = AstNodeState.type_check_done;
-				require_type_check(newParamIndex, state);
-				node.parameters[i + j] = newParamIndex;
-			}
-
-			// update indicies of other params
-			foreach(size_t j; i + numVariadicParams..node.parameters.length)
-			{
-				auto rtParam = node.parameters[j].get!VariableDeclNode(c);
-				rtParam.scopeIndex = cast(ushort)(rtParam.scopeIndex + numVariadicParams - 1);
-			}
-			break;
-		}
-	}
 
 	if (caclIsCtfeOnly(node, c)) node.flags |= FuncSignatureFlags.isCtfeOnly;
 

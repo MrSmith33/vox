@@ -79,7 +79,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 		case AstType.expr_member:
 			MemberExprNode* member = callee.get!MemberExprNode(c);
 			// Method call
-			LookupResult res = lookupMember(member, state);
+			LookupResult res = lookupMember(callee, member, state);
 			if (res == LookupResult.success) {
 				node.callee = member.member(c);
 				auto signature = node.callee.get_type(c).as_func_sig;

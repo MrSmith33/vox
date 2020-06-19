@@ -70,6 +70,13 @@ void name_resolve_var(VariableDeclNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.type, state);
 	if (node.initializer) require_name_resolve(node.initializer, state);
+	if (node.isParameter)
+	{
+		if (node.type.get_effective_node(state.context).astType(state.context) == AstType.decl_alias_array)
+		{
+			node.flags |= VariableFlags.isVariadicParam;
+		}
+	}
 	node.state = AstNodeState.name_resolve_done;
 }
 
@@ -79,16 +86,6 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 
 	node.state = AstNodeState.type_check;
 	scope (exit) node.state = AstNodeState.type_check_done;
-
-	if (node.isParameter)
-	{
-		if (node.type.astType(c) == AstType.decl_template_param)
-		{
-			if (node.type.get!TemplateParamDeclNode(c).isVariadic)
-				node.flags |= VariableFlags.isVariadicParam;
-			return;
-		}
-	}
 
 	require_type_check(node.type, state);
 	check_is_type(node.type, c);
