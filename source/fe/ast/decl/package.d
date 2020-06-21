@@ -11,6 +11,7 @@ public import fe.ast.decl.import_;
 public import fe.ast.decl.module_;
 public import fe.ast.decl.scope_;
 public import fe.ast.decl.static_assert;
+public import fe.ast.decl.static_foreach;
 public import fe.ast.decl.static_if;
 public import fe.ast.decl.struct_;
 public import fe.ast.decl.template_;

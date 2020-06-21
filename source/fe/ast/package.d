@@ -18,7 +18,6 @@ public import fe.ast.lexer;
 public import fe.ast.parser;
 public import fe.ast.stmt;
 public import fe.ast.type;
-public import fe.ast.visitor;
 
 enum AstType : ubyte
 {
@@ -34,6 +33,7 @@ enum AstType : ubyte
 	decl_import,
 	decl_module,
 	decl_static_assert,
+	decl_static_foreach,
 	decl_static_if,
 	decl_struct,
 	decl_template,

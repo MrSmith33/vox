@@ -45,39 +45,103 @@ void require_name_register(ref AstNodes items, ref NameRegisterState state)
 private long require_name_register_self_sub_array(ref AstNodes items, uint from, uint to, ref NameRegisterState state)
 {
 	CompilationContext* c = state.context;
-	state.firstStaticIf = AstIndex();
-	state.lastStaticIf = AstIndex();
+	state.firstCondDecl = AstIndex();
+	state.lastCondDecl = AstIndex();
 	size_t i = from;
 	foreach(ref AstIndex item; items[from..to]) {
 		require_name_register_self(cast(uint)(i++), item, state);
 	}
 
-	if (state.firstStaticIf.isUndefined) return 0; // no static ifs
+	if (state.firstCondDecl.isUndefined) return 0; // no static ifs
 
 	long sizeDelta;
-	size_t numStaticIfs;
 
-	AstIndex staticIf = state.firstStaticIf;
-	while (staticIf)
+	AstIndex condDecl = state.firstCondDecl;
+	while (condDecl)
 	{
-		auto staticIfNode = staticIf.get!StaticIfDeclNode(state.context);
-		require_name_register(staticIfNode.condition, state);
-		IrIndex val = eval_static_expr(staticIfNode.condition, state.context);
+		AstNode* decl = condDecl.get_node(c);
+		if (decl.astType == AstType.decl_static_if)
+		{
+			auto staticIfNode = decl.as!StaticIfDeclNode(c);
+			require_name_register(staticIfNode.condition, state);
+			IrIndex val = eval_static_expr(staticIfNode.condition, c);
 
-		AstNodes itemsToInsert = staticIfNode.thenItems;
-		if (!c.constants.get(val).i64) itemsToInsert = staticIfNode.elseItems;
+			AstNodes itemsToInsert = staticIfNode.thenItems;
+			if (!c.constants.get(val).i64) itemsToInsert = staticIfNode.elseItems;
 
-		uint insertPoint = cast(uint)(staticIfNode.arrayIndex + sizeDelta);
-		items.replaceAt(c.arrayArena, insertPoint, 1, itemsToInsert);
+			uint insertPoint = cast(uint)(staticIfNode.arrayIndex + sizeDelta);
+			items.replaceAt(c.arrayArena, insertPoint, 1, itemsToInsert);
 
-		// we replace static if with its children
-		//   static if is removed from the list (-1)
-		//   childrent are inserted (itemsToInsert.length)
-		sizeDelta += itemsToInsert.length - 1;
-		sizeDelta += require_name_register_self_sub_array(items, insertPoint, insertPoint+itemsToInsert.length, state);
+			// we replace #if with its children
+			//   #if is removed from the list (-1)
+			//   children are inserted (itemsToInsert.length)
+			sizeDelta += itemsToInsert.length - 1;
+			sizeDelta += require_name_register_self_sub_array(items, insertPoint, insertPoint+itemsToInsert.length, state);
 
-		++numStaticIfs;
-		staticIf = staticIfNode.next;
+			condDecl = staticIfNode.next;
+		}
+		else
+		{
+			assert(decl.astType == AstType.decl_static_foreach);
+			auto staticForeachNode = decl.as!StaticForeachDeclNode(c);
+			require_name_register(staticForeachNode.iterableExpr, state);
+			require_name_resolve(staticForeachNode.iterableExpr, c);
+
+			auto iter = staticForeachNode.iterableExpr.get_node(c);
+
+			if (iter.astType == AstType.decl_alias_array)
+			{
+				auto aliasArray = iter.as!AliasArrayDeclNode(c);
+
+				size_t bodySize = staticForeachNode.body.length;
+				uint numItemsToInsert = cast(uint)(aliasArray.items.length * bodySize);
+
+				uint insertPoint = cast(uint)(staticForeachNode.arrayIndex + sizeDelta);
+				items.replaceAtVoid(c.arrayArena, insertPoint, 1, numItemsToInsert);
+
+				foreach(i, AstIndex item; aliasArray.items)
+				{
+					// Create scope for key/value vars
+					AstIndex instance_scope = c.appendAst!Scope;
+					Scope* newScope = c.getAst!Scope(instance_scope);
+					newScope.parentScope = staticForeachNode.parentScope;
+					newScope.debugName = "#foreach instance";
+					newScope.kind = newScope.parentScope.get!Scope(c).kind;
+
+					CloneState cloneState = clone_node(staticForeachNode.body_start, staticForeachNode.after_body, instance_scope, c);
+
+					if (staticForeachNode.keyId.isDefined) {
+						AstIndex keyNode = c.appendAst!EnumMemberDecl(staticForeachNode.loc);
+						auto enumMemberNode = keyNode.get!EnumMemberDecl(c);
+						enumMemberNode.initValue = c.constants.add(i, IsSigned.no, IrArgSize.size64);
+						enumMemberNode.id = staticForeachNode.keyId;
+						enumMemberNode.type = CommonAstNodes.type_u64;
+						enumMemberNode.state = AstNodeState.type_check_done;
+						newScope.insert(staticForeachNode.keyId, keyNode, c);
+					}
+					newScope.insert(staticForeachNode.valueId, item, c);
+
+					size_t insertAt = insertPoint + i * bodySize;
+					foreach(j, AstIndex node; staticForeachNode.body)
+					{
+						cloneState.fixAstIndex(node);
+						items[insertAt+j] = node;
+					}
+				}
+
+				// we replace #foreach with its children
+				//   #foreach is removed from the list (-1)
+				//   children are inserted (numItemsToInsert)
+				sizeDelta += numItemsToInsert - 1;
+				sizeDelta += require_name_register_self_sub_array(items, insertPoint, insertPoint+numItemsToInsert, state);
+			}
+			else
+			{
+				c.error(iter.loc, "#foreach cannot iterate over %s", iter.astType);
+			}
+
+			condDecl = staticForeachNode.next;
+		}
 	}
 
 	return sizeDelta;
@@ -86,12 +150,13 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 // register own identifier in parent scope
 void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref NameRegisterState state)
 {
-	AstNode* node = state.context.getAstNode(nodeIndex);
+	CompilationContext* c = state.context;
+	AstNode* node = c.getAstNode(nodeIndex);
 
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
-			state.context.circular_dependency; assert(false);
+			c.circular_dependency; assert(false);
 		case parse_done:
 			// all requirement are done
 			break;
@@ -99,13 +164,13 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 			// already name registered
 			return;
 		default:
-			state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
+			c.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
 
 	switch(node.astType) with(AstType)
 	{
-		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
-		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
+		case error: c.internal_error(node.loc, "Visiting error node"); break;
+		case abstract_node: c.internal_error(node.loc, "Visiting abstract node"); break;
 
 		case decl_alias: name_register_self_alias(nodeIndex, cast(AliasDeclNode*)node, state); break;
 		case decl_import: name_register_self_import(cast(ImportDeclNode*)node, state); break;
@@ -115,18 +180,28 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 		case decl_enum: name_register_self_enum(nodeIndex, cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: name_register_self_enum_member(nodeIndex, cast(EnumMemberDecl*)node, state); break;
 		case decl_static_if:
-			auto staticIf = node.as!StaticIfDeclNode(state.context);
-			if (state.lastStaticIf)
-				state.lastStaticIf.get!StaticIfDeclNode(state.context).next = nodeIndex;
+			auto staticIf = node.as!StaticIfDeclNode(c);
+			if (state.lastCondDecl)
+				state.lastCondDecl.get!StaticIfDeclNode(c).next = nodeIndex;
 			else
-				state.firstStaticIf = nodeIndex;
-			staticIf.prev = state.lastStaticIf;
+				state.firstCondDecl = nodeIndex;
+			staticIf.prev = state.lastCondDecl;
 			staticIf.arrayIndex = arrayIndex;
-			state.lastStaticIf = nodeIndex;
+			state.lastCondDecl = nodeIndex;
+			break;
+		case decl_static_foreach:
+			auto staticForeach = node.as!StaticForeachDeclNode(c);
+			if (state.lastCondDecl)
+				state.lastCondDecl.get!StaticForeachDeclNode(c).next = nodeIndex;
+			else
+				state.firstCondDecl = nodeIndex;
+			staticForeach.prev = state.lastCondDecl;
+			staticForeach.arrayIndex = arrayIndex;
+			state.lastCondDecl = nodeIndex;
 			break;
 		case decl_template: name_register_self_template(nodeIndex, cast(TemplateDeclNode*)node, state); break;
 
-		default: state.context.internal_error(node.loc, "Visiting %s node", node.astType); break;
+		default: c.internal_error(node.loc, "Visiting %s node", node.astType); break;
 	}
 }
 
@@ -163,7 +238,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case decl_enum: name_register_nested_enum(nodeIndex, cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: name_register_nested_enum_member(nodeIndex, cast(EnumMemberDecl*)node, state); break;
 		case decl_static_assert: name_register_nested_static_assert(cast(StaticAssertDeclNode*)node, state); break;
-		case decl_static_if: name_register_nested_static_if(nodeIndex, cast(StaticIfDeclNode*)node, state); break;
+		case decl_static_if: assert(false);
 
 		case stmt_block: name_register_nested_block(cast(BlockStmtNode*)node, state); break;
 		case stmt_if: name_register_nested_if(cast(IfStmtNode*)node, state); break;
@@ -191,7 +266,12 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case literal_array: assert(false);
 
 		case type_basic: assert(false);
-		case type_func_sig: name_register_nested_func_sig(cast(FunctionSignatureNode*)node, state); break;
+		case type_func_sig:
+			// Hack to force expantion of variadic parameters in the function signature before body gets to name register
+			// #if and #foreach are resolved in name register, so they wont see expanded variadic parameters
+			name_register_nested_func_sig(cast(FunctionSignatureNode*)node, state);
+			require_name_resolve(nodeIndex, state.context);
+			break;
 		case type_ptr: name_register_nested_ptr(cast(PtrTypeNode*)node, state); break;
 		case type_static_array: name_register_nested_static_array(cast(StaticArrayTypeNode*)node, state); break;
 		case type_slice: name_register_nested_slice(cast(SliceTypeNode*)node, state); break;
@@ -204,6 +284,8 @@ struct NameRegisterState
 {
 	CompilationContext* context;
 
-	AstIndex firstStaticIf;
-	AstIndex lastStaticIf;
+	// first #if or #foreach in a block
+	AstIndex firstCondDecl;
+	// last #if or #foreach in a block
+	AstIndex lastCondDecl;
 }

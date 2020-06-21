@@ -5,8 +5,8 @@
 	+ #assert
 	- macros (templated function that is inlined and can access inline scope/insert stuff into outer scope)
 	- meta types
-		- #alias
-		- #type
+		+ $alias
+		+ $type
 		- #value
 		- #code
 		- #parameter
@@ -17,12 +17,15 @@
 		- #is* -> bool
 		- get parameter list with access to name, type, attributes and default value
 	- # attributes
+		+ #inline
+		+- #ctfe (only inferred right now)
 		- #likely
 		- #unlikely
 		- #likely_when(<expr>)
 		- #dllimport(id)
-	- template parameter inference (for function templates) IFTI
-	- variadic template arguments (requires inference)
+	+ template parameter inference (for function templates) IFTI
+		- only simple types
+	+ variadic template arguments (requires inference)
 	- a way to perform IFTI from user code (pass template args with names and runtime types and get)
 	- #parameter(#type type, string name, type default_value, #alias[] attributes)
 	- #function(string name, #type return_type, #parameter[] parameters, #alias[] attributes)
@@ -44,9 +47,9 @@
 
 - conditional compilation
 	+ #if
+	+ #foreach
 	- #version
 	- #debug
-	- #foreach
 
 + function pointer type <ret> function(<args>)
 	+ call by pointer
@@ -195,6 +198,9 @@ x globals need to have IrIndex to initializer and coexist with raw data initiali
 
 
 [IR]
+- Inlining call that passes u8 constant, and inside u8 is zero extended doesn't compile
+  because zext of contant is not possible in amd64. This needs to be constant folded in later pass.
+  Make worklist or recursive constant folder.
 - Consider storing vreg users in hash map instead of array.
 - Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
 - IrBuilder must prevent adding instructions from wrong instruction set

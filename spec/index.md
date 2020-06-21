@@ -221,18 +221,22 @@ void fun()
 ```
 
 
-### \#foreach (NEI)
-`#foreach` will copy a body for each iteration, declaring element and optional index.
-`#foreach` does not introduce a new scope.
+### \#foreach
+* `#foreach` will copy a body for each iteration, declaring element and optional index.
+* `#foreach` does not introduce a new scope.
+* Only alias arrays are supported for now.
 
 ```D
 $alias selectPrintFunc($type T) {...}
 void write[$alias[]... Args](Args args) {
-    #foreach(i, $alias argType; Args) {
+    // i is enum member containing current index, argType points to the corresponding element of Args
+    // index is optional
+    #foreach(i, argType; Args) {
         selectPrintFunc(argType)(args[i]);
     }
     // or
-    #foreach($alias arg; args) {
+    // args is $alias[], `arg` will point to the corresponding parameter of `write`
+    #foreach(arg; args) {
         selectPrintFunc(typeof(arg))(arg);
     }
 }
@@ -337,6 +341,7 @@ bool $isFunction($alias a)
 bool $isStruct($alias a)
 bool $isTemplate($alias a)
 bool $isTemplateInstance($alias a)
+bool $isInstanceOf($alias a, $alias template)
 bool $isEnum($alias a)
 
 bool $isStruct($type type)

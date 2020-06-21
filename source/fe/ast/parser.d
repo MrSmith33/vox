@@ -248,6 +248,8 @@ struct Parser
 				return parse_hash_if();
 			case HASH_ASSERT:
 				return parse_hash_assert();
+			case HASH_FOREACH:
+				return parse_hash_foreach();
 			default: // <func_declaration> / <var_declaration>
 				AstIndex funcIndex = parse_var_func_declaration(ConsumeTerminator.yes, TokenType.SEMICOLON);
 				AstNode* node = context.getAstNode(funcIndex);
@@ -797,27 +799,27 @@ struct Parser
 		return make!StaticAssertDeclNode(start, condition, message);
 	}
 
+	AstNodes parseItems(alias itemParser)()
+	{
+		AstNodes items;
+		TokenIndex start = tok.index;
+		if (tok.type == TokenType.LCURLY)
+		{
+			nextToken; // skip {
+			while (tok.type != TokenType.RCURLY)
+			{
+				if (tok.type == TokenType.EOI) break;
+				items.put(context.arrayArena, itemParser());
+			}
+			expectAndConsume(TokenType.RCURLY);
+		}
+		else
+			items.put(context.arrayArena, itemParser());
+		return items;
+	}
+
 	AstIndex parse_hash_if() /* "#if" <paren_expr> <statement/decl> */
 	{
-		AstNodes parseItems(alias itemParser)()
-		{
-			AstNodes items;
-			TokenIndex start = tok.index;
-			if (tok.type == TokenType.LCURLY)
-			{
-				nextToken; // skip {
-				while (tok.type != TokenType.RCURLY)
-				{
-					if (tok.type == TokenType.EOI) break;
-					items.put(context.arrayArena, itemParser());
-				}
-				expectAndConsume(TokenType.RCURLY);
-			}
-			else
-				items.put(context.arrayArena, itemParser());
-			return items;
-		}
-
 		TokenIndex start = tok.index;
 		nextToken; // skip #if
 		AstIndex condition = paren_expr();
@@ -841,6 +843,47 @@ struct Parser
 			}
 		}
 		return make!StaticIfDeclNode(start, condition, thenStatements, elseStatements);
+	}
+
+	AstIndex parse_hash_foreach() /* "#foreach" "(" [<index_id>], <val_id> ";" <ct_expr> ")" <statement> */
+	{
+		TokenIndex start = tok.index;
+		nextToken; // skip "#foreach"
+
+		expectAndConsume(TokenType.LPAREN); // (
+
+		Array!AstIndex init_statements;
+
+		// <init>
+		Identifier keyId = expectIdentifier;
+		Identifier valId;
+		if (tok.type == TokenType.COMMA)
+		{
+			nextToken; // skip ","
+			valId = expectIdentifier;
+			expectAndConsume(TokenType.SEMICOLON);
+		}
+		else if (tok.type == TokenType.SEMICOLON)
+		{
+			valId = keyId;
+			keyId = Identifier.init;
+			expectAndConsume(TokenType.SEMICOLON);
+		}
+		else
+		{
+			context.unrecoverable_error(tok.index,
+				"Expected `;` after key and value of #foreach, instead got `%s`",
+				context.getTokenString(tok.index));
+		}
+
+		// <ct_expr>
+		AstIndex ct_expr = expr(PreferType.no);
+		expectAndConsume(TokenType.RPAREN);
+
+		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
+		AstNodes body = statement_as_array;
+		AstIndex after_body = AstIndex(context.astBuffer.uintLength);
+		return make!StaticForeachDeclNode(start, currentScopeIndex, keyId, valId, ct_expr, body, body_start, after_body);
 	}
 
 	AstNodes parse_enum_body(AstIndex type) { // { id [= val], ... }
@@ -931,6 +974,8 @@ struct Parser
 				return parse_hash_if();
 			case TokenType.HASH_ASSERT:
 				return parse_hash_assert();
+			case TokenType.HASH_FOREACH:
+				return parse_hash_foreach();
 
 			// statements
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */

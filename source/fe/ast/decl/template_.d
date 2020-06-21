@@ -105,7 +105,7 @@ struct CloneState
 	AstIndex cloned_from;
 	AstIndex cloned_to;
 
-	/// We want to redirect references to this scope to `instance_scope`
+	/// We want to redirect references to this scope into `instance_scope`
 	AstIndex template_parent_scope;
 	/// Scope where template was instantiated. Contains template arguments
 	AstIndex instance_scope;
@@ -132,6 +132,7 @@ struct CloneState
 		// null is automatically out of bounds
 		if (_scope.storageIndex >= cloned_from.storageIndex && _scope.storageIndex < cloned_to.storageIndex)
 		{
+			//writefln("fix %s -> %s", _scope, AstIndex(_scope.storageIndex + offset));
 			_scope.storageIndex += offset;
 			fixScope(_scope.get_scope(context).parentScope);
 			// Scope.symbols/imports dont need fixing, because no symbols are registered at this point
@@ -139,7 +140,8 @@ struct CloneState
 		else if (_scope == template_parent_scope)
 		{
 			assert(_scope.isDefined);
-			// reidrect to this scope for instance argument resolution
+			// redirect to this scope for instance argument resolution
+			//writefln("fix %s -> %s", _scope, instance_scope);
 			_scope = instance_scope;
 		}
 	}
@@ -241,7 +243,9 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	}
 
 	// Clone template body and apply fixes
-	AstIndex instance = clone_node(templ.body, templ.body_start, templ.after_body, instance_scope, c);
+	CloneState cloneState = clone_node(templ.body_start, templ.after_body, instance_scope, c);
+	AstIndex instance = templ.body;
+	cloneState.fixAstIndex(instance);
 
 	// Node may need to know if is a result of template instantiation
 	instance.flags(c) |= AstFlags.isTemplateInstance;
@@ -277,10 +281,10 @@ void set_instance_id(AstIndex instance_index, AstNodes instance_args, Compilatio
 }
 
 /// Perform copiying of AST subtree and index fixing
-/// nodeIndex is the root of subtree
 /// node_start..after_node is the range of slots to be copied
 /// instance_scope is the scope created around AST subtree copy
-AstIndex clone_node(AstIndex nodeIndex, AstIndex node_start, AstIndex after_node, AstIndex instance_scope, CompilationContext* c)
+/// All nodes need to fixed via CloneState through indicies pointing inside cloned tree
+CloneState clone_node(AstIndex node_start, AstIndex after_node, AstIndex instance_scope, CompilationContext* c)
 {
 	c.assertf(after_node.storageIndex > node_start.storageIndex, "%s > %s", node_start, after_node);
 	AstIndex slots_start = AstIndex(c.astBuffer.uintLength);
@@ -301,9 +305,7 @@ AstIndex clone_node(AstIndex nodeIndex, AstIndex node_start, AstIndex after_node
 		instance_scope : instance_scope,
 	};
 
-	state.fixAstIndex(nodeIndex);
-
-	return nodeIndex;
+	return state;
 }
 
 /// Applies offset to indicies pointing into copied area
@@ -330,6 +332,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case decl_enum: post_clone_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: post_clone_enum_member(cast(EnumMemberDecl*)node, state); break;
 		case decl_static_assert: post_clone_static_assert(cast(StaticAssertDeclNode*)node, state); break;
+		case decl_static_foreach: post_clone_static_foreach(cast(StaticForeachDeclNode*)node, state); break;
 		case decl_static_if: post_clone_static_if(cast(StaticIfDeclNode*)node, state); break;
 		case decl_template: post_clone_template(cast(TemplateDeclNode*)node, state); break;
 		case decl_template_param: break;

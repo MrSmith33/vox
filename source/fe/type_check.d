@@ -90,6 +90,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case decl_enum: type_check_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: type_check_enum_member(cast(EnumMemberDecl*)node, state); break;
 		case decl_static_assert: type_check_static_assert(cast(StaticAssertDeclNode*)node, state); break;
+		case decl_static_foreach: assert(false);
 		case decl_static_if: assert(false);
 		case decl_template: assert(false);
 		case decl_template_param: assert(false);

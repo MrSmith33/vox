@@ -36,10 +36,17 @@ struct IdentifierMap {
 	Identifier getOrRegFormatted(Args...)(CompilationContext* c, const(char)[] fmt, Args args) {
 		assert(fmt.length > 0);
 		import std.format : formattedWrite;
-		tempBuf.clear;
-		tempBuf.putf(fmt, args);
-		const(char)[] idString = tempBuf.data.data;
-		return getOrReg(c, idString);
+		auto len1 = stringDataBuffer.length;
+		formattedWrite(stringDataBuffer, fmt, args);
+		auto len2 = stringDataBuffer.length;
+
+		const(char)[] idString = stringDataBuffer.bufPtr[len1..len2];
+		Identifier id = getOrRegNoDup(c, idString);
+		if (id.index + 1 != strings.length) {
+			// this is old id, remove data from buffer
+			stringDataBuffer.length = len1;
+		}
+		return id;
 	}
 
 	Identifier getOrReg(CompilationContext* c, const(char)[] str) {

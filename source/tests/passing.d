@@ -3611,3 +3611,49 @@ immutable test167 = q{--- test167
 	}
 	#assert(fun(42) == 42);
 };
+
+
+@TestInfo()
+immutable test168 = q{--- test168
+	// #foreach
+	i64 fun[Args...](Args args) {
+		i64 sum = 0;
+		#foreach(i, arg; args) {
+			sum += arg;
+		}
+		return sum;
+	}
+	#assert(fun(1, 2, 3) == 6);
+};
+
+
+@TestInfo(&tester169, [
+	HostSymbol("printStr", cast(void*)&external_print_string),
+	HostSymbol("printInt", cast(void*)&external_print_i64_func)])
+immutable test169 = q{--- test169
+	// #foreach with multiple statements
+	void printStr(u8[]);
+	void printInt(i64 i);
+	$alias selectPrintFunc($type T) {
+		if ($isInteger(T))
+			return printInt;
+		if ($isSlice(T))
+			return printStr;
+		$compileError("Invalid type");
+	}
+	void write[Args...](Args args) {
+		#foreach(i, arg; args) {
+			alias func = selectPrintFunc(Args[i]);
+			func(arg);
+		}
+	}
+	void run() {
+		write("Hello", 42);
+	}
+};
+void tester169(ref TestContext ctx) {
+	auto run = ctx.getFunctionPtr!(void)("run");
+	run();
+	assert(testSink.text == "Hello42");
+	testSink.clear;
+}

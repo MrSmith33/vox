@@ -34,9 +34,3 @@ void post_clone_static_if(StaticIfDeclNode* node, ref CloneState state)
 	state.fixAstNodes(node.thenItems);
 	state.fixAstNodes(node.elseItems);
 }
-
-void name_register_nested_static_if(AstIndex nodeIndex, StaticIfDeclNode* node, ref NameRegisterState state) {
-	node.state = AstNodeState.name_register_nested;
-	require_name_register(node.condition, state);
-	node.state = AstNodeState.name_register_nested_done;
-}

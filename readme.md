@@ -2,18 +2,89 @@
 
 [![Build status](https://ci.appveyor.com/api/projects/status/3os1s4a34hl83r0b?svg=true)](https://ci.appveyor.com/project/MrSmith33/tiny-jit)
 
-WIP language name is `Vox`, file extension is `.vx`.
-
 [Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
 [Channel on /r/ProgrammingLanguages discord](https://discord.gg/HpYYhH4)
 
+# Vox programming language
+
+**Vox** is a multiparadigm programming language inspired by D (60%), Jai (30%) and Zig (10%).
+
+## Main features
+
+- Fast compilation
+- Strong metaprogramming
+- Can be used for scripting and standalone programs (both JIT and AOT compilation)
+- No dependencies (except D compiler)
+
+## Similarities to D language
+
+- Same syntax for most portions of the language (struct, function, enum, for, while, if, UFCS, slices, arrays)
+- Conditional compilation
+- Templates, Variadic templates and functions
+- C interoperability
+
+## Differences from D language
+
+- No GC, minimal runtime, no classes (only structs), no exceptions
+- More compile-time features, faster CTFE
+- Using templates for heavy calculations is discouraged, instead CTFE can be used for introspection, and code generation.
+- Macros (WIP)
+- No C++ interoperability
 
 
-# Major features
+## Syntax examples
 
-- Can be embedded into D programs as JIT-compiler (can call host functions)
-- Works as a regular AOT compiler producing Win64 executables (with dll importing)
-- Only requires D compiler, no other dependencies
+```D
+i32 fib(i32 number) {
+    if (number < 1) return 0;
+    if (number < 3) return 1;
+    return fib(number-1) + fib(number-2);
+}
+
+struct Point {
+    i32 x;
+    i32 y;
+}
+
+T min[T](T a, T b) {
+    if (a < b) return a;
+    return b;
+}
+```
+
+- Roguelike tutorial using SDL2 - [repo](https://github.com/MrSmith33/rltut_2019)
+- Example of JIT compilation for amd64 from D code:
+
+<details>
+  <summary>code</summary>
+  
+```D
+// Source code
+string source = q{
+    void test(i32* array, i32 index, i32 value) {
+        array[index] = value;
+    }
+};
+
+// Error handling is omitted
+Driver driver;
+driver.initialize(jitPasses);
+scope(exit) driver.releaseMemory;
+driver.beginCompilation();
+driver.addModule(SourceFileInfo("test", source));
+driver.compile();
+driver.markCodeAsExecutable();
+
+// Get function pointer
+auto testFun = driver.context.getFunctionPtr!(void, int*, int, int)("test");
+
+// Use compiled function
+int[2] val = [42, 56];
+testFun(val.ptr, 1, 10);
+assert(val[1] == 10);
+```
+  
+</details>
 
 # Project goals
 
@@ -38,50 +109,6 @@ Target platforms (Only win64 is supported now):
 - WebAssembly (browsers)
 - ARM (Android, Linux)
 - SPIR-V (Vulkan/OpenCL/OpenGL shaders)
-
-# Compiler
-
-## Passes
-
-* Parsing - produces AST
-* Semantic insert - Fills scopes with identifiers
-* Semantic lookup - Resolves symbol references
-* Semantic types - Type checking
-* IR gen - Conversion of AST into linear IR in SSA form
-* Optimization - optimizes machine independent IR
-* IR to LIR - Conversion of high level IR to machine code IR in SSA form (LIR)
-* Live intervals - Collects liveness info about values for use in register allocation
-* Linear Scan Register Allocation - Replaces virtual registers with physical ones
-* Stack layout - Calculates offsets for stack slots
-* Code gen - Converts LIR into machine code
-* Linking
-* Executable generation (optional, used in non-JIT mode)
-
-
-## Source code
-
-`source` directory content:
-
-* `/asmtest` - tests for instruction encodings.
-* `/ir` - IR specific stuff.
-* `amd64asm.d` - instruction encoding for amd64 architecture.
-* `ast.d` - Abstract Syntax Tree nodes.
-* `ast_to_ir.d` - IR generation.
-* `bench.d` - compilation benchmark.
-* `driver.d` - compiler driver.
-* `emit_mc_amd64.d` - final machine code generation for amd64 arch.
-* `identifier.d` - Identifier type.
-* `ir_test.d` - implementation of SSA IR construction algorithm.
-* `ir_to_lir_amd64.d` - instruction selection for amd64 arch.
-* `lir_amd64.d` - LIR for amd64 arch.
-* `liveness.d` - liveness analysis.
-* `main.d` - compiler entry.
-* `optimize.d` - some optimizations for IR.
-* `pecoff.d` - loading of `.lib`, `.obj` files. Generation of `.exe` files. Linking utilities. Dumping utilities. Works with files in PE/COFF format.
-* `register_allocation.d` - Linear Scan Register Allocation algorithm.
-* `semantics.d` - semantic analysis passes.
-* `stack_layout.d` - layout of stack slots.
-* `tests.d` - compiler test suite.
 
 # Running & testing
 
@@ -152,48 +179,51 @@ Prints content of tjc.pdb file into stdout.
 tjc pdb_dump tjc.pdb
 ```
 
-# Stats
+# Compiler overview
 
-- test build time: 3.5s
-- release cli build time: 34s
-- jit tests: 151 tests in 33ms
+## Stats
 
-# What works
+- Impl size: 30k LoC of D, 2MB exe
+- Time to compile: 4.2s debug / 45s release
+- Test suite: 52ms for 184 tests
 
-- win64 executable generation
-- dll importing
-- Example of JIT compilation for amd64 from D code:
+## Passes
 
-<details>
-  <summary>code</summary>
-  
-```D
-// Source code
-string source = q{
-    void test(i32* array, i32 index, i32 value) {
-        array[index] = value;
-    }
-};
+* Parsing - produces AST
+* Semantic insert - Fills scopes with identifiers
+* Semantic lookup - Resolves symbol references
+* Semantic types - Type checking
+* IR gen - Conversion of AST into linear IR in SSA form
+* Optimization - optimizes machine independent IR
+* IR to LIR - Conversion of high level IR to machine code IR in SSA form (LIR)
+* Live intervals - Collects liveness info about values for use in register allocation
+* Linear Scan Register Allocation - Replaces virtual registers with physical ones
+* Stack layout - Calculates offsets for stack slots
+* Code gen - Converts LIR into machine code
+* Linking
+* Executable generation (optional, used in non-JIT mode)
 
-// Error handling is omitted
-Driver driver;
-driver.initialize(jitPasses);
-scope(exit) driver.releaseMemory;
-driver.beginCompilation();
-driver.addModule(SourceFileInfo("test", source));
-driver.compile();
-driver.markCodeAsExecutable();
+## Source code
 
-// Get function pointer
-auto testFun = driver.context.getFunctionPtr!(void, int*, int, int)("test");
+`source` directory content:
 
-// Use compiled function
-int[2] val = [42, 56];
-testFun(val.ptr, 1, 10);
-assert(val[1] == 10);
-```
-  
-</details>
-
-
-- Roguelike tutorial using SDL2 - [repo](https://github.com/MrSmith33/rltut_2019)
+* `/asmtest` - tests for instruction encodings.
+* `/ir` - IR specific stuff.
+* `amd64asm.d` - instruction encoding for amd64 architecture.
+* `ast.d` - Abstract Syntax Tree nodes.
+* `ast_to_ir.d` - IR generation.
+* `bench.d` - compilation benchmark.
+* `driver.d` - compiler driver.
+* `emit_mc_amd64.d` - final machine code generation for amd64 arch.
+* `identifier.d` - Identifier type.
+* `ir_test.d` - implementation of SSA IR construction algorithm.
+* `ir_to_lir_amd64.d` - instruction selection for amd64 arch.
+* `lir_amd64.d` - LIR for amd64 arch.
+* `liveness.d` - liveness analysis.
+* `main.d` - compiler entry.
+* `optimize.d` - some optimizations for IR.
+* `pecoff.d` - loading of `.lib`, `.obj` files. Generation of `.exe` files. Linking utilities. Dumping utilities. Works with files in PE/COFF format.
+* `register_allocation.d` - Linear Scan Register Allocation algorithm.
+* `semantics.d` - semantic analysis passes.
+* `stack_layout.d` - layout of stack slots.
+* `tests.d` - compiler test suite.

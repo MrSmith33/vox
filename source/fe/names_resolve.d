@@ -78,6 +78,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case decl_enum: name_resolve_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: name_resolve_enum_member(cast(EnumMemberDecl*)node, state); break;
 		case decl_static_assert: name_resolve_static_assert(cast(StaticAssertDeclNode*)node, state); break;
+		case decl_static_foreach: assert(false);
 		case decl_static_if: assert(false);
 		case decl_template: assert(false);
 		case decl_template_param: assert(false);

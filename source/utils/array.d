@@ -116,38 +116,42 @@ struct Array(T)
 	{
 		assert(at + numItemsToRemove <= _length);
 
-		size_t numItems = itemsToInsert.length;
+		size_t numItemsToInsert = itemsToInsert.length;
 
-		if (numItems == numItemsToRemove)
+		replaceAtVoid(arena, at, numItemsToRemove, numItemsToInsert);
+		foreach(i; 0..numItemsToInsert)
+			this[at+i] = itemsToInsert[i];
+	}
+
+	void replaceAtVoid(ref ArrayArena arena, size_t at, size_t numItemsToRemove, size_t numItemsToInsert)
+	{
+		assert(at + numItemsToRemove <= _length);
+
+		if (numItemsToInsert == numItemsToRemove)
 		{
-			foreach(i; 0..numItems)
-				this[at+i] = itemsToInsert[i];
+			// no resize or moves needed
 		}
-		else if (numItems >= numItemsToRemove)
+		else if (numItemsToInsert >= numItemsToRemove)
 		{
-			size_t delta = numItems - numItemsToRemove;
+			size_t delta = numItemsToInsert - numItemsToRemove;
 
 			if (_length + delta > _capacity) extend(arena, cast(uint)delta);
 
-			foreach_reverse(i; at+numItemsToRemove.._length)
+			foreach_reverse(i; at + numItemsToRemove.._length)
 			{
-				this[i+numItems] = this[i];
+				this[i + delta] = this[i];
 			}
-			foreach(i; 0..numItems)
-				this[at+i] = itemsToInsert[i];
 
 			_length += delta;
 		}
 		else
 		{
-			size_t delta = numItemsToRemove - numItems;
+			size_t delta = numItemsToRemove - numItemsToInsert;
 
-			foreach(i; at+numItemsToRemove.._length)
+			foreach(i; at + numItemsToRemove.._length)
 			{
-				this[i-delta] = this[i];
+				this[i - delta] = this[i];
 			}
-			foreach(i; 0..numItems)
-				this[at+i] = itemsToInsert[i];
 
 			_length -= delta;
 		}

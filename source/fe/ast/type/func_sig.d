@@ -77,7 +77,9 @@ void expandVariadicParam(FunctionSignatureNode* node, uint variadicIndex, Compil
 
 	foreach(size_t i, AstIndex type; types.items)
 	{
-		AstIndex newParamIndex = c.appendAst!VariableDeclNode(param.loc, AstIndex.init, type, AstIndex.init, param.id, cast(ushort)(param.scopeIndex + i));
+		string origId = c.idString(param.id);
+		Identifier paramId = c.idMap.getOrRegFormatted(c, "%s_%s", origId, i);
+		AstIndex newParamIndex = c.appendAst!VariableDeclNode(param.loc, AstIndex.init, type, AstIndex.init, paramId, cast(ushort)(param.scopeIndex + i));
 		auto newParam = newParamIndex.get!VariableDeclNode(c);
 		newParam.flags |= VariableFlags.isParameter;
 		newParam.state = AstNodeState.name_resolve_done;
