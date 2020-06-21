@@ -266,12 +266,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case literal_array: assert(false);
 
 		case type_basic: assert(false);
-		case type_func_sig:
-			// Hack to force expantion of variadic parameters in the function signature before body gets to name register
-			// #if and #foreach are resolved in name register, so they wont see expanded variadic parameters
-			name_register_nested_func_sig(cast(FunctionSignatureNode*)node, state);
-			require_name_resolve(nodeIndex, state.context);
-			break;
+		case type_func_sig: name_register_nested_func_sig(cast(FunctionSignatureNode*)node, state); break;
 		case type_ptr: name_register_nested_ptr(cast(PtrTypeNode*)node, state); break;
 		case type_static_array: name_register_nested_static_array(cast(StaticArrayTypeNode*)node, state); break;
 		case type_slice: name_register_nested_slice(cast(SliceTypeNode*)node, state); break;

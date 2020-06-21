@@ -262,14 +262,25 @@ T min[T](T a, T b) {
 - `T Identifier` some compile-time known value of type `T` (NEI).
 
 ```D
-T min[T](T a, T b) {
+T min[$type T](T a, T b) {
     if (a < b) return a;
     return b;
 }
 #assert(min[i32](42, 2) == 2);
 ```
 
-- `$alias[]...` Variadic parameters. Must be the last template argument. (args with default value may follow). Intead of `$alias` its subtypes can be used.  (NEI).
+- `Identifier...` Variadic parameters. Must be the last template argument. (args with default value may follow).
+
+`...` is needed on type of `args` because compiler needs to know that signature has expanded parameter type before `#if` and `#foreach` are expanded.
+
+```D
+void write[Args...](Args... args) {
+    #foreach(i, arg; args) {
+        alias func = selectPrintFunc(Args[i]);
+        func(arg);
+    }
+}
+```
 
 ### Struct templates
 

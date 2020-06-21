@@ -56,6 +56,7 @@ void post_clone_var(VariableDeclNode* node, ref CloneState state)
 
 void name_register_self_var(AstIndex nodeIndex, VariableDeclNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_self;
+	// registered during expansion in function signature
 	node.parentScope.insert_scope(node.id, nodeIndex, state.context);
 	node.state = AstNodeState.name_register_self_done;
 }
@@ -70,13 +71,6 @@ void name_resolve_var(VariableDeclNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.type, state);
 	if (node.initializer) require_name_resolve(node.initializer, state);
-	if (node.isParameter)
-	{
-		if (node.type.get_effective_node(state.context).astType(state.context) == AstType.decl_alias_array)
-		{
-			node.flags |= VariableFlags.isVariadicParam;
-		}
-	}
 	node.state = AstNodeState.name_resolve_done;
 }
 

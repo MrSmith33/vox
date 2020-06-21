@@ -3469,7 +3469,7 @@ test153(2, 20): Error: Cannot have template parameters after variadic parameter 
 @TestInfo()
 immutable test154 = q{--- test154
 	// Variadic template arg (0 args)
-	void fun[Args...](Args args) {
+	void fun[Args...](Args... args) {
 		#assert(Args.length == 0);
 	}
 	void run(){ fun(); }
@@ -3479,7 +3479,7 @@ immutable test154 = q{--- test154
 @TestInfo()
 immutable test155 = q{--- test155
 	// Variadic template arg (1 arg)
-	void fun[Args...](Args args) {
+	void fun[Args...](Args... args) {
 		#assert(Args.length == 1);
 	}
 	void run(){ fun(42); }
@@ -3489,7 +3489,7 @@ immutable test155 = q{--- test155
 @TestInfo()
 immutable test156 = q{--- test156
 	// Variadic template arg (2 args)
-	void fun[Args...](Args args) {
+	void fun[Args...](Args... args) {
 		#assert(Args.length == 2);
 	}
 	void run(){ fun(42, 4096); }
@@ -3499,7 +3499,7 @@ immutable test156 = q{--- test156
 @TestInfo()
 immutable test157 = q{--- test157
 	// Variadic template arg (3 args)
-	void fun[Args...](Args args) {
+	void fun[Args...](Args... args) {
 		#assert(Args.length == 3);
 	}
 	void run(){ fun(42, 4096, 200000); }
@@ -3509,7 +3509,7 @@ immutable test157 = q{--- test157
 @TestInfo()
 immutable test158 = q{--- test158
 	// Variadic template arg, same instance (2 args)
-	void fun[Args...](Args args) {
+	void fun[Args...](Args... args) {
 		#assert(Args.length == 3);
 	}
 	void run(){
@@ -3522,7 +3522,7 @@ immutable test158 = q{--- test158
 @TestInfo()
 immutable test159 = q{--- test159
 	// Variadic template arg, 2 different instances (2 args)
-	void fun[Args...](Args args) {}
+	void fun[Args...](Args... args) {}
 	void run(){
 		fun(42, 4096);
 		fun(50, 3000, 300000);
@@ -3533,7 +3533,7 @@ immutable test159 = q{--- test159
 @TestInfo()
 immutable test160 = q{--- test160
 	// Non-variadic + Variadic template arg
-	void fun[Args...](u8 par, Args args) {
+	void fun[Args...](u8 par, Args... args) {
 		#assert(Args.length == 1);
 	}
 	void run(){ fun(42, 4096); }
@@ -3543,7 +3543,7 @@ immutable test160 = q{--- test160
 @TestInfo()
 immutable test161 = q{--- test161
 	// Non-variadic + 0 Variadic template args
-	void fun[Args...](u8 par, Args args) {
+	void fun[Args...](u8 par, Args... args) {
 		#assert(Args.length == 0);
 	}
 	void run(){ fun(42); }
@@ -3563,7 +3563,7 @@ immutable test162 = q{--- test162
 @TestInfo()
 immutable test163 = q{--- test163
 	// Non-variadic + 0 Variadic template args + default RT params
-	void fun[Args...](u8 par1, Args args, u8 par2 = 50) {
+	void fun[Args...](u8 par1, Args... args, u8 par2 = 50) {
 		#assert(Args.length == 0);
 	}
 	void run(){ fun(42); }
@@ -3573,7 +3573,7 @@ immutable test163 = q{--- test163
 @TestInfo()
 immutable test164 = q{--- test164
 	// Non-variadic + 0 Variadic template args + non-default RT param
-	void fun[Args...](u8 par1, Args args, u8 par2) {
+	void fun[Args...](u8 par1, Args... args, u8 par2) {
 		#assert(Args.length == 0);
 	}
 	void run(){ fun(42, 50); }
@@ -3583,7 +3583,7 @@ immutable test164 = q{--- test164
 @TestInfo()
 immutable test165 = q{--- test165
 	// Non-variadic + 1 Variadic template args + non-default RT param
-	void fun[Args...](u8 par1, Args args, u8 par2) {
+	void fun[Args...](u8 par1, Args... args, u8 par2) {
 		#assert(Args.length == 1);
 	}
 	void run(){ fun(42, 50, 60); }
@@ -3593,7 +3593,7 @@ immutable test165 = q{--- test165
 @TestInfo()
 immutable test166 = q{--- test166
 	// Access variadic variable
-	u8 fun[Args...](Args args) {
+	u8 fun[Args...](Args... args) {
 		return args[0];
 	}
 	#assert(fun(42) == 42);
@@ -3603,7 +3603,7 @@ immutable test166 = q{--- test166
 @TestInfo()
 immutable test167 = q{--- test167
 	// Access variadic variable
-	u8 fun[Args...](Args args) {
+	u8 fun[Args...](Args... args) {
 		alias arg0 = args[0];
 		alias T0 = Args[0];
 		T0 result = arg0;
@@ -3616,7 +3616,7 @@ immutable test167 = q{--- test167
 @TestInfo()
 immutable test168 = q{--- test168
 	// #foreach
-	i64 fun[Args...](Args args) {
+	i64 fun[Args...](Args... args) {
 		i64 sum = 0;
 		#foreach(i, arg; args) {
 			sum += arg;
@@ -3641,7 +3641,7 @@ immutable test169 = q{--- test169
 			return printStr;
 		$compileError("Invalid type");
 	}
-	void write[Args...](Args args) {
+	void write[Args...](Args... args) {
 		#foreach(i, arg; args) {
 			alias func = selectPrintFunc(Args[i]);
 			func(arg);
@@ -3657,3 +3657,27 @@ void tester169(ref TestContext ctx) {
 	assert(testSink.text == "Hello42");
 	testSink.clear;
 }
+
+
+@TestInfo()
+immutable test170 = q{
+--- test170_1
+	// Use name from other module in func signature
+	import test170_2;
+	void fun(Struct s){}
+--- test170_2
+	struct Struct {}
+};
+
+
+@TestInfo()
+immutable test171 = q{
+--- test171
+	// Variadic function parameter (2 expanded parameters)
+	void fun[Args...](Args... args, Args... args2) {
+		#assert(Args.length == 1);
+	}
+	void run(){ fun(42); }
+--- <error>
+test171(2, 38): Error: Cannot have two expanded parameters
+};

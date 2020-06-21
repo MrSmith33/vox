@@ -9,6 +9,8 @@ enum FuncSignatureFlags : ushort
 {
 	// Set if at least one of return or parameter types is meta type
 	isCtfeOnly = AstFlags.userFlag << 0,
+	// Function has parameter with expanded type
+	hasExpandedParam = AstFlags.userFlag << 1,
 }
 
 @(AstType.type_func_sig)
@@ -18,12 +20,16 @@ struct FunctionSignatureNode {
 	// parameters are owned by the function declaration or
 	// if it is part of function type literal then there is no owner
 	AstNodes parameters; // array of var declarations
+	/// Number of parameters before variadic parameter
+	/// Is equal to parameters.length when no variadic is present
+	ushort numParamsBeforeVariadic;
 	ubyte numDefaultArgs;
 	CallConvention callConvention = CallConvention.win64; // hardcoded for now
 	IrIndex irType; /// Index of function type
 	TypeNode* typeNode() { return cast(TypeNode*)&this; }
 
 	bool isCtfeOnly() { return cast(bool)(flags & FuncSignatureFlags.isCtfeOnly); }
+	bool hasExpandedParam() { return cast(bool)(flags & FuncSignatureFlags.hasExpandedParam); }
 }
 
 void print_func_sig(FunctionSignatureNode* node, ref AstPrintState state)
@@ -42,31 +48,24 @@ void name_register_nested_func_sig(FunctionSignatureNode* node, ref NameRegister
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.parameters, state);
 	node.state = AstNodeState.name_register_nested_done;
+	if (node.hasExpandedParam) expandVariadicParam(node, state.context);
 }
 
 void name_resolve_func_sig(FunctionSignatureNode* node, ref NameResolveState state)
 {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.returnType, state);
-	uint variadicIndex;
-	bool hasVariadic = false;
-	foreach(size_t i, ref AstIndex paramIndex; node.parameters)
-	{
-		require_name_resolve(paramIndex, state);
-
-		auto param = paramIndex.get!VariableDeclNode(state.context);
-		if (param.isVariadicParam) {
-			hasVariadic = true;
-			variadicIndex = cast(uint)i;
-		}
-	}
-	if (hasVariadic) expandVariadicParam(node, variadicIndex, state.context);
+	require_name_resolve(node.parameters, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
-void expandVariadicParam(FunctionSignatureNode* node, uint variadicIndex, CompilationContext* c)
+void expandVariadicParam(FunctionSignatureNode* node, CompilationContext* c)
 {
+	uint variadicIndex = node.numParamsBeforeVariadic;
 	auto param = node.parameters[variadicIndex].get!VariableDeclNode(c);
+	// we are still in name register pass, but we need to get to the alias array
+	require_name_resolve(param.type, c);
+
 	auto types = param.type.get_effective_node(c).get!AliasArrayDeclNode(c);
 
 	uint numVariadicParams = types.items.length;
@@ -77,8 +76,8 @@ void expandVariadicParam(FunctionSignatureNode* node, uint variadicIndex, Compil
 
 	foreach(size_t i, AstIndex type; types.items)
 	{
-		string origId = c.idString(param.id);
-		Identifier paramId = c.idMap.getOrRegFormatted(c, "%s_%s", origId, i);
+		string originalId = c.idString(param.id);
+		Identifier paramId = c.idMap.getOrRegFormatted(c, "__%s_%s", originalId, i);
 		AstIndex newParamIndex = c.appendAst!VariableDeclNode(param.loc, AstIndex.init, type, AstIndex.init, paramId, cast(ushort)(param.scopeIndex + i));
 		auto newParam = newParamIndex.get!VariableDeclNode(c);
 		newParam.flags |= VariableFlags.isParameter;
