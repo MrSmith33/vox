@@ -86,7 +86,7 @@ struct IrTypeStruct
 
 	IrTypeStructMember[0] members_payload;
 	/// This must be called on the value in the buffer, not stack-local value
-	IrTypeStructMember[] members() { return members_payload.ptr[0..numMembers];}
+	IrTypeStructMember[] members() return { return members_payload.ptr[0..numMembers];}
 }
 
 ///
@@ -112,8 +112,8 @@ struct IrTypeFunction
 
 	IrIndex[0] payload; // result types followed by paramter types
 	/// This must be called on the value in the buffer, not stack-local value
-	IrIndex[] resultTypes() { return payload.ptr[0..numResults];}
-	IrIndex[] parameterTypes() { return payload.ptr[numResults..numResults+numParameters];}
+	IrIndex[] resultTypes() return { return payload.ptr[0..numResults];}
+	IrIndex[] parameterTypes() return { return payload.ptr[numResults..numResults+numParameters];}
 }
 
 ///
@@ -323,7 +323,7 @@ struct IrTypeStorage
 	{
 		if (callee.isFunction)
 		{
-			return c.getFunction(callee).backendData.getCallConv(c);
+			return ir.getCallConv(c);
 		}
 		else
 		{

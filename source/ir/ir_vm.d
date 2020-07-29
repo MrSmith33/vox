@@ -58,7 +58,7 @@ struct IrVm
 		c.popVmStack(IrVmSlotInfo(frameOffset, frameSize));
 	}
 
-	ParameterSlotIterator parameters() {
+	ParameterSlotIterator parameters() return {
 		return ParameterSlotIterator(&this);
 	}
 

@@ -14,7 +14,7 @@ struct BasicTypeNode {
 	ulong maxValue;
 	BasicType basicType;
 	ubyte typeFlags;
-	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	string strId() { return basicTypeNames[basicType]; }
 
 	bool isFloat() { return cast(bool)(typeFlags & BasicTypeFlag.isFloat); }

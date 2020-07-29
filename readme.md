@@ -227,3 +227,7 @@ tjc pdb_dump tjc.pdb
 * `semantics.d` - semantic analysis passes.
 * `stack_layout.d` - layout of stack slots.
 * `tests.d` - compiler test suite.
+
+# Test suite
+
+It uses jitting for most tests, which allows D code to call into compiled test case and to pass D function pointers inside compiled code.

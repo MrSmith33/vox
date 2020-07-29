@@ -552,13 +552,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					recordIndex(instrHeader.result(ir), res.result);
 					break;
 				case IrOpcode.grow_stack:
-					IrIndex stackPtrReg = lir.backendData.getCallConv(context).stackPointer;
+					IrIndex stackPtrReg = lir.getCallConv(context).stackPointer;
 					ExtraInstrArgs extra = { addUsers : false, result : stackPtrReg };
 					builder.emitInstr!(Amd64Opcode.sub)(
 						lirBlockIndex, extra, stackPtrReg, getFixedIndex(instrHeader.arg(ir, 0)));
 					break;
 				case IrOpcode.shrink_stack:
-					IrIndex stackPtrReg = lir.backendData.getCallConv(context).stackPointer;
+					IrIndex stackPtrReg = lir.getCallConv(context).stackPointer;
 					ExtraInstrArgs extra = { addUsers : false, result : stackPtrReg };
 					builder.emitInstr!(Amd64Opcode.add)(
 						lirBlockIndex, extra, stackPtrReg, getFixedIndex(instrHeader.arg(ir, 0)));

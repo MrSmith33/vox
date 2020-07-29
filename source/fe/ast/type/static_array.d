@@ -8,7 +8,7 @@ import all;
 @(AstType.type_static_array)
 struct StaticArrayTypeNode {
 	mixin AstNodeData!(AstType.type_static_array, AstFlags.isType, AstNodeState.name_register_self_done);
-	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	AstIndex base;
 	AstIndex length_expr;
 	uint length;

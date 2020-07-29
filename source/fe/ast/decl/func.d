@@ -33,13 +33,6 @@ struct FunctionBackendData
 	Identifier name;
 	///
 	LinkIndex objectSymIndex;
-
-	// Copy of FunctionDeclNode.signature. TODO
-	AstIndex signature;
-
-	CallConv* getCallConv(CompilationContext* c) {
-		return callConventions[signature.get!FunctionSignatureNode(c).callConvention];
-	}
 }
 
 @(AstType.decl_function)
@@ -66,7 +59,6 @@ struct FunctionDeclNode {
 		this.parentScope = parentScope;
 		this.signature = signature;
 		this.backendData.name = id;
-		this.backendData.signature = signature;
 	}
 
 	IrIndex getIrIndex(CompilationContext* c) {
@@ -76,7 +68,7 @@ struct FunctionDeclNode {
 
 	/// External functions have no body
 	bool isExternal() { return block_stmt.isUndefined; }
-	ref Identifier id() { return backendData.name; }
+	ref Identifier id() return { return backendData.name; }
 }
 
 void print_func(FunctionDeclNode* node, ref AstPrintState state)
@@ -94,7 +86,6 @@ void post_clone_func(FunctionDeclNode* node, ref CloneState state)
 	state.fixAstIndex(node._module);
 	state.fixAstIndex(node.signature);
 	state.fixAstIndex(node.block_stmt);
-	node.backendData.signature = node.signature;
 }
 
 void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref NameRegisterState state) {

@@ -139,7 +139,7 @@ struct CodeEmitter
 			context.entryPoint = fun;
 		}
 
-		stackPointer = fun.backendData.getCallConv(context).stackPointer;
+		stackPointer = lir.getCallConv(context).stackPointer;
 
 		blockStarts = cast(PC[])context.tempBuffer.voidPut(lir.numBasicBlocks * (PC.sizeof / uint.sizeof));
 

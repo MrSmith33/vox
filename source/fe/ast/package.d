@@ -158,7 +158,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		return cast(T*)&this;
 	}
 
-	TypeNode* as_type(CompilationContext* c) {
+	TypeNode* as_type(CompilationContext* c) return {
 		c.assertf(isType, loc, "as_type(%s)", astType);
 		return cast(TypeNode*)&this;
 	}

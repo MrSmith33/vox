@@ -423,8 +423,8 @@ struct CodeGen_x86_64
 {
 	Encoder encoder;
 
-	Fixup fixupAt(PC at) { return Fixup(&this, at); }
-	Fixup saveFixup() { return Fixup(&this, encoder.pc); }
+	Fixup fixupAt(PC at) return { return Fixup(&this, at); }
+	Fixup saveFixup() return { return Fixup(&this, encoder.pc); }
 	PC pc() { return encoder.pc; }
 
 	/// Used for versions of instructions without argument size suffix.

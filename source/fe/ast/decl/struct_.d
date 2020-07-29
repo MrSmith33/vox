@@ -31,7 +31,7 @@ struct StructDeclNode {
 		this.id = id;
 	}
 
-	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	bool isOpaque() { return cast(bool)(flags & StructFlags.isOpaque); }
 	bool isCtfeOnly() { return cast(bool)(flags & StructFlags.isCtfeOnly); }
 	uint size(CompilationContext* c) {

@@ -9,23 +9,26 @@ import all;
 
 void pass_ir_lower(CompilationContext* c, ModuleDeclNode* mod, FunctionDeclNode* func)
 {
-	FuncPassIr[] passes = [&func_pass_lower_abi_win64, &func_pass_lower_aggregates, &func_pass_lower_gep];
-	IrBuilder builder;
-
 	IrFunction* optimizedIrData = c.getAst!IrFunction(func.backendData.optimizedIrData);
 	func.backendData.loweredIrData = c.appendAst!IrFunction;
 	IrFunction* loweredIrData = c.getAst!IrFunction(func.backendData.loweredIrData);
 	*loweredIrData = *optimizedIrData; // copy
 
+	IrBuilder builder;
 	builder.beginDup(loweredIrData, c);
 	IrIndex funcIndex = func.getIrIndex(c);
-	foreach (FuncPassIr pass; passes)
-	{
+
+	void doPass(FuncPassIr pass) {
 		pass(c, loweredIrData, funcIndex, builder);
 		if (c.validateIr)
 			validateIrFunction(c, loweredIrData);
 		if (c.printIrLowerEach && c.printDumpOf(func)) dumpFunction(c, loweredIrData, "IR lowering each");
 	}
+
+	doPass(&func_pass_lower_abi);
+	doPass(&func_pass_lower_aggregates);
+	doPass(&func_pass_lower_gep);
+
 	if (!c.printIrLowerEach && c.printIrLower && c.printDumpOf(func)) dumpFunction(c, loweredIrData, "IR lowering all");
 	builder.finalizeIr;
 }
@@ -44,9 +47,9 @@ bool isPassByValue(IrIndex type, CompilationContext* c) {
 	return true;
 }
 
-void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
+void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
-	//writefln("lower_abi %s", builder.context.idString(ir.backendData.name));
+	//writefln("lower_abi %s win64", builder.context.idString(ir.backendData.name));
 	// buffer for call/instruction arguments
 	enum MAX_ARGS = 255;
 	IrIndex[MAX_ARGS] argBuffer = void;
@@ -96,248 +99,264 @@ void func_pass_lower_abi_win64(CompilationContext* c, IrFunction* ir, IrIndex fu
 		c.internal_error("%s results is not implemented", irFuncType.numResults);
 	}
 
+	void convParam(IrIndex instrIndex, ref IrInstrHeader instrHeader)
+	{
+		IrInstr_parameter* param = ir.get!IrInstr_parameter(instrIndex);
+		if (numHiddenParams == 1) param.index(ir) += 1;
+		uint paramIndex = param.index(ir);
+
+		bool isInPhysReg = paramIndex < ir.getCallConv(c).paramsInRegs.length;
+
+		IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
+		if (isInPhysReg)
+		{
+			IrIndex paramReg = ir.getCallConv(c).paramsInRegs[paramIndex];
+			if (type.isPassByValue(c))
+			{
+				// this branch is also executed for hidden ptr parameter
+
+				paramReg.physRegSize = typeToRegSize(type, c);
+				ExtraInstrArgs extra = { result : instrHeader.result(ir) };
+				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, paramReg).instruction;
+				replaceInstruction(ir, instrIndex, moveInstr);
+			}
+			else
+			{
+				type = c.types.appendPtr(type);
+				//irFuncType.parameterTypes[paramIndex] = type; // dont modify the type
+
+				paramReg.physRegSize = typeToRegSize(type, c);
+				ExtraInstrArgs extra1 = { type : type };
+				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra1, paramReg);
+				replaceInstruction(ir, instrIndex, moveInstr.instruction);
+
+				ExtraInstrArgs extra2 = { result : instrHeader.result(ir) };
+				IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra2, moveInstr.result).instruction;
+				ir.getInstr(loadInstr).isUniqueLoad = true;
+				builder.insertAfterInstr(moveInstr.instruction, loadInstr);
+			}
+		}
+		else
+		{
+			if (type.isPassByValue(c)) {
+				//writefln("parameter %s stack val", paramIndex);
+				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.parameter, cast(ushort)paramIndex);
+				// is directly in stack
+				IrArgSize argSize = getTypeArgSize(type, c);
+				ExtraInstrArgs extra = { argSize : argSize, result : instrHeader.result(ir) };
+				IrIndex loadInstr = builder.emitInstr!(IrOpcode.load)(extra, slot).instruction;
+				replaceInstruction(ir, instrIndex, loadInstr);
+			} else {
+				// stack contains pointer to data
+				//writefln("parameter %s stack ptr", paramIndex);
+				//convertAggregateVregToPointer(instrHeader.result(ir), ir, builder);
+				type = c.types.appendPtr(type);
+				//irFuncType.parameterTypes[paramIndex] = type; // dont modify the type
+				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.parameter, cast(ushort)paramIndex);
+				IrArgSize argSize = getTypeArgSize(type, c);
+				ExtraInstrArgs extra = { argSize : argSize, type : type };
+				InstrWithResult loadInstr = builder.emitInstr!(IrOpcode.load)(extra, slot);
+				// remove parameter instruction
+				replaceInstruction(ir, instrIndex, loadInstr.instruction);
+
+				// load aggregate
+				ExtraInstrArgs extra2 = { result : instrHeader.result(ir) };
+				InstrWithResult loadInstr2 = builder.emitInstr!(IrOpcode.load_aggregate)(extra2, loadInstr.result);
+				ir.getInstr(loadInstr2.instruction).isUniqueLoad = true;
+				builder.insertAfterInstr(loadInstr.instruction, loadInstr2.instruction);
+			}
+		}
+	}
+
+	void convCall(IrIndex instrIndex, ref IrInstrHeader instrHeader)
+	{
+		ir.backendData.stackLayout.numCalls += 1;
+
+		IrIndex callee = instrHeader.arg(ir, 0);
+		IrIndex calleeTypeIndex = ir.getValueType(c, callee);
+		if (calleeTypeIndex.isTypePointer)
+			calleeTypeIndex = c.types.getPointerBaseType(calleeTypeIndex);
+		IrTypeFunction* calleeType = &c.types.get!IrTypeFunction(calleeTypeIndex);
+
+		CallConv* callConv = c.types.getCalleeCallConv(callee, ir, c);
+		IrIndex[] args = instrHeader.args(ir)[1..$]; // exclude callee
+		IrIndex originalResult;
+		IrIndex hiddenPtr;
+		bool hasHiddenPtr = false;
+
+		// allocate stack slot for big return value
+		if (calleeType.numResults == 1)
+		{
+			IrIndex resType = calleeType.resultTypes[0];
+			if (!resType.isPassByValue(c))
+			{
+				originalResult = instrHeader.result(ir); // we reuse result slot
+
+				// reuse result slot of instruction as first argument
+				instrHeader._payloadOffset -= 1;
+				instrHeader.hasResult = false;
+				instrHeader.numArgs += 1;
+
+				args = instrHeader.args(ir)[1..$];
+				// move callee in first arg
+				instrHeader.arg(ir, 0) = callee;
+				// place return arg slot in second arg
+				hiddenPtr = ir.backendData.stackLayout.addStackItem(c, resType, StackSlotKind.argument, 0);
+				args[0] = hiddenPtr;
+				hasHiddenPtr = true;
+
+				//convertAggregateVregToPointer(originalResult, ir, builder, args[0]);
+				//builder.redirectVregUsersTo(originalResult, args[0]);
+			}
+		}
+
+		enum STACK_ITEM_SIZE = 8;
+		size_t numArgs = args.length;
+		size_t numParamsInRegs = callConv.paramsInRegs.length;
+		// how many bytes are allocated on the stack before func call
+		size_t stackReserve;
+		if (callConv.hasShadowSpace)
+		{
+			stackReserve = 4 * STACK_ITEM_SIZE;
+		}
+
+		// Copy args to stack if necessary (big structs or run out of regs)
+		foreach (size_t i; cast(size_t)hasHiddenPtr..args.length)
+		{
+			IrIndex arg = args[i];
+			removeUser(c, ir, instrIndex, arg);
+
+			IrIndex type = calleeType.parameterTypes[i-cast(size_t)hasHiddenPtr];
+
+			if (type.isPassByValue(c)) {
+				arg = simplifyConstant(arg, c);
+				args[i] = arg;
+			} else {
+				//allocate stack slot, store value there and use slot pointer as argument
+				args[i] = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.argument, 0);
+				IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
+				builder.insertBeforeInstr(instrIndex, instr);
+			}
+		}
+
+		// align stack and push args that didn't fit into registers (register size args)
+		if (numArgs > numParamsInRegs)
+		{
+			if (numArgs % 2 == 1)
+			{	// align stack to 16 bytes
+				// TODO: SysV ABI needs 32byte alignment if __m256 is passed
+				stackReserve += STACK_ITEM_SIZE;
+				IrIndex paddingSize = c.constants.add(STACK_ITEM_SIZE, IsSigned.no);
+				auto growStackInstr = builder.emitInstr!(IrOpcode.grow_stack)(ExtraInstrArgs(), paddingSize);
+				builder.insertBeforeInstr(instrIndex, growStackInstr);
+			}
+
+			// push args to stack
+			foreach_reverse (IrIndex arg; args[numParamsInRegs..numArgs])
+			{
+				stackReserve += STACK_ITEM_SIZE;
+				auto pushInstr = builder.emitInstr!(IrOpcode.push)(ExtraInstrArgs(), arg);
+				builder.insertBeforeInstr(instrIndex, pushInstr);
+			}
+		}
+
+		// move args to registers
+		size_t numPhysRegs = min(numParamsInRegs, numArgs);
+		foreach (i, IrIndex arg; args[0..numPhysRegs])
+		{
+			IrIndex type = ir.getValueType(c, arg);
+			IrIndex argRegister = callConv.paramsInRegs[i];
+			argRegister.physRegSize = typeToRegSize(type, c);
+			args[i] = argRegister;
+			ExtraInstrArgs extra = { result : argRegister };
+			auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, arg).instruction;
+			builder.insertBeforeInstr(instrIndex, moveInstr);
+		}
+
+		if (callConv.hasShadowSpace)
+		{	// Allocate shadow space for 4 physical registers
+			IrIndex const_32 = c.constants.add(32, IsSigned.no);
+			auto growStackInstr = builder.emitInstr!(IrOpcode.grow_stack)(ExtraInstrArgs(), const_32);
+			builder.insertBeforeInstr(instrIndex, growStackInstr);
+		}
+
+		{
+			instrHeader.numArgs = cast(ubyte)(numPhysRegs + 1); // include callee
+
+			// If function is noreturn we don't need to insert cleanup code
+			if (calleeType.numResults == 1)
+			{
+				IrIndex resType = calleeType.resultTypes[0];
+				if (resType.isTypeNoreturn) return;
+			}
+
+			IrIndex lastInstr = instrIndex;
+
+			// Deallocate stack after call
+			if (stackReserve > 0)
+			{
+				IrIndex conReservedBytes = c.constants.add(stackReserve, IsSigned.no);
+				auto shrinkStackInstr = builder.emitInstr!(IrOpcode.shrink_stack)(ExtraInstrArgs(), conReservedBytes);
+				builder.insertAfterInstr(lastInstr, shrinkStackInstr);
+				lastInstr = shrinkStackInstr; // insert next instr after this one
+			}
+
+			// for calls that return in register
+			if (instrHeader.hasResult) {
+				// mov result to virt reg
+				IrIndex returnReg = callConv.returnReg;
+				returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result(ir)).type, c);
+				ExtraInstrArgs extra = { result : instrHeader.result(ir) };
+				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, returnReg).instruction;
+				//builder.redirectVregDefinitionTo(instrHeader.result(ir), moveInstr);
+				builder.insertAfterInstr(lastInstr, moveInstr);
+				instrHeader.result(ir) = returnReg;
+			} else if (hasHiddenPtr) {
+				ExtraInstrArgs extra = { result : originalResult };
+				IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra, hiddenPtr).instruction;
+				ir.getInstr(loadInstr).isUniqueLoad = true;
+				builder.insertAfterInstr(lastInstr, loadInstr);
+			}
+		}
+	}
+
+	void convReturn(IrIndex instrIndex, ref IrInstrHeader instrHeader)
+	{
+		removeUser(c, ir, instrIndex, instrHeader.arg(ir, 0));
+		if (numHiddenParams == 1) {
+			// store struct into pointer, then return pointer
+			IrIndex value = instrHeader.arg(ir, 0);
+			IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), hiddenParameter, value);
+			builder.insertBeforeInstr(instrIndex, instr);
+			instrHeader.arg(ir, 0) = hiddenParameter;
+			IrIndex result = ir.getCallConv(c).returnReg;
+			ExtraInstrArgs extra = { result : result };
+			IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, hiddenParameter).instruction;
+			builder.insertBeforeInstr(instrIndex, copyInstr);
+		} else {
+			IrIndex value = simplifyConstant(instrHeader.arg(ir, 0), c);
+			IrIndex result = ir.getCallConv(c).returnReg;
+			IrIndex type = irFuncType.resultTypes[0];
+			result.physRegSize = typeToRegSize(type, c);
+			ExtraInstrArgs extra = { result : result };
+			IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, value).instruction;
+			builder.insertBeforeInstr(instrIndex, copyInstr);
+		}
+		// rewrite ret_val as ret in-place
+		instrHeader.op = IrOpcode.ret;
+		instrHeader.numArgs = 0;
+	}
+
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
 		{
 			switch(instrHeader.op)
 			{
-				case IrOpcode.parameter:
-					IrInstr_parameter* param = ir.get!IrInstr_parameter(instrIndex);
-					if (numHiddenParams == 1) param.index(ir) += 1;
-					uint paramIndex = param.index(ir);
-
-					bool isInPhysReg = paramIndex < ir.backendData.getCallConv(c).paramsInRegs.length;
-
-					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
-					if (isInPhysReg)
-					{
-						IrIndex paramReg = ir.backendData.getCallConv(c).paramsInRegs[paramIndex];
-						if (type.isPassByValue(c))
-						{
-							// this branch is also executed for hidden ptr parameter
-
-							paramReg.physRegSize = typeToRegSize(type, c);
-							ExtraInstrArgs extra = { result : instrHeader.result(ir) };
-							auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, paramReg).instruction;
-							replaceInstruction(ir, instrIndex, moveInstr);
-						}
-						else
-						{
-							type = c.types.appendPtr(type);
-							//irFuncType.parameterTypes[paramIndex] = type; // dont modify the type
-
-							paramReg.physRegSize = typeToRegSize(type, c);
-							ExtraInstrArgs extra1 = { type : type };
-							auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra1, paramReg);
-							replaceInstruction(ir, instrIndex, moveInstr.instruction);
-
-							ExtraInstrArgs extra2 = { result : instrHeader.result(ir) };
-							IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra2, moveInstr.result).instruction;
-							ir.getInstr(loadInstr).isUniqueLoad = true;
-							builder.insertAfterInstr(moveInstr.instruction, loadInstr);
-						}
-					}
-					else
-					{
-						if (type.isPassByValue(c)) {
-							//writefln("parameter %s stack val", paramIndex);
-							IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.parameter, cast(ushort)paramIndex);
-							// is directly in stack
-							IrArgSize argSize = getTypeArgSize(type, c);
-							ExtraInstrArgs extra = { argSize : argSize, result : instrHeader.result(ir) };
-							IrIndex loadInstr = builder.emitInstr!(IrOpcode.load)(extra, slot).instruction;
-							replaceInstruction(ir, instrIndex, loadInstr);
-						} else {
-							// stack contains pointer to data
-							//writefln("parameter %s stack ptr", paramIndex);
-							//convertAggregateVregToPointer(instrHeader.result(ir), ir, builder);
-							type = c.types.appendPtr(type);
-							//irFuncType.parameterTypes[paramIndex] = type; // dont modify the type
-							IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.parameter, cast(ushort)paramIndex);
-							IrArgSize argSize = getTypeArgSize(type, c);
-							ExtraInstrArgs extra = { argSize : argSize, type : type };
-							InstrWithResult loadInstr = builder.emitInstr!(IrOpcode.load)(extra, slot);
-							// remove parameter instruction
-							replaceInstruction(ir, instrIndex, loadInstr.instruction);
-
-							// load aggregate
-							ExtraInstrArgs extra2 = { result : instrHeader.result(ir) };
-							InstrWithResult loadInstr2 = builder.emitInstr!(IrOpcode.load_aggregate)(extra2, loadInstr.result);
-							ir.getInstr(loadInstr2.instruction).isUniqueLoad = true;
-							builder.insertAfterInstr(loadInstr.instruction, loadInstr2.instruction);
-						}
-					}
-					break;
-
-				case IrOpcode.call:
-					ir.backendData.stackLayout.numCalls += 1;
-
-					IrIndex callee = instrHeader.arg(ir, 0);
-					IrIndex calleeTypeIndex = ir.getValueType(c, callee);
-					if (calleeTypeIndex.isTypePointer)
-						calleeTypeIndex = c.types.getPointerBaseType(calleeTypeIndex);
-					IrTypeFunction* calleeType = &c.types.get!IrTypeFunction(calleeTypeIndex);
-
-					CallConv* callConv = c.types.getCalleeCallConv(callee, ir, c);
-					IrIndex[] args = instrHeader.args(ir)[1..$]; // exclude callee
-					IrIndex originalResult;
-					IrIndex hiddenPtr;
-					bool hasHiddenPtr = false;
-
-					// allocate stack slot for big return value
-					if (calleeType.numResults == 1)
-					{
-						IrIndex resType = calleeType.resultTypes[0];
-						if (!resType.isPassByValue(c))
-						{
-							originalResult = instrHeader.result(ir); // we reuse result slot
-
-							// reuse result slot of instruction as first argument
-							instrHeader._payloadOffset -= 1;
-							instrHeader.hasResult = false;
-							instrHeader.numArgs += 1;
-
-							args = instrHeader.args(ir)[1..$];
-							// move callee in first arg
-							instrHeader.arg(ir, 0) = callee;
-							// place return arg slot in second arg
-							hiddenPtr = ir.backendData.stackLayout.addStackItem(c, resType, StackSlotKind.argument, 0);
-							args[0] = hiddenPtr;
-							hasHiddenPtr = true;
-
-							//convertAggregateVregToPointer(originalResult, ir, builder, args[0]);
-							//builder.redirectVregUsersTo(originalResult, args[0]);
-						}
-					}
-
-					enum STACK_ITEM_SIZE = 8;
-					size_t numArgs = args.length;
-					size_t numParamsInRegs = callConv.paramsInRegs.length;
-					// how many bytes are allocated on the stack before func call
-					size_t stackReserve = max(numArgs, numParamsInRegs) * STACK_ITEM_SIZE;
-					IrIndex stackPtrReg = callConv.stackPointer;
-
-					// Copy args to stack if necessary (big structs or run out of regs)
-					foreach (size_t i; cast(size_t)hasHiddenPtr..args.length)
-					{
-						IrIndex arg = args[i];
-						removeUser(c, ir, instrIndex, arg);
-
-						IrIndex type = calleeType.parameterTypes[i-cast(size_t)hasHiddenPtr];
-
-						if (type.isPassByValue(c)) {
-							arg = simplifyConstant(arg, c);
-							args[i] = arg;
-						} else {
-							//allocate stack slot, store value there and use slot pointer as argument
-							args[i] = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.argument, 0);
-							IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
-							builder.insertBeforeInstr(instrIndex, instr);
-						}
-					}
-
-					// align stack and push args that didn't fit into registers (register size args)
-					if (numArgs > numParamsInRegs)
-					{
-						if (numArgs % 2 == 1)
-						{	// align stack to 16 bytes
-							stackReserve += STACK_ITEM_SIZE;
-							IrIndex paddingSize = c.constants.add(STACK_ITEM_SIZE, IsSigned.no);
-							auto growStackInstr = builder.emitInstr!(IrOpcode.grow_stack)(ExtraInstrArgs(), paddingSize);
-							builder.insertBeforeInstr(instrIndex, growStackInstr);
-						}
-
-						// push args to stack
-						foreach_reverse (IrIndex arg; args[numParamsInRegs..numArgs])
-						{
-							auto pushInstr = builder.emitInstr!(IrOpcode.push)(ExtraInstrArgs(), arg);
-							builder.insertBeforeInstr(instrIndex, pushInstr);
-						}
-					}
-
-					// move args to registers
-					size_t numPhysRegs = min(numParamsInRegs, numArgs);
-					foreach (i, IrIndex arg; args[0..numPhysRegs])
-					{
-						IrIndex type = ir.getValueType(c, arg);
-						IrIndex argRegister = callConv.paramsInRegs[i];
-						argRegister.physRegSize = typeToRegSize(type, c);
-						args[i] = argRegister;
-						ExtraInstrArgs extra = { result : argRegister };
-						auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, arg).instruction;
-						builder.insertBeforeInstr(instrIndex, moveInstr);
-					}
-
-					{	// Allocate shadow space for 4 physical registers
-						IrIndex const_32 = c.constants.add(32, IsSigned.no);
-						auto growStackInstr = builder.emitInstr!(IrOpcode.grow_stack)(ExtraInstrArgs(), const_32);
-						builder.insertBeforeInstr(instrIndex, growStackInstr);
-					}
-
-					{
-						instrHeader.numArgs = cast(ubyte)(numPhysRegs + 1); // include callee
-
-						// If function is noreturn we don't need to insert cleanup code
-						if (calleeType.numResults == 1)
-						{
-							IrIndex resType = calleeType.resultTypes[0];
-							if (resType.isTypeNoreturn) break;
-						}
-
-						// Deallocate stack after call
-						IrIndex conReservedBytes = c.constants.add(stackReserve, IsSigned.no);
-						auto shrinkStackInstr = builder.emitInstr!(IrOpcode.shrink_stack)(ExtraInstrArgs(), conReservedBytes);
-						builder.insertAfterInstr(instrIndex, shrinkStackInstr);
-
-						// for calls that return in register
-						if (instrHeader.hasResult) {
-							// mov result to virt reg
-							IrIndex returnReg = callConv.returnReg;
-							returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result(ir)).type, c);
-							ExtraInstrArgs extra = { result : instrHeader.result(ir) };
-							auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, returnReg).instruction;
-							//builder.redirectVregDefinitionTo(instrHeader.result(ir), moveInstr);
-							builder.insertAfterInstr(shrinkStackInstr, moveInstr);
-							instrHeader.result(ir) = returnReg;
-						} else if (hasHiddenPtr) {
-							ExtraInstrArgs extra = { result : originalResult };
-							IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra, hiddenPtr).instruction;
-							ir.getInstr(loadInstr).isUniqueLoad = true;
-							builder.insertAfterInstr(shrinkStackInstr, loadInstr);
-						}
-					}
-					break;
-
-				case IrOpcode.ret_val:
-					removeUser(c, ir, instrIndex, instrHeader.arg(ir, 0));
-					if (numHiddenParams == 1) {
-						// store struct into pointer, then return pointer
-						IrIndex value = instrHeader.arg(ir, 0);
-						IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), hiddenParameter, value);
-						builder.insertBeforeInstr(instrIndex, instr);
-						instrHeader.arg(ir, 0) = hiddenParameter;
-						IrIndex result = ir.backendData.getCallConv(c).returnReg;
-						ExtraInstrArgs extra = { result : result };
-						IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, hiddenParameter).instruction;
-						builder.insertBeforeInstr(instrIndex, copyInstr);
-					} else {
-						IrIndex value = simplifyConstant(instrHeader.arg(ir, 0), c);
-						IrIndex result = ir.backendData.getCallConv(c).returnReg;
-						IrIndex type = irFuncType.resultTypes[0];
-						result.physRegSize = typeToRegSize(type, c);
-						ExtraInstrArgs extra = { result : result };
-						IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, value).instruction;
-						builder.insertBeforeInstr(instrIndex, copyInstr);
-					}
-					// rewrite ret_val as ret in-place
-					instrHeader.op = IrOpcode.ret;
-					instrHeader.numArgs = 0;
-					break;
-
-				default:
-					//c.internal_error("IR lower unimplemented IR instr %s", cast(IrOpcode)instrHeader.op);
-					break;
+				case IrOpcode.parameter: convParam(instrIndex, instrHeader); break;
+				case IrOpcode.call: convCall(instrIndex, instrHeader); break;
+				case IrOpcode.ret_val: convReturn(instrIndex, instrHeader); break;
+				default: break;
 			}
 		}
 	}
@@ -414,7 +433,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 	LowerVreg[] vregInfos = makeParallelArray!LowerVreg(c, ir.numVirtualRegisters);
 
-	foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegsiters)
+	foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegisters)
 	{
 		if (vreg.type.isTypeStruct || vreg.type.isTypeArray)
 		{

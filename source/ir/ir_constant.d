@@ -73,7 +73,7 @@ struct IrAggregateConstant
 	@disable this(this);
 
 	IrIndex[0] _memberPayload;
-	IrIndex[] members() {
+	IrIndex[] members() return {
 		return _memberPayload.ptr[0..numMembers];
 	}
 }

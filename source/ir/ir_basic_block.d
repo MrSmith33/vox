@@ -21,7 +21,7 @@ struct IrBasicBlock
 	IrIndex nextBlock; // null only if this is exitBasicBlock
 	IrIndex firstPhi; // may be null
 
-	PhiIterator phis(IrFunction* ir) { return PhiIterator(ir, &this); }
+	PhiIterator phis(IrFunction* ir) return { return PhiIterator(ir, &this); }
 	InstrIterator instructions(IrFunction* ir) { return InstrIterator(ir, firstInstr); }
 	InstrReverseIterator instructionsReverse(IrFunction* ir) { return InstrReverseIterator(ir, lastInstr); }
 	bool hasPhis() { return firstPhi.isDefined; }

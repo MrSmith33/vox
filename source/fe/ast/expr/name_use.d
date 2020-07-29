@@ -44,7 +44,7 @@ struct NameUseExprNode {
 		this.flags |= NameUseFlags.isSymResolved;
 	}
 	AstIndex entity() { return isSymResolved ? _entity : AstIndex(); }
-	ref Identifier id(CompilationContext* context) {
+	ref Identifier id(CompilationContext* context) return {
 		return isSymResolved ? _entity.get_node_id(context) : _id;
 	}
 

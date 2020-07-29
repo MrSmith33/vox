@@ -17,11 +17,12 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(aggr130);
+	Test test = makeTest!(test25);
 
 	Driver driver;
 	driver.initialize(jitPasses);
 	driver.context.buildType = BuildType.jit;
+	version(Posix) driver.context.targetOs = TargetOs.posix;
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
 	driver.context.printTodos = true;
@@ -68,6 +69,7 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	auto startInitTime = currTime;
 	Driver driver;
 	driver.initialize(jitPasses);
+	version(Posix) driver.context.targetOs = TargetOs.posix;
 	driver.context.buildType = BuildType.jit;
 	driver.context.buildDebug = false;
 	driver.context.validateIr = true;

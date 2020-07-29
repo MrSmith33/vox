@@ -88,7 +88,7 @@ struct LivenessInfo
 			it.reg = it.definition = context.machineInfo.registers[i].index;
 			++i;
 		}
-		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegsiters) {
+		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegisters) {
 			LiveInterval it = { definition : vregIndex };
 			*vint(vregIndex.storageUintIndex) = it;
 		}

@@ -59,31 +59,9 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 	if (layout.slots.length == 0 && layout.numCalls == 0) return;
 
 	context.assertf(layout.maxAlignment <= 16, "Big alignments aren't implemented");
-	/*
-	if (context.useFramePointer)
-	{
-		// ++        varIndex
-		// shadow4                                  \
-		// shadow3                                   \ shadow space
-		// param2    1              \                /
-		// param1    0  rbp + 2     / numParams = 2 / this address is aligned to 16 bytes
-		// ret addr     rbp + 1
-		// rbp      <-- rbp + 0
-		// local1    2  rbp - 1     \
-		// local2    3  rbp - 2     / numLocals = 2
-		// --
-		if (isParameter) // parameter
-		{
-			index = 2 + varIndex;
-		}
-		else // local variable
-		{
-			index = -(varIndex - numParams + 1);
-		}
-		baseReg = func.callingConvention.framePointer;
-	}*/
 
-	CallConv* callConv = func.backendData.getCallConv(context);
+	auto lir = context.getAst!IrFunction(func.backendData.lirData);
+	CallConv* callConv = lir.getCallConv(context);
 	IrIndex baseReg = callConv.stackPointer;
 
 	// 1, 2, 4, 8, 16
@@ -117,6 +95,16 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 
 	if (context.useFramePointer)
 	{
+		// ++        varIndex
+		// shadow4                                  \
+		// shadow3                                   \ shadow space
+		// param2    1              \                /
+		// param1    0  rbp + 2     / numParams = 2 / this address is aligned to 16 bytes
+		// ret addr     rbp + 1
+		// rbp      <-- rbp + 0
+		// local1    2  rbp - 1     \
+		// local2    3  rbp - 2     / numLocals = 2
+		// --
 		baseReg = callConv.framePointer;
 		// frame pointer is stored together with locals
 		layout.reservedBytes += STACK_ITEM_SIZE;
@@ -147,6 +135,7 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 	uint paramsOffset = layout.reservedBytes + STACK_ITEM_SIZE; // locals size + ret addr
 
 	// TODO utilize shadow space
+	// TODO utilize red zone
 
 	int nextLocalIndex = 0;
 	foreach (i, ref slot; layout.slots)

@@ -87,9 +87,9 @@ struct PhysRegisters
 		return gpr[reg.physRegIndex];
 	}
 
-	void setup(CompilationContext* c, FunctionDeclNode* fun, MachineInfo* machineInfo)
+	void setup(CompilationContext* c, IrFunction* lir, MachineInfo* machineInfo)
 	{
-		CallConv* callConv = fun.backendData.getCallConv(c);
+		CallConv* callConv = lir.getCallConv(c);
 		allocatableRegs = callConv.allocatableRegs;
 		if (c.debugRegAlloc) allocatableRegs = allocatableRegs[0..5]; // only 5 regs are available for tests
 		gpr.length = machineInfo.registers.length;
@@ -297,7 +297,7 @@ struct LinearScan
 	{
 		import std.container.binaryheap;
 		lir = context.getAst!IrFunction(fun.backendData.lirData);
-		physRegs.setup(context, fun, context.machineInfo);
+		physRegs.setup(context, lir, context.machineInfo);
 		vregState = context.allocateTempArray!VregState(lir.numVirtualRegisters);
 
 		//writefln("\nstart scan of %s", context.idString(lir.backendData.name));
@@ -766,7 +766,7 @@ struct LinearScan
 	void fixInstructionArgs(FunctionDeclNode* fun)
 	{
 		// fix uses first, because we may copy arg to definition below
-		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
+		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegisters)
 		{
 			foreach (size_t i, IrIndex userIndex; vreg.users.range(lir))
 			{
@@ -806,7 +806,7 @@ struct LinearScan
 	{
 		// fix definitions
 		// args are already fixed
-		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegsiters)
+		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegisters)
 		{
 			switch(vreg.definition.kind) with(IrValueKind)
 			{

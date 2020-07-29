@@ -60,7 +60,7 @@ struct MoveSolver
 		assert(numWrittenNodes == 0);
 	}
 
-	ref ValueInfo getInfo(IrIndex index) {
+	ref ValueInfo getInfo(IrIndex index) return {
 		switch(index.kind) {
 			case IrValueKind.constant, IrValueKind.constantZero: return anyConstant;
 			case IrValueKind.stackSlot: return stackSlots[index.storageUintIndex];

@@ -8,7 +8,7 @@ import all;
 @(AstType.type_slice)
 struct SliceTypeNode {
 	mixin AstNodeData!(AstType.type_slice, AstFlags.isType, AstNodeState.name_register_self_done);
-	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	AstIndex base;
 	IrIndex irType;
 	IrIndex defaultVal;

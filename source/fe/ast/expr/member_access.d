@@ -62,7 +62,7 @@ struct MemberExprNode {
 		c.assertf(isSymResolved, loc, "Member access is %s, %s", cast(MemberSubType)subType, state);
 		return _memberIndex;
 	}
-	ref Identifier memberId(CompilationContext* c) {
+	ref Identifier memberId(CompilationContext* c) return {
 		return isSymResolved ? _member.get_node_id(c) : _memberId;
 	}
 

@@ -19,17 +19,17 @@ struct TypeNode
 	AstNode base;
 	alias base this;
 
-	BasicTypeNode* as_basic() { if (astType == AstType.type_basic) return cast(BasicTypeNode*)&this; return null; }
-	FunctionSignatureNode* as_func_sig() { if (astType == AstType.type_func_sig) return cast(FunctionSignatureNode*)&this; return null; }
-	PtrTypeNode* as_ptr() { if (astType == AstType.type_ptr) return cast(PtrTypeNode*)&this; return null; }
-	SliceTypeNode* as_slice() { if (astType == AstType.type_slice) return cast(SliceTypeNode*)&this; return null; }
-	StaticArrayTypeNode* as_static_array() { if (astType == AstType.type_static_array) return cast(StaticArrayTypeNode*)&this; return null; }
-	StructDeclNode* as_struct() { if (astType == AstType.decl_struct) return cast(StructDeclNode*)&this; return null; }
-	AliasDeclNode* as_alias() { if (astType == AstType.decl_alias) return cast(AliasDeclNode*)&this; return null; }
-	NameUseExprNode* as_name_use() { if (astType == AstType.expr_name_use) return cast(NameUseExprNode*)&this; return null; }
-	EnumDeclaration* as_enum() { if (astType == AstType.decl_enum) return cast(EnumDeclaration*)&this; return null; }
+	BasicTypeNode* as_basic() return { if (astType == AstType.type_basic) return cast(BasicTypeNode*)&this; return null; }
+	FunctionSignatureNode* as_func_sig() return { if (astType == AstType.type_func_sig) return cast(FunctionSignatureNode*)&this; return null; }
+	PtrTypeNode* as_ptr() return { if (astType == AstType.type_ptr) return cast(PtrTypeNode*)&this; return null; }
+	SliceTypeNode* as_slice() return { if (astType == AstType.type_slice) return cast(SliceTypeNode*)&this; return null; }
+	StaticArrayTypeNode* as_static_array() return { if (astType == AstType.type_static_array) return cast(StaticArrayTypeNode*)&this; return null; }
+	StructDeclNode* as_struct() return { if (astType == AstType.decl_struct) return cast(StructDeclNode*)&this; return null; }
+	AliasDeclNode* as_alias() return { if (astType == AstType.decl_alias) return cast(AliasDeclNode*)&this; return null; }
+	NameUseExprNode* as_name_use() return { if (astType == AstType.expr_name_use) return cast(NameUseExprNode*)&this; return null; }
+	EnumDeclaration* as_enum() return { if (astType == AstType.decl_enum) return cast(EnumDeclaration*)&this; return null; }
 
-	TypeNode* foldAliases(CompilationContext* c) {
+	TypeNode* foldAliases(CompilationContext* c) return {
 		if (astType == AstType.expr_name_use) return as_name_use.entity.get_type(c);
 		return &this;
 	}
@@ -55,7 +55,7 @@ struct TypeNode
 		return t.astType == AstType.decl_struct && t.as_struct.isOpaque;
 	}
 
-	TypePrinter printer(CompilationContext* c) {
+	TypePrinter printer(CompilationContext* c) return {
 		return TypePrinter(&this, c);
 	}
 

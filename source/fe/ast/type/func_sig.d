@@ -20,13 +20,14 @@ struct FunctionSignatureNode {
 	// parameters are owned by the function declaration or
 	// if it is part of function type literal then there is no owner
 	AstNodes parameters; // array of var declarations
+	CallConvention callConvention; // Is set in the parser
+	ubyte numDefaultArgs;
 	/// Number of parameters before variadic parameter
 	/// Is equal to parameters.length when no variadic is present
 	ushort numParamsBeforeVariadic;
-	ubyte numDefaultArgs;
-	CallConvention callConvention = CallConvention.win64; // hardcoded for now
+
 	IrIndex irType; /// Index of function type
-	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 
 	bool isCtfeOnly() { return cast(bool)(flags & FuncSignatureFlags.isCtfeOnly); }
 	bool hasExpandedParam() { return cast(bool)(flags & FuncSignatureFlags.hasExpandedParam); }

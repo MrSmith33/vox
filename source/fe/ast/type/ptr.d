@@ -8,7 +8,7 @@ import all;
 @(AstType.type_ptr)
 struct PtrTypeNode {
 	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType, AstNodeState.name_register_self_done);
-	TypeNode* typeNode() { return cast(TypeNode*)&this; }
+	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	AstIndex base;
 	IrIndex irType;
 	uint size() { return POINTER_SIZE; }

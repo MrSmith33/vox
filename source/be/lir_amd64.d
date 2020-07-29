@@ -116,17 +116,29 @@ struct CallConv
 	IrIndex framePointer;
 	IrIndex stackPointer;
 
+	uint flags;
+
 	bool isParamOnStack(size_t parIndex) {
 		return parIndex >= paramsInRegs.length;
 	}
+
+	bool hasShadowSpace() { return cast(bool)(flags & CallConvFlags.hasShadowSpace); }
+	bool hasRedZone() { return cast(bool)(flags & CallConvFlags.hasRedZone); }
 }
 
 enum CallConvention : ubyte {
-	win64
+	win64,
+	sysv64,
+}
+
+enum CallConvFlags : uint {
+	hasShadowSpace = 1 << 0,
+	hasRedZone     = 1 << 1,
 }
 
 __gshared CallConv*[] callConventions = [
 	&win64_call_conv,
+	&sysv64_call_conv,
 ];
 
 __gshared CallConv win64_call_conv = CallConv
@@ -172,6 +184,55 @@ __gshared CallConv win64_call_conv = CallConv
 
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
+
+	CallConvFlags.hasShadowSpace,
+);
+
+__gshared CallConv sysv64_call_conv = CallConv
+(
+	// parameters in registers
+	[amd64_reg.di, amd64_reg.si, amd64_reg.dx, amd64_reg.cx, amd64_reg.r8, amd64_reg.r9],
+
+	amd64_reg.ax,  // return reg + rdx
+
+	[amd64_reg.ax, // volatile regs
+	amd64_reg.cx,
+	amd64_reg.dx,
+	amd64_reg.si, // volatile
+	amd64_reg.di, // volatile
+	amd64_reg.r8,
+	amd64_reg.r9,
+	amd64_reg.r10,
+	amd64_reg.r11],
+
+	// avaliable for allocation
+	[amd64_reg.ax, // volatile regs, zero cost
+	amd64_reg.cx,
+	amd64_reg.dx,
+	amd64_reg.si,
+	amd64_reg.di,
+	amd64_reg.r8,
+	amd64_reg.r9,
+	amd64_reg.r10,
+	amd64_reg.r11,
+
+	// callee saved
+	amd64_reg.bx, // need to save/restore to use
+	amd64_reg.r12,
+	amd64_reg.r13,
+	amd64_reg.r14,
+	amd64_reg.r15],
+
+	[amd64_reg.bx, // callee saved regs
+	amd64_reg.r12,
+	amd64_reg.r13,
+	amd64_reg.r14,
+	amd64_reg.r15],
+
+	amd64_reg.bp, // frame pointer
+	amd64_reg.sp, // stack pointer
+
+	CallConvFlags.hasRedZone,
 );
 
 immutable InstrInfo[] amd64InstrInfos = gatherInstrInfos!Amd64Opcode;

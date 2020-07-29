@@ -397,7 +397,8 @@ struct Parser
 			params.put(context.arrayArena, param);
 		}
 
-		AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params);
+		CallConvention callConvention = context.defaultCallConvention;
+		AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params, callConvention);
 		parseParameters(signature, NeedRegNames.yes); // functions need to register their param names
 		AstIndex func = make!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
 
@@ -1523,7 +1524,8 @@ AstIndex leftOpDot(ref Parser p, PreferType preferType, Token token, int rbp, As
 }
 
 AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex returnType) {
-	auto sig = p.make!FunctionSignatureNode(token.index, returnType);
+	CallConvention callConvention = p.context.defaultCallConvention;
+	auto sig = p.make!FunctionSignatureNode(token.index, returnType, AstNodes.init, callConvention);
 	p.parseParameters(sig, p.NeedRegNames.no); // function types don't need to register their param names
 	// we don't have to register parameter names, since we have no body
 	sig.setState(p.context, AstNodeState.name_register_nested_done);

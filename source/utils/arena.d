@@ -53,7 +53,9 @@ struct Arena(T)
 
 	T[] put(T[] items ...) {
 		size_t initialLength = length;
-		if (capacity - length < items.length) makeSpace(items.length);
+		version(Windows) {
+			if (capacity - length < items.length) makeSpace(items.length);
+		}
 		//writefln("assign %X.%s @ %s..%s+%s cap %s", bufPtr, T.sizeof, length, length, items.length, capacity);
 		bufPtr[length..length+items.length] = items;
 		length += items.length;
@@ -68,13 +70,17 @@ struct Arena(T)
 	}
 
 	void stealthPut(T item) {
-		if (capacity == length) makeSpace(1);
+		version(Windows) {
+			if (capacity == length) makeSpace(1);
+		}
 		bufPtr[length] = item;
 	}
 
 	/// Increases length and returns void-initialized slice to be filled by user
 	T[] voidPut(size_t howMany) {
-		if (capacity - length < howMany) makeSpace(howMany);
+		version(Windows) {
+			if (capacity - length < howMany) makeSpace(howMany);
+		}
 		length += howMany;
 		return bufPtr[length-howMany..length];
 	}
@@ -103,6 +109,7 @@ struct Arena(T)
 		}
 	}
 
+	version(Windows)
 	void makeSpace(size_t items) {
 		assert(items > (capacity - length));
 		size_t _committedBytes = committedBytes;

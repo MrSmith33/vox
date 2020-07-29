@@ -70,7 +70,7 @@ struct IrSmallArray
 	}
 
 	alias opCall = range;
-	IrSmallArrayIterator range(IrFunction* ir)
+	IrSmallArrayIterator range(IrFunction* ir) return
 	{
 		return IrSmallArrayIterator(&this, ir);
 	}
@@ -228,7 +228,7 @@ struct IrSmallArray
 		}
 	}
 
-	IrIndex[] data(IrFunction* ir)
+	IrIndex[] data(IrFunction* ir) return
 	{
 		if (isBig)
 		{
@@ -252,7 +252,7 @@ struct IrSmallArray
 		}
 	}
 
-	ref IrIndex opIndex(size_t index, IrFunction* ir)
+	ref IrIndex opIndex(size_t index, IrFunction* ir) return
 	{
 		if (isBig)
 		{

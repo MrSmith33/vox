@@ -44,6 +44,11 @@ debug (ASSERTF) {
 	}
 }
 
+enum TargetOs : ubyte {
+	windows,
+	posix
+}
+
 ///
 struct CompilationContext
 {
@@ -57,6 +62,8 @@ struct CompilationContext
 
 	/// Target machine info
 	MachineInfo* machineInfo = &mach_info_amd64;
+	/// Target OS
+	TargetOs targetOs;
 	///
 	BuildType buildType;
 	/// Build executable
@@ -238,6 +245,13 @@ struct CompilationContext
 	}
 	AstIndex builtinNodes(BuiltinId builtinId) {
 		return builtinsArray[builtinId];
+	}
+
+	CallConvention defaultCallConvention() {
+		final switch(targetOs) {
+			case TargetOs.windows: return CallConvention.win64;
+			case TargetOs.posix: return CallConvention.sysv64;
+		}
 	}
 
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
@@ -907,8 +921,8 @@ enum CommonAstNodes : AstIndex
 
 	// builtin functions
 	compile_error            = AstIndex(builtin_sizeof.storageIndex + 24),
-	is_slice                 = AstIndex(builtin_sizeof.storageIndex + 66),
-	is_integer               = AstIndex(builtin_sizeof.storageIndex + 108),
+	is_slice                 = AstIndex(builtin_sizeof.storageIndex + 64),
+	is_integer               = AstIndex(builtin_sizeof.storageIndex + 104),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
@@ -968,7 +982,7 @@ void createBuiltinFunctions(CompilationContext* c)
 		params.put(c.arrayArena, param);
 	}
 	void make(AstIndex reqIndex, Identifier id, AstIndex retType) {
-		AstIndex signature = c.appendAst!FunctionSignatureNode(TokenIndex(), retType, params, numDefaultParams);
+		AstIndex signature = c.appendAst!FunctionSignatureNode(TokenIndex(), retType, params, c.defaultCallConvention, numDefaultParams);
 		auto sigNode = signature.get!FunctionSignatureNode(c);
 		sigNode.state = AstNodeState.type_check_done;
 		sigNode.flags |= FuncSignatureFlags.isCtfeOnly;

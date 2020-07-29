@@ -54,11 +54,17 @@ struct IrFunction
 	///
 	IrInstructionSet instructionSet;
 
-	VregIterator virtualRegsiters() { return VregIterator(&this); }
+	VregIterator virtualRegisters() return { return VregIterator(&this); }
 
 	///
 	FunctionBackendData* backendData;
 
+	CallConvention getCallConvEnum(CompilationContext* c) {
+		return c.types.get!IrTypeFunction(type).callConv;
+	}
+	CallConv* getCallConv(CompilationContext* c) {
+		return callConventions[c.types.get!IrTypeFunction(type).callConv];
+	}
 
 	IrBasicBlock[] blocksArray() {
 		return basicBlockPtr[0..numBasicBlocks];
@@ -79,8 +85,8 @@ struct IrFunction
 		return IrIndex(numVirtualRegisters - 1, IrValueKind.virtualRegister);
 	}
 
-	BlockIterator blocks() { return BlockIterator(&this); }
-	BlockReverseIterator blocksReverse() { return BlockReverseIterator(&this); }
+	BlockIterator blocks() return { return BlockIterator(&this); }
+	BlockReverseIterator blocksReverse() return { return BlockReverseIterator(&this); }
 
 	alias getBlock = get!IrBasicBlock;
 	alias getPhi = get!IrPhi;
