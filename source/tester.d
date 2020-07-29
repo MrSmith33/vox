@@ -10,14 +10,14 @@ import tests.passing;
 import tests.failing;
 import tests.exe;
 import tests.reg_alloc;
-public import all : HostSymbol, DllModule;
+public import all : HostSymbol, DllModule, Slice, SliceString;
 
 public import std.format : formattedWrite, format;
 import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(test25);
+	Test test = makeTest!(test171);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -40,15 +40,17 @@ void runDevTests()
 
 	FuncDumpSettings dumpSettings;
 	dumpSettings.printBlockFlags = true;
+	//dumpSettings.printBlockOuts = true;
 
 	//driver.context.printSource = true;
 	//driver.context.printLexemes = true;
 	//driver.context.printAstFresh = true;
 	//driver.context.printAstSema = true;
 	//driver.context.printIr = true;
+	//driver.context.printIrOptEach = true;
 	//driver.context.printIrOpt = true;
-	//driver.context.printIrLower = true;
 	//driver.context.printIrLowerEach = true;
+	//driver.context.printIrLower = true;
 	//driver.context.printLir = true;
 	//driver.context.printLiveIntervals = true;
 	//driver.context.printLirRA = true;
@@ -179,18 +181,6 @@ struct Test
 	HostSymbol[] hostSymbols;
 	DllModule[] dllModules;
 }
-
-struct Slice(T) {
-	this(T[] data) {
-		ptr = data.ptr;
-		length = data.length;
-	}
-	ulong length;
-	T* ptr;
-	T[] slice() { return ptr[0..length]; }
-	alias slice this;
-}
-alias SliceString = Slice!(const(char));
 
 Test makeTest(alias test)() {
 	static assert (__traits(getAttributes, test).length > 0);
