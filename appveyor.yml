@@ -2,7 +2,7 @@ platform: x64
 environment:
  matrix:
   - DC: ldc
-    DVersion: 1.22.1
+    DVersion: 1.22.0
     arch: x64
 
 deploy:
