@@ -23,11 +23,11 @@ jobs:
         shell: bash
         run: |
           cd source
-          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=${EXE} -i main.d
+          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=${{matrix.EXE}} -i main.d
       - uses: actions/upload-artifact@v2
         with:
           name: release
-          path: ${EXE}
+          path: ${{matrix.EXE}}
   test:
     name: Test
     strategy:
