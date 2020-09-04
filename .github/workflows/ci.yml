@@ -4,18 +4,18 @@ on: [push, pull_request]
 jobs:
   test:
     name: Dub Tests
-      strategy:
-        matrix:
-          os: [ubuntu-latest, windows-latest]
-          dc: [ldc-1.20.1]
-        runs-on: ${{ matrix.os }}
-        steps:
-          - uses: actions/checkout@v2
-          - uses: dlang-community/setup-dlang@v1
-            with:
-              compiler: ${{ matrix.dc }}
-          - name: Run tests
-            run: |
-              cd source
-              ldc2 -m64 -g -i main.d -unittest -of=test.exe
-              ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=tjc.exe -i main.d
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        dc: [ldc-1.20.1]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ${{ matrix.dc }}
+      - name: Run tests
+        run: |
+          cd source
+          ldc2 -m64 -g -i main.d -unittest -of=test.exe
+          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=tjc.exe -i main.d
