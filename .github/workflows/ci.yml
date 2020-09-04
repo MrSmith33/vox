@@ -1,5 +1,5 @@
-name: Test
-on: [push, pull_request]
+name: CI
+on: [push, pull_request, release]
 
 jobs:
   build:
@@ -26,6 +26,7 @@ jobs:
           ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=${{matrix.EXE}} -i main.d
       - uses: actions/upload-artifact@v2
         with:
+          name: ${{matrix.EXE}}
           path: ./source/${{matrix.EXE}}
   test:
     name: Test
@@ -44,6 +45,4 @@ jobs:
         run: |
           cd source
           ldc2 -m64 -g -i main.d -unittest -of=test.exe
-          ./test.exe        
-
-
+          ./test.exe
