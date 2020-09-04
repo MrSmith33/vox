@@ -94,7 +94,8 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	Test[] regAllocTests = tests.reg_alloc.regAllocTests;
 	Test[] exeTests = tests.exe.exeTests;
 
-	size_t numTests = jitTests.length + regAllocTests.length + exeTests.length;
+	size_t numTests = jitTests.length + regAllocTests.length;
+	version(Windows) numTests += exeTests.length;
 	size_t numSuccessfulTests;
 	writefln("Running %s tests", numTests);
 
@@ -136,7 +137,7 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 
 	driver.context.buildType = BuildType.exe;
 	driver.passes = exePasses;
-	runTests(exeTests);
+	version(Windows) runTests(exeTests);
 	auto time4 = currTime;
 
 	Duration durationJit = time2-time1;
