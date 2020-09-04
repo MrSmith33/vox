@@ -133,6 +133,7 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 
 	uint paramsSize = STACK_ITEM_SIZE * layout.numParamSlots;
 	uint paramsOffset = layout.reservedBytes + STACK_ITEM_SIZE; // locals size + ret addr
+	if (callConv.hasShadowSpace) paramsOffset += 32;
 
 	// TODO utilize shadow space
 	// TODO utilize red zone

@@ -2,8 +2,8 @@
 
 [![Build status](https://ci.appveyor.com/api/projects/status/3os1s4a34hl83r0b?svg=true)](https://ci.appveyor.com/project/MrSmith33/tiny-jit)
 
-[Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
-[Channel on /r/ProgrammingLanguages discord](https://discord.gg/HpYYhH4)
+* [Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
+* [Channel on /r/ProgrammingLanguages discord](https://discord.gg/HpYYhH4)
 
 # Vox programming language
 

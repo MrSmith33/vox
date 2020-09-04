@@ -242,14 +242,15 @@ void win64_classify(CompilationContext* c, ref AbiState state)
 		} else {
 			state.abi.returnClass = PassClass.byPtrReg;
 			state.abi.returnLoc.regs[0] = state.gprRegs[0];
+			state.abi.returnLoc.regs[1] = amd64_reg.ax; // we store return register in second slot
 			// TODO: also reduce number of sse regs
 			--state.gprRemaining;
 		}
 	}
+	//writefln("result %s %s", state.abi.returnClass, state.abi.returnLoc.regs);
 
 	foreach(uint i; 0..cast(uint)state.type.numParameters) {
 		IrIndex paramType = state.type.parameterTypes[i];
-		PassClass paramClass;
 		if (fitsIntoRegister(paramType, c)) {
 			if (state.gprRemaining) {
 				state.abi.paramClasses[i] = PassClass.byValueReg;
@@ -270,7 +271,7 @@ void win64_classify(CompilationContext* c, ref AbiState state)
 			}
 		}
 
-		//writefln("param %s %s", i, state.abi.paramClasses[i]);
+		//writefln("param %s %s %s", i, state.abi.paramClasses[i], state.abi.returnLoc.regs);
 	}
 }
 
@@ -316,6 +317,7 @@ void sysv64_classify(CompilationContext* c, ref AbiState state)
 		} else if (resClass.passClass == PassClass.byValueMemory) {
 			state.abi.returnClass = PassClass.byPtrReg;
 			state.abi.returnLoc.regs[0] = state.gprRegs[0];
+			state.abi.returnLoc.regs[1] = amd64_reg.ax; // we store return register in second slot
 			--state.gprRemaining;
 		}
 		//writefln("res %s", state.abi.returnClass);
@@ -517,18 +519,22 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			IrIndex arg = args[i];
 			removeUser(c, ir, instrIndex, arg);
 
-			PassClass paramClass = callee_state.abi.paramClasses[i];
+			PassClass paramClass = callee_state.abi.paramClasses[i-cast(size_t)hasHiddenPtr];
+			IrIndex type = callee_state.type.parameterTypes[i-cast(size_t)hasHiddenPtr];
 			final switch(paramClass) {
-				case PassClass.byValueReg: break;
+				case PassClass.byValueReg:
+					args[i] = simplifyConstant(arg, c);
+					break;
 				case PassClass.byValueRegMulti: break;
 				case PassClass.byPtrReg, PassClass.byPtrMemory:
 					//allocate stack slot, store value there and use slot pointer as argument
-					IrIndex type = callee_state.type.parameterTypes[i-cast(size_t)hasHiddenPtr];
 					args[i] = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.argument, 0);
 					IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
 					builder.insertBeforeInstr(instrIndex, instr);
 					break;
-				case PassClass.byValueMemory: break; // handled later
+				case PassClass.byValueMemory:
+					if (type.fitsIntoRegister(c)) args[i] = simplifyConstant(arg, c);
+					break; // handled later
 				case PassClass.ignore: break;
 			}
 		}
@@ -565,15 +571,16 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			// push args to stack
 			for (int i = start; i != end; i += inc) {
 				PassClass paramClass = callee_state.abi.paramClasses[i];
+				IrIndex arg = args[i + cast(int)hasHiddenPtr];
 				if (paramClass == PassClass.byValueMemory || paramClass == PassClass.byPtrMemory) {
 					ParamLocation paramData = callee_state.abi.paramData[i];
 
-					IrIndex type = ir.getValueType(c, args[i]);
+					IrIndex type = ir.getValueType(c, arg);
 					uint size = c.types.typeSize(type);
 					//writefln("param %s %s %s %s", i, stackOffset, paramData.stackOffset, size);
 
 					if (size <= 8) {
-						auto pushInstr = builder.emitInstr!(IrOpcode.push)(ExtraInstrArgs(), args[i]);
+						auto pushInstr = builder.emitInstr!(IrOpcode.push)(ExtraInstrArgs(), arg);
 						builder.insertBeforeInstr(instrIndex, pushInstr);
 						stackOffset += 8;
 					} else {
@@ -587,7 +594,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 						IrIndex ptrType = c.types.appendPtr(type);
 						ExtraInstrArgs extra = { type : ptrType };
 						IrIndex ptr = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, amd64_reg.sp).result;
-						builder.emitInstrBefore!(IrOpcode.store)(instrIndex, ExtraInstrArgs(), ptr, args[i]);
+						builder.emitInstrBefore!(IrOpcode.store)(instrIndex, ExtraInstrArgs(), ptr, arg);
 
 						stackOffset += allocSize;
 					}
@@ -597,21 +604,28 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			stackReserve += callee_state.abi.stackSize;
 		}
 
+		if (callee_state.abi.returnClass == PassClass.byPtrReg) {
+			IrIndex argRegister = callee_state.abi.returnLoc.regs[0];
+			IrIndex type = ir.getValueType(c, args[0]);
+			argRegister.physRegSize = typeToRegSize(type, c);
+			ExtraInstrArgs extra = { result : argRegister };
+			builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, args[0]);
+		}
+
 		// move args to registers
 		foreach(i, paramClass; callee_state.abi.paramClasses) {
-			IrIndex arg = args[i];
+			IrIndex arg = args[i + cast(int)hasHiddenPtr];
+			ParamLocation paramData = callee_state.abi.paramData[i];
+
 			IrIndex type = ir.getValueType(c, arg);
 			final switch(paramClass) {
-				case PassClass.byValueReg:
-					ParamLocation paramData = callee_state.abi.paramData[i];
-					IrIndex value = simplifyConstant(arg, c);
+				case PassClass.byValueReg, PassClass.byPtrReg:
 					IrIndex argRegister = paramData.regs[0];
 					argRegister.physRegSize = typeToRegSize(type, c);
 					ExtraInstrArgs extra = { result : argRegister };
-					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, value);
+					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, arg);
 					break;
 				case PassClass.byValueRegMulti:
-					ParamLocation paramData = callee_state.abi.paramData[i];
 					IrIndex[2] vals = simplifyConstant128(instrIndex, arg, builder, c);
 
 					IrIndex reg1 = paramData.regs[0];
@@ -623,12 +637,6 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 					reg2.physRegSize = IrArgSize.size64;
 					ExtraInstrArgs extra4 = { result : reg2 };
 					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra4, vals[1]);
-					break;
-				case PassClass.byPtrReg:
-					//allocate stack slot, store value there and use slot pointer as argument
-					args[i] = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.argument, 0);
-					IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
-					builder.insertBeforeInstr(instrIndex, instr);
 					break;
 				case PassClass.byValueMemory: break; // handled below
 				case PassClass.byPtrMemory: break; // handled below
@@ -734,7 +742,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				IrIndex value = instrHeader.arg(ir, 0);
 				IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), hiddenParameter, value);
 				builder.insertBeforeInstr(instrIndex, instr);
-				IrIndex result = resRegs[0];
+				IrIndex result = resRegs[1]; // we store return register in second slot
 				ExtraInstrArgs extra = { result : result };
 				IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, hiddenParameter).instruction;
 				builder.insertBeforeInstr(instrIndex, copyInstr);
@@ -756,7 +764,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				ExtraInstrArgs extra3 = { result : result1 };
 				builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra3, vals[0]);
 
-				IrIndex result2 = resRegs[1];
+				IrIndex result2 = resRegs[1]; // we store return register in second slot
 				result2.physRegSize = IrArgSize.size64;
 				ExtraInstrArgs extra4 = { result : result2 };
 				builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra4, vals[1]);

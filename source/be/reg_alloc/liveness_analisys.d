@@ -158,7 +158,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 
 			// -------------- Assign interval hints --------------
 			// if non-mov instruction assigns to phys register,
-			// movs must follow instruction immidiately matching the order of results
+			// movs must follow instruction immediately matching the order of results
 			// if non-mov instruction accepts 1 or more phys registers, then
 			// it must be preceded by movs from vregs to pregs in matching order
 			// Example:
