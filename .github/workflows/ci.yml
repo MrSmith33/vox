@@ -2,8 +2,34 @@ name: Test
 on: [push, pull_request]
 
 jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        dc: [ldc-1.20.1]
+        include:
+        - os: ubuntu-latest
+          EXE: tjc
+        - os: windows-latest
+          EXE: tjc.exe
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ${{ matrix.dc }}
+      - name: Build release
+        shell: bash
+        run: |
+          cd source
+          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=${EXE} -i main.d
+      - uses: actions/upload-artifact@v2
+        with:
+          name: release
+          path: ${EXE}
   test:
-    name: Dub Tests
+    name: Test
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -14,13 +40,11 @@ jobs:
       - uses: dlang-community/setup-dlang@v1
         with:
           compiler: ${{ matrix.dc }}
-      - name: Run tests
+      - name: Test
         shell: bash
         run: |
           cd source
-          dir
-          ldc2 --version
           ldc2 -m64 -g -i main.d -unittest -of=test.exe
-          ./test.exe
-          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=tjc.exe -i main.d
-        
+          ./test.exe        
+
+
