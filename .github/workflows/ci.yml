@@ -10,6 +10,7 @@ jobs:
         dc: [ldc-1.20.1]
     runs-on: ${{ matrix.os }}
     steps:
+      - shell: bash
       - uses: actions/checkout@v2
       - uses: dlang-community/setup-dlang@v1
         with:
@@ -20,6 +21,6 @@ jobs:
           dir
           ldc2 --version
           ldc2 -m64 -g -i main.d -unittest -of=test.exe
-          test.exe
+          ./test.exe
           ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=tjc.exe -i main.d
         
