@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        dc: ${{ DC }}
+        dc: [ldc-1.23.0]
         include:
         - os: ubuntu-latest
           EXE: tjc
@@ -35,7 +35,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        dc: ${{ DC }}
+        dc: [ldc-1.23.0]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
