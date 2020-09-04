@@ -247,6 +247,8 @@ TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings
 
 TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
 {
+	import std.string : lineSplitter;
+	import std.algorithm : joiner, equal;
 	bool isFailingTest;
 	string expectedError;
 
@@ -273,6 +275,9 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 		string strippedHar = curTest.harData.stripLeft;
 		parseHar(driver.context, "test.har", strippedHar, &onHarFile);
 
+		// Splitting lines gets rid of \r\n on windows, which will cause mismatch with error message
+		auto expectedErrorRange = expectedError.lineSplitter.joiner("\n");
+
 		// compile
 		try
 		{
@@ -285,13 +290,13 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 
 			// successfully matched the error message(s)
 			// TODO: we skip `times.print` below for failing tests, move it upward
-			if (driver.context.errorSink.text == expectedError) {
+			if (equal(driver.context.errorSink.text, expectedErrorRange)) {
 				return TestResult.success;
 			}
 
 			writefln("Test `%s` failed", curTest.testName);
 			writefln("Expected error:");
-			writeln(expectedError);
+			writeln(expectedErrorRange);
 			writefln("Received error:");
 			writeln(driver.context.errorSink.text);
 			writefln("Stack trace:");
@@ -304,7 +309,7 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 		if (isFailingTest) {
 			writefln("Test `%s` compiled successfully, but expected to fail", curTest.testName);
 			writefln("Expected error:");
-			writeln(expectedError);
+			writeln(expectedErrorRange);
 			return TestResult.failure;
 		}
 
