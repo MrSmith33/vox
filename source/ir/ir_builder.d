@@ -36,6 +36,9 @@ struct ExtraInstrArgs
 	///       or else a new virtual register is created.
 	bool hasResult;
 
+	/// Will be added to the number of allocated argument slots and to number of arguments
+	ubyte extraArgSlots;
+
 	/// If instruction has variadic result, see 'hasResult' comment.
 	/// If instruction always has result, then 'result' is used when defined.
 	///    when not defined, new virtual register is created
@@ -495,7 +498,11 @@ struct IrBuilder
 			instrHeader.cond = extra.cond;
 		}
 
-		// arguments
+		ubyte numArgs = cast(typeof(instrHeader.numArgs))args.length;
+		ubyte numArgSlots = cast(typeof(instrHeader.numArgs))(numArgs + extra.extraArgSlots);
+		instrHeader.numArgs = numArgs;
+
+		// arguments checks
 		static if (iinfo.hasVariadicArgs)
 		{
 			context.assertf(args.length <= IrInstrHeader.numArgs.max,
@@ -508,24 +515,16 @@ struct IrBuilder
 				I.stringof,
 				iinfo.numArgs,
 				args.length);
-
-			instrHeader.numArgs = cast(typeof(instrHeader.numArgs))args.length;
-
-			// allocate argument slots after optional result
-			appendPayloadSlots(cast(uint)args.length);
 		}
 		else
 		{
 			context.assertf(iinfo.numArgs == args.length,
 				"Instruction %s requires %s args, while passed %s",
 				I.stringof, iinfo.numArgs, args.length);
-
-			instrHeader.numArgs = iinfo.numArgs;
-			appendPayloadSlots(iinfo.numArgs);
 		}
 
-		// allocate hidden args
-		appendPayloadSlots(iinfo.numHiddenArgs);
+		// allocate argument slots and hidden args after optional result
+		appendPayloadSlots(numArgSlots + iinfo.numHiddenArgs);
 
 		// set arguments
 		instrHeader.args(ir)[] = args;
@@ -536,6 +535,9 @@ struct IrBuilder
 				addUser(instr, arg);
 			}
 		}
+
+		// register extra slots. They are not considered above
+		instrHeader.numArgs = numArgSlots;
 
 		static if (iinfo.mayHaveResult)
 		{

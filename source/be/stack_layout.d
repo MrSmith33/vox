@@ -142,7 +142,8 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 	{
 		if (slot.isParameter)
 		{
-			slot.displacement = paramsOffset + slot.paramIndex * STACK_ITEM_SIZE;
+			// ABI lowering code inserts correct offset from the start of stack arguments
+			slot.displacement = paramsOffset + slot.displacement;
 		}
 		else
 		{

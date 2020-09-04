@@ -201,6 +201,9 @@ enum IrOpcode : ushort
 	/// Returns: member of aggregate
 	/// For now indicies must be constant
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element,
+	/// Gets a register sized slice of aggregate
+	/// Args: aggregate, 1 index of 8byte chunk
+	@_ii(2, IFLG.hasResult) get_aggregate_slice,
 	/// Args: aggregate, new element value, 1 or more index
 	/// Returns: aggregate with replaced element
 	@_ii(3, IFLG.hasVariadicArgs | IFLG.hasResult) insert_element,

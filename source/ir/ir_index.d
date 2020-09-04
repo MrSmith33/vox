@@ -171,6 +171,11 @@ struct IrIndex
 	bool isTypeNoreturn() {
 		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrValueType.noreturn_t;
 	}
+	IrValueType basicType() {
+		assert(kind == IrValueKind.type);
+		assert(typeKind == IrTypeKind.basic);
+		return cast(IrValueType)typeIndex;
+	}
 
 	bool isSignedConstant() {
 		return kind == IrValueKind.constant &&

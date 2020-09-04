@@ -323,3 +323,15 @@ void tester133(ref TestContext ctx) {
 	run(p);
 }
 
+
+@TestInfo(&tester134)
+immutable aggr134 = q{--- aggr134
+	// SysV ABI
+	struct Struct { i64 x; i64 y; }
+	Struct run(Struct s) { return s; }
+};
+void tester134(ref TestContext ctx) {
+	static struct Point { long x; long y; }
+	auto run = ctx.getFunctionPtr!(Point, Point)("run");
+	assert(run(Point(1, 2)) == Point(1, 2));
+}

@@ -3,6 +3,7 @@
 /// Authors: Andrey Penechko.
 module be.ir_lower;
 
+import std.bitmanip : bitfields;
 import std.stdio;
 import all;
 
@@ -33,7 +34,7 @@ void pass_ir_lower(CompilationContext* c, ModuleDeclNode* mod, FunctionDeclNode*
 	builder.finalizeIr;
 }
 
-bool isPassByValue(IrIndex type, CompilationContext* c) {
+bool fitsIntoRegister(IrIndex type, CompilationContext* c) {
 	if (type.isTypeStruct) {
 		IrTypeStruct* structRes = &c.types.get!IrTypeStruct(type);
 		switch(structRes.size) {
@@ -47,112 +48,398 @@ bool isPassByValue(IrIndex type, CompilationContext* c) {
 	return true;
 }
 
+enum AbiClass : ubyte {
+	/// This class is used as initializer in the algorithms. It will be used for padding and empty structures and unions.
+	no_class,
+	/// This class consists of integral types that fit into one of the general purpose registers.
+	integer,
+	/// The class consists of types that fit into a vector register.
+	sse,
+	/// The class consists of types that fit into a vector register and can be passed and returned in the upper bytes of it.
+	sse_up,
+	/// These classes consists of types that will be returned via the x87 FPU.
+	x87,
+	/// ditto
+	x87_up,
+	/// This class consists of types that will be returned via the x87 FPU.
+	complex_x87,
+	/// This class consists of types that will be passed and returned in memory via the stack.
+	memory,
+}
+
+// Plaform-independent classification of function parameter/result
+enum PassClass : ubyte {
+	// Register stores value
+	// sysv64 & win64 ABI: parameters, return value
+	byValueReg,
+	// 2 registers, possibly of different classes store value
+	// sysv64: parameters, return value
+	byValueRegMulti,
+	// Pointer to stack allocated value is passed via GPR
+	// win64 ABI: parameters, return value
+	// sysv64 ABI: return value
+	byPtrReg,
+	// Value is pushed on the stack
+	// sysv64 & win64 ABI: parameters
+	byValueMemory,
+	// Pointer to stack allocated value is passed via stack
+	// win64 ABI: parameters
+	byPtrMemory,
+	// Value is ignored. Used for empty structs
+	// sysv64 ABI: parameters, return value
+	ignore
+}
+
+bool isMemory(PassClass passClass) { return passClass == PassClass.byValueMemory || passClass == PassClass.byPtrMemory; }
+
+struct Sysv_AbiParamClass {
+	mixin(bitfields!(
+		AbiClass,      "low", 4,
+		AbiClass,     "high", 4,
+	));
+	PassClass passClass;
+	ubyte len() { return high == AbiClass.no_class ? 1 : 2; }
+
+	this(PassClass passClass, AbiClass a) {
+		this.passClass = passClass;
+		low = a;
+	}
+	this(PassClass passClass, AbiClass a, AbiClass b) {
+		this.passClass = passClass;
+		low = a;
+		high = b;
+	}
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		if (high == AbiClass.no_class)
+			sink.formattedWrite("(%s)", low);
+		else
+			sink.formattedWrite("(%s,%s)", low, high);
+	}
+}
+
+enum MAX_ARG_CLASSES = 2;
+
+struct AbiState {
+	FunctionAbi abi;
+
+	IrIndex[] gprRegs;
+	IrIndex[] retRegs;
+	IrTypeFunction* type;
+
+	ubyte gprRemaining;
+	ubyte sseRemaining;
+
+	ubyte gprRegistersUsed() {
+		return cast(ubyte)(gprRegs.length - gprRemaining);
+	}
+
+	ArgClassifier classify;
+	uint[] paramClassBuf;
+
+	void init(CompilationContext* c, IrTypeFunction* type) {
+		this.type = type;
+		auto cc = callConventions[type.callConv];
+		abi.stackAlignment = cc.minStackAlignment;
+		paramClassBuf = c.allocateTempArray!uint(alignValue(type.numParameters, 4) / 4);
+		PassClass[] paramClasses = (cast(PassClass[])paramClassBuf)[0..type.numParameters];
+		abi.paramClasses = paramClasses[0..type.numParameters];
+		abi.paramData = c.allocateTempArray!ParamLocation(type.numParameters);
+
+		gprRegs = cc.paramsInRegs;
+		gprRemaining = cast(ubyte)cc.paramsInRegs.length;
+		classify = classify_abis[type.callConv];
+
+		calc_stack(c);
+	}
+
+	void free(CompilationContext* c) {
+		c.freeTempArray(abi.paramData);
+		c.freeTempArray(paramClassBuf);
+	}
+
+	void calc_stack(CompilationContext* c) {
+		classify(c, this);
+
+		// choose stack ordering
+		int start = 0;
+		int end = cast(int)abi.paramClasses.length;
+		int inc = 1;
+
+		if (abi.reverseStackOrder) {
+			swap(start, end);
+			--start;
+			--end;
+			inc = -1;
+		}
+
+		enum MIN_STACK_SLOT_SIZE = 8;
+
+		// returns assigned register to the pool
+		// item added will have increasing stack offset
+		void assignToMem(ref ParamLocation loc, SizeAndAlignment item) {
+			abi.stackAlignment = max(abi.stackAlignment, item.alignment);
+			// each item takes a whole number of stack slots (8 byte slots on 64 bit arch)
+			uint itemAlignment = max(MIN_STACK_SLOT_SIZE, item.alignment);
+			abi.stackSize = alignValue!uint(abi.stackSize, itemAlignment);
+			loc.stackOffset = abi.stackSize;
+			loc.stackSize = max(MIN_STACK_SLOT_SIZE, item.size);
+
+			abi.stackSize += loc.stackSize;
+		}
+
+		// actually assign memory offsets
+		for (int i = start; i != end; i += inc) {
+			PassClass paramClass = abi.paramClasses[i];
+			if (paramClass == PassClass.byValueMemory) {
+				SizeAndAlignment sizeAlign = c.types.typeSizeAndAlignment(type.parameterTypes[i]);
+				assignToMem(abi.paramData[i], sizeAlign);
+				//writefln("offset %s %s %s", i, abi.paramData[i].stackOffset, sizeAlign.size);
+			} else if (paramClass == PassClass.byPtrMemory) {
+				assignToMem(abi.paramData[i], SizeAndAlignment(8, 8));
+			}
+		}
+		abi.stackSize = alignValue!uint(abi.stackSize, MIN_STACK_SLOT_SIZE);
+	}
+}
+
+union ParamLocation {
+	IrIndex[MAX_ARG_CLASSES] regs;
+	struct {
+		// offset from the first byte of first parameter on the stack
+		// first parameter will have offset of 0
+		uint stackOffset;
+		uint stackSize;
+	}
+}
+
+struct FunctionAbi
+{
+	// must be byValueReg when function has no result
+	PassClass returnClass;
+	ParamLocation returnLoc;
+	// length is number of function parameters
+	// hidden parameter is not included here, instead it is handled immediately
+	PassClass[] paramClasses;
+	// when same index is memory, this is int offset
+	// when same index is register, this is register
+	ParamLocation[] paramData;
+	uint stackSize;
+	uint stackAlignment;
+	bool reverseStackOrder;
+}
+
+// classification callback will classify the argument and immediately try to assign register if available
+// If there is no free registers left, it will reclassify the argument to be passed via memory.
+void win64_classify(CompilationContext* c, ref AbiState state)
+{
+	state.abi.returnClass = PassClass.ignore;
+	if (state.type.numResults == 1) {
+		IrIndex resType = state.type.resultTypes[0];
+		if (resType.fitsIntoRegister(c)) {
+			state.abi.returnClass = PassClass.byValueReg;
+			state.abi.returnLoc.regs[0] = amd64_reg.ax;
+		} else {
+			state.abi.returnClass = PassClass.byPtrReg;
+			state.abi.returnLoc.regs[0] = state.gprRegs[0];
+			// TODO: also reduce number of sse regs
+			--state.gprRemaining;
+		}
+	}
+
+	foreach(uint i; 0..cast(uint)state.type.numParameters) {
+		IrIndex paramType = state.type.parameterTypes[i];
+		PassClass paramClass;
+		if (fitsIntoRegister(paramType, c)) {
+			if (state.gprRemaining) {
+				state.abi.paramClasses[i] = PassClass.byValueReg;
+				state.abi.paramData[i].regs[0] = state.gprRegs[$-state.gprRemaining];
+				// TODO: also reduce number of sse regs
+				--state.gprRemaining;
+			} else {
+				state.abi.paramClasses[i] = PassClass.byValueMemory;
+			}
+		} else {
+			if (state.gprRemaining) {
+				state.abi.paramClasses[i] = PassClass.byPtrReg;
+				state.abi.paramData[i].regs[0] = state.gprRegs[$-state.gprRemaining];
+				// TODO: also reduce number of sse regs
+				--state.gprRemaining;
+			} else {
+				state.abi.paramClasses[i] = PassClass.byPtrMemory;
+			}
+		}
+
+		//writefln("param %s %s", i, state.abi.paramClasses[i]);
+	}
+}
+
+Sysv_AbiParamClass classify_param(CompilationContext* c, IrIndex paramType) {
+	assert(paramType.isType);
+
+	final switch (paramType.typeKind) with(IrTypeKind) {
+		case basic:
+			final switch(paramType.basicType) with(IrValueType) {
+				case noreturn_t: return Sysv_AbiParamClass(PassClass.ignore, AbiClass.no_class);
+				case void_t: return Sysv_AbiParamClass(PassClass.ignore, AbiClass.no_class);
+				case i8: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
+				case i16: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
+				case i32: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
+				case i64: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
+				// floats are SSE class, TODO
+			}
+		case pointer:
+		case func_t:
+			return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
+		case array:
+		case struct_t:
+			uint size = c.types.typeSize(paramType);
+			// until we have support for __m256 and __m512, 16 bytes is max size
+			if (size == 0) return Sysv_AbiParamClass(PassClass.ignore, AbiClass.no_class);
+			if (size > 16) return Sysv_AbiParamClass(PassClass.byValueMemory, AbiClass.memory);
+			if (size <= 8) return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
+			return Sysv_AbiParamClass(PassClass.byValueRegMulti, AbiClass.integer, AbiClass.integer);
+	}
+}
+
+void sysv64_classify(CompilationContext* c, ref AbiState state)
+{
+	state.abi.returnClass = PassClass.ignore;
+	if (state.type.numResults == 1) {
+		IrIndex resType = state.type.resultTypes[0];
+		Sysv_AbiParamClass resClass = classify_param(c, resType);
+		state.abi.returnClass = resClass.passClass;
+		if (resClass.low == AbiClass.integer) {
+			state.abi.returnLoc.regs[0] = amd64_reg.ax;
+			if (resClass.high == AbiClass.integer)
+				state.abi.returnLoc.regs[1] = amd64_reg.dx;
+		} else if (resClass.passClass == PassClass.byValueMemory) {
+			state.abi.returnClass = PassClass.byPtrReg;
+			state.abi.returnLoc.regs[0] = state.gprRegs[0];
+			--state.gprRemaining;
+		}
+		//writefln("res %s", state.abi.returnClass);
+	}
+
+	// assign register or fallback to memory class
+	foreach(uint i; 0..cast(uint)state.type.numParameters) {
+		IrIndex paramType = state.type.parameterTypes[i];
+		Sysv_AbiParamClass paramClass_sysv = classify_param(c, paramType);
+		state.abi.paramClasses[i] = paramClass_sysv.passClass;
+		switch(paramClass_sysv.low)
+		{
+			case AbiClass.integer:
+				if (state.gprRemaining < paramClass_sysv.len) {
+					state.abi.paramClasses[i] = PassClass.byValueMemory;
+					goto case AbiClass.memory;
+				}
+
+				// assign regs
+				foreach(uint j; 0..paramClass_sysv.len) {
+					assert(state.gprRemaining);
+					state.abi.paramData[i].regs[j] = state.gprRegs[$-state.gprRemaining];
+					--state.gprRemaining;
+				}
+				break;
+
+			case AbiClass.memory: break;
+			case AbiClass.no_class: break; // for empty structs
+			default:
+				c.internal_error("%s not implemented", paramClass_sysv.low);
+		}
+	}
+}
+
+alias ArgClassifier = void function(CompilationContext* c, ref AbiState state);
+__gshared ArgClassifier[] classify_abis = [
+	&win64_classify,
+	&sysv64_classify
+];
+
+// Handle ABI
 void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
-	//writefln("lower_abi %s win64", builder.context.idString(ir.backendData.name));
-	// buffer for call/instruction arguments
-	enum MAX_ARGS = 255;
-	IrIndex[MAX_ARGS] argBuffer = void;
-
-	// Handle ABI
+	//writefln("lower_abi %s %s", builder.context.idString(ir.backendData.name), ir.getCallConvEnum(c));
 	IrTypeFunction* irFuncType = &c.types.get!IrTypeFunction(ir.type);
-	uint numHiddenParams = 0;
+	c.assertf(irFuncType.numResults <= 1, "%s results is not implemented", irFuncType.numResults);
+
+	AbiState state;
+	state.init(c, irFuncType);
+	scope(exit) state.free(c);
+
 	IrIndex hiddenParameter;
+	if (state.abi.returnClass == PassClass.byPtrReg) {
+		// pointer to return value is passed via hidden parameter, read it into virt reg
+		IrIndex retType = c.types.appendPtr(state.type.resultTypes[0]);
+		IrIndex paramReg = state.abi.returnLoc.regs[0];
 
-	if (irFuncType.numResults == 0)
-	{
-		// keep original type
-	}
-	else if (irFuncType.numResults == 1)
-	{
-		IrIndex resType = irFuncType.resultTypes[0];
-		if (resType.isPassByValue(c))
-		{
-			// keep original type
-		}
-		else
-		{
-			numHiddenParams = 1;
-			IrIndex[] oldParams = irFuncType.parameterTypes;
-			// create new type
-			// dont modify the type
-			IrIndex irType = c.types.appendFuncSignature(1, irFuncType.numParameters + 1, irFuncType.callConv);
-			irFuncType = &c.types.get!IrTypeFunction(irType);
-			// copy original parameters
-			irFuncType.parameterTypes[1..$] = oldParams;
-
-			IrIndex retType = c.types.appendPtr(resType);
-			// set hidden parameter and return type
-			irFuncType.parameterTypes[0] = retType;
-			irFuncType.resultTypes[0] = retType;
-
-			// Add hidden parameter(s) to first block
-			ExtraInstrArgs extra = { type : retType };
-			InstrWithResult param = builder.emitInstr!(IrOpcode.parameter)(extra);
-			ir.get!IrInstr_parameter(param.instruction).index(ir) = -1; // to offset += 1 in parameter handling
-			builder.prependBlockInstr(ir.entryBasicBlock, param.instruction);
-			hiddenParameter = param.result;
-		}
-	}
-	else
-	{
-		c.internal_error("%s results is not implemented", irFuncType.numResults);
+		paramReg.physRegSize = typeToRegSize(retType, c);
+		ExtraInstrArgs extra = { type : retType };
+		auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, paramReg);
+		builder.prependBlockInstr(ir.entryBasicBlock, moveInstr.instruction);
+		hiddenParameter = moveInstr.result;
 	}
 
 	void convParam(IrIndex instrIndex, ref IrInstrHeader instrHeader)
 	{
 		IrInstr_parameter* param = ir.get!IrInstr_parameter(instrIndex);
-		if (numHiddenParams == 1) param.index(ir) += 1;
 		uint paramIndex = param.index(ir);
 
-		bool isInPhysReg = paramIndex < ir.getCallConv(c).paramsInRegs.length;
-
 		IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
-		if (isInPhysReg)
-		{
-			IrIndex paramReg = ir.getCallConv(c).paramsInRegs[paramIndex];
-			if (type.isPassByValue(c))
-			{
-				// this branch is also executed for hidden ptr parameter
 
-				paramReg.physRegSize = typeToRegSize(type, c);
+		PassClass paramClass = state.abi.paramClasses[paramIndex];
+		final switch(paramClass) {
+			case PassClass.byValueReg:
+				IrIndex[2] paramRegs = state.abi.paramData[paramIndex].regs;
+				paramRegs[0].physRegSize = typeToRegSize(type, c);
 				ExtraInstrArgs extra = { result : instrHeader.result(ir) };
-				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, paramReg).instruction;
+				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, paramRegs[0]).instruction;
 				replaceInstruction(ir, instrIndex, moveInstr);
-			}
-			else
-			{
-				type = c.types.appendPtr(type);
-				//irFuncType.parameterTypes[paramIndex] = type; // dont modify the type
+				break;
 
-				paramReg.physRegSize = typeToRegSize(type, c);
+			case PassClass.byValueRegMulti:
+				IrIndex[2] paramRegs = state.abi.paramData[paramIndex].regs;
+				IrIndex instr = receiveMultiValue(ir.nextInstr(instrIndex), paramRegs, instrHeader.result(ir), builder);
+				replaceInstruction(ir, instrIndex, instr);
+				break;
+
+			case PassClass.byPtrReg:
+				type = c.types.appendPtr(type);
+				IrIndex[2] paramRegs = state.abi.paramData[paramIndex].regs;
+				paramRegs[0].physRegSize = typeToRegSize(type, c);
 				ExtraInstrArgs extra1 = { type : type };
-				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra1, paramReg);
+				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra1, paramRegs[0]);
 				replaceInstruction(ir, instrIndex, moveInstr.instruction);
 
 				ExtraInstrArgs extra2 = { result : instrHeader.result(ir) };
 				IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra2, moveInstr.result).instruction;
 				ir.getInstr(loadInstr).isUniqueLoad = true;
 				builder.insertAfterInstr(moveInstr.instruction, loadInstr);
-			}
-		}
-		else
-		{
-			if (type.isPassByValue(c)) {
-				//writefln("parameter %s stack val", paramIndex);
+				break;
+
+			case PassClass.byValueMemory:
 				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.parameter, cast(ushort)paramIndex);
+				ir.backendData.stackLayout[slot].displacement = state.abi.paramData[paramIndex].stackOffset;
+
 				// is directly in stack
-				IrArgSize argSize = getTypeArgSize(type, c);
-				ExtraInstrArgs extra = { argSize : argSize, result : instrHeader.result(ir) };
-				IrIndex loadInstr = builder.emitInstr!(IrOpcode.load)(extra, slot).instruction;
+				ExtraInstrArgs extra = { result : instrHeader.result(ir) };
+				IrIndex loadInstr;
+				if (type.isTypeArray || type.isTypeStruct) {
+					// happens on sysv64
+					loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra, slot).instruction;
+				} else {
+					extra.argSize = getTypeArgSize(type, c);
+					loadInstr = builder.emitInstr!(IrOpcode.load)(extra, slot).instruction;
+				}
 				replaceInstruction(ir, instrIndex, loadInstr);
-			} else {
+				break;
+
+			case PassClass.byPtrMemory:
 				// stack contains pointer to data
-				//writefln("parameter %s stack ptr", paramIndex);
-				//convertAggregateVregToPointer(instrHeader.result(ir), ir, builder);
 				type = c.types.appendPtr(type);
-				//irFuncType.parameterTypes[paramIndex] = type; // dont modify the type
 				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.parameter, cast(ushort)paramIndex);
+				ir.backendData.stackLayout[slot].displacement = state.abi.paramData[paramIndex].stackOffset;
+
 				IrArgSize argSize = getTypeArgSize(type, c);
 				ExtraInstrArgs extra = { argSize : argSize, type : type };
 				InstrWithResult loadInstr = builder.emitInstr!(IrOpcode.load)(extra, slot);
@@ -164,7 +451,13 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				InstrWithResult loadInstr2 = builder.emitInstr!(IrOpcode.load_aggregate)(extra2, loadInstr.result);
 				ir.getInstr(loadInstr2.instruction).isUniqueLoad = true;
 				builder.insertAfterInstr(loadInstr.instruction, loadInstr2.instruction);
-			}
+				break;
+
+			case PassClass.ignore:
+				// use zeroinited struct
+				builder.redirectVregUsersTo(instrHeader.result(ir), c.constants.addZeroConstant(type));
+				removeInstruction(ir, instrIndex);
+				break;
 		}
 	}
 
@@ -178,6 +471,10 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			calleeTypeIndex = c.types.getPointerBaseType(calleeTypeIndex);
 		IrTypeFunction* calleeType = &c.types.get!IrTypeFunction(calleeTypeIndex);
 
+		AbiState callee_state;
+		callee_state.init(c, calleeType);
+		scope(exit) callee_state.free(c);
+
 		CallConv* callConv = c.types.getCalleeCallConv(callee, ir, c);
 		IrIndex[] args = instrHeader.args(ir)[1..$]; // exclude callee
 		IrIndex originalResult;
@@ -185,29 +482,23 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 		bool hasHiddenPtr = false;
 
 		// allocate stack slot for big return value
-		if (calleeType.numResults == 1)
+		if (callee_state.abi.returnClass == PassClass.byPtrReg)
 		{
-			IrIndex resType = calleeType.resultTypes[0];
-			if (!resType.isPassByValue(c))
-			{
-				originalResult = instrHeader.result(ir); // we reuse result slot
+			IrIndex resType = callee_state.type.resultTypes[0];
+			originalResult = instrHeader.result(ir); // we reuse result slot
 
-				// reuse result slot of instruction as first argument
-				instrHeader._payloadOffset -= 1;
-				instrHeader.hasResult = false;
-				instrHeader.numArgs += 1;
+			// reuse result slot of instruction as first argument
+			instrHeader._payloadOffset -= 1;
+			instrHeader.hasResult = false;
+			instrHeader.numArgs += 1;
 
-				args = instrHeader.args(ir)[1..$];
-				// move callee in first arg
-				instrHeader.arg(ir, 0) = callee;
-				// place return arg slot in second arg
-				hiddenPtr = ir.backendData.stackLayout.addStackItem(c, resType, StackSlotKind.argument, 0);
-				args[0] = hiddenPtr;
-				hasHiddenPtr = true;
-
-				//convertAggregateVregToPointer(originalResult, ir, builder, args[0]);
-				//builder.redirectVregUsersTo(originalResult, args[0]);
-			}
+			args = instrHeader.args(ir)[1..$];
+			// move callee in first arg
+			instrHeader.arg(ir, 0) = callee;
+			// place return arg slot in second arg
+			hiddenPtr = ir.backendData.stackLayout.addStackItem(c, resType, StackSlotKind.argument, 0);
+			args[0] = hiddenPtr;
+			hasHiddenPtr = true;
 		}
 
 		enum STACK_ITEM_SIZE = 8;
@@ -226,51 +517,124 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			IrIndex arg = args[i];
 			removeUser(c, ir, instrIndex, arg);
 
-			IrIndex type = calleeType.parameterTypes[i-cast(size_t)hasHiddenPtr];
-
-			if (type.isPassByValue(c)) {
-				arg = simplifyConstant(arg, c);
-				args[i] = arg;
-			} else {
-				//allocate stack slot, store value there and use slot pointer as argument
-				args[i] = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.argument, 0);
-				IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
-				builder.insertBeforeInstr(instrIndex, instr);
+			PassClass paramClass = callee_state.abi.paramClasses[i];
+			final switch(paramClass) {
+				case PassClass.byValueReg: break;
+				case PassClass.byValueRegMulti: break;
+				case PassClass.byPtrReg, PassClass.byPtrMemory:
+					//allocate stack slot, store value there and use slot pointer as argument
+					IrIndex type = callee_state.type.parameterTypes[i-cast(size_t)hasHiddenPtr];
+					args[i] = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.argument, 0);
+					IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
+					builder.insertBeforeInstr(instrIndex, instr);
+					break;
+				case PassClass.byValueMemory: break; // handled later
+				case PassClass.ignore: break;
 			}
 		}
 
+		// Stack layouting code makes sure that local data has 16 byte alignment if we have calls in IR.
 		// align stack and push args that didn't fit into registers (register size args)
-		if (numArgs > numParamsInRegs)
+		if (callee_state.abi.stackSize > 0)
 		{
-			if (numArgs % 2 == 1)
-			{	// align stack to 16 bytes
-				// TODO: SysV ABI needs 32byte alignment if __m256 is passed
-				stackReserve += STACK_ITEM_SIZE;
-				IrIndex paddingSize = c.constants.add(STACK_ITEM_SIZE, IsSigned.no);
-				auto growStackInstr = builder.emitInstr!(IrOpcode.grow_stack)(ExtraInstrArgs(), paddingSize);
-				builder.insertBeforeInstr(instrIndex, growStackInstr);
+			if (callee_state.abi.stackAlignment > 16) {
+				c.unrecoverable_error(TokenIndex(), "Stack alignment of %s > 16 is not implemented", callee_state.abi.stackAlignment);
 			}
 
-			// push args to stack
-			foreach_reverse (IrIndex arg; args[numParamsInRegs..numArgs])
+			if (callee_state.abi.stackSize % callee_state.abi.stackAlignment != 0)
 			{
-				stackReserve += STACK_ITEM_SIZE;
-				auto pushInstr = builder.emitInstr!(IrOpcode.push)(ExtraInstrArgs(), arg);
-				builder.insertBeforeInstr(instrIndex, pushInstr);
+				uint padding = paddingSize(callee_state.abi.stackSize, callee_state.abi.stackAlignment);
+				// align stack to 16 bytes
+				// TODO: SysV ABI needs 32byte alignment if __m256 is passed
+				stackReserve += padding;
+				IrIndex paddingSize = c.constants.add(padding, IsSigned.no);
+				builder.emitInstrBefore!(IrOpcode.grow_stack)(instrIndex, ExtraInstrArgs(), paddingSize);
 			}
+
+			// choose stack ordering
+			int start = cast(int)callee_state.abi.paramClasses.length-1;
+			int end = 0;
+			int inc = -1;
+
+			if (callee_state.abi.reverseStackOrder) {
+				swap(start, end);
+				++end;
+				inc = 1;
+			}
+			uint stackOffset = 0;
+			// push args to stack
+			for (int i = start; i != end; i += inc) {
+				PassClass paramClass = callee_state.abi.paramClasses[i];
+				if (paramClass == PassClass.byValueMemory || paramClass == PassClass.byPtrMemory) {
+					ParamLocation paramData = callee_state.abi.paramData[i];
+
+					IrIndex type = ir.getValueType(c, args[i]);
+					uint size = c.types.typeSize(type);
+					//writefln("param %s %s %s %s", i, stackOffset, paramData.stackOffset, size);
+
+					if (size <= 8) {
+						auto pushInstr = builder.emitInstr!(IrOpcode.push)(ExtraInstrArgs(), args[i]);
+						builder.insertBeforeInstr(instrIndex, pushInstr);
+						stackOffset += 8;
+					} else {
+						// this must be multiple of 8
+						uint allocSize = paramData.stackSize;
+						if (allocSize > 0) {
+							IrIndex paddingSize = c.constants.add(allocSize, IsSigned.no);
+							builder.emitInstrBefore!(IrOpcode.grow_stack)(instrIndex, ExtraInstrArgs(), paddingSize);
+						}
+
+						IrIndex ptrType = c.types.appendPtr(type);
+						ExtraInstrArgs extra = { type : ptrType };
+						IrIndex ptr = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, amd64_reg.sp).result;
+						builder.emitInstrBefore!(IrOpcode.store)(instrIndex, ExtraInstrArgs(), ptr, args[i]);
+
+						stackOffset += allocSize;
+					}
+				}
+			}
+			assert(stackOffset == callee_state.abi.stackSize);
+			stackReserve += callee_state.abi.stackSize;
 		}
 
 		// move args to registers
-		size_t numPhysRegs = min(numParamsInRegs, numArgs);
-		foreach (i, IrIndex arg; args[0..numPhysRegs])
-		{
+		foreach(i, paramClass; callee_state.abi.paramClasses) {
+			IrIndex arg = args[i];
 			IrIndex type = ir.getValueType(c, arg);
-			IrIndex argRegister = callConv.paramsInRegs[i];
-			argRegister.physRegSize = typeToRegSize(type, c);
-			args[i] = argRegister;
-			ExtraInstrArgs extra = { result : argRegister };
-			auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, arg).instruction;
-			builder.insertBeforeInstr(instrIndex, moveInstr);
+			final switch(paramClass) {
+				case PassClass.byValueReg:
+					ParamLocation paramData = callee_state.abi.paramData[i];
+					IrIndex value = simplifyConstant(arg, c);
+					IrIndex argRegister = paramData.regs[0];
+					argRegister.physRegSize = typeToRegSize(type, c);
+					ExtraInstrArgs extra = { result : argRegister };
+					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, value);
+					break;
+				case PassClass.byValueRegMulti:
+					ParamLocation paramData = callee_state.abi.paramData[i];
+					IrIndex[2] vals = simplifyConstant128(instrIndex, arg, builder, c);
+
+					IrIndex reg1 = paramData.regs[0];
+					reg1.physRegSize = IrArgSize.size64;
+					ExtraInstrArgs extra3 = { result : reg1 };
+					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra3, vals[0]);
+
+					IrIndex reg2 = paramData.regs[1];
+					reg2.physRegSize = IrArgSize.size64;
+					ExtraInstrArgs extra4 = { result : reg2 };
+					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra4, vals[1]);
+					break;
+				case PassClass.byPtrReg:
+					//allocate stack slot, store value there and use slot pointer as argument
+					args[i] = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.argument, 0);
+					IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
+					builder.insertBeforeInstr(instrIndex, instr);
+					break;
+				case PassClass.byValueMemory: break; // handled below
+				case PassClass.byPtrMemory: break; // handled below
+				case PassClass.ignore:
+					break;
+			}
 		}
 
 		if (callConv.hasShadowSpace)
@@ -278,18 +642,39 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			IrIndex const_32 = c.constants.add(32, IsSigned.no);
 			auto growStackInstr = builder.emitInstr!(IrOpcode.grow_stack)(ExtraInstrArgs(), const_32);
 			builder.insertBeforeInstr(instrIndex, growStackInstr);
+			ir.getInstr(instrIndex).extendFixedArgRange = true;
+		}
+
+		// fix arguments
+		scope(exit) {
+			ubyte regsUsed = callee_state.gprRegistersUsed;
+			if (regsUsed + 1 <= instrHeader.numArgs) {
+				// reuse instruction
+				instrHeader.numArgs = cast(ubyte)(regsUsed + 1); // include callee
+				instrHeader.args(ir)[1..$] = callee_state.gprRegs[0..regsUsed]; // fill with regs
+			} else {
+				// make bigger instruction
+				ExtraInstrArgs extra = {
+					extraArgSlots : regsUsed
+				};
+				if (instrHeader.hasResult)
+					extra.result = instrHeader.result(ir);
+				auto newCallInstr = builder.emitInstr!(IrOpcode.call)(extra, instrHeader.arg(ir, 0)).instruction;
+				IrInstrHeader* callHeader = ir.getInstr(newCallInstr);
+				callHeader.args(ir)[1..$] = callee_state.gprRegs[0..regsUsed];
+				replaceInstruction(ir, instrIndex, newCallInstr);
+			}
 		}
 
 		{
-			instrHeader.numArgs = cast(ubyte)(numPhysRegs + 1); // include callee
-
 			// If function is noreturn we don't need to insert cleanup code
 			if (calleeType.numResults == 1)
 			{
-				IrIndex resType = calleeType.resultTypes[0];
+				IrIndex resType = callee_state.type.resultTypes[0];
 				if (resType.isTypeNoreturn) return;
 			}
 
+			// Instructions will be added after this one
 			IrIndex lastInstr = instrIndex;
 
 			// Deallocate stack after call
@@ -299,48 +684,88 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				auto shrinkStackInstr = builder.emitInstr!(IrOpcode.shrink_stack)(ExtraInstrArgs(), conReservedBytes);
 				builder.insertAfterInstr(lastInstr, shrinkStackInstr);
 				lastInstr = shrinkStackInstr; // insert next instr after this one
+				ir.getInstr(instrIndex).extendFixedResultRange = true;
 			}
 
 			// for calls that return in register
-			if (instrHeader.hasResult) {
-				// mov result to virt reg
-				IrIndex returnReg = callConv.returnReg;
-				returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result(ir)).type, c);
-				ExtraInstrArgs extra = { result : instrHeader.result(ir) };
-				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, returnReg).instruction;
-				//builder.redirectVregDefinitionTo(instrHeader.result(ir), moveInstr);
-				builder.insertAfterInstr(lastInstr, moveInstr);
-				instrHeader.result(ir) = returnReg;
-			} else if (hasHiddenPtr) {
-				ExtraInstrArgs extra = { result : originalResult };
-				IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra, hiddenPtr).instruction;
-				ir.getInstr(loadInstr).isUniqueLoad = true;
-				builder.insertAfterInstr(lastInstr, loadInstr);
+			final switch (callee_state.abi.returnClass) {
+				case PassClass.byValueReg:
+					// mov result to virt reg
+					IrIndex returnReg = callee_state.abi.returnLoc.regs[0];
+					returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result(ir)).type, c);
+					ExtraInstrArgs extra = { result : instrHeader.result(ir) };
+					auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, returnReg).instruction;
+					builder.insertAfterInstr(lastInstr, moveInstr);
+					instrHeader.result(ir) = returnReg;
+					break;
+				case PassClass.byValueRegMulti:
+					IrIndex[2] paramRegs = state.abi.returnLoc.regs;
+					IrIndex instr = receiveMultiValue(ir.nextInstr(instrIndex), paramRegs, instrHeader.result(ir), builder);
+					builder.insertAfterInstr(lastInstr, instr);
+					instrHeader.result(ir) = paramRegs[0];
+					break;
+				case PassClass.byPtrReg:
+					ExtraInstrArgs extra = { result : originalResult };
+					IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra, hiddenPtr).instruction;
+					ir.getInstr(loadInstr).isUniqueLoad = true;
+					builder.insertAfterInstr(lastInstr, loadInstr);
+					break;
+				case PassClass.byPtrMemory:
+				case PassClass.byValueMemory:
+					c.internal_error("invalid return class", callee_state.abi.returnClass);
+					break;
+				case PassClass.ignore: break; // no result, or empty struct
 			}
 		}
 	}
 
 	void convReturn(IrIndex instrIndex, ref IrInstrHeader instrHeader)
 	{
+		// rewrite ret_val as ret in-place
+		instrHeader.op = IrOpcode.ret;
+
 		removeUser(c, ir, instrIndex, instrHeader.arg(ir, 0));
-		if (numHiddenParams == 1) {
-			// store struct into pointer, then return pointer
-			IrIndex value = instrHeader.arg(ir, 0);
-			IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), hiddenParameter, value);
-			builder.insertBeforeInstr(instrIndex, instr);
-			instrHeader.arg(ir, 0) = hiddenParameter;
-			IrIndex result = ir.getCallConv(c).returnReg;
-			ExtraInstrArgs extra = { result : result };
-			IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, hiddenParameter).instruction;
-			builder.insertBeforeInstr(instrIndex, copyInstr);
-		} else {
-			IrIndex value = simplifyConstant(instrHeader.arg(ir, 0), c);
-			IrIndex result = ir.getCallConv(c).returnReg;
-			IrIndex type = irFuncType.resultTypes[0];
-			result.physRegSize = typeToRegSize(type, c);
-			ExtraInstrArgs extra = { result : result };
-			IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, value).instruction;
-			builder.insertBeforeInstr(instrIndex, copyInstr);
+		IrIndex[2] resRegs = state.abi.returnLoc.regs;
+
+		final switch (state.abi.returnClass)
+		{
+			case PassClass.byPtrReg:
+				// store struct into pointer, then return pointer
+				IrIndex value = instrHeader.arg(ir, 0);
+				IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), hiddenParameter, value);
+				builder.insertBeforeInstr(instrIndex, instr);
+				IrIndex result = resRegs[0];
+				ExtraInstrArgs extra = { result : result };
+				IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, hiddenParameter).instruction;
+				builder.insertBeforeInstr(instrIndex, copyInstr);
+				break;
+			case PassClass.byValueReg:
+				IrIndex value = simplifyConstant(instrHeader.arg(ir, 0), c);
+				IrIndex result = resRegs[0];
+				IrIndex type = irFuncType.resultTypes[0];
+				result.physRegSize = typeToRegSize(type, c);
+				ExtraInstrArgs extra = { result : result };
+				IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, value).instruction;
+				builder.insertBeforeInstr(instrIndex, copyInstr);
+				break;
+			case PassClass.byValueRegMulti:
+				IrIndex[2] vals = simplifyConstant128(instrIndex, instrHeader.arg(ir, 0), builder, c);
+
+				IrIndex result1 = resRegs[0];
+				result1.physRegSize = IrArgSize.size64;
+				ExtraInstrArgs extra3 = { result : result1 };
+				builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra3, vals[0]);
+
+				IrIndex result2 = resRegs[1];
+				result2.physRegSize = IrArgSize.size64;
+				ExtraInstrArgs extra4 = { result : result2 };
+				builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra4, vals[1]);
+				break;
+			case PassClass.byValueMemory, PassClass.byPtrMemory:
+				c.internal_error("Invalid return class %s", state.abi.returnClass);
+				break;
+			case PassClass.ignore:
+				break;
 		}
 		// rewrite ret_val as ret in-place
 		instrHeader.op = IrOpcode.ret;
@@ -387,6 +812,72 @@ IrIndex simplifyConstant(IrIndex index, CompilationContext* c)
 
 	constantToMem(data.buffer[0..typeSize], index, c);
 	return c.constants.add(data.bufferValue, IsSigned.no, sizeToIrArgSize(typeSize, c));
+}
+
+// For sysv64 ABI
+// Given aggregate constant of (size > 8 && size <= 16) with all members aligned, produces 2 64bit values
+IrIndex[2] simplifyConstant128(IrIndex insertBefore, IrIndex value, ref IrBuilder builder, CompilationContext* c)
+{
+	IrIndex[2] vals;
+	if (value.isConstantZero) {
+		vals[] = c.constants.ZERO;
+	} else if (value.isConstantAggregate) {
+		IrAggregateConstant* con = &c.constants.getAggregate(value);
+		union Repr {
+			ubyte[16] buf;
+			ulong[2] items;
+		}
+		Repr repr;
+		void onGlobal(ubyte[] subbuffer, IrIndex index, CompilationContext* c) {
+			if (subbuffer.ptr == repr.buf.ptr) {
+				vals[0] = index;
+			} else {
+				assert(subbuffer.ptr == repr.buf.ptr + 8);
+				vals[1] = index;
+			}
+		}
+		constantToMem(repr.buf[], value, c, &onGlobal);
+		if (vals[0].isUndefined) vals[0] = c.constants.add(repr.items[0], IsSigned.no, IrArgSize.size64);
+		if (vals[1].isUndefined) vals[1] = c.constants.add(repr.items[1], IsSigned.no, IrArgSize.size64);
+	} else {
+		ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
+		vals[0] = builder.emitInstrBefore!(IrOpcode.get_aggregate_slice)(insertBefore, extra1, value, c.constants.ZERO).result;
+
+		ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64) };
+		vals[1] = builder.emitInstrBefore!(IrOpcode.get_aggregate_slice)(insertBefore, extra2, value, c.constants.add(8, IsSigned.no)).result;
+	}
+	return vals;
+}
+
+// glue 2 registers into aggregate
+IrIndex receiveMultiValue(IrIndex beforeInstr, IrIndex[2] regs, IrIndex result, ref IrBuilder builder) {
+	IrIndex type = builder.ir.getVirtReg(result).type;
+	regs[0].physRegSize = IrArgSize.size64;
+	regs[1].physRegSize = IrArgSize.size64;
+
+	ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
+	auto move1 = builder.emitInstr!(IrOpcode.move)(extra1, regs[0]);
+	builder.insertBeforeInstr(beforeInstr, move1.instruction);
+
+	ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64) };
+	auto move2 = builder.emitInstr!(IrOpcode.move)(extra2, regs[1]);
+	builder.insertBeforeInstr(beforeInstr, move2.instruction);
+
+	// store both regs into stack slot, then load aggregate
+	IrIndex slot = builder.ir.backendData.stackLayout.addStackItem(builder.context, type, StackSlotKind.local, 0);
+
+	IrIndex addr1 = genAddressOffset(slot, 0, builder.context.i64PtrType, beforeInstr, builder);
+	IrIndex store1 = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), addr1, move1.result);
+	builder.insertBeforeInstr(beforeInstr, store1);
+
+	IrIndex addr2 = genAddressOffset(slot, 8, builder.context.i64PtrType, beforeInstr, builder);
+	IrIndex store2 = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), addr2, move2.result);
+	builder.insertBeforeInstr(beforeInstr, store2);
+
+	ExtraInstrArgs extra3 = { result : result };
+	IrIndex loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra3, slot).instruction;
+	builder.ir.getInstr(loadInstr).isUniqueLoad = true;
+	return loadInstr;
 }
 
 IrIndex genAddressOffset(IrIndex ptr, uint offset, IrIndex ptrType, IrIndex beforeInstr, ref IrBuilder builder) {
@@ -459,7 +950,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
 		{
 			IrIndex type = ir.getVirtReg(phi.result).type;
-			if (!type.isPassByValue(c)) {
+			if (!type.fitsIntoRegister(c)) {
 				//writefln("- phi %s", phiIndex);
 			}
 			foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir))
@@ -474,12 +965,14 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 				case IrOpcode.store:
 					IrIndex ptr = instrHeader.arg(ir, 0);
 					IrIndex val = instrHeader.arg(ir, 1);
+					if (ptr.isPhysReg || val.isPhysReg) break;
+
 					//writefln("- store %s %s %s", instrIndex, ptr, val);
 					IrIndex ptrType = ir.getValueType(c, ptr);
 					IrIndex valType = ir.getValueType(c, val);
 
 					// value will be replaced with pointer, replace store with copy
-					if (!valType.isPassByValue(c) && !val.isSomeConstant)
+					if (!valType.fitsIntoRegister(c) && !val.isSomeConstant)
 					{
 						instrHeader.op = IrOpcode.copy;
 					}
@@ -491,7 +984,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					IrIndex ptrType = ir.getValueType(c, ptr);
 					IrIndex base = c.types.getPointerBaseType(ptrType);
 
-					if (base.isPassByValue(c))
+					if (base.fitsIntoRegister(c))
 					{
 						IrArgSize argSize = typeToIrArgSize(base, c);
 						ExtraInstrArgs extra = { result : instrHeader.result(ir), argSize : argSize };
@@ -511,7 +1004,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					//writefln("- create_aggregate %s", instrIndex);
 					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 
-					if (!type.isPassByValue(c)) {
+					if (!type.fitsIntoRegister(c)) {
 						IrTypeStruct* structType = &c.types.get!IrTypeStruct(type);
 						IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.local, 0);
 						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = slot;
@@ -523,7 +1016,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						{
 							IrIndex ptrType = c.types.appendPtr(member.type);
 							IrIndex ptr = genAddressOffset(slot, member.offset, ptrType, instrIndex, builder);
-							if (member.type.isPassByValue(c))
+							if (member.type.fitsIntoRegister(c))
 							{
 								IrArgSize argSize = getTypeArgSize(member.type, c);
 								ExtraInstrArgs extra = { argSize : argSize };
@@ -553,7 +1046,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					IrIndex resultType = member.type;
 					uint resultSize = c.types.typeSize(resultType);
 
-					if (sourceType.isPassByValue(c))
+					if (sourceType.fitsIntoRegister(c))
 					{
 						// do simple variant where all indicies are constant
 						IrIndex value = args[0];
@@ -566,7 +1059,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						}
 
 						// mask if not 1, 2, 4 or 8 bytes in size
-						if (!resultType.isPassByValue(c))
+						if (!resultType.fitsIntoRegister(c))
 						{
 							// and
 							IrIndex mask = c.constants.add((1 << (resultSize * 8)) - 1, IsSigned.no);
@@ -584,9 +1077,10 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						break;
 					}
 
+					// reuse the same indicies from get_element and perform GEP on them, then do load
 					instrHeader.op = IrOpcode.get_element_ptr_0;
 
-					if (resultType.isPassByValue(c))
+					if (resultType.fitsIntoRegister(c))
 					{
 						IrIndex loadResult = instrHeader.result(ir);
 						IrIndex ptrType = c.types.appendPtr(resultType);
@@ -597,6 +1091,31 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						IrIndex loadInstr = builder.emitInstr!(IrOpcode.load)(extra2, gepResult).instruction;
 						builder.insertAfterInstr(instrIndex, loadInstr);
 					}
+					break;
+
+				case IrOpcode.get_aggregate_slice:
+					//writefln("- get_aggregate_slice %s", instrIndex);
+					IrIndex[] args = instrHeader.args(ir);
+
+					long indexVal = c.constants.get(args[1]).i64;
+					IrIndex addr;
+					if (indexVal == 0) {
+						ExtraInstrArgs extra1 = { type : c.i64PtrType };
+						InstrWithResult movInstr = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra1, args[0]);
+						addr = movInstr.result;
+					} else {
+						ExtraInstrArgs extra1 = { type : c.i64PtrType };
+						InstrWithResult addressInstr = builder.emitInstrBefore!(IrOpcode.add)(instrIndex, extra1, args[0], args[1]);
+						addr = addressInstr.result;
+					}
+
+					ExtraInstrArgs extra2 = { argSize : IrArgSize.size64, type : makeBasicTypeIndex(IrValueType.i64) };
+					InstrWithResult loadInstr = builder.emitInstrBefore!(IrOpcode.load)(instrIndex, extra2, addr);
+
+					instrHeader.numArgs = 1;
+					instrHeader.op = IrOpcode.move;
+					args[0] = loadInstr.result;
+					builder.addUser(instrIndex, args[0]);
 					break;
 				case IrOpcode.insert_element:
 					//writefln("- insert_element %s", instrIndex);

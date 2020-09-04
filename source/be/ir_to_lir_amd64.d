@@ -449,10 +449,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					};
 					InstrWithResult callInstr = builder.emitInstr!(Amd64Opcode.call)(
 						lirBlockIndex, callExtra, argBuffer[0..instrHeader.numArgs]);
-					lir.getInstr(callInstr.instruction).extendFixedArgRange = true;
-					if (instrHeader.hasResult) {
-						lir.getInstr(callInstr.instruction).extendFixedResultRange = true;
-					}
+					lir.getInstr(callInstr.instruction).extendFixedArgRange = instrHeader.extendFixedArgRange;
+					lir.getInstr(callInstr.instruction).extendFixedResultRange = instrHeader.extendFixedResultRange;
 					break;
 
 				case IrOpcode.add: emitLirInstr!(Amd64Opcode.add); break;

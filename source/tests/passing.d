@@ -2560,7 +2560,8 @@ void tester105(ref TestContext ctx) {
 
 @TestInfo(&tester106, [HostSymbol("fun2", cast(void*)&external_tester106)])
 immutable test106 = q{--- test106
-	// Test structs passed as pointer on the stack (name parameter)
+	// Test structs passed as pointer on the stack (win64 abi) (name parameter)
+	// big struct on stack (sysv64)
 	void fun(i32, i32, i32, u8, u8, u8, u8[] name, bool){
 		fun2(name);
 	}

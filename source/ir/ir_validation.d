@@ -188,6 +188,8 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 		case IrOpcode.load:
 			IrIndex ptr = instrHeader.arg(ir, 0);
 			IrIndex value = instrHeader.result(ir);
+			if (ptr.isPhysReg || value.isPhysReg) break;
+
 			IrIndex ptrType = getValueType(ptr, ir, c);
 			c.assertf(ptrType.isTypePointer, "%s: first argument must be pointer, not: %s", instrIndex, ptrType.kind);
 			IrIndex valueType = getValueType(value, ir, c);
@@ -199,6 +201,8 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 		case IrOpcode.store:
 			IrIndex ptr = instrHeader.arg(ir, 0);
 			IrIndex value = instrHeader.arg(ir, 1);
+			if (ptr.isPhysReg || value.isPhysReg) break;
+
 			IrIndex ptrType = getValueType(ptr, ir, c);
 			c.assertf(ptrType.isTypePointer, "%s: first argument must be pointer, not: %s", instrIndex, ptrType.kind);
 			IrIndex valueType = getValueType(value, ir, c);

@@ -5,6 +5,7 @@
 /// Given LIR produces a set of live intervals and live in bitmap
 /// Implementation of:
 /// "Linear Scan Register Allocation on SSA Form"
+// TODO: backward propagation of hints
 module be.reg_alloc.liveness_analisys;
 
 import all;
@@ -321,7 +322,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 				liveness.pint(from).addRange(context, 1, linearInstrIndex);
 			}
 			IrIndex result = instrHeader.result(ir);
-			if (result.isVirtReg)
+			if (result.isVirtReg && from.isSomeReg)
 			{
 				liveness.vint(result).storageHint = from;
 			}

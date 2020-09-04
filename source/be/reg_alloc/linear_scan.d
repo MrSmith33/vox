@@ -533,6 +533,7 @@ struct LinearScan
 			return false;
 		} else {
 			version(RAPrint) writefln("    hint is %s", IrIndexDump(hintReg, context, lir));
+			if (hintReg.isVirtReg) hintReg = live.vint(hintReg).reg;
 			if (hintReg.isDefined) {
 				if (currentEnd < physRegs[hintReg].usePos) {
 					// register available for the whole interval

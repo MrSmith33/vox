@@ -116,6 +116,8 @@ struct CallConv
 	IrIndex framePointer;
 	IrIndex stackPointer;
 
+	uint minStackAlignment;
+
 	uint flags;
 
 	bool isParamOnStack(size_t parIndex) {
@@ -124,6 +126,7 @@ struct CallConv
 
 	bool hasShadowSpace() { return cast(bool)(flags & CallConvFlags.hasShadowSpace); }
 	bool hasRedZone() { return cast(bool)(flags & CallConvFlags.hasRedZone); }
+	bool hasReverseStackOrder() { return cast(bool)(flags & CallConvFlags.hasReverseStackOrder); }
 }
 
 enum CallConvention : ubyte {
@@ -134,6 +137,10 @@ enum CallConvention : ubyte {
 enum CallConvFlags : uint {
 	hasShadowSpace = 1 << 0,
 	hasRedZone     = 1 << 1,
+	/// By default parameters that are passed via stack are passed in left-to-right order
+	/// This means that leftmost parameter has the smallest memory address, and rightmost parameter has biggest address
+	/// If set, parameters are passed right-to-left on the stack
+	hasReverseStackOrder = 1 << 2,
 }
 
 __gshared CallConv*[] callConventions = [
@@ -185,6 +192,8 @@ __gshared CallConv win64_call_conv = CallConv
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
 
+	16,
+
 	CallConvFlags.hasShadowSpace,
 );
 
@@ -231,6 +240,8 @@ __gshared CallConv sysv64_call_conv = CallConv
 
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
+
+	16,
 
 	CallConvFlags.hasRedZone,
 );

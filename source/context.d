@@ -134,6 +134,8 @@ struct CompilationContext
 	private size_t initializedSourceBufSize; // ditto, sourceBuffer.length
 	size_t initializedTokenLocBufSize; // ditto, tokenLocationBuffer.length
 
+	IrIndex i64PtrType;
+
 	// sections
 	LinkIndex hostSectionIndex;
 	LinkIndex importSectionIndex;
@@ -808,6 +810,8 @@ struct CompilationContext
 		makeBuiltin(CommonAstNodes.builtin_array_ptr, CommonIds.id_ptr, BuiltinId.array_ptr);
 		makeBuiltin(CommonAstNodes.builtin_sizeof, CommonIds.id_sizeof, BuiltinId.type_sizeof);
 		// CommonAstNodes end
+
+		i64PtrType = types.appendPtr(makeBasicTypeIndex(IrValueType.i64));
 
 		initializedAstBufSize = astBuffer.length;
 		initializedIrTypeBufSize = types.buffer.length;

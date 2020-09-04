@@ -340,7 +340,7 @@ T irValueToNative(T)(IrVm* vm, IrIndex value, CompilationContext* c)
 
 	void onGlobal(ubyte[] subbuffer, IrIndex index, CompilationContext* c)
 	{
-		c.assertf(index.isGlobal, "%s is not a constant", index);
+		c.assertf(index.isGlobal, "%s is not a global", index);
 
 		IrGlobal* global = c.globals.get(index);
 		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);

@@ -11,6 +11,7 @@ import std.traits : getUDAs;
 import all;
 
 /// Integers are both signed two-complement and unsigned
+// TODO: rename to IrBasicType
 enum IrValueType : ubyte
 {
 	noreturn_t,
@@ -34,6 +35,11 @@ enum IrTypeKind : ubyte
 }
 
 enum getIrTypeKind(T) = getUDAs!(T, IrTypeKind)[0];
+
+struct SizeAndAlignment {
+	uint size;
+	uint alignment;
+}
 
 ///
 IrIndex makeBasicTypeIndex(IrValueType t) {
@@ -263,6 +269,32 @@ struct IrTypeStorage
 				return get!IrTypeStruct(type).alignment;
 			case IrTypeKind.func_t:
 				return 0;
+		}
+	}
+
+	SizeAndAlignment typeSizeAndAlignment(IrIndex type) {
+		assert(type.isType, format("not a type (%s)", type));
+		final switch (type.typeKind) {
+			case IrTypeKind.basic:
+			final switch (cast(IrValueType)type.typeIndex) {
+				case IrValueType.noreturn_t: return SizeAndAlignment(0, 0);
+				case IrValueType.void_t: return SizeAndAlignment(0, 0);
+				case IrValueType.i8: return SizeAndAlignment(1, 1);
+				case IrValueType.i16: return SizeAndAlignment(2, 2);
+				case IrValueType.i32: return SizeAndAlignment(4, 4);
+				case IrValueType.i64: return SizeAndAlignment(8, 8);
+			}
+			case IrTypeKind.pointer:
+				return SizeAndAlignment(8, 8);
+			case IrTypeKind.array:
+				IrTypeArray* array = &get!IrTypeArray(type);
+				SizeAndAlignment elemInfo = typeSizeAndAlignment(array.elemType);
+				return SizeAndAlignment(elemInfo.size * array.size, elemInfo.alignment);
+			case IrTypeKind.struct_t:
+				auto s = &get!IrTypeStruct(type);
+				return SizeAndAlignment(s.size, s.alignment);
+			case IrTypeKind.func_t:
+				return SizeAndAlignment(0, 0);
 		}
 	}
 
