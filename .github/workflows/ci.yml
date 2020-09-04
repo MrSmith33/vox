@@ -17,5 +17,9 @@ jobs:
       - name: Run tests
         run: |
           cd source
+          dir
+          ldc2 --version
           ldc2 -m64 -g -i main.d -unittest -of=test.exe
+          test.exe
           ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=tjc.exe -i main.d
+        
