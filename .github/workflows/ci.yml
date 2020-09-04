@@ -1,5 +1,7 @@
 name: CI
 on: [push, pull_request, release]
+env:
+  DC: ldc-1.23.0
 
 jobs:
   build:
@@ -8,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        dc: [ldc-1.20.1]
+        dc: ${{ DC }}
         include:
         - os: ubuntu-latest
           EXE: tjc
@@ -23,7 +25,7 @@ jobs:
         shell: bash
         run: |
           cd source
-          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -d-version=cli -of=${{matrix.EXE}} -i main.d
+          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -of=${{matrix.EXE}} -i main.d
       - uses: actions/upload-artifact@v2
         with:
           name: ${{matrix.EXE}}
@@ -33,7 +35,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        dc: [ldc-1.20.1]
+        dc: ${{ DC }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
