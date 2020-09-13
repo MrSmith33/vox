@@ -195,10 +195,13 @@ Test[] collectTests(alias M)()
 	import std.traits;
 	foreach(m; __traits(allMembers, M))
 	{
-		alias member = __traits(getMember, M, m);
-		static if (is(typeof(member) == immutable string)) {
-			static if (__traits(getAttributes, member).length > 0) {
-				tests ~= makeTest!member;
+		// filter out imports in the module
+		static if (__traits(compiles, __traits(getMember, M, m))) {
+			alias member = __traits(getMember, M, m);
+			static if (is(typeof(member) == immutable string)) {
+				static if (__traits(getAttributes, member).length > 0) {
+					tests ~= makeTest!member;
+				}
 			}
 		}
 	}

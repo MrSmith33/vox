@@ -1,6 +1,12 @@
 /// Copyright: Copyright (c) 2017-2020 Andrey Penechko.
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
+
+// Missing case of System V ABI implementation:
+// - Aggregates with misaligned members
+// - Aggregates with alignment > 16 bytes
+// - xmm/ymm/zmm register passing
+// - x87
 module be.ir_lower;
 
 import std.bitmanip : bitfields;
