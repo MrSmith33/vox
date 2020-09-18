@@ -64,6 +64,8 @@ jobs:
           sudo apt update
           sudo apt install gh
       - name: Upload
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           gh release create CI-GH '.tjc#linux64' '.tjc.exe#win64'
