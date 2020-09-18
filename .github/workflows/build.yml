@@ -67,4 +67,4 @@ jobs:
         run: |
           tag=`basename ${{ github.ref }}`
           if [ $tag = 'master' ]; then tag='CI'; fi
-          gh release upload $tag './linux-amd64/tjc#linux-amd64' './windows-amd64/tjc.exe#windows-amd64'
+          gh release upload $tag './linux-amd64/tjc#linux-amd64' './windows-amd64/tjc.exe#windows-amd64' --clobber
