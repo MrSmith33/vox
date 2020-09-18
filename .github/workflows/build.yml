@@ -58,12 +58,12 @@ jobs:
           sudo apt-add-repository https://cli.github.com/packages
           sudo apt -qq update
           sudo apt -qq install gh
-      # Delete release and tag, so that we get proper date and commit on github
-      - uses: dev-drprasad/delete-tag-and-release@v0.1.2
+      # Update tag, so that we get proper date and commit on github
+      - name: Update CI tag
+        uses: richardsimko/update-tag@master
         if: github.ref == 'refs/heads/master'
         with:
-          delete_release: false
-          tag_name: CI # tag name to delete
+          tag_name: CI
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Create CI release and upload builds
@@ -75,7 +75,7 @@ jobs:
           tag=`basename ${{ github.ref }}`
           if [ $tag = 'master' ]; then
             tag='CI'
-            #gh release create CI --title 'CI build'
+            gh release create CI --title 'CI build'
           fi
           
           # --clobber Overwrite existing assets of the same name
