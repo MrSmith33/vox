@@ -59,5 +59,7 @@ jobs:
       - shell: bash
         run: |
           ls
+          sudo apt update
+          sudo apt install gh
           gh release create CI-GH '.tjc#linux64' '.tjc.exe#win64'
         
