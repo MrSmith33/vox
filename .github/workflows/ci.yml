@@ -48,3 +48,16 @@ jobs:
           cd source
           ldc2 -m64 -g -i main.d -unittest -of=test.exe
           ./test.exe
+  upload:
+    name: Upload build
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          path: .
+      - shell: bash
+        run: |
+          ls
+          gh release create CI-GH '.tjc#linux64' '.tjc.exe#win64'
+        
