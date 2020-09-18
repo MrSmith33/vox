@@ -58,6 +58,14 @@ jobs:
           sudo apt-add-repository https://cli.github.com/packages
           sudo apt -qq update
           sudo apt -qq install gh
+      # Delete release and tag, so that we get proper date and commit on github
+      - uses: dev-drprasad/delete-tag-and-release@v0.1.2
+        if: github.ref == 'refs/heads/master'
+        with:
+          delete_release: true
+          tag_name: v0.1.0 # tag name to delete
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Create CI release and upload builds
       - name: Upload
         env:
@@ -67,7 +75,6 @@ jobs:
           tag=`basename ${{ github.ref }}`
           if [ $tag = 'master' ]; then
             tag='CI'
-            gh release delete CI --yes
             gh release create CI --title 'CI build'
           fi
           
