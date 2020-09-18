@@ -56,10 +56,15 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           path: .
-      - shell: bash
+      - name: Install GH CLI
+        shell: bash
         run: |
-          ls
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0
+          sudo apt-add-repository https://cli.github.com/packages
           sudo apt update
           sudo apt install gh
+      - name: Upload
+        shell: bash
+        run: |
           gh release create CI-GH '.tjc#linux64' '.tjc.exe#win64'
         
