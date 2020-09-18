@@ -65,4 +65,6 @@ jobs:
         shell: bash
         # --clobber Overwrite existing assets of the same name
         run: |
-          gh release upload ${{github.ref}} './linux-amd64/tjc#linux-amd64' './windows-amd64/tjc.exe#windows-amd64' --clobber
+          tag=`basename ${{ github.ref }}`
+          if [ $tag = 'master' ]; then tag='CI'; fi
+          gh release upload $tag './linux-amd64/tjc#linux-amd64' './windows-amd64/tjc.exe#windows-amd64'
