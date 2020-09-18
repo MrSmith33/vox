@@ -1,4 +1,4 @@
-name: CI
+name: Build
 on:
   push:
     branches:
@@ -63,5 +63,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
+        # --clobber Overwrite existing assets of the same name
         run: |
-          gh release upload CI './linux-amd64/tjc#linux-amd64' './windows-amd64/tjc.exe#windows-amd64'
+          gh release upload ${{github.ref}} './linux-amd64/tjc#linux-amd64' './windows-amd64/tjc.exe#windows-amd64' --clobber
