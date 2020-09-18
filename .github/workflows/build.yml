@@ -62,7 +62,7 @@ jobs:
       - uses: dev-drprasad/delete-tag-and-release@v0.1.2
         if: github.ref == 'refs/heads/master'
         with:
-          delete_release: true
+          delete_release: false
           tag_name: CI # tag name to delete
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +75,7 @@ jobs:
           tag=`basename ${{ github.ref }}`
           if [ $tag = 'master' ]; then
             tag='CI'
-            gh release create CI --title 'CI build'
+            #gh release create CI --title 'CI build'
           fi
           
           # --clobber Overwrite existing assets of the same name
