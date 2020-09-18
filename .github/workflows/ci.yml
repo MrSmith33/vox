@@ -61,12 +61,12 @@ jobs:
         run: |
           sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0
           sudo apt-add-repository https://cli.github.com/packages
-          sudo apt update
+          sudo apt update -q
           sudo apt install gh
       - name: Upload
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release create CI-GH '.tjc#linux64' '.tjc.exe#win64'
+          gh release create CI-GH './tjc#linux64' './tjc.exe#win64'
         
