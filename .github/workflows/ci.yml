@@ -53,16 +53,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, test]
     steps:
+      - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
           path: .
       - name: Install GH CLI
         shell: bash
         run: |
-          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0
-          sudo apt-add-repository https://cli.github.com/packages
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0 -q
+          sudo apt-add-repository https://cli.github.com/packages -q
           sudo apt update -q
-          sudo apt install gh
+          sudo apt install gh -q
       - name: Upload
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
