@@ -63,7 +63,7 @@ jobs:
         if: github.ref == 'refs/heads/master'
         with:
           delete_release: true
-          tag_name: v0.1.0 # tag name to delete
+          tag_name: CI # tag name to delete
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Create CI release and upload builds
