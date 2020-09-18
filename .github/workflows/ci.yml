@@ -60,10 +60,10 @@ jobs:
       - name: Install GH CLI
         shell: bash
         run: |
-          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0 -q
-          sudo apt-add-repository https://cli.github.com/packages -q
-          sudo apt update -q
-          sudo apt install gh -q
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0
+          sudo apt-add-repository https://cli.github.com/packages
+          sudo apt -qq update
+          sudo apt -qq install gh
       - name: Upload
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
