@@ -63,8 +63,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        # --clobber Overwrite existing assets of the same name
         run: |
           tag=`basename ${{ github.ref }}`
-          if [ $tag = 'master' ]; then tag='CI'; fi
-          gh release upload $tag './linux-amd64/tjc#linux-amd64' './windows-amd64/tjc.exe#windows-amd64' --clobber
+          if [ $tag = 'master' ]; then
+            tag='CI'
+            gh release delete CI --yes
+            gh release create CI --title CI build
+          fi
+          
+          # --clobber Overwrite existing assets of the same name
+          gh release upload $tag \
+            './linux-amd64/tjc#linux-amd64'\
+            './windows-amd64/tjc.exe#windows-amd64'\
+            --clobber
