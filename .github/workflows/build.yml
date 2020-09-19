@@ -75,7 +75,6 @@ jobs:
           tag=`basename ${{ github.ref }}`
           if [ $tag = 'master' ]; then
             tag='CI'
-            gh release create CI --title 'CI build'
           fi
           
           # --clobber Overwrite existing assets of the same name
