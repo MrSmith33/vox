@@ -1,5 +1,7 @@
 name: Test
-on: [push, pull_request, release]
+on:
+  check_run:
+    types: [rerequested, requested_action]
 env:
   DC: ldc-1.23.0
 
