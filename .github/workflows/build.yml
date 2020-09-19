@@ -1,11 +1,9 @@
 name: Build
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   release:
-    types:
-      - created
+    types: [published]
 env:
   DC: ldc-1.23.0
 
