@@ -1,7 +1,10 @@
 name: Test
 on:
-  check_run:
-    types: [rerequested, requested_action]
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
 env:
   DC: ldc-1.23.0
 
