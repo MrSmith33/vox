@@ -1,15 +1,39 @@
 name: Build
 on:
-  push:
-    branches: [master]
-  release:
-    types: [published]
+  push: # test + build + release
+    branches: [ master ]
+  pull_request: # test + build
+    branches: [ master ]
+  release: # test + build + release
+    types: [ published ]
 env:
   DC: ldc-1.23.0
 
-jobs:         
+jobs:
+  test:
+    name: Test
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        dc: [ldc-1.23.0]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ${{ matrix.dc }}
+      - name: Print env
+        shell: bash
+        run: echo '${{toJSON(github)}}'
+      - name: Test
+        shell: bash
+        run: |
+          cd source
+          ldc2 -m64 -g -i main.d -unittest -of=test.exe
+          ./test.exe
   build:
     name: Build
+    needs: [test]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -39,6 +63,7 @@ jobs:
 
   upload:
     name: Upload build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: [build]
     steps:
