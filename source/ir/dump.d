@@ -229,7 +229,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 							above_and_below = 0b11
 						}
 						UseState useState;
-						foreach (i, index; vreg.users.range(ir))
+						foreach (index, uint numUses; vreg.users.range(ir))
 						{
 							if (index.isPhi)
 							{
@@ -310,10 +310,13 @@ void dumpFunctionImpl(IrDumpContext* c)
 		if (!result.isVirtReg) return;
 		auto vreg = ir.getVirtReg(result);
 		sink.put(" users [");
-		foreach (i, index; vreg.users.range(ir))
+		uint i = 0;
+		foreach (IrIndex user, uint numUses; vreg.users.range(ir))
 		{
 			if (i > 0) sink.put(", ");
-			sink.putf("%s", IrIndexDump(index, printer));
+			sink.putf("%s", IrIndexDump(user, printer));
+			if (numUses > 1) sink.putf(":%s", numUses);
+			++i;
 		}
 		sink.put("]");
 	}

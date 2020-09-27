@@ -769,7 +769,7 @@ struct LinearScan
 		// fix uses first, because we may copy arg to definition below
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; lir.virtualRegisters)
 		{
-			foreach (size_t i, IrIndex userIndex; vreg.users.range(lir))
+			foreach (IrIndex userIndex, uint numUses; vreg.users.range(lir))
 			{
 				final switch (userIndex.kind) with(IrValueKind)
 				{

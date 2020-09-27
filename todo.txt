@@ -154,6 +154,7 @@ o dll linking
 
 [Backend]
 - implement _chkstk and call it at the start of functions with frame size > 1 page
+- Keep in mind the need for fat binaries / compilation for multiple targets at the same time
 
 
 [ABI]
@@ -194,7 +195,7 @@ x globals need to have IrIndex to initializer and coexist with raw data initiali
 - Inlining
 	+ IR inliner is done
 	- Deciding when to inline is not implemented
-- DCE exhibits O(n^2) behavior, because for each removed instruction (O(n)), we remove user from the vreg user list (O(n)).
++ DCE exhibits O(n^2) behavior, because for each removed instruction (O(n)), we remove user from the vreg user list (O(n)). - Switched to multihashset.
 
 
 [IR]

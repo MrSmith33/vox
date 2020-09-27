@@ -231,7 +231,8 @@ enum bool isAnyOpcode(O) = is(O == OP1) || is(O == OP2);
 alias PC = ubyte*;
 
 enum EncFlg : ubyte {
-	// Added only when one of SPL, BPL, SIL or DIL are encoded
+	// Forces REX prefix when one of SP, BP, SI, DI are encoded.
+	// Without REX prefix byte sized instructions get SPL, BPL, SIL or DIL encoded instead of SP, BP, SI, DI
 	REX_HIGH  = 1 << 0,
 	// Forces REX prefix to be added. Used for 64bit instructions
 	REX_FORCE = 1 << 1,

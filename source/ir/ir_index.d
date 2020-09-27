@@ -83,8 +83,8 @@ struct IrIndex
 	}
 	static assert(IrValueKind.max <= 0b1111, "4 bits are reserved for IrValueKind");
 
-	bool isDefined() { return asUint != 0; }
-	bool isUndefined() { return asUint == 0; }
+	bool isDefined() const { return asUint != 0; }
+	bool isUndefined() const { return asUint == 0; }
 
 	void toString(scope void delegate(const(char)[]) sink) const {
 		if (asUint == 0) {

@@ -371,7 +371,7 @@ struct IrBuilder
 			case phi: assert(false, "addUser phi"); // must be virt reg instead
 			case stackSlot: break; // allowed, noop
 			case virtualRegister:
-				ir.getVirtReg(used).users.append(&this, user);
+				ir.getVirtReg(used).users.put(&this, user);
 				break;
 			case physicalRegister: break; // allowed, noop
 			case type: break; // allowed, noop (no user tracking)
@@ -974,7 +974,7 @@ struct IrBuilder
 		// Remember all users except the phi itself
 		assert(phiResultIndex.kind == IrValueKind.virtualRegister, format("%s", phiResultIndex));
 
-		IrSmallArray users = ir.getVirtReg(phiResultIndex).users;
+		auto users = ir.getVirtReg(phiResultIndex).users;
 
 		// Reroute all uses of phi to same and remove phi
 		replaceBy(phiIndex, users, phiResultIndex, same);
@@ -991,7 +991,7 @@ struct IrBuilder
 		removePhi(phiIndex);
 
 		// Try to recursively remove all phi users, which might have become trivial
-		foreach (i, index; users.range(ir))
+		foreach (index, uint numUses; users.range(ir))
 			if (index.kind == IrValueKind.phi && index != phiIndex)
 				tryRemoveTrivialPhi(index);
 
@@ -1043,8 +1043,8 @@ struct IrBuilder
 		context.assertf(vreg.isVirtReg, "'vreg' must be virtual register, not %s", vreg.kind);
 		version(IrPrint) writefln("[IR] redirectVregUsersTo %s -> %s", vreg, redirectTo);
 
-		IrSmallArray users = ir.getVirtReg(vreg).users;
-		foreach (size_t i, IrIndex userIndex; users.range(ir))
+		auto users = ir.getVirtReg(vreg).users;
+		foreach (IrIndex userIndex, uint numUses; users.range(ir))
 		{
 			switch (userIndex.kind) with(IrValueKind) {
 				case instruction:
@@ -1080,10 +1080,10 @@ struct IrBuilder
 	// ditto
 	/// Rewrites all users of phi to point to `byWhat` instead of its result `what`.
 	/// `what` is the result of phi (vreg), `phiUsers` is users of `what`
-	private void replaceBy(IrIndex phiIndex, IrSmallArray phiUsers, IrIndex what, IrIndex byWhat) {
+	private void replaceBy(IrIndex phiIndex, IrSmallSet phiUsers, IrIndex what, IrIndex byWhat) {
 		version(IrPrint) writefln("[IR]     replaceBy %s %s -> %s", phiIndex, what, byWhat);
 
-		foreach (size_t i, IrIndex phiUserIndex; phiUsers.range(ir))
+		foreach (IrIndex phiUserIndex, uint numUses; phiUsers.range(ir))
 		{
 			version(IrPrint) writefln("[IR]     user %s %s", i, phiUserIndex);
 
@@ -1128,12 +1128,12 @@ struct IrBuilder
 	// Replace a user 'what' that uses 'used' by 'byWhat' in a list of users inside 'what'
 	private void replaceUserWith(IrIndex used, IrIndex what, IrIndex byWhat) {
 		// If argument is used once, then user appears only once.
-		// When replacing users with phi users, replacement wil occur only for first phi user.
+		// When replacing users with phi users, replacement will occur only for first phi user.
 		// Other phi users will not find any users to replace.
 		// So add append users instead if no replacement was done.
 		void replaceVregUser(IrVirtualRegister* vreg) {
-			bool replaced = vreg.users.replaceFirst(ir, what, byWhat);
-			if (!replaced) vreg.users.append(&this, byWhat);
+			uint numReplaced = vreg.users.replace(ir, what, byWhat);
+			if (numReplaced == 0) vreg.users.put(&this, byWhat);
 		}
 		final switch (used.kind) with(IrValueKind) {
 			case none, array, basicBlock, physicalRegister: assert(false);

@@ -16,8 +16,12 @@ struct IrVirtualRegister
 	IrIndex definition;
 	///
 	IrIndex type;
-	/// Instruction indicies that use this register
-	IrSmallArray users;
+	/// Instruction or phi indicies that use this register
+	/// This cannot be regular array because deletion is O(n), and it can cause O(n^2) time in DCE pass when lots of instructions are dead.
+	/// This must store precise count of users, because this number is used for liveness info allocation
+	/// If number is inacurate then it will result in insufficient storage allocated when user occurs multiple times
+	/// As a result this must be multiset, not regular set.
+	IrSmallSet users;
 
 	bool isRemoved() {
 		return type.kind == IrValueKind.virtualRegister;

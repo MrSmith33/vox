@@ -235,6 +235,7 @@ mixin template HashMapImpl()
 		size_t inserted_dib = 0;
 		Value value;
 		while (true) {
+			// no item was found, insert default and return
 			if (keyBuckets[index].empty) { // bucket is empty
 				++_length;
 				keyBuckets[index].assignKey(key);
@@ -242,10 +243,15 @@ mixin template HashMapImpl()
 				wasCreated = true;
 				return &values[index];
 			}
+
+			// found existing item
 			if (keyBuckets[index].key == key) return &values[index];
+
 			size_t current_initial_bucket = getHash(keyBuckets[index].key) & (_capacity - 1); // % capacity
 			ptrdiff_t current_dib = index - current_initial_bucket;
 			if (current_dib < 0) current_dib += _capacity;
+
+			// no item was found, cell is occupied, insert default and shift other items
 			if (inserted_dib > current_dib) {
 				value = default_value;
 				wasCreated = true;
@@ -260,6 +266,7 @@ mixin template HashMapImpl()
 			index = (index + 1) & (_capacity - 1); // % capacity
 		}
 
+		// fixup invariant after insertion
 		while (true) {
 			if (keyBuckets[index].empty) { // bucket is empty
 				++_length;

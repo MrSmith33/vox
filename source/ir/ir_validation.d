@@ -50,10 +50,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 				arg, vreg.definition);
 
 			// How many times 'argUser' is found in vreg.users
-			uint numVregUses = 0;
-			foreach (i, IrIndex user; vreg.users.range(ir))
-				if (user == argUser)
-					++numVregUses;
+			uint numVregUses = vreg.users.contains(ir, argUser);
 
 			// How many times 'args' is found in instr.args
 			uint timesUsed = 0;
@@ -97,7 +94,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 				"Virtual register %s definition %s doesn't match instruction %s",
 				result, vreg.definition, definition);
 
-			foreach (i, IrIndex user; vreg.users.range(ir))
+			foreach (IrIndex user, uint numUses; vreg.users.range(ir))
 				checkArg(user, result);
 		}
 

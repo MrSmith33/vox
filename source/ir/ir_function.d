@@ -156,8 +156,7 @@ struct IrFunction
 			block.removeAllPhis;
 	}
 
-	void freeIrArray(IrIndex offset, uint capacity)
-	{
+	void freeIrArray(IrIndex offset, uint capacity) {
 		// noop for now
 	}
 
@@ -356,7 +355,7 @@ void removeUser(CompilationContext* context, IrFunction* ir, IrIndex user, IrInd
 		case phi: assert(false, "removeUser phi"); // must be virt reg instead
 		case stackSlot: break; // allowed, noop
 		case virtualRegister:
-			ir.getVirtReg(used).users.removeUnstable(ir, user);
+			ir.getVirtReg(used).users.remove(ir, user);
 			break;
 		case physicalRegister: break; // allowed, noop
 		case type: break; // no user tracking
