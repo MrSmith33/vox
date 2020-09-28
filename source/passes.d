@@ -59,13 +59,16 @@ void pass_write_exe(ref CompilationContext context, CompilePassPerModule[] subPa
 	write(context.outputFilename, context.binaryBuffer.data);
 }
 
-immutable CompilePassGlobal[] commonPasses = [
+immutable CompilePassGlobal[] frontendPasses = [
 	global_pass("Read source", &pass_source),
 	global_pass("Lex", &pass_lexer),
 	global_pass("Parse", &pass_parser),
 	global_pass("Semantic insert", &pass_names_register),
 	global_pass("Semantic lookup", &pass_names_resolve),
 	global_pass("Semantic types", &pass_type_check),
+];
+
+immutable CompilePassGlobal[] backendPasses = [
 	global_pass("IR gen", &pass_ir_gen),
 
 	global_pass("Optimize", &pass_optimize_ir),
@@ -85,6 +88,7 @@ immutable CompilePassGlobal[] commonPasses = [
 	global_pass("Code gen", &pass_emit_mc_amd64),
 ];
 
+immutable CompilePassGlobal[] commonPasses = frontendPasses ~ backendPasses;
 
 
 
