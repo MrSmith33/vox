@@ -73,14 +73,6 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           path: .
-      # `gh release` is only available in v1.0.0, while runner only has v0.12.0
-      - name: Install GH CLI
-        shell: bash
-        run: |
-          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0
-          sudo apt-add-repository https://cli.github.com/packages
-          sudo apt -qq update
-          sudo apt -qq install gh
       # Update tag, so that we get proper date and commit on github
       - name: Update CI tag
         uses: richardsimko/update-tag@master
