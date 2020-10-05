@@ -31,9 +31,16 @@ int runCli(string[] args)
 	string outputFilename;
 	string outputTarget;
 	string filterFuncName;
+	string targetHelp;
 
-	version(Windows) outputTarget = "windows-x64";
-	else version(linux) outputTarget = "linux-x64";
+	version(Windows) {
+		outputTarget = "windows-x64";
+		targetHelp = "Choose target. [windows-x64(default), linux-x64]";
+	}
+	else version(linux) {
+		outputTarget = "linux-x64";
+		targetHelp = "Choose target. [windows-x64, linux-x64(default)]";
+	}
 	else static assert(false, "Unnhandled OS");
 
 	bool printHelp;
@@ -71,7 +78,7 @@ int runCli(string[] args)
 		optResult = getopt(
 			args,
 			"of", "Write output to file.", &outputFilename,
-			"target", "Choose target: [windows-x64, linux-x64]", &outputTarget,
+			"target", targetHelp, &outputTarget,
 
 			"print-time", "Print time of compilation.", &printTime,
 			"print-source", "Print source code.", &driver.context.printSource,
@@ -96,7 +103,7 @@ int runCli(string[] args)
 			"no-dce", "Disable Dead Code Elimination", &driver.context.disableDCE,
 			"no-inline", "Disable Inlining", &driver.context.disableInline,
 
-			"subsystem", "Select windows subsystem. [CUI(default), GUI].", &subSystem,
+			"subsystem", "Select windows subsystem. [CUI(default), GUI]", &subSystem,
 		);
 
 		final switch (subSystem) {
