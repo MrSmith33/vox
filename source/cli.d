@@ -27,6 +27,7 @@ int runCli(string[] args)
 
 	bool printTime;
 	bool printMem;
+	bool checkOnly;
 	string[] files;
 	string outputFilename;
 	string outputTarget;
@@ -79,6 +80,7 @@ int runCli(string[] args)
 			args,
 			"of", "Write output to file.", &outputFilename,
 			"target", targetHelp, &outputTarget,
+			"check-only", "Disable backend passes, leaving only error checking", &checkOnly,
 
 			"print-time", "Print time of compilation.", &printTime,
 			"print-source", "Print source code.", &driver.context.printSource,
@@ -154,7 +156,11 @@ int runCli(string[] args)
 
 	string[] filenames = args;
 
-	driver.initialize(exePasses);
+	auto passes = exePasses;
+	// Disable backend
+	if (checkOnly) passes = frontendOnlyPasses;
+
+	driver.initialize(passes);
 	driver.context.buildType = BuildType.exe;
 	driver.beginCompilation();
 

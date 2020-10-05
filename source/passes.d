@@ -101,6 +101,7 @@ immutable CompilePassGlobal[] extraExePasses = [
 	CompilePassGlobal("Write executable", &pass_write_exe),
 ];
 
+CompilePassGlobal[] frontendOnlyPasses = frontendPasses;
 CompilePassGlobal[] jitPasses = commonPasses ~ extraJitPasses;
 CompilePassGlobal[] exePasses = commonPasses ~ extraExePasses;
 
