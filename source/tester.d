@@ -22,7 +22,9 @@ void runDevTests()
 	Driver driver;
 	driver.initialize(jitPasses);
 	driver.context.buildType = BuildType.jit;
-	version(Posix) driver.context.targetOs = TargetOs.posix;
+	version(Windows) driver.context.targetOs = TargetOs.windows;
+	else version(linux) driver.context.targetOs = TargetOs.linux;
+	else static assert(false, "Unnhandled OS");
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
 	driver.context.printTodos = true;
@@ -30,6 +32,7 @@ void runDevTests()
 	//driver.context.debugRegAlloc = true;
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
+	//driver.context.targetOs = TargetOs.linux;
 	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
 	//driver.context.setDumpFilter("returnBigStruct");
 
@@ -71,7 +74,7 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 	auto startInitTime = currTime;
 	Driver driver;
 	driver.initialize(jitPasses);
-	version(Posix) driver.context.targetOs = TargetOs.posix;
+	version(Posix) driver.context.targetOs = TargetOs.linux;
 	driver.context.buildType = BuildType.jit;
 	driver.context.buildDebug = false;
 	driver.context.validateIr = true;

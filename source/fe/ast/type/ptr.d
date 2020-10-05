@@ -11,8 +11,7 @@ struct PtrTypeNode {
 	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	AstIndex base;
 	IrIndex irType;
-	uint size() { return POINTER_SIZE; }
-	uint alignment() { return POINTER_SIZE; }
+	enum sizealign = SizeAndAlignment(POINTER_SIZE, POINTER_ALIGN_POW);
 	bool isVoidPtr(CompilationContext* context) {
 		return context.getAstType(base).isVoid;
 	}

@@ -37,10 +37,10 @@ void fillStaticDataSections(CompilationContext* c)
 	// copy initialized static data into buffer and set offsets
 	foreach(size_t i, ref IrGlobal global; c.globals.buffer.data)
 	{
-		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
+		ObjectSymbol* globalSym = c.objSymTab.getSymbol(global.objectSymIndex);
 		if (globalSym.isAllZero) continue;
 
-		ObjectSection* symSection = &c.objSymTab.getSection(globalSym.sectionIndex);
+		ObjectSection* symSection = c.objSymTab.getSection(globalSym.sectionIndex);
 
 		// alignment
 		uint padding = paddingSize!uint(cast(uint)symSection.buffer.length, globalSym.alignment);
@@ -64,7 +64,7 @@ void fillStaticDataSections(CompilationContext* c)
 	// second pass for zero initialized data
 	foreach(size_t i, ref IrGlobal global; c.globals.buffer.data)
 	{
-		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
+		ObjectSymbol* globalSym = c.objSymTab.getSymbol(global.objectSymIndex);
 		if (!globalSym.isAllZero) continue;
 
 		// alignment
@@ -81,7 +81,9 @@ void fillStaticDataSections(CompilationContext* c)
 		if (globalSym.needsZeroTermination) ++zeroDataOffset;
 	}
 
+	ObjectSection* rwSection = c.objSymTab.getSection(c.builtinSections[ObjectSectionType.rw_data]);
 	c.zeroDataLength = zeroDataOffset - cast(uint)c.staticDataBuffer.length;
+	rwSection.zeroDataLength = c.zeroDataLength;
 }
 
 //version = emit_mc_print;
@@ -124,7 +126,7 @@ struct CodeEmitter
 		fun = f;
 		lir = context.getAst!IrFunction(fun.backendData.lirData);
 
-		ObjectSymbol* funcSym = &context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
+		ObjectSymbol* funcSym = context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
 		funcSym.dataPtr = gen.pc;
 		funcSym.sectionOffset = cast(ulong)(gen.pc - context.codeBuffer.bufPtr);
 
@@ -196,7 +198,7 @@ struct CodeEmitter
 
 	uint referenceOffset()
 	{
-		ObjectSymbol* funcSym = &context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
+		ObjectSymbol* funcSym = context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
 		ptrdiff_t diff = gen.pc - funcSym.dataPtr;
 		assert(diff >= 0, "Negative buffer position");
 		assert(diff <= uint.max, "Function is bigger than uint.max");
@@ -398,7 +400,7 @@ struct CodeEmitter
 						{
 							// direct call by name
 							FunctionDeclNode* callee = context.getFunction(calleeIndex);
-							ObjectSymbol* sym = &context.objSymTab.getSymbol(callee.backendData.objectSymIndex);
+							ObjectSymbol* sym = context.objSymTab.getSymbol(callee.backendData.objectSymIndex);
 
 							if (sym.isIndirect)
 								gen.call(memAddrRipDisp32(0)); // read address from import section

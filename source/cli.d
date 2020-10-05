@@ -29,7 +29,12 @@ int runCli(string[] args)
 	bool printMem;
 	string[] files;
 	string outputFilename;
+	string outputTarget;
 	string filterFuncName;
+
+	version(Windows) outputTarget = "windows-x64";
+	else version(linux) outputTarget = "linux-x64";
+	else static assert(false, "Unnhandled OS");
 
 	bool printHelp;
 	GetoptResult optResult;
@@ -39,9 +44,9 @@ int runCli(string[] args)
 	{
 		switch(args[1])
 		{
-			case "pdb_dump":
+			case "pdb-dump":
 				if (args.length == 1) {
-					writeln("Usage: tiny_jit pdb_dump file.pdb");
+					writeln("Usage: tiny_jit pdb-dump file.pdb");
 					return 1;
 				}
 				string filename = absolutePath(args[2]);
@@ -66,6 +71,7 @@ int runCli(string[] args)
 		optResult = getopt(
 			args,
 			"of", "Write output to file.", &outputFilename,
+			"target", "Choose target: [windows-x64, linux-x64]", &outputTarget,
 
 			"print-time", "Print time of compilation.", &printTime,
 			"print-source", "Print source code.", &driver.context.printSource,
@@ -98,6 +104,15 @@ int runCli(string[] args)
 			case WindowsSubsystemCli.GUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI; break;
 		}
 
+		switch(outputTarget) {
+			case "windows-x64": driver.context.targetOs = TargetOs.windows; break;
+			case "linux-x64": driver.context.targetOs = TargetOs.linux; break;
+			//case "linux-arm64": driver.context.targetOs = TargetOs.linux; driver.context.targetArch = TargetArch.arm64; break;
+			default:
+				writefln("Unknown target: %s", outputTarget);
+				printHelp = true;
+		}
+
 		args = args[1..$]; // skip program name
 
 		if (args.length < 1) printHelp = true;
@@ -112,7 +127,7 @@ int runCli(string[] args)
 	if (printHelp)
 	{
 		writeln("Usage: tjc [tool] [options]... [source|.dll|.har]...");
-		writeln("   Tools: pdb_dump");
+		writeln("   Tools: pdb-dump");
 
 		size_t maxShortLength;
 		size_t maxLongLength;

@@ -43,7 +43,7 @@ void pass_ir_lower(CompilationContext* c, ModuleDeclNode* mod, FunctionDeclNode*
 bool fitsIntoRegister(IrIndex type, CompilationContext* c) {
 	if (type.isTypeStruct) {
 		IrTypeStruct* structRes = &c.types.get!IrTypeStruct(type);
-		switch(structRes.size) {
+		switch(structRes.sizealign.size) {
 			case 1: return true;
 			case 2: return true;
 			case 4: return true;
@@ -202,7 +202,7 @@ struct AbiState {
 				assignToMem(abi.paramData[i], sizeAlign);
 				//writefln("offset %s %s %s", i, abi.paramData[i].stackOffset, sizeAlign.size);
 			} else if (paramClass == PassClass.byPtrMemory) {
-				assignToMem(abi.paramData[i], SizeAndAlignment(8, 8));
+				assignToMem(abi.paramData[i], SizeAndAlignment(8, 3));
 			}
 		}
 		abi.stackSize = alignValue!uint(abi.stackSize, MIN_STACK_SLOT_SIZE);
@@ -1266,7 +1266,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 			IrTypeArray* arrayType = &c.types.get!IrTypeArray(type);
 			uint elemSize = c.types.typeSize(arrayType.elemType);
 			IrIndex[] args = instrHeader.args(ir);
-			foreach_reverse (i; 0..arrayType.size)
+			foreach_reverse (i; 0..arrayType.numElements)
 			{
 				insertAt(args[i], i * elemSize, elemSize);
 			}

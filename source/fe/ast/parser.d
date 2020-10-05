@@ -217,7 +217,7 @@ struct Parser
 
 					ObjectSymbol sym = {
 						kind : ObjectSymbolKind.isLocal,
-						sectionIndex : context.dataSectionIndex,
+						sectionIndex : context.builtinSections[ObjectSectionType.rw_data],
 						moduleIndex : currentModule.objectSymIndex,
 						flags : ObjectSymbolFlags.isMutable,
 						id : var.id,
@@ -1369,14 +1369,14 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 
 				ObjectSymbol sym = {
 					kind : ObjectSymbolKind.isLocal,
-					sectionIndex : p.context.rdataSectionIndex,
+					sectionIndex : p.context.builtinSections[ObjectSectionType.ro_data],
 					moduleIndex : p.currentModule.objectSymIndex,
 					flags : ObjectSymbolFlags.needsZeroTermination | ObjectSymbolFlags.isString,
 					id : p.context.idMap.getOrRegNoDup(p.context, ":string"),
 				};
 				global.objectSymIndex = p.context.objSymTab.addSymbol(sym);
 
-				ObjectSymbol* globalSym = &p.context.objSymTab.getSymbol(global.objectSymIndex);
+				ObjectSymbol* globalSym = p.context.objSymTab.getSymbol(global.objectSymIndex);
 				globalSym.setInitializer(cast(ubyte[])value);
 			}
 			IrIndex irValueLength = p.context.constants.add(value.length, IsSigned.no, IrArgSize.size64);

@@ -46,7 +46,7 @@ debug (ASSERTF) {
 
 enum TargetOs : ubyte {
 	windows,
-	posix
+	linux
 }
 
 ///
@@ -137,11 +137,7 @@ struct CompilationContext
 	IrIndex i64PtrType;
 
 	// sections
-	LinkIndex hostSectionIndex;
-	LinkIndex importSectionIndex;
-	LinkIndex dataSectionIndex;
-	LinkIndex rdataSectionIndex;
-	LinkIndex textSectionIndex;
+	LinkIndex[NUM_BUILTIN_SECTIONS] builtinSections;
 
 	// modules
 	LinkIndex builtinModuleIndex;
@@ -252,7 +248,7 @@ struct CompilationContext
 	CallConvention defaultCallConvention() {
 		final switch(targetOs) {
 			case TargetOs.windows: return CallConvention.win64;
-			case TargetOs.posix: return CallConvention.sysv64;
+			case TargetOs.linux: return CallConvention.sysv64;
 		}
 	}
 
@@ -661,7 +657,7 @@ struct CompilationContext
 		//}
 
 		alias JittedFunc = extern(C) ResultType function(ParamTypes);
-		ObjectSymbol* funcSym = &objSymTab.getSymbol(funcDecl.backendData.objectSymIndex);
+		ObjectSymbol* funcSym = objSymTab.getSymbol(funcDecl.backendData.objectSymIndex);
 		return cast(JittedFunc)funcSym.dataPtr;
 	}
 
@@ -739,7 +735,7 @@ struct CompilationContext
 		assertf(node_error == CommonAstNodes.node_error, "AstIndex mismatch for node_error %s != %s", node_error, cast(AstIndex)CommonAstNodes.node_error);
 
 		// add basic types
-		void makeBasic(AstIndex reqIndex, uint size, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
+		void makeBasic(AstIndex reqIndex, uint size, ubyte alignPow, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
 		{
 			uint startPos = sourceBuffer.uintLength;
 			string str = basicTypeNames[basicType];
@@ -751,35 +747,35 @@ struct CompilationContext
 
 			// we want the index returned from appendAst to be equal to reqIndex
 			// because we have CommonAstNodes enum
-			AstIndex index = appendAst!BasicTypeNode(tokIndex, size, minValue, maxValue, basicType, cast(ubyte)typeFlags);
+			AstIndex index = appendAst!BasicTypeNode(tokIndex, SizeAndAlignment(size, alignPow), minValue, maxValue, basicType, cast(ubyte)typeFlags);
 			assertf(index == reqIndex,
 				"Result AstIndex of basic type (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
 				index, reqIndex);
 		}
 
 		// type nodes
-		makeBasic(CommonAstNodes.type_error, 0, 0, 0, BasicType.t_error);
-		makeBasic(CommonAstNodes.type_noreturn, 0, 0, 0, BasicType.t_noreturn);
-		makeBasic(CommonAstNodes.type_void,  0, 0, 0, BasicType.t_void);
-		makeBasic(CommonAstNodes.type_bool,  1, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean);
-		makeBasic(CommonAstNodes.type_null,  8, 0, 0, BasicType.t_null);
+		makeBasic(CommonAstNodes.type_error, 0, 0, 0, 0, BasicType.t_error);
+		makeBasic(CommonAstNodes.type_noreturn, 0, 0, 0, 0, BasicType.t_noreturn);
+		makeBasic(CommonAstNodes.type_void,  0, 0, 0, 0, BasicType.t_void);
+		makeBasic(CommonAstNodes.type_bool,  1, 0, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean);
+		makeBasic(CommonAstNodes.type_null,  8, 3, 0, 0, BasicType.t_null);
 
 		// basic type nodes
-		makeBasic(CommonAstNodes.type_i8,  1, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
-		makeBasic(CommonAstNodes.type_i16, 2, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
-		makeBasic(CommonAstNodes.type_i32, 4, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
-		makeBasic(CommonAstNodes.type_i64, 8, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
+		makeBasic(CommonAstNodes.type_i8,  1, 0, byte.min, byte.max, BasicType.t_i8, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
+		makeBasic(CommonAstNodes.type_i16, 2, 1, short.min, short.max, BasicType.t_i16, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
+		makeBasic(CommonAstNodes.type_i32, 4, 2, int.min, int.max, BasicType.t_i32, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
+		makeBasic(CommonAstNodes.type_i64, 8, 3, long.min, long.max, BasicType.t_i64, BasicTypeFlag.isInteger | BasicTypeFlag.isSigned);
 
-		makeBasic(CommonAstNodes.type_u8,  1, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger);
-		makeBasic(CommonAstNodes.type_u16, 2, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger);
-		makeBasic(CommonAstNodes.type_u32, 4, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger);
-		makeBasic(CommonAstNodes.type_u64, 8, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger);
+		makeBasic(CommonAstNodes.type_u8,  1, 0, ubyte.min, ubyte.max, BasicType.t_u8, BasicTypeFlag.isInteger);
+		makeBasic(CommonAstNodes.type_u16, 2, 1, ushort.min, ushort.max, BasicType.t_u16, BasicTypeFlag.isInteger);
+		makeBasic(CommonAstNodes.type_u32, 4, 2, uint.min, uint.max, BasicType.t_u32, BasicTypeFlag.isInteger);
+		makeBasic(CommonAstNodes.type_u64, 8, 3, ulong.min, ulong.max, BasicType.t_u64, BasicTypeFlag.isInteger);
 
-		makeBasic(CommonAstNodes.type_f32, 4, 0, 0, BasicType.t_f32, BasicTypeFlag.isFloat);
-		makeBasic(CommonAstNodes.type_f64, 8, 0, 0, BasicType.t_f64, BasicTypeFlag.isFloat);
+		makeBasic(CommonAstNodes.type_f32, 4, 2, 0, 0, BasicType.t_f32, BasicTypeFlag.isFloat);
+		makeBasic(CommonAstNodes.type_f64, 8, 3, 0, 0, BasicType.t_f64, BasicTypeFlag.isFloat);
 
-		makeBasic(CommonAstNodes.type_alias, 4, uint.min, uint.max, BasicType.t_alias);
-		makeBasic(CommonAstNodes.type_type, 4, uint.min, uint.max, BasicType.t_type);
+		makeBasic(CommonAstNodes.type_alias, 4, 2, uint.min, uint.max, BasicType.t_alias);
+		makeBasic(CommonAstNodes.type_type, 4, 2, uint.min, uint.max, BasicType.t_type);
 
 		// custom types
 		auto type_u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
@@ -1000,9 +996,9 @@ void createBuiltinFunctions(CompilationContext* c)
 
 		ObjectSymbol sym = {
 			kind : ObjectSymbolKind.isHost,
-			sectionIndex : c.hostSectionIndex,
+			sectionIndex : c.builtinSections[ObjectSectionType.host],
 			moduleIndex : c.builtinModuleIndex,
-			alignment : 1,
+			alignmentPower : 0,
 			id : id,
 		};
 		funcNode.backendData.objectSymIndex = c.objSymTab.addSymbol(sym);
@@ -1027,51 +1023,47 @@ void createBuiltinFunctions(CompilationContext* c)
 void addSections(CompilationContext* c)
 {
 	ObjectSection hostSection = {
-		sectionAddress : 0,
-		length : 0,
-		alignment : 1,
+		type : ObjectSectionType.host,
+		alignmentPower : 0,
 		id : c.idMap.getOrRegNoDup(c, ":host")
 	};
-	c.hostSectionIndex = c.objSymTab.addSection(hostSection);
+	c.builtinSections[ObjectSectionType.host] = c.objSymTab.addSection(hostSection);
 
 	ObjectSection importSection = {
-		sectionAddress : 0,
-		length : 0,
-		alignment : 1,
+		type : ObjectSectionType.imports,
+		flags : ObjectSectionFlags.read | ObjectSectionFlags.write,
+		alignmentPower : 12, // 4096
 		id : c.idMap.getOrRegNoDup(c, ".idata"),
 		buffer : &c.importBuffer,
 	};
-	c.importSectionIndex = c.objSymTab.addSection(importSection);
+	c.builtinSections[ObjectSectionType.imports] = c.objSymTab.addSection(importSection);
 
 	ObjectSection dataSection = {
-		sectionAddress : 0,
-		sectionData : c.staticDataBuffer.bufPtr,
-		length : 0,
-		alignment : 1,
+		type : ObjectSectionType.rw_data,
+		flags : ObjectSectionFlags.read | ObjectSectionFlags.write,
+		alignmentPower : 12, // 4096
 		id : c.idMap.getOrRegNoDup(c, ".data"),
 		buffer : &c.staticDataBuffer,
 	};
-	c.dataSectionIndex = c.objSymTab.addSection(dataSection);
+	c.builtinSections[ObjectSectionType.rw_data] = c.objSymTab.addSection(dataSection);
 
 	ObjectSection rdataSection = {
-		sectionAddress : 0,
-		sectionData : c.roStaticDataBuffer.bufPtr,
-		length : 0,
-		alignment : 1,
+		type : ObjectSectionType.ro_data,
+		flags : ObjectSectionFlags.read,
+		alignmentPower : 12, // 4096
 		id : c.idMap.getOrRegNoDup(c, ".rdata"),
 		buffer : &c.roStaticDataBuffer,
 	};
-	c.rdataSectionIndex = c.objSymTab.addSection(rdataSection);
+	c.builtinSections[ObjectSectionType.ro_data] = c.objSymTab.addSection(rdataSection);
 
 	ObjectSection textSection = {
-		sectionAddress : 0,
-		sectionData : c.codeBuffer.bufPtr,
-		length : 0,
-		alignment : 1,
+		type : ObjectSectionType.code,
+		flags : ObjectSectionFlags.execute | ObjectSectionFlags.read,
+		alignmentPower : 12, // 4096
 		id : c.idMap.getOrRegNoDup(c, ".text"),
 		buffer : &c.codeBuffer,
 	};
-	c.textSectionIndex = c.objSymTab.addSection(textSection);
+	c.builtinSections[ObjectSectionType.code] = c.objSymTab.addSection(textSection);
 }
 
 struct Slice(T) {

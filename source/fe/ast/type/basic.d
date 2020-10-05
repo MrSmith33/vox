@@ -8,8 +8,7 @@ import all;
 @(AstType.type_basic)
 struct BasicTypeNode {
 	mixin AstNodeData!(AstType.type_basic, AstFlags.isType, AstNodeState.type_check_done);
-	uint size;
-	uint alignment() { return size; }
+	SizeAndAlignment sizealign;
 	ulong minValue;
 	ulong maxValue;
 	BasicType basicType;
@@ -45,11 +44,6 @@ struct BasicTypeNode {
 				assert(false);
 		}
 	}
-}
-
-BasicTypeNode basicTypeNode(uint size, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
-{
-	return BasicTypeNode(TokenIndex(), size, minValue, maxValue, basicType, cast(ubyte)typeFlags);
 }
 
 enum BasicTypeFlag : ubyte {

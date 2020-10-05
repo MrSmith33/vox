@@ -121,9 +121,9 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 		{
 			ObjectSymbol sym = {
 				kind : ObjectSymbolKind.isLocal,
-				sectionIndex : c.textSectionIndex,
+				sectionIndex : c.builtinSections[ObjectSectionType.code],
 				moduleIndex : mod.objectSymIndex,
-				alignment : 1,
+				alignmentPower : 0,
 				id : node.id,
 			};
 			symbolIndex = c.objSymTab.addSymbol(sym);

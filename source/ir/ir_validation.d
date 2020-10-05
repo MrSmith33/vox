@@ -247,9 +247,9 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			else if (vreg.type.isTypeArray)
 			{
 				IrTypeArray* arrayType = &c.types.get!IrTypeArray(vreg.type);
-				c.assertf(instrHeader.numArgs == arrayType.size,
+				c.assertf(instrHeader.numArgs == arrayType.numElements,
 					"%s: create_aggregate invalid number of arguments, got %s, expected %s",
-					instrIndex, instrHeader.numArgs, arrayType.size);
+					instrIndex, instrHeader.numArgs, arrayType.numElements);
 
 				IrIndex memberType = arrayType.elemType;
 				foreach (i, IrIndex arg; instrHeader.args(ir))

@@ -11,10 +11,54 @@ import std.conv;
 
 import all;
 import be.pecoff;
+import be.elf64;
 
 //version = print_info;
 
 void pass_create_executable(ref CompilationContext context, CompilePassPerModule[] subPasses)
+{
+	//writefln("%s", context.targetOs);
+	final switch(context.targetOs) {
+		case TargetOs.windows: make_pe_exe(&context); break;
+		case TargetOs.linux: make_elf_exe(&context); break;
+	}
+}
+
+void make_elf_exe(CompilationContext* context)
+{
+	enum SECTION_ALIGNMENT = 4096;
+	Elf64Executable executable;
+	executable.context = context;
+	executable.fileHeader.file_type = ElfObjectFileType.ET_EXEC;
+	executable.fileHeader.machine = ElfMachineType.x86_64;
+
+	Elf64ProgramHeader[NUM_BUILTIN_SECTIONS] segmentBuf;
+	Arena!Elf64ProgramHeader segmentArena;
+	segmentArena.setBuffer(cast(ubyte[])segmentBuf);
+	ObjectSection*[NUM_BUILTIN_SECTIONS] sectionBuf;
+	Arena!(ObjectSection*) sectionArena;
+	sectionArena.setBuffer(cast(ubyte[])sectionBuf);
+	executable.assignSectionAddresses(segmentArena, sectionArena);
+
+	// fix all references between symbols
+	foreach (ref SourceFileInfo file; context.files.data) {
+		linkModule(*context, file.mod.objectSymIndex);
+	}
+
+	if (context.printSymbols) context.objSymTab.dump(context);
+
+	if (context.entryPoint is null) {
+		context.unrecoverable_error(TokenIndex(), "No entry point set. Need 'main' function");
+	}
+
+	ObjectSymbol* entryPoint = context.objSymTab.getSymbol(context.entryPoint.backendData.objectSymIndex);
+	ObjectSection* entryPointSection = context.objSymTab.getSection(entryPoint.sectionIndex);
+	executable.fileHeader.entry = to!uint(entryPointSection.sectionAddress + entryPoint.sectionOffset);
+
+	executable.write(context.binaryBuffer);
+}
+
+void make_pe_exe(CompilationContext* context)
 {
 	// Code section
 	Section textSection = Section(SectionType.text, ".text");
@@ -47,7 +91,7 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	ImportSection importSection;
 	importSection.section = &idataSection;
 
-	CoffImportSectionSize impSize = calcImportSize(&context);
+	CoffImportSectionSize impSize = calcImportSize(context);
 	ubyte[] importBuffer = context.importBuffer.voidPut(impSize.totalSectionBytes);
 	auto importMapping = CoffImportSectionMapping(importBuffer, impSize);
 
@@ -80,7 +124,7 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	auto fileParams = FileParameters(DEFAULT_SECTION_ALIGNMENT, context.sectionAlignemnt);
 	if (fileParams.fileAlignment < 512) fileParams.sectionAlignment = fileParams.fileAlignment;
 
-	CoffExecutable executable = CoffExecutable(fileParams, &context);
+	CoffExecutable executable = CoffExecutable(fileParams, context);
 	executable.sections = sections.data;
 
 	// fills header.VirtualAddress
@@ -88,21 +132,21 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	executable.fixup();
 
 	// fill sectionAddress, uses VirtualAddress
-	context.objSymTab.getSection(context.textSectionIndex).sectionAddress = textSection.header.VirtualAddress;
-	context.objSymTab.getSection(context.importSectionIndex).sectionAddress = idataSection.header.VirtualAddress;
-	context.objSymTab.getSection(context.dataSectionIndex).sectionAddress = dataSection.header.VirtualAddress;
-	context.objSymTab.getSection(context.rdataSectionIndex).sectionAddress = rdataSection.header.VirtualAddress;
+	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.code]).sectionAddress = textSection.header.VirtualAddress;
+	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.imports]).sectionAddress = idataSection.header.VirtualAddress;
+	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.rw_data]).sectionAddress = dataSection.header.VirtualAddress;
+	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.ro_data]).sectionAddress = rdataSection.header.VirtualAddress;
 
 	// uses sectionAddress
 	if (importMapping.sectionData.length > 0) {
-		fillImports(importMapping, &context);
+		fillImports(importMapping, context);
 	}
 
-	if (context.printSymbols) context.objSymTab.dump(&context);
+	if (context.printSymbols) context.objSymTab.dump(context);
 
 	// fix all references between symbols
 	foreach (ref SourceFileInfo file; context.files.data) {
-		linkModule(context, file.mod.objectSymIndex);
+		linkModule(*context, file.mod.objectSymIndex);
 	}
 
 	if (context.entryPoint is null)
@@ -110,8 +154,8 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 		context.unrecoverable_error(TokenIndex(), "No entry point set. Need 'main' function");
 	}
 
-	ObjectSymbol* entryPoint = &context.objSymTab.getSymbol(context.entryPoint.backendData.objectSymIndex);
-	ObjectSection* entryPointSection = &context.objSymTab.getSection(entryPoint.sectionIndex);
+	ObjectSymbol* entryPoint = context.objSymTab.getSymbol(context.entryPoint.backendData.objectSymIndex);
+	ObjectSection* entryPointSection = context.objSymTab.getSection(entryPoint.sectionIndex);
 	executable.entryPointAddress = to!uint(entryPointSection.sectionAddress + entryPoint.sectionOffset);
 
 	/*
@@ -140,7 +184,7 @@ CoffImportSectionSize calcImportSize(CompilationContext* context)
 	LinkIndex modIndex = context.objSymTab.firstModule;
 	while (modIndex.isDefined)
 	{
-		ObjectModule* mod = &context.objSymTab.getModule(modIndex);
+		ObjectModule* mod = context.objSymTab.getModule(modIndex);
 
 		if (mod.isImported)
 		{
@@ -153,7 +197,7 @@ CoffImportSectionSize calcImportSize(CompilationContext* context)
 			LinkIndex symIndex = mod.firstSymbol;
 			while (symIndex.isDefined)
 			{
-				ObjectSymbol* sym = &context.objSymTab.getSymbol(symIndex);
+				ObjectSymbol* sym = context.objSymTab.getSymbol(symIndex);
 
 				// Only add referenced symbols to import table
 				if (sym.isReferenced)
@@ -238,7 +282,7 @@ struct CoffImportSectionMapping
 
 void fillImports(ref CoffImportSectionMapping mapping, CompilationContext* context)
 {
-	ObjectSection* importSection = &context.objSymTab.getSection(context.importSectionIndex);
+	ObjectSection* importSection = context.objSymTab.getSection(context.builtinSections[ObjectSectionType.imports]);
 	uint sectionRVA = cast(uint)importSection.sectionAddress; // TODO check
 
 	// here, sink already has reserved space for Directory entries and IA, IL tables
@@ -250,12 +294,12 @@ void fillImports(ref CoffImportSectionMapping mapping, CompilationContext* conte
 	immutable uint iat_rva = sectionRVA + mapping.iat_rva;
 
 	Arena!ubyte strSink;
-	strSink.setBuffer(mapping.stringData);
+	strSink.setBuffer(cast(ubyte[])mapping.stringData);
 
 	LinkIndex modIndex = context.objSymTab.firstModule;
 	while (modIndex.isDefined)
 	{
-		ObjectModule* mod = &context.objSymTab.getModule(modIndex);
+		ObjectModule* mod = context.objSymTab.getModule(modIndex);
 
 		if (mod.isImported)
 		{
@@ -271,7 +315,7 @@ void fillImports(ref CoffImportSectionMapping mapping, CompilationContext* conte
 			LinkIndex symIndex = mod.firstSymbol;
 			while (symIndex.isDefined)
 			{
-				ObjectSymbol* sym = &context.objSymTab.getSymbol(symIndex);
+				ObjectSymbol* sym = context.objSymTab.getSymbol(symIndex);
 
 				// Only add referenced symbols to import table
 				if (sym.isReferenced)
@@ -332,7 +376,7 @@ struct CoffExecutable
 		fixupInvariants();
 	}
 
-	void calculateFileSizes()
+	private void calculateFileSizes()
 	{
 		uint fileSize = 0;
 		fileSize += DosHeader.sizeof;
@@ -364,12 +408,12 @@ struct CoffExecutable
 		version(print_info) writefln("Image file size is %s bytes", imageFileSize);
 	}
 
-	void fixupInMemorySizes()
+	private void fixupInMemorySizes()
 	{
 		uint headersInMemorySize = alignValue(unalignedHeadersSize, params.sectionAlignment);
 		uint imageVirtualSize = headersInMemorySize;
 
-		foreach (section; sections)
+		foreach (Section* section; sections)
 		{
 			// position in memory after load
 			section.header.VirtualAddress = imageVirtualSize;
@@ -382,12 +426,12 @@ struct CoffExecutable
 		optionalHeader.SizeOfImage = imageVirtualSize;
 	}
 
-	void collectCodeInfo()
+	private void collectCodeInfo()
 	{
 		bool codeSectionDetected = false;
 		bool importSectionDetected = false;
 
-		foreach (section; sections)
+		foreach (Section* section; sections)
 		{
 			if (section.isCodeSection)
 			{
@@ -414,7 +458,7 @@ struct CoffExecutable
 		version(print_info) writefln("Total code size is %sB", optionalHeader.SizeOfCode);
 	}
 
-	void fixupInvariants()
+	private void fixupInvariants()
 	{
 		// COFF Header
 		coffFileHeader.Machine = MachineType.amd64;
@@ -486,6 +530,81 @@ struct CoffExecutable
 			sink.put(section.data);
 			size_t sectionPadding = section.header.SizeOfRawData - section.data.length;
 			sink.pad(sectionPadding);
+		}
+	}
+}
+
+struct Elf64Executable
+{
+	CompilationContext* context;
+	Elf64Header fileHeader;
+	// 0 address will not work without relocations
+	ulong baseAddress = 0x400000;
+
+	Elf64ProgramHeader[] segments;
+	ObjectSection*[] sections;
+
+	void assignSectionAddresses(ref Arena!Elf64ProgramHeader segmentBuf, ref Arena!(ObjectSection*) sectionBuf)
+	{
+		// gather non-empty sections and calc offsets
+		uint fileOffset = Elf64Header.sizeof;
+
+		foreach (LinkIndex sectionIndex; context.builtinSections)
+		{
+			ObjectSection* section = context.objSymTab.getSection(sectionIndex);
+			if (section.totalLength == 0) continue; // skip empty sections
+
+			Elf64ProgramHeader segment;
+			segment.type = Elf64SegmentType.PT_LOAD;
+			if (section.flag_read) segment.flags |= Elf64SegmentAttributes.READ;
+			if (section.flag_write) segment.flags |= Elf64SegmentAttributes.WRITE;
+			if (section.flag_execute) segment.flags |= Elf64SegmentAttributes.EXECUTE;
+
+			fileOffset += Elf64ProgramHeader.sizeof;
+
+			segmentBuf.put(segment);
+			sectionBuf.put(section);
+
+		}
+		segments = segmentBuf.data;
+		sections = sectionBuf.data;
+
+		fileHeader.phnum = to!ushort(segments.length);
+
+		ulong memoryOffset = baseAddress;
+
+		foreach(i, ObjectSection* section; sections) {
+			Elf64ProgramHeader* segment = &segments[i];
+			memoryOffset = alignValue(memoryOffset, section.alignment);
+			section.sectionAddress = memoryOffset;
+			segment.vaddr = memoryOffset;
+			fileOffset = alignValue(fileOffset, section.alignment);
+			segment.offset = fileOffset;
+			segment.alignment = section.alignment;
+
+			segment.filesz = section.buffer.length;
+			segment.memsz = section.buffer.length;
+
+			memoryOffset += section.totalLength;
+			fileOffset += section.totalLength;
+		}
+	}
+
+	void write(ref Arena!ubyte sink)
+	{
+		// ELF64 header
+		sink.put(fileHeader);
+
+		// Segment table
+		foreach (ref segment; segments) {
+			sink.put(segment);
+		}
+
+		// Segments
+		foreach (i, ref segment; segments) {
+			ObjectSection* section = sections[i];
+			sink.padUntilAligned(segment.alignment);
+			sink.put(section.buffer.data);
 		}
 	}
 }

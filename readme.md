@@ -176,7 +176,7 @@ Compiler contains embedded tools:
 ## PDB dump
 Prints content of tjc.pdb file into stdout.
 ```
-tjc pdb_dump tjc.pdb
+tjc pdb-dump tjc.pdb
 ```
 
 # Compiler overview

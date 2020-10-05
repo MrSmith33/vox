@@ -13,8 +13,7 @@ struct SliceTypeNode {
 	IrIndex irType;
 	IrIndex defaultVal;
 
-	uint size() { return POINTER_SIZE * 2; }
-	uint alignment() { return POINTER_SIZE; }
+	enum sizealign = SizeAndAlignment(POINTER_SIZE * 2, POINTER_ALIGN_POW);
 }
 
 void print_slice(SliceTypeNode* node, ref AstPrintState state)
@@ -75,7 +74,6 @@ IrIndex gen_ir_type_slice(SliceTypeNode* t, CompilationContext* context)
 	structType.members[0] = IrTypeStructMember(makeBasicTypeIndex(IrValueType.i64), 0);
 	// ptr
 	structType.members[1] = IrTypeStructMember(context.types.appendPtr(baseType), POINTER_SIZE);
-	structType.size = t.size;
-	structType.alignment = POINTER_SIZE;
+	structType.sizealign = t.sizealign;
 	return t.irType;
 }

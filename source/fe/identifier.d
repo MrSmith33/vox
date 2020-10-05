@@ -20,6 +20,7 @@ struct IdentifierMap {
 	Arena!(const(char)[]) strings;
 	HashMap!(StringKey, uint, StringKey.init) map;
 
+	// TODO: replace with arena. This one uses GC
 	TextSink tempBuf;
 
 	string get(Identifier id) {

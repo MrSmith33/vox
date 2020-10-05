@@ -13,14 +13,14 @@ import be.pecoff;
 
 void linkModule(ref CompilationContext context, LinkIndex modIndex)
 {
-	ObjectModule* mod = &context.objSymTab.getModule(modIndex);
+	ObjectModule* mod = context.objSymTab.getModule(modIndex);
 	//writefln("%s %s", modIndex, context.idString(mod.id));
 
 	LinkIndex symIndex = mod.firstSymbol;
 	while (symIndex.isDefined)
 	{
-		ObjectSymbol* fromSymbol = &context.objSymTab.getSymbol(symIndex);
-		ObjectSection* fromSection = &context.objSymTab.getSection(fromSymbol.sectionIndex);
+		ObjectSymbol* fromSymbol = context.objSymTab.getSymbol(symIndex);
+		ObjectSection* fromSection = context.objSymTab.getSection(fromSymbol.sectionIndex);
 		ulong fromSymAddr = fromSection.sectionAddress + fromSymbol.sectionOffset;
 
 		//writef("  %s `%s` %X", symIndex, context.idString(fromSymbol.id), fromSymAddr);
@@ -32,13 +32,13 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 		LinkIndex symRefIndex = fromSymbol.firstRef;
 		while (symRefIndex.isDefined)
 		{
-			ObjectSymbolReference* symRef = &context.objSymTab.getReference(symRefIndex);
+			ObjectSymbolReference* symRef = context.objSymTab.getReference(symRefIndex);
 			//writefln("    %s -> %s: off 0x%X extra %s %s",
 			//	symRefIndex, symRef.referencedSymbol, symRef.refOffset,
 			//	symRef.extraOffset, symRef.refKind);
 
-			ObjectSymbol* toSymbol = &context.objSymTab.getSymbol(symRef.referencedSymbol);
-			ObjectSection* toSection = &context.objSymTab.getSection(toSymbol.sectionIndex);
+			ObjectSymbol* toSymbol = context.objSymTab.getSymbol(symRef.referencedSymbol);
+			ObjectSection* toSection = context.objSymTab.getSection(toSymbol.sectionIndex);
 			//writefln("      toSection %s %X", context.idString(toSection.id), toSection.sectionData);
 
 			// section + symbol offset + reference offset
@@ -47,7 +47,7 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 			//writefln("      refAddr %X", fromAddr);
 			//writefln("      toAddr %X", toAddr);
 
-			void* fixupLocation = cast(void*)(fromSection.sectionData + fromSymbol.sectionOffset + symRef.refOffset);
+			void* fixupLocation = cast(void*)(fromSection.buffer.bufPtr + fromSymbol.sectionOffset + symRef.refOffset);
 
 			final switch(symRef.refKind) with(ObjectSymbolRefKind)
 			{

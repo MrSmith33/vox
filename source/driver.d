@@ -182,7 +182,7 @@ struct Driver
 					id : symId,
 					dataPtr : cast(ubyte*)hostSym.ptr,
 					sectionOffset : cast(ulong)hostSym.ptr,
-					sectionIndex : context.hostSectionIndex,
+					sectionIndex : context.builtinSections[ObjectSectionType.host],
 					moduleIndex : hostModuleIndex,
 				};
 				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
@@ -199,7 +199,7 @@ struct Driver
 					flags : ObjectSymbolFlags.isIndirect,
 					id : symId,
 					sectionOffset : sectionOffset,
-					sectionIndex : context.importSectionIndex,
+					sectionIndex : context.builtinSections[ObjectSectionType.imports],
 					moduleIndex : hostModuleIndex,
 				};
 				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
@@ -225,8 +225,8 @@ struct Driver
 			kind : ObjectSymbolKind.isImported,
 			flags : ObjectSymbolFlags.isIndirect,
 			id : symId,
-			alignment : 8, // pointer size
-			sectionIndex : context.importSectionIndex,
+			alignmentPower : 3, // pointer size
+			sectionIndex : context.builtinSections[ObjectSectionType.imports],
 			moduleIndex : dllModuleIndex,
 		};
 		LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);

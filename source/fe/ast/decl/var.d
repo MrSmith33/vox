@@ -211,12 +211,12 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 		IrGlobal* global = c.globals.get(globalIndex);
 		global.type = c.types.appendPtr(irType);
 
-		uint valueSize = c.types.typeSize(irType);
+		SizeAndAlignment valueSizealign = c.types.typeSizeAndAlignment(irType);
 
 		// symbol is created in parser
-		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
-		globalSym.length = valueSize;
-		globalSym.alignment = c.types.typeAlignment(irType);
+		ObjectSymbol* globalSym = c.objSymTab.getSymbol(global.objectSymIndex);
+		globalSym.length = valueSizealign.size;
+		globalSym.alignmentPower = valueSizealign.alignmentPower;
 
 		IrIndex initializer = v.defaultVal;
 		if (initializer.isConstantZero)
@@ -225,7 +225,7 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 		}
 		else
 		{
-			ubyte[] buffer = c.globals.allocateInitializer(valueSize);
+			ubyte[] buffer = c.globals.allocateInitializer(valueSizealign.size);
 			void onGlobal(ubyte[] subbuffer, IrIndex index, CompilationContext* c)
 			{
 				c.assertf(index.isGlobal, "%s is not a constant", index);

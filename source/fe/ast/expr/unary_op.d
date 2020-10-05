@@ -184,7 +184,7 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			IrIndex increment = c.constants.ONE; // integers increment by 1
 			TypeNode* childType = childExpr.type.get_type(c);
 			if (childType.isPointer) { // pointers increment by size of element
-				uint size = childType.as_ptr.base.typeSize(c);
+				uint size = childType.as_ptr.base.typeSizealign(c).size;
 				increment = c.constants.add(size, IsSigned.no);
 			}
 

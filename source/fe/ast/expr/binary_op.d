@@ -241,7 +241,7 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 
 				// divide by elem size
 				TypeNode* baseType = leftExpr.type.get_type(c).as_ptr.base.get_type(c);
-				uint elemSize = baseType.size(c);
+				uint elemSize = baseType.sizealign(c).size;
 				if (elemSize == 1 || baseType.isVoid) break;
 
 				ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64), argSize : leftExpr.type.typeArgSize(c) };

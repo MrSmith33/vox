@@ -562,7 +562,7 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 			break;
 		case array:
 			auto array = ctx.types.get!IrTypeArray(type);
-			sink.formattedWrite("[%s x ", array.size);
+			sink.formattedWrite("[%s x ", array.numElements);
 			dumpIrType(sink, ctx, array.elemType);
 			sink("]");
 			break;

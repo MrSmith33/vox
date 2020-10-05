@@ -248,9 +248,9 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 		switch(con.type.typeKind) with(IrTypeKind) {
 			case struct_t:
 				IrTypeStruct* structType = &c.types.get!IrTypeStruct(con.type);
-				c.assertf(structType.size == buffer.length,
+				c.assertf(structType.sizealign.size == buffer.length,
 					"Cannot store struct constant of size %s, into memory of size %s bytes",
-					structType.size, buffer.length);
+					structType.sizealign.size, buffer.length);
 				IrIndex[] args = con.members;
 				foreach (i, IrTypeStructMember member; structType.members)
 				{
@@ -262,12 +262,12 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 			case array:
 				IrTypeArray* arrayType = &c.types.get!IrTypeArray(con.type);
 				uint elemSize = c.types.typeSize(arrayType.elemType);
-				uint typeSize = arrayType.size * elemSize;
+				uint typeSize = arrayType.numElements * elemSize;
 				c.assertf(typeSize == buffer.length,
 					"Cannot store array constant of size %s, into memory of size %s bytes",
 					typeSize, buffer.length);
 				IrIndex[] args = con.members;
-				foreach (i; 0..arrayType.size)
+				foreach (i; 0..arrayType.numElements)
 				{
 					uint memberOffset = i * elemSize;
 					constantToMem(buffer[memberOffset..memberOffset+elemSize], args[i], c, handler);
@@ -343,7 +343,7 @@ T irValueToNative(T)(IrVm* vm, IrIndex value, CompilationContext* c)
 		c.assertf(index.isGlobal, "%s is not a global", index);
 
 		IrGlobal* global = c.globals.get(index);
-		ObjectSymbol* globalSym = &c.objSymTab.getSymbol(global.objectSymIndex);
+		ObjectSymbol* globalSym = c.objSymTab.getSymbol(global.objectSymIndex);
 		if (globalSym.isMutable) c.internal_error("%s is not a constant", index);
 
 		assert(globalSym.dataPtr.sizeof == subbuffer.length);

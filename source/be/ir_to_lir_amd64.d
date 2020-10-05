@@ -229,7 +229,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						switch (instr.op)
 						{
 							case IrOpcode.load_aggregate, IrOpcode.load:
-								foreach (i; 0..arrayType.size)
+								foreach (i; 0..arrayType.numElements)
 								{
 									IrIndex ptr = genAddressOffset(lirPtr, offset + elemSize * i, ptrType, lirBlockIndex);
 									genStore(ptr, 0, instr.arg(ir, 0), fromOffset + elemSize * i, arrayType.elemType, lirBlockIndex, ir);
@@ -244,7 +244,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 								// register fixup for return stack slot
 								IrIndex resultSlot = getFixedIndex(irValue);
 								//context.internal_error("call . todo %s", resultSlot);
-								foreach (i; 0..arrayType.size)
+								foreach (i; 0..arrayType.numElements)
 								{
 									IrIndex ptr = genAddressOffset(lirPtr, offset + elemSize * i, ptrType, lirBlockIndex);
 									genStore(ptr, 0, resultSlot, fromOffset + elemSize * i, arrayType.elemType, lirBlockIndex, ir);
@@ -258,7 +258,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 					case constantZero:
 						IrIndex zero = context.constants.add(0, IsSigned.no);
-						foreach (i; 0..arrayType.size)
+						foreach (i; 0..arrayType.numElements)
 						{
 							IrIndex ptr = genAddressOffset(lirPtr, offset + elemSize * i, ptrType, lirBlockIndex);
 							genStore(ptr, 0, zero, fromOffset + elemSize * i, arrayType.elemType, lirBlockIndex, ir);
@@ -272,9 +272,9 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					default: context.internal_error("%s", irValue.kind); assert(false);
 				}
 
-				context.assertf(members.length == arrayType.size, "%s != %s", members.length, arrayType.size);
+				context.assertf(members.length == arrayType.numElements, "%s != %s", members.length, arrayType.numElements);
 
-				foreach (i; 0..arrayType.size)
+				foreach (i; 0..arrayType.numElements)
 				{
 					genStore(lirPtr, offset + elemSize * i, members[i], fromOffset, arrayType.elemType, lirBlockIndex, ir);
 				}

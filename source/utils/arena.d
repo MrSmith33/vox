@@ -10,7 +10,7 @@ import std.stdio;
 ///
 struct Arena(T)
 {
-	import utils : alignValue, max, format, to, PAGE_SIZE;
+	import utils : alignValue, max, format, to, PAGE_SIZE, paddingSize;
 	import std.range : isInputRange;
 
 	// Profiling stats:
@@ -99,13 +99,17 @@ struct Arena(T)
 
 	static if (is(T == ubyte))
 	{
-		void put(V)(V value) {
-			ubyte[V.sizeof] buf = *cast(ubyte[V.sizeof]*)&value;
-			put(buf);
+		void put(V)(auto ref V value) {
+			ubyte[] ptr = voidPut(V.sizeof);
+			ptr[] = *cast(ubyte[V.sizeof]*)&value;
 		}
 
 		void pad(size_t bytes) {
 			voidPut(bytes)[] = 0;
+		}
+
+		void padUntilAligned(size_t alignment) {
+			pad(paddingSize(length, alignment));
 		}
 	}
 

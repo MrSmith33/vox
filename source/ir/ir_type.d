@@ -38,7 +38,8 @@ enum getIrTypeKind(T) = getUDAs!(T, IrTypeKind)[0];
 
 struct SizeAndAlignment {
 	uint size;
-	uint alignment;
+	ubyte alignmentPower;
+	uint alignment() { return 1 << cast(uint)alignmentPower; }
 }
 
 ///
@@ -74,7 +75,7 @@ struct IrTypeArray
 {
 	IrTypeHeader header;
 	IrIndex elemType;
-	uint size;
+	uint numElements;
 }
 
 /// variadic type, members follow the struct in memory
@@ -83,8 +84,7 @@ align(8)
 struct IrTypeStruct
 {
 	IrTypeHeader header;
-	uint size;
-	uint alignment;
+	SizeAndAlignment sizealign;
 	uint numMembers;
 
 	// Prevent type from copying because members will not be copied. Need to use ptr.
@@ -170,13 +170,13 @@ struct IrTypeStorage
 		return result;
 	}
 
-	IrIndex appendArray(IrIndex elemType, uint size)
+	IrIndex appendArray(IrIndex elemType, uint numElements)
 	{
 		assert(elemType.isDefined);
 		IrIndex result = append!IrTypeArray;
 		IrTypeArray* array = &get!IrTypeArray(result);
 		array.elemType = elemType;
-		array.size = size;
+		array.numElements = numElements;
 		return result;
 	}
 
@@ -224,52 +224,7 @@ struct IrTypeStorage
 	}
 
 	uint typeSize(IrIndex type) {
-		assert(type.isType, format("not a type (%s)", type));
-		final switch (type.typeKind) {
-			case IrTypeKind.basic:
-			final switch (cast(IrValueType)type.typeIndex) {
-				case IrValueType.noreturn_t: return 0;
-				case IrValueType.void_t: return 0;
-				case IrValueType.i8: return 1;
-				case IrValueType.i16: return 2;
-				case IrValueType.i32: return 4;
-				case IrValueType.i64: return 8;
-			}
-			case IrTypeKind.pointer:
-				return 8;
-			case IrTypeKind.array:
-				IrTypeArray* array = &get!IrTypeArray(type);
-				uint elemSize = typeSize(array.elemType);
-				return elemSize * array.size;
-			case IrTypeKind.struct_t:
-				return get!IrTypeStruct(type).size;
-			case IrTypeKind.func_t:
-				return 0;
-		}
-	}
-
-	uint typeAlignment(IrIndex type) {
-		assert(type.isType, format("not a type (%s)", type));
-		final switch (type.typeKind) {
-			case IrTypeKind.basic:
-			final switch (cast(IrValueType)type.typeIndex) {
-				case IrValueType.noreturn_t: return 0;
-				case IrValueType.void_t: return 1;
-				case IrValueType.i8: return 1;
-				case IrValueType.i16: return 2;
-				case IrValueType.i32: return 4;
-				case IrValueType.i64: return 8;
-			}
-			case IrTypeKind.pointer:
-				return 8;
-			case IrTypeKind.array:
-				IrTypeArray* array = &get!IrTypeArray(type);
-				return typeAlignment(array.elemType);
-			case IrTypeKind.struct_t:
-				return get!IrTypeStruct(type).alignment;
-			case IrTypeKind.func_t:
-				return 0;
-		}
+		return typeSizeAndAlignment(type).size;
 	}
 
 	SizeAndAlignment typeSizeAndAlignment(IrIndex type) {
@@ -279,20 +234,20 @@ struct IrTypeStorage
 			final switch (cast(IrValueType)type.typeIndex) {
 				case IrValueType.noreturn_t: return SizeAndAlignment(0, 0);
 				case IrValueType.void_t: return SizeAndAlignment(0, 0);
-				case IrValueType.i8: return SizeAndAlignment(1, 1);
-				case IrValueType.i16: return SizeAndAlignment(2, 2);
-				case IrValueType.i32: return SizeAndAlignment(4, 4);
-				case IrValueType.i64: return SizeAndAlignment(8, 8);
+				case IrValueType.i8: return SizeAndAlignment(1, 0);
+				case IrValueType.i16: return SizeAndAlignment(2, 1);
+				case IrValueType.i32: return SizeAndAlignment(4, 2);
+				case IrValueType.i64: return SizeAndAlignment(8, 3);
 			}
 			case IrTypeKind.pointer:
-				return SizeAndAlignment(8, 8);
+				return SizeAndAlignment(8, 3);
 			case IrTypeKind.array:
 				IrTypeArray* array = &get!IrTypeArray(type);
 				SizeAndAlignment elemInfo = typeSizeAndAlignment(array.elemType);
-				return SizeAndAlignment(elemInfo.size * array.size, elemInfo.alignment);
+				return SizeAndAlignment(elemInfo.size * array.numElements, elemInfo.alignmentPower);
 			case IrTypeKind.struct_t:
 				auto s = &get!IrTypeStruct(type);
-				return SizeAndAlignment(s.size, s.alignment);
+				return s.sizealign;
 			case IrTypeKind.func_t:
 				return SizeAndAlignment(0, 0);
 		}
@@ -394,7 +349,7 @@ struct IrTypeStorage
 				if (b.typeKind != IrTypeKind.array) return false;
 				IrTypeArray* arrayA = &get!IrTypeArray(a);
 				IrTypeArray* arrayB = &get!IrTypeArray(b);
-				return isSameType(arrayA.elemType, arrayB.elemType) && arrayA.size == arrayB.size;
+				return isSameType(arrayA.elemType, arrayB.elemType) && arrayA.numElements == arrayB.numElements;
 			case IrTypeKind.struct_t:
 				if (b.typeKind != IrTypeKind.struct_t) return false;
 				IrTypeStructMember[] membersA = get!IrTypeStruct(a).members;

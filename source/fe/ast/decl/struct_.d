@@ -34,15 +34,10 @@ struct StructDeclNode {
 	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	bool isOpaque() { return cast(bool)(flags & StructFlags.isOpaque); }
 	bool isCtfeOnly() { return cast(bool)(flags & StructFlags.isCtfeOnly); }
-	uint size(CompilationContext* c) {
+	SizeAndAlignment sizealign(CompilationContext* c) {
 		c.assertf(state >= AstNodeState.type_check_done, loc, "size is unknown in %s state. Must be semantically analized", state);
 		IrTypeStruct* structType = &c.types.get!IrTypeStruct(irType);
-		return structType.size;
-	}
-	uint alignment(CompilationContext* c) {
-		c.assertf(state >= AstNodeState.type_check_done, loc, "alignment is unknown in %s state. Must be semantically analized", state);
-		IrTypeStruct* structType = &c.types.get!IrTypeStruct(irType);
-		return structType.alignment;
+		return structType.sizealign;
 	}
 }
 
@@ -134,7 +129,7 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* c)
 
 	uint memberIndex;
 	uint memberOffset;
-	uint maxAlignment = 1;
+	ubyte maxAlignmentPower = 0;
 	foreach(AstIndex memberAstIndex; s.declarations)
 	{
 		AstNode* member = c.getAstNode(memberAstIndex);
@@ -142,12 +137,11 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* c)
 		{
 			auto var = member.as!(VariableDeclNode)(c);
 			IrIndex type = var.type.gen_ir_type(c);
-			uint memberSize = c.types.typeSize(type);
-			uint memberAlignment = c.types.typeAlignment(type);
-			maxAlignment = max(maxAlignment, memberAlignment);
-			memberOffset = alignValue!uint(memberOffset, memberAlignment);
+			SizeAndAlignment memberInfo = c.types.typeSizeAndAlignment(type);
+			maxAlignmentPower = max(maxAlignmentPower, memberInfo.alignmentPower);
+			memberOffset = alignValue!uint(memberOffset, 1 << memberInfo.alignmentPower);
 			members[memberIndex++] = IrTypeStructMember(type, memberOffset);
-			memberOffset += memberSize;
+			memberOffset += memberInfo.size;
 
 			if (var.type.isMetaType(c)) {
 				s.flags |= StructFlags.isCtfeOnly;
@@ -159,8 +153,7 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* c)
 		}
 	}
 
-	memberOffset = alignValue!uint(memberOffset, maxAlignment);
-	structType.size = memberOffset;
-	structType.alignment = maxAlignment;
+	memberOffset = alignValue!uint(memberOffset, 1 << maxAlignmentPower);
+	structType.sizealign = SizeAndAlignment(memberOffset, maxAlignmentPower);
 	return s.irType;
 }

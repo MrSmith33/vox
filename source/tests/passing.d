@@ -3682,3 +3682,15 @@ immutable test171 = q{
 --- <error>
 test171(2, 38): Error: Cannot have two expanded parameters
 };
+
+
+//@TestInfo()
+//immutable test172 = q{--- test172
+//	// No parenths variadic call
+//	i64 fun[Args...](Args... args) {
+//		return 0;
+//	}
+//	#assert(fun == 0);
+//};
+
+

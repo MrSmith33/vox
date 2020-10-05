@@ -129,7 +129,7 @@ IrIndex eval_builtin_member(BuiltinId builtin, AstIndex obj, TokenIndex loc, Com
 			return c.constants.add(objType.get!StaticArrayTypeNode(c).length, IsSigned.no, IrArgSize.size64);
 		case type_sizeof:
 			require_type_check(objType, c);
-			return c.constants.add(objType.get_type(c).size(c), IsSigned.no, IrArgSize.size64);
+			return c.constants.add(objType.get_type(c).sizealign(c).size, IsSigned.no, IrArgSize.size64);
 		default:
 			c.unrecoverable_error(loc,
 				"Cannot access .%s member of %s while in CTFE",

@@ -58,7 +58,7 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 	// Do not allocate stack for leaf functions with no slots
 	if (layout.slots.length == 0 && layout.numCalls == 0) return;
 
-	context.assertf(layout.maxAlignment <= 16, "Big alignments aren't implemented");
+	context.assertf(layout.maxAlignmentPower <= 4, "Big alignments (> 16) aren't implemented");
 
 	auto lir = context.getAst!IrFunction(func.backendData.lirData);
 	CallConv* callConv = lir.getCallConv(context);
@@ -69,27 +69,16 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 	uint[5] alignmentSizes;
 	uint[5] alignmentOffsets;
 
-	uint alignToIndex(uint alignment) {
-		switch(alignment) {
-			case 1: return 0;
-			case 2: return 1;
-			case 4: return 2;
-			case 8: return 3;
-			case 16: return 4;
-			default: assert(false);
-		}
-	}
-
 	layout.reservedBytes = 0;
 
 	foreach (i, ref slot; layout.slots)
 	{
 		if (slot.isParameter) continue;
 
-		uint index = alignToIndex(slot.alignment);
+		uint index = slot.sizealign.alignmentPower;
 		++numAlignments[index];
-		alignmentSizes[index] += slot.size;
-		layout.reservedBytes += slot.size;
+		alignmentSizes[index] += slot.sizealign.size;
+		layout.reservedBytes += slot.sizealign.size;
 	}
 	//writefln("reservedBytes1 0x%X", layout.reservedBytes);
 
@@ -148,8 +137,8 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 		}
 		else
 		{
-			uint index = alignToIndex(slot.alignment);
-			alignmentSizes[index] -= slot.size;
+			uint index = slot.sizealign.alignmentPower;
+			alignmentSizes[index] -= slot.sizealign.size;
 			slot.displacement = alignmentOffsets[index] + alignmentSizes[index];
 		}
 		slot.baseReg = baseReg;
@@ -169,7 +158,7 @@ struct StackLayout
 	/// How much bytes we need to allocate in prolog and deallocate in epilog
 	int reservedBytes;
 	int numParamSlots;
-	uint maxAlignment = 1;
+	uint maxAlignmentPower = 0;
 	// number of calls in the function
 	// TODO: if 0 or 1, we can merge stack allocation with function's stack
 	// TODO: if 0, we can omit stack alignment
@@ -185,14 +174,13 @@ struct StackLayout
 	IrIndex addStackItem(CompilationContext* context, IrIndex type, StackSlotKind kind, ushort paramIndex)
 	{
 		uint id = cast(uint)(slots.length);
-		StackSlot slot = StackSlot(context.types.typeSize(type), context.types.typeAlignment(type), kind, paramIndex);
+		StackSlot slot = StackSlot(context.types.typeSizeAndAlignment(type), kind, paramIndex);
 		slot.type = context.types.appendPtr(type);
 
-		assert(slot.alignment.isPowerOfTwo, format("alignment is not power of 2 (%s)", slot.alignment));
-		assert((slot.size / slot.alignment) * slot.alignment == slot.size,
-			"size is not multiple of alignment");
+		assert(slot.sizealign.size % slot.sizealign.alignment == 0, "size is not multiple of alignment");
 
-		maxAlignment = max(maxAlignment, slot.alignment);
+		context.assertf(slot.sizealign.alignmentPower <= 4, "Big alignments (> 16) aren't implemented");
+		maxAlignmentPower = max(maxAlignmentPower, slot.sizealign.alignmentPower);
 
 		if(kind == StackSlotKind.parameter) ++numParamSlots;
 
@@ -205,15 +193,14 @@ struct StackLayout
 		writefln("Slots %s, size 0x%X", slots.length, reservedBytes);
 		foreach (i, ref slot; slots)
 		{
-			writefln("% 2s size 0x%X align %s disp 0x%X", i, slot.size, slot.alignment, slot.displacement);
+			writefln("% 2s size 0x%X align %s disp 0x%X", i, slot.sizealign.size, slot.sizealign.alignment, slot.displacement);
 		}
 	}
 }
 
 struct StackSlot
 {
-	uint size;
-	uint alignment;
+	SizeAndAlignment sizealign;
 	StackSlotKind kind;
 	ushort paramIndex;
 	ushort numUses;

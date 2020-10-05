@@ -13,6 +13,7 @@ public import fe.ast.type.static_array;
 
 
 enum POINTER_SIZE = 8;
+enum POINTER_ALIGN_POW = 3;
 
 struct TypeNode
 {
@@ -34,19 +35,13 @@ struct TypeNode
 		return &this;
 	}
 
-	uint alignment(CompilationContext* c)
-	{
-		return typeAlignment(&this, c);
-	}
-
-	uint size(CompilationContext* c)
-	{
-		return typeSize(&this, c);
+	SizeAndAlignment sizealign(CompilationContext* c) {
+		return typeSizealign(&this, c);
 	}
 
 	IrArgSize argSize(CompilationContext* c)
 	{
-		return size(c).sizeToIrArgSize(c);
+		return sizealign(c).size.sizeToIrArgSize(c);
 	}
 
 	bool isOpaqueStruct(CompilationContext* c) {
@@ -64,7 +59,7 @@ struct TypeNode
 		if (astType == AstType.type_slice) return true;
 		if (astType == AstType.decl_struct)
 		{
-			switch(size(c)) {
+			switch(sizealign(c).size) {
 				case 1: return false;
 				case 2: return false;
 				case 4: return false;
@@ -141,48 +136,29 @@ struct TypeNode
 	}
 }
 
-uint typeSize(AstIndex typeIndex, CompilationContext* c)
+SizeAndAlignment typeSizealign(AstIndex typeIndex, CompilationContext* c)
 {
-	return typeIndex.get_type(c).typeSize(c);
+	return typeIndex.get_type(c).typeSizealign(c);
 }
 
-uint typeSize(TypeNode* type, CompilationContext* c)
+SizeAndAlignment typeSizealign(TypeNode* type, CompilationContext* c)
 {
 	c.assertf(type.state >= AstNodeState.type_check_done, type.loc, "%s %s", type.typeName(c), type.state);
 	switch(type.astType)
 	{
-		case AstType.type_basic: return type.as_basic.size;
-		case AstType.type_ptr: return type.as_ptr.size;
-		case AstType.type_static_array: return type.as_static_array.size(c);
-		case AstType.type_slice: return type.as_slice.size;
-		case AstType.decl_struct: return type.as_struct.size(c);
-		case AstType.expr_name_use: return type.as_name_use.entity.typeSize(c);
-		default: assert(false, format("got %s", type.astType));
-	}
-}
-
-uint typeAlignment(AstIndex typeIndex, CompilationContext* c)
-{
-	return typeIndex.get_type(c).typeAlignment(c);
-}
-
-uint typeAlignment(TypeNode* type, CompilationContext* c)
-{
-	switch(type.astType)
-	{
-		case AstType.type_basic: return type.as_basic.alignment;
-		case AstType.type_ptr: return type.as_ptr.alignment;
-		case AstType.type_static_array: return type.as_static_array.alignment(c);
-		case AstType.type_slice: return type.as_slice.alignment;
-		case AstType.decl_struct: return type.as_struct.alignment(c);
-		case AstType.expr_name_use: return type.as_name_use.entity.typeAlignment(c);
+		case AstType.type_basic: return type.as_basic.sizealign;
+		case AstType.type_ptr: return type.as_ptr.sizealign;
+		case AstType.type_static_array: return type.as_static_array.sizealign(c);
+		case AstType.type_slice: return type.as_slice.sizealign;
+		case AstType.decl_struct: return type.as_struct.sizealign(c);
+		case AstType.expr_name_use: return type.as_name_use.entity.typeSizealign(c);
 		default: assert(false, format("got %s", type.astType));
 	}
 }
 
 IrArgSize typeArgSize(AstIndex typeIndex, CompilationContext* c)
 {
-	return typeIndex.typeSize(c).sizeToIrArgSize(c);
+	return typeIndex.typeSizealign(c).size.sizeToIrArgSize(c);
 }
 
 string typeName(AstIndex typeIndex, CompilationContext* c)

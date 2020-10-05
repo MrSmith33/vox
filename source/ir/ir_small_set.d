@@ -14,7 +14,7 @@ import all;
 struct IrSmallSet
 {
 	union {
-		// this is not deduplicated
+		// this is not deduplicated, but equal items are sequential
 		IrIndex[4] items; // items[0].kind != IrValueKind.array
 		struct {
 			// .kind == IrValueKind.array
@@ -129,6 +129,10 @@ struct IrSmallSet
 				if (item.isUndefined) {
 					item = key;
 					return;
+				}
+				// equal keys will be sequential in the array
+				if (key.asUint < item.asUint) {
+					swap(key, item);
 				}
 			}
 
@@ -319,17 +323,23 @@ struct IrSmallSetIterator
 						return res;
 			}
 		} else { // small array
-			auto copy = array;
-			foreach(item; copy.items) {
-				if (item.isUndefined) continue; // skip. This may be deleted item after which there is more
-				// count the item
-				uint count = 0;
-				foreach (ref item2; copy.items)
-					if (item2 == item) {
-						++count;
-						item2 = IrIndex.init; // delete item in copy, so we dont visit it more than once
-					}
-				if (int res = dg(item, count)) return res;
+			uint index = 0;
+			while(index < array.items.length) {
+				IrIndex item = array.items[index];
+				if (item.isUndefined) return 0; // No more items
+
+				// count equal keys
+				uint startIndex = index;
+				++index;
+
+				while(index < array.items.length) {
+					IrIndex item2 = array.items[index]; // will read extra item in the `copy` if we have max items
+					if (item == item2) ++index; // will be false when we reach undefined item at the end
+					else break;
+				}
+				uint numItems = index - startIndex;
+
+				if (int res = dg(item, numItems)) return res;
 			}
 		}
 		return 0;

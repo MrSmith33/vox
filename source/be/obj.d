@@ -107,6 +107,8 @@ struct ObjectSymbol
 	ObjectSymbolKind kind;
 	/// Set of ObjectSymbolFlags
 	ushort flags;
+	/// How symbol must be aligned
+	ubyte alignmentPower = 0;
 	///
 	Identifier id;
 	/// Points to initializer if it is provided. (Can be null)
@@ -120,14 +122,14 @@ struct ObjectSymbol
 	LinkIndex moduleIndex;
 	/// Symbol is inside this section
 	LinkIndex sectionIndex;
-	/// How symbol must be aligned
-	uint alignment = 1;
 	/// List of references coming from this symbol
 	LinkIndex firstRef;
 	/// List of module symbols
 	LinkIndex nextSymbol;
 
 	void markReferenced() { flags |= ObjectSymbolFlags.isReferenced; }
+
+	uint alignment() { return 1 << cast(uint)alignmentPower; }
 
 	bool isMutable() { return cast(bool)(flags & ObjectSymbolFlags.isMutable); }
 	bool isAllZero() { return cast(bool)(flags & ObjectSymbolFlags.isAllZero); }
@@ -173,21 +175,50 @@ struct ObjectModule
 struct ObjectSection
 {
 	/// In JIT mode: absolute address
-	/// In exe mode: offset from executable start to the section start after loading
+	/// In exe mode: offset from executable start to the section start after loading (in memory)
 	ulong sectionAddress;
-	/// In JIT mode is equal to sectionAddress
+	/// Can be null
+	/// Storage for appending data to this section
+	/// In JIT mode `buffer.bufPtr` is equal to sectionAddress
 	/// Points to the data of this section. Used to perform fixups
-	ubyte* sectionData;
-	/// Total
-	uint length;
+	/// Length of initialized data is in `buffer.length`
+	Arena!ubyte* buffer;
+	/// Length of zero-initialized data (not included into `length`)
+	uint zeroDataLength;
 	///
-	uint alignment;
+	ulong totalLength() {
+		if (!buffer) return zeroDataLength;
+		return buffer.length + zeroDataLength;
+	}
 	///
-	LinkIndex moduleIndex;
+	ubyte alignmentPower;
+	///
+	ObjectSectionType type;
+	/// set of ObjectSectionFlags
+	ushort flags;
 	///
 	Identifier id;
-	///
-	Arena!ubyte* buffer;
+
+	uint alignment() { return 1 << cast(uint)alignmentPower; }
+	bool flag_read() { return (flags & ObjectSectionFlags.read) != 0;}
+	bool flag_write() { return (flags & ObjectSectionFlags.write) != 0;}
+	bool flag_execute() { return (flags & ObjectSectionFlags.execute) != 0;}
+}
+
+enum ObjectSectionType : ubyte {
+	host,    // section for host symbols
+	code,    // executable code
+	imports, // import section
+	rw_data, // rw data section
+	ro_data, // r data section
+}
+enum NUM_BUILTIN_SECTIONS = ObjectSectionType.max+1;
+
+enum ObjectSectionFlags : ushort {
+	none = 0,
+	read = 1,
+	write = 2,
+	execute = 4,
 }
 
 enum ObjectSymbolRefKind : ubyte {
@@ -244,7 +275,7 @@ struct ObjectSymbolTable
 
 		static if (is(T == ObjectSymbolReference))
 		{
-			ObjectSymbol* sym = &getSymbol(item.fromSymbol);
+			ObjectSymbol* sym = getSymbol(item.fromSymbol);
 			item.nextReference = sym.firstRef;
 			sym.firstRef = result;
 			getSymbol(item.referencedSymbol).markReferenced;
@@ -256,7 +287,7 @@ struct ObjectSymbolTable
 		}
 		else static if (is(T == ObjectSymbol))
 		{
-			ObjectModule* mod = &getModule(item.moduleIndex);
+			ObjectModule* mod = getModule(item.moduleIndex);
 			item.nextSymbol = mod.firstSymbol;
 			mod.firstSymbol = result;
 		}
@@ -270,11 +301,11 @@ struct ObjectSymbolTable
 	alias getModule = get!ObjectModule;
 	alias getReference = get!ObjectSymbolReference;
 
-	ref T get(T)(LinkIndex index)
+	T* get(T)(LinkIndex index)
 	{
 		assert(index.isDefined, "null index");
 		assert(index.kind == getLinkIndexKind!T, format("%s != %s", index.kind, getLinkIndexKind!T));
-		return *cast(T*)(&buffer.bufPtr[index.bufferIndex]);
+		return cast(T*)(&buffer.bufPtr[index.bufferIndex]);
 	}
 
 	void dump(CompilationContext* context)
@@ -282,13 +313,13 @@ struct ObjectSymbolTable
 		LinkIndex modIndex = firstModule;
 		while (modIndex.isDefined)
 		{
-			ObjectModule* mod = &getModule(modIndex);
+			ObjectModule* mod = getModule(modIndex);
 			writefln("%s %s", modIndex, context.idString(mod.id));
 
 			LinkIndex symIndex = mod.firstSymbol;
 			while (symIndex.isDefined)
 			{
-				ObjectSymbol* sym = &getSymbol(symIndex);
+				ObjectSymbol* sym = getSymbol(symIndex);
 				writef("  %s %s %s bytes", symIndex, context.idString(sym.id), sym.length);
 				if (sym.isAllZero) write(" zeroinit");
 				if (sym.isString)
@@ -298,7 +329,7 @@ struct ObjectSymbolTable
 				LinkIndex symRefIndex = sym.firstRef;
 				while (symRefIndex.isDefined)
 				{
-					ObjectSymbolReference* symRef = &getReference(symRefIndex);
+					ObjectSymbolReference* symRef = getReference(symRefIndex);
 					writefln("    %s -> %s: off 0x%X extra %s %s",
 						symRefIndex, symRef.referencedSymbol, symRef.refOffset,
 						symRef.extraOffset, symRef.refKind);
@@ -316,17 +347,17 @@ struct ObjectSymbolTable
 		LinkIndex modIndex = firstModule;
 		while (modIndex.isDefined)
 		{
-			ObjectModule* mod = &getModule(modIndex);
+			ObjectModule* mod = getModule(modIndex);
 			if (mod.isLocal)
 			{
 				LinkIndex symIndex = mod.firstSymbol;
 				while (symIndex.isDefined)
 				{
-					ObjectSymbol* sym = &getSymbol(symIndex);
-					ObjectSection* section = &getSection(sym.sectionIndex);
+					ObjectSymbol* sym = getSymbol(symIndex);
+					ObjectSection* section = getSection(sym.sectionIndex);
 
 					// it is a function
-					if (sym.sectionIndex == context.textSectionIndex)
+					if (sym.sectionIndex == context.builtinSections[ObjectSectionType.code])
 					{
 						writefln("  {");
 						writefln("   \"module\": \"%s\",", context.outputFilename);

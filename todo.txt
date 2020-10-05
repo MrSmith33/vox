@@ -7,14 +7,14 @@
 	- meta types
 		+ $alias
 		+ $type
-		- #value
-		- #code
+		- $value
+		- $code
 		- #parameter
 		- #function
 	- # introspection
-		- #allMembers(symbol) -> #alias[]
-		- #getAttributes(symbol) -> #alias[]
-		- #is* -> bool
+		- $allMembers(symbol) -> $alias[]
+		- $getAttributes(symbol) -> $alias[]
+		- $is* -> bool
 		- get parameter list with access to name, type, attributes and default value
 	- # attributes
 		+ #inline
@@ -159,6 +159,9 @@ o dll linking
 
 [ABI]
 + separate ABI lowering pass for win64
+- linux_x64_syscall ABI for linux syscalls. We can attach it with UDA to all external declarations of linux API.
++ Initial ELF64 support
+	- Add import section support
 
 
 [Error messages]
@@ -174,7 +177,7 @@ o dll linking
 [Debug info]
 - Propagate loc through instructions
 - Implement pdb format write/read
-
+- Add DWARF output
 
 [Linking / Static data / Globals]
 - Absolute references need relocations emitted (ObjectSymbolRefKind.absolute64)
@@ -188,7 +191,7 @@ o dll linking
 + Do not emit zero inited globals, only track them. Important for executables.
 + Implement zero initialized data section (at the end of rw section)
 + globals need to be initialized
-x globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggrecate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
+x globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggregate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
 
 
 [Optimization]

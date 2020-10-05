@@ -14,10 +14,10 @@ void pass_link_jit(ref CompilationContext context, CompilePassPerModule[] subPas
 {
 	if (context.printSymbols) context.objSymTab.dump(&context);
 
-	context.objSymTab.getSection(context.dataSectionIndex).sectionAddress = cast(ulong)context.staticDataBuffer.bufPtr;
-	context.objSymTab.getSection(context.rdataSectionIndex).sectionAddress = cast(ulong)context.roStaticDataBuffer.bufPtr;
-	context.objSymTab.getSection(context.importSectionIndex).sectionAddress = cast(ulong)context.importBuffer.bufPtr;
-	context.objSymTab.getSection(context.textSectionIndex).sectionAddress = cast(ulong)context.codeBuffer.bufPtr;
+	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.rw_data]).sectionAddress = cast(ulong)context.staticDataBuffer.bufPtr;
+	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.ro_data]).sectionAddress = cast(ulong)context.roStaticDataBuffer.bufPtr;
+	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.imports]).sectionAddress = cast(ulong)context.importBuffer.bufPtr;
+	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.code]).sectionAddress = cast(ulong)context.codeBuffer.bufPtr;
 
 	foreach (ref SourceFileInfo file; context.files.data) {
 		linkModule(context, file.mod.objectSymIndex);
