@@ -112,6 +112,7 @@ struct IrTypeFunction
 	uint numResults;
 	uint numParameters;
 	CallConvention callConv;
+	ushort syscallNumber;
 
 	// Prevent type from copying because members will not be copied. Need to use ptr.
 	@disable this(this);

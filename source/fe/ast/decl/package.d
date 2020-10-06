@@ -4,6 +4,7 @@
 module fe.ast.decl;
 
 public import fe.ast.decl.alias_;
+public import fe.ast.decl.attribute;
 public import fe.ast.decl.builtin;
 public import fe.ast.decl.enum_;
 public import fe.ast.decl.func;

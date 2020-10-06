@@ -5,6 +5,10 @@ module fe.ast.expr.binary_op;
 
 import all;
 
+enum BinaryOpFlags : ushort
+{
+	isAssignment = AstFlags.userFlag << 0,
+}
 
 @(AstType.expr_bin_op)
 struct BinaryExprNode {
@@ -12,6 +16,8 @@ struct BinaryExprNode {
 	BinOp op;
 	AstIndex left;
 	AstIndex right;
+
+	bool isAssignment() { return cast(bool)(flags & BinaryOpFlags.isAssignment); }
 }
 
 void print_binary_op(BinaryExprNode* node, ref AstPrintState state)

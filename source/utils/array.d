@@ -36,7 +36,7 @@ struct Array(T)
 	bool empty() { return _length == 0; }
 	uint length() { return _length; }
 	uint opDollar() { return _length; }
-	alias capacity = _capacity;
+	uint capacity() { return _capacity; }
 	ref T front() { return this[0]; }
 	ref T back() { return this[$-1]; }
 	void clear() { _length = 0; }
@@ -204,25 +204,23 @@ struct Array(T)
 	// extend the storage
 	private void extend(ref ArrayArena arena, uint items)
 	{
-		uint capacityNeeded = cast(uint)nextPOT((_length + items) * T.sizeof);
+		uint byteCapacityNeeded = cast(uint)nextPOT((_length + items) * T.sizeof);
 		void allocPages(T[] oldItems) {
-			size_t numPages = capacityNeeded / NUM_ITEMS_PER_PAGE;
+			size_t numPages = byteCapacityNeeded / ARRAY_PAGE_BYTES;
 			ubyte[] pageArray = arena.allocBlock(nextPOT(numPages * (ubyte*).sizeof));
 			T** newChunkedArray = cast(T**)pageArray.ptr;
 			foreach(i; 0..numPages) {
 				ubyte[] page = arena.allocBlock(ARRAY_PAGE_BYTES);
 				newChunkedArray[i] = cast(T*)page.ptr;
 			}
-			static if (NUM_INLINE_ITEMS > 0) {
-				newChunkedArray[0][0..oldItems.length] = oldItems;
-			}
+			newChunkedArray[0][0..oldItems.length] = oldItems;
 			chunkedArray = newChunkedArray;
-			_capacity = capacityNeeded;
+			_capacity = cast(uint)(numPages * NUM_ITEMS_PER_PAGE);
 		}
 		//writefln("extend %s", _capacity);
 		if (_capacity == NUM_INLINE_ITEMS) {
-			if (capacityNeeded <= ARRAY_PAGE_BYTES) {
-				ubyte[] newBlock = arena.allocBlock(max(capacityNeeded, MIN_EXTERNAL_BYTES));
+			if (byteCapacityNeeded <= ARRAY_PAGE_BYTES) {
+				ubyte[] newBlock = arena.allocBlock(max(byteCapacityNeeded, MIN_EXTERNAL_BYTES));
 				static if (NUM_INLINE_ITEMS > 0) {
 					ubyte[] oldBlock = cast(ubyte[])inlineItems[];
 					newBlock[0..oldBlock.length] = oldBlock;
@@ -234,10 +232,10 @@ struct Array(T)
 			}
 			//writefln("  1 cap %s", _capacity);
 		} else if (_capacity < NUM_ITEMS_PER_PAGE) {
-			if (capacityNeeded <= ARRAY_PAGE_BYTES) {
+			if (byteCapacityNeeded <= ARRAY_PAGE_BYTES) {
 				size_t byteCapacity = nextPOT(_capacity * T.sizeof);
 				ubyte[] block = (cast(ubyte*)externalArray)[0..byteCapacity];
-				resizeSmallArray(arena, block, capacityNeeded);
+				resizeSmallArray(arena, block, byteCapacityNeeded);
 				externalArray = cast(T*)block.ptr;
 				_capacity = cast(uint)(block.length / T.sizeof);
 				//writefln("  2 cap %s", _capacity);

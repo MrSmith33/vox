@@ -106,10 +106,12 @@ enum CommonIds : Identifier
 	@("this")    id_this    = Identifier(5),
 	@("message") id_message = Identifier(6),
 	@("type")    id_type    = Identifier(7),
+	@("extern")  id_extern  = Identifier(8),
+	@("syscall") id_syscall = Identifier(9),
 
-	@("$compileError") cash_compile_error = Identifier(id_type.index + 1),
-	@("$isSlice") cash_is_slice = Identifier(id_type.index + 2),
-	@("$isInteger") cash_is_integer = Identifier(id_type.index + 3),
+	@("$compileError") cash_compile_error = Identifier(id_syscall.index + 1),
+	@("$isSlice") cash_is_slice = Identifier(id_syscall.index + 2),
+	@("$isInteger") cash_is_integer = Identifier(id_syscall.index + 3),
 }
 
 enum uint commonId_builtin_func_first = CommonIds.cash_compile_error.index;

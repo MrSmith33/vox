@@ -39,9 +39,14 @@ void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 {
 	if (nodeIndex.isUndefined) return;
 
+	AstNode* node = state.context.getAstNode(nodeIndex);
+	if (node.hasAttributes) {
+		print_attributes(node.attributeInfo, state);
+	}
+
 	state.indent += state.indentSize;
 	scope(exit) state.indent -= state.indentSize;
-	AstNode* node = state.context.getAstNode(nodeIndex);
+
 	final switch(node.astType) with(AstType)
 	{
 		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
@@ -50,6 +55,7 @@ void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 		case decl_alias: print_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_alias_array: print_alias_array(cast(AliasArrayDeclNode*)node, state); break;
 		case decl_builtin: break; // skip
+		case decl_builtin_attribute: print_builtin_attribute(cast(BuiltinAttribNode*)node, state); break;
 		case decl_enum: print_enum(cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: print_enum_member(cast(EnumMemberDecl*)node, state); break;
 		case decl_function: print_func(cast(FunctionDeclNode*)node, state); break;

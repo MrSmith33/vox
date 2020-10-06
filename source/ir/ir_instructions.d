@@ -152,7 +152,9 @@ enum IrOpcode : ushort
 	/// Extra argument represents parameter index and stored as plain uint of type IrValueKind.none.
 	@_ii(0, IFLG.hasResult, 1) parameter,
 	// first argument is function or function pointer
-	@_ii(0, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) call,
+	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) call,
+	// first argument is syscall number
+	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) syscall,
 	// Special instruction used during inlining. Should not occur in other places.
 	@_ii(0) inline_marker,
 

@@ -411,3 +411,26 @@ immutable fail38 = q{
 --- <error>
 fail38(3, 16): Error: function is not a type
 };
+
+
+version(linux)
+@TestInfo()
+immutable fail39 = q{--- fail39
+	// 2 Extern syscall attributes
+	@extern(syscall, 60)
+	@extern(syscall, 100)
+	void exit();
+--- <error>
+fail39(3, 2): Error: Duplicate @extern attribute
+};
+
+
+version(Windows)
+@TestInfo()
+immutable fail40 = q{--- fail40
+	// Should fail on Windows target
+	@extern(syscall, 60)
+	void exit();
+--- <error>
+fail40(2, 2): Error: @extern(syscall) attribute is only implemented on linux
+};

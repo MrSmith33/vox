@@ -62,6 +62,10 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
 
+	if (node.hasAttributes) {
+		name_resolve_attributes(node.attributeInfo, state);
+	}
+
 	final switch(node.astType) with(AstType)
 	{
 		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
@@ -70,6 +74,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case decl_alias: name_resolve_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_alias_array: assert(false);
 		case decl_builtin: assert(false);
+		case decl_builtin_attribute: assert(false);
 		case decl_module: name_resolve_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: assert(false);
 		case decl_function: name_resolve_func(cast(FunctionDeclNode*)node, state); break;

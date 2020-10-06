@@ -30,6 +30,7 @@
 	- #parameter(#type type, string name, type default_value, #alias[] attributes)
 	- #function(string name, #type return_type, #parameter[] parameters, #alias[] attributes)
 - attributes
+	+ @extern(syscall, <int>)
 	- User Defined Attributes UDAs
 - CTFE
 	+ constant to mem
@@ -246,6 +247,7 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 - optimize multiple spills into single spill at definition
 - For stack to stack moves in move solver we always spill scratch register. Check if there is free register available.
 - Spilling into xmm registers
+- For syscalls we need to extend eax liveness range. It requires either having eax as an argument of syscall, or always pass function type in the instruction.
 
 
 [Old / Done]

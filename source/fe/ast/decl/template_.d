@@ -316,6 +316,10 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 
 	AstNode* node = c.getAstNode(nodeIndex);
 
+	if (node.hasAttributes) {
+		post_clone_attributes(node.attributeInfo, state);
+	}
+
 	final switch(node.astType) with(AstType)
 	{
 		case error: c.internal_error(node.loc, "Visiting error node"); break;
@@ -324,6 +328,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case decl_alias: post_clone_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_alias_array: break;
 		case decl_builtin: break;
+		case decl_builtin_attribute: break;
 		case decl_module: assert(false);
 		case decl_import: post_clone_import(cast(ImportDeclNode*)node, state); break;
 		case decl_function: post_clone_func(cast(FunctionDeclNode*)node, state); break;

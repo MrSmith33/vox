@@ -11,6 +11,7 @@ enum FuncSignatureFlags : ushort
 	isCtfeOnly = AstFlags.userFlag << 0,
 	// Function has parameter with expanded type
 	hasExpandedParam = AstFlags.userFlag << 1,
+	isSyscall = AstFlags.userFlag << 2,
 }
 
 @(AstType.type_func_sig)
@@ -126,6 +127,28 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 
 	if (caclIsCtfeOnly(node, c)) node.flags |= FuncSignatureFlags.isCtfeOnly;
 
+	if (node.hasAttributes) {
+		AstIndex externAttrib;
+		foreach(AstIndex attrib; node.attributeInfo.attributes) {
+			auto attribNode = attrib.get_node(c);
+			if (attribNode.astType == AstType.decl_builtin_attribute &&
+				attribNode.subType == BuiltinAttribSubType.extern_syscall)
+			{
+				if (externAttrib.isDefined) {
+					c.error(attribNode.loc, "Duplicate @extern attribute");
+				}
+				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data;
+				if (syscall_number > ushort.max) {
+					c.error(attribNode.loc, "Max supported syscall number is 65k");
+				}
+				externAttrib = attrib;
+
+				if (c.targetOs != TargetOs.linux)
+					c.error(attribNode.loc, "@extern(syscall) attribute is only implemented on linux");
+			}
+		}
+	}
+
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -160,6 +183,19 @@ IrIndex gen_ir_type_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 
 	node.irType = c.types.appendFuncSignature(numResults, node.parameters.length, node.callConvention);
 	auto funcType = &c.types.get!IrTypeFunction(node.irType);
+
+	if (node.hasAttributes) {
+		foreach(AstIndex attrib; node.attributeInfo.attributes) {
+			auto attribNode = attrib.get_node(c);
+			if (attribNode.astType == AstType.decl_builtin_attribute &&
+				attribNode.subType == BuiltinAttribSubType.extern_syscall)
+			{
+				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data;
+				funcType.callConv = CallConvention.sysv64_syscall;
+				funcType.syscallNumber = cast(ushort)syscall_number;
+			}
+		}
+	}
 
 	if (numResults == 1) {
 		IrIndex returnType = node.returnType.gen_ir_type(c);

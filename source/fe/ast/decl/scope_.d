@@ -39,6 +39,10 @@ struct Scope
 	}
 }
 
+struct ScopeTempData {
+	AttribState prev;
+}
+
 mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse_done) {
 	mixin AstNodeData!(_astType, default_flags | AstFlags.isScope | AstFlags.isDeclaration, _init_state);
 	/// Each node can be struct, function or variable

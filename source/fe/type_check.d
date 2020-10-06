@@ -74,6 +74,10 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
 
+	if (node.hasAttributes) {
+		type_check_attributes(node.attributeInfo, state);
+	}
+
 	final switch(node.astType) with(AstType)
 	{
 		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
@@ -82,6 +86,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case decl_alias: type_check_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_alias_array: assert(false);
 		case decl_builtin: assert(false);
+		case decl_builtin_attribute: assert(false);
 		case decl_module: type_check_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_import: assert(false);
 		case decl_function: type_check_func(cast(FunctionDeclNode*)node, state); break;

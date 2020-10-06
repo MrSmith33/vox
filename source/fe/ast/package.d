@@ -1,8 +1,6 @@
-/**
-Copyright: Copyright (c) 2017-2019 Andrey Penechko.
-License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
-Authors: Andrey Penechko.
-*/
+/// Copyright: Copyright (c) 2017-2020 Andrey Penechko.
+/// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+/// Authors: Andrey Penechko.
 module fe.ast;
 
 import std.traits : getUDAs;
@@ -27,6 +25,7 @@ enum AstType : ubyte
 	decl_alias,
 	decl_alias_array,
 	decl_builtin,
+	decl_builtin_attribute,
 	decl_enum,
 	decl_enum_member,
 	decl_function,
@@ -82,7 +81,8 @@ enum AstFlags : ushort
 	isType           = 1 <<  4,
 	/// Is added to expression nodes that are being assigned to
 	isLvalue         = 1 <<  5,
-	isAssignment     = 1 <<  6,
+	/// Before AST node AttributeInfo struct allocated
+	hasAttributes    = 1 <<  6,
 	/// stores ScopeKind
 	scopeKindMask    = 1 << 7 | 1 << 8, // used for reading value
 	isLocal          = 0 << 7,          // used for setting flags
@@ -163,13 +163,32 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		return cast(TypeNode*)&this;
 	}
 
+	// Returns pointer to attributes. Only valid if hasAttributes flag is set
+	AttributeInfo* attributeInfo() return {
+		assert(hasAttributes);
+		return cast(AttributeInfo*)(cast(void*)(&this) - AttributeInfo.sizeof);
+	}
+
+	BuiltinAttribNode* findExternSyscallAttrib(CompilationContext* c) {
+		if (!hasAttributes) return null;
+		foreach(AstIndex attrib; attributeInfo.attributes) {
+			auto attribNode = attrib.get_node(c);
+			if (attribNode.astType == AstType.decl_builtin_attribute &&
+				attribNode.subType == BuiltinAttribSubType.extern_syscall)
+			{
+				return attribNode.as!BuiltinAttribNode(c);
+			}
+		}
+		return null;
+	}
+
 	bool isDeclaration(){ return cast(bool)(flags & AstFlags.isDeclaration); }
 	bool isScope()      { return cast(bool)(flags & AstFlags.isScope); }
 	bool isExpression() { return cast(bool)(flags & AstFlags.isExpression); }
 	bool isStatement()  { return cast(bool)(flags & AstFlags.isStatement); }
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
 	bool isLvalue()     { return cast(bool)(flags & AstFlags.isLvalue); }
-	bool isAssignment() { return cast(bool)(flags & AstFlags.isAssignment); }
+	bool hasAttributes(){ return cast(bool)(flags & AstFlags.hasAttributes); }
 	bool isTemplate() { return cast(bool)(flags & AstFlags.isTemplate); }
 	bool isTemplateInstance() { return cast(bool)(flags & AstFlags.isTemplateInstance); }
 	bool isGlobal()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isGlobal; }

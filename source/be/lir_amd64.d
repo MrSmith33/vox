@@ -132,6 +132,7 @@ struct CallConv
 enum CallConvention : ubyte {
 	win64,
 	sysv64,
+	sysv64_syscall,
 }
 
 enum CallConvFlags : uint {
@@ -146,6 +147,7 @@ enum CallConvFlags : uint {
 __gshared CallConv*[] callConventions = [
 	&win64_call_conv,
 	&sysv64_call_conv,
+	&sysv64_syscall_call_conv,
 ];
 
 __gshared CallConv win64_call_conv = CallConv
@@ -242,8 +244,55 @@ __gshared CallConv sysv64_call_conv = CallConv
 	amd64_reg.sp, // stack pointer
 
 	16,
-
 	CallConvFlags.hasRedZone,
+);
+
+__gshared CallConv sysv64_syscall_call_conv = CallConv
+(
+	// parameters in registers
+	[amd64_reg.di, amd64_reg.si, amd64_reg.dx, amd64_reg.r10, amd64_reg.r8, amd64_reg.r9],
+
+	amd64_reg.ax,  // return reg
+
+	[amd64_reg.ax, // volatile regs
+	amd64_reg.cx, // clobbered by syscall
+	amd64_reg.dx,
+	amd64_reg.si, // volatile
+	amd64_reg.di, // volatile
+	amd64_reg.r8,
+	amd64_reg.r9,
+	amd64_reg.r10,
+	amd64_reg.r11], // clobbered by syscall
+
+	// avaliable for allocation
+	[amd64_reg.ax, // volatile regs, zero cost
+	amd64_reg.cx,
+	amd64_reg.dx,
+	amd64_reg.si,
+	amd64_reg.di,
+	amd64_reg.r8,
+	amd64_reg.r9,
+	amd64_reg.r10,
+	amd64_reg.r11,
+
+	// callee saved
+	amd64_reg.bx, // need to save/restore to use
+	amd64_reg.r12,
+	amd64_reg.r13,
+	amd64_reg.r14,
+	amd64_reg.r15],
+
+	[amd64_reg.bx, // callee saved regs
+	amd64_reg.r12,
+	amd64_reg.r13,
+	amd64_reg.r14,
+	amd64_reg.r15],
+
+	amd64_reg.bp, // frame pointer
+	amd64_reg.sp, // stack pointer
+
+	1,
+	0,
 );
 
 immutable InstrInfo[] amd64InstrInfos = gatherInstrInfos!Amd64Opcode;
@@ -304,7 +353,8 @@ enum Amd64Opcode : ushort {
 
 	@_ii(1,IFLG.hasCondition) setcc,
 
-	@_ii(0,IFLG.hasVariadicArgs | IFLG.hasVariadicResult | IFLG.isCall) call,
+	@_ii(1,IFLG.hasVariadicArgs | IFLG.hasVariadicResult | IFLG.isCall) call,
+	@_ii(1,IFLG.hasVariadicArgs | IFLG.hasVariadicResult | IFLG.isCall) syscall,
 	@_ii(0,IFLG.isBlockExit) ret,
 
 	@_ii(0,IFLG.hasResult) pop,

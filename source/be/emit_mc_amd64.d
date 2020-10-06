@@ -424,7 +424,9 @@ struct CodeEmitter
 							}
 						}
 						break;
-
+					case Amd64Opcode.syscall:
+						gen.syscall();
+						break;
 					case Amd64Opcode.jmp:
 						genJumpToSuccessors(lirBlock, 0);
 						break;

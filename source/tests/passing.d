@@ -3694,3 +3694,38 @@ test171(2, 38): Error: Cannot have two expanded parameters
 //};
 
 
+version(linux)
+@TestInfo()
+immutable test173 = q{--- test173
+	// Extern attribute
+	@extern(syscall, 60)
+	void exit();
+	void run() {
+		exit();
+	}
+};
+
+
+version(linux)
+@TestInfo()
+immutable test174 = q{--- test174
+	// 2 Extern attributes
+	@extern(syscall, 60)
+	void exit();
+
+	// var attributes
+	@extern(syscall, 42)
+	u8 var;
+
+	// struct attribute
+	@extern(syscall, 1)
+	struct A {
+		// member var attribute
+		@extern(syscall, 2)
+		u8 var;
+
+		// member func attribute
+		@extern(syscall, 3)
+		void foo(){}
+	}
+};

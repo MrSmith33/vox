@@ -201,7 +201,7 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 			break;
 		case decl_template: name_register_self_template(nodeIndex, cast(TemplateDeclNode*)node, state); break;
 
-		default: c.internal_error(node.loc, "Visiting %s node", node.astType); break;
+		default: c.internal_error(node.loc, "Visiting %s node %s", node.astType, node.state); break;
 	}
 }
 
@@ -222,6 +222,10 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case name_register_self_done: break; // all requirement are done
 		case name_register_nested_done, name_resolve_done, type_check_done, ir_gen_done: return; // already name registered
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
+	}
+
+	if (node.hasAttributes) {
+		name_register_nested_attributes(node.attributeInfo, state);
 	}
 
 	switch(node.astType) with(AstType)

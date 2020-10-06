@@ -50,7 +50,6 @@ struct AstIndex
 	bool isStatement(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isStatement); }
 	bool isType(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isType); }
 	bool isLvalue(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLvalue); }
-	bool isAssignment(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isAssignment); }
 	bool isTemplate(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isTemplate); }
 
 	// type functions

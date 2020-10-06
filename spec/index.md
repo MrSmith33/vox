@@ -10,11 +10,13 @@
 - [Functions](#functions)
     - [External functions](#external-functions)
     - [Calls](#calls)
+- [Attributes](#attributes)
+    - [Built-in attributes](#built-in-attributes)
 - [Metaprogramming](#metaprogramming)
     - [Compile-time assert `#assert`](#compile-time-assert-assert)
     - [Conditional compilation](#conditional-compilation)
         - [\#if](#if)
-        - [\#foreach \(NEI\)](#foreach-nei)
+        - [\#foreach](#foreach)
     - [Templates](#templates)
         - [Function templates](#function-templates)
         - [Struct templates](#struct-templates)
@@ -172,6 +174,18 @@ $alias alias_var = func2; // take alias of func2
 $alias alias_var = func2(); // call func2
 $alias alias_var = func2()(); // call return value of func2
 ```
+
+# Attributes
+
+## Built-in attributes
+
+* `@extern(syscall, <int>)`
+
+```D
+@extern(syscall, 60)
+void exit();
+```
+Functions declared with this attribute will receive calling convention of the target system. For example when compiled for `linux-x64` target calling convention will match System V syscall convention. On targets that have no syscall defined this will result in error. The integer parameter specifies syscall number.
 
 # Metaprogramming
 

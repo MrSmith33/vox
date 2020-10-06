@@ -85,6 +85,16 @@ void pass_parser(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 	}
 }
 
+struct AttribState
+{
+	// Number of attributes on the top of `attributeStack`, that
+	// will be added to the following declaration
+	ushort numEffectiveAttributes;
+	// Number of attributes on the top of `attributeStack`, that
+	// will be dropped from the stack by the following declaration
+	ushort numImmediateAttributes;
+}
+
 //version = print_parse;
 struct Parser
 {
@@ -97,6 +107,29 @@ struct Parser
 	AstIndex currentScopeIndex() { return currentScope.get_ast_index(context); }
 
 	Token tok;
+
+	AttribState attribState;
+	// Attributes affecting next declaration
+	AstNodes attributeStack;
+
+	// TODO: for now only immediate attributes are implemented
+	// returns 0 or AstFlags.hasAttributes flag. Must be added to node flags.
+	ushort createAttributeInfo() {
+		if (attribState.numEffectiveAttributes == 0) return 0;
+
+		AstNodes attributes;
+		attributes.voidPut(context.arrayArena, attribState.numEffectiveAttributes);
+		auto offset = attributeStack.length - attribState.numEffectiveAttributes;
+		foreach(i; 0..attribState.numEffectiveAttributes) {
+			attributes[i] = attributeStack[offset + i];
+		}
+		attributeStack.unput(attribState.numImmediateAttributes);
+		attribState.numEffectiveAttributes -= attribState.numImmediateAttributes;
+		attribState.numImmediateAttributes = 0;
+		context.appendAst!AttributeInfo(attributes);
+		return AstFlags.hasAttributes;
+	}
+
 	SourceLocation loc() {
 		return context.tokenLocationBuffer[tok.index];
 	}
@@ -122,20 +155,34 @@ struct Parser
 	AstIndex make(T, Args...)(TokenIndex start, Args args) {
 		return context.appendAst!T(start, args);
 	}
+	// Will attach declaration if needed
+	AstIndex makeDecl(T, Args...)(TokenIndex start, Args args) {
+		auto flags = createAttributeInfo;
+		AstIndex declIndex = context.appendAst!T(start, args);
+		if (flags) {
+			AstNode* declNode = context.getAstNode(declIndex);
+			declNode.flags |= flags;
+		}
+		return declIndex;
+	}
 	AstIndex makeExpr(T, Args...)(TokenIndex start, Args args) {
 		return context.appendAst!T(start, AstIndex.init, args);
 	}
 
-	void expect(TokenType type) {
+	void expect(TokenType type, string after = null) {
 		if (tok.type != type) {
 			const(char)[] tokenString = context.getTokenString(tok.index);
-			context.unrecoverable_error(tok.index, "Expected `%s` token, while got `%s` token '%s'",
-				type, tok.type, tokenString);
+			if (after)
+				context.unrecoverable_error(tok.index, "Expected `%s` after %s, while got `%s` token '%s'",
+					type, after, tok.type, tokenString);
+			else
+				context.unrecoverable_error(tok.index, "Expected `%s` token, while got `%s` token '%s'",
+					type, tok.type, tokenString);
 		}
 	}
 
-	void expectAndConsume(TokenType type) {
-		expect(type);
+	void expectAndConsume(TokenType type, string after = null) {
+		expect(type, after);
 		nextToken;
 	}
 
@@ -145,16 +192,20 @@ struct Parser
 		return context.idMap.getOrRegNoDup(context, str);
 	}
 
-	Identifier expectIdentifier()
+	Identifier expectIdentifier(string after = null)
 	{
 		TokenIndex index = tok.index;
-		expectAndConsume(TokenType.IDENTIFIER);
+		expectAndConsume(TokenType.IDENTIFIER, after);
 		Identifier id = makeIdentifier(index);
 		return id;
 	}
 
-	AstIndex pushScope(string name, ScopeKind kind)
+	// temp data is used instead of separate stack to push/pop
+	AstIndex pushScope(string name, ScopeKind kind, ref ScopeTempData temp)
 	{
+		temp.prev = attribState;
+		attribState = AttribState(0, 0);
+
 		AstIndex newScopeIndex = context.appendAst!Scope;
 		Scope* newScope = context.getAst!Scope(newScopeIndex);
 		newScope.debugName = name;
@@ -167,8 +218,10 @@ struct Parser
 		return newScopeIndex;
 	}
 
-	void popScope()
+	void popScope(ScopeTempData temp)
 	{
+		attribState = temp.prev;
+
 		if (currentScope.parentScope) {
 			currentScope = currentScope.parentScope.get_scope(context);
 		}
@@ -190,9 +243,10 @@ struct Parser
 		mod.state = AstNodeState.name_register_self_done;
 		declarationOwner = context.getAstNodeIndex(mod);
 
-		mod.memberScope = pushScope("Module", ScopeKind.global);
+		ScopeTempData scope_temp;
+		mod.memberScope = pushScope("Module", ScopeKind.global, scope_temp);
 			mod.declarations = parse_declarations(TokenType.EOI, AstFlags.isGlobal);
-		popScope;
+		popScope(scope_temp);
 	}
 
 	AstNodes parse_declarations(TokenType until, ushort declFlags = 0) { // <declaration>*
@@ -234,6 +288,9 @@ struct Parser
 	AstIndex parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
+
+		loop:
+		while(true)
 		switch(tok.type) with(TokenType)
 		{
 			case ALIAS_SYM: // <alias_decl> ::= "alias" <id> "=" <expr> ";"
@@ -250,11 +307,49 @@ struct Parser
 				return parse_hash_assert();
 			case HASH_FOREACH:
 				return parse_hash_foreach();
+			case AT:
+				TokenIndex start = tok.index;
+				nextToken; // skip @
+				Identifier attributeId = expectIdentifier("@");
+				switch(attributeId.index) {
+					case CommonIds.id_extern.index:
+						parse_extern_attribute(start);
+						break;
+					default:
+						context.unrecoverable_error(start, "Unknown attribute name `%s`", context.idString(attributeId));
+				}
+				continue loop;
 			default: // <func_declaration> / <var_declaration>
 				AstIndex funcIndex = parse_var_func_declaration(ConsumeTerminator.yes, TokenType.SEMICOLON);
 				AstNode* node = context.getAstNode(funcIndex);
 				return funcIndex;
 		}
+		assert(false);
+	}
+
+	void parse_extern_attribute(TokenIndex start)
+	{
+		expectAndConsume(TokenType.LPAREN, "@extern");
+		Identifier externKindId = expectIdentifier("@extern(");
+		AstIndex attribute;
+		switch(externKindId.index) {
+			case CommonIds.id_syscall.index:
+				expectAndConsume(TokenType.COMMA, "@extern(syscall");
+				expect(TT.INT_DEC_LITERAL, "@extern(syscall,");
+				string value = cast(string)context.getTokenString(tok.index);
+				import std.algorithm.iteration : filter;
+				uint syscallNumber = value.filter!(c => c != '_').to!uint;
+				nextToken; // skip integer
+				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_syscall, syscallNumber);
+				break;
+			default:
+				context.unrecoverable_error(start, "Unknown @extern kind `%s`", context.idString(externKindId));
+		}
+
+		expectAndConsume(TokenType.RPAREN, "@extern(...");
+		++attribState.numImmediateAttributes;
+		++attribState.numEffectiveAttributes;
+		attributeStack.put(context.arrayArena, attribute);
 	}
 
 	/// <alias_decl> ::= "alias" <id> "=" <expr> ";"
@@ -269,7 +364,7 @@ struct Parser
 		AstIndex initializerIndex = expr(PreferType.no);
 		expectAndConsume(TokenType.SEMICOLON);
 
-		return make!AliasDeclNode(start, currentScopeIndex, aliasId, initializerIndex);
+		return makeDecl!AliasDeclNode(start, currentScopeIndex, aliasId, initializerIndex);
 	}
 
 	/// Parses expression preferring types, if identifier follows, parses as var/func declaration
@@ -350,7 +445,7 @@ struct Parser
 			version(print_parse) auto s3 = scop("<var_declaration> %s", start);
 			if (consume_terminator) expectAndConsume(var_terminator);
 			// leave ";" or "," for parent to decide
-			return make!VariableDeclNode(start, currentScopeIndex, typeIndex, initializerIndex, declarationId);
+			return makeDecl!VariableDeclNode(start, currentScopeIndex, typeIndex, initializerIndex, declarationId);
 		}
 		else if (tok.type == TokenType.LBRACKET) // <func_declaration> ::= <type> <id> "[" <template_params> "]" "(" <param_list> ")" (<block_statement> / ';')
 		{
@@ -359,7 +454,7 @@ struct Parser
 			parse_template_parameters(template_params, numParamsBeforeVariadic);
 			AstIndex body = parse_func(start, typeIndex, declarationId);
 			AstIndex after_body = AstIndex(context.astBuffer.uintLength);
-			return make!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, declarationId, numParamsBeforeVariadic);
+			return makeDecl!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, declarationId, numParamsBeforeVariadic);
 		}
 		else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 		{
@@ -378,8 +473,9 @@ struct Parser
 		AstNodes params;
 
 		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-		pushScope(context.idString(declarationId), ScopeKind.local);
-		scope(exit) popScope;
+		ScopeTempData scope_temp;
+		pushScope(context.idString(declarationId), ScopeKind.local, scope_temp);
+		scope(exit) popScope(scope_temp);
 
 		// add this pointer
 		if (declarationOwner.astType(context) == AstType.decl_struct)
@@ -397,10 +493,19 @@ struct Parser
 			params.put(context.arrayArena, param);
 		}
 
+		// restore attributes earlier, so signature receives attributes
+		attribState = scope_temp.prev;
+
 		CallConvention callConvention = context.defaultCallConvention;
-		AstIndex signature = make!FunctionSignatureNode(start, typeIndex, params, callConvention);
+		AstIndex signature = makeDecl!FunctionSignatureNode(start, typeIndex, params, callConvention);
+
+		// store values back;
+		scope_temp.prev = attribState;
+		// no attributes go to the parameters and body
+		attribState = AttribState(0, 0);
+
 		parseParameters(signature, NeedRegNames.yes); // functions need to register their param names
-		AstIndex func = make!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
+		AstIndex func = makeDecl!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
 
 		if (tok.type == TokenType.HASH_INLINE)
 		{
@@ -474,7 +579,7 @@ struct Parser
 						"Default argument expected for %s", context.idString(paramId));
 			}
 
-			AstIndex param = make!VariableDeclNode(paramStart, currentScopeIndex, paramType, defaultValue, paramId);
+			AstIndex param = makeDecl!VariableDeclNode(paramStart, currentScopeIndex, paramType, defaultValue, paramId);
 			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
 			paramNode.flags |= flags;
 			paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
@@ -505,7 +610,7 @@ struct Parser
 			Identifier paramId = expectIdentifier();
 			ushort paramIndex = cast(ushort)params.length;
 
-			AstIndex param = make!TemplateParamDeclNode(paramStart, paramId, paramIndex);
+			AstIndex param = makeDecl!TemplateParamDeclNode(paramStart, paramId, paramIndex);
 			if (tok.type == TokenType.DOT_DOT_DOT) {
 				nextToken; // skip "..."
 				param.flags(context) |= TemplateParamDeclFlags.isVariadic;
@@ -562,18 +667,27 @@ struct Parser
 			if (tok.type == TokenType.SEMICOLON)
 			{
 				nextToken; // skip semicolon
-				AstIndex structIndex = make!StructDeclNode(start, currentScopeIndex, AstIndex(), structId);
+				AstIndex structIndex = makeDecl!StructDeclNode(start, currentScopeIndex, AstIndex(), structId);
 				StructDeclNode* s = structIndex.get!StructDeclNode(context);
 				s.flags |= StructFlags.isOpaque;
 				return structIndex;
 			}
 
 			AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-			AstIndex memberScope = pushScope(context.idString(structId), ScopeKind.member);
-			scope(exit) popScope;
+			ScopeTempData scope_temp;
+			AstIndex memberScope = pushScope(context.idString(structId), ScopeKind.member, scope_temp);
+			scope(exit) popScope(scope_temp);
 
-			AstIndex structIndex = make!StructDeclNode(start, parentScope, memberScope, structId);
+			// restore attributes earlier, so signature receives attributes
+			attribState = scope_temp.prev;
+
+			AstIndex structIndex = makeDecl!StructDeclNode(start, parentScope, memberScope, structId);
 			StructDeclNode* s = structIndex.get!StructDeclNode(context);
+
+			// store values back;
+			scope_temp.prev = attribState;
+			// no attributes go to the body
+			attribState = AttribState(0, 0);
 
 			expectAndConsume(TokenType.LCURLY);
 			{
@@ -595,7 +709,7 @@ struct Parser
 			parse_template_parameters(template_params, numParamsBeforeVariadic);
 			AstIndex body = parse_rest();
 			AstIndex after_body = AstIndex(context.astBuffer.uintLength);
-			return make!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, structId, numParamsBeforeVariadic);
+			return makeDecl!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, structId, numParamsBeforeVariadic);
 		}
 
 		return parse_rest();
@@ -662,7 +776,7 @@ struct Parser
 			expectAndConsume(TokenType.EQUAL); // "="
 			AstIndex value = expr(PreferType.no); // initializer
 
-			auto member = make!EnumMemberDecl(start, currentScopeIndex, type, value, enumId);
+			auto member = makeDecl!EnumMemberDecl(start, currentScopeIndex, type, value, enumId);
 
 			expectAndConsume(TokenType.SEMICOLON); // ";"
 
@@ -685,7 +799,7 @@ struct Parser
 				Identifier enumId = makeIdentifier(id);
 				AstIndex memberScope; // no scope
 
-				return make!EnumDeclaration(start, currentScopeIndex, memberScope, AstNodes(), intType, enumId);
+				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, AstNodes(), intType, enumId);
 			}
 			else if (tok.type == TokenType.EQUAL)
 			{
@@ -704,24 +818,26 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex type = parseColonType;
-				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member);
+				ScopeTempData scope_temp;
+				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member, scope_temp);
 				AstNodes members = tryParseEnumBody(type);
-				popScope;
+				popScope(scope_temp);
 
 				// enum e7 : i32 { e7 }
 				// enum e8 : i32;
-				return make!EnumDeclaration(start, currentScopeIndex, memberScope, members, type, enumId);
+				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, type, enumId);
 			}
 			else if (tok.type == TokenType.LCURLY)
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex type = intType;
-				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member);
+				ScopeTempData scope_temp;
+				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member, scope_temp);
 				AstNodes members = parse_enum_body(type);
-				popScope;
+				popScope(scope_temp);
 
 				// enum e9 { e9 }
-				return make!EnumDeclaration(start, currentScopeIndex, memberScope, members, type, enumId);
+				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, type, enumId);
 			}
 			else
 			{
@@ -736,7 +852,7 @@ struct Parser
 			AstIndex memberScope; // no scope
 
 			// enum : i32 { e6 }
-			return make!EnumDeclaration(start, currentScopeIndex, memberScope, members, type);
+			return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, type);
 		}
 		else if (tok.type == TokenType.LCURLY)
 		{
@@ -745,7 +861,7 @@ struct Parser
 			AstIndex memberScope; // no scope
 
 			// enum { e5 }
-			return make!EnumDeclaration(start, currentScopeIndex, memberScope, members, type);
+			return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, type);
 		}
 		else if (isBasicTypeToken(tok.type))
 		{
@@ -767,7 +883,7 @@ struct Parser
 		nextToken; // skip "import"
 		Identifier moduleId = expectIdentifier();
 		expectAndConsume(TokenType.SEMICOLON);
-		return make!ImportDeclNode(start, currentScopeIndex, moduleId);
+		return makeDecl!ImportDeclNode(start, currentScopeIndex, moduleId);
 	}
 
 	AstIndex parse_hash_assert() /* "#assert(" <condition>, <message> ");"*/
@@ -916,7 +1032,7 @@ struct Parser
 				value = expr(PreferType.no);
 			}
 
-			auto member = make!EnumMemberDecl(start, currentScopeIndex, type, value, id);
+			auto member = makeDecl!EnumMemberDecl(start, currentScopeIndex, type, value, id);
 			EnumMemberDecl* memberNode = context.getAst!EnumMemberDecl(member);
 			memberNode.scopeIndex = varIndex++;
 			members.put(context.arrayArena, member);
@@ -947,9 +1063,10 @@ struct Parser
 	{
 		version(print_parse) auto s1 = scop("block_stmt %s", loc);
 		TokenIndex start = tok.index;
-		pushScope("Block", ScopeKind.local);
+		ScopeTempData scope_temp;
+		pushScope("Block", ScopeKind.local, scope_temp);
 		AstNodes statements = parse_block;
-		popScope;
+		popScope(scope_temp);
 		return make!BlockStmtNode(start, statements);
 	}
 
@@ -993,31 +1110,35 @@ struct Parser
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
 				nextToken;
 				AstIndex condition = paren_expr();
-				pushScope("Then", ScopeKind.local);
+				ScopeTempData scope_temp;
+				pushScope("Then", ScopeKind.local, scope_temp);
 				AstNodes thenStatements = statement_as_array;
-				popScope;
+				popScope(scope_temp);
 				AstNodes elseStatements;
 				if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
 					nextToken;
-					pushScope("Else", ScopeKind.local);
+					ScopeTempData scope_temp2;
+					pushScope("Else", ScopeKind.local, scope_temp2);
 					elseStatements = statement_as_array;
-					popScope;
+					popScope(scope_temp2);
 				}
 				return make!IfStmtNode(start, condition, thenStatements, elseStatements);
 			case TokenType.WHILE_SYM:  /* "while" <paren_expr> <statement> */
 				nextToken;
-				pushScope("While", ScopeKind.local);
+				ScopeTempData scope_temp;
+				pushScope("While", ScopeKind.local, scope_temp);
 				AstIndex condition = paren_expr();
 				AstNodes statements = statement_as_array;
-				popScope;
+				popScope(scope_temp);
 				return make!WhileStmtNode(start, condition, statements);
 			case TokenType.DO_SYM:  /* "do" <statement> "while" <paren_expr> ";" */
 				nextToken;
-				pushScope("do", ScopeKind.local);
+				ScopeTempData scope_temp;
+				pushScope("do", ScopeKind.local, scope_temp);
 				AstNodes statements = statement_as_array;
 				expectAndConsume(TokenType.WHILE_SYM);
 				AstIndex condition = paren_expr();
-				popScope;
+				popScope(scope_temp);
 				expectAndConsume(TokenType.SEMICOLON);
 				return make!DoWhileStmtNode(start, condition, statements);
 			case TokenType.FOR_SYM:  /* "for" "(" <statement> ";" <statement> ";" "while" <paren_expr> ";" */
@@ -1061,8 +1182,9 @@ struct Parser
 
 		expectAndConsume(TokenType.LPAREN); // (
 
-		pushScope("For", ScopeKind.local);
-		scope(exit) popScope;
+		ScopeTempData scope_temp;
+		pushScope("For", ScopeKind.local, scope_temp);
+		scope(exit) popScope(scope_temp);
 
 		Array!AstIndex init_statements;
 
@@ -1626,7 +1748,7 @@ AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp,
 
 	AstIndex assignExpr = p.makeExpr!BinaryExprNode(token.index, op, left, right);
 	AstNode* assignExprNode = p.context.getAstNode(assignExpr);
-	assignExprNode.flags |= AstFlags.isAssignment;
+	assignExprNode.flags |= BinaryOpFlags.isAssignment;
 
 	return assignExpr;
 }

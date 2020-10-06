@@ -630,6 +630,7 @@ struct CodeGen_x86_64
 	void ret(Imm16 bytesToPop) { encoder.putInstrNullaryImm(OP1(0xC2), bytesToPop); }
 
 	void int3() { encoder.putInstrNullary(OP1(0xCC)); }
+	void syscall() { encoder.putInstrNullary(OP2(0x0F, 0x05)); }
 
 	void encodeRegular(AsmArg dst, AsmArg src, AsmOpParam param)
 	{

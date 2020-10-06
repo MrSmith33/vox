@@ -247,7 +247,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 				}
 			}
 
-			// add fixed intervals fo function calls
+			// add fixed intervals for function calls
 			if (instrInfo.isCall)
 			{
 				IrIndex callee = args[0];

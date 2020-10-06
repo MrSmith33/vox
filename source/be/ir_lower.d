@@ -129,12 +129,14 @@ enum MAX_ARG_CLASSES = 2;
 struct AbiState {
 	FunctionAbi abi;
 
+	IrIndex syscallRegister;
 	IrIndex[] gprRegs;
 	IrIndex[] retRegs;
 	IrTypeFunction* type;
 
 	ubyte gprRemaining;
 	ubyte sseRemaining;
+	bool useSyscall;
 
 	ubyte gprRegistersUsed() {
 		return cast(ubyte)(gprRegs.length - gprRemaining);
@@ -358,10 +360,33 @@ void sysv64_classify(CompilationContext* c, ref AbiState state)
 	}
 }
 
+void sysv64_syscall_classify(CompilationContext* c, ref AbiState state)
+{
+	state.syscallRegister = amd64_reg.ax;
+	state.useSyscall = true;
+	if (c.targetOs != TargetOs.linux)
+		c.error("Cannot use System V syscall calling convention on %s", c.targetOs);
+
+	sysv64_classify(c, state);
+
+	if (state.type.numParameters > 6) {
+		c.error("Cannot have more than 6 parameters in System V syscall calling convention");
+	}
+	if (state.abi.returnClass != PassClass.byValueReg &&
+		state.abi.returnClass != PassClass.byPtrReg &&
+		state.abi.returnClass != PassClass.ignore)
+		c.error("Cannot have return of class %s in System V syscall calling convention", state.abi.returnClass);
+	foreach(PassClass paramClass; state.abi.paramClasses) {
+		if (paramClass == PassClass.byValueReg || paramClass == PassClass.byPtrReg || paramClass == PassClass.ignore) continue;
+		c.error("Cannot have parameters of class %s in System V syscall calling convention", paramClass);
+	}
+}
+
 alias ArgClassifier = void function(CompilationContext* c, ref AbiState state);
 __gshared ArgClassifier[] classify_abis = [
 	&win64_classify,
-	&sysv64_classify
+	&sysv64_classify,
+	&sysv64_syscall_classify
 ];
 
 // Handle ABI
@@ -666,6 +691,14 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				// reuse instruction
 				instrHeader.numArgs = cast(ubyte)(regsUsed + 1); // include callee
 				instrHeader.args(ir)[1..$] = callee_state.gprRegs[0..regsUsed]; // fill with regs
+				if (callee_state.useSyscall) {
+					instrHeader.op = IrOpcode.syscall;
+					IrIndex syscallRegister = callee_state.syscallRegister;
+					syscallRegister.physRegSize = ArgType.DWORD;
+					ExtraInstrArgs extra = { result : syscallRegister };
+					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, c.constants.add(callee_state.type.syscallNumber, IsSigned.no));
+					// We leave callee here, so that liveness analysis can get calling convention
+				}
 			} else {
 				// make bigger instruction
 				ExtraInstrArgs extra = {
@@ -673,7 +706,9 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				};
 				if (instrHeader.hasResult)
 					extra.result = instrHeader.result(ir);
-				auto newCallInstr = builder.emitInstr!(IrOpcode.call)(extra, instrHeader.arg(ir, 0)).instruction;
+				IrIndex newCallInstr;
+				assert(!callee_state.useSyscall); // Syscalls are not allowed to introduce extra parameters
+				newCallInstr = builder.emitInstr!(IrOpcode.call)(extra, instrHeader.arg(ir, 0)).instruction;
 				IrInstrHeader* callHeader = ir.getInstr(newCallInstr);
 				callHeader.args(ir)[1..$] = callee_state.gprRegs[0..regsUsed];
 				replaceInstruction(ir, instrIndex, newCallInstr);

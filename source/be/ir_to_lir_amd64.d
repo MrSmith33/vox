@@ -435,7 +435,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					}
 					break;
 
-				// TODO. Win64 call conv is hardcoded here
 				case IrOpcode.call:
 					foreach(i; 0..instrHeader.numArgs) {
 						argBuffer[i] = getFixedIndex(instrHeader.arg(ir, i));
@@ -448,6 +447,23 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						result : returnReg // will be used if function has result
 					};
 					InstrWithResult callInstr = builder.emitInstr!(Amd64Opcode.call)(
+						lirBlockIndex, callExtra, argBuffer[0..instrHeader.numArgs]);
+					lir.getInstr(callInstr.instruction).extendFixedArgRange = instrHeader.extendFixedArgRange;
+					lir.getInstr(callInstr.instruction).extendFixedResultRange = instrHeader.extendFixedResultRange;
+					break;
+
+				case IrOpcode.syscall:
+					foreach(i; 0..instrHeader.numArgs) {
+						argBuffer[i] = getFixedIndex(instrHeader.arg(ir, i));
+					}
+					IrIndex returnReg;
+					if (instrHeader.hasResult) returnReg = instrHeader.result(ir);
+					ExtraInstrArgs callExtra = {
+						addUsers : false,
+						hasResult : instrHeader.hasResult,
+						result : returnReg // will be used if function has result
+					};
+					InstrWithResult callInstr = builder.emitInstr!(Amd64Opcode.syscall)(
 						lirBlockIndex, callExtra, argBuffer[0..instrHeader.numArgs]);
 					lir.getInstr(callInstr.instruction).extendFixedArgRange = instrHeader.extendFixedArgRange;
 					lir.getInstr(callInstr.instruction).extendFixedResultRange = instrHeader.extendFixedResultRange;
