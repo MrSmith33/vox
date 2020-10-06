@@ -165,7 +165,11 @@ int runCli(string[] args)
 	driver.beginCompilation();
 
 	if (outputFilename) driver.context.outputFilename = outputFilename;
-	else driver.context.outputFilename = filenames[0].baseName.setExtension(".exe"); // GC
+	else {
+		string ext;
+		if (driver.context.targetOs == TargetOs.windows) ext = ".exe";
+		driver.context.outputFilename = filenames[0].baseName.setExtension(ext); // GC
+	}
 
 	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(&driver.context, filterFuncName);
 
