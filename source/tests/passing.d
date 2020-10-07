@@ -2707,7 +2707,7 @@ void tester110(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int, int)("test")(42) == 42);
 }
 
-/*
+
 @TestInfo(&tester111)
 immutable test111 = q{--- test111
 	// Test string escapes
@@ -2716,9 +2716,8 @@ immutable test111 = q{--- test111
 	}
 };
 void tester111(ref TestContext ctx) {
-	assert(ctx.getFunctionPtr!(char[])("test")() == "");
-}*/
-
+	assert(ctx.getFunctionPtr!(Slice!char)("test")() == "\'\"\?\\\0\a\b\f\n\r\t\v\xAA\uAAAA\U0000AAAA");
+}
 
 @TestInfo(&tester112)
 immutable test112 = q{--- test112

@@ -262,7 +262,7 @@ void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 struct Lexer
 {
 	CompilationContext* context;
-	const(char)[] inputChars;
+	const(char)[] inputChars; // contains data of all files
 	Arena!TokenType* outputTokens;
 	Arena!SourceLocation* outputTokenLocations;
 
@@ -500,14 +500,18 @@ struct Lexer
 					lexError(TT.STRING_LITERAL, "Unexpected end of input inside string literal");
 					return TT.INVALID;
 
+				case '\\':
+					nextChar;
+					lexEscapeSequence();
+					break;
+
 				case '\n': lex_EOLN(); continue;
 				case '\r': lex_EOLR(); continue;
 				case '\"':
 					nextChar; // skip "
 					return TT.STRING_LITERAL;
-				default: break;
+				default: nextChar; break;
 			}
-			nextChar;
 		}
 	}
 
@@ -530,18 +534,21 @@ struct Lexer
 				break;
 
 			case 'x':
+				nextChar; // skip x
 				uint numChars = consumeHexadecimal;
-				if (numChars != 2)
+				if (numChars < 2)
 					lexError(TT.INVALID, "Invalid escape sequence");
 				break;
 			case 'u':
+				nextChar; // skip u
 				uint numChars = consumeHexadecimal;
-				if (numChars != 4)
+				if (numChars < 4)
 					lexError(TT.INVALID, "Invalid escape sequence");
 				break;
 			case 'U':
+				nextChar; // skip U
 				uint numChars = consumeHexadecimal;
-				if (numChars != 8)
+				if (numChars < 8)
 					lexError(TT.INVALID, "Invalid escape sequence");
 				break;
 			default:
@@ -822,6 +829,77 @@ dchar getCharValue(const(char)[] strRepr) {
 	if (strRepr[0] == '\\') return escapeToChar(strRepr[1..$]);
 	assert(strRepr.length == 1);
 	return strRepr[0];
+}
+
+// Only handles valid strings
+// We copy it into buffer, then run through it modifing in-place
+string handleEscapedString(ref Arena!ubyte sink, const(char)[] str)
+{
+	import std.conv : to;
+	char* dstStart = cast(char*)sink.nextPtr;
+	sink.put(cast(ubyte[])str);
+	sink.put(0); // we will look for this 0 to end the loop
+	char* src = cast(char*)dstStart;
+	char* dst = cast(char*)dstStart;
+
+	loop:
+	while(*src) // look for \0 we put into buffer
+	{
+		if (*src == '\\')
+		{
+			++src; // skip \
+
+			// Read escaped char
+			dchar c;
+			switch (*src) {
+				case '\'': c = '\''; break;
+				case '"':  c = '\"'; break;
+				case '?':  c = '\?'; break;
+				case '\\': c = '\\'; break;
+				case '0':  c = '\0'; break;
+				case 'a':  c = '\a'; break;
+				case 'b':  c = '\b'; break;
+				case 'f':  c = '\f'; break;
+				case 'n':  c = '\n'; break;
+				case 'r':  c = '\r'; break;
+				case 't':  c = '\t'; break;
+				case 'v':  c = '\v'; break;
+				case 'x':
+					c = (cast(char[])src[1..3]).to!uint(16); src += 3;
+					*dst++ = cast(ubyte)c;
+					continue loop; // skip rest, as this represents byte value, not unicode char
+				case 'u':  c = (cast(char[])src[1..5]).to!uint(16); src += 4; break;
+				case 'U':  c = (cast(char[])src[1..9]).to!uint(16); src += 8; break;
+				default: assert(false, "Invalid escape sequence");
+			}
+			// For bigger cases (u, U) we inrement additionally. (x) is not handled here
+			++src;
+
+			// Write utf-8 back
+			if (c < 0x80) {
+				*dst++ = cast(ubyte)c;
+			} else if (c < 0x800) {
+				*dst++ = 0xC0 | cast(ubyte)(c >> 6);
+				*dst++ = 0x80 | (c & 0x3f);
+			} else if (c < 0x10000) {
+				*dst++ = 0xE0 | cast(ubyte)(c >> 12);
+				*dst++ = 0x80 | ((c >> 6) & 0x3F);
+				*dst++ = 0x80 | (c & 0x3f);
+			} else if (c < 0x110000) {
+				*dst++ = 0xF0 | cast(ubyte)(c >> 18);
+				*dst++ = 0x80 | ((c >> 12) & 0x3F);
+				*dst++ = 0x80 | ((c >> 6) & 0x3F);
+				*dst++ = 0x80 | (c & 0x3f);
+			}
+		}
+		else // non-escaped char. Just copy
+		{
+			*dst++ = *src++;
+		}
+	}
+	size_t len = cast(size_t)(dst - dstStart);
+	sink.unput(str.length + 1 - len); // unput \0 too
+	return cast(string)dstStart[0..len];
 }
 
 private bool isIdSecond(dchar chr) pure nothrow {

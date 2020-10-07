@@ -42,6 +42,12 @@ void fillStaticDataSections(CompilationContext* c)
 
 		ObjectSection* symSection = c.objSymTab.getSection(globalSym.sectionIndex);
 
+		if (symSection.buffer.contains(globalSym.initializer.ptr)) {
+			// If data is in we assume that zero termination was handled as needed
+			globalSym.sectionOffset = cast(uint)(globalSym.initializer.ptr - symSection.buffer.bufPtr);
+			continue;
+		}
+
 		// alignment
 		uint padding = paddingSize!uint(cast(uint)symSection.buffer.length, globalSym.alignment);
 		symSection.buffer.pad(padding);
