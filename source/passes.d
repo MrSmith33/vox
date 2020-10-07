@@ -57,6 +57,12 @@ void pass_write_exe(ref CompilationContext context, CompilePassPerModule[] subPa
 {
 	import std.file : write;
 	write(context.outputFilename, context.binaryBuffer.data);
+
+	version(Posix) {
+		import std.file : setAttributes, getAttributes;
+		import std.conv : octal;
+		setAttributes(context.outputFilename, getAttributes(context.outputFilename) | octal!111);
+	}
 }
 
 immutable CompilePassGlobal[] frontendPasses = [
