@@ -7,7 +7,7 @@
 
 # Vox programming language
 
-**Vox** is a multiparadigm programming language inspired by D (60%), Jai (30%) and Zig (10%).
+**Vox** is a multiparadigm programming language inspired by D (60%), Jai (30%), and Zig (10%).
 
 ## Main features
 
@@ -16,18 +16,18 @@
 - Can be used for scripting and standalone programs (both JIT and AOT compilation)
 - No dependencies (except D compiler)
 
-## Similarities to D language
+## Similarities to the D language
 
 - Same syntax for most portions of the language (struct, function, enum, for, while, if, UFCS, slices, arrays)
 - Conditional compilation
-- Templates, Variadic templates and functions
+- Templates, Variadic templates, and functions
 - C interoperability
 
-## Differences from D language
+## Differences with the D language
 
 - No GC, minimal runtime, no classes (only structs), no exceptions
 - More compile-time features, faster CTFE
-- Using templates for heavy calculations is discouraged, instead CTFE can be used for introspection, and code generation.
+- Using templates for heavy calculations is discouraged, instead, CTFE can be used for introspection, and code generation.
 - Macros (WIP)
 - No C++ interoperability
 
@@ -105,7 +105,7 @@ assert(val[1] == 10);
 - CTFE, Templates, Introspection, Code generation
 
 Target platforms (Only win64 is supported now):
-- amd64 (Windows, Linux, MacOS)
+- amd64 (Windows, Linux, macOS)
 - WebAssembly (browsers)
 - ARM (Android, Linux)
 - SPIR-V (Vulkan/OpenCL/OpenGL shaders)
@@ -137,7 +137,7 @@ Pretty asserts with stack traces are disabled in non-debug builds by default.
 # Using Commandline interface
 
 ## Getting help
-Gives full list of flags
+Gives the full list of flags
 ```D
 tjc --help
 ```
@@ -152,9 +152,9 @@ tjc hello.vx C:\Windows\System32\kernel32.dll
 ## Input files
 
 * `.vx` files are source code files.
-* `.har` files, aka [Human Readable Archive files](https://github.com/marler8997/har). Text file that combines multiple textual files.
+* `.har` files, aka [Human Readable Archive files](https://github.com/marler8997/har). A text file that combines multiple textual files.
 
-Each file must begin with `--- <name>`, three dashes, space and name.
+Each file must begin with `--- <name>`, three dashes, space, and name.
 
 Files can be nested inside directories `--- dir/dir2/file.txt`.
 
@@ -171,7 +171,7 @@ Can be compiled with `tjc program.har C:\Windows\System32\kernel32.dll`
 * `.dll` files. Compiler will link external functions by searching symbols inside provided `.dll` file(s).
 
 # CLI Tools
-Compiler contains embedded tools:
+The compiler contains embedded tools:
 
 ## PDB dump
 Prints content of tjc.pdb file into stdout.
@@ -194,8 +194,8 @@ tjc pdb-dump tjc.pdb
 * Semantic lookup - Resolves symbol references
 * Semantic types - Type checking
 * IR gen - Conversion of AST into linear IR in SSA form
-* Optimization - optimizes machine independent IR
-* IR to LIR - Conversion of high level IR to machine code IR in SSA form (LIR)
+* Optimization - optimizes machine-independent IR
+* IR to LIR - Conversion of high-level IR to machine code IR in SSA form (LIR)
 * Live intervals - Collects liveness info about values for use in register allocation
 * Linear Scan Register Allocation - Replaces virtual registers with physical ones
 * Stack layout - Calculates offsets for stack slots
@@ -230,4 +230,4 @@ tjc pdb-dump tjc.pdb
 
 # Test suite
 
-It uses jitting for most tests, which allows D code to call into compiled test case and to pass D function pointers inside compiled code.
+It uses jitting for most tests, which allows D code to call into a compiled test case and to pass D function pointers inside compiled code.
