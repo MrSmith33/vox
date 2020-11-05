@@ -1,16 +1,16 @@
 Links:
 http://www.sparksandflames.com/files/x86InstructionChart.html
-https://defuse.ca/online-x86-assembler.htm Online [dis]assembler
+https://defuse.ca/online-x86-assembler.htm                               Online [dis]assembler
 http://wiki.osdev.org/X86-64_Instruction_Encoding
-https://www3.nd.edu/~dthain/courses/cse40243/fall2015/intel-intro.html Introduction to X86-64 Assembly for Compiler Writers
-http://www.intel.com/products/processor/manuals/ Intel manuals
-http://www.x86-64.org/documentation.html amd64 ABI
+https://www3.nd.edu/~dthain/courses/cse40243/fall2015/intel-intro.html   Introduction to X86-64 Assembly for Compiler Writers
+http://www.intel.com/products/processor/manuals/                         Intel manuals
+http://www.x86-64.org/documentation.html                                 amd64 ABI
 http://wiki.lazarus.freepascal.org/Win64/AMD64_API
 https://github.com/dibyendumajumdar/nanojit/blob/master/nanojit/NativeX64.h#L91
- 
+
 cl /c /O1 simple.c
 link /nologo /ENTRY:main /NODEFAULTLIB /SUBSYSTEM:WINDOWS /ALIGN:1 simple.obj
- 
+
 Vol 1. Chapter 3.4
 EAX — Accumulator for operands and results data
 EBX — Pointer to data in the DS segment
@@ -22,153 +22,153 @@ EDI — Pointer to data (or destination) in the segment pointed to by the ES
 register; destination pointer for string operations
 ESP — Stack pointer (in the SS segment)
 EBP — Pointer to data on the stack (in the SS segment)
- 
+
 Caller save registers
 EAX, ECX, EDX
 Callee save registers
 EBX, EBP, ESI, EDI
- 
-The stack grows towards lower memory addresses
+
+Stack grows towards lower memory addresses
 ESP points to the top of the stack
- 
+
 PUSH - decrements ESP
 POP - increments ESP
- 
+
 Calling conventions:
 Links:
 https://docs.microsoft.com/en-us/cpp/build/overview-of-x64-calling-conventions
 http://www.x86-64.org/documentation.html
 http://wiki.lazarus.freepascal.org/Win64/AMD64_API
 http://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64/
- 
- "cdecl"
- Caller pushes parameters to the stack right-to-left
- Callee saves EBP and sets up a new stack frame pointer (EBP)
- - - - -
- EAX or EDX:EAX returns the result for primitive types
- Caller is responsible for cleaning up the stack
- SUB ESP 0x20
- 
- "stdcall"
- Callee is responsible for cleaning up the stack
- 
- "__fastcall"
- The __fastcall convention uses registers for the first four arguments
- and the stack frame to pass additional arguments.
- Integer arguments are passed in registers RCX, RDX, R8, and R9.
- Floating-point arguments are passed in XMM0L, XMM1L, XMM2L, and XMM3L.
- 16-byte arguments are passed by reference.
- 
+
+    "cdecl"
+    Caller pushes parameters to the stack right-to-left
+    Callee saves EBP and sets up new stack frame pointer (EBP)
+    - - - -
+    EAX or EDX:EAX returns the result for primitive types
+    Caller is responsible for cleaning up the stack
+    SUB ESP 0x20
+
+    "stdcall"
+    Callee is responsible for cleaning up the stack
+
+    "__fastcall"
+    The __fastcall convention uses registers for the first four arguments
+    and the stack frame to pass additional arguments.
+    Integer arguments are passed in registers RCX, RDX, R8, and R9.
+    Floating-point arguments are passed in XMM0L, XMM1L, XMM2L, and XMM3L.
+    16-byte arguments are passed by reference.
+
 CALL - pushes the address of the next instruction onto the stack
 RET - pops return address in EIP
- RET (cdecl) - leave parameters on the stack
- RET 0x20 (stdcall) - also pop parameters
+    RET (cdecl) - leave parameters on the stack
+    RET 0x20 (stdcall) - also pop parameters
 MOV (never memory to memory)
- 
+
 Stack frame:
 ---------------------------- <-- EBP
- Local variables
- Caller-save registers
- Arguments
- CALL "Return address"
+    Local variables
+    Caller-save registers
+    Arguments
+    CALL "Return address"
 ----------------------------
- Saved frame pointer (EBP)
- Local variables
- Callee saved registers
- Caller-save registers
- Arguments
- 
+    Saved frame pointer (EBP)
+    Local variables
+    Callee saved registers
+    Caller-save registers
+    Arguments
+
 x86-64
 void main() {
- B780 55 push rbp
- B781 48 8B EC mov rbp,rsp
- In the Microsoft x64 calling convention, it's the caller's responsibility to
- allocate 32 bytes of "shadow space" on the stack right before calling the function
- (regardless of the actual number of parameters used), and to pop the stack after the call.
- The shadow space is used to spill RCX, RDX, R8, and R9, but must be made available
- to all functions, even those with fewer than four parameters.
- sub();
- B792 48 83 EC 20 sub rsp,20h
- B796 E8 83 58 FD FF call _D4test3subFZv (07FF68E7D101Eh)
- B79B 48 83 C4 20 add rsp,20h
- return 0;
- B79F 31 C0 xor eax,eax
- B7A1 5D pop rbp
- B7A2 C3 ret
+    B780  55                   push        rbp
+    B781  48 8B EC             mov         rbp,rsp
+  In the Microsoft x64 calling convention, it's the caller's responsibility to
+  allocate 32 bytes of "shadow space" on the stack right before calling the function
+  (regardless of the actual number of parameters used), and to pop the stack after the call.
+  The shadow space is used to spill RCX, RDX, R8, and R9, but must be made available
+  to all functions, even those with fewer than four parameters.
+  sub();
+    B792  48 83 EC 20          sub         rsp,20h
+    B796  E8 83 58 FD FF       call        _D4test3subFZv (07FF68E7D101Eh)
+    B79B  48 83 C4 20          add         rsp,20h
+  return 0;
+    B79F  31 C0                xor         eax,eax
+    B7A1  5D                   pop         rbp
+    B7A2  C3                   ret
 }
 void sub() {
- 1070 55 push rbp
- 1071 48 8B EC mov rbp,rsp
- return;
- 1074 5D pop rbp
- 1075 C3 ret
+    1070  55                   push        rbp
+    1071  48 8B EC             mov         rbp,rsp
+    return;
+    1074  5D                   pop         rbp
+    1075  C3                   ret
 }
- 
+
 x86
 void main() {
- 1048 55 push ebp
- 1049 8B EC mov ebp,esp
- sub();
- 104B E8 CE FF FF FF call _D4test3subFZv (086101Eh)
- return 0;
- 1050 31 C0 xor eax,eax
- 1052 5D pop ebp
- 1053 C3 ret
+    1048  55                   push        ebp
+    1049  8B EC                mov         ebp,esp
+	 sub();
+    104B  E8 CE FF FF FF       call        _D4test3subFZv (086101Eh)
+  return 0;
+    1050  31 C0                xor         eax,eax
+    1052  5D                   pop         ebp
+    1053  C3                   ret
 }
 void sub() {
- 1058 55 push ebp
- 1059 8B EC mov ebp,esp
- return;
- 105B 5D pop ebp
- 105C C3 ret
+    1058  55                   push        ebp
+    1059  8B EC                mov         ebp,esp
+  return;
+    105B  5D                   pop         ebp
+    105C  C3                   ret
 }
- 
+
 void sub18(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, )
- enter 8,0 // alloca(8) for last param in eax and local var a
- mov dword ptr [_param_5], eax
- 
- mov dword ptr [a],0 // init local
- 
- leave
- ret 44h
+  enter 8,0 // alloca(8) for last param in eax and local var a
+  mov dword ptr [_param_5], eax
+
+  mov dword ptr [a],0 // init local
+
+  leave
+  ret 44h
 }
- 
+
 From http://wiki.lazarus.freepascal.org/Win64/AMD64_API
- --------------- --
-| R9 | |
- --------------- |
-| R8 | |
- --------------- |Shadow space for this function, allocated by caller
-| RDX | |
- --------------- |
-| RCX | |
- --------------- --
+ ---------------     --
+|      R9       |      |
+ ---------------       |
+|      R8       |      |
+ ---------------       |Shadow space for this function, allocated by caller
+|      RDX      |      |
+ ---------------       |
+|      RCX      |      |
+ ---------------     --
 | Return address|
  ---------------
-| |
-| | Local variables of this function
-| |
-| |
+|               |
+|               |        Local variables of this function
+|               |
+|               |
  ---------------
-| Frame Pointer | Optional
+| Frame Pointer |        Optional
  ---------------
-| |
-| | Memory used for dynamic allocation
-| |
+|               |
+|               |        Memory used for dynamic allocation
+|               |
  ---------------
-| |
-| | Memory used to save registers that may be modified by callee
-| |
- --------------- --
-| R9 | |
- --------------- |
-| R8 | |
- --------------- |Shadow space for callee, allocated by this function
-| RDX | |
- --------------- |
-| RCX | |
- --------------- --
- 
+|               |
+|               |        Memory used to save registers that may be modified by callee
+|               |
+ ---------------     --
+|      R9       |      |
+ ---------------       |
+|      R8       |      |
+ ---------------       |Shadow space for callee, allocated by this function
+|      RDX      |      |
+ ---------------       |
+|      RCX      |      |
+ ---------------     --
+
 Alignment
 =================
 Most structures are aligned to their natural alignment. The primary exceptions are the stack
@@ -177,7 +177,7 @@ Alignment above 16 bytes must be done manually, but since 16 bytes is a common a
 for XMM operations, this should work for most code.
 The stack pointer must be aligned to 16 bytes in any region of code that isn’t part of an epilog
 or prolog, except within leaf functions.
- 
+
 Parameter passing
 =================
 push n
@@ -185,70 +185,70 @@ push n-1
 push n-2
 ...
 push 5
- 
-1 2 3 4
-RCX RDX R8 R9
+
+1    2    3    4
+RCX  RDX  R8   R9
 XMM0 XMM1 XMM2 XMM3
 =================
- 
+
 Return value
 =================
 RAX
 XMM0
 =================
- 
+
 Function prolog
 =================
 Copy parameters from registers to shadow space
-Push registers to be preserved on stack
+Push registers to be preserved on the stack
 Allocate room on the stack for local variables
 Set a frame pointer (so frame pointer is set AFTER local variables!) if needed
 Allocate space needed to store volatile registers that must be preserved in function calls
 Allocate shadow space for called functions.
 =================
- 
- 
+
+
 3.4.1.5 - Assembly/Compiler Coding Rule 12. (M impact, H generality)
 All branch targets should be 16-byte aligned.
- 
- 
- 
+
+
+
 Intel Manual 2A
- 
+
 Instruction structure
 +----------------+----------------------+----------+-------+----------------+-------------+
-| 0-4 prefixes | Opcode (1-3 bytes) | ModR/M | SIB | Displacement | Immediate |
+|  0-4 prefixes  |  Opcode (1-3 bytes)  |  ModR/M  |  SIB  |  Displacement  |  Immediate  |
 +----------------+----------------------+----------+-------+----------------+-------------+
- 
+
 instruction-size limit = 15 bytes
- 
+
 ----------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------
 http://wiki.osdev.org/X86-64_Instruction_Encoding#REX_prefix
- 
+
 Legacy prefixes 66H 67H F2H F3H
- 
+
 REX prefix
- 7 0
+  7                           0
 +---+---+---+---+---+---+---+---+
-| 0 1 0 0 | W | R | X | B |
+| 0   1   0   0 | W | R | X | B |
 +---+---+---+---+---+---+---+---+
 W | 0 = Operand size determined by CS.D. The default operand size is used
- | 1 = 64 Bit Operand Size
+  | 1 = 64 Bit Operand Size
 R | Extension of the ModR/M reg field
 X | Extension of the SIB index field
 B | Extension of the ModR/M r/m field, SIB base field, or Opcode reg field
- 
- 
+
+
 ModR/M byte MOD|REG|R/M
 ----+----------+
-MOD |11 |
-REG | 001 | /digit (Opcode)
-R/M | 000|
+MOD |11        |
+REG |   001    | /digit (Opcode)
+R/M |       000|
 ----+----------+
- |11 001 000| 0xC8
- 
+    |11 001 000| 0xC8
+
 • The mod field combines with the r/m field to form 32 possible values: eight
 registers and 24 addressing modes.
 • The reg/opcode field specifies either a register number or three more bits of
@@ -258,125 +258,127 @@ primary opcode.
 mod field to encode an addressing mode. Sometimes, certain combinations of
 the mod field and the r/m field is used to express opcode information for some
 instructions.
- 
+
 SIB byte
- 7 0
+  7                           0
 +---+---+---+---+---+---+---+---+
-| scale | index | base |
+| scale |   index   |    base   |
 +---+---+---+---+---+---+---+---+
- 
- 
+
+
 Figure 2-4. Memory Addressing Without an SIB Byte; REX.X Not Used
- | | ModR/M Byte |
-REX prefix | Opcode | mod reg r/m |
-0100 WR0B | | !=11 rrr bbb |
- | +------------------------v
- +-------------------> Rrrr Bbbb
- 
- 
+           |        |   ModR/M Byte   |
+REX prefix | Opcode |   mod  reg  r/m |
+0100 WR0B  |        |  !=11  rrr  bbb |
+      | +------------------------v
+      +-------------------> Rrrr Bbbb
+
+
 Figure 2-5. Register-Register Addressing (No Memory Operand); REX.X Not Used
- | | ModR/M Byte |
-REX prefix | Opcode | mod reg r/m |
-0100 WR0B | | =11 rrr bbb |
- | +------------------------v
- +-------------------> Rrrr Bbbb
- 
+           |        |   ModR/M Byte   |
+REX prefix | Opcode |   mod  reg  r/m |
+0100 WR0B  |        |   =11  rrr  bbb |
+      | +------------------------v
+      +-------------------> Rrrr Bbbb
+
 # is addressing mode. It is the same for encodings with or without SIB byte
- 
-# Mod Addressing R/M
-9 00 [RIP + disp32] BP,R13
-3 00 [R/M ] !SP,BP,R12,R13
-S 00 [SIB ] SP,R12
-7 01 [R/M + disp8] !SP,R12
-S 01 [SIB + disp8] SP,R12
-4 10 [R/M + disp32] !SP,R12
-S 10 [SIB + disp32] SP,R12
+
+#  Mod    Addressing      R/M
+9  00   [RIP + disp32]  BP,R13
+3  00   [R/M         ]  !SP,BP,R12,R13
+S  00   [SIB         ]  SP,R12
+7  01   [R/M +  disp8]  !SP,R12
+S  01   [SIB +  disp8]  SP,R12
+4  10   [R/M + disp32]  !SP,R12
+S  10   [SIB + disp32]  SP,R12
 S uses SIB byte
 ! means any except following registers
 R/M is Base register here
- 
- 
+
+
 Figure 2-6. Memory Addressing With a SIB Byte
- | | ModR/M Byte | SIB Byte |
-REX prefix | Opcode | mod reg r/m | scale index base |
-0100 W R X B | | !=11 rrr bbb | ss xxx bbb |
- | | +----------------------------------------------+
- | +------------------------------------------v v
- +--------------------> Rrrr Xxxx Bbbb
- 
- 
-# Index Base Mod Addressing
-1 SP BP- 00 [ disp32]
-2 ANY^ BP- 00 [ (index * s) + disp32]
-3 SP ANY* 00 [base ]
-4 SP ANY 10 [base + + disp32]
-5 ANY^ ANY* 00 [base + (index * s) ]
-6 ANY^ ANY 10 [base + (index * s) + disp32]
-7 SP ANY 01 [base + + disp8 ]
-8 ANY^ ANY 01 [base + (index * s) + disp8 ]
-9 - - -- [RIP + + disp32] without SIB
- 
+             |        |   ModR/M Byte   |       SIB Byte       |
+REX prefix   | Opcode |   mod  reg  r/m |   scale  index  base |
+0100 W R X B |        |  !=11  rrr  bbb |     ss     xxx   bbb |
+       | | +----------------------------------------------+
+       | +------------------------------------------v     v
+       +--------------------> Rrrr                  Xxxx  Bbbb
+
+
+#  Index  Base  Mod              Addressing
+1   SP     BP-   00     [                     disp32]
+2  ANY^    BP-   00     [       (index * s) + disp32]
+3   SP    ANY*   00     [base                       ]
+4   SP    ANY    10     [base +             + disp32]
+5  ANY^   ANY*   00     [base + (index * s)         ]
+6  ANY^   ANY    10     [base + (index * s) + disp32]
+7   SP    ANY    01     [base +             + disp8 ]
+8  ANY^   ANY    01     [base + (index * s) + disp8 ]
+9   -      -     --     [RIP  +             + disp32] without SIB
+
 - BP can be replaced with R13 here
 * ANY can be any GPR except BP, R13
 ^ ANY can be any GPR except SP
 See: http://wiki.osdev.org/X86-64_Instruction_Encoding#32.2F64-bit_addressing
-You can see here 8 addressing variants arranged as a binary number. Two of them cannot be encoded.
-Instead, there are two extra addressing types with 8-bit displacement.
- 
- 
- 
+You can see here 8 addressing variants arranged as binary number. Two of them cannot be encoded.
+Instead there are two extra addressing types with 8-bit displacement.
+
+
+
 Figure 2-7. Register Operand Coded in Opcode Byte; REX.X & REX.R Not Used
 REX prefix | Opcode|reg |
-0100 W00B | bbb |
- +--------> Bbbb
- 
- Opcode fields
- w means bit w (bit index 0, operand size) is present; may be combined with bits d or s. 04 ADD
- s means bit s (bit index 1, Sign-extend) is present; may be combined with bit w. 6B IMUL
- d means bit d (bit index 1, Direction) is present; may be combined with bit w. 00 ADD
- tttn means bit field tttn (4 bits, bit index 0, condition). Used only with conditional instructions. 70 JO
- sr means segment register specifier - a code of one of original four segment registers (2 bits, bit index 3). See also S2 addressing method. 06 PUSH
- sre means segment register specifier - a code of any segment registers (3 bits, bit index 0 or 3). See also S30 and S33 addressing methods. 0FA0 PUSH
- mf means bit field MF (2 bits, bit index 1, memory format); used only with x87 FPU instructions coded with second floating-point instruction format. DA/0 FIADD
- 
- 
+0100 W00B  |        bbb |
+        +--------> Bbbb
+
+   Opcode fields
+   w means bit w (bit index 0, operand size) is present; may be combined with bits d or s. 04 ADD
+   s means bit s (bit index 1, Sign-extend) is present; may be combined with bit w. 6B IMUL
+   d means bit d (bit index 1, Direction) is present; may be combined with bit w. 00 ADD
+   tttn means bit field tttn (4 bits, bit index 0, condition). Used only with conditional instructions. 70 JO
+   sr means segment register specifier - a code of one of original four segment registers (2 bits, bit index 3). See also S2 addressing method. 06 PUSH
+   sre means segment register specifier - a code of any segment registers (3 bits, bit index 0 or 3). See also S30 and S33 addressing methods. 0FA0 PUSH
+   mf means bit field MF (2 bits, bit index 1, memory format); used only with x87 FPU instructions coded with second floating-point instruction format. DA/0 FIADD
+
+
 AMD64 Architecture Programmer’s Manual Volume 3 General Purpose and System Instructions p. 55
- 
+
 Opcode Syntax
 In addition to the notation shown above in “Mnemonic Syntax” on page 52, the following notation
 indicates the size and type of operands in the syntax of an instruction opcode:
- • /digit — Indicates that the ModRM byte specifies only one register or memory (r/m) operand. The
- digit is specified by the ModRM reg field and is used as an instruction-opcode extension. Valid
- digit values range from 0 to 7.
- • /r — Indicates that the ModRM byte specifies both a register operand and a reg/mem (register or
- memory) operand.
- • cb, cw, cd, cp — Specifies a code-offset value and possibly a new code-segment register value. The
- value following the opcode is either one byte (cb), two bytes (cw), four bytes (cd), or six bytes (cp).
- • ib, iw, id, iq — Specifies an immediate-operand value. The opcode determines whether the value is
- signed or unsigned. The value following the opcode, ModRM, or SIB byte is either one byte (ib),
- two bytes (iw), or four bytes (id). Word and doubleword values start with the low-order byte.
- • +rb, +rw, +rd, +rq — Specifies a register value that is added to the hexadecimal byte on the left,
- forming a one-byte opcode. The result is an instruction that operates on the register specified by
- the register code. Valid register-code values are shown in Table 2-2.
- • m64 — Specifies a quadword (64-bit) operand in memory.
- • +i — Specifies an x87 floating-point stack operand, ST(i). The value is used only with x87 floating-point instructions. It is added to the hexadecimal byte on the left, forming a one-byte opcode. Valid
- values range from 0 to 7.
- 
- 
+  • /digit — Indicates that the ModRM byte specifies only one register or memory (r/m) operand. The
+    digit is specified by the ModRM reg field and is used as an instruction-opcode extension. Valid
+    digit values range from 0 to 7.
+  • /r — Indicates that the ModRM byte specifies both a register operand and a reg/mem (register or
+    memory) operand.
+  • cb, cw, cd, cp — Specifies a code-offset value and possibly a new code-segment register value. The
+    value following the opcode is either one byte (cb), two bytes (cw), four bytes (cd), or six bytes (cp).
+  • ib, iw, id, iq — Specifies an immediate-operand value. The opcode determines whether the value is
+    signed or unsigned. The value following the opcode, ModRM, or SIB byte is either one byte (ib),
+    two bytes (iw), or four bytes (id). Word and doubleword values start with the low-order byte.
+  • +rb, +rw, +rd, +rq — Specifies a register value that is added to the hexadecimal byte on the left,
+    forming a one-byte opcode. The result is an instruction that operates on the register specified by
+    the register code. Valid register-code values are shown in Table 2-2.
+  • m64 — Specifies a quadword (64-bit) operand in memory.
+  • +i — Specifies an x87 floating-point stack operand, ST(i). The value is used only with x87 floating-
+    point instructions. It is added to the hexadecimal byte on the left, forming a one-byte opcode. Valid
+    values range from 0 to 7.
+
+
 # OS
- 
+
 _DllMainCRTStartup
- 
- 
+
+
 MOV RAX, RAX
 REX.W + 89 /r
 48 89 C0
 48 - REX.W prefix
 89 - MOV r64 to r/m64
 C0 - ModR/M
- 
+
 48 89 c3 mov A, B
- 
+
 mov A, B | r64
 MOV RAX, RAX 48 89 C0
-MOV EAX, EAX 89 C0
+MOV EAX, EAX    89 C0
+
