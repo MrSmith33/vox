@@ -56,7 +56,7 @@ http://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64/
     The __fastcall convention uses registers for the first four arguments
     and the stack frame to pass additional arguments.
     Integer arguments are passed in registers RCX, RDX, R8, and R9.
-    Floating point arguments are passed in XMM0L, XMM1L, XMM2L, and XMM3L.
+    Floating-point arguments are passed in XMM0L, XMM1L, XMM2L, and XMM3L.
     16-byte arguments are passed by reference.
 
 CALL - pushes the address of the next instruction onto the stack
@@ -200,8 +200,8 @@ XMM0
 Function prolog
 =================
 Copy parameters from registers to shadow space
-Push registers to be preserved on stack
-Allocate room on stack for local variables
+Push registers to be preserved on the stack
+Allocate room on the stack for local variables
 Set a frame pointer (so frame pointer is set AFTER local variables!) if needed
 Allocate space needed to store volatile registers that must be preserved in function calls
 Allocate shadow space for called functions.
@@ -321,7 +321,7 @@ REX prefix   | Opcode |   mod  reg  r/m |   scale  index  base |
 ^ ANY can be any GPR except SP
 See: http://wiki.osdev.org/X86-64_Instruction_Encoding#32.2F64-bit_addressing
 You can see here 8 addressing variants arranged as binary number. Two of them cannot be encoded.
-Instead there are two extra addressing types with 8 bit displacement.
+Instead there are two extra addressing types with 8-bit displacement.
 
 
 
@@ -359,7 +359,7 @@ indicates the size and type of operands in the syntax of an instruction opcode:
     forming a one-byte opcode. The result is an instruction that operates on the register specified by
     the register code. Valid register-code values are shown in Table 2-2.
   • m64 — Specifies a quadword (64-bit) operand in memory.
-  • +i — Specifies an x87 floating-point stack operand, ST(i). The value is used only with x87 floating
+  • +i — Specifies an x87 floating-point stack operand, ST(i). The value is used only with x87 floating-
     point instructions. It is added to the hexadecimal byte on the left, forming a one-byte opcode. Valid
     values range from 0 to 7.
 
