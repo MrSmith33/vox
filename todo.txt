@@ -17,8 +17,11 @@
 		- $is* -> bool
 		- get parameter list with access to name, type, attributes and default value
 	- # attributes
+		DOC: Declarations after an attribute may not begin with `(`. To disambiguate wrap whole attribute into () like `@(foo)`.
 		+ #inline
+			- replace with @inline(bool) attribute
 		+- #ctfe (only inferred right now)
+			- replace with @ctfe(bool) attribute
 		- #likely
 		- #unlikely
 		- #likely_when(<expr>)
@@ -61,7 +64,7 @@
 
 - char literal / type
 	+ literal (for now generates int literal expression)
-- escape sequences in string/char literals (\n)
++ escape sequences in string/char literals (\n)
 	can be emitted into IrGlobalStorage.initializerBuffer
 	+ in char literals
 - float double
@@ -115,8 +118,8 @@
 - multi-indexing operator x[1, 2, 3]
 - in passes with state pass context separately
 o dll linking
-	- #dllimport("lz4.dll") attribute on externals
-	- #dllimport("lz4.dll") attribute on module
+	- @dllimport("lz4.dll") attribute on externals
+	- @dllimport("lz4.dll") attribute on module
 		pros: only symbols from specific module will be searched in a dll
 	- .def file passing
 	+ .dll file passing

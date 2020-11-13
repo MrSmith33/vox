@@ -311,7 +311,7 @@ alias ivec2 = vec[i32, 2];
 
 They are built-in CTFE-only types.
 
-User types that contain meta types are consiedered CTFE-only too.
+User types that contain meta types are concidered CTFE-only too.
 
 ```D
 $alias     // built-in meta type

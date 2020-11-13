@@ -31,6 +31,36 @@
 - Macros (WIP)
 - No C++ interoperability
 
+## Platforms
+
+Supported:
+- windows-x64 - host and target
+- linux-x64 - host and target
+
+Planned:
+- linux-arm64
+- wasm
+- mac-x64?
+- windows-arm64?
+- spirv (Vulkan/OpenCL/OpenGL shaders)
+
+## Project goals
+
+- Strong focus on application extensions
+- Maximize user productivity
+- Maximize application performance
+- AOT and JIT, plugin support, runtime compilation, embedded compiler, tiered compilation
+- Static typing
+- Great error messages
+- Fast / Incremental compilation
+- Minimize effort needed for installation, setup, integration
+    - Minimal dependencies/encapsulate dependency into module or package
+    - Runtime as a library/minimal runtime/no runtime
+    - Embedding/extern C
+    - Code driven compilation, extending compiler from inside of the program being compiled
+- Processor intrinsics
+- Conditional compilation
+- CTFE, Templates, Introspection, Code generation
 
 ## Syntax examples
 
@@ -86,31 +116,7 @@ assert(val[1] == 10);
   
 </details>
 
-# Project goals
-
-- Strong focus on application extensions
-- Maximize user productivity
-- Maximize application performance
-- AOT and JIT, plugin support, runtime compilation, embedded compiler, tiered compilation
-- Static typing
-- Great error messages
-- Fast / Incremental compilation
-- Minimize effort needed for installation, setup, integration
-    - Minimal dependencies/encapsulate dependency into module or package
-    - Runtime as a library/minimal runtime/no runtime
-    - Embedding/extern C
-    - Code driven compilation, extending compiler from inside of the program being compiled
-- Processor intrinsics
-- Conditional compilation
-- CTFE, Templates, Introspection, Code generation
-
-Target platforms (Only win64 is supported now):
-- amd64 (Windows, Linux, macOS)
-- WebAssembly (browsers)
-- ARM (Android, Linux)
-- SPIR-V (Vulkan/OpenCL/OpenGL shaders)
-
-# Running & testing
+## Running & testing
 
 In `main.d` uncomment one of the following lines:
 ```D
@@ -128,7 +134,7 @@ Debug CLI build:
     `dmd -i -g -m64 -version=cli main.d -of=../test_work_dir/tjc.exe`
     
 Release CLI build:
-    `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d -of=../test_work_dir/tjc.exe`
+    `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -i main.d -of=../test_work_dir/tjc.exe`
 
 Pretty asserts with stack traces are disabled in non-debug builds by default.
 * Add `--d-debug=PRETTY_ASSERT` flag to enable pretty asserts in ldc release build.
