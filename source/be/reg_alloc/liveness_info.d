@@ -55,6 +55,7 @@ struct LivenessInfo
 	// invariant: all ranges of one interval are sorted by `from` and do not intersect
 	Array!LiveInterval intervals;
 	uint numFixedIntervals;
+	ubyte[NUM_REG_CLASSES] physRegOffsetByClass;
 	/// instructionIndex -> seqIndex
 	/// blockIndex -> seqIndex
 	IrMirror!uint linearIndicies;
@@ -67,7 +68,8 @@ struct LivenessInfo
 
 	LiveInterval* vint(size_t virtSeqIndex) { return &intervals[numFixedIntervals+virtSeqIndex]; }
 	LiveInterval* vint(IrIndex index) { return &intervals[numFixedIntervals + index.storageUintIndex]; }
-	LiveInterval* pint(IrIndex physReg) { return &intervals[physReg.physRegIndex]; }
+	LiveInterval* pint(IrIndex physReg) { return &intervals[physRegOffsetByClass[physReg.physRegClass] + physReg.physRegIndex]; }
+	LiveInterval* pint(PhysReg physReg) { return &intervals[physRegOffsetByClass[physReg.regClass] + physReg.regIndex]; }
 	IntervalIndex vindex(size_t virtSeqIndex) { return IntervalIndex(numFixedIntervals+virtSeqIndex); }
 	IntervalIndex pindex(size_t physSeqIndex) { return IntervalIndex(physSeqIndex); }
 
@@ -78,16 +80,22 @@ struct LivenessInfo
 		bitmap.allocSets(context, numBucketsPerBlock, ir.numBasicBlocks);
 
 		intervals.clear;
-		numFixedIntervals = cast(uint)context.machineInfo.registers.length;
+		numFixedIntervals = cast(uint)context.machineInfo.numRegisters;
 		intervals.voidPut(context.arrayArena, numFixedIntervals + ir.numVirtualRegisters);
 
-		size_t i;
-		foreach (ref LiveInterval it; physicalIntervals)
-		{
-			it = LiveInterval();
-			it.reg = it.definition = context.machineInfo.registers[i].index;
-			++i;
+		ubyte physOffset = 0;
+		foreach(ubyte regClass; 0..NUM_REG_CLASSES) {
+			physRegOffsetByClass[regClass] = physOffset;
+			auto numRegsPerClass = context.machineInfo.numRegsPerClass[regClass];
+			foreach(regIndex; 0..numRegsPerClass) {
+				LiveInterval* it = &intervals[physOffset+regIndex];
+				*it = LiveInterval();
+				it.reg = it.definition = IrIndex(regIndex, ArgType.QWORD, regClass);
+				it.regClass = regClass;
+			}
+			physOffset += numRegsPerClass;
 		}
+
 		foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegisters) {
 			LiveInterval it = { definition : vregIndex };
 			*vint(vregIndex.storageUintIndex) = it;
@@ -283,6 +291,7 @@ struct LivenessInfo
 			definition : it.definition,
 			parent : parentInterval,
 			child : it.child,
+			regClass : it.regClass,
 		};
 
 		if (!it.child.isNull)

@@ -14,11 +14,21 @@ import be.amd64asm;
 
 // usage reg_names[physRegClass][physRegSize][physRegIndex]
 immutable string[][][] reg_names = [[
-	["al", "cl", "dl", "bl", "spl","bpl","sil","dil","r8b","r9b","r10b","r11b","r12b","r13b","r14b","r15b"],
-	["ax", "cx", "dx", "bx", "sp", "bp", "si", "di", "r8w","r9w","r10w","r11w","r12w","r13w","r14w","r15w"],
-	["eax","ecx","edx","ebx","esp","ebp","esi","edi","r8d","r9d","r10d","r11d","r12d","r13d","r14d","r15d"],
-	["rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi","r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15" ],
-]];
+		["al", "cl", "dl", "bl", "spl","bpl","sil","dil","r8b","r9b","r10b","r11b","r12b","r13b","r14b","r15b"],
+		["ax", "cx", "dx", "bx", "sp", "bp", "si", "di", "r8w","r9w","r10w","r11w","r12w","r13w","r14w","r15w"],
+		["eax","ecx","edx","ebx","esp","ebp","esi","edi","r8d","r9d","r10d","r11d","r12d","r13d","r14d","r15d"],
+		["rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi","r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15" ],
+	],
+	[
+		["xmm0b","xmm1b","xmm2b","xmm3b","xmm4b","xmm5b","xmm6b","xmm7b","xmm8b","xmm9b","xmm10b","xmm11b","xmm12b","xmm13b","xmm14b","xmm15b"], // 8
+		["xmm0w","xmm1w","xmm2w","xmm3w","xmm4w","xmm5w","xmm6w","xmm7w","xmm8w","xmm9w","xmm10w","xmm11w","xmm12w","xmm13w","xmm14w","xmm15w"], // 16
+		["xmm0d","xmm1d","xmm2d","xmm3d","xmm4d","xmm5d","xmm6d","xmm7d","xmm8d","xmm9d","xmm10d","xmm11d","xmm12d","xmm13d","xmm14d","xmm15d"], // 32
+		["xmm0q","xmm1q","xmm2q","xmm3q","xmm4q","xmm5q","xmm6q","xmm7q","xmm8q","xmm9q","xmm10q","xmm11q","xmm12q","xmm13q","xmm14q","xmm15q"], // 64
+		["xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7","xmm8","xmm9","xmm10","xmm11","xmm12","xmm13","xmm14","xmm15"], // 128
+		["ymm0","ymm1","ymm2","ymm3","ymm4","ymm5","ymm6","ymm7","ymm8","ymm9","ymm10","ymm11","ymm12","ymm13","ymm14","ymm15"], // 256
+		["zmm0","zmm1","zmm2","zmm3","zmm4","zmm5","zmm6","zmm7","zmm8","zmm9","zmm10","zmm11","zmm12","zmm13","zmm14","zmm15"], // 512
+	],
+];
 
 /// Creates physicalRegister index
 IrIndex amd64Reg(uint index, uint regSize)
@@ -43,16 +53,133 @@ uint typeToRegSize(IrIndex type, CompilationContext* context) {
 	}
 }
 
-struct PhysicalRegister
-{
-	string name;
-	IrIndex index;
+struct PhysReg {
+	this(ubyte _regClass, ubyte _regIndex) {
+		regClass = _regClass;
+		regIndex = _regIndex;
+	}
+
+	mixin(bitfields!(
+		uint, "regIndex", 5,
+		uint, "regClass", 3,
+	));
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		sink.formattedWrite("%s %s %s", regClass, regIndex, regClass*(1<<5) + regIndex);
+	}
+}
+
+enum NUM_REG_CLASSES = 2;
+enum NUM_REGS_PER_CLASS = 32;
+enum NUM_TOTAL_REGS = NUM_REG_CLASSES * NUM_REGS_PER_CLASS;
+
+enum AMD64_REG_CLASS : ubyte {
+	GPR = 0,
+	XMM = 1,
+}
+
+// Register set of registers of all classes
+struct FullRegSet {
+	ClassRegSet[NUM_REG_CLASSES] classes;
+
+	FullRegSet opBinary(string op)(FullRegSet rhs)
+		if (op == "|" || op == "^" || op == "&")
+	{
+		FullRegSet result;
+		foreach(i, cl; classes)
+			result.classes[i] = mixin("classes[i] "~op~" rhs.classes[i]");
+		return result;
+	}
+
+	FullRegSet opBinary(string op)(PhysReg rhs)
+		if (op == "|" || op == "^" || op == "&")
+	{
+		FullRegSet result = this;
+		mixin("result.classes[rhs.regClass].bits "~op~"= 1 << rhs.regIndex;");
+		return result;
+	}
+
+	void opOpAssign(string op)(FullRegSet rhs)
+		if (op == "|" || op == "^" || op == "&")
+	{
+		foreach(i, cl; classes)
+			classes[i] = mixin("classes[i] "~op~" rhs.classes[i]");
+	}
+
+	void opOpAssign(string op)(PhysReg rhs)
+		if (op == "|" || op == "^" || op == "&")
+	{
+		mixin("classes[rhs.regClass].bits "~op~"= 1 << rhs.regIndex;");
+	}
+
+	FullRegSet lowest(int n) {
+		FullRegSet result;
+		foreach(i, cl; classes)
+			result.classes[i] = classes[i].lowest(n);
+		return result;
+	}
+
+	int opApply(scope int delegate(PhysReg) dg)
+	{
+		foreach(ubyte regClass; 0..NUM_REG_CLASSES) {
+			uint[1] bits = classes[regClass].bits;
+			foreach(regIndex; bitsSet(bits[]))
+				if (int res = dg(PhysReg(regClass, cast(ubyte)regIndex))) return res;
+		}
+		return 0;
+	}
+}
+
+/// Register set of a single register class
+struct ClassRegSet {
+	// Assume at most 32 registers per register class
+	uint bits;
+
+	ClassRegSet opBinary(string op)(ClassRegSet rhs)
+		if (op == "|" || op == "^" || op == "&")
+	{
+		return ClassRegSet(mixin("bits "~op~" rhs.bits"));
+	}
+
+	// returns set with lowest n registers
+	ClassRegSet lowest(int n) {
+		uint slotBits = bits;
+		uint result;
+		while (slotBits != 0 && n) {
+			// Extract lowest set isolated bit
+			// 111000 -> 001000; 0 -> 0
+			uint lowestSetBit = slotBits & -slotBits;
+			result |= lowestSetBit;
+
+			// Disable lowest set isolated bit
+			// 111000 -> 110000
+			slotBits ^= lowestSetBit;
+			--n;
+		}
+		return ClassRegSet(result);
+	}
+
+	int opApply(scope int delegate(ubyte) dg)
+	{
+		uint[1] bitsCopy = bits;
+		foreach(regIndex; bitsSet(bitsCopy[]))
+			if (int res = dg(cast(ubyte)regIndex)) return res;
+		return 0;
+	}
 }
 
 struct MachineInfo
 {
+	// total number of registers
+	ubyte numRegisters;
+	// index is register class. Each entry specifies number of registers in this class
+	ubyte[NUM_REG_CLASSES] numRegsPerClass;
+	// first index is register class
+	// second index is register size
+	// third index is register index
+	// Sizes of name arrays must match corresponding regsPerClass
 	immutable string[][][] reg_names;
-	PhysicalRegister[] registers;
+	//PhysicalRegister[] registers;
 	InstrInfo[] instrInfo;
 
 	string regName(IrIndex reg) {
@@ -61,68 +188,66 @@ struct MachineInfo
 }
 
 __gshared MachineInfo mach_info_amd64 = MachineInfo(
+	32,
+	[16, 16],
 	reg_names,
-	[
-		PhysicalRegister("ax", amd64_reg.ax),
-		PhysicalRegister("cx", amd64_reg.cx),
-		PhysicalRegister("dx", amd64_reg.dx),
-		PhysicalRegister("bx", amd64_reg.bx),
-		PhysicalRegister("sp", amd64_reg.sp),
-		PhysicalRegister("bp", amd64_reg.bp),
-		PhysicalRegister("si", amd64_reg.si),
-		PhysicalRegister("di", amd64_reg.di),
-		PhysicalRegister("r8", amd64_reg.r8),
-		PhysicalRegister("r9", amd64_reg.r9),
-		PhysicalRegister("r10", amd64_reg.r10),
-		PhysicalRegister("r11", amd64_reg.r11),
-		PhysicalRegister("r12", amd64_reg.r12),
-		PhysicalRegister("r13", amd64_reg.r13),
-		PhysicalRegister("r14", amd64_reg.r14),
-		PhysicalRegister("r15", amd64_reg.r15),
-	],
 	amd64InstrInfos.dup
 );
 
-enum amd64_reg : IrIndex {
-	ax = amd64Reg(0, ArgType.QWORD),
-	cx = amd64Reg(1, ArgType.QWORD),
-	dx = amd64Reg(2, ArgType.QWORD),
-	bx = amd64Reg(3, ArgType.QWORD),
-	sp = amd64Reg(4, ArgType.QWORD),
-	bp = amd64Reg(5, ArgType.QWORD),
-	si = amd64Reg(6, ArgType.QWORD),
-	di = amd64Reg(7, ArgType.QWORD),
-	r8 = amd64Reg(8, ArgType.QWORD),
-	r9 = amd64Reg(9, ArgType.QWORD),
-	r10 = amd64Reg(10, ArgType.QWORD),
-	r11 = amd64Reg(11, ArgType.QWORD),
-	r12 = amd64Reg(12, ArgType.QWORD),
-	r13 = amd64Reg(13, ArgType.QWORD),
-	r14 = amd64Reg(14, ArgType.QWORD),
-	r15 = amd64Reg(15, ArgType.QWORD),
+enum amd64_reg : PhysReg {
+	ax    = PhysReg(0,  0),
+	cx    = PhysReg(0,  1),
+	dx    = PhysReg(0,  2),
+	bx    = PhysReg(0,  3),
+	sp    = PhysReg(0,  4),
+	bp    = PhysReg(0,  5),
+	si    = PhysReg(0,  6),
+	di    = PhysReg(0,  7),
+	r8    = PhysReg(0,  8),
+	r9    = PhysReg(0,  9),
+	r10   = PhysReg(0, 10),
+	r11   = PhysReg(0, 11),
+	r12   = PhysReg(0, 12),
+	r13   = PhysReg(0, 13),
+	r14   = PhysReg(0, 14),
+	r15   = PhysReg(0, 15),
+
+	xmm0  = PhysReg(1,  0),
+	xmm1  = PhysReg(1,  1),
+	xmm2  = PhysReg(1,  2),
+	xmm3  = PhysReg(1,  3),
+	xmm4  = PhysReg(1,  4),
+	xmm5  = PhysReg(1,  5),
+	xmm6  = PhysReg(1,  6),
+	xmm7  = PhysReg(1,  7),
+	xmm8  = PhysReg(1,  8),
+	xmm9  = PhysReg(1,  9),
+	xmm10 = PhysReg(1, 10),
+	xmm11 = PhysReg(1, 11),
+	xmm12 = PhysReg(1, 12),
+	xmm13 = PhysReg(1, 13),
+	xmm14 = PhysReg(1, 14),
+	xmm15 = PhysReg(1, 15),
 }
 
 struct CallConv
 {
-	IrIndex[] paramsInRegs;
-	IrIndex returnReg;
-	IrIndex[] volatileRegs;
-	IrIndex[] allocatableRegs;
-	IrIndex[] calleeSaved;
+	PhysReg[] gprParamRegs;
+	PhysReg[] sseParamRegs;
+	FullRegSet volatileRegs;
+	FullRegSet calleeSaved;
+	// Size of the register preserved by the callee
+	IrArgSize[] calleeSavedSizePerClass;
 	/// Not included into allocatableRegs
 	/// Can be used as frame pointer when
 	/// frame pointer is enabled for the function, or
 	/// can be used as allocatable register if not
-	IrIndex framePointer;
-	IrIndex stackPointer;
+	PhysReg framePointer;
+	PhysReg stackPointer;
 
 	uint minStackAlignment;
 
 	uint flags;
-
-	bool isParamOnStack(size_t parIndex) {
-		return parIndex >= paramsInRegs.length;
-	}
 
 	bool hasShadowSpace() { return cast(bool)(flags & CallConvFlags.hasShadowSpace); }
 	bool hasRedZone() { return cast(bool)(flags & CallConvFlags.hasRedZone); }
@@ -154,42 +279,26 @@ __gshared CallConv win64_call_conv = CallConv
 (
 	// parameters in registers
 	[amd64_reg.cx, amd64_reg.dx, amd64_reg.r8, amd64_reg.r9],
+	[amd64_reg.xmm0, amd64_reg.xmm1, amd64_reg.xmm2, amd64_reg.xmm3],
 
-	amd64_reg.ax,  // return reg
+	// volatile regs, zero cost allocation
+	// ax cx dx r8 r9 r10 r11
+	// xmm0 xmm1 xmm2 xmm3 xmm4 xmm5
+	FullRegSet([
+		//            1111 11
+		//            5432 1098 7654 3210
+		ClassRegSet(0b0000_1111_0000_0111),
+		ClassRegSet(0b0000_0000_0011_1111)]),
 
-	[amd64_reg.ax, // volatile regs
-	amd64_reg.cx,
-	amd64_reg.dx,
-	amd64_reg.r8,
-	amd64_reg.r9,
-	amd64_reg.r10,
-	amd64_reg.r11],
+	// callee saved regs, need to save/restore to use
+	//   bx si di r12 r13 r14 r15
+	FullRegSet([
+		//            1111 11
+		//            5432 1098 7654 3210
+		ClassRegSet(0b1111_0000_1100_1000),
+		ClassRegSet(0b1111_1111_1100_0000)]),
 
-	// avaliable for allocation
-	[amd64_reg.ax, // volatile regs, zero cost
-	amd64_reg.cx,
-	amd64_reg.dx,
-	amd64_reg.r8,
-	amd64_reg.r9,
-	amd64_reg.r10,
-	amd64_reg.r11,
-
-	// callee saved
-	amd64_reg.bx, // need to save/restore to use
-	amd64_reg.si,
-	amd64_reg.di,
-	amd64_reg.r12,
-	amd64_reg.r13,
-	amd64_reg.r14,
-	amd64_reg.r15],
-
-	[amd64_reg.bx, // callee saved regs
-	amd64_reg.si,
-	amd64_reg.di,
-	amd64_reg.r12,
-	amd64_reg.r13,
-	amd64_reg.r14,
-	amd64_reg.r15],
+	[IrArgSize.size64, IrArgSize.size128],
 
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
@@ -203,42 +312,26 @@ __gshared CallConv sysv64_call_conv = CallConv
 (
 	// parameters in registers
 	[amd64_reg.di, amd64_reg.si, amd64_reg.dx, amd64_reg.cx, amd64_reg.r8, amd64_reg.r9],
+	[amd64_reg.xmm0, amd64_reg.xmm1, amd64_reg.xmm2, amd64_reg.xmm3, amd64_reg.xmm4, amd64_reg.xmm5],
 
-	amd64_reg.ax,  // return reg + rdx
+	// volatile regs, zero cost allocation
+	//   ax cx dx si di r8 r9 r10 r11
+	//   xmm0 xmm1 xmm2 xmm3 xmm4 xmm5
+	FullRegSet([
+		//            1111 11
+		//            5432 1098 7654 3210
+		ClassRegSet(0b0000_1111_1100_0111),
+		ClassRegSet(0b0000_0000_0011_1111)]),
 
-	[amd64_reg.ax, // volatile regs
-	amd64_reg.cx,
-	amd64_reg.dx,
-	amd64_reg.si, // volatile
-	amd64_reg.di, // volatile
-	amd64_reg.r8,
-	amd64_reg.r9,
-	amd64_reg.r10,
-	amd64_reg.r11],
+	// callee saved regs, need to save/restore to use
+	//   bx r12 r13 r14 r15
+	FullRegSet([
+		//            1111 11
+		//            5432 1098 7654 3210
+		ClassRegSet(0b1111_0000_0000_1000),
+		ClassRegSet(0b1111_1111_1100_0000)]),
 
-	// avaliable for allocation
-	[amd64_reg.ax, // volatile regs, zero cost
-	amd64_reg.cx,
-	amd64_reg.dx,
-	amd64_reg.si,
-	amd64_reg.di,
-	amd64_reg.r8,
-	amd64_reg.r9,
-	amd64_reg.r10,
-	amd64_reg.r11,
-
-	// callee saved
-	amd64_reg.bx, // need to save/restore to use
-	amd64_reg.r12,
-	amd64_reg.r13,
-	amd64_reg.r14,
-	amd64_reg.r15],
-
-	[amd64_reg.bx, // callee saved regs
-	amd64_reg.r12,
-	amd64_reg.r13,
-	amd64_reg.r14,
-	amd64_reg.r15],
+	[IrArgSize.size64, IrArgSize.size128],
 
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
@@ -251,42 +344,27 @@ __gshared CallConv sysv64_syscall_call_conv = CallConv
 (
 	// parameters in registers
 	[amd64_reg.di, amd64_reg.si, amd64_reg.dx, amd64_reg.r10, amd64_reg.r8, amd64_reg.r9],
+	[amd64_reg.xmm0, amd64_reg.xmm1, amd64_reg.xmm2, amd64_reg.xmm3, amd64_reg.xmm4, amd64_reg.xmm5],
 
-	amd64_reg.ax,  // return reg
+	// volatile regs, zero cost allocation
+	// cx and r11 are clobbered by syscall
+	  // ax cx dx si di r8 r9 r10 r11
+	  // xmm0 xmm1 xmm2 xmm3 xmm4 xmm5
+	FullRegSet([
+		//            1111 11
+		//            5432 1098 7654 3210
+		ClassRegSet(0b0000_1111_1100_0111),
+		ClassRegSet(0b0000_0000_0011_1111)]),
 
-	[amd64_reg.ax, // volatile regs
-	amd64_reg.cx, // clobbered by syscall
-	amd64_reg.dx,
-	amd64_reg.si, // volatile
-	amd64_reg.di, // volatile
-	amd64_reg.r8,
-	amd64_reg.r9,
-	amd64_reg.r10,
-	amd64_reg.r11], // clobbered by syscall
+	// callee saved regs, need to save/restore to use
+	//   bx r12 r13 r14 r15
+	FullRegSet([
+		//            1111 11
+		//            5432 1098 7654 3210
+		ClassRegSet(0b1111_0000_0000_1000),
+		ClassRegSet(0b1111_1111_1100_0000)]),
 
-	// avaliable for allocation
-	[amd64_reg.ax, // volatile regs, zero cost
-	amd64_reg.cx,
-	amd64_reg.dx,
-	amd64_reg.si,
-	amd64_reg.di,
-	amd64_reg.r8,
-	amd64_reg.r9,
-	amd64_reg.r10,
-	amd64_reg.r11,
-
-	// callee saved
-	amd64_reg.bx, // need to save/restore to use
-	amd64_reg.r12,
-	amd64_reg.r13,
-	amd64_reg.r14,
-	amd64_reg.r15],
-
-	[amd64_reg.bx, // callee saved regs
-	amd64_reg.r12,
-	amd64_reg.r13,
-	amd64_reg.r14,
-	amd64_reg.r15],
+	[IrArgSize.size64, IrArgSize.size128],
 
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
@@ -316,10 +394,14 @@ enum Amd64Opcode : ushort {
 	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) sar,
 	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) lea,
 
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) fadd, // arg0 = arg0 + arg1
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) fsub, // arg0 = arg0 - arg1
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst|IFLG.isCommutative) fmul, // arg0 = arg0 * arg1
+	@_ii(2,IFLG.hasResult|IFLG.isResultInDst) fdiv, // arg0 = arg0 / arg1
+
 	@_ii(1,IFLG.hasResult|IFLG.isMov) mov, // mov rr/ri
 	@_ii(1,IFLG.hasResult|IFLG.isLoad) load, // mov rm
 	@_ii(2,IFLG.isStore) store, // mov mr/mi
-
 
 	@_ii(1,IFLG.hasResult) movzx_btow,
 	@_ii(1,IFLG.hasResult) movzx_btod,

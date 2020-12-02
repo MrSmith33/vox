@@ -62,7 +62,7 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 
 	auto lir = context.getAst!IrFunction(func.backendData.lirData);
 	CallConv* callConv = lir.getCallConv(context);
-	IrIndex baseReg = callConv.stackPointer;
+	IrIndex baseReg = IrIndex(callConv.stackPointer, ArgType.QWORD);
 
 	// 1, 2, 4, 8, 16
 	uint[5] numAlignments;
@@ -94,7 +94,7 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 		// local1    2  rbp - 1     \
 		// local2    3  rbp - 2     / numLocals = 2
 		// --
-		baseReg = callConv.framePointer;
+		baseReg = IrIndex(callConv.framePointer, ArgType.QWORD);
 		// frame pointer is stored together with locals
 		layout.reservedBytes += STACK_ITEM_SIZE;
 	}

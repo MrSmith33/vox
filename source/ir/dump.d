@@ -554,6 +554,8 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 				case i16: sink("i16"); break;
 				case i32: sink("i32"); break;
 				case i64: sink("i64"); break;
+				case f32: sink("f32"); break;
+				case f64: sink("f64"); break;
 			}
 			break;
 		case pointer:

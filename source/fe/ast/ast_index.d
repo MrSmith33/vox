@@ -59,6 +59,7 @@ struct AstIndex
 	bool isNoreturnType(CompilationContext* c) { return get_type(c).isNoreturn; }
 	bool isVoidType(CompilationContext* c) { return get_type(c).isVoid; }
 	IsSigned isSigned(CompilationContext* c) { return get_type(c).isSigned; }
+	bool isFloat(CompilationContext* c) { return get_type(c).isFloat; }
 	bool isMetaType(CompilationContext* c) { return get_type(c).isMetaType; }
 }
 

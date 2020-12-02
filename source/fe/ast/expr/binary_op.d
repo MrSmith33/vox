@@ -117,8 +117,9 @@ ExprValue ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref Ir
 			}
 			else
 			{
+				auto leftType = leftExpr.type.get_type(c);
 				ExtraInstrArgs extra = {
-					opcode : binOpcode(b.op, leftExpr.type.get_type(c).isSigned, b.loc, c),
+					opcode : binOpcode(b.op, leftType.isSigned, leftType.isFloat, b.loc, c),
 					type : leftExpr.type.gen_ir_type(c),
 					argSize : leftExpr.type.typeArgSize(c)
 				};
@@ -225,8 +226,9 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 		switch(b.op) with(BinOp)
 		{
 			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
+				auto leftType = leftExpr.type.get_type(c);
 				ExtraInstrArgs extra = {
-					cond : convertBinOpToIrCond(b.op, leftExpr.type.isSigned(c)),
+					cond : convertBinOpToIrCond(b.op, leftExpr.type.isSigned(c), leftType.isFloat),
 					type : b.type.gen_ir_type(c),
 					argSize : leftExpr.type.typeArgSize(c)
 				};
@@ -255,10 +257,10 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 				irValue = gen.builder.emitInstr!(IrOpcode.sdiv)(currentBlock, extra, irValue, elemSizeValue).result;
 				break;
 
-			// TODO
 			case PLUS, MINUS, DIV, REMAINDER, MULT, SHL, SHR, ASHR, XOR, BITWISE_AND, BITWISE_OR:
+				auto leftType = leftExpr.type.get_type(c);
 				ExtraInstrArgs extra = {
-					opcode : binOpcode(b.op, leftExpr.type.get_type(c).isSigned, b.loc, c),
+					opcode : binOpcode(b.op, leftType.isSigned, leftType.isFloat, b.loc, c),
 					type : b.type.gen_ir_type(c),
 					argSize : b.type.typeArgSize(c)
 				};
@@ -277,7 +279,7 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 		{
 			case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
 				auto branch = gen.builder.addBinBranch(
-					currentBlock, convertBinOpToIrCond(b.op, leftExpr.type.isSigned(c)), leftExpr.type.typeArgSize(c),
+					currentBlock, convertBinOpToIrCond(b.op, leftExpr.type.isSigned(c), leftExpr.type.isFloat(c)), leftExpr.type.typeArgSize(c),
 					leftValue, rightValue, trueExit, falseExit);
 				break;
 			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
@@ -286,27 +288,27 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 	}
 }
 
-IrOpcode binOpcode(BinOp binop, IsSigned isSigned, TokenIndex loc, CompilationContext* context)
+IrOpcode binOpcode(BinOp binop, IsSigned isSigned, bool isFloat, TokenIndex loc, CompilationContext* context)
 {
 	switch(binop) with(BinOp)
 	{
-		case PLUS, PLUS_ASSIGN: return IrOpcode.add;
-		case MINUS, MINUS_ASSIGN: return IrOpcode.sub;
+		case PLUS, PLUS_ASSIGN:
+			if (isFloat) return IrOpcode.fadd;
+			return IrOpcode.add;
+		case MINUS, MINUS_ASSIGN:
+			if (isFloat) return IrOpcode.fsub;
+			return IrOpcode.sub;
 		case DIV, DIV_ASSIGN:
-			if (isSigned)
-				return IrOpcode.sdiv;
-			else
-				return IrOpcode.udiv;
+			if (isFloat) return IrOpcode.fdiv;
+			if (isSigned) return IrOpcode.sdiv;
+			return IrOpcode.udiv;
 		case REMAINDER, REMAINDER_ASSIGN:
-			if (isSigned)
-				return IrOpcode.srem;
-			else
-				return IrOpcode.urem;
+			if (isSigned) return IrOpcode.srem;
+			return IrOpcode.urem;
 		case MULT, MULT_ASSIGN:
-			if (isSigned)
-				return IrOpcode.smul;
-			else
-				return IrOpcode.umul;
+			if (isFloat) return IrOpcode.fmul;
+			if (isSigned) return IrOpcode.smul;
+			return IrOpcode.umul;
 		case SHL, SHL_ASSIGN: return IrOpcode.shl;
 		case SHR, SHR_ASSIGN: return IrOpcode.lshr;
 		case ASHR, ASHR_ASSIGN: return IrOpcode.ashr;
@@ -344,22 +346,24 @@ IrIndex calcBinOp(BinOp op, IrIndex left, IrIndex right, IrArgSize argSize, Comp
 		case BinOp.SHL:           return context.constants.add(leftCon.i64 << rightCon.i64, cast(IsSigned)left.isSignedConstant, argSize);
 		case BinOp.SHR:
 			ulong result;
-			final switch(left.constantSize)
+			final switch(left.constantSize) with(IrArgSize)
 			{
-				case IrArgSize.size8:  result = leftCon.i8 >>> rightCon.i64; break;
-				case IrArgSize.size16: result = leftCon.i16 >>> rightCon.i64; break;
-				case IrArgSize.size32: result = leftCon.i32 >>> rightCon.i64; break;
-				case IrArgSize.size64: result = leftCon.i64 >>> rightCon.i64; break;
+				case size8:  result = leftCon.i8 >>> rightCon.i64; break;
+				case size16: result = leftCon.i16 >>> rightCon.i64; break;
+				case size32: result = leftCon.i32 >>> rightCon.i64; break;
+				case size64: result = leftCon.i64 >>> rightCon.i64; break;
+				case size128, size256, size512: context.internal_error("Invalid constant size %s", left.constantSize);
 			}
 			return context.constants.add(result, cast(IsSigned)left.isSignedConstant, argSize);
 		case BinOp.ASHR:
 			ulong result;
-			final switch(left.constantSize)
+			final switch(left.constantSize) with(IrArgSize)
 			{
-				case IrArgSize.size8:  result = leftCon.i8 >> rightCon.i64; break;
-				case IrArgSize.size16: result = leftCon.i16 >> rightCon.i64; break;
-				case IrArgSize.size32: result = leftCon.i32 >> rightCon.i64; break;
-				case IrArgSize.size64: result = leftCon.i64 >> rightCon.i64; break;
+				case size8:  result = leftCon.i8 >> rightCon.i64; break;
+				case size16: result = leftCon.i16 >> rightCon.i64; break;
+				case size32: result = leftCon.i32 >> rightCon.i64; break;
+				case size64: result = leftCon.i64 >> rightCon.i64; break;
+				case size128, size256, size512: context.internal_error("Invalid constant size %s", left.constantSize);
 			}
 			return context.constants.add(result, cast(IsSigned)left.isSignedConstant, argSize);
 		case BinOp.BITWISE_OR:    return context.constants.add(leftCon.i64 | rightCon.i64, cast(IsSigned)isAnySigned, argSize);
@@ -372,7 +376,7 @@ IrIndex calcBinOp(BinOp op, IrIndex left, IrIndex right, IrArgSize argSize, Comp
 	}
 }
 
-IrBinaryCondition convertBinOpToIrCond(BinOp op, bool isSigned)
+IrBinaryCondition convertBinOpToIrCond(BinOp op, bool isSigned, bool isFloat)
 {
 	switch(op) with(BinOp) with(IrBinaryCondition)
 	{
@@ -388,8 +392,8 @@ IrBinaryCondition convertBinOpToIrCond(BinOp op, bool isSigned)
 
 void setResultType(BinaryExprNode* b, CompilationContext* c)
 {
-	AstIndex resRype = c.basicTypeNodes(BasicType.t_error);
-	b.type = resRype;
+	AstIndex resType = c.basicTypeNodes(BasicType.t_error);
+	b.type = resType;
 	AstIndex leftTypeIndex = b.left.get_expr_type(c);
 	TypeNode* leftType = leftTypeIndex.get_type(c);
 	AstIndex rightTypeIndex = b.right.get_expr_type(c);
@@ -403,7 +407,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 		case LOGIC_AND, LOGIC_OR:
 			autoconvToBool(b.left, c);
 			autoconvToBool(b.right, c);
-			resRype = c.basicTypeNodes(BasicType.t_bool);
+			resType = c.basicTypeNodes(BasicType.t_bool);
 			break;
 		// logic ops. Requires both operands to be of the same type
 		case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
@@ -414,13 +418,13 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 					leftType.as_ptr.isVoidPtr(c) ||
 					rightType.as_ptr.isVoidPtr(c))
 				{
-					resRype = c.basicTypeNodes(BasicType.t_bool);
+					resType = c.basicTypeNodes(BasicType.t_bool);
 					break;
 				}
 			}
 
 			if (autoconvToCommonType(b.left, b.right, c))
-				resRype = c.basicTypeNodes(BasicType.t_bool);
+				resType = c.basicTypeNodes(BasicType.t_bool);
 			else
 				c.error(b.left.get_node(c).loc, "Cannot compare `%s` and `%s`",
 					leftType.typeName(c),
@@ -433,7 +437,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 				if (same_type(leftTypeIndex, rightTypeIndex, c))
 				{
 					b.op = BinOp.PTR_DIFF;
-					resRype = c.basicTypeNodes(BasicType.t_i64);
+					resType = c.basicTypeNodes(BasicType.t_i64);
 					break;
 				}
 				else
@@ -445,7 +449,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 			} else if (leftType.isPointer && rightType.isInteger) { // handle ptr - int
 				b.op = BinOp.PTR_PLUS_INT;
 				(cast(IntLiteralExprNode*)b.right.get_node(c)).negate(b.loc, *c);
-				resRype = leftTypeIndex;
+				resType = leftTypeIndex;
 				break;
 			}
 			goto case DIV;
@@ -454,23 +458,37 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 			// handle int + ptr and ptr + int
 			if (leftType.isPointer && rightType.isInteger) {
 				b.op = BinOp.PTR_PLUS_INT;
-				resRype = leftTypeIndex;
+				resType = leftTypeIndex;
 				break;
 			} else if (leftType.isInteger && rightType.isPointer) {
 				b.op = BinOp.PTR_PLUS_INT;
 				// canonicalize
 				swap(b.left, b.right);
-				resRype = leftTypeIndex;
+				resType = leftTypeIndex;
 				break;
 			}
 
 			goto case DIV;
 
 		// arithmetic op int float
-		case DIV, REMAINDER, MULT, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
+		case DIV, MULT:
 			if (autoconvToCommonType(b.left, b.right, c))
 			{
-				resRype = b.left.get_node_type(c);
+				resType = b.left.get_node_type(c);
+			}
+			else
+			{
+				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+					leftType.typeName(c), binOpStrings[b.op],
+					rightType.typeName(c));
+			}
+			break;
+
+		// integer only
+		case REMAINDER, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
+			if (leftType.isInteger && rightType.isInteger && autoconvToCommonType(b.left, b.right, c))
+			{
+				resType = b.left.get_node_type(c);
 			}
 			else
 			{
@@ -484,7 +502,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 			if (leftType.isPointer && rightType.isInteger) {
 				b.op = BinOp.PTR_PLUS_INT_ASSIGN;
 				(cast(IntLiteralExprNode*)b.right.get_node(c)).negate(b.loc, *c);
-				resRype = leftTypeIndex;
+				resType = leftTypeIndex;
 				break;
 			}
 			goto case BITWISE_AND_ASSIGN;
@@ -492,13 +510,29 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 		case PLUS_ASSIGN:
 			if (leftType.isPointer && rightType.isInteger) {
 				b.op = BinOp.PTR_PLUS_INT_ASSIGN;
-				resRype = leftTypeIndex;
+				resType = leftTypeIndex;
 				break;
 			}
 			goto case BITWISE_AND_ASSIGN;
 
-		case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN, SHL_ASSIGN, SHR_ASSIGN,
-			ASHR_ASSIGN, DIV_ASSIGN, MULT_ASSIGN, XOR_ASSIGN, ASSIGN:
+		case DIV_ASSIGN, MULT_ASSIGN:
+			bool success = autoconvTo(b.right, leftTypeIndex, c);
+			if (!success)
+				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+					leftType.typeName(c), binOpStrings[b.op],
+					rightType.typeName(c));
+			break;
+
+		case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN,
+			SHL_ASSIGN, SHR_ASSIGN, ASHR_ASSIGN, XOR_ASSIGN:
+			bool success = leftType.isInteger && rightType.isInteger && autoconvTo(b.right, leftTypeIndex, c);
+			if (!success)
+				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
+					leftType.typeName(c), binOpStrings[b.op],
+					rightType.typeName(c));
+			break;
+
+		case ASSIGN:
 			bool success = autoconvTo(b.right, leftTypeIndex, c);
 			if (!success)
 				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
@@ -510,7 +544,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 			c.internal_error(b.loc, "Unimplemented op %s", b.op);
 			assert(false);
 	}
-	b.type = resRype;
+	b.type = resType;
 }
 
 BinOp binOpAssignToRegularOp(BinOp op) {

@@ -478,6 +478,11 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				case IrOpcode.or: emitLirInstr!(Amd64Opcode.or); break;
 				case IrOpcode.xor: emitLirInstr!(Amd64Opcode.xor); break;
 
+				case IrOpcode.fadd: emitLirInstr!(Amd64Opcode.fadd); break;
+				case IrOpcode.fsub: emitLirInstr!(Amd64Opcode.fsub); break;
+				case IrOpcode.fmul: emitLirInstr!(Amd64Opcode.fmul); break;
+				case IrOpcode.fdiv: emitLirInstr!(Amd64Opcode.fdiv); break;
+
 				case IrOpcode.udiv, IrOpcode.sdiv, IrOpcode.urem, IrOpcode.srem:
 					//   v1 = div v2, v3
 					// is converted into:
@@ -497,19 +502,17 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					}
 					else fixIndex(divisor);
 
-					IrIndex dividendTop = amd64_reg.dx;
-					dividendTop.physRegSize = instrHeader.argSize;
+					IrIndex dividendTop = IrIndex(amd64_reg.dx, instrHeader.argSize);
 
 					// copy bottom half of dividend
-					IrIndex dividendBottom = amd64_reg.ax;
-					dividendBottom.physRegSize = instrHeader.argSize;
+					IrIndex dividendBottom = IrIndex(amd64_reg.ax, instrHeader.argSize);
 					makeMov(dividendBottom, instrHeader.arg(ir, 0), instrHeader.argSize);
 
 					if (isSigned) {
 						// if dividend is 8bit we use movsx and only change ax
 						// if it is bigger we use cwd/cdq/cqo that affects dx too
 						// TODO: for now always say that we modify dx even if we dont (8bit arg doesn't touch dx, only ax)
-						IrIndex divsxResult = amd64_reg.dx;
+						IrIndex divsxResult = IrIndex(amd64_reg.dx, instrHeader.argSize);
 						// sign-extend top half of dividend
 						ExtraInstrArgs extra2 = { argSize : instrHeader.argSize, result : divsxResult };
 						builder.emitInstr!(Amd64Opcode.divsx)(lirBlockIndex, extra2);
@@ -544,8 +547,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						rightArg = instrHeader.arg(ir, 1);
 					else
 					{
-						rightArg = amd64_reg.cx;
-						rightArg.physRegSize = IrArgSize.size8;
+						rightArg = IrIndex(amd64_reg.cx, IrArgSize.size8);
 						makeMov(rightArg, instrHeader.arg(ir, 1), instrHeader.argSize);
 					}
 					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
@@ -566,13 +568,13 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					recordIndex(instrHeader.result(ir), res.result);
 					break;
 				case IrOpcode.grow_stack:
-					IrIndex stackPtrReg = lir.getCallConv(context).stackPointer;
+					IrIndex stackPtrReg = IrIndex(lir.getCallConv(context).stackPointer, IrArgSize.size64);
 					ExtraInstrArgs extra = { addUsers : false, result : stackPtrReg };
 					builder.emitInstr!(Amd64Opcode.sub)(
 						lirBlockIndex, extra, stackPtrReg, getFixedIndex(instrHeader.arg(ir, 0)));
 					break;
 				case IrOpcode.shrink_stack:
-					IrIndex stackPtrReg = lir.getCallConv(context).stackPointer;
+					IrIndex stackPtrReg = IrIndex(lir.getCallConv(context).stackPointer, IrArgSize.size64);
 					ExtraInstrArgs extra = { addUsers : false, result : stackPtrReg };
 					builder.emitInstr!(Amd64Opcode.add)(
 						lirBlockIndex, extra, stackPtrReg, getFixedIndex(instrHeader.arg(ir, 0)));
@@ -645,7 +647,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							context.assertf(sizeTo == size64, "%s:%s: Invalid target size %s", funName, instrIndex, sizeTo);
 							emitLirInstr!(Amd64Opcode.movsx_dtoq);
 							break;
-						case size64: context.internal_error("%s:%s: Invalid source size %s", funName, instrIndex, sizeFrom); break;
+						case size64, size128, size256, size512: context.internal_error("%s:%s: Invalid source size %s", funName, instrIndex, sizeFrom); break;
 					}
 					break;
 				case IrOpcode.zext:
@@ -675,7 +677,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							context.assertf(sizeTo == size64, "Invalid target size %s", sizeTo);
 							emitLirInstr!(Amd64Opcode.mov);
 							break;
-						case size64: context.internal_error("%s:%s: Invalid source size %s", funName, instrIndex, sizeFrom); break;
+						case size64, size128, size256, size512: context.internal_error("%s:%s: Invalid source size %s", funName, instrIndex, sizeFrom); break;
 					}
 					break;
 				case IrOpcode.trunc:

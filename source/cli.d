@@ -80,9 +80,15 @@ int runCli(string[] args)
 			args,
 			"of", "Write output to file.", &outputFilename,
 			"target", targetHelp, &outputTarget,
+			"subsystem", "Select windows subsystem. [CUI(default), GUI]", &subSystem,
 			"check-only", "Disable backend passes, leaving only error checking", &checkOnly,
 
+			"no-dce", "Disable Dead Code Elimination", &driver.context.disableDCE,
+			"no-inline", "Disable Inlining", &driver.context.disableInline,
+
 			"print-time", "Print time of compilation.", &printTime,
+			"print-mem", "Print memory consumtion.", &printMem,
+
 			"print-source", "Print source code.", &driver.context.printSource,
 			"print-lexemes", "Print lexemes.", &driver.context.printLexemes,
 			"print-ast-fresh", "Print AST after parsing.", &driver.context.printAstFresh,
@@ -98,14 +104,8 @@ int runCli(string[] args)
 			"print-stack-layout", "Print stack layout.", &driver.context.printStackLayout,
 			"print-code-hex", "Print code hex.", &driver.context.printCodeHex,
 			"print-symbols", "Print symbols.", &driver.context.printSymbols,
-			"print-mem", "Print memory consumtion.", &printMem,
 			"print-filter", "Print only info about <function name>.", &filterFuncName,
 			"print-error-trace", "Print stack trace for every error", &driver.context.printTraceOnError,
-
-			"no-dce", "Disable Dead Code Elimination", &driver.context.disableDCE,
-			"no-inline", "Disable Inlining", &driver.context.disableInline,
-
-			"subsystem", "Select windows subsystem. [CUI(default), GUI]", &subSystem,
 		);
 
 		final switch (subSystem) {

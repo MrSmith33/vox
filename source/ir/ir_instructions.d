@@ -257,6 +257,11 @@ enum IrOpcode : ushort
 	@_ii(2, IFLG.hasResult) shl,
 	@_ii(2, IFLG.hasResult) lshr,
 	@_ii(2, IFLG.hasResult) ashr,
+
+	@_ii(2, IFLG.hasResult) fadd,
+	@_ii(2, IFLG.hasResult) fsub,
+	@_ii(2, IFLG.hasResult) fmul,
+	@_ii(2, IFLG.hasResult) fdiv,
 }
 
 bool hasSideEffects(IrOpcode opcode)
@@ -269,6 +274,9 @@ enum IrArgSize : ubyte {
 	size16,
 	size32,
 	size64,
+	size128,
+	size256,
+	size512,
 }
 
 IrArgSize sizeToIrArgSize(uint typeSize, CompilationContext* context) {

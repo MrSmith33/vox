@@ -23,6 +23,15 @@ struct IrIndex
 	}
 
 	/// Constructor for physicalRegister
+	this(PhysReg reg, uint regSize)
+	{
+		physRegIndex = reg.regIndex;
+		physRegSize = regSize;
+		physRegClass = reg.regClass;
+		kind = IrValueKind.physicalRegister;
+	}
+
+	/// ditto
 	this(uint index, uint regSize, uint regClass)
 	{
 		physRegIndex = index;
@@ -170,6 +179,9 @@ struct IrIndex
 	}
 	bool isTypeNoreturn() {
 		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrValueType.noreturn_t;
+	}
+	bool isTypeFloat() {
+		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && (typeIndex == IrValueType.f32 || typeIndex == IrValueType.f64);
 	}
 	IrValueType basicType() {
 		assert(kind == IrValueKind.type);

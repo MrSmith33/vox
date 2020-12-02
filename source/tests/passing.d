@@ -3728,3 +3728,116 @@ immutable test174 = q{--- test174
 		void foo(){}
 	}
 };
+
+
+@TestInfo(&tester175)
+immutable test175 = q{--- test175
+	// floats: arithmetics and comparisons
+	f32 f32_add(f32 a, f32 b) { return a + b; }
+	f64 f64_add(f64 a, f64 b) { return a + b; }
+	f32 f32_sub(f32 a, f32 b) { return a - b; }
+	f64 f64_sub(f64 a, f64 b) { return a - b; }
+	f32 f32_mul(f32 a, f32 b) { return a * b; }
+	f64 f64_mul(f64 a, f64 b) { return a * b; }
+	f32 f32_div(f32 a, f32 b) { return a / b; }
+	f64 f64_div(f64 a, f64 b) { return a / b; }
+	bool f32_lt(f32 a, f32 b) { return a < b; }
+	bool f64_lt(f64 a, f64 b) { return a < b; }
+	bool f32_le(f32 a, f32 b) { return a <= b; }
+	bool f64_le(f64 a, f64 b) { return a <= b; }
+	bool f32_eq(f32 a, f32 b) { return a == b; }
+	bool f64_eq(f64 a, f64 b) { return a == b; }
+	bool f32_ne(f32 a, f32 b) { return a != b; }
+	bool f64_ne(f64 a, f64 b) { return a != b; }
+	bool f32_gt(f32 a, f32 b) { return a > b; }
+	bool f64_gt(f64 a, f64 b) { return a > b; }
+	bool f32_ge(f32 a, f32 b) { return a >= b; }
+	bool f64_ge(f64 a, f64 b) { return a >= b; }
+};
+void tester175(ref TestContext ctx) {
+	auto f32_add = ctx.getFunctionPtr!(float, float, float)("f32_add");
+	assert(f32_add(42, 100) == 42f + 100f);
+	auto f64_add = ctx.getFunctionPtr!(double, double, double)("f64_add");
+	assert(f64_add(42, 100) == 42.0 + 100.0);
+
+	auto f32_sub = ctx.getFunctionPtr!(float, float, float)("f32_sub");
+	assert(f32_sub(42, 100) == 42f - 100f);
+	auto f64_sub = ctx.getFunctionPtr!(double, double, double)("f64_sub");
+	assert(f64_sub(42, 100) == 42.0 - 100.0);
+
+	auto f32_mul = ctx.getFunctionPtr!(float, float, float)("f32_mul");
+	assert(f32_mul(42, 100) == 42f * 100f);
+	auto f64_mul = ctx.getFunctionPtr!(double, double, double)("f64_mul");
+	assert(f64_mul(42, 100) == 42.0 * 100.0);
+
+	auto f32_div = ctx.getFunctionPtr!(float, float, float)("f32_div");
+	assert(f32_div(42, 100) == 42f / 100f);
+	auto f64_div = ctx.getFunctionPtr!(double, double, double)("f64_div");
+	assert(f64_div(42, 100) == 42.0 / 100.0);
+
+	auto f32_lt = ctx.getFunctionPtr!(bool, float, float)("f32_lt");
+	assert(f32_lt(42, 42) == (42f < 42f));
+	assert(f32_lt(42, 100) == (42f < 100f));
+	assert(f32_lt(100, 42) == (100f < 42f));
+	assert(f32_lt(-100, -42) == (-100f < -42f));
+	auto f64_lt = ctx.getFunctionPtr!(bool, double, double)("f64_lt");
+	assert(f64_lt(42, 42) == (42.0 < 42.0));
+	assert(f64_lt(42, 100) == (42.0 < 100.0));
+	assert(f64_lt(100, 42) == (100.0 < 42.0));
+	assert(f64_lt(-100, -42) == (-100.0 < -42.0));
+
+	auto f32_le = ctx.getFunctionPtr!(bool, float, float)("f32_le");
+	assert(f32_le(42, 42) == (42f <= 42f));
+	assert(f32_le(42, 100) == (42f <= 100f));
+	assert(f32_le(100, 42) == (100f <= 42f));
+	assert(f32_le(-100, -42) == (-100f <= -42f));
+	auto f64_le = ctx.getFunctionPtr!(bool, double, double)("f64_le");
+	assert(f64_le(42, 42) == (42.0 <= 42.0));
+	assert(f64_le(42, 100) == (42.0 <= 100.0));
+	assert(f64_le(100, 42) == (100.0 <= 42.0));
+	assert(f64_le(-100, -42) == (-100.0 <= -42.0));
+
+	auto f32_eq = ctx.getFunctionPtr!(bool, float, float)("f32_eq");
+	assert(f32_eq(42, 42) == (42f == 42f));
+	assert(f32_eq(42, 100) == (42f == 100f));
+	assert(f32_eq(100, 42) == (100f == 42f));
+	assert(f32_eq(-100, -42) == (-100f == -42f));
+	auto f64_eq = ctx.getFunctionPtr!(bool, double, double)("f64_eq");
+	assert(f64_eq(42, 42) == (42.0 == 42.0));
+	assert(f64_eq(42, 100) == (42.0 == 100.0));
+	assert(f64_eq(100, 42) == (100.0 == 42.0));
+	assert(f64_eq(-100, -42) == (-100.0 == -42.0));
+
+	auto f32_ne = ctx.getFunctionPtr!(bool, float, float)("f32_ne");
+	assert(f32_ne(42, 42) == (42f != 42f));
+	assert(f32_ne(42, 100) == (42f != 100f));
+	assert(f32_ne(100, 42) == (100f != 42f));
+	assert(f32_ne(-100, -42) == (-100f != -42f));
+	auto f64_ne = ctx.getFunctionPtr!(bool, double, double)("f64_ne");
+	assert(f64_ne(42, 42) == (42.0 != 42.0));
+	assert(f64_ne(42, 100) == (42.0 != 100.0));
+	assert(f64_ne(100, 42) == (100.0 != 42.0));
+	assert(f64_ne(-100, -42) == (-100.0 != -42.0));
+
+	auto f32_gt = ctx.getFunctionPtr!(bool, float, float)("f32_gt");
+	assert(f32_gt(42, 42) == (42f > 42f));
+	assert(f32_gt(42, 100) == (42f > 100f));
+	assert(f32_gt(100, 42) == (100f > 42f));
+	assert(f32_gt(-100, -42) == (-100f > -42f));
+	auto f64_gt = ctx.getFunctionPtr!(bool, double, double)("f64_gt");
+	assert(f64_gt(42, 42) == (42.0 > 42.0));
+	assert(f64_gt(42, 100) == (42.0 > 100.0));
+	assert(f64_gt(100, 42) == (100.0 > 42.0));
+	assert(f64_gt(-100, -42) == (-100.0 > -42.0));
+
+	auto f32_ge = ctx.getFunctionPtr!(bool, float, float)("f32_ge");
+	assert(f32_ge(42, 42) == (42f >= 42f));
+	assert(f32_ge(42, 100) == (42f >= 100f));
+	assert(f32_ge(100, 42) == (100f >= 42f));
+	assert(f32_ge(-100, -42) == (-100f >= -42f));
+	auto f64_ge = ctx.getFunctionPtr!(bool, double, double)("f64_ge");
+	assert(f64_ge(42, 42) == (42.0 >= 42.0));
+	assert(f64_ge(42, 100) == (42.0 >= 100.0));
+	assert(f64_ge(100, 42) == (100.0 >= 42.0));
+	assert(f64_ge(-100, -42) == (-100.0 >= -42.0));
+}

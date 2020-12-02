@@ -37,6 +37,8 @@ struct BasicTypeNode {
 			case BasicType.t_u32: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
 			case BasicType.t_i64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
 			case BasicType.t_u64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
+			case BasicType.t_f32: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
+			case BasicType.t_f64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
 			case BasicType.t_alias: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
 			case BasicType.t_type: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
 			default:
@@ -74,6 +76,8 @@ IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 		case BasicType.t_u32: return makeBasicTypeIndex(IrValueType.i32);
 		case BasicType.t_i64: return makeBasicTypeIndex(IrValueType.i64);
 		case BasicType.t_u64: return makeBasicTypeIndex(IrValueType.i64);
+		case BasicType.t_f32: return makeBasicTypeIndex(IrValueType.f32);
+		case BasicType.t_f64: return makeBasicTypeIndex(IrValueType.f64);
 		case BasicType.t_alias: return makeBasicTypeIndex(IrValueType.i32);
 		case BasicType.t_type: return makeBasicTypeIndex(IrValueType.i32);
 		default:

@@ -24,6 +24,7 @@ struct LiveInterval
 	IrIndex storageHint;
 	IntervalIndex parent; // prev split interval to the left
 	IntervalIndex child; // next split interval to the right
+	ubyte regClass;
 
 	bool isFixed() { return definition.isPhysReg; }
 	bool isSplitChild() { return !parent.isNull; }

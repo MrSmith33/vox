@@ -36,6 +36,7 @@ struct IrConstant
 			case size16: return makeBasicTypeIndex(IrValueType.i16); break;
 			case size32: return makeBasicTypeIndex(IrValueType.i32); break;
 			case size64: return makeBasicTypeIndex(IrValueType.i64); break;
+			case size128, size256, size512: assert(false, "Sizes bigger than 64 are not stored in IrConstant");
 		}
 	}
 
@@ -103,6 +104,7 @@ struct IrConstantStorage
 				case size16: return makeBasicTypeIndex(IrValueType.i16).typeOfZeroConstant;
 				case size32: return makeBasicTypeIndex(IrValueType.i32).typeOfZeroConstant;
 				case size64: return makeBasicTypeIndex(IrValueType.i64).typeOfZeroConstant;
+				case size128, size256, size512: assert(false, "Sizes bigger than 64 are not stored in IrConstant");
 			}
 		}
 

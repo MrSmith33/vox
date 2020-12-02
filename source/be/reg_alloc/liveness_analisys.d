@@ -156,22 +156,9 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			uint linearInstrIndex = liveness.linearIndicies.instr(instrIndex);
 			version(LivePrint) writefln("[LIVE]   % 3s %s", linearInstrIndex, instrIndex);
 
-			// -------------- Assign interval hints --------------
-			// if non-mov instruction assigns to phys register,
-			// movs must follow instruction immediately matching the order of results
-			// if non-mov instruction accepts 1 or more phys registers, then
-			// it must be preceded by movs from vregs to pregs in matching order
-			// Example:
-			//   eax = v.20 // args[0]
-			//   ecx = v.45 // args[2]
-			//   optional non-mov instruction (for call, which has extendFixedArgRange)
-			//   edx, ecx = some_instr(eax, v.100, ecx) // edx is results[0]
-			//   optional non-mov instruction (for call, which has extendFixedResultRange)
-			//   v.200 = edx // results[0] (aka result)
-			//   v.300 = ecx // results[1]
-
 			InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
 			//writefln("isMov %s %s", cast(Amd64Opcode)instrHeader.op, instrInfo.isMov);
+			// -------------- Assign interval hints --------------
 			if (instrInfo.isMov) {
 				IrIndex from = args[0];
 				IrIndex to = result;
@@ -187,6 +174,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 				if (result.isVirtReg) {
 					liveness.get(result).setFrom(context, linearInstrIndex);
 					LiveInterval* it = liveness.vint(result);
+					it.regClass = ir.getValueType(context, it.definition).isTypeFloat ? 1 : 0;
 					it.prependUse(UsePosition(linearInstrIndex, UseKind.instruction));
 					liveRemove(result);
 				} else if (result.isPhysReg && !instrInfo.isMov) {
@@ -199,6 +187,19 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 				}
 			}
 
+			//               HANDLE IMPLICIT ARGS
+			// if non-mov instruction assigns to phys register,
+			// movs must follow instruction immediately matching the order of results
+			// if non-mov instruction accepts 1 or more phys registers, then
+			// it must be preceded by movs from vregs to pregs in matching order
+			// Example:
+			//   eax = v.20 // args[0]
+			//   ecx = v.45 // args[2]
+			//   optional non-mov instruction (for call, which has extendFixedArgRange)
+			//   edx, ecx = some_instr(eax, v.100, ecx) // edx is results[0]
+			//   optional non-mov instruction (for call, which has extendFixedResultRange)
+			//   v.200 = edx // results[0] (aka result)
+			//   v.300 = ecx // results[1]
 			uint physRegArgsOffset = 0;
 			foreach(IrIndex arg; args) {
 				if (arg.isVirtReg) {
@@ -252,8 +253,8 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			{
 				IrIndex callee = args[0];
 				CallConv* cc = context.types.getCalleeCallConv(callee, ir, context);
-				IrIndex[] volatileRegs = cc.volatileRegs;
-				foreach(IrIndex reg; volatileRegs) {
+				FullRegSet volatileRegs = cc.volatileRegs;
+				foreach(PhysReg reg; volatileRegs) {
 					liveness.pint(reg).addRange(context, linearInstrIndex, linearInstrIndex+1);
 				}
 			}
@@ -266,6 +267,8 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			if (phi.result.isVirtReg) {
 				liveRemove(phi.result);
 				liveness.get(phi.result).setFrom(context, blockFromPos);
+				LiveInterval* it = liveness.vint(phi.result);
+				it.regClass = ir.getValueType(context, it.definition).isTypeFloat ? 1 : 0;
 			}
 		}
 

@@ -111,6 +111,11 @@ struct TypeNode
 		return IsSigned.no;
 	}
 
+	bool isFloat() {
+		if (astType == AstType.type_basic) return as_basic.isFloat;
+		return false;
+	}
+
 	AstIndex getElementType(CompilationContext* c) {
 		switch(astType)
 		{

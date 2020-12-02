@@ -129,20 +129,15 @@ enum MAX_ARG_CLASSES = 2;
 struct AbiState {
 	FunctionAbi abi;
 
-	IrIndex syscallRegister;
-	IrIndex[] gprRegs;
-	IrIndex[] retRegs;
+	PhysReg[] gprRegs;
+	PhysReg[] sseRegs;
+	PhysReg[] retRegs;
 	IrTypeFunction* type;
 
-	ubyte gprRemaining;
-	ubyte sseRemaining;
-	bool useSyscall;
+	//ubyte gprRemaining;
+	//ubyte sseRemaining;
+	//bool useSyscall;
 
-	ubyte gprRegistersUsed() {
-		return cast(ubyte)(gprRegs.length - gprRemaining);
-	}
-
-	ArgClassifier classify;
 	uint[] paramClassBuf;
 
 	void init(CompilationContext* c, IrTypeFunction* type) {
@@ -154,9 +149,10 @@ struct AbiState {
 		abi.paramClasses = paramClasses[0..type.numParameters];
 		abi.paramData = c.allocateTempArray!ParamLocation(type.numParameters);
 
-		gprRegs = cc.paramsInRegs;
-		gprRemaining = cast(ubyte)cc.paramsInRegs.length;
-		classify = classify_abis[type.callConv];
+		gprRegs = cc.gprParamRegs;
+		sseRegs = cc.sseParamRegs;
+		ArgClassifier classify = classify_abis[type.callConv];
+		classify(c, this);
 
 		calc_stack(c);
 	}
@@ -167,8 +163,6 @@ struct AbiState {
 	}
 
 	void calc_stack(CompilationContext* c) {
-		classify(c, this);
-
 		// choose stack ordering
 		int start = 0;
 		int end = cast(int)abi.paramClasses.length;
@@ -212,7 +206,7 @@ struct AbiState {
 }
 
 union ParamLocation {
-	IrIndex[MAX_ARG_CLASSES] regs;
+	PhysReg[MAX_ARG_CLASSES] regs;
 	struct {
 		// offset from the first byte of first parameter on the stack
 		// first parameter will have offset of 0
@@ -225,6 +219,7 @@ struct FunctionAbi
 {
 	// must be byValueReg when function has no result
 	PassClass returnClass;
+	// if is pass by ptr, then first slot is hidden parameter and second is return register
 	ParamLocation returnLoc;
 	// length is number of function parameters
 	// hidden parameter is not included here, instead it is handled immediately
@@ -235,16 +230,28 @@ struct FunctionAbi
 	uint stackSize;
 	uint stackAlignment;
 	bool reverseStackOrder;
+	ubyte gprRegistersUsed;
+	ubyte sseRegistersUsed;
+	// if defined, syscall instruction is used instead of call
+	PhysReg syscallRegister;
+	bool useSyscall;
 }
 
 // classification callback will classify the argument and immediately try to assign register if available
 // If there is no free registers left, it will reclassify the argument to be passed via memory.
 void win64_classify(CompilationContext* c, ref AbiState state)
 {
+	// used for sse too
+	ubyte gprRemaining = cast(ubyte)state.gprRegs.length;
+	scope(exit) state.abi.gprRegistersUsed = cast(ubyte)(state.gprRegs.length - gprRemaining);
+
 	state.abi.returnClass = PassClass.ignore;
 	if (state.type.numResults == 1) {
 		IrIndex resType = state.type.resultTypes[0];
-		if (resType.fitsIntoRegister(c)) {
+		if (resType.isTypeFloat) {
+			state.abi.returnClass = PassClass.byValueReg;
+			state.abi.returnLoc.regs[0] = amd64_reg.xmm0;
+		} else if (resType.fitsIntoRegister(c)) {
 			state.abi.returnClass = PassClass.byValueReg;
 			state.abi.returnLoc.regs[0] = amd64_reg.ax;
 		} else {
@@ -252,28 +259,34 @@ void win64_classify(CompilationContext* c, ref AbiState state)
 			state.abi.returnLoc.regs[0] = state.gprRegs[0];
 			state.abi.returnLoc.regs[1] = amd64_reg.ax; // we store return register in second slot
 			// TODO: also reduce number of sse regs
-			--state.gprRemaining;
+			--gprRemaining;
 		}
 	}
 	//writefln("result %s %s", state.abi.returnClass, state.abi.returnLoc.regs);
 
 	foreach(uint i; 0..cast(uint)state.type.numParameters) {
 		IrIndex paramType = state.type.parameterTypes[i];
-		if (fitsIntoRegister(paramType, c)) {
-			if (state.gprRemaining) {
+		if (paramType.isTypeFloat) {
+			if (gprRemaining) {
 				state.abi.paramClasses[i] = PassClass.byValueReg;
-				state.abi.paramData[i].regs[0] = state.gprRegs[$-state.gprRemaining];
-				// TODO: also reduce number of sse regs
-				--state.gprRemaining;
+				state.abi.paramData[i].regs[0] = state.sseRegs[$-gprRemaining];
+				--gprRemaining; // affects sse too
+			} else {
+				state.abi.paramClasses[i] = PassClass.byValueMemory;
+			}
+		} else if (fitsIntoRegister(paramType, c)) {
+			if (gprRemaining) {
+				state.abi.paramClasses[i] = PassClass.byValueReg;
+				state.abi.paramData[i].regs[0] = state.gprRegs[$-gprRemaining];
+				--gprRemaining; // affects sse too
 			} else {
 				state.abi.paramClasses[i] = PassClass.byValueMemory;
 			}
 		} else {
-			if (state.gprRemaining) {
+			if (gprRemaining) {
 				state.abi.paramClasses[i] = PassClass.byPtrReg;
-				state.abi.paramData[i].regs[0] = state.gprRegs[$-state.gprRemaining];
-				// TODO: also reduce number of sse regs
-				--state.gprRemaining;
+				state.abi.paramData[i].regs[0] = state.gprRegs[$-gprRemaining];
+				--gprRemaining; // affects sse too
 			} else {
 				state.abi.paramClasses[i] = PassClass.byPtrMemory;
 			}
@@ -295,7 +308,8 @@ Sysv_AbiParamClass classify_param(CompilationContext* c, IrIndex paramType) {
 				case i16: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
 				case i32: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
 				case i64: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.integer);
-				// floats are SSE class, TODO
+				case f32: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.sse);
+				case f64: return Sysv_AbiParamClass(PassClass.byValueReg, AbiClass.sse);
 			}
 		case pointer:
 		case func_t:
@@ -313,12 +327,19 @@ Sysv_AbiParamClass classify_param(CompilationContext* c, IrIndex paramType) {
 
 void sysv64_classify(CompilationContext* c, ref AbiState state)
 {
+	ubyte gprRemaining = cast(ubyte)state.gprRegs.length;
+	ubyte sseRemaining = cast(ubyte)state.sseRegs.length;
+	scope(exit) state.abi.gprRegistersUsed = cast(ubyte)(state.gprRegs.length - gprRemaining);
+	scope(exit) state.abi.sseRegistersUsed = cast(ubyte)(state.sseRegs.length - sseRemaining);
+
 	state.abi.returnClass = PassClass.ignore;
 	if (state.type.numResults == 1) {
 		IrIndex resType = state.type.resultTypes[0];
 		Sysv_AbiParamClass resClass = classify_param(c, resType);
 		state.abi.returnClass = resClass.passClass;
-		if (resClass.low == AbiClass.integer) {
+		if (resClass.low == AbiClass.sse) {
+			state.abi.returnLoc.regs[0] = amd64_reg.xmm0;
+		} else if (resClass.low == AbiClass.integer) {
 			state.abi.returnLoc.regs[0] = amd64_reg.ax;
 			if (resClass.high == AbiClass.integer)
 				state.abi.returnLoc.regs[1] = amd64_reg.dx;
@@ -326,7 +347,7 @@ void sysv64_classify(CompilationContext* c, ref AbiState state)
 			state.abi.returnClass = PassClass.byPtrReg;
 			state.abi.returnLoc.regs[0] = state.gprRegs[0];
 			state.abi.returnLoc.regs[1] = amd64_reg.ax; // we store return register in second slot
-			--state.gprRemaining;
+			--gprRemaining;
 		}
 		//writefln("res %s", state.abi.returnClass);
 	}
@@ -339,19 +360,32 @@ void sysv64_classify(CompilationContext* c, ref AbiState state)
 		switch(paramClass_sysv.low)
 		{
 			case AbiClass.integer:
-				if (state.gprRemaining < paramClass_sysv.len) {
+				if (gprRemaining < paramClass_sysv.len) {
 					state.abi.paramClasses[i] = PassClass.byValueMemory;
 					goto case AbiClass.memory;
 				}
 
 				// assign regs
 				foreach(uint j; 0..paramClass_sysv.len) {
-					assert(state.gprRemaining);
-					state.abi.paramData[i].regs[j] = state.gprRegs[$-state.gprRemaining];
-					--state.gprRemaining;
+					assert(gprRemaining);
+					state.abi.paramData[i].regs[j] = state.gprRegs[$-gprRemaining];
+					--gprRemaining;
 				}
 				break;
 
+			case AbiClass.sse:
+				if (sseRemaining < paramClass_sysv.len) {
+					state.abi.paramClasses[i] = PassClass.byValueMemory;
+					goto case AbiClass.memory;
+				}
+
+				// assign regs
+				foreach(uint j; 0..paramClass_sysv.len) {
+					assert(sseRemaining);
+					state.abi.paramData[i].regs[j] = state.sseRegs[$-sseRemaining];
+					--sseRemaining;
+				}
+				break;
 			case AbiClass.memory: break;
 			case AbiClass.no_class: break; // for empty structs
 			default:
@@ -362,8 +396,8 @@ void sysv64_classify(CompilationContext* c, ref AbiState state)
 
 void sysv64_syscall_classify(CompilationContext* c, ref AbiState state)
 {
-	state.syscallRegister = amd64_reg.ax;
-	state.useSyscall = true;
+	state.abi.syscallRegister = amd64_reg.ax;
+	state.abi.useSyscall = true;
 	if (c.targetOs != TargetOs.linux)
 		c.error("Cannot use System V syscall calling convention on %s", c.targetOs);
 
@@ -404,9 +438,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 	if (state.abi.returnClass == PassClass.byPtrReg) {
 		// pointer to return value is passed via hidden parameter, read it into virt reg
 		IrIndex retType = c.types.appendPtr(state.type.resultTypes[0]);
-		IrIndex paramReg = state.abi.returnLoc.regs[0];
-
-		paramReg.physRegSize = typeToRegSize(retType, c);
+		IrIndex paramReg = IrIndex(state.abi.returnLoc.regs[0], typeToRegSize(retType, c));
 		ExtraInstrArgs extra = { type : retType };
 		auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, paramReg);
 		builder.prependBlockInstr(ir.entryBasicBlock, moveInstr.instruction);
@@ -423,25 +455,23 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 		PassClass paramClass = state.abi.paramClasses[paramIndex];
 		final switch(paramClass) {
 			case PassClass.byValueReg:
-				IrIndex[2] paramRegs = state.abi.paramData[paramIndex].regs;
-				paramRegs[0].physRegSize = typeToRegSize(type, c);
+				IrIndex paramReg = IrIndex(state.abi.paramData[paramIndex].regs[0], typeToRegSize(type, c));
 				ExtraInstrArgs extra = { result : instrHeader.result(ir) };
-				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, paramRegs[0]).instruction;
+				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, paramReg).instruction;
 				replaceInstruction(ir, instrIndex, moveInstr);
 				break;
 
 			case PassClass.byValueRegMulti:
-				IrIndex[2] paramRegs = state.abi.paramData[paramIndex].regs;
+				PhysReg[2] paramRegs = state.abi.paramData[paramIndex].regs;
 				IrIndex instr = receiveMultiValue(ir.nextInstr(instrIndex), paramRegs, instrHeader.result(ir), builder);
 				replaceInstruction(ir, instrIndex, instr);
 				break;
 
 			case PassClass.byPtrReg:
 				type = c.types.appendPtr(type);
-				IrIndex[2] paramRegs = state.abi.paramData[paramIndex].regs;
-				paramRegs[0].physRegSize = typeToRegSize(type, c);
+				IrIndex paramReg = IrIndex(state.abi.paramData[paramIndex].regs[0], typeToRegSize(type, c));
 				ExtraInstrArgs extra1 = { type : type };
-				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra1, paramRegs[0]);
+				auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra1, paramReg);
 				replaceInstruction(ir, instrIndex, moveInstr.instruction);
 
 				ExtraInstrArgs extra2 = { result : instrHeader.result(ir) };
@@ -536,7 +566,6 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 
 		enum STACK_ITEM_SIZE = 8;
 		size_t numArgs = args.length;
-		size_t numParamsInRegs = callConv.paramsInRegs.length;
 		// how many bytes are allocated on the stack before func call
 		size_t stackReserve;
 		if (callConv.hasShadowSpace)
@@ -624,7 +653,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 
 						IrIndex ptrType = c.types.appendPtr(type);
 						ExtraInstrArgs extra = { type : ptrType };
-						IrIndex ptr = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, amd64_reg.sp).result;
+						IrIndex ptr = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, IrIndex(amd64_reg.sp, ArgType.QWORD)).result;
 						builder.emitInstrBefore!(IrOpcode.store)(instrIndex, ExtraInstrArgs(), ptr, arg);
 
 						stackOffset += allocSize;
@@ -636,9 +665,8 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 		}
 
 		if (callee_state.abi.returnClass == PassClass.byPtrReg) {
-			IrIndex argRegister = callee_state.abi.returnLoc.regs[0];
 			IrIndex type = ir.getValueType(c, args[0]);
-			argRegister.physRegSize = typeToRegSize(type, c);
+			IrIndex argRegister = IrIndex(callee_state.abi.returnLoc.regs[0], typeToRegSize(type, c));
 			ExtraInstrArgs extra = { result : argRegister };
 			builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, args[0]);
 		}
@@ -651,21 +679,18 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			IrIndex type = ir.getValueType(c, arg);
 			final switch(paramClass) {
 				case PassClass.byValueReg, PassClass.byPtrReg:
-					IrIndex argRegister = paramData.regs[0];
-					argRegister.physRegSize = typeToRegSize(type, c);
+					IrIndex argRegister = IrIndex(paramData.regs[0], typeToRegSize(type, c));
 					ExtraInstrArgs extra = { result : argRegister };
 					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, arg);
 					break;
 				case PassClass.byValueRegMulti:
 					IrIndex[2] vals = simplifyConstant128(instrIndex, arg, builder, c);
 
-					IrIndex reg1 = paramData.regs[0];
-					reg1.physRegSize = IrArgSize.size64;
+					IrIndex reg1 = IrIndex(paramData.regs[0], ArgType.QWORD);
 					ExtraInstrArgs extra3 = { result : reg1 };
 					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra3, vals[0]);
 
-					IrIndex reg2 = paramData.regs[1];
-					reg2.physRegSize = IrArgSize.size64;
+					IrIndex reg2 = IrIndex(paramData.regs[1], ArgType.QWORD);
 					ExtraInstrArgs extra4 = { result : reg2 };
 					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra4, vals[1]);
 					break;
@@ -686,15 +711,20 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 
 		// fix arguments
 		scope(exit) {
-			ubyte regsUsed = callee_state.gprRegistersUsed;
+			ubyte regsUsed = callee_state.abi.gprRegistersUsed;
 			if (regsUsed + 1 <= instrHeader.numArgs) {
 				// reuse instruction
 				instrHeader.numArgs = cast(ubyte)(regsUsed + 1); // include callee
-				instrHeader.args(ir)[1..$] = callee_state.gprRegs[0..regsUsed]; // fill with regs
-				if (callee_state.useSyscall) {
+
+				// fill with regs
+				foreach(i, ref arg; instrHeader.args(ir)[1..$]) {
+					// size is irrelevant here because register is only mentioned here to aid register allocation
+					arg = IrIndex(callee_state.gprRegs[i], ArgType.QWORD);
+				}
+
+				if (callee_state.abi.useSyscall) {
 					instrHeader.op = IrOpcode.syscall;
-					IrIndex syscallRegister = callee_state.syscallRegister;
-					syscallRegister.physRegSize = ArgType.DWORD;
+					IrIndex syscallRegister = IrIndex(callee_state.abi.syscallRegister, ArgType.DWORD);
 					ExtraInstrArgs extra = { result : syscallRegister };
 					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, c.constants.add(callee_state.type.syscallNumber, IsSigned.no));
 					// We leave callee here, so that liveness analysis can get calling convention
@@ -707,10 +737,16 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				if (instrHeader.hasResult)
 					extra.result = instrHeader.result(ir);
 				IrIndex newCallInstr;
-				assert(!callee_state.useSyscall); // Syscalls are not allowed to introduce extra parameters
+				assert(!callee_state.abi.useSyscall); // Syscalls are not allowed to introduce extra parameters
 				newCallInstr = builder.emitInstr!(IrOpcode.call)(extra, instrHeader.arg(ir, 0)).instruction;
 				IrInstrHeader* callHeader = ir.getInstr(newCallInstr);
-				callHeader.args(ir)[1..$] = callee_state.gprRegs[0..regsUsed];
+
+				// fill with regs
+				foreach(i, ref arg; callHeader.args(ir)[1..$]) {
+					// size is irrelevant here because register is only mentioned here to aid register allocation
+					arg = IrIndex(callee_state.gprRegs[i], ArgType.QWORD);
+				}
+
 				replaceInstruction(ir, instrIndex, newCallInstr);
 			}
 		}
@@ -740,18 +776,17 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			final switch (callee_state.abi.returnClass) {
 				case PassClass.byValueReg:
 					// mov result to virt reg
-					IrIndex returnReg = callee_state.abi.returnLoc.regs[0];
-					returnReg.physRegSize = typeToIrArgSize(ir.getVirtReg(instrHeader.result(ir)).type, c);
+					IrIndex returnReg = IrIndex(callee_state.abi.returnLoc.regs[0], typeToIrArgSize(ir.getVirtReg(instrHeader.result(ir)).type, c));
 					ExtraInstrArgs extra = { result : instrHeader.result(ir) };
 					auto moveInstr = builder.emitInstr!(IrOpcode.move)(extra, returnReg).instruction;
 					builder.insertAfterInstr(lastInstr, moveInstr);
 					instrHeader.result(ir) = returnReg;
 					break;
 				case PassClass.byValueRegMulti:
-					IrIndex[2] paramRegs = state.abi.returnLoc.regs;
-					IrIndex instr = receiveMultiValue(ir.nextInstr(instrIndex), paramRegs, instrHeader.result(ir), builder);
+					PhysReg[2] retRegs = state.abi.returnLoc.regs;
+					IrIndex instr = receiveMultiValue(ir.nextInstr(instrIndex), retRegs, instrHeader.result(ir), builder);
 					builder.insertAfterInstr(lastInstr, instr);
-					instrHeader.result(ir) = paramRegs[0];
+					instrHeader.result(ir) = IrIndex(retRegs[0], ArgType.QWORD); // TODO: need to put both registers as result
 					break;
 				case PassClass.byPtrReg:
 					ExtraInstrArgs extra = { result : originalResult };
@@ -774,7 +809,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 		instrHeader.op = IrOpcode.ret;
 
 		removeUser(c, ir, instrIndex, instrHeader.arg(ir, 0));
-		IrIndex[2] resRegs = state.abi.returnLoc.regs;
+		PhysReg[2] resRegs = state.abi.returnLoc.regs;
 
 		final switch (state.abi.returnClass)
 		{
@@ -783,16 +818,15 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				IrIndex value = instrHeader.arg(ir, 0);
 				IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), hiddenParameter, value);
 				builder.insertBeforeInstr(instrIndex, instr);
-				IrIndex result = resRegs[1]; // we store return register in second slot
+				IrIndex result = IrIndex(resRegs[1], ArgType.QWORD); // we store return register in second slot
 				ExtraInstrArgs extra = { result : result };
 				IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, hiddenParameter).instruction;
 				builder.insertBeforeInstr(instrIndex, copyInstr);
 				break;
 			case PassClass.byValueReg:
 				IrIndex value = simplifyConstant(instrHeader.arg(ir, 0), c);
-				IrIndex result = resRegs[0];
 				IrIndex type = irFuncType.resultTypes[0];
-				result.physRegSize = typeToRegSize(type, c);
+				IrIndex result = IrIndex(resRegs[0], typeToRegSize(type, c));
 				ExtraInstrArgs extra = { result : result };
 				IrIndex copyInstr = builder.emitInstr!(IrOpcode.move)(extra, value).instruction;
 				builder.insertBeforeInstr(instrIndex, copyInstr);
@@ -800,13 +834,11 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			case PassClass.byValueRegMulti:
 				IrIndex[2] vals = simplifyConstant128(instrIndex, instrHeader.arg(ir, 0), builder, c);
 
-				IrIndex result1 = resRegs[0];
-				result1.physRegSize = IrArgSize.size64;
+				IrIndex result1 = IrIndex(resRegs[0], ArgType.QWORD); // hidden ptr register
 				ExtraInstrArgs extra3 = { result : result1 };
 				builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra3, vals[0]);
 
-				IrIndex result2 = resRegs[1]; // we store return register in second slot
-				result2.physRegSize = IrArgSize.size64;
+				IrIndex result2 = IrIndex(resRegs[1], ArgType.QWORD); // we store return register in second slot
 				ExtraInstrArgs extra4 = { result : result2 };
 				builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra4, vals[1]);
 				break;
@@ -899,17 +931,17 @@ IrIndex[2] simplifyConstant128(IrIndex insertBefore, IrIndex value, ref IrBuilde
 }
 
 // glue 2 registers into aggregate
-IrIndex receiveMultiValue(IrIndex beforeInstr, IrIndex[2] regs, IrIndex result, ref IrBuilder builder) {
+IrIndex receiveMultiValue(IrIndex beforeInstr, PhysReg[2] regs, IrIndex result, ref IrBuilder builder) {
 	IrIndex type = builder.ir.getVirtReg(result).type;
-	regs[0].physRegSize = IrArgSize.size64;
-	regs[1].physRegSize = IrArgSize.size64;
+	IrIndex reg1 = IrIndex(regs[0], ArgType.QWORD);
+	IrIndex reg2 = IrIndex(regs[1], ArgType.QWORD);
 
 	ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
-	auto move1 = builder.emitInstr!(IrOpcode.move)(extra1, regs[0]);
+	auto move1 = builder.emitInstr!(IrOpcode.move)(extra1, reg1);
 	builder.insertBeforeInstr(beforeInstr, move1.instruction);
 
 	ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64) };
-	auto move2 = builder.emitInstr!(IrOpcode.move)(extra2, regs[1]);
+	auto move2 = builder.emitInstr!(IrOpcode.move)(extra2, reg2);
 	builder.insertBeforeInstr(beforeInstr, move2.instruction);
 
 	// store both regs into stack slot, then load aggregate

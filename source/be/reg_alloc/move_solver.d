@@ -16,7 +16,7 @@ struct MoveSolver
 	CompilationContext* context;
 
 	ValueInfo[] stackSlots;
-	ValueInfo[] registers;
+	ValueInfo[NUM_REGS_PER_CLASS][NUM_REG_CLASSES] registers;
 	ValueInfo anyConstant;
 	IrIndex* writtenNodesPtr;
 	size_t savedBufLength;
@@ -31,8 +31,6 @@ struct MoveSolver
 	{
 		savedBufLength = context.tempBuffer.length;
 
-		size_t numRegs = context.machineInfo.registers.length;
-		registers = context.allocateTempArray!ValueInfo(cast(uint)numRegs);
 		size_t numStackSlots = fun.backendData.stackLayout.slots.length;
 		stackSlots = context.allocateTempArray!ValueInfo(cast(uint)numStackSlots);
 
@@ -53,7 +51,6 @@ struct MoveSolver
 
 		savedBufLength = 0;
 		stackSlots = null;
-		registers = null;
 		writtenNodesPtr = null;
 		assert(anyConstant == ValueInfo.init);
 		assert(numWriteOnlyValues == 0);
@@ -64,7 +61,7 @@ struct MoveSolver
 		switch(index.kind) {
 			case IrValueKind.constant, IrValueKind.constantZero: return anyConstant;
 			case IrValueKind.stackSlot: return stackSlots[index.storageUintIndex];
-			case IrValueKind.physicalRegister:  return registers[index.physRegIndex];
+			case IrValueKind.physicalRegister:  return registers[index.physRegClass][index.physRegIndex];
 			default: context.internal_error("getInfo(%s)", index); assert(false);
 		}
 	}

@@ -20,8 +20,8 @@ enum IrValueType : ubyte
 	i16,
 	i32,
 	i64,
-	//f32,
-	//f64,
+	f32,
+	f64,
 }
 
 ///
@@ -239,6 +239,8 @@ struct IrTypeStorage
 				case IrValueType.i16: return SizeAndAlignment(2, 1);
 				case IrValueType.i32: return SizeAndAlignment(4, 2);
 				case IrValueType.i64: return SizeAndAlignment(8, 3);
+				case IrValueType.f32: return SizeAndAlignment(4, 2);
+				case IrValueType.f64: return SizeAndAlignment(8, 3);
 			}
 			case IrTypeKind.pointer:
 				return SizeAndAlignment(8, 3);

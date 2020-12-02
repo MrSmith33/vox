@@ -67,7 +67,24 @@
 + escape sequences in string/char literals (\n)
 	can be emitted into IrGlobalStorage.initializerBuffer
 	+ in char literals
-- float double
++ float double
+	+ windows ABI
+	- sysv ABI
+	+ +-*/
+	+ < > <= >= == !=
+	- passing xmm args
+	- mixed type args
+	- structs with floats
+	- arrays
+	- load/store/push
+	- pass/receive floats on stack
+	- int <-> float casts
+	- regalloc needs to only work with current register class
+	- constants
+	- constant folding
+	- CTFE
+	- xchg
+	- save/restore of callee saved xmm registers need to have proper size
 - union
 - struct
 	+ struct methods

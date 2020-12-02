@@ -59,84 +59,68 @@ void pass_linear_scan(LinearScan* linearScan)
 
 struct RegisterState
 {
-	IrIndex index;
 	IntervalIndex activeInterval;
-	bool isAllocatable;
-	bool isUsed;
-	bool isCalleeSaved;
-	uint blockPos;
-	uint usePos;
+}
 
-	void setUsePos(uint pos) {
-		usePos = min(usePos, pos);
-	}
-
-	void setBlockPos(uint pos) {
-		blockPos = min(blockPos, pos);
-		usePos = min(usePos, pos);
-	}
+pure ubyte arrayPhysRegIndex(IrIndex reg) {
+	return cast(ubyte)(reg.physRegClass * NUM_REGS_PER_CLASS + reg.physRegIndex);
 }
 
 struct PhysRegisters
 {
-	RegisterState[] gpr;
-	const(IrIndex)[] allocatableRegs;
+	RegisterState[NUM_TOTAL_REGS] registers;
+	uint[NUM_TOTAL_REGS] usePos;
+	uint[NUM_TOTAL_REGS] blockPos;
+	//bitmask per class
+	FullRegSet volatileRegs;
+	FullRegSet calleeSavedRegs;
+	FullRegSet usedRegs;
 
-	ref RegisterState opIndex(IrIndex reg) {
+	ref RegisterState opIndex(IrIndex reg) return {
 		assert(reg.isPhysReg, format("%s", reg));
-		return gpr[reg.physRegIndex];
+		return registers[reg.physRegClass * NUM_REGS_PER_CLASS + reg.physRegIndex];
 	}
 
 	void setup(CompilationContext* c, IrFunction* lir, MachineInfo* machineInfo)
 	{
 		CallConv* callConv = lir.getCallConv(c);
-		allocatableRegs = callConv.allocatableRegs;
-		if (c.debugRegAlloc) allocatableRegs = allocatableRegs[0..5]; // only 5 regs are available for tests
-		gpr.length = machineInfo.registers.length;
 
-		foreach(i, ref RegisterState reg; gpr)
-		{
-			reg = RegisterState(machineInfo.registers[i].index);
+		if (c.debugRegAlloc) {
+			volatileRegs = callConv.volatileRegs.lowest(5); // only 5 regs are available for tests
+			calleeSavedRegs = FullRegSet.init;
+		} else {
+			volatileRegs = callConv.volatileRegs;
+			calleeSavedRegs = callConv.calleeSaved;
+			//if (!c.useFramePointer)
+			//	calleeSavedRegs |= callConv.framePointer; // add frame pointer to register pool
 		}
+		usedRegs = FullRegSet.init;
+		registers = typeof(registers).init;
+	}
 
-		foreach(i, reg; allocatableRegs)
-		{
-			opIndex(reg).isAllocatable = true;
-		}
+	void setUsePos(IrIndex reg, uint pos) {
+		usePos[reg.physRegClass * NUM_REGS_PER_CLASS + reg.physRegIndex] = min(usePos[reg.physRegClass * NUM_REGS_PER_CLASS + reg.physRegIndex], pos);
+	}
 
-		foreach(i, reg; callConv.calleeSaved)
-		{
-			opIndex(reg).isCalleeSaved = true;
-		}
+	void setBlockPos(IrIndex reg, uint pos) {
+		blockPos[reg.physRegClass * NUM_REGS_PER_CLASS + reg.physRegIndex] = min(blockPos[reg.physRegClass * NUM_REGS_PER_CLASS + reg.physRegIndex], pos);
+		usePos[reg.physRegClass * NUM_REGS_PER_CLASS + reg.physRegIndex] = min(usePos[reg.physRegClass * NUM_REGS_PER_CLASS + reg.physRegIndex], pos);
 	}
 
 	void resetBlockPos()
 	{
-		foreach (ref reg; gpr) {
-			if (reg.isAllocatable) {
-				reg.usePos = MAX_USE_POS;
-				reg.blockPos = MAX_USE_POS;
-			} else {
-				reg.usePos = 0;
-				reg.blockPos = 0; // prevent allocation
-			}
-		}
+		usePos[] = MAX_USE_POS;
+		blockPos[] = MAX_USE_POS;
 	}
 
 	void resetUsePos()
 	{
-		foreach (ref reg; gpr) {
-			if (reg.isAllocatable)
-				reg.usePos = MAX_USE_POS;
-			else
-				reg.usePos = 0; // prevent allocation
-		}
+		usePos[] = MAX_USE_POS;
 	}
 
 	void markAsUsed(IrIndex reg)
 	{
-		assert(gpr[reg.physRegIndex].isAllocatable);
-		gpr[reg.physRegIndex].isUsed = true;
+		usedRegs |= PhysReg(cast(ubyte)reg.physRegClass, cast(ubyte)reg.physRegIndex);
 	}
 }
 
@@ -358,12 +342,14 @@ struct LinearScan
 				}
 			}
 
+			ubyte regClass = currentInterval.regClass;
+
 			// find a register for current
-			bool success = tryAllocateFreeReg(currentIndex);
+			bool success = tryAllocateFreeReg(currentIndex, regClass);
 
 			// if allocation failed then AllocateBlockedReg
 			if (!success) {
-				allocateBlockedReg(fun, currentIndex, position);
+				allocateBlockedReg(fun, currentIndex, position, regClass);
 			}
 
 			currentInterval = &live.intervals[currentIndex]; // intervals may have reallocated
@@ -424,7 +410,7 @@ struct LinearScan
 			current.reg = reg
 			split current before freeUntilPos[reg]
 	*/
-	bool tryAllocateFreeReg(IntervalIndex currentId)
+	bool tryAllocateFreeReg(IntervalIndex currentId, ubyte regClass)
 	{
 		// set usePos of all physical registers to maxInt
 		physRegs.resetUsePos;
@@ -445,12 +431,12 @@ struct LinearScan
 		version(RAPrint) writeln("  active:");
 		foreach (IntervalIndex activeId; activeFixed) {
 			LiveInterval* it = &live.intervals[activeId];
-			physRegs[it.reg].usePos = 0;
+			physRegs.usePos[it.reg.arrayPhysRegIndex] = 0;
 			version(RAPrint) writefln("   intp %s %s reg %s (next use 0)", activeId, IrIndexDump(it.definition, context, lir), IrIndexDump(it.reg, context, lir));
 		}
 		foreach (IntervalIndex activeId; activeVirtual) {
 			LiveInterval* it = &live.intervals[activeId];
-			physRegs[it.reg].usePos = 0;
+			physRegs.usePos[it.reg.arrayPhysRegIndex] = 0;
 			version(RAPrint) writefln("   intv %s %s reg %s (next use 0)", activeId, *it, IrIndexDump(it.reg, context, lir));
 		}
 
@@ -462,14 +448,14 @@ struct LinearScan
 			version(RAPrint) writef("   intp %s %s (next use %s)", IrIndexDump(it.reg, context, lir), IrIndexDump(it.definition, context, lir), FreeUntilPos(physRegs[it.reg].usePos));
 
 			// if current intersects both active and inactive, usePos stays 0
-			if (physRegs[it.reg].usePos == 0) { version(RAPrint) writeln;
+			if (physRegs.usePos[it.reg.arrayPhysRegIndex] == 0) { version(RAPrint) writeln;
 				continue;
 			}
 			// in case there is no intersection will return MAX_USE_POS (noop)
 			uint inactiveIntersection = firstIntersection(currentIt, it);
 
 			// Register may be already occupied by active or inactive interval, so preserve it's use pos
-			physRegs[it.reg].usePos = min(physRegs[it.reg].usePos, inactiveIntersection);
+			physRegs.usePos[it.reg.arrayPhysRegIndex] = min(physRegs.usePos[it.reg.arrayPhysRegIndex], inactiveIntersection);
 			version(RAPrint) writefln(":=%s", FreeUntilPos(inactiveIntersection));
 		}
 
@@ -483,13 +469,13 @@ struct LinearScan
 				version(RAPrint) writef("   intv %s %s (next use %s)", IrIndexDump(it.reg, context, lir), it.definition, FreeUntilPos(physRegs[it.reg].usePos));
 
 				// if current intersects both active and inactive, usePos stays 0
-				if (physRegs[it.reg].usePos == 0) { version(RAPrint) writeln;
+				if (physRegs.usePos[it.reg.arrayPhysRegIndex] == 0) { version(RAPrint) writeln;
 					continue;
 				}
 				// in case there is no intersection will return MAX_USE_POS (noop)
 				uint inactiveIntersection = firstIntersection(currentIt, it);
 				// Register may be already occupied by active or inactive interval, so preserve it's use pos
-				physRegs[it.reg].usePos = min(physRegs[it.reg].usePos, inactiveIntersection);
+				physRegs.usePos[it.reg.arrayPhysRegIndex] = min(physRegs.usePos[it.reg.arrayPhysRegIndex], inactiveIntersection);
 				version(RAPrint) writefln(":=%s", FreeUntilPos(inactiveIntersection));
 			}
 		}
@@ -500,15 +486,22 @@ struct LinearScan
 		uint maxPos = 0;
 		IrIndex reg;
 
-		const IrIndex[] candidates = physRegs.allocatableRegs;
 		version(RAPrint) write("  candidates:");
-		foreach (i, IrIndex r; candidates)
-		{
-			version(RAPrint) writef(" %s:%s", IrIndexDump(r, context, lir), FreeUntilPos(physRegs[r].usePos));
-
-			if (physRegs[r].usePos > maxPos) {
-				maxPos = physRegs[r].usePos;
-				reg = r;
+		// prioritize volatile regs by first iterating them
+		foreach (ubyte regIndex; physRegs.volatileRegs.classes[regClass]) {
+			uint usePos = physRegs.usePos[regClass * NUM_REGS_PER_CLASS + regIndex];
+			version(RAPrint) writef(" %s:%s", IrIndexDump(IrIndex(regIndex, ArgType.QWORD, regClass), context, lir), FreeUntilPos(usePos));
+			if (usePos > maxPos) {
+				maxPos = usePos;
+				reg = IrIndex(regIndex, ArgType.QWORD, regClass);
+			}
+		}
+		foreach (ubyte regIndex; physRegs.calleeSavedRegs.classes[regClass]) {
+			uint usePos = physRegs.usePos[regClass * NUM_REGS_PER_CLASS + regIndex];
+			version(RAPrint) writef(" %s:%s", IrIndexDump(IrIndex(regIndex, ArgType.QWORD, regClass), context, lir), FreeUntilPos(usePos));
+			if (usePos > maxPos) {
+				maxPos = usePos;
+				reg = IrIndex(regIndex, ArgType.QWORD, regClass);
 			}
 		}
 		version(RAPrint) writeln;
@@ -535,7 +528,7 @@ struct LinearScan
 			version(RAPrint) writefln("    hint is %s", IrIndexDump(hintReg, context, lir));
 			if (hintReg.isVirtReg) hintReg = live.vint(hintReg).reg;
 			if (hintReg.isDefined) {
-				if (currentEnd < physRegs[hintReg].usePos) {
+				if (currentEnd < physRegs.usePos[hintReg.arrayPhysRegIndex]) {
 					// register available for the whole interval
 					currentIt.reg = hintReg;
 					currentIt.reg.physRegSize = typeToRegSize(lir.getValueType(context, currentIt.definition), context);
@@ -545,7 +538,7 @@ struct LinearScan
 				} else {
 					version(RAPrint) writefln("    hint %s is not available for the whole interval", IrIndexDump(hintReg, context, lir));
 					// use hint reg with spill if it is one of max use regs
-					if (physRegs[hintReg].usePos == maxPos) reg = hintReg;
+					if (physRegs.usePos[hintReg.arrayPhysRegIndex] == maxPos) reg = hintReg;
 				}
 			}
 
@@ -601,7 +594,7 @@ struct LinearScan
 			split current before this intersection
 	*/
 	// Returns new interval
-	void allocateBlockedReg(FunctionDeclNode* fun, IntervalIndex currentId, uint currentStart)
+	void allocateBlockedReg(FunctionDeclNode* fun, IntervalIndex currentId, uint currentStart, ubyte regClass)
 	{
 		physRegs.resetBlockPos;
 
@@ -611,7 +604,7 @@ struct LinearScan
 
 		foreach (IntervalIndex activeId; activeVirtual) {
 			LiveInterval* it = &live.intervals[activeId];
-			physRegs[it.reg].setUsePos = it.nextUseAfter(currentStart);
+			physRegs.setUsePos(it.reg, it.nextUseAfter(currentStart));
 			physRegs[it.reg].activeInterval = activeId;
 			version(RAPrint) writefln("active virt usePos of %s %s use %s block %s", activeId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
 		}
@@ -620,13 +613,13 @@ struct LinearScan
 		if (currentIt.isSplitChild) {
 			foreach (inactiveId; inactiveVirtual) {
 				LiveInterval* it = &live.intervals[inactiveId];
-				physRegs[it.reg].setUsePos = it.nextUseAfter(currentStart);
+				physRegs.setUsePos(it.reg, it.nextUseAfter(currentStart));
 				version(RAPrint) writefln("inactive virt usePos of %s %s use %s block %s", inactiveId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
 			}
 		}
 		foreach (IntervalIndex activeId; activeFixed) {
 			LiveInterval* it = &live.intervals[activeId];
-			physRegs[it.reg].setBlockPos = 0;
+			physRegs.setBlockPos(it.reg, 0);
 			physRegs[it.reg].activeInterval = IntervalIndex.NULL;
 			version(RAPrint) writefln("active fixed usePos of %s %s use %s block %s", activeId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
 		}
@@ -635,7 +628,7 @@ struct LinearScan
 			uint intersection = firstIntersection(currentIt, it);
 			if (intersection != MAX_USE_POS)
 			{
-				physRegs[it.reg].setBlockPos = intersection;
+				physRegs.setBlockPos(it.reg, intersection);
 			}
 			version(RAPrint) writefln("inactive fixed usePos of %s %s use %s block %s", inactiveId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
 		}
@@ -643,12 +636,14 @@ struct LinearScan
 		// reg = register with highest usePos
 		uint maxPos = 0;
 		IrIndex reg;
-		foreach (i, IrIndex r; physRegs.allocatableRegs) {
- 			if (physRegs[r].usePos > maxPos) {
- 				// if register was only available for the start of interval
+
+		foreach (ubyte regIndex; (physRegs.volatileRegs | physRegs.calleeSavedRegs).classes[regClass]) {
+			uint usePos = physRegs.usePos[regClass * NUM_REGS_PER_CLASS + regIndex];
+			if (usePos > maxPos) {
+				// if register was only available for the start of interval
  				// then all uses may have moved into split child
-				maxPos = physRegs[r].usePos;
-				reg = r;
+				maxPos = usePos;
+				reg = IrIndex(regIndex, ArgType.QWORD, regClass);
 			}
 		}
 		version(RAPrint) writefln("    candidate %s usePos %s", IrIndexDump(reg, context, lir), maxPos);
@@ -709,10 +704,10 @@ struct LinearScan
 			}
 
 			// if current intersects with the fixed interval for reg then
-			if (currentIt.exclusivePosition(physRegs[reg].blockPos))
+			if (currentIt.exclusivePosition(physRegs.blockPos[reg.arrayPhysRegIndex]))
 			{
 				// split current before this intersection
-				splitBefore(currentId, physRegs[reg].blockPos);
+				splitBefore(currentId, physRegs.blockPos[reg.arrayPhysRegIndex]);
 			}
 
 			version(RAPrint) writefln("    spill currently active interval %s before %s for %s",
@@ -885,6 +880,7 @@ struct LinearScan
 				case size32, size64:
 					instr = builder.emitInstr!(Amd64Opcode.mov)(extra, from).instruction;
 					break;
+				case size128, size256, size512: context.internal_error("Invalid constant size %s", sizeFrom);
 			}
 			builder.insertBeforeInstr(instrIndex, instr);
 		}
@@ -907,7 +903,7 @@ struct LinearScan
 			//             output: "r1 = r1 op r2"
 			//         } else { // input: "r1 = r2 op r1"
 			//             // error, we cannot swap r2 with r1 here to get r2 = r1 op r2
-			//             // because r2 may be used later
+			//             // because r2 will be overwritten. But r2 may be used later
 			//             // this case is handled inside liveness analysis pass
 			//         }
 			//     } else { // input: "r1 = r2 op r3"
@@ -1187,22 +1183,22 @@ struct LinearScan
 	{
 		IrIndex entryBlock = lir.entryBasicBlock;
 		IrIndex exitBlock = lir.exitBasicBlock;
-		foreach(reg; physRegs.gpr)
+		CallConv* callConv = lir.getCallConv(context);
+		foreach(PhysReg reg; physRegs.calleeSavedRegs & physRegs.usedRegs)
 		{
-			if (reg.isCalleeSaved && reg.isUsed)
-			{
-				IrIndex slot = stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), StackSlotKind.local, 0);
+			IrIndex slot = stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), StackSlotKind.local, 0);
 
-				// save register
-				ExtraInstrArgs extra1 = { argSize : IrArgSize.size64 };
-				IrIndex instrStore = builder.emitInstr!(Amd64Opcode.store)(extra1, slot, reg.index);
-				builder.prependBlockInstr(entryBlock, instrStore);
+			IrArgSize size = callConv.calleeSavedSizePerClass[reg.regClass];
 
-				// restore register
-				ExtraInstrArgs extra = { result : reg.index, argSize : IrArgSize.size64 };
-				InstrWithResult instrLoad = builder.emitInstr!(Amd64Opcode.load)(extra, slot);
-				builder.insertBeforeLastInstr(exitBlock, instrLoad.instruction);
-			}
+			// save register
+			ExtraInstrArgs extra1 = { argSize : size };
+			IrIndex instrStore = builder.emitInstr!(Amd64Opcode.store)(extra1, slot, IrIndex(reg, size));
+			builder.prependBlockInstr(entryBlock, instrStore);
+
+			// restore register
+			ExtraInstrArgs extra = { result : IrIndex(reg, size), argSize : size };
+			InstrWithResult instrLoad = builder.emitInstr!(Amd64Opcode.load)(extra, slot);
+			builder.insertBeforeLastInstr(exitBlock, instrLoad.instruction);
 		}
 	}
 
