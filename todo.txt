@@ -72,19 +72,20 @@
 	- sysv ABI
 	+ +-*/
 	+ < > <= >= == !=
-	- passing xmm args
+	+ passing xmm args
 	- mixed type args
 	- structs with floats
 	- arrays
-	- load/store/push
-	- pass/receive floats on stack
+	+ load/store/push
+	+ pass/receive floats on stack
 	- int <-> float casts
 	- regalloc needs to only work with current register class
 	- constants
 	- constant folding
 	- CTFE
 	- xchg
-	- save/restore of callee saved xmm registers need to have proper size
+	+ save/restore of callee saved xmm registers need to have proper size
+	- scratch spill slot is hardcoded to 64bits (maybe it is a good idea to take max of all sizes that is being put into the thing and update the size of the slot)
 - union
 - struct
 	+ struct methods

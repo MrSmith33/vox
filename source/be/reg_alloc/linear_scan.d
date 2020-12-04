@@ -1186,9 +1186,19 @@ struct LinearScan
 		CallConv* callConv = lir.getCallConv(context);
 		foreach(PhysReg reg; physRegs.calleeSavedRegs & physRegs.usedRegs)
 		{
-			IrIndex slot = stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), StackSlotKind.local, 0);
-
+			// choose correct slot type
 			IrArgSize size = callConv.calleeSavedSizePerClass[reg.regClass];
+			IrIndex slotType;
+			switch(size) with(IrArgSize) {
+				case size64:
+					slotType = makeBasicTypeIndex(IrValueType.i64);
+					break;
+				case size128:
+					slotType = context.v128Type;
+					break;
+				default: context.internal_error("Size not implemented %s", size);
+			}
+			IrIndex slot = stackLayout.addStackItem(context, slotType, StackSlotKind.local, 0);
 
 			// save register
 			ExtraInstrArgs extra1 = { argSize : size };

@@ -252,10 +252,10 @@ struct CodeEmitter
 						gen.xchg(dst, src, cast(ArgType)arg0.physRegSize);
 						break;
 					case Amd64Opcode.load:
-						genLoad(instrHeader.result(lir), instrHeader.arg(lir, 0), cast(ArgType)instrHeader.argSize);
+						genLoad(instrHeader.result(lir), instrHeader.arg(lir, 0), instrHeader.argSize);
 						break;
 					case Amd64Opcode.store:
-						genStore(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), cast(ArgType)instrHeader.argSize);
+						genStore(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), instrHeader.argSize);
 						break;
 					case Amd64Opcode.add:
 						IrIndex arg0 = instrHeader.arg(lir, 0);
@@ -811,7 +811,7 @@ struct CodeEmitter
 							break;
 						case size32: gen.movss(dstReg, srcReg); break;
 						case size64: gen.movsd(dstReg, srcReg); break;
-						case size128: gen.movaps(dstReg, srcReg); break;
+						case size128: gen.movups(dstReg, srcReg); break;
 						case size256, size512:
 							context.internal_error("Not implemented: reg_to_reg %s %s", dst, src);
 					}
@@ -856,28 +856,30 @@ struct CodeEmitter
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
 	// If src is phys reg then it is used as address base.
 	// dst must be phys reg
-	void genLoad(IrIndex dst, IrIndex src, ArgType argType)
+	void genLoad(IrIndex dst, IrIndex src, IrArgSize argSize)
 	{
-		//argType = cast(ArgType)dst.physRegSize; // TODO: this should be enough for loads
 		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot || src.isGlobal);
 		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
 
-		Register dstReg = indexToRegister(dst);
+		void doMemToReg(MemAddress srcMem) {
+			Register dstReg = indexToRegister(dst);
+			if (dst.physRegClass == AMD64_REG_CLASS.XMM) {
+				final switch(argSize) with(IrArgSize) {
+					case size32: gen.movd_xr(dstReg, srcMem); break;
+					case size64: gen.movq_xr(dstReg, srcMem); break;
+					case size128: gen.movups(dstReg, srcMem); break;
+					case size8, size16, size256, size512: assert(false);
+				}
+			} else {
+				gen.mov(dstReg, srcMem, cast(ArgType)argSize);
+			}
+		}
 
-		switch(src.kind) with(IrValueKind)
-		{
-			case physicalRegister:
-				Register srcReg = indexToRegister(src);
-				gen.mov(dstReg, memAddrBase(srcReg), argType);
-				break;
-
-			case stackSlot:
-				gen.mov(dstReg, localVarMemAddress(src), argType);
-				break;
-
-			case global:
-				MemAddress addr = memAddrRipDisp32(0);
-				gen.mov(dstReg, addr, argType);
+		switch(src.kind) with(IrValueKind) {
+			case physicalRegister: doMemToReg(memAddrBase(indexToRegister(src))); break;
+			case stackSlot: doMemToReg(localVarMemAddress(src)); break;
+ 			case global:
+				doMemToReg(memAddrRipDisp32(0));
 				addRefTo(src);
 				break;
 
@@ -889,11 +891,39 @@ struct CodeEmitter
 
 	// dst must be of pointer type
 	// dst is pointer of unknown type (that's why we need explicit argType)
-	void genStore(IrIndex dst, IrIndex src, ArgType argType)
+	void genStore(IrIndex dst, IrIndex src, IrArgSize argSize)
 	{
 		context.assertf(!src.isGlobal,
 			"store %s <- %s, must go through intermediate register",
 			dst.kind, src.kind);
+
+		void doRegToMem(MemAddress dstMem) {
+			if (src.physRegClass == AMD64_REG_CLASS.XMM) {
+				Register srcReg = indexToRegister(src);
+				final switch(argSize) with(IrArgSize) {
+					case size32: gen.movd_rx(dstMem, srcReg); break;
+					case size64: gen.movq_rx(dstMem, srcReg); break;
+					case size128: gen.movups(dstMem, srcReg); break;
+					case size8, size16, size256, size512: assert(false);
+				}
+			} else {
+				Register srcReg = indexToRegister(src);
+				gen.mov(dstMem, srcReg, cast(ArgType)argSize);
+			}
+		}
+		void doConToMem(MemAddress dstMem, IrConstant con) {
+			final switch(argSize) with(IrArgSize) {
+				case size8: gen.movb(dstMem, Imm8(con.i8)); break;
+				case size16: gen.movw(dstMem, Imm16(con.i16)); break;
+				case size32: gen.movd(dstMem, Imm32(con.i32)); break;
+				case size64:
+					IrArgSize dataSize = con.payloadSize(src);
+					context.assertf(dataSize != IrArgSize.size64, "Constant is too big");
+					gen.movq(dstMem, Imm32(con.i32));
+					break;
+				case size128, size256, size512: assert(false);
+			}
+		}
 
 		MoveType moveType = calcMoveType(dst.kind, src.kind);
 		switch (moveType) with(MoveType)
@@ -901,55 +931,32 @@ struct CodeEmitter
 			case const_to_stack:
 				IrConstant con = context.constants.get(src);
 				MemAddress dstMem = localVarMemAddress(dst);
-				final switch(argType) with(ArgType)
-				{
-					case BYTE: gen.movb(dstMem, Imm8(con.i8)); break;
-					case WORD: gen.movw(dstMem, Imm16(con.i16)); break;
-					case DWORD: gen.movd(dstMem, Imm32(con.i32)); break;
-					case QWORD:
-						IrArgSize dataSize = con.payloadSize(src);
-						context.assertf(dataSize != IrArgSize.size64, "Constant is too big");
-						gen.movq(dstMem, Imm32(con.i32));
-						break;
-				}
+				doConToMem(dstMem, con);
 				break;
 			case const_to_reg:
 				IrConstant con = context.constants.get(src);
 				Register dstReg = indexToRegister(dst);
 				MemAddress dstMem = memAddrBase(dstReg);
-				final switch(argType) with(ArgType)
-				{
-					case BYTE: gen.movb(dstMem, Imm8(con.i8)); break;
-					case WORD: gen.movw(dstMem, Imm16(con.i16)); break;
-					case DWORD: gen.movd(dstMem, Imm32(con.i32)); break;
-					case QWORD:
-						IrArgSize dataSize = con.payloadSize(src);
-						context.assertf(dataSize != IrArgSize.size64, "Constant is too big");
-						gen.movq(dstMem, Imm32(con.i32));
-						break;
-				}
+				doConToMem(dstMem, con);
 				break;
 			case reg_to_stack:
-				Register srcReg = indexToRegister(src);
 				MemAddress dstMem = localVarMemAddress(dst);
-				gen.mov(dstMem, srcReg, argType);
+				doRegToMem(dstMem);
 				break;
 			case reg_to_reg:
 				Register dstReg = indexToRegister(dst);
 				MemAddress dstMem = memAddrBase(dstReg);
-				Register srcReg = indexToRegister(src);
-				gen.mov(dstMem, srcReg, argType);
+				doRegToMem(dstMem);
 				break;
 			case const_to_global:
-				uint con = context.constants.get(src).i32;
-				MemAddress addr = memAddrRipDisp32(0);
-				gen.mov(addr, Imm32(con), argType);
+				IrConstant con = context.constants.get(src);
+				MemAddress dstMem = memAddrRipDisp32(0);
+				doConToMem(dstMem, con);
 				addRefTo(dst, 8);
 				break;
 			case reg_to_global:
-				Register srcReg = indexToRegister(src);
-				MemAddress addr = memAddrRipDisp32(0);
-				gen.mov(addr, srcReg, argType);
+				MemAddress dstMem = memAddrRipDisp32(0);
+				doRegToMem(dstMem);
 				addRefTo(dst);
 				break;
 			default:

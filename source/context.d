@@ -135,6 +135,7 @@ struct CompilationContext
 	size_t initializedTokenLocBufSize; // ditto, tokenLocationBuffer.length
 
 	IrIndex i64PtrType;
+	IrIndex v128Type;
 
 	// sections
 	LinkIndex[NUM_BUILTIN_SECTIONS] builtinSections;
@@ -808,6 +809,7 @@ struct CompilationContext
 		// CommonAstNodes end
 
 		i64PtrType = types.appendPtr(makeBasicTypeIndex(IrValueType.i64));
+		v128Type = types.appendArray(makeBasicTypeIndex(IrValueType.i8), 16);
 
 		initializedAstBufSize = astBuffer.length;
 		initializedIrTypeBufSize = types.buffer.length;

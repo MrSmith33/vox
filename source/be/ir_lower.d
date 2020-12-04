@@ -639,7 +639,8 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 					uint size = c.types.typeSize(type);
 					//writefln("param %s %s %s %s", i, stackOffset, paramData.stackOffset, size);
 
-					if (size <= 8) {
+					// push cannot be used with xmm registers. Convert those to grow_stack + store
+					if (size <= 8 && !type.isTypeFloat) {
 						auto pushInstr = builder.emitInstr!(IrOpcode.push)(ExtraInstrArgs(), arg);
 						builder.insertBeforeInstr(instrIndex, pushInstr);
 						stackOffset += 8;

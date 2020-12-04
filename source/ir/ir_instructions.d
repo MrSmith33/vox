@@ -312,11 +312,11 @@ struct IrInstrHeader
 			// Only used when IrInstrFlags.hasCondition is set
 			ubyte,      "cond",      4,
 			// Not always possible to infer arg size from arguments (like in store ptr, imm)
-			IrArgSize,  "argSize",   2,
+			IrArgSize,  "argSize",   3,
 			// Only used for loads to mark source pointer as uniqely owned by load
-			bool, "isUniqueLoad",    1,
 		));
 
+		// for calls
 		mixin(bitfields!(
 			uint, "",                       1, // hasResult
 			// marks instruction that has non-mov instruction between argument movs and itself
@@ -325,7 +325,14 @@ struct IrInstrHeader
 			bool, "extendFixedResultRange", 1,
 			// Used on call instruction
 			bool, "alwaysInline",           1,
-			uint, "",                       4
+			uint, "",                       4,
+		));
+
+		// for loads
+		mixin(bitfields!(
+			uint, "",                       1, // hasResult
+			bool, "isUniqueLoad",           1,
+			uint, "",                       6,
 		));
 	}
 

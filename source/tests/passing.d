@@ -3841,3 +3841,31 @@ void tester175(ref TestContext ctx) {
 	assert(f64_ge(100, 42) == (100.0 >= 42.0));
 	assert(f64_ge(-100, -42) == (-100.0 >= -42.0));
 }
+
+
+@TestInfo(&tester176)
+immutable test176 = q{--- test176
+	// floats: argument passing via stack and registers
+	f32 f32_add(f32 p1, f32 p2, f32 p3, f32 p4, f32 p5, f32 p6, f32 p7, f32 p8, f32 p9) {
+		return p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+	}
+	f64 f64_add(f64 p1, f64 p2, f64 p3, f64 p4, f64 p5, f64 p6, f64 p7, f64 p8, f64 p9) {
+		return p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+	}
+	f32 f32_call(f32 p1, f32 p2, f32 p3, f32 p4, f32 p5, f32 p6, f32 p7, f32 p8, f32 p9) {
+		return f32_add(p1, p2, p3, p4, p5, p6, p7, p8, p9);
+	}
+	f64 f64_call(f64 p1, f64 p2, f64 p3, f64 p4, f64 p5, f64 p6, f64 p7, f64 p8, f64 p9) {
+		return f64_add(p1, p2, p3, p4, p5, p6, p7, p8, p9);
+	}
+};
+void tester176(ref TestContext ctx) {
+	auto f32_add = ctx.getFunctionPtr!(float, float, float, float, float, float, float, float, float, float)("f32_add");
+	assert(f32_add(1, 2, 3, 4, 5, 6, 7, 8, 9) == 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9);
+	auto f64_add = ctx.getFunctionPtr!(double, double, double, double, double, double, double, double, double, double)("f64_add");
+	assert(f64_add(1, 2, 3, 4, 5, 6, 7, 8, 9) == 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9);
+	auto f32_call = ctx.getFunctionPtr!(float, float, float, float, float, float, float, float, float, float)("f32_call");
+	assert(f32_call(1, 2, 3, 4, 5, 6, 7, 8, 9) == 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9);
+	auto f64_call = ctx.getFunctionPtr!(double, double, double, double, double, double, double, double, double, double)("f64_call");
+	assert(f64_call(1, 2, 3, 4, 5, 6, 7, 8, 9) == 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9);
+}
