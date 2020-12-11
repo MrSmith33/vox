@@ -30,5 +30,6 @@ version(standalone) int main(string[] args)
 
 unittest
 {
-	runAllTests(StopOnFirstFail.no);
+	int numFailedTests = runAllTests(StopOnFirstFail.no);
+	assert(numFailedTests == 0);
 }
