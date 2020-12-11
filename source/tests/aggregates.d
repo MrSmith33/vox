@@ -335,3 +335,123 @@ void tester134(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(Point, Point)("run");
 	assert(run(Point(1, 2)) == Point(1, 2));
 }
+
+
+@TestInfo(&tester135)
+immutable aggr135 = q{--- aggr135
+	// SysV ABI
+	struct vec1 { f32 x; }
+	struct vec2 { f32 x; f32 y; }
+	struct vec3 { f32 x; f32 y; f32 z; }
+	struct vec4 { f32 x; f32 y; f32 z; f32 w; }
+	struct vec5 { f32 x; f32 y; f32 z; f32 w; f32 q; }
+	vec1 pass_vec1(vec1 v) { return v; }
+	vec2 pass_vec2(vec2 v) { return v; }
+	vec3 pass_vec3(vec3 v) { return v; }
+	vec4 pass_vec4(vec4 v) { return v; }
+	vec5 pass_vec5(vec5 v) { return v; }
+};
+void tester135(ref TestContext ctx) {
+	static struct vec1 { float x; }
+	static struct vec2 { float x; float y; }
+	static struct vec3 { float x; float y; float z; }
+	static struct vec4 { float x; float y; float z; float w; }
+	static struct vec5 { float x; float y; float z; float w; float q; }
+
+	auto pass_vec1 = ctx.getFunctionPtr!(vec1, vec1)("pass_vec1");
+	assert(pass_vec1(vec1(1)) == vec1(1));
+
+	auto pass_vec2 = ctx.getFunctionPtr!(vec2, vec2)("pass_vec2");
+	assert(pass_vec2(vec2(1, 2)) == vec2(1, 2));
+
+	auto pass_vec3 = ctx.getFunctionPtr!(vec3, vec3)("pass_vec3");
+	assert(pass_vec3(vec3(1, 2, 3)) == vec3(1, 2, 3));
+
+	auto pass_vec4 = ctx.getFunctionPtr!(vec4, vec4)("pass_vec4");
+	assert(pass_vec4(vec4(1, 2, 3, 4)) == vec4(1, 2, 3, 4));
+
+	auto pass_vec5 = ctx.getFunctionPtr!(vec5, vec5)("pass_vec5");
+	assert(pass_vec5(vec5(1, 2, 3, 4, 5)) == vec5(1, 2, 3, 4, 5));
+}
+
+
+@TestInfo(&tester136)
+immutable aggr136 = q{--- aggr136
+	// SysV ABI
+	struct vec1 { f32[1] x; }
+	struct vec2 { f32[2] x; }
+	struct vec3 { f32[3] x; }
+	struct vec4 { f32[4] x; }
+	struct vec5 { f32[5] x; }
+	vec1 pass_vec1(vec1 v) { return v; }
+	vec2 pass_vec2(vec2 v) { return v; }
+	vec3 pass_vec3(vec3 v) { return v; }
+	vec4 pass_vec4(vec4 v) { return v; }
+	vec5 pass_vec5(vec5 v) { return v; }
+};
+void tester136(ref TestContext ctx) {
+	static struct vec1 { float[1] x; }
+	static struct vec2 { float[2] x; }
+	static struct vec3 { float[3] x; }
+	static struct vec4 { float[4] x; }
+	static struct vec5 { float[5] x; }
+
+	auto pass_vec1 = ctx.getFunctionPtr!(vec1, vec1)("pass_vec1");
+	assert(pass_vec1(vec1([1])) == vec1([1]));
+
+	auto pass_vec2 = ctx.getFunctionPtr!(vec2, vec2)("pass_vec2");
+	assert(pass_vec2(vec2([1, 2])) == vec2([1, 2]));
+
+	auto pass_vec3 = ctx.getFunctionPtr!(vec3, vec3)("pass_vec3");
+	assert(pass_vec3(vec3([1, 2, 3])) == vec3([1, 2, 3]));
+
+	auto pass_vec4 = ctx.getFunctionPtr!(vec4, vec4)("pass_vec4");
+	assert(pass_vec4(vec4([1, 2, 3, 4])) == vec4([1, 2, 3, 4]));
+
+	auto pass_vec5 = ctx.getFunctionPtr!(vec5, vec5)("pass_vec5");
+	assert(pass_vec5(vec5([1, 2, 3, 4, 5])) == vec5([1, 2, 3, 4, 5]));
+}
+
+
+@TestInfo(&tester137)
+immutable aggr137 = q{--- aggr137
+	// SysV ABI
+	struct vec1 { f32 x; i32 y; }
+	struct vec2 { i32 x; f32 y; }
+	struct vec3 { i32 x; f32 y; f32 z; i32 w; }
+	struct vec4 { f32 x; i32 y; i32 z; f32 w; }
+	struct vec5 { i32 x; i32 y; f32 z; f32 w; }
+	struct vec6 { f32 x; f32 y; i32 z; i32 w; }
+	vec1 pass_vec1(vec1 v) { return v; }
+	vec2 pass_vec2(vec2 v) { return v; }
+	vec3 pass_vec3(vec3 v) { return v; }
+	vec4 pass_vec4(vec4 v) { return v; }
+	vec5 pass_vec5(vec5 v) { return v; }
+	vec6 pass_vec6(vec6 v) { return v; }
+};
+void tester137(ref TestContext ctx) {
+	static struct vec1 { float x; int y; }
+	static struct vec2 { int x; float y; }
+	static struct vec3 { int x; float y; float z; int w; }
+	static struct vec4 { float x; int y; int z; float w; }
+	static struct vec5 { int x; float y; float z; float w; }
+	static struct vec6 { float x; int y; int z; int w; }
+
+	auto pass_vec1 = ctx.getFunctionPtr!(vec1, vec1)("pass_vec1");
+	assert(pass_vec1(vec1(1, 2)) == vec1(1, 2));
+
+	auto pass_vec2 = ctx.getFunctionPtr!(vec2, vec2)("pass_vec2");
+	assert(pass_vec2(vec2(1, 2)) == vec2(1, 2));
+
+	auto pass_vec3 = ctx.getFunctionPtr!(vec3, vec3)("pass_vec3");
+	assert(pass_vec3(vec3(1, 2, 3, 4)) == vec3(1, 2, 3, 4));
+
+	auto pass_vec4 = ctx.getFunctionPtr!(vec4, vec4)("pass_vec4");
+	assert(pass_vec4(vec4(1, 2, 3, 4)) == vec4(1, 2, 3, 4));
+
+	auto pass_vec5 = ctx.getFunctionPtr!(vec5, vec5)("pass_vec5");
+	assert(pass_vec5(vec5(1, 2, 3, 4)) == vec5(1, 2, 3, 4));
+
+	auto pass_vec6 = ctx.getFunctionPtr!(vec6, vec6)("pass_vec6");
+	assert(pass_vec6(vec6(1, 2, 3, 4)) == vec6(1, 2, 3, 4));
+}

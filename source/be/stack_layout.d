@@ -120,7 +120,6 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 	}
 	//writefln("reservedBytes4 0x%X", layout.reservedBytes);
 
-	uint paramsSize = STACK_ITEM_SIZE * layout.numParamSlots;
 	uint paramsOffset = layout.reservedBytes + STACK_ITEM_SIZE; // locals size + ret addr
 	if (callConv.hasShadowSpace) paramsOffset += 32;
 
@@ -157,11 +156,11 @@ struct StackLayout
 {
 	/// How much bytes we need to allocate in prolog and deallocate in epilog
 	int reservedBytes;
-	int numParamSlots;
 	uint maxAlignmentPower = 0;
 	// number of calls in the function
-	// TODO: if 0 or 1, we can merge stack allocation with function's stack
-	// TODO: if 0, we can omit stack alignment
+	// collected in abi lowering pass
+	// if 0 or 1, we can merge stack allocation with function's stack
+	// if 0, we can omit stack alignment
 	uint numCalls;
 	Array!StackSlot slots;
 
@@ -181,8 +180,6 @@ struct StackLayout
 
 		context.assertf(slot.sizealign.alignmentPower <= 4, "Big alignments (> 16) aren't implemented");
 		maxAlignmentPower = max(maxAlignmentPower, slot.sizealign.alignmentPower);
-
-		if(kind == StackSlotKind.parameter) ++numParamSlots;
 
 		slots.put(context.arrayArena, slot);
 		return IrIndex(id, IrValueKind.stackSlot);

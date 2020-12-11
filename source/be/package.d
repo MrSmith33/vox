@@ -8,6 +8,7 @@ Authors: Andrey Penechko.
 module be;
 
 public:
+import be.abi;
 import be.amd64asm;
 import be.emit_mc_amd64;
 import be.ir_lower;

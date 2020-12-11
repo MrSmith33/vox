@@ -100,6 +100,7 @@
 	- lower aggregates in IR by replacing phis taking in aggregates with scalar phis. Only non-phi users must remain.
 	+ detect all zero members and emit constantZero
 	+ separate func_pass_lower_aggregates pass
+	- empty structs need to be 1 byte in size
 + pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 - array literal
 - slices (need better structs)
@@ -181,7 +182,7 @@ o dll linking
 
 [ABI]
 + separate ABI lowering pass for win64
-- linux_x64_syscall ABI for linux syscalls. We can attach it with UDA to all external declarations of linux API.
++ linux_x64_syscall ABI for linux syscalls. We can attach it with UDA to all external declarations of linux API.
 + Initial ELF64 support
 	- Add import section support
 
