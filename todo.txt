@@ -69,17 +69,17 @@
 	+ in char literals
 + float double
 	+ windows ABI
-	- sysv ABI
+	+ sysv ABI
 	+ +-*/
 	+ < > <= >= == !=
 	+ passing xmm args
-	- mixed type args
-	- structs with floats
-	- arrays
+	+ mixed type args
+	+ structs with floats
+	+ arrays
 	+ load/store/push
 	+ pass/receive floats on stack
 	- int <-> float casts
-	- regalloc needs to only work with current register class
+	+ regalloc needs to only work with current register class
 	- constants
 	- constant folding
 	- CTFE
