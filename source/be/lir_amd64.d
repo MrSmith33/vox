@@ -82,6 +82,13 @@ enum AMD64_REG_CLASS : ubyte {
 struct FullRegSet {
 	ClassRegSet[NUM_REG_CLASSES] classes;
 
+	ubyte length() {
+		ubyte result;
+		foreach(i, cl; classes)
+			result += classes[i].length;
+		return result;
+	}
+
 	FullRegSet opBinary(string op)(FullRegSet rhs)
 		if (op == "|" || op == "^" || op == "&")
 	{
@@ -128,12 +135,27 @@ struct FullRegSet {
 		}
 		return 0;
 	}
+
+	int opApply(scope int delegate(uint index, PhysReg) dg)
+	{
+		uint index;
+		foreach(ubyte regClass; 0..NUM_REG_CLASSES) {
+			uint[1] bits = classes[regClass].bits;
+			foreach(regIndex; bitsSet(bits[])) {
+				if (int res = dg(index, PhysReg(regClass, cast(ubyte)regIndex))) return res;
+				++index;
+			}
+		}
+		return 0;
+	}
 }
 
 /// Register set of a single register class
 struct ClassRegSet {
 	// Assume at most 32 registers per register class
 	uint bits;
+
+	ubyte length() { return cast(ubyte)popcnt(bits); }
 
 	ClassRegSet opBinary(string op)(ClassRegSet rhs)
 		if (op == "|" || op == "^" || op == "&")
@@ -291,11 +313,11 @@ __gshared CallConv win64_call_conv = CallConv
 		ClassRegSet(0b0000_0000_0011_1111)]),
 
 	// callee saved regs, need to save/restore to use
-	//   bx si di r12 r13 r14 r15
+	//   bp bx si di r12 r13 r14 r15
 	FullRegSet([
 		//            1111 11
 		//            5432 1098 7654 3210
-		ClassRegSet(0b1111_0000_1100_1000),
+		ClassRegSet(0b1111_0000_1110_1000),
 		ClassRegSet(0b1111_1111_1100_0000)]),
 
 	[IrArgSize.size64, IrArgSize.size128],
@@ -312,24 +334,24 @@ __gshared CallConv sysv64_call_conv = CallConv
 (
 	// parameters in registers
 	[amd64_reg.di, amd64_reg.si, amd64_reg.dx, amd64_reg.cx, amd64_reg.r8, amd64_reg.r9],
-	[amd64_reg.xmm0, amd64_reg.xmm1, amd64_reg.xmm2, amd64_reg.xmm3, amd64_reg.xmm4, amd64_reg.xmm5],
+	[amd64_reg.xmm0, amd64_reg.xmm1, amd64_reg.xmm2, amd64_reg.xmm3, amd64_reg.xmm4, amd64_reg.xmm5, amd64_reg.xmm6, amd64_reg.xmm7],
 
 	// volatile regs, zero cost allocation
 	//   ax cx dx si di r8 r9 r10 r11
-	//   xmm0 xmm1 xmm2 xmm3 xmm4 xmm5
+	//   xmm0 xmm1 xmm2 xmm3 xmm4 xmm5 xmm6 xmm7
 	FullRegSet([
 		//            1111 11
 		//            5432 1098 7654 3210
 		ClassRegSet(0b0000_1111_1100_0111),
-		ClassRegSet(0b0000_0000_0011_1111)]),
+		ClassRegSet(0b1111_1111_1111_1111)]),
 
 	// callee saved regs, need to save/restore to use
-	//   bx r12 r13 r14 r15
+	//   bp bx r12 r13 r14 r15
 	FullRegSet([
 		//            1111 11
 		//            5432 1098 7654 3210
-		ClassRegSet(0b1111_0000_0000_1000),
-		ClassRegSet(0b1111_1111_1100_0000)]),
+		ClassRegSet(0b1111_0000_0010_1000),
+		ClassRegSet(0b0000_0000_0000_0000)]),
 
 	[IrArgSize.size64, IrArgSize.size128],
 
@@ -344,25 +366,25 @@ __gshared CallConv sysv64_syscall_call_conv = CallConv
 (
 	// parameters in registers
 	[amd64_reg.di, amd64_reg.si, amd64_reg.dx, amd64_reg.r10, amd64_reg.r8, amd64_reg.r9],
-	[amd64_reg.xmm0, amd64_reg.xmm1, amd64_reg.xmm2, amd64_reg.xmm3, amd64_reg.xmm4, amd64_reg.xmm5],
+	[amd64_reg.xmm0, amd64_reg.xmm1, amd64_reg.xmm2, amd64_reg.xmm3, amd64_reg.xmm4, amd64_reg.xmm5, amd64_reg.xmm6, amd64_reg.xmm7],
 
 	// volatile regs, zero cost allocation
 	// cx and r11 are clobbered by syscall
 	  // ax cx dx si di r8 r9 r10 r11
-	  // xmm0 xmm1 xmm2 xmm3 xmm4 xmm5
+	  // xmm0 xmm1 xmm2 xmm3 xmm4 xmm5 xmm6 xmm7
 	FullRegSet([
 		//            1111 11
 		//            5432 1098 7654 3210
 		ClassRegSet(0b0000_1111_1100_0111),
-		ClassRegSet(0b0000_0000_0011_1111)]),
+		ClassRegSet(0b1111_1111_1111_1111)]),
 
 	// callee saved regs, need to save/restore to use
-	//   bx r12 r13 r14 r15
+	//   bp bx r12 r13 r14 r15
 	FullRegSet([
 		//            1111 11
 		//            5432 1098 7654 3210
-		ClassRegSet(0b1111_0000_0000_1000),
-		ClassRegSet(0b1111_1111_1100_0000)]),
+		ClassRegSet(0b1111_0000_0010_1000),
+		ClassRegSet(0b0000_0000_0000_0000)]),
 
 	[IrArgSize.size64, IrArgSize.size128],
 

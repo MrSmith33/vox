@@ -5,7 +5,7 @@ Authors: Andrey Penechko.
 */
 module utils;
 
-public import core.bitop : bsr;
+public import core.bitop : bsr, popcnt;
 public import core.time : MonoTime, Duration, usecs, dur;
 public import std.algorithm : min, max, swap, map;
 public import std.conv : to;

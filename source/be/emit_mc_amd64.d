@@ -803,7 +803,6 @@ struct CodeEmitter
 
 			case MoveType.reg_to_reg:
 				version(emit_mc_print) writefln("  move.%s reg:%s, reg:%s", argSize, dstReg, srcReg);
-				if (dstReg == srcReg) return; // skip if same register
 				if (src.physRegClass == AMD64_REG_CLASS.XMM && dst.physRegClass == AMD64_REG_CLASS.XMM) {
 					final switch(argSize) with(IrArgSize) {
 						case size8, size16:

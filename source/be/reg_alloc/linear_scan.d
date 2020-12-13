@@ -747,7 +747,7 @@ struct LinearScan
 		else
 		{
 			IrIndex type = lir.getValueType(context, it.definition);
-			IrIndex slot = stackLayout.addStackItem(context, type, StackSlotKind.local, 0);
+			IrIndex slot = stackLayout.addStackItem(context, type, context.types.typeSizeAndAlignment(type), StackSlotKind.local, 0);
 			state.spillSlot = slot; // cache slot
 			version(RAPrint) writefln("assignSpillSlot %s new slot %s", it.definition, slot);
 			it.reg = slot;
@@ -1198,7 +1198,7 @@ struct LinearScan
 					break;
 				default: context.internal_error("Size not implemented %s", size);
 			}
-			IrIndex slot = stackLayout.addStackItem(context, slotType, StackSlotKind.local, 0);
+			IrIndex slot = stackLayout.addStackItem(context, slotType, context.types.typeSizeAndAlignment(slotType), StackSlotKind.local, 0);
 
 			// save register
 			ExtraInstrArgs extra1 = { argSize : size };
@@ -1214,7 +1214,7 @@ struct LinearScan
 
 	IrIndex getScratchSpillSlot() {
 		if (scratchSpillSlot.isUndefined) {
-			scratchSpillSlot = fun.backendData.stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), StackSlotKind.local, 0);
+			scratchSpillSlot = fun.backendData.stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), context.types.typeSizeAndAlignment(makeBasicTypeIndex(IrValueType.i64)), StackSlotKind.local, 0);
 		}
 		return scratchSpillSlot;
 	}

@@ -88,19 +88,18 @@ struct Sysv_AbiParamClass {
 	}
 }
 
-enum MAX_ARG_CLASSES = 2;
+enum MAX_ARG_REGS = 2;
 
 struct AbiState {
 	FunctionAbi abi;
 
-	PhysReg[] gprRegs;
-	PhysReg[] sseRegs;
+	PhysReg[][2] abiRegs;
 	PhysReg[] retRegs;
 	IrTypeFunction* type;
 
 	uint[] paramClassBuf;
 
-	void init(CompilationContext* c, IrTypeFunction* type) {
+	void run(CompilationContext* c, IrTypeFunction* type) {
 		this.type = type;
 		auto cc = callConventions[type.callConv];
 		abi.stackAlignment = cc.minStackAlignment;
@@ -109,8 +108,8 @@ struct AbiState {
 		abi.paramClasses = paramClasses[0..type.numParameters];
 		abi.paramData = c.allocateTempArray!ParamLocation(type.numParameters);
 
-		gprRegs = cc.gprParamRegs;
-		sseRegs = cc.sseParamRegs;
+		abiRegs[AMD64_REG_CLASS.GPR] = cc.gprParamRegs;
+		abiRegs[AMD64_REG_CLASS.XMM] = cc.sseParamRegs;
 		ArgClassifier classify = classify_abis[type.callConv];
 		classify(c, this);
 
@@ -166,7 +165,7 @@ struct AbiState {
 }
 
 union ParamLocation {
-	PhysReg[MAX_ARG_CLASSES] regs;
+	PhysReg[MAX_ARG_REGS] regs;
 	struct {
 		// offset from the first byte of first parameter on the stack
 		// first parameter will have offset of 0
@@ -190,8 +189,7 @@ struct FunctionAbi
 	uint stackSize;
 	uint stackAlignment;
 	bool reverseStackOrder;
-	ubyte gprRegistersUsed;
-	ubyte sseRegistersUsed;
+	ubyte numRegistersUsed;
 	// if defined, syscall instruction is used instead of call
 	PhysReg syscallRegister;
 	bool useSyscall;
@@ -201,9 +199,11 @@ struct FunctionAbi
 // If there is no free registers left, it will reclassify the argument to be passed via memory.
 void win64_classify(CompilationContext* c, ref AbiState state)
 {
-	// used for sse too
-	ubyte gprRemaining = cast(ubyte)state.gprRegs.length;
-	scope(exit) state.abi.gprRegistersUsed = cast(ubyte)(state.gprRegs.length - gprRemaining);
+	// used for gpr and sse regs
+	ubyte regsRemaining = cast(ubyte)state.abiRegs[AMD64_REG_CLASS.GPR].length;
+	scope(exit) {
+		state.abi.numRegistersUsed = cast(ubyte)(state.abiRegs[AMD64_REG_CLASS.GPR].length - regsRemaining);
+	}
 
 	state.abi.returnClass = PassClass.ignore;
 	if (state.type.numResults == 1) {
@@ -215,10 +215,12 @@ void win64_classify(CompilationContext* c, ref AbiState state)
 			state.abi.returnClass = PassClass.byValueReg;
 			state.abi.returnLoc.regs[0] = amd64_reg.ax;
 		} else {
+			// hidden pointer is passed as first parameter
 			state.abi.returnClass = PassClass.byPtrReg;
-			state.abi.returnLoc.regs[0] = state.gprRegs[0];
+			PhysReg reg = state.abiRegs[AMD64_REG_CLASS.GPR][0];
+			state.abi.returnLoc.regs[0] = reg;
 			state.abi.returnLoc.regs[1] = amd64_reg.ax; // we store return register in second slot
-			--gprRemaining; // affects sse too
+			--regsRemaining;
 		}
 	}
 	//writefln("result %s %s", state.abi.returnClass, state.abi.returnLoc.regs);
@@ -226,26 +228,29 @@ void win64_classify(CompilationContext* c, ref AbiState state)
 	foreach(uint i; 0..cast(uint)state.type.numParameters) {
 		IrIndex paramType = state.type.parameterTypes[i];
 		if (paramType.isTypeFloat) {
-			if (gprRemaining) {
+			if (regsRemaining) {
 				state.abi.paramClasses[i] = PassClass.byValueReg;
-				state.abi.paramData[i].regs[0] = state.sseRegs[$-gprRemaining];
-				--gprRemaining; // affects sse too
+				PhysReg reg = state.abiRegs[AMD64_REG_CLASS.XMM][$-regsRemaining];
+				state.abi.paramData[i].regs[0] = reg;
+				--regsRemaining;
 			} else {
 				state.abi.paramClasses[i] = PassClass.byValueMemory;
 			}
 		} else if (fitsIntoRegister(paramType, c)) {
-			if (gprRemaining) {
+			if (regsRemaining) {
 				state.abi.paramClasses[i] = PassClass.byValueReg;
-				state.abi.paramData[i].regs[0] = state.gprRegs[$-gprRemaining];
-				--gprRemaining; // affects sse too
+				PhysReg reg = state.abiRegs[AMD64_REG_CLASS.GPR][$-regsRemaining];
+				state.abi.paramData[i].regs[0] = reg;
+				--regsRemaining;
 			} else {
 				state.abi.paramClasses[i] = PassClass.byValueMemory;
 			}
 		} else {
-			if (gprRemaining) {
+			if (regsRemaining) {
 				state.abi.paramClasses[i] = PassClass.byPtrReg;
-				state.abi.paramData[i].regs[0] = state.gprRegs[$-gprRemaining];
-				--gprRemaining; // affects sse too
+				PhysReg reg = state.abiRegs[AMD64_REG_CLASS.GPR][$-regsRemaining];
+				state.abi.paramData[i].regs[0] = reg;
+				--regsRemaining;
 			} else {
 				state.abi.paramClasses[i] = PassClass.byPtrMemory;
 			}
@@ -355,10 +360,15 @@ InMemory classify_struct(CompilationContext* c, IrIndex paramType, ref AbiClass[
 
 void sysv64_classify(CompilationContext* c, ref AbiState state)
 {
-	ubyte gprRemaining = cast(ubyte)state.gprRegs.length;
-	ubyte sseRemaining = cast(ubyte)state.sseRegs.length;
-	scope(exit) state.abi.gprRegistersUsed = cast(ubyte)(state.gprRegs.length - gprRemaining);
-	scope(exit) state.abi.sseRegistersUsed = cast(ubyte)(state.sseRegs.length - sseRemaining);
+	ubyte[2] regsRemaining;
+
+	regsRemaining[AMD64_REG_CLASS.GPR] = cast(ubyte)state.abiRegs[AMD64_REG_CLASS.GPR].length;
+	regsRemaining[AMD64_REG_CLASS.XMM] = cast(ubyte)state.abiRegs[AMD64_REG_CLASS.XMM].length;
+	scope(exit) {
+		size_t gpr = state.abiRegs[AMD64_REG_CLASS.GPR].length - regsRemaining[AMD64_REG_CLASS.GPR];
+		size_t xmm = state.abiRegs[AMD64_REG_CLASS.XMM].length - regsRemaining[AMD64_REG_CLASS.XMM];
+		state.abi.numRegistersUsed = cast(ubyte)(gpr + xmm);
+	}
 
 	state.abi.returnClass = PassClass.ignore;
 	if (state.type.numResults == 1) {
@@ -378,12 +388,14 @@ void sysv64_classify(CompilationContext* c, ref AbiState state)
 			else if (resClass.high == AbiClass.integer)
 				state.abi.returnLoc.regs[1] = amd64_reg.dx;
 		} else if (resClass.passClass == PassClass.byValueMemory) {
+			// hidden pointer is passed as first parameter
 			state.abi.returnClass = PassClass.byPtrReg;
-			state.abi.returnLoc.regs[0] = state.gprRegs[0];
+			PhysReg reg = state.abiRegs[AMD64_REG_CLASS.GPR][0];
+			state.abi.returnLoc.regs[0] = reg;
 			state.abi.returnLoc.regs[1] = amd64_reg.ax; // we store return register in second slot
-			--gprRemaining;
+			--regsRemaining[AMD64_REG_CLASS.GPR];
 		}
-		//writefln("res %s", state.abi.returnClass);
+		//writefln("res %s %s", state.abi.returnClass, state.abi.returnLoc.regs);
 	}
 
 	// assign register or fallback to memory class
@@ -394,32 +406,41 @@ void sysv64_classify(CompilationContext* c, ref AbiState state)
 		switch(paramClass_sysv.low)
 		{
 			case AbiClass.integer:
-				if (gprRemaining < paramClass_sysv.len) {
-					state.abi.paramClasses[i] = PassClass.byValueMemory;
-					goto case AbiClass.memory;
-				}
-
-				// assign regs
-				foreach(uint j; 0..paramClass_sysv.len) {
-					assert(gprRemaining);
-					state.abi.paramData[i].regs[j] = state.gprRegs[$-gprRemaining];
-					--gprRemaining;
-				}
-				break;
-
 			case AbiClass.sse:
-				if (sseRemaining < paramClass_sysv.len) {
-					state.abi.paramClasses[i] = PassClass.byValueMemory;
-					goto case AbiClass.memory;
+				// 1 or 2 registers of same or different class
+				ubyte getRegClass(AbiClass abiClass) {
+					switch(abiClass) {
+						case AbiClass.integer: return AMD64_REG_CLASS.GPR;
+						case AbiClass.sse: return AMD64_REG_CLASS.XMM;
+						default: assert(false);
+					}
+				}
+
+				AbiClass[2] classes = [paramClass_sysv.low, paramClass_sysv.high];
+				ubyte[2] regsNeeded;
+
+				foreach(uint j; 0..paramClass_sysv.len) {
+					ubyte regClass = getRegClass(classes[j]);
+					++regsNeeded[regClass];
+				}
+
+				foreach(ubyte regClass; 0..2) {
+					if (regsRemaining[regClass] < regsNeeded[regClass]) {
+						state.abi.paramClasses[i] = PassClass.byValueMemory;
+						goto case AbiClass.memory;
+					}
 				}
 
 				// assign regs
 				foreach(uint j; 0..paramClass_sysv.len) {
-					assert(sseRemaining);
-					state.abi.paramData[i].regs[j] = state.sseRegs[$-sseRemaining];
-					--sseRemaining;
+					ubyte regClass = getRegClass(classes[j]);
+					assert(regsRemaining[regClass]);
+					PhysReg reg = state.abiRegs[regClass][$-regsRemaining[regClass]];
+					state.abi.paramData[i].regs[j] = reg;
+					--regsRemaining[regClass];
 				}
 				break;
+
 			case AbiClass.memory: break;
 			case AbiClass.no_class: break; // for empty structs
 			default:
@@ -465,7 +486,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 	c.assertf(irFuncType.numResults <= 1, "%s results is not implemented", irFuncType.numResults);
 
 	AbiState state;
-	state.init(c, irFuncType);
+	state.run(c, irFuncType);
 	scope(exit) state.free(c);
 
 	IrIndex hiddenParameter;
@@ -515,7 +536,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				break;
 
 			case PassClass.byValueMemory:
-				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.parameter, cast(ushort)paramIndex);
+				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, c.types.typeSizeAndAlignment(type), StackSlotKind.parameter, cast(ushort)paramIndex);
 				ir.backendData.stackLayout[slot].displacement = state.abi.paramData[paramIndex].stackOffset;
 
 				// is directly in stack
@@ -534,7 +555,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			case PassClass.byPtrMemory:
 				// stack contains pointer to data
 				type = c.types.appendPtr(type);
-				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.parameter, cast(ushort)paramIndex);
+				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, c.types.typeSizeAndAlignment(type), StackSlotKind.parameter, cast(ushort)paramIndex);
 				ir.backendData.stackLayout[slot].displacement = state.abi.paramData[paramIndex].stackOffset;
 
 				IrArgSize argSize = getTypeArgSize(type, c);
@@ -569,7 +590,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 		IrTypeFunction* calleeType = &c.types.get!IrTypeFunction(calleeTypeIndex);
 
 		AbiState callee_state;
-		callee_state.init(c, calleeType);
+		callee_state.run(c, calleeType);
 		scope(exit) callee_state.free(c);
 
 		CallConv* callConv = c.types.getCalleeCallConv(callee, ir, c);
@@ -593,7 +614,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			// move callee in first arg
 			instrHeader.arg(ir, 0) = callee;
 			// place return arg slot in second arg
-			hiddenPtr = ir.backendData.stackLayout.addStackItem(c, resType, StackSlotKind.argument, 0);
+			hiddenPtr = ir.backendData.stackLayout.addStackItem(c, resType, c.types.typeSizeAndAlignment(resType), StackSlotKind.argument, 0);
 			args[0] = hiddenPtr;
 			hasHiddenPtr = true;
 		}
@@ -622,7 +643,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				case PassClass.byValueRegMulti: break;
 				case PassClass.byPtrReg, PassClass.byPtrMemory:
 					//allocate stack slot, store value there and use slot pointer as argument
-					args[i] = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.argument, 0);
+					args[i] = ir.backendData.stackLayout.addStackItem(c, type, c.types.typeSizeAndAlignment(type), StackSlotKind.argument, 0);
 					IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
 					builder.insertBeforeInstr(instrIndex, instr);
 					break;
@@ -746,16 +767,37 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 
 		// fix arguments
 		scope(exit) {
-			ubyte regsUsed = callee_state.abi.gprRegistersUsed;
+			ubyte regsUsed = callee_state.abi.numRegistersUsed;
+
+			void fillRegs(IrIndex[] instrArgs) {
+				assert(instrArgs.length == regsUsed);
+				uint nextIndex = 0;
+				// order must be preserved, because liveness analisys relies on that
+				foreach(i, PassClass paramClass; callee_state.abi.paramClasses) {
+					final switch(paramClass) with(PassClass) {
+						case byValueReg, byPtrReg:
+							ParamLocation loc = callee_state.abi.paramData[i];
+							// size is irrelevant here because register is only mentioned here to aid register allocation
+							instrArgs[nextIndex] = IrIndex(loc.regs[0], ArgType.QWORD);
+							++nextIndex;
+							break;
+						case byValueRegMulti:
+							ParamLocation loc = callee_state.abi.paramData[i];
+							// size is irrelevant here because register is only mentioned here to aid register allocation
+							instrArgs[nextIndex] = IrIndex(loc.regs[0], ArgType.QWORD);
+							instrArgs[nextIndex+1] = IrIndex(loc.regs[1], ArgType.QWORD);
+							nextIndex += 2;
+							break;
+						case byValueMemory, byPtrMemory, ignore: break; // skip, non register param
+					}
+				}
+			}
+
 			if (regsUsed + 1 <= instrHeader.numArgs) {
 				// reuse instruction
 				instrHeader.numArgs = cast(ubyte)(regsUsed + 1); // include callee
 
-				// fill with regs
-				foreach(i, ref arg; instrHeader.args(ir)[1..$]) {
-					// size is irrelevant here because register is only mentioned here to aid register allocation
-					arg = IrIndex(callee_state.gprRegs[i], ArgType.QWORD);
-				}
+				fillRegs(instrHeader.args(ir)[1..$]); // fill with regs
 
 				if (callee_state.abi.useSyscall) {
 					instrHeader.op = IrOpcode.syscall;
@@ -776,11 +818,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				newCallInstr = builder.emitInstr!(IrOpcode.call)(extra, instrHeader.arg(ir, 0)).instruction;
 				IrInstrHeader* callHeader = ir.getInstr(newCallInstr);
 
-				// fill with regs
-				foreach(i, ref arg; callHeader.args(ir)[1..$]) {
-					// size is irrelevant here because register is only mentioned here to aid register allocation
-					arg = IrIndex(callee_state.gprRegs[i], ArgType.QWORD);
-				}
+				fillRegs(callHeader.args(ir)[1..$]); // fill with regs
 
 				replaceInstruction(ir, instrIndex, newCallInstr);
 			}
@@ -818,7 +856,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 					instrHeader.result(ir) = returnReg;
 					break;
 				case PassClass.byValueRegMulti:
-					PhysReg[2] retRegs = state.abi.returnLoc.regs;
+					PhysReg[2] retRegs = callee_state.abi.returnLoc.regs;
 					IrIndex instr = receiveMultiValue(ir.nextInstr(instrIndex), retRegs, instrHeader.result(ir), builder);
 					builder.insertAfterInstr(lastInstr, instr);
 					instrHeader.result(ir) = IrIndex(retRegs[0], ArgType.QWORD); // TODO: need to put both registers as result
@@ -869,11 +907,11 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			case PassClass.byValueRegMulti:
 				IrIndex[2] vals = simplifyConstant128(instrIndex, instrHeader.arg(ir, 0), builder, c);
 
-				IrIndex result1 = IrIndex(resRegs[0], ArgType.QWORD); // hidden ptr register
+				IrIndex result1 = IrIndex(resRegs[0], ArgType.QWORD);
 				ExtraInstrArgs extra3 = { result : result1 };
 				builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra3, vals[0]);
 
-				IrIndex result2 = IrIndex(resRegs[1], ArgType.QWORD); // we store return register in second slot
+				IrIndex result2 = IrIndex(resRegs[1], ArgType.QWORD);
 				ExtraInstrArgs extra4 = { result : result2 };
 				builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra4, vals[1]);
 				break;
@@ -907,6 +945,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 IrIndex receiveMultiValue(IrIndex beforeInstr, PhysReg[2] regs, IrIndex result, ref IrBuilder builder) {
 	IrIndex type = builder.ir.getVirtReg(result).type;
 	IrIndex reg1 = IrIndex(regs[0], ArgType.QWORD);
+	auto sizealign = builder.context.types.typeSizeAndAlignment(type);
 	IrIndex reg2 = IrIndex(regs[1], ArgType.QWORD);
 
 	ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
@@ -918,7 +957,7 @@ IrIndex receiveMultiValue(IrIndex beforeInstr, PhysReg[2] regs, IrIndex result, 
 	builder.insertBeforeInstr(beforeInstr, move2.instruction);
 
 	// store both regs into stack slot, then load aggregate
-	IrIndex slot = builder.ir.backendData.stackLayout.addStackItem(builder.context, type, StackSlotKind.local, 0);
+	IrIndex slot = builder.ir.backendData.stackLayout.addStackItem(builder.context, type, SizeAndAlignment(16, sizealign.alignmentPower), StackSlotKind.local, 0);
 
 	IrIndex addr1 = genAddressOffset(slot, 0, builder.context.i64PtrType, beforeInstr, builder);
 	IrIndex store1 = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), addr1, move1.result);

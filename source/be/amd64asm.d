@@ -708,13 +708,13 @@ struct CodeGen_x86_64
 	void movups(MemAddress dst, Register src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x11), src, dst); }
 
 	// x stands for xmm
-	void movd_xr(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x6E), dst, src); }
+	void movd_xr(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x6E), src, dst); }
 	void movd_xr(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x6E), dst, src); }
 
 	void movd_rx(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x7E), src, dst); }
 	void movd_rx(MemAddress dst, Register src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x7E), src, dst); }
 
-	void movq_xr(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x6E), dst, src); }
+	void movq_xr(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x6E), src, dst); }
 	void movq_xr(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x6E), dst, src); }
 
 	void movq_rx(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x7E), src, dst); }

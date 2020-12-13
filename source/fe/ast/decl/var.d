@@ -170,7 +170,7 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 			ExprValueKind valueKind = ExprValueKind.ptr_to_data;
 
 			// allocate stack slot
-			IrIndex slot = gen.fun.backendData.stackLayout.addStackItem(c, irType, StackSlotKind.local, v.scopeIndex);
+			IrIndex slot = gen.fun.backendData.stackLayout.addStackItem(c, irType, c.types.typeSizeAndAlignment(irType), StackSlotKind.local, v.scopeIndex);
 			v.irValue = ExprValue(slot, valueKind, IsLvalue.yes);
 		}
 		else

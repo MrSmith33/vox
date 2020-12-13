@@ -170,10 +170,10 @@ struct StackLayout
 	}
 
 	/// paramIndex == -1 for non-params
-	IrIndex addStackItem(CompilationContext* context, IrIndex type, StackSlotKind kind, ushort paramIndex)
+	IrIndex addStackItem(CompilationContext* context, IrIndex type, SizeAndAlignment sizealign, StackSlotKind kind, ushort paramIndex)
 	{
 		uint id = cast(uint)(slots.length);
-		StackSlot slot = StackSlot(context.types.typeSizeAndAlignment(type), kind, paramIndex);
+		StackSlot slot = StackSlot(sizealign, kind, paramIndex);
 		slot.type = context.types.appendPtr(type);
 
 		assert(slot.sizealign.size % slot.sizealign.alignment == 0, "size is not multiple of alignment");

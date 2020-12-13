@@ -193,7 +193,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					}
 					else
 					{
-						IrIndex slot = ir.backendData.stackLayout.addStackItem(c, base, StackSlotKind.local, 0);
+						IrIndex slot = ir.backendData.stackLayout.addStackItem(c, base, c.types.typeSizeAndAlignment(base), StackSlotKind.local, 0);
 						genCopy(slot, instrHeader.arg(ir, 0), instrIndex, builder);
 
 						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = slot;
@@ -207,7 +207,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 					if (!type.fitsIntoRegister(c)) {
 						IrTypeStruct* structType = &c.types.get!IrTypeStruct(type);
-						IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, StackSlotKind.local, 0);
+						IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, c.types.typeSizeAndAlignment(type), StackSlotKind.local, 0);
 						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = slot;
 
 						IrIndex[] members = instrHeader.args(ir);

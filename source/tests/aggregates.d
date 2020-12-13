@@ -348,6 +348,9 @@ immutable aggr135 = q{--- aggr135
 	vec1 pass_vec1(vec1 v) { return v; }
 	vec2 pass_vec2(vec2 v) { return v; }
 	vec3 pass_vec3(vec3 v) { return v; }
+	void pass_vec3_ptr(vec3* res, vec3 v) {
+		*res = pass_vec3(v);
+	}
 	vec4 pass_vec4(vec4 v) { return v; }
 	vec5 pass_vec5(vec5 v) { return v; }
 };
@@ -363,6 +366,11 @@ void tester135(ref TestContext ctx) {
 
 	auto pass_vec2 = ctx.getFunctionPtr!(vec2, vec2)("pass_vec2");
 	assert(pass_vec2(vec2(1, 2)) == vec2(1, 2));
+
+	auto pass_vec3_ptr = ctx.getFunctionPtr!(void, vec3*, vec3)("pass_vec3_ptr");
+	vec3 r1;
+	pass_vec3_ptr(&r1, vec3(1, 2, 3));
+	assert(r1 == vec3(1, 2, 3));
 
 	auto pass_vec3 = ctx.getFunctionPtr!(vec3, vec3)("pass_vec3");
 	assert(pass_vec3(vec3(1, 2, 3)) == vec3(1, 2, 3));
@@ -434,8 +442,8 @@ void tester137(ref TestContext ctx) {
 	static struct vec2 { int x; float y; }
 	static struct vec3 { int x; float y; float z; int w; }
 	static struct vec4 { float x; int y; int z; float w; }
-	static struct vec5 { int x; float y; float z; float w; }
-	static struct vec6 { float x; int y; int z; int w; }
+	static struct vec5 { int x; int y; float z; float w; }
+	static struct vec6 { float x; float y; int z; int w; }
 
 	auto pass_vec1 = ctx.getFunctionPtr!(vec1, vec1)("pass_vec1");
 	assert(pass_vec1(vec1(1, 2)) == vec1(1, 2));
