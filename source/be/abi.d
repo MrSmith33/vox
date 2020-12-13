@@ -14,7 +14,7 @@ import all;
 
 /// 2 AbiClass slots is enough to classify structs containing m128/m256/m512 types.
 /// They can be the only value in the struct.
-/// The only rules to filter this needed, are:
+/// The only rules needed to find types that are passed in registers, are:
 /// - m128/m256/m512 must have offset of 0
 /// - basic types must have offset < 16
 
@@ -772,6 +772,12 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			void fillRegs(IrIndex[] instrArgs) {
 				assert(instrArgs.length == regsUsed);
 				uint nextIndex = 0;
+				// handle return by ptr reg
+				if (callee_state.abi.returnClass == PassClass.byPtrReg) {
+					// size is irrelevant here because register is only mentioned here to aid register allocation
+					instrArgs[nextIndex] = IrIndex(callee_state.abi.returnLoc.regs[0], ArgType.QWORD);
+					++nextIndex;
+				}
 				// order must be preserved, because liveness analisys relies on that
 				foreach(i, PassClass paramClass; callee_state.abi.paramClasses) {
 					final switch(paramClass) with(PassClass) {
@@ -791,9 +797,10 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 						case byValueMemory, byPtrMemory, ignore: break; // skip, non register param
 					}
 				}
+				assert(nextIndex == regsUsed);
 			}
 
-			if (regsUsed + 1 <= instrHeader.numArgs) {
+			if (regsUsed + 1 <= instrHeader.numArgs) { // include callee
 				// reuse instruction
 				instrHeader.numArgs = cast(ubyte)(regsUsed + 1); // include callee
 
