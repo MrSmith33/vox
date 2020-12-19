@@ -18,9 +18,9 @@ ubyte[] alloc_executable_memory(size_t bytes)
 	return allocate(bytes, cast(void*)0x4000_0000UL, MemType.RWX);
 }
 
-bool free_executable_memory(ubyte[] bytes)
+void free_executable_memory(ubyte[] bytes)
 {
-	return deallocate(bytes);
+	deallocate(bytes);
 }
 
 version(Posix)
@@ -39,38 +39,36 @@ version(Posix)
 		return cast(ubyte[])p[0 .. bytes];
 	}
 
-	bool deallocate(ubyte[] b)
+	void deallocate(ubyte[] b)
 	{
 		import core.sys.posix.sys.mman : munmap;
-		if (b.ptr) munmap(b.ptr, b.length) == 0 || assert(0);
-		return true;
+		if (b.ptr is null) return;
+		int res = munmap(b.ptr, b.length);
+		assert(res == 0, format("munmap(%X, %s) failed, %s", b.ptr, b.length, errno));
 	}
 
 	void markAsRW(void* addr, size_t numPages)
 	{
 		import core.sys.posix.sys.mman : mprotect, PROT_READ, PROT_WRITE;
 		if (numPages == 0) return;
-		// TODO: crashes in WSL
-		//int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ | PROT_WRITE);
-		//assert(res != 0, format("mprotect(%X, %s, PROT_READ | PROT_WRITE) failed, %s", addr, numPages*PAGE_SIZE, errno));
+		int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ | PROT_WRITE);
+		assert(res == 0, format("mprotect(%X, %s, PROT_READ | PROT_WRITE) failed, %s", addr, numPages*PAGE_SIZE, errno));
 	}
 
 	void markAsRO(void* addr, size_t numPages)
 	{
 		import core.sys.posix.sys.mman : mprotect, PROT_READ;
 		if (numPages == 0) return;
-		// TODO: crashes in WSL
-		//int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ);
-		//assert(res != 0, format("mprotect(%X, %s, PROT_READ) failed, %s", addr, numPages*PAGE_SIZE, errno));
+		int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ);
+		assert(res == 0, format("mprotect(%X, %s, PROT_READ) failed, %s", addr, numPages*PAGE_SIZE, errno));
 	}
 
 	void markAsExecutable(void* addr, size_t numPages)
 	{
 		import core.sys.posix.sys.mman : mprotect, PROT_READ, PROT_EXEC;
 		if (numPages == 0) return;
-		// TODO: crashes in WSL
-		//int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ | PROT_EXEC);
-		//assert(res != 0, format("mprotect(%X, %s, PROT_EXEC) failed, %s", addr, numPages*PAGE_SIZE, errno));
+		int res = mprotect(addr, numPages*PAGE_SIZE, PROT_READ | PROT_EXEC);
+		assert(res == 0, format("mprotect(%X, %s, PROT_EXEC) failed, %s", addr, numPages*PAGE_SIZE, errno));
 	}
 }
 else version(Windows)
@@ -108,9 +106,10 @@ else version(Windows)
 		return cast(ubyte[])p[0 .. bytes];
 	}
 
-	bool deallocate(ubyte[] b)
+	void deallocate(ubyte[] b)
 	{
-		return b.ptr is null || VirtualFree(b.ptr, 0, MEM_RELEASE) != 0;
+		if (b.ptr is null) return;
+		VirtualFree(b.ptr, 0, MEM_RELEASE);
 	}
 
 	void markAsRW(void* addr, size_t numPages)
