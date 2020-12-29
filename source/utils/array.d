@@ -67,6 +67,10 @@ struct Array(T)
 		if (capacity <= NUM_ITEMS_PER_PAGE)
 		{
 			size_t byteCapacity = nextPOT(_capacity * T.sizeof);
+
+			// When we have empty array with NUM_INLINE_ITEMS == 0 and no allocated external array
+			if (byteCapacity == 0) return copy;
+
 			ubyte[] block = (cast(ubyte*)externalArray)[0..byteCapacity];
 
 			ubyte[] newBlock = arena.allocBlock(block.length);

@@ -102,7 +102,7 @@ struct AbiState {
 	void run(CompilationContext* c, IrTypeFunction* type) {
 		this.type = type;
 		auto cc = callConventions[type.callConv];
-		abi.stackAlignment = cc.minStackAlignment;
+		abi.stackSizealign.alignmentPower = cc.minStackAlignmentPower;
 		paramClassBuf = c.allocateTempArray!uint(alignValue(type.numParameters, 4) / 4);
 		PassClass[] paramClasses = (cast(PassClass[])paramClassBuf)[0..type.numParameters];
 		abi.paramClasses = paramClasses[0..type.numParameters];
@@ -139,14 +139,14 @@ struct AbiState {
 		// returns assigned register to the pool
 		// item added will have increasing stack offset
 		void assignToMem(ref ParamLocation loc, SizeAndAlignment item) {
-			abi.stackAlignment = max(abi.stackAlignment, item.alignment);
+			abi.stackSizealign.alignmentPower = max(abi.stackSizealign.alignmentPower, item.alignmentPower);
 			// each item takes a whole number of stack slots (8 byte slots on 64 bit arch)
 			uint itemAlignment = max(MIN_STACK_SLOT_SIZE, item.alignment);
-			abi.stackSize = alignValue!uint(abi.stackSize, itemAlignment);
-			loc.stackOffset = abi.stackSize;
-			loc.stackSize = max(MIN_STACK_SLOT_SIZE, item.size);
+			abi.stackSizealign.size = alignValue!uint(abi.stackSizealign.size, itemAlignment);
+			loc.stackOffset = abi.stackSizealign.size;
+			loc.stackSizealign = SizeAndAlignment(max(MIN_STACK_SLOT_SIZE, item.size), item.alignmentPower);
 
-			abi.stackSize += loc.stackSize;
+			abi.stackSizealign.size += loc.stackSizealign.size;
 		}
 
 		// actually assign memory offsets
@@ -160,7 +160,7 @@ struct AbiState {
 				assignToMem(abi.paramData[i], SizeAndAlignment(8, 3));
 			}
 		}
-		abi.stackSize = alignValue!uint(abi.stackSize, MIN_STACK_SLOT_SIZE);
+		abi.stackSizealign.size = alignValue!uint(abi.stackSizealign.size, MIN_STACK_SLOT_SIZE);
 	}
 }
 
@@ -170,7 +170,7 @@ union ParamLocation {
 		// offset from the first byte of first parameter on the stack
 		// first parameter will have offset of 0
 		uint stackOffset;
-		uint stackSize;
+		SizeAndAlignment stackSizealign;
 	}
 }
 
@@ -186,8 +186,7 @@ struct FunctionAbi
 	// when same index is memory, this is int offset
 	// when same index is register, this is register
 	ParamLocation[] paramData;
-	uint stackSize;
-	uint stackAlignment;
+	SizeAndAlignment stackSizealign;
 	bool reverseStackOrder;
 	ubyte numRegistersUsed;
 	// if defined, syscall instruction is used instead of call
@@ -481,7 +480,7 @@ __gshared ArgClassifier[] classify_abis = [
 // Handle ABI
 void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
-	//writefln("lower_abi %s %s", builder.context.idString(ir.backendData.name), ir.getCallConvEnum(c));
+	//writefln("lower_abi %s %s", builder.context.idString(ir.name), ir.getCallConvEnum(c));
 	IrTypeFunction* irFuncType = &c.types.get!IrTypeFunction(ir.type);
 	c.assertf(irFuncType.numResults <= 1, "%s results is not implemented", irFuncType.numResults);
 
@@ -536,8 +535,9 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				break;
 
 			case PassClass.byValueMemory:
-				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, c.types.typeSizeAndAlignment(type), StackSlotKind.parameter, cast(ushort)paramIndex);
-				ir.backendData.stackLayout[slot].displacement = state.abi.paramData[paramIndex].stackOffset;
+				IrIndex slot = builder.appendStackSlot(type, c.types.typeSizeAndAlignment(type), StackSlotKind.parameter);
+				ir.getStackSlot(slot).displacement = state.abi.paramData[paramIndex].stackOffset;
+				ir.getStackSlot(slot).sizealign = state.abi.paramData[paramIndex].stackSizealign;
 
 				// is directly in stack
 				ExtraInstrArgs extra = { result : instrHeader.result(ir) };
@@ -555,8 +555,9 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			case PassClass.byPtrMemory:
 				// stack contains pointer to data
 				type = c.types.appendPtr(type);
-				IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, c.types.typeSizeAndAlignment(type), StackSlotKind.parameter, cast(ushort)paramIndex);
-				ir.backendData.stackLayout[slot].displacement = state.abi.paramData[paramIndex].stackOffset;
+				IrIndex slot = builder.appendStackSlot(type, c.types.typeSizeAndAlignment(type), StackSlotKind.parameter);
+				ir.getStackSlot(slot).displacement = state.abi.paramData[paramIndex].stackOffset;
+				ir.getStackSlot(slot).sizealign = state.abi.paramData[paramIndex].stackSizealign;
 
 				IrArgSize argSize = getTypeArgSize(type, c);
 				ExtraInstrArgs extra = { argSize : argSize, type : type };
@@ -581,7 +582,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 
 	void convCall(IrIndex instrIndex, ref IrInstrHeader instrHeader)
 	{
-		ir.backendData.stackLayout.numCalls += 1;
+		ir.numCalls += 1;
 
 		IrIndex callee = instrHeader.arg(ir, 0);
 		IrIndex calleeTypeIndex = ir.getValueType(c, callee);
@@ -614,7 +615,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			// move callee in first arg
 			instrHeader.arg(ir, 0) = callee;
 			// place return arg slot in second arg
-			hiddenPtr = ir.backendData.stackLayout.addStackItem(c, resType, c.types.typeSizeAndAlignment(resType), StackSlotKind.argument, 0);
+			hiddenPtr = builder.appendStackSlot(resType, c.types.typeSizeAndAlignment(resType), StackSlotKind.argument);
 			args[0] = hiddenPtr;
 			hasHiddenPtr = true;
 		}
@@ -643,7 +644,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				case PassClass.byValueRegMulti: break;
 				case PassClass.byPtrReg, PassClass.byPtrMemory:
 					//allocate stack slot, store value there and use slot pointer as argument
-					args[i] = ir.backendData.stackLayout.addStackItem(c, type, c.types.typeSizeAndAlignment(type), StackSlotKind.argument, 0);
+					args[i] = builder.appendStackSlot(type, c.types.typeSizeAndAlignment(type), StackSlotKind.argument);
 					IrIndex instr = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), args[i], arg);
 					builder.insertBeforeInstr(instrIndex, instr);
 					break;
@@ -656,15 +657,15 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 
 		// Stack layouting code makes sure that local data has 16 byte alignment if we have calls in IR.
 		// align stack and push args that didn't fit into registers (register size args)
-		if (callee_state.abi.stackSize > 0)
+		if (callee_state.abi.stackSizealign.size > 0)
 		{
-			if (callee_state.abi.stackAlignment > 16) {
-				c.unrecoverable_error(TokenIndex(), "Stack alignment of %s > 16 is not implemented", callee_state.abi.stackAlignment);
+			if (callee_state.abi.stackSizealign.alignment > 16) {
+				c.unrecoverable_error(TokenIndex(), "Stack alignment of %s > 16 is not implemented", callee_state.abi.stackSizealign.alignment);
 			}
 
-			if (callee_state.abi.stackSize % callee_state.abi.stackAlignment != 0)
+			if (callee_state.abi.stackSizealign.size % callee_state.abi.stackSizealign.alignment != 0)
 			{
-				uint padding = paddingSize(callee_state.abi.stackSize, callee_state.abi.stackAlignment);
+				uint padding = paddingSize(callee_state.abi.stackSizealign.size, callee_state.abi.stackSizealign.alignment);
 				// align stack to 16 bytes
 				// TODO: SysV ABI needs 32byte alignment if __m256 is passed
 				stackReserve += padding;
@@ -701,7 +702,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 						stackOffset += 8;
 					} else {
 						// this must be multiple of 8
-						uint allocSize = paramData.stackSize;
+						uint allocSize = paramData.stackSizealign.size;
 						if (allocSize > 0) {
 							IrIndex paddingSize = c.constants.add(allocSize, IsSigned.no);
 							builder.emitInstrBefore!(IrOpcode.grow_stack)(instrIndex, ExtraInstrArgs(), paddingSize);
@@ -716,8 +717,8 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 					}
 				}
 			}
-			assert(stackOffset == callee_state.abi.stackSize);
-			stackReserve += callee_state.abi.stackSize;
+			assert(stackOffset == callee_state.abi.stackSizealign.size);
+			stackReserve += callee_state.abi.stackSizealign.size;
 		}
 
 		if (callee_state.abi.returnClass == PassClass.byPtrReg) {
@@ -964,7 +965,7 @@ IrIndex receiveMultiValue(IrIndex beforeInstr, PhysReg[2] regs, IrIndex result, 
 	builder.insertBeforeInstr(beforeInstr, move2.instruction);
 
 	// store both regs into stack slot, then load aggregate
-	IrIndex slot = builder.ir.backendData.stackLayout.addStackItem(builder.context, type, SizeAndAlignment(16, sizealign.alignmentPower), StackSlotKind.local, 0);
+	IrIndex slot = builder.appendStackSlot(type, SizeAndAlignment(16, sizealign.alignmentPower), StackSlotKind.local);
 
 	IrIndex addr1 = genAddressOffset(slot, 0, builder.context.i64PtrType, beforeInstr, builder);
 	IrIndex store1 = builder.emitInstr!(IrOpcode.store)(ExtraInstrArgs(), addr1, move1.result);

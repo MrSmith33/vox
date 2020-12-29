@@ -267,7 +267,7 @@ struct CallConv
 	PhysReg framePointer;
 	PhysReg stackPointer;
 
-	uint minStackAlignment;
+	ubyte minStackAlignmentPower;
 
 	uint flags;
 
@@ -325,7 +325,7 @@ __gshared CallConv win64_call_conv = CallConv
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
 
-	16,
+	4,
 
 	CallConvFlags.hasShadowSpace,
 );
@@ -358,7 +358,7 @@ __gshared CallConv sysv64_call_conv = CallConv
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
 
-	16,
+	4,
 	CallConvFlags.hasRedZone,
 );
 
@@ -391,7 +391,7 @@ __gshared CallConv sysv64_syscall_call_conv = CallConv
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
 
-	1,
+	0,
 	0,
 );
 

@@ -698,6 +698,7 @@ struct CompilationContext
 		printArena(irStorage.phiBuffer, "IR phi");
 		printArena(irStorage.basicBlockBuffer, "IR basic blocks");
 		printArena(irStorage.arrayBuffer, "IR arrays");
+		printArena(irStorage.stackSlotBuffer, "IR stack slots");
 		irStorage.printMemSize(sink);
 
 		printArena(vmBuffer, "vm");
@@ -837,6 +838,7 @@ struct CompilationContext
 		irStorage.phiBuffer.clear;
 		irStorage.basicBlockBuffer.clear;
 		irStorage.arrayBuffer.clear;
+		irStorage.stackSlotBuffer.clear;
 		types.buffer.length = initializedIrTypeBufSize;
 		vmBuffer.clear;
 		tempBuffer.clear;
@@ -923,8 +925,8 @@ enum CommonAstNodes : AstIndex
 
 	// builtin functions
 	compile_error            = AstIndex(builtin_sizeof.storageIndex + 24),
-	is_slice                 = AstIndex(builtin_sizeof.storageIndex + 64),
-	is_integer               = AstIndex(builtin_sizeof.storageIndex + 104),
+	is_slice                 = AstIndex(builtin_sizeof.storageIndex + 56),
+	is_integer               = AstIndex(builtin_sizeof.storageIndex + 88),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [

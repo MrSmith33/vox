@@ -337,7 +337,7 @@ struct LivenessInfo
 				sink.putln;
 			}
 		}
-		sink.putfln("intervals %s", context.idString(lir.backendData.name));
+		sink.putfln("intervals %s", context.idString(lir.name));
 		dumpSub(intervals);
 		//dump2;
 	}

@@ -117,7 +117,7 @@ struct LowerVreg
 
 void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
-	//writefln("lower_aggregates %s", c.idString(ir.backendData.name));
+	//writefln("lower_aggregates %s", c.idString(ir.name));
 
 	// buffer for call/instruction arguments
 	enum MAX_ARGS = 255;
@@ -193,7 +193,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					}
 					else
 					{
-						IrIndex slot = ir.backendData.stackLayout.addStackItem(c, base, c.types.typeSizeAndAlignment(base), StackSlotKind.local, 0);
+						IrIndex slot = builder.appendStackSlot(base, c.types.typeSizeAndAlignment(base), StackSlotKind.local);
 						genCopy(slot, instrHeader.arg(ir, 0), instrIndex, builder);
 
 						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = slot;
@@ -207,7 +207,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 					if (!type.fitsIntoRegister(c)) {
 						IrTypeStruct* structType = &c.types.get!IrTypeStruct(type);
-						IrIndex slot = ir.backendData.stackLayout.addStackItem(c, type, c.types.typeSizeAndAlignment(type), StackSlotKind.local, 0);
+						IrIndex slot = builder.appendStackSlot(type, c.types.typeSizeAndAlignment(type), StackSlotKind.local);
 						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = slot;
 
 						IrIndex[] members = instrHeader.args(ir);

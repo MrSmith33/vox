@@ -27,10 +27,6 @@ struct FunctionBackendData
 	AstIndex loweredIrData; // IrFunction
 	/// Machine-level IR
 	AstIndex lirData; // IrFunction
-	// TODO: move into IrFunction
-	StackLayout stackLayout;
-	///
-	Identifier name;
 	///
 	LinkIndex objectSymIndex;
 }
@@ -42,6 +38,7 @@ struct FunctionDeclNode {
 	AstIndex parentScope;
 	AstIndex signature; // FunctionSignatureNode
 	AstIndex block_stmt; // null if external
+	Identifier id;
 	FunctionBackendData backendData;
 
 	bool isInline() { return cast(bool)(flags & FuncDeclFlags.isInline); }
@@ -58,7 +55,7 @@ struct FunctionDeclNode {
 		this._module = _module;
 		this.parentScope = parentScope;
 		this.signature = signature;
-		this.backendData.name = id;
+		this.id = id;
 	}
 
 	IrIndex getIrIndex(CompilationContext* c) {
@@ -68,7 +65,6 @@ struct FunctionDeclNode {
 
 	/// External functions have no body
 	bool isExternal() { return block_stmt.isUndefined; }
-	ref Identifier id() return { return backendData.name; }
 }
 
 void print_func(FunctionDeclNode* node, ref AstPrintState state)
@@ -201,7 +197,7 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 	f.backendData.irData = irIndex;
 	gen.ir = c.getAst!IrFunction(irIndex);
 	IrFunction* ir = gen.ir;
-	ir.backendData = &f.backendData;
+	ir.name = f.id;
 
 	auto signature = f.signature.get!FunctionSignatureNode(c);
 	ir.type = f.signature.gen_ir_type(c);

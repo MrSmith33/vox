@@ -221,6 +221,7 @@ x globals need to have IrIndex to initializer and coexist with raw data initiali
 - Inlining
 	+ IR inliner is done
 	- Deciding when to inline is not implemented
+	+ Stack slots need to be copied on inline
 + DCE exhibits O(n^2) behavior, because for each removed instruction (O(n)), we remove user from the vreg user list (O(n)). - Switched to multihashset.
 
 
@@ -228,12 +229,12 @@ x globals need to have IrIndex to initializer and coexist with raw data initiali
 - Inlining call that passes u8 constant, and inside u8 is zero extended doesn't compile
   because zext of contant is not possible in amd64. This needs to be constant folded in later pass.
   Make worklist or recursive constant folder.
-- Consider storing vreg users in hash map instead of array.
++ Consider storing vreg users in hash map instead of array. (Now uses multihashset)
 - Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
 - IrBuilder must prevent adding instructions from wrong instruction set
 - inline instructions in IR for representing memory operands in x86 LIR
 - IrIndex: small pointer type when basic type is store inline + pointer level for more than 1 indirection level
-- stack layout per IrFunction (use alloca?)
++ stack layout per IrFunction (use alloca?)
 x don't store self-reference arguments in phi functions (we cannot alter order of args now, must have same order as blockIndex.predecessors)
 + store virtual registers, phi functions with arguments in separate arenas
 	vreg will shrink from 7 slots to 4 slots
@@ -268,7 +269,7 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 - Stack parameters need to have cached stack slot
 - optimize multiple spills into single spill at definition
 - For stack to stack moves in move solver we always spill scratch register. Check if there is free register available.
-- Spilling into xmm registers
++ Spilling into xmm registers
 - For syscalls we need to extend eax liveness range. It requires either having eax as an argument of syscall, or always pass function type in the instruction.
 
 

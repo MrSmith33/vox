@@ -82,6 +82,7 @@ struct IrBuilder
 		ir.arrayPtr = context.irStorage.arrayBuffer.nextPtr;
 		ir.vregPtr = context.irStorage.vregBuffer.nextPtr;
 		ir.basicBlockPtr = context.irStorage.basicBlockBuffer.nextPtr;
+		ir.stackSlotPtr = context.irStorage.stackSlotBuffer.nextPtr;
 	}
 
 	private void reset() {
@@ -118,9 +119,9 @@ struct IrBuilder
 	}
 
 	/// Must be called before IR to LIR pass
-	void beginLir(IrFunction* ir, IrFunction* oldIr, CompilationContext* context)
+	void beginLir(IrFunction* ir, IrFunction* oldIr, CompilationContext* c)
 	{
-		setPointers(ir, context);
+		setPointers(ir, c);
 		reset();
 	}
 
@@ -252,6 +253,20 @@ struct IrBuilder
 		return result;
 	}
 
+	// memory is initialized
+	IrIndex appendStackSlot(IrIndex type, SizeAndAlignment sizealign, StackSlotKind kind) {
+		IrIndex result = IrIndex(ir.numStackSlots, IrValueKind.stackSlot);
+		ir.numStackSlots += 1;
+		StackSlot slot = StackSlot(sizealign, kind);
+		slot.type = context.types.appendPtr(type);
+
+		context.assertf(slot.sizealign.size % slot.sizealign.alignment == 0, "size is not multiple of alignment (%s)", slot.sizealign);
+		context.assertf(slot.sizealign.alignmentPower <= 4, "Big alignments (> 16) aren't implemented");
+
+		context.irStorage.stackSlotBuffer.put(slot);
+		return result;
+	}
+
 	IrIndex allocateIrArray(uint capacity)
 	{
 		IrIndex result = IrIndex(ir.arrayLength, IrValueKind.array);
@@ -356,7 +371,7 @@ struct IrBuilder
 		//if (!used.isDefined) dumpFunction(context, ir, "IR gen(addUser)");
 		//writefln("addUser %s %s", used, user);
 		context.assertf(user.isDefined && used.isDefined, "%s addUser(%s, %s)",
-			context.idString(ir.backendData.name), user, used);
+			context.idString(ir.name), user, used);
 		final switch (used.kind) with(IrValueKind) {
 			case none: assert(false, "addUser none");
 			case array: assert(false, "addUser array");
@@ -695,7 +710,7 @@ struct IrBuilder
 	void addUnreachable(IrIndex blockIndex)
 	{
 		IrBasicBlock* block = ir.getBlock(blockIndex);
-		context.assertf(!block.isFinished, "%s.%s is already finished", context.idString(ir.backendData.name), blockIndex);
+		context.assertf(!block.isFinished, "%s.%s is already finished", context.idString(ir.name), blockIndex);
 		block.isFinished = true;
 		emitInstr!(IrOpcode.unreachable)(blockIndex);
 	}
@@ -703,7 +718,7 @@ struct IrBuilder
 	IrIndex addJump(IrIndex blockIndex)
 	{
 		IrBasicBlock* block = ir.getBlock(blockIndex);
-		context.assertf(!block.isFinished, "%s.%s is already finished", context.idString(ir.backendData.name), blockIndex);
+		context.assertf(!block.isFinished, "%s.%s is already finished", context.idString(ir.name), blockIndex);
 		block.isFinished = true;
 		return emitInstr!(IrOpcode.jump)(blockIndex);
 	}

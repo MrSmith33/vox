@@ -22,6 +22,7 @@ public import ir.ir_module;
 public import ir.ir_phi;
 public import ir.ir_small_array;
 public import ir.ir_small_set;
+public import ir.ir_stack_slot;
 public import ir.ir_type;
 public import ir.ir_validation;
 public import ir.ir_value_kind;

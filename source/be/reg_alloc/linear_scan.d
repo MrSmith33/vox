@@ -284,7 +284,7 @@ struct LinearScan
 		physRegs.setup(context, lir, context.machineInfo);
 		vregState = context.allocateTempArray!VregState(lir.numVirtualRegisters);
 
-		//writefln("\nstart scan of %s", context.idString(lir.backendData.name));
+		//writefln("\nstart scan of %s", context.idString(lir.name));
 		scope(exit) {
 			lir = null;
 		}
@@ -370,7 +370,7 @@ struct LinearScan
 		//live.dump(context, lir);
 
 		MoveSolver moveSolver = MoveSolver(context);
-		moveSolver.setup(fun);
+		moveSolver.setup(lir);
 		fixInstructionArgs(fun);
 		// this pass inserts moves for spills and loads
 		resolveInsertSplitMoves(moveSolver);
@@ -378,14 +378,14 @@ struct LinearScan
 		// so it needs to be after `resolveInsertSplitMoves`
 		fixInstructionResults(fun);
 		resolveControlFlow(moveSolver);
-		genSaveCalleeSavedRegs(fun.backendData.stackLayout);
+		genSaveCalleeSavedRegs();
 
 		moveSolver.release();
 		lir.removeAllPhis;
 
 		if (context.validateIr) validateIrFunction(context, lir);
 
-		//writefln("finished scan of %s\n", context.idString(lir.backendData.name));
+		//writefln("finished scan of %s\n", context.idString(lir.name));
 	}
 
 	/*
@@ -519,7 +519,7 @@ struct LinearScan
 			// the tail part then contains no uses
 			if (currentIt.uses.empty)
 			{
-				assignSpillSlot(fun.backendData.stackLayout, currentIt);
+				assignSpillSlot(currentIt);
 				version(RAPrint) writeln("    spill whole interval because of no uses");
 				return true;
 			}
@@ -654,7 +654,7 @@ struct LinearScan
 		{
 			version(RAPrint) writefln("  spill current maxUse %s firstUse %s", maxPos, firstUse);
 			// all other intervals are used before current, so it is best to spill current itself
-			assignSpillSlot(fun.backendData.stackLayout, currentIt);
+			assignSpillSlot(currentIt);
 			// split current before its first use position that requires a register
 			splitBefore(currentId, firstUse);
 			currentIt = &live.intervals[currentId]; // intervals may have reallocated
@@ -676,7 +676,7 @@ struct LinearScan
 				IntervalIndex newInterval = splitBefore(index, currentStart);
 
 				LiveInterval* splitActiveIt = &live.intervals[newInterval];
-				assignSpillSlot(fun.backendData.stackLayout, splitActiveIt);
+				assignSpillSlot(splitActiveIt);
 
 				// if there is a use position in spilled interval, split before use
 				uint nextActiveUse = splitActiveIt.nextUseAfter(currentStart);
@@ -734,7 +734,7 @@ struct LinearScan
 		return newInterval;
 	}
 
-	void assignSpillSlot(ref StackLayout stackLayout, LiveInterval* it)
+	void assignSpillSlot(LiveInterval* it)
 	{
 		assert(it.definition.isVirtReg);
 		VregState* state = &vregState[it.definition.storageUintIndex];
@@ -747,7 +747,7 @@ struct LinearScan
 		else
 		{
 			IrIndex type = lir.getValueType(context, it.definition);
-			IrIndex slot = stackLayout.addStackItem(context, type, context.types.typeSizeAndAlignment(type), StackSlotKind.local, 0);
+			IrIndex slot = builder.appendStackSlot(type, context.types.typeSizeAndAlignment(type), StackSlotKind.local);
 			state.spillSlot = slot; // cache slot
 			version(RAPrint) writefln("assignSpillSlot %s new slot %s", it.definition, slot);
 			it.reg = slot;
@@ -939,7 +939,7 @@ struct LinearScan
 						//InstrInfo instrInfo2 = context.machineInfo.instrInfo[instrHeader.op];
 						writefln("%s %s %s %s %s", cast(Amd64Opcode)instrHeader.op, r1, r2, r3, instrInfo.isCommutative);
 						context.internal_error("Unhandled non-commutative instruction in RA, %s %s",
-							context.idString(fun.backendData.name), instrIndex);
+							context.idString(lir.name), instrIndex);
 					}
 				}
 				else // r1 = op r2 r3; all different
@@ -1179,7 +1179,7 @@ struct LinearScan
 		insertPrevMoves;
 	}
 
-	void genSaveCalleeSavedRegs(ref StackLayout stackLayout)
+	void genSaveCalleeSavedRegs()
 	{
 		IrIndex entryBlock = lir.entryBasicBlock;
 		IrIndex exitBlock = lir.exitBasicBlock;
@@ -1198,7 +1198,7 @@ struct LinearScan
 					break;
 				default: context.internal_error("Size not implemented %s", size);
 			}
-			IrIndex slot = stackLayout.addStackItem(context, slotType, context.types.typeSizeAndAlignment(slotType), StackSlotKind.local, 0);
+			IrIndex slot = builder.appendStackSlot(slotType, context.types.typeSizeAndAlignment(slotType), StackSlotKind.local);
 
 			// save register
 			ExtraInstrArgs extra1 = { argSize : size };
@@ -1214,7 +1214,7 @@ struct LinearScan
 
 	IrIndex getScratchSpillSlot() {
 		if (scratchSpillSlot.isUndefined) {
-			scratchSpillSlot = fun.backendData.stackLayout.addStackItem(context, makeBasicTypeIndex(IrValueType.i64), context.types.typeSizeAndAlignment(makeBasicTypeIndex(IrValueType.i64)), StackSlotKind.local, 0);
+			scratchSpillSlot = builder.appendStackSlot(makeBasicTypeIndex(IrValueType.i64), context.types.typeSizeAndAlignment(makeBasicTypeIndex(IrValueType.i64)), StackSlotKind.local);
 		}
 		return scratchSpillSlot;
 	}

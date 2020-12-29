@@ -43,7 +43,7 @@ import all;
 // XXU8 local3    L3   rsp +  0      /  <-- RSP
 // optional padding                     <-- RSP
 // --
-// all space after ret addr is of size 'layout.reservedBytes'
+// all space after ret addr is of size 'lir.stackFrameSize'
 
 enum STACK_ITEM_SIZE = 8; // x86_64
 
@@ -52,15 +52,11 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 {
 	if (func.isExternal) return;
 
-	auto layout = &func.backendData.stackLayout;
-	// TODO: Win64 calling convention hardcoded
+	auto lir = context.getAst!IrFunction(func.backendData.lirData);
 
 	// Do not allocate stack for leaf functions with no slots
-	if (layout.slots.length == 0 && layout.numCalls == 0) return;
+	if (lir.numStackSlots == 0 && lir.numCalls == 0) return;
 
-	context.assertf(layout.maxAlignmentPower <= 4, "Big alignments (> 16) aren't implemented");
-
-	auto lir = context.getAst!IrFunction(func.backendData.lirData);
 	CallConv* callConv = lir.getCallConv(context);
 	IrIndex baseReg = IrIndex(callConv.stackPointer, ArgType.QWORD);
 
@@ -69,18 +65,20 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 	uint[5] alignmentSizes;
 	uint[5] alignmentOffsets;
 
-	layout.reservedBytes = 0;
+	lir.stackFrameSize = 0;
 
-	foreach (i, ref slot; layout.slots)
+	foreach (i, ref StackSlot slot; lir.stackSlots)
 	{
 		if (slot.isParameter) continue;
 
-		uint index = slot.sizealign.alignmentPower;
-		++numAlignments[index];
-		alignmentSizes[index] += slot.sizealign.size;
-		layout.reservedBytes += slot.sizealign.size;
+		uint alignPow = slot.sizealign.alignmentPower;
+		context.assertf(alignPow <= 4, "Big alignments (> 16) aren't implemented");
+
+		++numAlignments[alignPow];
+		alignmentSizes[alignPow] += slot.sizealign.size;
+		lir.stackFrameSize += slot.sizealign.size;
 	}
-	//writefln("reservedBytes1 0x%X", layout.reservedBytes);
+	//writefln("reservedBytes1 0x%X", lir.stackFrameSize);
 
 	if (context.useFramePointer)
 	{
@@ -96,9 +94,9 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 		// --
 		baseReg = IrIndex(callConv.framePointer, ArgType.QWORD);
 		// frame pointer is stored together with locals
-		layout.reservedBytes += STACK_ITEM_SIZE;
+		lir.stackFrameSize += STACK_ITEM_SIZE;
 	}
-	//writefln("reservedBytes2 0x%X", layout.reservedBytes);
+	//writefln("reservedBytes2 0x%X", lir.stackFrameSize);
 
 	alignmentOffsets[4] = 0;
 	foreach_reverse (i; 0..4)
@@ -107,27 +105,27 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 	}
 
 	// align to 8 bytes first
-	layout.reservedBytes = alignValue(layout.reservedBytes, STACK_ITEM_SIZE);
-	//writefln("reservedBytes3 0x%X", layout.reservedBytes);
+	lir.stackFrameSize = alignValue(lir.stackFrameSize, STACK_ITEM_SIZE);
+	//writefln("reservedBytes3 0x%X", lir.stackFrameSize);
 
-	if (layout.numCalls != 0) {
+	if (lir.numCalls != 0) {
 		// Align to 16 bytes when we have calls to other functions
 		// Before we are called, the stack is aligned to 16 bytes, after call return address is pushed
 		// We take into account the return address (extra 8 bytes)
-		if ((layout.reservedBytes + STACK_ITEM_SIZE) % 16 != 0) {
-			layout.reservedBytes += STACK_ITEM_SIZE;
+		if ((lir.stackFrameSize + STACK_ITEM_SIZE) % 16 != 0) {
+			lir.stackFrameSize += STACK_ITEM_SIZE;
 		}
 	}
-	//writefln("reservedBytes4 0x%X", layout.reservedBytes);
+	//writefln("reservedBytes4 0x%X", lir.stackFrameSize);
 
-	uint paramsOffset = layout.reservedBytes + STACK_ITEM_SIZE; // locals size + ret addr
+	uint paramsOffset = lir.stackFrameSize + STACK_ITEM_SIZE; // locals size + ret addr
 	if (callConv.hasShadowSpace) paramsOffset += 32;
 
 	// TODO utilize shadow space
 	// TODO utilize red zone
 
 	int nextLocalIndex = 0;
-	foreach (i, ref slot; layout.slots)
+	foreach (i, ref StackSlot slot; lir.stackSlots)
 	{
 		if (slot.isParameter)
 		{
@@ -143,70 +141,5 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 		slot.baseReg = baseReg;
 	}
 
-	if (context.printStackLayout) layout.dump(context);
-}
-
-enum StackSlotKind : ubyte {
-	local,
-	parameter,
-	argument
-}
-
-struct StackLayout
-{
-	/// How much bytes we need to allocate in prolog and deallocate in epilog
-	int reservedBytes;
-	uint maxAlignmentPower = 0;
-	// number of calls in the function
-	// collected in abi lowering pass
-	// if 0 or 1, we can merge stack allocation with function's stack
-	// if 0, we can omit stack alignment
-	uint numCalls;
-	Array!StackSlot slots;
-
-	ref StackSlot opIndex(IrIndex slotIndex) {
-		assert(slotIndex.kind == IrValueKind.stackSlot);
-		return slots[slotIndex.storageUintIndex];
-	}
-
-	/// paramIndex == -1 for non-params
-	IrIndex addStackItem(CompilationContext* context, IrIndex type, SizeAndAlignment sizealign, StackSlotKind kind, ushort paramIndex)
-	{
-		uint id = cast(uint)(slots.length);
-		StackSlot slot = StackSlot(sizealign, kind, paramIndex);
-		slot.type = context.types.appendPtr(type);
-
-		assert(slot.sizealign.size % slot.sizealign.alignment == 0, "size is not multiple of alignment");
-
-		context.assertf(slot.sizealign.alignmentPower <= 4, "Big alignments (> 16) aren't implemented");
-		maxAlignmentPower = max(maxAlignmentPower, slot.sizealign.alignmentPower);
-
-		slots.put(context.arrayArena, slot);
-		return IrIndex(id, IrValueKind.stackSlot);
-	}
-
-	void dump(CompilationContext* context)
-	{
-		writefln("Slots %s, size 0x%X", slots.length, reservedBytes);
-		foreach (i, ref slot; slots)
-		{
-			writefln("% 2s size 0x%X align %s disp 0x%X", i, slot.sizealign.size, slot.sizealign.alignment, slot.displacement);
-		}
-	}
-}
-
-struct StackSlot
-{
-	SizeAndAlignment sizealign;
-	StackSlotKind kind;
-	ushort paramIndex;
-	ushort numUses;
-	/// Signed offset from base register
-	int displacement;
-	/// Base register (stack or frame pointer)
-	IrIndex baseReg;
-	/// Must be a pointer type
-	IrIndex type;
-	void addUser() { ++numUses; }
-	bool isParameter() { return kind == StackSlotKind.parameter; }
+	if (context.printStackLayout) lir.dumpStackSlots(context);
 }

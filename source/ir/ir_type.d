@@ -386,7 +386,7 @@ IrIndex getValueType(IrIndex value, IrFunction* ir, CompilationContext* context)
 			context.assertf(global.type.isDefined, "Global has no type");
 			return global.type;
 		case stackSlot:
-			return ir.backendData.stackLayout[value].type;
+			return ir.getStackSlot(value).type;
 		case virtualRegister:
 			return ir.getVirtReg(value).type;
 		case func:

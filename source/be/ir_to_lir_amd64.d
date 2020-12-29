@@ -16,13 +16,13 @@ void pass_ir_to_lir_amd64(CompilationContext* context, IrBuilder* builder, Modul
 	func.backendData.lirData = context.appendAst!IrFunction;
 	IrFunction* lirData = context.getAst!IrFunction(func.backendData.lirData);
 
-	lirData.backendData = &func.backendData;
-
 	mod.lirModule.addFunction(context, lirData);
-	IrFunction* loweredIrData = context.getAst!IrFunction(func.backendData.loweredIrData);
+	IrFunction* irData = context.getAst!IrFunction(func.backendData.loweredIrData);
 
-	builder.beginLir(lirData, loweredIrData, context);
-	processFunc(context, builder, loweredIrData, lirData);
+	lirData.name = irData.name;
+
+	builder.beginLir(lirData, irData, context);
+	processFunc(context, builder, irData, lirData);
 	builder.finalizeIr;
 
 	if (context.validateIr) validateIrFunction(context, lirData);
@@ -31,7 +31,7 @@ void pass_ir_to_lir_amd64(CompilationContext* context, IrBuilder* builder, Modul
 
 void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir, IrFunction* lir)
 {
-	string funName = context.idString(ir.backendData.name);
+	string funName = context.idString(ir.name);
 	//writefln("IR to LIR %s", funName);
 	lir.instructionSet = IrInstructionSet.lir_amd64;
 
@@ -44,6 +44,11 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 	IrIndex[MAX_ARGS] argBuffer = void;
 
 	lir.type = ir.type;
+
+	// copy stack slots
+	lir.stackSlotPtr = ir.stackSlotPtr;
+	lir.numStackSlots = ir.numStackSlots;
+	dupSingleIrStorage(context.irStorage.stackSlotBuffer, lir.stackSlotPtr, lir.numStackSlots);
 
 	// save map from old index to new index
 	void recordIndex(IrIndex oldIndex, IrIndex newIndex)

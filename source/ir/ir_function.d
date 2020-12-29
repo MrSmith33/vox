@@ -28,6 +28,7 @@ struct IrFunction
 	// index 0 must be always start block
 	// index 1 must be always exit block
 	IrBasicBlock* basicBlockPtr;
+	StackSlot* stackSlotPtr;
 
 	// Optional. Used for IR interpretation
 	uint* vregSlotOffsets;
@@ -41,6 +42,7 @@ struct IrFunction
 	uint arrayLength; /// arrayPtr
 	uint numVirtualRegisters; /// vregPtr
 	uint numBasicBlocks; /// basicBlockPtr
+	uint numStackSlots; /// stackSlotPtr
 
 
 	/// Special block. Automatically created. Program start. Created first.
@@ -48,16 +50,23 @@ struct IrFunction
 	/// Special block. Automatically created. All returns must jump to it.
 	enum IrIndex exitBasicBlock = IrIndex(1, IrValueKind.basicBlock);
 
-
 	/// IrTypeFunction index
 	IrIndex type;
 	///
 	IrInstructionSet instructionSet;
 
+	/// How much bytes we need to allocate in prolog and deallocate in epilog
+	int stackFrameSize;
+	// number of calls in the function
+	// collected in abi lowering pass
+	// if 0 or 1, we can merge stack allocation with function's stack
+	// if 0, we can omit stack alignment
+	uint numCalls;
+
 	VregIterator virtualRegisters() return { return VregIterator(&this); }
 
 	///
-	FunctionBackendData* backendData;
+	Identifier name;
 
 	CallConvention getCallConvEnum(CompilationContext* c) {
 		return c.types.get!IrTypeFunction(type).callConv;
@@ -68,6 +77,10 @@ struct IrFunction
 
 	IrBasicBlock[] blocksArray() {
 		return basicBlockPtr[0..numBasicBlocks];
+	}
+
+	StackSlot[] stackSlots() {
+		return stackSlotPtr[0..numStackSlots];
 	}
 
 	IrIndex lastBasicBlock() {
@@ -92,6 +105,7 @@ struct IrFunction
 	alias getPhi = get!IrPhi;
 	alias getVirtReg = get!IrVirtualRegister;
 	alias getInstr = get!IrInstrHeader;
+	alias getStackSlot = get!StackSlot;
 
 	T* get(T)(IrIndex index)
 	{
@@ -106,6 +120,8 @@ struct IrFunction
 			return &phiPtr[index.storageUintIndex];
 		else static if (kind == IrValueKind.virtualRegister)
 			return &vregPtr[index.storageUintIndex];
+		else static if (kind == IrValueKind.stackSlot)
+			return &stackSlotPtr[index.storageUintIndex];
 		else
 			static assert(false, format("Cannot get %s from IrFunction", T.stringof));
 	}
@@ -191,26 +207,36 @@ struct IrFunction
 			IrVirtualRegister.sizeof * numVirtualRegisters +
 			IrBasicBlock.sizeof * numBasicBlocks;
 	}
+
+	void dumpStackSlots(CompilationContext* context)
+	{
+		writefln("Slots %s, size 0x%X", numStackSlots, stackFrameSize);
+		foreach (i, ref slot; stackSlots)
+		{
+			writefln("% 2s size 0x%X align %s disp 0x%X", i, slot.sizealign.size, slot.sizealign.alignment, slot.displacement);
+		}
+	}
+}
+
+void dupSingleIrStorage(T)(ref Arena!T arena, ref T* ptr, uint length) {
+	//writefln("arena %s %s..%s %s", arena.length, ptr, ptr + length, length);
+	T[] buf = ptr[0..length];
+	ptr = arena.nextPtr;
+	arena.put(buf);
+	//writefln("arena %s %s..%s %s", arena.length, ptr, ptr + length, length);
 }
 
 void dupIrStorage(IrFunction* ir, CompilationContext* c)
 {
-	void dupStorage(T)(ref Arena!T arena, ref T* ptr, uint length) {
-		//writefln("arena %s %s..%s %s", arena.length, ptr, ptr + length, length);
-		T[] buf = ptr[0..length];
-		ptr = arena.nextPtr;
-		arena.put(buf);
-		//writefln("arena %s %s..%s %s", arena.length, ptr, ptr + length, length);
-	}
-
-	dupStorage(c.irStorage.instrHeaderBuffer, ir.instrPtr, ir.numInstructions);
-	dupStorage(c.irStorage.instrPayloadBuffer, ir.instrPayloadPtr, ir.numPayloadSlots);
-	dupStorage(c.irStorage.instrNextBuffer, ir.instrNextPtr, ir.numInstructions);
-	dupStorage(c.irStorage.instrPrevBuffer, ir.instrPrevPtr, ir.numInstructions);
-	dupStorage(c.irStorage.phiBuffer, ir.phiPtr, ir.numPhis);
-	dupStorage(c.irStorage.vregBuffer, ir.vregPtr, ir.numVirtualRegisters);
-	dupStorage(c.irStorage.arrayBuffer, ir.arrayPtr, ir.arrayLength);
-	dupStorage(c.irStorage.basicBlockBuffer, ir.basicBlockPtr, ir.numBasicBlocks);
+	dupSingleIrStorage(c.irStorage.instrHeaderBuffer, ir.instrPtr, ir.numInstructions);
+	dupSingleIrStorage(c.irStorage.instrPayloadBuffer, ir.instrPayloadPtr, ir.numPayloadSlots);
+	dupSingleIrStorage(c.irStorage.instrNextBuffer, ir.instrNextPtr, ir.numInstructions);
+	dupSingleIrStorage(c.irStorage.instrPrevBuffer, ir.instrPrevPtr, ir.numInstructions);
+	dupSingleIrStorage(c.irStorage.phiBuffer, ir.phiPtr, ir.numPhis);
+	dupSingleIrStorage(c.irStorage.vregBuffer, ir.vregPtr, ir.numVirtualRegisters);
+	dupSingleIrStorage(c.irStorage.arrayBuffer, ir.arrayPtr, ir.arrayLength);
+	dupSingleIrStorage(c.irStorage.basicBlockBuffer, ir.basicBlockPtr, ir.numBasicBlocks);
+	dupSingleIrStorage(c.irStorage.stackSlotBuffer, ir.stackSlotPtr, ir.numStackSlots);
 }
 
 // mainIr must be in editable state, at the end of all arenas
@@ -218,12 +244,6 @@ void dupIrStorage(IrFunction* ir, CompilationContext* c)
 // Appended slots are iterated and all references are updated
 void appendIrStorage(IrFunction* mainIr, const IrFunction* irToCopy, CompilationContext* c)
 {
-	uint instrOffset = cast(uint)((mainIr.instrPtr - irToCopy.instrPtr) + mainIr.numInstructions);
-	uint phiOffset = cast(uint)((mainIr.phiPtr - irToCopy.phiPtr) + mainIr.numPhis);
-	uint vregOffset = cast(uint)((mainIr.vregPtr - irToCopy.vregPtr) + mainIr.numVirtualRegisters);
-	uint arrayOffset = cast(uint)((mainIr.arrayPtr - irToCopy.arrayPtr) + mainIr.arrayLength);
-	uint bbOffset = cast(uint)((mainIr.basicBlockPtr - irToCopy.basicBlockPtr) + mainIr.numBasicBlocks);
-
 	// create table of offsets per IrValueKind
 	// align to cache line
 	align(64) uint[16] offsets;
@@ -232,6 +252,7 @@ void appendIrStorage(IrFunction* mainIr, const IrFunction* irToCopy, Compilation
 	offsets[IrValueKind.phi]             = mainIr.numPhis;
 	offsets[IrValueKind.virtualRegister] = mainIr.numVirtualRegisters;
 	offsets[IrValueKind.array]           = mainIr.arrayLength;
+	offsets[IrValueKind.stackSlot]       = mainIr.numStackSlots;
 	// others remain 0 and do not affect IrIndex being fixed
 
 	void dupAndFixStorage(T)(ref Arena!T arena, const T* ptr, uint length) {
@@ -246,7 +267,7 @@ void appendIrStorage(IrFunction* mainIr, const IrFunction* irToCopy, Compilation
 		}
 	}
 
-	IrInstrHeader[] instrs = c.irStorage.instrHeaderBuffer.put(irToCopy.instrPtr[0..irToCopy.numInstructions]); // dup
+	IrInstrHeader[] instrs = c.irStorage.instrHeaderBuffer.put(irToCopy.instrPtr[0..irToCopy.numInstructions]); // dup IrInstrHeader
 	foreach(ref IrInstrHeader instr; instrs) instr._payloadOffset += mainIr.numPayloadSlots; // fix
 	// phis, vregs and basic block consist out of IrIndex entries or have integer data of type IrValueKind.none.
 	// The bitflags are designed so that 4 bits are 0 at the time of this operation
@@ -257,6 +278,8 @@ void appendIrStorage(IrFunction* mainIr, const IrFunction* irToCopy, Compilation
 	dupAndFixStorage(c.irStorage.vregBuffer, irToCopy.vregPtr, irToCopy.numVirtualRegisters);
 	dupAndFixStorage(c.irStorage.arrayBuffer, irToCopy.arrayPtr, irToCopy.arrayLength);
 	dupAndFixStorage(c.irStorage.basicBlockBuffer, irToCopy.basicBlockPtr, irToCopy.numBasicBlocks);
+	// dup StackSlot. Fixes are not needed because StackSlot.type and StackSlot.baseReg are of type and physical register kind.
+	StackSlot[] stackSlots = c.irStorage.stackSlotBuffer.put(irToCopy.stackSlotPtr[0..irToCopy.numStackSlots]);
 
 	// make sure numInstructions is incremented once
 	mainIr.numInstructions += irToCopy.numInstructions;
@@ -265,7 +288,7 @@ void appendIrStorage(IrFunction* mainIr, const IrFunction* irToCopy, Compilation
 	mainIr.numVirtualRegisters += irToCopy.numVirtualRegisters;
 	mainIr.arrayLength += irToCopy.arrayLength;
 	mainIr.numBasicBlocks += irToCopy.numBasicBlocks;
-
+	mainIr.numStackSlots += irToCopy.numStackSlots;
 }
 
 struct IrFuncStorage
@@ -278,6 +301,7 @@ struct IrFuncStorage
 	Arena!IrVirtualRegister vregBuffer;
 	Arena!uint arrayBuffer; // stores data of IrSmallArray
 	Arena!IrBasicBlock basicBlockBuffer;
+	Arena!StackSlot stackSlotBuffer;
 
 	void printMemSize(ref TextSink sink)
 	{
@@ -297,6 +321,7 @@ struct IrFuncStorage
 		collect(vregBuffer);
 		collect(arrayBuffer);
 		collect(basicBlockBuffer);
+		collect(stackSlotBuffer);
 		sink.putfln("  %-16s%-6iB    %-6iB   %-6iB",
 			"  IR total",
 			scaledNumberFmt(byteLength),

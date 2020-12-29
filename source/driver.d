@@ -31,7 +31,7 @@ struct Driver
 		passes = passes_;
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		size_t BYTES_TO_RESERVE = GiB*178;
+		size_t BYTES_TO_RESERVE = GiB*186;
 		arenaPool.reserve(BYTES_TO_RESERVE);
 		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
@@ -56,6 +56,7 @@ struct Driver
 		context.irStorage.phiBuffer.setBuffer(arenaPool.take(8*GiB), 0);
 		context.irStorage.basicBlockBuffer.setBuffer(arenaPool.take(8*GiB), 0);
 		context.irStorage.arrayBuffer.setBuffer(arenaPool.take(8*GiB), 0);
+		context.irStorage.stackSlotBuffer.setBuffer(arenaPool.take(8*GiB), 0);
 
 		context.types.buffer.setBuffer(arenaPool.take(GiB), 0);
 		context.tempBuffer.setBuffer(arenaPool.take(8*GiB), 0);

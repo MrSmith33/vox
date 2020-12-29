@@ -17,7 +17,7 @@ IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrI
 	IrIndex calleeEntryBlock = IrIndex(ir.numBasicBlocks + 0, IrValueKind.basicBlock);
 	IrIndex calleeExitIndex  = IrIndex(ir.numBasicBlocks + 1, IrValueKind.basicBlock);
 
-	//writefln("inline %s into %s", c.idString(calleeIr.backendData.name), c.idString(ir.backendData.name));
+	//writefln("inline %s into %s", c.idString(calleeIr.name), c.idString(ir.name));
 
 	// copy buffers of inlined function
 	// this will place data of each buffer at the end of buffer for current function

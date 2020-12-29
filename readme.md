@@ -23,7 +23,7 @@
 - Templates, Variadic templates, and functions
 - C interoperability
 
-## Differences with the D language
+## Differences from the D language
 
 - No GC, minimal runtime, no classes (only structs), no exceptions
 - More compile-time features, faster CTFE

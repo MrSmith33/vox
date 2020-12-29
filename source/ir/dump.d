@@ -159,7 +159,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 		sink.putf("%s", IrIndexDump(result, printer));
 	}
 	if (funcType.numResults > 0) sink.put(" ");
-	sink.put(ctx.idString(ir.backendData.name));
+	sink.put(ctx.idString(ir.name));
 
 	// parameters
 	sink.put("(");
@@ -430,7 +430,7 @@ void dumpFunctionCFG(IrFunction* ir, ref TextSink sink, CompilationContext* ctx,
 	settings.escapeForDot = true;
 	sink.put(`digraph "`);
 	sink.put("function ");
-	sink.put(ctx.idString(ir.backendData.name));
+	sink.put(ctx.idString(ir.name));
 	sink.putfln(`() %s bytes" {`, ir.byteLength * uint.sizeof);
 	int indexPadding = ir.numInstructions.numDigitsInNumber10;
 

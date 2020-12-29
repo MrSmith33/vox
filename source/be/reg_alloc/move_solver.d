@@ -27,13 +27,10 @@ struct MoveSolver
 	// takes unique ownership of tempBuffer
 	// Inits all register and stack slot infos
 	// after each `placeMovesBeforeInstr` call they need to be in init state for reuse
-	void setup(FunctionDeclNode* fun)
+	void setup(IrFunction* ir)
 	{
 		savedBufLength = context.tempBuffer.length;
-
-		size_t numStackSlots = fun.backendData.stackLayout.slots.length;
-		stackSlots = context.allocateTempArray!ValueInfo(cast(uint)numStackSlots);
-
+		stackSlots = context.allocateTempArray!ValueInfo(ir.numStackSlots);
 		writtenNodesPtr = cast(IrIndex*)context.tempBuffer.nextPtr;
 	}
 

@@ -176,7 +176,7 @@ struct CodeEmitter
 			gen.movq(Register.BP, Register.SP);
 		}
 
-		uint reservedBytes = fun.backendData.stackLayout.reservedBytes;
+		uint reservedBytes = lir.stackFrameSize;
 		if (reservedBytes) // Reserve space for locals
 		{
 			if (reservedBytes > byte.max) gen.subq(Register.SP, Imm32(reservedBytes));
@@ -186,7 +186,7 @@ struct CodeEmitter
 
 	void compileFuncEpilog()
 	{
-		uint reservedBytes = fun.backendData.stackLayout.reservedBytes;
+		uint reservedBytes = lir.stackFrameSize;
 		if (reservedBytes)
 		{
 			if (reservedBytes > byte.max) gen.addq(Register.SP, Imm32(reservedBytes));
@@ -600,7 +600,7 @@ struct CodeEmitter
 
 							default:
 								context.internal_error("Cannot encode %s %s in %s %s",
-									cast(Amd64Opcode)instrHeader.op, src, context.idString(fun.backendData.name), instrIndex);
+									cast(Amd64Opcode)instrHeader.op, src, context.idString(lir.name), instrIndex);
 								assert(false);
 						}
 						stackPointerExtraOffset += STACK_ITEM_SIZE;
@@ -668,7 +668,7 @@ struct CodeEmitter
 
 	MemAddress localVarMemAddress(IrIndex stackSlotIndex) {
 		context.assertf(stackSlotIndex.isStackSlot, "Index is not stack slot, but %s", stackSlotIndex.kind);
-		auto stackSlot = &fun.backendData.stackLayout[stackSlotIndex];
+		auto stackSlot = lir.getStackSlot(stackSlotIndex);
 		Register baseReg = indexToRegister(stackSlot.baseReg);
 		return minMemAddrBaseDisp(baseReg, stackSlot.displacement + stackPointerExtraOffset);
 	}
@@ -723,7 +723,7 @@ struct CodeEmitter
 
 			case global, stackSlot:
 				// This should not happen. Stack slot or global must go through mov or load instruction.
-				context.internal_error("Cannot encode %s %s %s in %s %s", op, dst, src, context.idString(fun.backendData.name), instrIndex);
+				context.internal_error("Cannot encode %s %s %s in %s %s", op, dst, src, context.idString(lir.name), instrIndex);
 				assert(false);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
