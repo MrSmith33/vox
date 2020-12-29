@@ -441,6 +441,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					break;
 
 				case IrOpcode.call:
+					lir.numCalls += 1;
 					foreach(i; 0..instrHeader.numArgs) {
 						argBuffer[i] = getFixedIndex(instrHeader.arg(ir, i));
 					}
@@ -458,6 +459,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					break;
 
 				case IrOpcode.syscall:
+					lir.numCalls += 1;
 					foreach(i; 0..instrHeader.numArgs) {
 						argBuffer[i] = getFixedIndex(instrHeader.arg(ir, i));
 					}
