@@ -41,10 +41,10 @@ jobs:
         dc: [ldc-1.23.0]
         include:
         - os: ubuntu-latest
-          EXE: tjc
+          EXE: vox
           PLATFORM: linux-amd64
         - os: windows-latest
-          EXE: tjc.exe
+          EXE: vox.exe
           PLATFORM: windows-amd64
     steps:
       - uses: actions/checkout@v2
@@ -94,6 +94,6 @@ jobs:
           
           # --clobber Overwrite existing assets of the same name
           gh release upload $tag \
-            './linux-amd64/tjc#linux-amd64' \
-            './windows-amd64/tjc.exe#windows-amd64' \
+            './linux-amd64/vox#linux-amd64' \
+            './windows-amd64/vox.exe#windows-amd64' \
             --clobber
