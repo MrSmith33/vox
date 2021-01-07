@@ -24,6 +24,13 @@ enum IrValueType : ubyte
 	f64,
 }
 
+enum CovertionKind : ubyte {
+	itoi,
+	itof,
+	ftoi,
+	ftof,
+}
+
 ///
 enum IrTypeKind : ubyte
 {

@@ -68,6 +68,7 @@ void ir_gen_while(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt
 	// have 2 predecessors: currentBlock and loop body
 	gen.builder.forceAllocLabelBlock(loopHeaderLabel);
 	IrIndex loopHeaderBlock = loopHeaderLabel.blockIndex;
+	gen.ir.getBlock(loopHeaderBlock).preventSeal = true;
 	currentBlock = loopHeaderBlock;
 
 	IrLabel bodyLabel = IrLabel(currentBlock);
@@ -89,5 +90,6 @@ void ir_gen_while(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt
 	if (loopHeaderLabel.numPredecessors > 1)
 		gen.ir.getBlock(loopHeaderBlock).isLoopHeader = true;
 
-	gen.builder.sealBlock(loopHeaderBlock);
+	assert(!gen.ir.getBlock(loopHeaderBlock).isSealed);
+	gen.builder.sealBlock(loopHeaderBlock, true);
 }

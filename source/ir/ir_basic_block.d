@@ -35,6 +35,9 @@ struct IrBasicBlock
 		uint, "seqIndex",    23,
 		/// True if all predecessors was added
 		bool, "isSealed",     1,
+		/// If true, sealBlock does nothing
+		/// Used to prevent sealing loop header block until whole body is generated
+		bool, "preventSeal",  1,
 		/// True if block_exit instruction is in place
 		bool, "isFinished",   1,
 		// if true, block is loop header and has incoming back edges
@@ -43,7 +46,7 @@ struct IrBasicBlock
 		bool, "replacesCriticalEdge", 1,
 		// used for block ordering
 		bool, "visitFlag",    1,
-		uint, "",             4,
+		uint, "",             3,
 	));
 }
 //pragma(msg, "BB size: ", cast(int)IrBasicBlock.sizeof, " bytes");

@@ -234,10 +234,10 @@ bool isConvertibleTo(AstIndex fromTypeIndex, AstIndex toTypeIndex, CompilationCo
 		BasicType toTypeBasic = toType.as_basic.basicType;
 		bool isRegisterTypeFrom =
 			(fromTypeBasic >= BasicType.t_bool &&
-			fromTypeBasic <= BasicType.t_u64);
+			fromTypeBasic <= BasicType.t_f64);
 		bool isRegisterTypeTo =
 			(toTypeBasic >= BasicType.t_bool &&
-			toTypeBasic <= BasicType.t_u64);
+			toTypeBasic <= BasicType.t_f64);
 		// all integer types, pointers and bool can be converted between
 		// TODO: bool is special (need to have 0 or 1)
 		return isRegisterTypeFrom && isRegisterTypeTo;

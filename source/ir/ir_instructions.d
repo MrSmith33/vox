@@ -232,6 +232,25 @@ enum IrOpcode : ushort
 	/// Returns iMM
 	@_ii(1, IFLG.hasResult) trunc,
 
+	/// Args: fNN a, argSize sets MM. MM must be < NN
+	/// Returns fMM
+	@_ii(1, IFLG.hasResult) fptrunc,
+	/// Args: fNN a, argSize sets MM. MM must be > NN
+	/// Returns fMM
+	@_ii(1, IFLG.hasResult) fpext,
+	/// Args: fNN a, argSize sets MM
+	/// Returns iMM
+	@_ii(1, IFLG.hasResult) fptoui,
+	/// Args: fNN a, argSize sets MM
+	/// Returns iMM
+	@_ii(1, IFLG.hasResult) fptosi,
+	/// Args: iNN a, argSize sets MM
+	/// Returns fMM
+	@_ii(1, IFLG.hasResult) uitofp,
+	/// Args: iNN a, argSize sets MM
+	/// Returns fMM
+	@_ii(1, IFLG.hasResult) sitofp,
+
 	/// Used when generating any of binary instructions.
 	/// Actual opcode is passed via ExtraInstrArgs.opcode
 	@_ii(2, IFLG.hasResult | IFLG.isGeneric) generic_binary,
@@ -285,6 +304,9 @@ IrArgSize sizeToIrArgSize(uint typeSize, CompilationContext* context) {
 		case 2: return IrArgSize.size16;
 		case 4: return IrArgSize.size32;
 		case 8: return IrArgSize.size64;
+		case 16: return IrArgSize.size128;
+		case 32: return IrArgSize.size256;
+		case 64: return IrArgSize.size512;
 		default:
 			context.internal_error("Type of size %s cannot be stored in a register", typeSize);
 			assert(false);

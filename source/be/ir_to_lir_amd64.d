@@ -81,6 +81,11 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		}
 	}
 
+	void makeMov(IrIndex to, IrIndex from, IrArgSize argSize, IrIndex block) {
+		ExtraInstrArgs extra = { addUsers : false, result : to, argSize : argSize };
+		builder.emitInstr!(Amd64Opcode.mov)(block, extra, from);
+	}
+
 	IrIndex genAddressOffset(IrIndex lirPtr, uint offset, IrIndex ptrType, IrIndex lirBlockIndex) {
 		IrIndex ptr;
 		if (offset == 0) {
@@ -103,6 +108,22 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		ExtraInstrArgs extra = { addUsers : false, type : valType, argSize : argSize };
 		InstrWithResult instr = builder.emitInstr!(Amd64Opcode.load)(lirBlockIndex, extra, ptr);
 		return instr.result;
+	}
+
+	void genMemZero(IrIndex lirPtr, ulong numBytes, IrIndex lirBlockIndex) {
+		// generate rep stos rax, rcx, rdi
+		IrIndex dataReg = IrIndex(amd64_reg.ax, IrArgSize.size64);
+		IrIndex sizeReg = IrIndex(amd64_reg.cx, IrArgSize.size64);
+		IrIndex ptrReg = IrIndex(amd64_reg.di, IrArgSize.size64);
+		// data
+		makeMov(dataReg, context.constants.add(0, IsSigned.no), IrArgSize.size64, lirBlockIndex);
+		// size
+		makeMov(sizeReg, context.constants.add(numBytes, IsSigned.no), IrArgSize.size64, lirBlockIndex);
+		// ptr
+		makeMov(ptrReg, lirPtr, IrArgSize.size64, lirBlockIndex);
+
+		ExtraInstrArgs extra = { addUsers : false };
+		builder.emitInstr!(Amd64Opcode.rep_stos)(lirBlockIndex, extra, dataReg, sizeReg, ptrReg);
 	}
 
 	// fromOffset is used when irValue is pointer that needs deferencing
@@ -197,12 +218,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						break;
 
 					case constantZero:
-						IrIndex zero = context.constants.add(0, IsSigned.no);
-						foreach (i, IrTypeStructMember member; structType.members)
-						{
-							IrIndex ptr = genAddressOffset(lirPtr, offset + member.offset, ptrType, lirBlockIndex);
-							genStore(ptr, 0, zero, fromOffset + member.offset, member.type, lirBlockIndex, ir);
-						}
+						IrIndex ptr = genAddressOffset(lirPtr, offset, context.i8PtrType, lirBlockIndex);
+						genMemZero(ptr, structType.sizealign.size, lirBlockIndex);
 						return;
 
 					case constantAggregate:
@@ -262,12 +279,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						break;
 
 					case constantZero:
-						IrIndex zero = context.constants.add(0, IsSigned.no);
-						foreach (i; 0..arrayType.numElements)
-						{
-							IrIndex ptr = genAddressOffset(lirPtr, offset + elemSize * i, ptrType, lirBlockIndex);
-							genStore(ptr, 0, zero, fromOffset + elemSize * i, arrayType.elemType, lirBlockIndex, ir);
-						}
+						IrIndex ptr = genAddressOffset(lirPtr, offset, context.i8PtrType, lirBlockIndex);
+						genMemZero(ptr, elemSize * arrayType.numElements, lirBlockIndex);
 						return;
 
 					case constantAggregate:
@@ -406,11 +419,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				}
 			}
 
-			void makeMov(IrIndex to, IrIndex from, IrArgSize argSize) {
-				ExtraInstrArgs extra = { addUsers : false, result : to, argSize : argSize };
-				builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, getFixedIndex(from));
-			}
-
 			switch(instrHeader.op)
 			{
 				case IrOpcode.get_element:
@@ -513,7 +521,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 					// copy bottom half of dividend
 					IrIndex dividendBottom = IrIndex(amd64_reg.ax, instrHeader.argSize);
-					makeMov(dividendBottom, instrHeader.arg(ir, 0), instrHeader.argSize);
+					makeMov(dividendBottom, getFixedIndex(instrHeader.arg(ir, 0)), instrHeader.argSize, lirBlockIndex);
 
 					if (isSigned) {
 						// if dividend is 8bit we use movsx and only change ax
@@ -525,7 +533,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						builder.emitInstr!(Amd64Opcode.divsx)(lirBlockIndex, extra2);
 					} else {
 						// zero top half of dividend
-						makeMov(dividendTop, context.constants.add(0, IsSigned.no), IrArgSize.size32);
+						makeMov(dividendTop, context.constants.add(0, IsSigned.no), IrArgSize.size32, lirBlockIndex);
 					}
 
 					// choose result
@@ -555,7 +563,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					else
 					{
 						rightArg = IrIndex(amd64_reg.cx, IrArgSize.size8);
-						makeMov(rightArg, instrHeader.arg(ir, 1), instrHeader.argSize);
+						makeMov(rightArg, getFixedIndex(instrHeader.arg(ir, 1)), instrHeader.argSize, lirBlockIndex);
 					}
 					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					ExtraInstrArgs extra = { addUsers : false, argSize : instrHeader.argSize, type : type };
@@ -607,7 +615,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					if (instrHeader.result(ir).isVirtReg)
 						emitLirInstr!(Amd64Opcode.mov);
 					else
-						makeMov(instrHeader.result(ir), instrHeader.arg(ir, 0), instrHeader.argSize);
+						makeMov(instrHeader.result(ir), getFixedIndex(instrHeader.arg(ir, 0)), instrHeader.argSize, lirBlockIndex);
 					break;
 				case IrOpcode.copy:
 					genCopy(getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)), lirBlockIndex);
@@ -695,6 +703,26 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					context.assertf(typeSizeTo < typeSizeFrom,
 						"Can't cast from %s bytes to %s bytes", typeSizeFrom, typeSizeTo);
 					emitLirInstr!(Amd64Opcode.mov);
+					break;
+
+				case IrOpcode.fpext:
+					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
+					uint typeSizeFrom = context.types.typeSize(typeFrom);
+					uint typeSizeTo = context.types.typeSize(typeTo);
+					context.assertf(typeSizeTo > typeSizeFrom,
+						"Can't cast from %s bytes to %s bytes", typeSizeFrom, typeSizeTo);
+					emitLirInstr!(Amd64Opcode.f32_to_f64);
+					break;
+
+				case IrOpcode.fptrunc:
+					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
+					uint typeSizeFrom = context.types.typeSize(typeFrom);
+					uint typeSizeTo = context.types.typeSize(typeTo);
+					context.assertf(typeSizeTo < typeSizeFrom,
+						"Can't cast from %s bytes to %s bytes", typeSizeFrom, typeSizeTo);
+					emitLirInstr!(Amd64Opcode.f64_to_f32);
 					break;
 
 				case IrOpcode.set_unary_cond:

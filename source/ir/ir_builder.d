@@ -293,6 +293,8 @@ struct IrBuilder
 	void addBlockTarget(IrIndex fromBasicBlockIndex, IrIndex toBasicBlockIndex) {
 		ir.getBlock(fromBasicBlockIndex).successors.append(&this, toBasicBlockIndex);
 		ir.getBlock(toBasicBlockIndex).predecessors.append(&this, fromBasicBlockIndex);
+		context.assertf(!ir.getBlock(toBasicBlockIndex).isSealed, "Cannot add block target %s -> %s. %s is sealed",
+			fromBasicBlockIndex, toBasicBlockIndex, toBasicBlockIndex);
 	}
 
 	/// Creates new block and inserts it after lastBasicBlock and sets lastBasicBlock
@@ -311,12 +313,14 @@ struct IrBuilder
 	/// Basic block is sealed if no further predecessors will be added to the block.
 	/// Sealed block is not necessarily filled.
 	/// Ignores already sealed blocks.
-	void sealBlock(IrIndex basicBlockToSeal) {
+	/// `force` ignores IrBasicBlock.preventSeal
+	void sealBlock(IrIndex basicBlockToSeal, bool force = false) {
 		//dumpFunction(context, ir, "IR gen(Seal block)");
 		version(IrPrint) writefln("[IR] seal %s", basicBlockToSeal);
 
 		IrBasicBlock* bb = ir.getBlock(basicBlockToSeal);
 		if (bb.isSealed) return;
+		if (bb.preventSeal && !force) return;
 
 		// all phis added to this block are incomplete and need to get their arguments
 		foreach(IrIndex phiIndex, ref IrPhi phi; bb.phis(ir)) {
@@ -359,7 +363,12 @@ struct IrBuilder
 	}
 
 	/// Returns the value that currently defines `var` within `blockIndex`
-	IrIndex readVariable(IrIndex blockIndex, IrIndex var) {
+	IrIndex readVariable(IrIndex blockIndex, IrIndex var)
+	//out (r) {
+	//	writefln("readVariable %s %s %s", r, blockIndex, var);
+	//}
+	//do
+	{
 		context.assertf(var.kind == IrValueKind.variable, "Variable kind is %s", var.kind);
 		if (auto irRef = BlockVarPair(blockIndex, var) in blockVarDef)
 			return *irRef;

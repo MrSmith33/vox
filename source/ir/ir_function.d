@@ -156,14 +156,19 @@ struct IrFunction
 
 		walk(entryBasicBlock);
 
-		// bring exit block to the end of function
-		if (firstLink != exitBasicBlock)
-			linkSingleBlockBefore(&this, firstLink, exitBasicBlock);
+		// find last block by iterating forward
+		IrIndex last;
 
 		// clear all flags
 		foreach (idx, ref IrBasicBlock block; blocks)
 		{
+			last = idx;
 			block.visitFlag = false;
+		}
+
+		// bring exit block to the end of function
+		if (last != exitBasicBlock) {
+			moveBlockAfter(&this, exitBasicBlock, last);
 		}
 	}
 

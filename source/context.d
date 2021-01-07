@@ -134,6 +134,7 @@ struct CompilationContext
 	private size_t initializedSourceBufSize; // ditto, sourceBuffer.length
 	size_t initializedTokenLocBufSize; // ditto, tokenLocationBuffer.length
 
+	IrIndex i8PtrType;
 	IrIndex i64PtrType;
 	IrIndex v128Type;
 
@@ -809,6 +810,7 @@ struct CompilationContext
 		makeBuiltin(CommonAstNodes.builtin_sizeof, CommonIds.id_sizeof, BuiltinId.type_sizeof);
 		// CommonAstNodes end
 
+		i8PtrType = types.appendPtr(makeBasicTypeIndex(IrValueType.i8));
 		i64PtrType = types.appendPtr(makeBasicTypeIndex(IrValueType.i64));
 		v128Type = types.appendArray(makeBasicTypeIndex(IrValueType.i8), 16);
 

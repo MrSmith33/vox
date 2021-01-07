@@ -391,6 +391,9 @@ struct CodeEmitter
 					case Amd64Opcode.movsx_wtod: gen.movsx_wtod(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
 					case Amd64Opcode.movsx_wtoq: gen.movsx_wtoq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
 					case Amd64Opcode.movsx_dtoq: gen.movsx_dtoq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.f32_to_f64: gen.cvtss2sd(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.f64_to_f32: gen.cvtsd2ss(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.rep_stos: gen.rep_prefix; gen.stos; break;
 					case Amd64Opcode.divsx:
 						final switch(instrHeader.argSize) {
 							case IrArgSize.size8: gen.movsx_btow(Register.AX, Register.AX); break;

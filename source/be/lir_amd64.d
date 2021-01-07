@@ -438,6 +438,9 @@ enum Amd64Opcode : ushort {
 	@_ii(1,IFLG.hasResult) movsx_wtoq,
 	@_ii(1,IFLG.hasResult) movsx_dtoq,
 
+	@_ii(1,IFLG.hasResult) f32_to_f64,
+	@_ii(1,IFLG.hasResult) f64_to_f32,
+
 	@_ii(2) xchg, // xchg mr/mr
 
 	@_ii(1,IFLG.hasResult|IFLG.isResultInDst) not,
@@ -463,6 +466,8 @@ enum Amd64Opcode : ushort {
 
 	@_ii(0,IFLG.hasResult) pop,
 	@_ii(1) push,
+
+	@_ii(3) rep_stos,
 
 	@_ii(0,IFLG.isBlockExit) ud2,
 }

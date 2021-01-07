@@ -349,12 +349,13 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					{
 						IrIndex branchBlockIndex = builder.addBasicBlock;
 						IrBasicBlock* branchBlock = ir.getBlock(branchBlockIndex);
-						branchBlock.isSealed = true;
-						branchBlock.isFinished = true;
 
 						builder.addBlockTarget(lastBlock, branchBlockIndex);
 						ir.getBlock(succ[i]).predecessors[0, ir] = branchBlockIndex;
 						branchBlock.successors.append(&builder, succ[i]);
+
+						branchBlock.isSealed = true;
+						branchBlock.isFinished = true;
 
 						builder.emitInstr!(IrOpcode.branch_binary)(branchBlockIndex, extra, value, args[i]);
 						moveBlockAfter(ir, branchBlockIndex, lastBlock);

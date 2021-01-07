@@ -80,10 +80,11 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 	TypeNode* targetType = t.type.get_type(c);
 	c.assertf(sourceType.as_basic || sourceType.as_ptr, t.loc, "Source must have basic/ptr type, not %s", sourceType.printer(c));
 	c.assertf(targetType.as_basic || targetType.as_ptr, t.loc, "Target must have basic/ptr type, not %s", targetType.printer(c));
-	IrIndex typeTo = t.type.gen_ir_type(c);
-	IrIndex typeFrom = childExpr.type.gen_ir_type(c);
+	IrIndex typeFrom = sourceType.gen_ir_type(c);
+	IrIndex typeTo = targetType.gen_ir_type(c);
 	uint typeSizeFrom = c.types.typeSize(typeFrom);
 	uint typeSizeTo = c.types.typeSize(typeTo);
+	CovertionKind convKind = cast(CovertionKind)(sourceType.isFloat << 1 | targetType.isFloat);
 
 	IrIndex result;
 	if (rval.isSimpleConstant)
@@ -97,33 +98,48 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 	}
 	else
 	{
-		// bitcast
-		if (typeSizeFrom == typeSizeTo)
-		{
-			ExtraInstrArgs extra = { type : typeTo };
-			result = gen.builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, rval).result;
-		}
-		// trunc
-		else if (typeSizeTo < typeSizeFrom)
-		{
-			ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
-			result = gen.builder.emitInstr!(IrOpcode.trunc)(currentBlock, extra, rval).result;
-		}
-		// sext/zext
-		else
-		{
-			c.assertf(sourceType.as_basic !is null, t.loc, "Source must have basic type, not %s", sourceType.printer(c));
-			c.assertf(targetType.as_basic !is null, t.loc, "Target must have basic type, not %s", targetType.printer(c));
-			if (sourceType.as_basic.isSigned && targetType.as_basic.isSigned)
-			{
-				ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
-				result = gen.builder.emitInstr!(IrOpcode.sext)(currentBlock, extra, rval).result;
-			}
-			else
-			{
-				ExtraInstrArgs extra = { type : typeTo, argSize : targetType.argSize(c) };
-				result = gen.builder.emitInstr!(IrOpcode.zext)(currentBlock, extra, rval).result;
-			}
+		ExtraInstrArgs extra = { type : typeTo, argSize : sizeToIrArgSize(typeSizeTo, c) };
+		final switch (convKind) {
+			case CovertionKind.ftof:
+				if (typeSizeFrom == typeSizeTo)
+					result = rval;
+				else if (typeSizeTo < typeSizeFrom)
+					result = gen.builder.emitInstr!(IrOpcode.fptrunc)(currentBlock, extra, rval).result;
+				else
+					result = gen.builder.emitInstr!(IrOpcode.fpext)(currentBlock, extra, rval).result;
+				break;
+			case CovertionKind.ftoi:
+				if (targetType.as_basic.isSigned)
+					result = gen.builder.emitInstr!(IrOpcode.fptosi)(currentBlock, extra, rval).result;
+				else
+					result = gen.builder.emitInstr!(IrOpcode.fptoui)(currentBlock, extra, rval).result;
+				break;
+			case CovertionKind.itof:
+				if (sourceType.as_basic.isSigned)
+					result = gen.builder.emitInstr!(IrOpcode.sitofp)(currentBlock, extra, rval).result;
+				else
+					result = gen.builder.emitInstr!(IrOpcode.uitofp)(currentBlock, extra, rval).result;
+				break;
+			case CovertionKind.itoi:
+				// bitcast
+				if (typeSizeFrom == typeSizeTo) {
+					// needed in case of ptr conversion. Later we may need to look into pointed type
+					result = gen.builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, rval).result;
+				}
+				// trunc
+				else if (typeSizeTo < typeSizeFrom)
+				{
+					result = gen.builder.emitInstr!(IrOpcode.trunc)(currentBlock, extra, rval).result;
+				}
+				// sext/zext
+				else
+				{
+					if (sourceType.as_basic.isSigned && targetType.as_basic.isSigned)
+						result = gen.builder.emitInstr!(IrOpcode.sext)(currentBlock, extra, rval).result;
+					else
+						result = gen.builder.emitInstr!(IrOpcode.zext)(currentBlock, extra, rval).result;
+				}
+				break;
 		}
 	}
 	gen.builder.addJumpToLabel(currentBlock, nextStmt);

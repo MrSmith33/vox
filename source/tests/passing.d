@@ -9,6 +9,10 @@ import tester;
 
 Test[] passingTests() { return collectTests!(tests.passing)(); }
 
+/// Used to force correct type of float literal, like `42.54f.force`
+/// Without it, 42.54f will be store as dobule by the compiler
+T force(T)(T t) { return t; }
+
 extern(C) void external_noop() {}
 extern(C) void external_print_i32_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
@@ -3868,4 +3872,142 @@ void tester176(ref TestContext ctx) {
 	assert(f32_call(1, 2, 3, 4, 5, 6, 7, 8, 9) == 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9);
 	auto f64_call = ctx.getFunctionPtr!(double, double, double, double, double, double, double, double, double, double)("f64_call");
 	assert(f64_call(1, 2, 3, 4, 5, 6, 7, 8, 9) == 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9);
+}
+
+
+@TestInfo(&tester177)
+immutable test177 = q{--- test177
+	f64 func_f32_to_f64(f32 a) { return a; } // f32 -> f64
+	f32 func_f64_to_f32(f64 a) { return cast(f32)a; } // f64 -> f32
+
+	// i8 func_f32_to__i8(f32 a) { return a; } // f32 ->  i8
+	//i16 func_f32_to_i16(f32 a) { return a; } // f32 -> i16
+	//i32 func_f32_to_i32(f32 a) { return a; } // f32 -> i32
+	//i64 func_f32_to_i64(f32 a) { return a; } // f32 -> i64
+
+	// u8 func_f32_to__u8(f32 a) { return a; } // f32 ->  u8
+	//u16 func_f32_to_u16(f32 a) { return a; } // f32 -> u16
+	//u32 func_f32_to_u32(f32 a) { return a; } // f32 -> u32
+	//u64 func_f32_to_u64(f32 a) { return a; } // f32 -> u64
+
+	// i8 func_f64_to__i8(f64 a) { return a; } // f32 ->  i8
+	//i16 func_f64_to_i16(f64 a) { return a; } // f32 -> i16
+	//i32 func_f64_to_i32(f64 a) { return a; } // f32 -> i32
+	//i64 func_f64_to_i64(f64 a) { return a; } // f32 -> i64
+
+	// u8 func_f64_to__u8(f64 a) { return a; } // f32 ->  u8
+	//u16 func_f64_to_u16(f64 a) { return a; } // f32 -> u16
+	//u32 func_f64_to_u32(f64 a) { return a; } // f32 -> u32
+	//u64 func_f64_to_u64(f64 a) { return a; } // f32 -> u64
+};
+void tester177(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(double,  float)("func_f32_to_f64")(42.54f) == 42.54f.force);
+	assert(ctx.getFunctionPtr!(float,  double)("func_f64_to_f32")(42.54) == 42.54f.force);
+}
+
+
+@TestInfo(&tester178)
+immutable test178 = q{--- test178
+	struct Result { i32 sum; i32 maxflips; }
+	// https://benchmarksgame-team.pages.debian.net/benchmarksgame/description/fannkuchredux.html
+	Result fannkuch(i32 n) {
+		i32 signx;
+		i32 maxflips;
+		i32 sum;
+		i32 i;
+		i32 j;
+		i32 k;
+		i32 q1;
+		i32 flips;
+		i32 qq;
+		i32 t;
+		i32 sx;
+		i32 tt;
+		i32[100] p;
+		i32[100] q;
+		i32[100] s;
+
+		signx = 1;
+		maxflips = 0;
+		sum = 0;
+		for (i=1; i<=n; ++i) {
+			p[i-1] = i;
+			q[i-1] = i;
+			s[i-1] = i;
+		}
+		while (true) {
+			q1 = p[1-1];
+			if (q1 != 1) {
+				for (i=2; i<=n; ++i) {
+					q[i-1] = p[i-1];
+				}
+				flips = 1;
+				while (true) {
+					qq = q[q1-1];
+					if (qq == 1) {
+						sum += signx*flips;
+						if (flips > maxflips) {
+							maxflips = flips;
+						}
+						break;
+					}
+					q[q1-1] = q1;
+					if (q1 >= 4) {
+						i = 2;
+						j = q1-1;
+						while (true) {
+							{
+								i32 temp = q[i-1];
+								q[i-1] = q[j-1];
+								q[j-1] = temp;
+							}
+							++i;
+							--j;
+							if (i >= j) break;
+						}
+					}
+					q1 = qq;
+					++flips;
+				}
+			}
+			if (signx == 1) {
+				{
+					i32 temp = p[2-1];
+					p[2-1] = p[1-1];
+					p[1-1] = temp;
+				}
+				signx = -1;
+			}
+			else {
+				{
+					i32 temp = p[2-1];
+					p[2-1] = p[3-1];
+					p[3-1] = temp;
+				}
+				signx = 1;
+				for (i=3; i<=n; ++i) {
+					sx = s[i-1];
+					if (sx != 1) {
+						s[i-1] = sx-1;
+						break;
+					}
+					if (i == n) {
+						return Result(sum, maxflips);
+					}
+					s[i-1] = i;
+					tt = p[1-1];
+					for (j=1; j<=i; ++j) {
+						p[j-1] = p[j+1-1];
+					}
+					p[i+1-1] = tt;
+				}
+			}
+		}
+	}
+};
+void tester178(ref TestContext ctx) {
+	static struct Result { int sum; int maxflips; }
+	auto fannkuch = ctx.getFunctionPtr!(Result, int)("fannkuch");
+	assert(fannkuch(3) == Result(2, 2));
+	//assert(fannkuch(11) == Result(556355, 51)); // slow: ~2s
 }
