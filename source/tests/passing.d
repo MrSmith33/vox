@@ -3880,6 +3880,9 @@ immutable test177 = q{--- test177
 	f64 func_f32_to_f64(f32 a) { return a; } // f32 -> f64
 	f32 func_f64_to_f32(f64 a) { return cast(f32)a; } // f64 -> f32
 
+	f32 func_f32_zero() { return 0; }
+	f64 func_f64_zero() { return 0; }
+
 	// i8 func_f32_to__i8(f32 a) { return a; } // f32 ->  i8
 	//i16 func_f32_to_i16(f32 a) { return a; } // f32 -> i16
 	//i32 func_f32_to_i32(f32 a) { return a; } // f32 -> i32
@@ -3890,19 +3893,22 @@ immutable test177 = q{--- test177
 	//u32 func_f32_to_u32(f32 a) { return a; } // f32 -> u32
 	//u64 func_f32_to_u64(f32 a) { return a; } // f32 -> u64
 
-	// i8 func_f64_to__i8(f64 a) { return a; } // f32 ->  i8
-	//i16 func_f64_to_i16(f64 a) { return a; } // f32 -> i16
-	//i32 func_f64_to_i32(f64 a) { return a; } // f32 -> i32
-	//i64 func_f64_to_i64(f64 a) { return a; } // f32 -> i64
+	// i8 func_f64_to__i8(f64 a) { return a; } // f64 ->  i8
+	//i16 func_f64_to_i16(f64 a) { return a; } // f64 -> i16
+	//i32 func_f64_to_i32(f64 a) { return a; } // f64 -> i32
+	//i64 func_f64_to_i64(f64 a) { return a; } // f64 -> i64
 
-	// u8 func_f64_to__u8(f64 a) { return a; } // f32 ->  u8
-	//u16 func_f64_to_u16(f64 a) { return a; } // f32 -> u16
-	//u32 func_f64_to_u32(f64 a) { return a; } // f32 -> u32
-	//u64 func_f64_to_u64(f64 a) { return a; } // f32 -> u64
+	// u8 func_f64_to__u8(f64 a) { return a; } // f64 ->  u8
+	//u16 func_f64_to_u16(f64 a) { return a; } // f64 -> u16
+	//u32 func_f64_to_u32(f64 a) { return a; } // f64 -> u32
+	//u64 func_f64_to_u64(f64 a) { return a; } // f64 -> u64
 };
 void tester177(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(double,  float)("func_f32_to_f64")(42.54f) == 42.54f.force);
 	assert(ctx.getFunctionPtr!(float,  double)("func_f64_to_f32")(42.54) == 42.54f.force);
+
+	assert(ctx.getFunctionPtr!(float)("func_f32_zero")() == 0f.force);
+	assert(ctx.getFunctionPtr!(double)("func_f64_zero")() == 0);
 }
 
 

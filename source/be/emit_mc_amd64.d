@@ -757,18 +757,22 @@ struct CodeEmitter
 				assert(false);
 
 			case MoveType.const_to_reg:
-				context.assertf(dst.physRegClass == AMD64_REG_CLASS.GPR, "stack_to_reg %s not implemented", dst);
 				IrConstant con = context.constants.get(src);
 				version(emit_mc_print) writefln("  move.%s reg:%s, con:%s", argSize, dstReg, con.i64);
 				if (con.i64 == 0) // xor
 				{
-					AsmArg argDst = {reg : dstReg};
-					AsmArg argSrc = {reg : dstReg};
-					AsmOpParam param = AsmOpParam(AsmArgKind.REG, AsmArgKind.REG, AMD64OpRegular.xor, cast(ArgType)IrArgSize.size32);
-					gen.encodeRegular(argDst, argSrc, param);
+					if (dst.physRegClass == AMD64_REG_CLASS.GPR) {
+						AsmArg argDst = {reg : dstReg};
+						AsmArg argSrc = {reg : dstReg};
+						AsmOpParam param = AsmOpParam(AsmArgKind.REG, AsmArgKind.REG, AMD64OpRegular.xor, cast(ArgType)IrArgSize.size32);
+						gen.encodeRegular(argDst, argSrc, param);
+					} else if (dst.physRegClass == AMD64_REG_CLASS.XMM) {
+						gen.xorps(dstReg, dstReg);
+					}
 				}
 				else
 				{
+					context.assertf(dst.physRegClass == AMD64_REG_CLASS.GPR, "stack_to_reg %s not implemented", dst);
 					final switch(argSize) with(IrArgSize) {
 						case size8: gen.movb(dstReg, Imm8(con.i8)); break;
 						case size16: gen.movw(dstReg, Imm16(con.i16)); break;
