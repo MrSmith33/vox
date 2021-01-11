@@ -3880,8 +3880,14 @@ immutable test177 = q{--- test177
 	f64 func_f32_to_f64(f32 a) { return a; } // f32 -> f64
 	f32 func_f64_to_f32(f64 a) { return cast(f32)a; } // f64 -> f32
 
-	f32 func_f32_zero() { return 0; }
-	f64 func_f64_zero() { return 0; }
+	f32 func_f32_zero1() { return 0; }
+	f64 func_f64_zero1() { return 0; }
+	f32 func_f32_zero2() { return 0.0; }
+	f64 func_f64_zero2() { return 0.0; }
+	f32 func_f32_const() { return 0.5; }
+	f64 func_f64_const() { return 0.5; }
+	//f32 func_f32_const_mult(f32 a) { return cast(f32)(a * 0.5); }
+	//f64 func_f64_const_mult(f64 a) { return a * 0.5; }
 
 	// i8 func_f32_to__i8(f32 a) { return a; } // f32 ->  i8
 	//i16 func_f32_to_i16(f32 a) { return a; } // f32 -> i16
@@ -3907,8 +3913,14 @@ void tester177(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(double,  float)("func_f32_to_f64")(42.54f) == 42.54f.force);
 	assert(ctx.getFunctionPtr!(float,  double)("func_f64_to_f32")(42.54) == 42.54f.force);
 
-	assert(ctx.getFunctionPtr!(float)("func_f32_zero")() == 0f.force);
-	assert(ctx.getFunctionPtr!(double)("func_f64_zero")() == 0);
+	assert(ctx.getFunctionPtr!(float)("func_f32_zero1")() == 0f.force);
+	assert(ctx.getFunctionPtr!(double)("func_f64_zero1")() == 0);
+	assert(ctx.getFunctionPtr!(float)("func_f32_zero2")() == 0f.force);
+	assert(ctx.getFunctionPtr!(double)("func_f64_zero2")() == 0);
+	assert(ctx.getFunctionPtr!(float)("func_f32_const")() == 0.5f.force);
+	assert(ctx.getFunctionPtr!(double)("func_f64_const")() == 0.5);
+	//assert(ctx.getFunctionPtr!(float, float)("func_f32_const_mult")(1) == 0.5f.force);
+	//assert(ctx.getFunctionPtr!(double, double)("func_f64_const_mult")(1) == 0.5);
 }
 
 

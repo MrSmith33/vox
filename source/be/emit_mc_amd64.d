@@ -66,12 +66,15 @@ void fillStaticDataSections(CompilationContext* c)
 	}
 
 	uint zeroDataOffset = cast(uint)c.staticDataBuffer.length;
+	LinkIndex rwSectionIndex = c.builtinSections[ObjectSectionType.rw_data];
 
 	// second pass for zero initialized data
 	foreach(size_t i, ref IrGlobal global; c.globals.buffer.data)
 	{
 		ObjectSymbol* globalSym = c.objSymTab.getSymbol(global.objectSymIndex);
 		if (!globalSym.isAllZero) continue;
+
+		c.assertf(globalSym.sectionIndex == rwSectionIndex, "Cannot have zero-initialized data in sections other than RW");
 
 		// alignment
 		uint padding = paddingSize!uint(zeroDataOffset, globalSym.alignment);
@@ -643,6 +646,11 @@ struct CodeEmitter
 				assert(false);
 		}
 
+		addRefTo(entityIndex, offset);
+	}
+
+	void addRefTo(LinkIndex entityIndex, short offset = 4)
+	{
 		ObjectSymbolReference r = {
 			fromSymbol : fun.backendData.objectSymIndex,
 			referencedSymbol : entityIndex,
@@ -772,27 +780,56 @@ struct CodeEmitter
 				}
 				else
 				{
-					context.assertf(dst.physRegClass == AMD64_REG_CLASS.GPR, "stack_to_reg %s not implemented", dst);
-					final switch(argSize) with(IrArgSize) {
-						case size8: gen.movb(dstReg, Imm8(con.i8)); break;
-						case size16: gen.movw(dstReg, Imm16(con.i16)); break;
-						case size32: gen.movd(dstReg, Imm32(con.i32)); break;
-						case size64:
-							if (con.payloadSize(src) == size64)
-								gen.movq(dstReg, Imm64(con.i64));
-							else
-								gen.movd(dstReg, Imm32(con.i32));
-							break;
-						case size128, size256, size512:
-							context.internal_error("Not implemented: const_to_reg %s %s", dst, src);
-							break;
+					if (dst.physRegClass == AMD64_REG_CLASS.GPR) {
+						final switch(argSize) with(IrArgSize) {
+							case size8: gen.movb(dstReg, Imm8(con.i8)); break;
+							case size16: gen.movw(dstReg, Imm16(con.i16)); break;
+							case size32: gen.movd(dstReg, Imm32(con.i32)); break;
+							case size64:
+								if (con.payloadSize(src) == size64)
+									gen.movq(dstReg, Imm64(con.i64));
+								else
+									gen.movd(dstReg, Imm32(con.i32));
+								break;
+							case size128, size256, size512:
+								context.internal_error("Not implemented: const_to_reg %s %s", dst, src);
+								break;
+						}
+					} else if (dst.physRegClass == AMD64_REG_CLASS.XMM) {
+						LinkIndex roSectionIndex = context.builtinSections[ObjectSectionType.ro_data];
+						ObjectSymbol* funcSym = context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
+						ObjectSymbol sym = {
+							kind : ObjectSymbolKind.isLocal,
+							sectionIndex : roSectionIndex,
+							moduleIndex : funcSym.moduleIndex,
+							id : context.idMap.getOrRegNoDup(context, ":float"),
+						};
+						LinkIndex symIndex = context.objSymTab.addSymbol(sym);
+						ObjectSymbol* globalSym = context.objSymTab.getSymbol(symIndex);
+						ObjectSection* roSection = context.objSymTab.getSection(roSectionIndex);
+						globalSym.sectionOffset = cast(uint)roSection.buffer.length;
+
+						final switch(argSize) with(IrArgSize) {
+							case size32:
+								globalSym.setInitializer(context.roStaticDataBuffer.nextPtr[0..4]);
+								context.roStaticDataBuffer.put(con.i32);
+								gen.movd_xr(dstReg, memAddrRipDisp32(0));
+								break;
+							case size64:
+								globalSym.setInitializer(context.roStaticDataBuffer.nextPtr[0..8]);
+								context.roStaticDataBuffer.put(con.i64);
+								gen.movq_xr(dstReg, memAddrRipDisp32(0));
+								break;
+							case size8, size16, size128, size256, size512: assert(false);
+						}
+						addRefTo(symIndex);
 					}
 				}
 				break;
 
 			// copy address of global into register
 			case MoveType.global_to_reg:
-				context.assertf(dst.physRegClass == AMD64_REG_CLASS.GPR, "stack_to_reg %s", dst);
+				context.assertf(dst.physRegClass == AMD64_REG_CLASS.GPR, "global_to_reg %s", dst);
 				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.lea(dstReg, addr, cast(ArgType)IrArgSize.size64);
@@ -801,7 +838,7 @@ struct CodeEmitter
 
 			// copy address of function into register
 			case MoveType.func_to_reg:
-				context.assertf(dst.physRegClass == AMD64_REG_CLASS.GPR, "stack_to_reg %s", dst);
+				context.assertf(dst.physRegClass == AMD64_REG_CLASS.GPR, "func_to_reg %s", dst);
 				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
 				MemAddress addr = memAddrRipDisp32(0);
 				gen.lea(dstReg, addr, cast(ArgType)IrArgSize.size64);
@@ -859,6 +896,20 @@ struct CodeEmitter
 		*offset = jumpOffset(nextInstr, target);
 	}
 
+	void doMemToReg(IrIndex dst, MemAddress srcMem, IrArgSize argSize) {
+		Register dstReg = indexToRegister(dst);
+		if (dst.physRegClass == AMD64_REG_CLASS.XMM) {
+			final switch(argSize) with(IrArgSize) {
+				case size32: gen.movd_xr(dstReg, srcMem); break;
+				case size64: gen.movq_xr(dstReg, srcMem); break;
+				case size128: gen.movups(dstReg, srcMem); break;
+				case size8, size16, size256, size512: assert(false);
+			}
+		} else {
+			gen.mov(dstReg, srcMem, cast(ArgType)argSize);
+		}
+	}
+
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
 	// If src is phys reg then it is used as address base.
 	// dst must be phys reg
@@ -867,25 +918,11 @@ struct CodeEmitter
 		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot || src.isGlobal);
 		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
 
-		void doMemToReg(MemAddress srcMem) {
-			Register dstReg = indexToRegister(dst);
-			if (dst.physRegClass == AMD64_REG_CLASS.XMM) {
-				final switch(argSize) with(IrArgSize) {
-					case size32: gen.movd_xr(dstReg, srcMem); break;
-					case size64: gen.movq_xr(dstReg, srcMem); break;
-					case size128: gen.movups(dstReg, srcMem); break;
-					case size8, size16, size256, size512: assert(false);
-				}
-			} else {
-				gen.mov(dstReg, srcMem, cast(ArgType)argSize);
-			}
-		}
-
 		switch(src.kind) with(IrValueKind) {
-			case physicalRegister: doMemToReg(memAddrBase(indexToRegister(src))); break;
-			case stackSlot: doMemToReg(localVarMemAddress(src)); break;
+			case physicalRegister: doMemToReg(dst, memAddrBase(indexToRegister(src)), argSize); break;
+			case stackSlot: doMemToReg(dst, localVarMemAddress(src), argSize); break;
  			case global:
-				doMemToReg(memAddrRipDisp32(0));
+				doMemToReg(dst, memAddrRipDisp32(0), argSize);
 				addRefTo(src);
 				break;
 

@@ -57,6 +57,49 @@ IrIndex ir_gen_literal_int(CompilationContext* context, IntLiteralExprNode* n)
 	return c.constants.add(n.value, n.isSigned, n.type.typeArgSize(c));
 }
 
+
+@(AstType.literal_float)
+struct FloatLiteralExprNode {
+	mixin ExpressionNodeData!(AstType.literal_float, 0, AstNodeState.name_resolve_done);
+	double value;
+	void negate(TokenIndex pos, ref CompilationContext context) {
+		value = -value;
+	}
+}
+
+void print_literal_float(FloatLiteralExprNode* node, ref AstPrintState state)
+{
+	state.print("LITERAL float ", node.type.printer(state.context), " ", node.value);
+}
+
+void type_check_literal_float(FloatLiteralExprNode* node, ref TypeCheckState state)
+{
+	node.state = AstNodeState.type_check;
+	node.type = CommonAstNodes.type_f64;
+	node.state = AstNodeState.type_check_done;
+}
+
+IrIndex ir_gen_literal_float(CompilationContext* context, FloatLiteralExprNode* node)
+{
+	if (node.type == CommonAstNodes.type_f32) {
+		union U32 {
+			float f;
+			uint u;
+		}
+		U32 u = U32(node.value);
+		return context.constants.add(u.u, IsSigned.no, IrArgSize.size32);
+	} else {
+		assert(node.type == CommonAstNodes.type_f64);
+		union U64 {
+			double f;
+			ulong u;
+		}
+		U64 u = U64(node.value);
+		return context.constants.add(u.u, IsSigned.no, IrArgSize.size64);
+	}
+}
+
+
 @(AstType.literal_null)
 struct NullLiteralExprNode {
 	mixin ExpressionNodeData!(AstType.literal_null, 0, AstNodeState.name_resolve_done);
@@ -70,7 +113,7 @@ void print_literal_null(NullLiteralExprNode* node, ref AstPrintState state)
 void type_check_literal_null(NullLiteralExprNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	node.type = state.context.basicTypeNodes(BasicType.t_null);
+	node.type = CommonAstNodes.type_null;
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -84,6 +127,7 @@ IrIndex ir_gen_literal_null(CompilationContext* context, NullLiteralExprNode* n)
 	} else c.internal_error(n.loc, "%s", n.type.printer(c));
 	assert(false);
 }
+
 
 @(AstType.literal_bool)
 struct BoolLiteralExprNode {
@@ -100,7 +144,7 @@ void print_literal_bool(BoolLiteralExprNode* node, ref AstPrintState state)
 void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	node.type = state.context.basicTypeNodes(BasicType.t_bool);
+	node.type = CommonAstNodes.type_bool;
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -120,6 +164,7 @@ void ir_gen_branch_literal_bool(ref IrGenState gen, IrIndex currentBlock, ref Ir
 	else
 		gen.builder.addJumpToLabel(currentBlock, falseExit);
 }
+
 
 @(AstType.literal_string)
 struct StringLiteralExprNode {

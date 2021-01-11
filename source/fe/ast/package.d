@@ -59,6 +59,7 @@ enum AstType : ubyte
 	expr_type_conv,
 
 	literal_int,
+	literal_float,
 	literal_string,
 	literal_null,
 	literal_bool,
@@ -287,7 +288,7 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
 		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return nodeIndex;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_type(c);
-		case error, literal_null, literal_bool, literal_int, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_null, literal_bool, literal_int, literal_float, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return node.as!ExpressionNode(c).type.get_node_type(c);
 
 		default: assert(false, format("get_node_type used on %s", node.astType));
@@ -311,7 +312,7 @@ AstIndex get_expr_type(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
 		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return CommonAstNodes.type_type;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_expr_type(c);
-		case error, literal_null, literal_bool, literal_int, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_null, literal_bool, literal_int, literal_float, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return node.as!ExpressionNode(c).type.get_node_type(c);
 
 		default: assert(false, format("get_expr_type used on %s", node.astType));
@@ -338,7 +339,7 @@ AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return nodeIndex;
 		case type_basic, type_ptr, type_slice, type_static_array: return nodeIndex;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_effective_node(c);
-		case error, literal_int, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_int, literal_float, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return nodeIndex;
 
 		default: assert(false, format("get_effective_node used on %s", node.astType));
@@ -368,6 +369,7 @@ string get_node_kind_name(AstIndex nodeIndex, CompilationContext* c)
 		case type_static_array: return "static array type";
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_kind_name(c);
 		case literal_int: return "int literal";
+		case literal_float: return "float literal";
 		case literal_string: return "string literal";
 		case literal_array: return "array literal";
 		case expr_call: return "call expression";

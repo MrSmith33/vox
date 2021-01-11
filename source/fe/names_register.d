@@ -264,6 +264,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case expr_type_conv: name_register_nested_type_conv(cast(TypeConvExprNode*)node, state); break;
 
 		case literal_int: assert(false);
+		case literal_float: assert(false);
 		case literal_string: assert(false);
 		case literal_null: assert(false);
 		case literal_bool: assert(false);

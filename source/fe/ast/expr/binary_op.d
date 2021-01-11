@@ -392,7 +392,7 @@ IrBinaryCondition convertBinOpToIrCond(BinOp op, bool isSigned, bool isFloat)
 
 void setResultType(BinaryExprNode* b, CompilationContext* c)
 {
-	AstIndex resType = c.basicTypeNodes(BasicType.t_error);
+	AstIndex resType = CommonAstNodes.type_error;
 	b.type = resType;
 	AstIndex leftTypeIndex = b.left.get_expr_type(c);
 	TypeNode* leftType = leftTypeIndex.get_type(c);
@@ -407,7 +407,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 		case LOGIC_AND, LOGIC_OR:
 			autoconvToBool(b.left, c);
 			autoconvToBool(b.right, c);
-			resType = c.basicTypeNodes(BasicType.t_bool);
+			resType = CommonAstNodes.type_bool;
 			break;
 		// logic ops. Requires both operands to be of the same type
 		case EQUAL, NOT_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL:
@@ -418,13 +418,13 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 					leftType.as_ptr.isVoidPtr(c) ||
 					rightType.as_ptr.isVoidPtr(c))
 				{
-					resType = c.basicTypeNodes(BasicType.t_bool);
+					resType = CommonAstNodes.type_bool;
 					break;
 				}
 			}
 
 			if (autoconvToCommonType(b.left, b.right, c))
-				resType = c.basicTypeNodes(BasicType.t_bool);
+				resType = CommonAstNodes.type_bool;
 			else
 				c.error(b.left.get_node(c).loc, "Cannot compare `%s` and `%s`",
 					leftType.typeName(c),
@@ -437,7 +437,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 				if (same_type(leftTypeIndex, rightTypeIndex, c))
 				{
 					b.op = BinOp.PTR_DIFF;
-					resType = c.basicTypeNodes(BasicType.t_i64);
+					resType = CommonAstNodes.type_i64;
 					break;
 				}
 				else

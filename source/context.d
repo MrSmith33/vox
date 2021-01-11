@@ -781,15 +781,15 @@ struct CompilationContext
 		makeBasic(CommonAstNodes.type_type, 4, 2, uint.min, uint.max, BasicType.t_type);
 
 		// custom types
-		auto type_u8Ptr = appendAst!PtrTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
+		auto type_u8Ptr = appendAst!PtrTypeNode(TokenIndex(), CommonAstNodes.type_u8);
 		assertf(type_u8Ptr == CommonAstNodes.type_u8Ptr, "AstIndex mismatch for type_u8Ptr %s != %s", type_u8Ptr, cast(AstIndex)CommonAstNodes.type_u8Ptr);
 		type_u8Ptr.gen_ir_type(&this); // we need to cache IR types too
 
-		auto type_u8Slice = appendAst!SliceTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_u8));
+		auto type_u8Slice = appendAst!SliceTypeNode(TokenIndex(), CommonAstNodes.type_u8);
 		assertf(type_u8Slice == CommonAstNodes.type_u8Slice, "AstIndex mismatch for type_u8Slice %s != %s", type_u8Slice, cast(AstIndex)CommonAstNodes.type_u8Slice);
 		type_u8Slice.gen_ir_type(&this); // we need to cache IR types too
 
-		auto type_aliasSlice = appendAst!SliceTypeNode(TokenIndex(), basicTypeNodes(BasicType.t_alias));
+		auto type_aliasSlice = appendAst!SliceTypeNode(TokenIndex(), CommonAstNodes.type_alias);
 		assertf(type_aliasSlice == CommonAstNodes.type_aliasSlice, "AstIndex mismatch for type_aliasSlice %s != %s", type_aliasSlice, cast(AstIndex)CommonAstNodes.type_aliasSlice);
 		type_aliasSlice.gen_ir_type(&this); // we need to cache IR types too
 

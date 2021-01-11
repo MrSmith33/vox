@@ -78,9 +78,13 @@
 	+ arrays
 	+ load/store/push
 	+ pass/receive floats on stack
+	+ f32 <-> f64 casts
 	- int <-> float casts
 	+ regalloc needs to only work with current register class
 	- constants
+		+ zero
+		+ non-zero
+		- constants as instruction arguments need to be lowered to movs
 	- constant folding
 	- CTFE
 	- xchg
@@ -150,6 +154,7 @@ o dll linking
 	- autoincrementing enum member values
 	- enum type
 - constant folding << >> >>> shifts needs to know type of left operand to mask the shift size
+- Check that constants on either side of every instruction is correctly lowered to mov/load when needed
 
 
 [CLI]

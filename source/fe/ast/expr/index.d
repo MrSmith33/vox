@@ -66,7 +66,7 @@ void name_resolve_index(ref AstIndex nodeIndex, IndexExprNode* node, ref NameRes
 		else
 		{
 			c.error(node.loc, "Invalid number of indicies: %s", copy.indicies.length);
-			node.type = c.basicTypeNodes(BasicType.t_error);
+			node.type = CommonAstNodes.type_error;
 		}
 	}
 	else if (effective_array.astType(c) == AstType.decl_template)
@@ -122,7 +122,7 @@ void type_check_index(ref AstIndex nodeIndex, IndexExprNode* node, ref TypeCheck
 		}
 
 		// array/ptr/slice indexing
-		autoconvTo(node.indicies[0], c.basicTypeNodes(BasicType.t_i64), c);
+		autoconvTo(node.indicies[0], CommonAstNodes.type_i64, c);
 		switch (node.array.get_expr_type(c).astType(c)) with(AstType)
 		{
 			case type_ptr, type_static_array, type_slice: break; // valid

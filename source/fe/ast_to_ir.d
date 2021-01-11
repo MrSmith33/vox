@@ -111,6 +111,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case expr_slice:
 		case expr_type_conv:
 		case literal_int:
+		case literal_float:
 		case literal_string:
 		case literal_null:
 		case literal_bool:
@@ -152,6 +153,11 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return ExprValue(irValue);
 		}
+		case literal_float: {
+			IrIndex irValue = ir_gen_literal_float(gen.context, cast(FloatLiteralExprNode*)n);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(irValue);
+		}
 		case literal_string: {
 			IrIndex irValue = ir_gen_literal_string(gen.context, cast(StringLiteralExprNode*)n);
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
@@ -179,7 +185,7 @@ void ir_gen_branch(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref 
 	AstNode* n = gen.getAstNode(astIndex);
 	switch(n.astType) with(AstType)
 	{
-		case literal_int, literal_string, expr_index, expr_slice: // TODO: expr_index may return bool
+		case literal_int, literal_float, literal_string, expr_index, expr_slice: // TODO: expr_index may return bool
 			gen.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
 			break;
 		case expr_bin_op:    ir_gen_branch_binary_op   (gen, curBlock, trueExit, falseExit, cast(BinaryExprNode*)n); break;

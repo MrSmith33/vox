@@ -56,9 +56,9 @@ void type_check_expr_slice(SliceExprNode* node, ref TypeCheckState state)
 	node.array.flags(c) |= AstFlags.isLvalue;
 	require_type_check(node.array, state);
 	require_type_check(node.fromIndex, state);
-	autoconvTo(node.fromIndex, c.basicTypeNodes(BasicType.t_i64), c);
+	autoconvTo(node.fromIndex, CommonAstNodes.type_i64, c);
 	require_type_check(node.toIndex, state);
-	autoconvTo(node.toIndex, c.basicTypeNodes(BasicType.t_i64), c);
+	autoconvTo(node.toIndex, CommonAstNodes.type_i64, c);
 	switch (node.array.get_expr_type(c).astType(c)) with(AstType)
 	{
 		case type_ptr, type_static_array:

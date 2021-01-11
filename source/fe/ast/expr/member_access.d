@@ -146,7 +146,7 @@ void type_check_member(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeChe
 	}
 
 	// nothing found
-	node.type = c.basicTypeNodes(BasicType.t_error);
+	node.type = CommonAstNodes.type_error;
 	AstIndex objType = node.aggregate.get_node_type(c);
 	c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(node.memberId(c)));
 	nodeIndex.get_node(c).state = AstNodeState.type_check_done;
@@ -230,7 +230,7 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 	if (memberId == CommonIds.id_sizeof)
 	{
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.type_sizeof), 0, c);
-		expr.type = c.basicTypeNodes(BasicType.t_u64);
+		expr.type = CommonAstNodes.type_u64;
 		return LookupResult.success;
 	}
 
@@ -257,7 +257,7 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 				"Cannot resolve `%s` for %s",
 				c.idString(memberId),
 				get_node_kind_name(objType.get_ast_index(c), c));
-			expr.type = c.basicTypeNodes(BasicType.t_error);
+			expr.type = CommonAstNodes.type_error;
 			return LookupResult.error;
 	}
 }
@@ -312,7 +312,7 @@ LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, I
 	else if (id == CommonIds.id_length)
 	{
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_length), 0, c);
-		expr.type = c.basicTypeNodes(BasicType.t_u64);
+		expr.type = CommonAstNodes.type_u64;
 		expr.type.setState(c, AstNodeState.type_check_done);
 		return LookupResult.success;
 	}
@@ -332,7 +332,7 @@ LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* 
 	else if (id == CommonIds.id_length)
 	{
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.array_length), 0, c);
-		expr.type = c.basicTypeNodes(BasicType.t_u64);
+		expr.type = CommonAstNodes.type_u64;
 		expr.type.setState(c, AstNodeState.type_check_done);
 		return LookupResult.success;
 	}

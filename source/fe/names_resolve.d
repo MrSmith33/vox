@@ -108,6 +108,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case expr_type_conv: name_resolve_type_conv(cast(TypeConvExprNode*)node, state); break;
 
 		case literal_int: assert(false);
+		case literal_float: assert(false);
 		case literal_string: assert(false);
 		case literal_null: assert(false);
 		case literal_bool: assert(false);

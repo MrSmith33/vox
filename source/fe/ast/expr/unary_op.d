@@ -103,7 +103,7 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 			break;
 		case logicalNot:
 			autoconvToBool(node.child, c);
-			node.type = c.basicTypeNodes(BasicType.t_bool);
+			node.type = CommonAstNodes.type_bool;
 			break;
 		case minus:
 			node.type = child.type;

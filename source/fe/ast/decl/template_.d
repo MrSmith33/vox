@@ -362,6 +362,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case expr_type_conv: post_clone_type_conv(cast(TypeConvExprNode*)node, state); break;
 
 		case literal_int: break;
+		case literal_float: break;
 		case literal_string: break;
 		case literal_null: break;
 		case literal_bool: break;

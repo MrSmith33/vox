@@ -127,9 +127,10 @@ enum TokenType : ubyte {
 
 	@("true")  TRUE_LITERAL,            // true
 	@("false") FALSE_LITERAL,           // false
-	@("#num_dec_lit") INT_DEC_LITERAL,
-	@("#num_hex_lit") INT_HEX_LITERAL,
-	@("#num_bin_lit") INT_BIN_LITERAL,
+	@("#int_dec_lit") INT_DEC_LITERAL,
+	@("#int_hex_lit") INT_HEX_LITERAL,
+	@("#int_bin_lit") INT_BIN_LITERAL,
+	@("#float_dec_lit") FLOAT_DEC_LITERAL,
 	@("#str_lit") STRING_LITERAL,
 	@("#char_lit") CHAR_LITERAL,
 	//@(null) DECIMAL_LITERAL,          // 0|[1-9][0-9_]*
@@ -289,6 +290,13 @@ struct Lexer
 		}
 	}
 
+	private void prevChar()
+	{
+		--position;
+		--column;
+		c = inputChars[position];
+	}
+
 	private void nextChar()
 	{
 		++position;
@@ -443,11 +451,11 @@ struct Lexer
 		return single_tok;
 	}
 
-	private void lexError(TT type, string message) {
+	private void lexError(Args...)(TT type, string format, Args args) {
 		outputTokens.put(type);
 		set_loc();
 		TokenIndex lastToken = TokenIndex(cast(uint)outputTokens.length-1);
-		context.unrecoverable_error(lastToken, message);
+		context.unrecoverable_error(lastToken, format, args);
 	}
 
 	private TokenType lex_SLASH() // /
@@ -602,16 +610,14 @@ struct Lexer
 		}
 		else
 		{
-			consumeDecimal();
-			return TT.INT_DEC_LITERAL;
+			return consumeDecimal();
 		}
 	}
 
 	private TokenType lex_DIGIT() // 1-9
 	{
 		nextChar;
-		consumeDecimal();
-		return TT.INT_DEC_LITERAL;
+		return consumeDecimal();
 	}
 
 
@@ -752,14 +758,37 @@ struct Lexer
 		while (isIdSecond(c)) nextChar;
 	}
 
-	private void consumeDecimal()
+	private TokenType consumeDecimal()
 	{
-		while (true)
-		{
-			if ('0' <= c && c <= '9') {
-			} else if (c != '_') return;
-			nextChar;
+		// skip initial decimal literal
+		while (isNumSecond(c)) nextChar;
+
+		bool isFloat = false;
+
+		// check for "." followed by decimal
+		if (c == '.') {
+			nextChar; // skip .
+			if (!isNumFirst(c)) {
+				prevChar(); // revert .
+				return TT.INT_DEC_LITERAL;
+			}
+			// skip second decimal literal
+			while (isNumSecond(c)) nextChar;
+			isFloat = true;
 		}
+
+		// check for exponent
+		if (c == 'e' || c == 'E') {
+			nextChar; // skip eE
+			if (c == '+' || c == '-') nextChar; // skip -+
+			if (!isNumFirst(c)) lexError(TT.INVALID, "Invalid char after exponent of float literal. Expected digit, got '%s'", c);
+			// skip exponent
+			while (isNumSecond(c)) nextChar;
+			return TT.FLOAT_DEC_LITERAL;
+		}
+
+		if (isFloat) return TT.FLOAT_DEC_LITERAL;
+		return TT.INT_DEC_LITERAL;
 	}
 
 	private uint consumeHexadecimal()
@@ -910,6 +939,14 @@ private bool isIdSecond(dchar chr) pure nothrow {
 		chr == '_';
 }
 
+private bool isNumFirst(dchar chr) pure nothrow {
+	return '0' <= chr && chr <= '9';
+}
+
+private bool isNumSecond(dchar chr) pure nothrow {
+	return '0' <= chr && chr <= '9' || chr == '_';
+}
+
 
 unittest
 {
@@ -972,6 +1009,18 @@ unittest
 	testNumeric("10", TT.INT_DEC_LITERAL);
 	testNumeric("1_0", TT.INT_DEC_LITERAL);
 	testNumeric("10_", TT.INT_DEC_LITERAL);
+	testNumeric("10.0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10.0e0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10.0e+0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10.0e-0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10.0E+0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10.0E-0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10e0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10E0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10e+0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10e-0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10E+0", TT.FLOAT_DEC_LITERAL);
+	testNumeric("10E-0", TT.FLOAT_DEC_LITERAL);
 	testNumeric("0xFF", TT.INT_HEX_LITERAL);
 	testNumeric("0XABCDEF0123456789", TT.INT_HEX_LITERAL);
 	testNumeric("0x1_0", TT.INT_HEX_LITERAL);

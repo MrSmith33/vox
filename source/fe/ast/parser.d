@@ -735,7 +735,7 @@ struct Parser
 		TokenIndex start = tok.index;
 		nextToken; // slip `enum`
 
-		AstIndex intType = context.basicTypeNodes(BasicType.t_i32);
+		AstIndex intType = CommonAstNodes.type_i32;
 
 		AstIndex parseColonType()
 		{
@@ -1441,7 +1441,7 @@ private TokenLookups cexp_parser()
 		"f32", "f64",
 		"$alias", "$type",
 		"true", "false",
-		"#num_dec_lit", "#num_bin_lit", "#num_hex_lit", "#str_lit", "#char_lit"]
+		"#int_dec_lit", "#int_bin_lit", "#int_hex_lit", "#float_dec_lit", "#str_lit", "#char_lit"]
 	);
 	nilfix(0, &null_error_parser, [")", "]", ":", "#eoi", ";"]);
 	return res;
@@ -1525,6 +1525,10 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			string value = cast(string)p.context.getTokenString(token.index);
 			long intValue = value[2..$].filter!(c => c != '_').to!ulong(2); // skip 0b, 0B
 			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
+		case FLOAT_DEC_LITERAL:
+			string value = cast(string)p.context.getTokenString(token.index);
+			double floatValue = value.filter!(c => c != '_').to!double;
+			return p.makeExpr!FloatLiteralExprNode(token.index, floatValue);
 		case TYPE_NORETURN, TYPE_VOID, TYPE_BOOL,
 			TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64, TYPE_U8, TYPE_U16, TYPE_U32, TYPE_U64,
 			TYPE_F32, TYPE_F64,
@@ -1532,7 +1536,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			BasicType t = token.type.tokenTypeToBasicType;
 			return p.context.basicTypeNodes(t);
 		default:
-			p.context.unreachable(); assert(false);
+			p.context.internal_error("nullLiteral %s", token.type); assert(false);
 	}
 }
 
@@ -1556,6 +1560,9 @@ AstIndex nullPrefixOp(ref Parser p, PreferType preferType, Token token, int rbp)
 			AstNode* rightNode = p.context.getAstNode(right);
 			if (rightNode.astType == AstType.literal_int) {
 				(cast(IntLiteralExprNode*)rightNode).negate(token.index, *p.context);
+				return right;
+			} else if (rightNode.astType == AstType.literal_float) {
+				(cast(FloatLiteralExprNode*)rightNode).negate(token.index, *p.context);
 				return right;
 			}
 			op = UnOp.minus;

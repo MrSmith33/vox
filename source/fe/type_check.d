@@ -120,6 +120,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case expr_type_conv: type_check_type_conv(cast(TypeConvExprNode*)node, state); break;
 
 		case literal_int: type_check_literal_int(cast(IntLiteralExprNode*)node, state); break;
+		case literal_float: type_check_literal_float(cast(FloatLiteralExprNode*)node, state); break;
 		case literal_string: type_check_literal_string(cast(StringLiteralExprNode*)node, state); break;
 		case literal_null: type_check_literal_null(cast(NullLiteralExprNode*)node, state); break;
 		case literal_bool: type_check_literal_bool(cast(BoolLiteralExprNode*)node, state); break;
@@ -216,7 +217,7 @@ void autoconvToBool(ref AstIndex exprIndex, CompilationContext* context)
 {
 	ExpressionNode* expr = exprIndex.get_expr(context);
 	if (expr.type.get_type(context).isError) return;
-	if (!autoconvTo(exprIndex, context.basicTypeNodes(BasicType.t_bool), context))
+	if (!autoconvTo(exprIndex, CommonAstNodes.type_bool, context))
 		context.error(expr.loc, "Cannot implicitly convert `%s` to bool",
 			expr.type.typeName(context));
 }
@@ -273,7 +274,7 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 	ExpressionNode* expr = exprIndex.get_expr(c);
 
 	if (type.isError) { // Recover
-		expr.type = c.basicTypeNodes(BasicType.t_error);
+		expr.type = CommonAstNodes.type_error;
 		return true;
 	}
 
@@ -322,6 +323,10 @@ bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* 
 				expr.type.printer(c),
 				type.printer(c));
 			return false;
+		}
+		else if (expr.astType == AstType.literal_float && toType.isFloat) {
+			expr.type = typeIndex;
+			return true;
 		}
 	}
 	// auto cast from string literal to c_char*

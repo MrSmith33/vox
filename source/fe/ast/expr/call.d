@@ -92,7 +92,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			LookupResult ufcsRes = tryUFCSCall(callIndex, member, state);
 			if (ufcsRes == LookupResult.failure) {
 				AstIndex objType = member.aggregate.get_node_type(c);
-				node.type = c.basicTypeNodes(BasicType.t_error);
+				node.type = CommonAstNodes.type_error;
 				c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(calleeName));
 				return;
 			}
@@ -138,13 +138,13 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			callee = get_template_instance(callee, node.loc, types, state);
 			node.callee = callee;
 			if (callee == CommonAstNodes.node_error) {
-				node.type = c.basicTypeNodes(BasicType.t_error);
+				node.type = CommonAstNodes.type_error;
 				return;
 			}
 			goto case AstType.decl_function;
 		default:
 			// unknown / unimplemented case
-			node.type = c.basicTypeNodes(BasicType.t_error);
+			node.type = CommonAstNodes.type_error;
 			c.error(node.loc, "Cannot call %s", callee.astType(c));
 			c.internal_error(node.loc,
 				"Only direct function calls are supported right now");

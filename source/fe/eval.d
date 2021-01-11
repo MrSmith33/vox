@@ -45,6 +45,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 		case expr_type_conv: return eval_static_expr_type_conv(cast(TypeConvExprNode*)node, context);
 		case expr_call: return eval_static_expr_call(cast(CallExprNode*)node, context);
 		case literal_int: return ir_gen_literal_int(context, cast(IntLiteralExprNode*)node);
+		case literal_float: return ir_gen_literal_float(context, cast(FloatLiteralExprNode*)node);
 		case literal_string: return ir_gen_literal_string(context, cast(StringLiteralExprNode*)node);
 		case literal_null: return ir_gen_literal_null(context, cast(NullLiteralExprNode*)node);
 		case literal_bool: return ir_gen_literal_bool(context, cast(BoolLiteralExprNode*)node);

@@ -56,6 +56,9 @@ bool isSignedInteger(BasicType b) {
 bool isUnsignedInteger(BasicType b) {
 	return b >= BasicType.t_u8 && b <= BasicType.t_u64;
 }
+bool isFloat(BasicType b) {
+	return b == BasicType.t_f32 || b == BasicType.t_f64;
+}
 
 // usage isAutoConvertibleFromToBasic[from][to]
 immutable bool[BasicType.max + 1][BasicType.max + 1] isAutoConvertibleFromToBasic = [

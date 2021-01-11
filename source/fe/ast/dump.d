@@ -89,6 +89,7 @@ void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 		case expr_type_conv: print_type_conv(cast(TypeConvExprNode*)node, state); break;
 
 		case literal_int: print_literal_int(cast(IntLiteralExprNode*)node, state); break;
+		case literal_float: print_literal_float(cast(FloatLiteralExprNode*)node, state); break;
 		case literal_string: print_literal_string(cast(StringLiteralExprNode*)node, state); break;
 		case literal_null: print_literal_null(cast(NullLiteralExprNode*)node, state); break;
 		case literal_bool: print_literal_bool(cast(BoolLiteralExprNode*)node, state); break;
