@@ -131,10 +131,10 @@ Benchmarking:
     `ldc2 -d-version=bench -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d && main`
 
 Debug CLI build:
-    `dmd -i -g -m64 -version=cli main.d -of=../test_work_dir/tjc.exe`
+    `dmd -i -g -m64 -version=cli main.d -of=../test_work_dir/vox.exe`
     
 Release CLI build:
-    `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -i main.d -of=../test_work_dir/tjc.exe`
+    `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -i main.d -of=../test_work_dir/vox.exe`
 
 Pretty asserts with stack traces are disabled in non-debug builds by default.
 * Add `--d-debug=PRETTY_ASSERT` flag to enable pretty asserts in ldc release build.
@@ -145,14 +145,14 @@ Pretty asserts with stack traces are disabled in non-debug builds by default.
 ## Getting help
 Gives the full list of flags
 ```D
-tjc --help
+vox --help
 ```
 
 ## Hello world
 Produces hello.exe
 
 ```
-tjc hello.vx C:\Windows\System32\kernel32.dll
+vox hello.vx C:\Windows\System32\kernel32.dll
 ```
 
 ## Input files
@@ -172,7 +172,7 @@ void main() { ExitProcess(42); }
 --- kernel32.vx
 void ExitProcess(u32 uExitCode);
 ```
-Can be compiled with `tjc program.har C:\Windows\System32\kernel32.dll`
+Can be compiled with `vox program.har C:\Windows\System32\kernel32.dll`
 
 * `.dll` files. Compiler will link external functions by searching symbols inside provided `.dll` file(s).
 
@@ -180,9 +180,9 @@ Can be compiled with `tjc program.har C:\Windows\System32\kernel32.dll`
 The compiler contains embedded tools:
 
 ## PDB dump
-Prints content of tjc.pdb file into stdout.
+Prints content of vox.pdb file into stdout.
 ```
-tjc pdb-dump tjc.pdb
+vox pdb-dump vox.pdb
 ```
 
 # Compiler overview
