@@ -1,5 +1,72 @@
 ## Memory management
 
+Memory is allocated via a set of arenas. At the start compiler reserves a big chunk of memory (186 GiB atm), and bits of that memory are given to each arena.
+
+On windows memory is reserved via a call to `VirtualAlloc` with `MEM_RESERVE` flag. Then each arena is responsible to commit memory on demand with `VirtualAlloc + MEM_COMMIT` call. I stopped on 64k commit size as higher sizes do not improve time too much.
+
+On linux I wasn't able to archive pure reserve, so compiler relies on overcommit to be enabled and commits the whole arena pool at the start. The OS is then responsible for allocating memory pages on first access.
+
+## Passes
+
+### Read source
+### Lexing
+### Parsing
+### Semantic passes
+#### Register names
+#### Lookup names
+#### Type check
+### IR generation
+### IR Optimization
+### IR lowering
+### IR to LIR translation
+    aka instruction selection
+### Liveness analysis
+### Register allocation
+### Stack layout
+### Code generation
+### Linking
+### Writing executable
+
+## IR
+
+### Storage
+
+IR is stored in a set of arenas.
+
+```D
+Arena!IrInstrHeader     instrHeaderBuffer;
+Arena!IrIndex           instrPayloadBuffer;
+Arena!IrIndex           instrNextBuffer;
+Arena!IrIndex           instrPrevBuffer;
+Arena!IrPhi             phiBuffer;
+Arena!IrVirtualRegister vregBuffer;
+Arena!uint              arrayBuffer;
+Arena!IrBasicBlock      basicBlockBuffer;
+Arena!StackSlot         stackSlotBuffer;
+```
+
+Each IR function then points to a slice of items within each of those arenas. (see IrFunction struct)
+
+```D
+IrInstrHeader*     instrPtr;
+IrIndex*           instrPayloadPtr;
+IrIndex*           instrNextPtr;
+IrIndex*           instrPrevPtr;
+IrPhi*             phiPtr;
+uint*              arrayPtr;
+IrVirtualRegister* vregPtr;
+IrBasicBlock*      basicBlockPtr;
+StackSlot*         stackSlotPtr;
+```
+
+The way allocation works is that IR of the function which is currently being created must be at the end of each arena. This way adding new items to any arena if O(1) with no reallocation.
+
+This imposes a restriction that only one function IR can be created / modified at a time. Modification that needs to add new items requires function copy to be created at the end of the arenas.
+
+Copying function IR requires only one memcopy per arena without the need of any fixups, since all references are done relative to the start of respective item slice.
+
+This also makes inlining fast. Function IR that is being inlined is appended to the end of the arena and all references in those items are offset by the size of the original IR. Such offset is done via an offset table thanks to clever design of `IrIndex`.
+
 ## Function arguments and register allocation
 
 Before register allocation there is ABI lowering pass that replaces calls of a form:
