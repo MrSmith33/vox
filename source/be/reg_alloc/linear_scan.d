@@ -136,7 +136,6 @@ struct VregState
 /// "Linear Scan Register Allocation on SSA Form"
 struct LinearScan
 {
-	IntervalIndex[] unhandledStorage; // TODO: remove GC storage here
 	VregState[] vregState;
 	Array!IntervalIndex activeVirtual;
 	Array!IntervalIndex activeFixed;

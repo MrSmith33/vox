@@ -26,10 +26,13 @@ void pass_optimize_ir(ref CompilationContext c, ref ModuleDeclNode mod, ref Func
 {
 	if (func.isExternal) return;
 
+	FuncPassIr dcePass = &func_pass_remove_dead_code;
+	if (c.disableDCE) dcePass = null;
+
 	FuncPassIr[3] passes = [
 		c.disableInline ? null : &func_pass_inline,
 		&func_pass_invert_conditions,
-		c.disableDCE ? null : &func_pass_remove_dead_code,
+		dcePass,
 	];
 
 	IrBuilder builder;

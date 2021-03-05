@@ -3908,6 +3908,26 @@ immutable test177 = q{--- test177
 	//u16 func_f64_to_u16(f64 a) { return a; } // f64 -> u16
 	//u32 func_f64_to_u32(f64 a) { return a; } // f64 -> u32
 	//u64 func_f64_to_u64(f64 a) { return a; } // f64 -> u64
+
+	//f32 func_ i8_to_f32( i8 a) { return a; } //  i8 -> f32
+	//f32 func_i16_to_f32(i16 a) { return a; } // i16 -> f32
+	//f32 func_i32_to_f32(i32 a) { return a; } // i32 -> f32
+	//f32 func_i64_to_f32(i64 a) { return a; } // i64 -> f32
+
+	//f32 func_ u8_to_f32( u8 a) { return a; } //  u8 -> f32
+	//f32 func_u16_to_f32(u16 a) { return a; } // u16 -> f32
+	//f32 func_u32_to_f32(u32 a) { return a; } // u32 -> f32
+	//f32 func_u64_to_f32(u64 a) { return a; } // u64 -> f32
+
+	//f64 func_ i8_to_f64( i8 a) { return a; } //  i8 -> f64
+	//f64 func_i16_to_f64(i16 a) { return a; } // i16 -> f64
+	//f64 func_i32_to_f64(i32 a) { return a; } // i32 -> f64
+	//f64 func_i64_to_f64(i64 a) { return a; } // i64 -> f64
+
+	//f64 func_ u8_to_f64( u8 a) { return a; } //  u8 -> f64
+	//f64 func_u16_to_f64(u16 a) { return a; } // u16 -> f64
+	//f64 func_u32_to_f64(u32 a) { return a; } // u32 -> f64
+	//f64 func_u64_to_f64(u64 a) { return a; } // u64 -> f64
 };
 void tester177(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(double,  float)("func_f32_to_f64")(42.54f) == 42.54f.force);
