@@ -9,11 +9,67 @@ On linux I wasn't able to archive pure reserve, so compiler relies on overcommit
 ## Passes
 
 ### Read source
+
+Files use 2 arenas: one for file info records and one for file contents.
+
+Source files are read sequentially into an arena.
+
+Before each source there is a start of input char `char SOI_CHAR = '\2'`, and after last source char there is end of input char `char EOI_CHAR = '\3'`.
+
+During lexing those turn into corresponding tokens: `TokenType.SOI`, `TokenType.EOI`.
+
+File info (`SourceFileInfo`) contains file name, 
+
 ### Lexing
+
+Lexer produces `TokenType` and `SourceLocation` per token generated. Those are put into 2 arenas (`tokenBuffer` and `tokenLocationBuffer`). Tokens of all source files live in the same arenas, so they share index space. Token index is 32-bit number. AST nodes then store just a single `TokenIndex`.
+
+Atm `SourceLocation` is 16 bytes:
+
+```D
+uint start;
+uint end;
+uint line;
+uint col;
+```
+
+and `TokenType` is a single byte enumeration.
+
+`SourceFileInfo` also stores index of the first token of the source file. And since all files are loaded sequentially, `firstTokenIndex` also grows monotonically with each file added. We can then use `firstTokenIndex` to find the file that contains any given token. This is used for error location printing.
+
 ### Parsing
+
+Parsing uses recursive descend + Pratt parsing for expressions. Types are considered an expression too.
+
+AST nodes are allocated in `Arena!uint astBuffer` with 4-byte allocation/addressing granularity. AST nodes use 32-bit indicies to refer to each other. This way arena has capacity for up to 16 GiB of nodes.
+
+For the times where AST nodes need to allocate arays `ArrayArena` is used, which has multiple pools for fixed sizes.
+
+All identifiers are interned and 32-bit identifier index is used everywhere (`struct Identifier`).
+
+All AST node allocations are sequential in memory, so template system takes advantage of that. Templates store the range of AST arena slots that are within the template. When new template instance is created, a copy of that slot range is made at the end of the arena. Then a tree walk fixes indicies and duplicates the arrays.
+
+Named declaration nodes (`NameUseExprNode`/`AliasDeclNode`/`EnumDeclaration`/`EnumMemberDecl`/`FunctionDeclNode`/`StructDeclNode`/`TemplateDeclNode`/`VariableDeclNode`) keep track of parent scope, so that in `Register names` pass they can register themselves into that scope.
+
 ### Semantic passes
 #### Register names
+
+This pass walks the AST nodes in all files and registers itself in the parent scope.
+
+When we have a single node to register it just registers itself and requests name registering from nested nodes.
+
+Because Vox supports conditional compilation in the form of `#if` and `#foreach`, name registering pass happens in two steps for arrays of nodes (for example struct members, or block statements):
+
+First we request self registration of nodes. This process yields a linked list of all nodes implementing conditional compilation. Then we walk the conditional nodes and expand them in-place. Right after insertion we recursively repeat the first step.
+
+At the end we have all conditional nodes deleted and/or replaces with some of their children. All of the nodes in the sequence were self registered, and no nested nodes were registered yet.
+
+Then we walk all the nodes in array and request registering of their children.
+
 #### Lookup names
+
+
+
 #### Type check
 ### IR generation
 ### IR Optimization
