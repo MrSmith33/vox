@@ -174,38 +174,43 @@ struct Driver
 
 		foreach (HostSymbol hostSym; hostSymbols)
 		{
-			Identifier symId = context.idMap.getOrRegNoDup(&context, hostSym.name);
+			addHostSymbol(hostModuleIndex, hostSym);
+		}
+	}
 
-			if (canReferenceFromCode(hostSym.ptr))
-			{
-				ObjectSymbol importedSymbol = {
-					kind : ObjectSymbolKind.isHost,
-					id : symId,
-					dataPtr : cast(ubyte*)hostSym.ptr,
-					sectionOffset : cast(ulong)hostSym.ptr,
-					sectionIndex : context.builtinSections[ObjectSectionType.host],
-					moduleIndex : hostModuleIndex,
-				};
-				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
-				context.externalSymbols[symId] = importedSymbolIndex;
-			}
-			else
-			{
-				ulong sectionOffset = context.importBuffer.length;
-				ulong ptr = cast(ulong)hostSym.ptr;
-				context.importBuffer.put(*cast(ubyte[8]*)&ptr);
+	void addHostSymbol(LinkIndex hostModuleIndex, HostSymbol hostSym)
+	{
+		Identifier symId = context.idMap.getOrRegNoDup(&context, hostSym.name);
 
-				ObjectSymbol importedSymbol = {
-					kind : ObjectSymbolKind.isHost,
-					flags : ObjectSymbolFlags.isIndirect,
-					id : symId,
-					sectionOffset : sectionOffset,
-					sectionIndex : context.builtinSections[ObjectSectionType.imports],
-					moduleIndex : hostModuleIndex,
-				};
-				LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
-				context.externalSymbols[symId] = importedSymbolIndex;
-			}
+		if (canReferenceFromCode(hostSym.ptr))
+		{
+			ObjectSymbol importedSymbol = {
+				kind : ObjectSymbolKind.isHost,
+				id : symId,
+				dataPtr : cast(ubyte*)hostSym.ptr,
+				sectionOffset : cast(ulong)hostSym.ptr,
+				sectionIndex : context.builtinSections[ObjectSectionType.host],
+				moduleIndex : hostModuleIndex,
+			};
+			LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
+			context.externalSymbols[symId] = importedSymbolIndex;
+		}
+		else
+		{
+			ulong sectionOffset = context.importBuffer.length;
+			ulong ptr = cast(ulong)hostSym.ptr;
+			context.importBuffer.put(*cast(ubyte[8]*)&ptr);
+
+			ObjectSymbol importedSymbol = {
+				kind : ObjectSymbolKind.isHost,
+				flags : ObjectSymbolFlags.isIndirect,
+				id : symId,
+				sectionOffset : sectionOffset,
+				sectionIndex : context.builtinSections[ObjectSectionType.imports],
+				moduleIndex : hostModuleIndex,
+			};
+			LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
+			context.externalSymbols[symId] = importedSymbolIndex;
 		}
 	}
 

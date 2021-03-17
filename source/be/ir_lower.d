@@ -21,6 +21,10 @@ void pass_ir_lower(CompilationContext* c, ModuleDeclNode* mod, FunctionDeclNode*
 	IrFunction* loweredIrData = c.getAst!IrFunction(func.backendData.loweredIrData);
 	*loweredIrData = *optimizedIrData; // copy
 
+	scope(failure) {
+		c.currentFunction = func;
+	}
+
 	IrBuilder builder;
 	builder.beginDup(loweredIrData, c);
 	IrIndex funcIndex = func.getIrIndex(c);

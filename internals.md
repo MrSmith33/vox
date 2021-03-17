@@ -10,15 +10,13 @@ On linux I wasn't able to archive pure reserve, so compiler relies on overcommit
 
 ### Read source
 
-Files use 2 arenas: one for file info records and one for file contents.
+Files use 2 arenas: one for file info records (`SourceFileInfo`) and one for file contents.
 
 Source files are read sequentially into an arena.
 
 Before each source there is a start of input char `char SOI_CHAR = '\2'`, and after last source char there is end of input char `char EOI_CHAR = '\3'`.
 
 During lexing those turn into corresponding tokens: `TokenType.SOI`, `TokenType.EOI`.
-
-File info (`SourceFileInfo`) contains file name, 
 
 ### Lexing
 
@@ -65,6 +63,8 @@ First we request self registration of nodes. This process yields a linked list o
 At the end we have all conditional nodes deleted and/or replaces with some of their children. All of the nodes in the sequence were self registered, and no nested nodes were registered yet.
 
 Then we walk all the nodes in array and request registering of their children.
+
+One non-ordinary thing here is that `#if` condition or `#foreach` expression need to be evaluated, which means that condition subtree needs to be processed up to `Type check` stage and evaluated.
 
 #### Lookup names
 

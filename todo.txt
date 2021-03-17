@@ -32,6 +32,7 @@
 	- a way to perform IFTI from user code (pass template args with names and runtime types and get)
 	- #parameter(#type type, string name, type default_value, #alias[] attributes)
 	- #function(string name, #type return_type, #parameter[] parameters, #alias[] attributes)
+	- Need to print instance trace for errors inside template instance
 - attributes
 	+ @extern(syscall, <int>)
 	- User Defined Attributes UDAs
@@ -196,12 +197,6 @@ o dll linking
 - in error on unexpected EOF show unterminated ([{ symbol
 
 
-[Optimizations]
-- optimize pointer arithmetic into lea
-- optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
-- tail call
-
-
 [Debug info]
 - Propagate loc through instructions
 - Implement pdb format write/read
@@ -220,14 +215,6 @@ o dll linking
 + Implement zero initialized data section (at the end of rw section)
 + globals need to be initialized
 x globals need to have IrIndex to initializer and coexist with raw data initializer (like for strings), or use aggregate constant that is optimized for byte arrays. Then produce actual bytes of data at machine code emission pass. This way backend can look at initializer.
-
-
-[Optimization]
-- Inlining
-	+ IR inliner is done
-	- Deciding when to inline is not implemented
-	+ Stack slots need to be copied on inline
-+ DCE exhibits O(n^2) behavior, because for each removed instruction (O(n)), we remove user from the vreg user list (O(n)). - Switched to multihashset.
 
 
 [IR]
@@ -255,6 +242,18 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 	  zeroinit however does have a type.
 - Validate all instructions
 + use actual arrays for users instead of linked lists
+
+
+[Optimizations]
+- optimize pointer arithmetic into lea
+- optimize branches on constants. They can't be omitted in loop header, because value is behind phi function
+- tail call
+- Inlining
+	+ IR inliner is done
+	- Deciding when to inline is not implemented
+	+ Stack slots need to be copied on inline
++ DCE exhibits O(n^2) behavior, because for each removed instruction (O(n)), we remove user from the vreg user list (O(n)). - Switched to multihashset.
+- Loop alignment (https://kunalspathak.github.io/2021-03-15-Loop-Alignment)
 
 
 [Register allocator]

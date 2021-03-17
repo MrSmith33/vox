@@ -52,29 +52,6 @@ enum TargetOs : ubyte {
 ///
 struct CompilationContext
 {
-	///
-	string outputFilename = "out.exe";
-
-	/// Set when BuildType.exe is used
-	FunctionDeclNode* entryPoint;
-
-	// build settings
-
-	/// Target machine info
-	MachineInfo* machineInfo = &mach_info_amd64;
-	/// Target OS
-	TargetOs targetOs;
-	///
-	BuildType buildType;
-	/// Build executable
-	WindowsSubsystem windowsSubsystem = WindowsSubsystem.WINDOWS_CUI;
-	///
-	uint sectionAlignemnt = 512;
-	/// If true attempt to maximize debuggability
-	bool buildDebug = false;
-	///
-	bool useFramePointer = false;
-
 	// storage
 
 	/// Source file info storage
@@ -147,6 +124,31 @@ struct CompilationContext
 	// errors and debug
 
 	Array!AstIndex analisysStack;
+	// Used for error message, when crashing in the backend
+	FunctionDeclNode* currentFunction;
+
+	///
+	string outputFilename = "out.exe";
+
+	/// Set when BuildType.exe is used
+	FunctionDeclNode* entryPoint;
+
+	// build settings
+
+	/// Target machine info
+	MachineInfo* machineInfo = &mach_info_amd64;
+	/// Target OS
+	TargetOs targetOs;
+	///
+	BuildType buildType;
+	/// Build executable
+	WindowsSubsystem windowsSubsystem = WindowsSubsystem.WINDOWS_CUI;
+	///
+	uint sectionAlignemnt = 512;
+	/// If true attempt to maximize debuggability
+	bool buildDebug = false;
+	///
+	bool useFramePointer = false;
 
 	/// True if current/last pass had errors
 	bool hasErrors;
@@ -589,12 +591,22 @@ struct CompilationContext
 		return getAst!FunctionDeclNode(astIndex);
 	}
 
-	FunctionDeclNode* findFunction(string moduleName, string funcName)
+	FunctionDeclNode* tryFindFunction(string moduleName, string funcName)
 	{
 		ModuleDeclNode* mod = findModule(moduleName);
 		if (mod is null) return null;
 
 		return mod.findFunction(funcName, &this);
+	}
+
+	FunctionDeclNode* findFunction(string moduleName, string funcName)
+	{
+		ModuleDeclNode* mod = findModule(moduleName);
+		if (mod is null) internal_error("Cannot find module `%s` while searching for `%s.%s`", moduleName, moduleName, funcName);
+
+		auto fun = mod.findFunction(funcName, &this);
+		if (fun is null) internal_error("Cannot find function `%s` inside module `%s`", funcName, moduleName);
+		return fun;
 	}
 
 	void findFunction(string funcName, void delegate(ModuleDeclNode*, FunctionDeclNode*) onFunction)
@@ -609,7 +621,7 @@ struct CompilationContext
 		}
 	}
 
-	auto getFunctionPtr(ResultType, ParamTypes...)(string funcName)
+	FunctionDeclNode* getFunctionDecl(string funcName)
 	{
 		FunctionDeclNode* funDecl;
 		foreach (ref SourceFileInfo file; files.data)
@@ -618,21 +630,25 @@ struct CompilationContext
 			if (fun !is null)
 			{
 				if (funDecl !is null)
-					internal_error("Test function %s is found in 2 places", funcName);
+					internal_error("Function %s is found in 2 places", funcName);
 				funDecl = fun;
 			}
 		}
 
 		if (funDecl is null)
-			internal_error("Test function `%s` is not found in %s modules", funcName, files.length);
+			internal_error("Function `%s` is not found in %s modules", funcName, files.length);
 
-		return getFunctionPtr!(ResultType, ParamTypes)(funDecl);
+		return funDecl;
+	}
+
+	auto getFunctionPtr(ResultType, ParamTypes...)(string funcName)
+	{
+		return getFunctionPtr!(ResultType, ParamTypes)(getFunctionDecl(funcName));
 	}
 
 	auto getFunctionPtr(ResultType, ParamTypes...)(string moduleName, string funcName)
 	{
 		FunctionDeclNode* func = findFunction(moduleName, funcName);
-		if (func is null) return null;
 		return getFunctionPtr!(ResultType, ParamTypes)(func);
 	}
 
@@ -860,6 +876,9 @@ struct CompilationContext
 		idMap.stringDataBuffer.clear;
 		idMap.strings.clear;
 		idMap.map = typeof(idMap.map).init;
+
+		analisysStack.clear();
+		currentFunction = null;
 
 		externalSymbols.clear();
 

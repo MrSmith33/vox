@@ -434,3 +434,11 @@ immutable fail40 = q{--- fail40
 --- <error>
 fail40(2, 2): Error: @extern(syscall) attribute is only implemented on linux
 };
+
+
+@TestInfo()
+immutable fail41 = q{--- fail41
+	import unknown;
+--- <error>
+fail41(1, 2): Error: Cannot find module `unknown`
+};

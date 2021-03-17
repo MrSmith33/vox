@@ -34,13 +34,20 @@ void pass_source(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 
 			ctx.sourceBuffer.put(SOI_CHAR);
 			auto f = File(file.name, "r");
-			char[] sourceBuffer = ctx.sourceBuffer.voidPut(f.size);
-			char[] result = f.rawRead(sourceBuffer);
+			size_t fileLength = f.size;
+			char[] sourceBuffer = ctx.sourceBuffer.voidPut(fileLength);
+			if (fileLength) {
+				// rawRead doesn't support reading into empty sourceBuffer
+				char[] result = f.rawRead(sourceBuffer);
+				ctx.assertf(result.length == fileLength,
+					"File read failed due to mismatch. File size is %s bytes, while read %s bytes",
+					fileLength, result.length);
+			}
 			f.close();
 			ctx.sourceBuffer.put(EOI_CHAR);
 
 			file.content = cast(string)sourceBuffer;
-			file.length = cast(uint)(result.length + 2);
+			file.length = cast(uint)(fileLength + 2);
 			file.start = cast(uint)start;
 			start += file.length;
 		}

@@ -138,8 +138,9 @@ enum IrOpcode : ushort
 	/// Uses IrBinaryCondition inside IrInstrHeader.cond
 	@_ii(2, IFLG.hasCondition | IFLG.isBlockExit) branch_binary,
 	/// Args:
-	///   iNN value
+	///   iNN value to be switched on
 	///   _k_ >= 0 integer constants (no duplicated constants allowed)
+	/// Basic block successors are in the following order
 	///   default basic block
 	///   0 or more case blocks
 	@_ii(1, IFLG.hasVariadicArgs | IFLG.isBlockExit) branch_switch,

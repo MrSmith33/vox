@@ -4049,3 +4049,28 @@ void tester178(ref TestContext ctx) {
 	assert(fannkuch(3) == Result(2, 2));
 	//assert(fannkuch(11) == Result(556355, 51)); // slow: ~2s
 }
+
+/*
+// aggregate lowering bug
+@TestInfo(&tester179)
+immutable test179 = q{--- test179
+	void use(i64, i64){}
+	// floats: argument passing via stack and registers
+	u8[] decompress(i32 res, u8[] data, u8[] outBuffer)
+	{
+		//i32 res = LZ4_decompress_safe(data.ptr, outBuffer.ptr, cast(i32)data.length, cast(i32)outBuffer.length);
+		if (res < 0)
+		{
+			use(cast(i64)data.length, cast(i64)outBuffer.length);
+			return null;
+		}
+		return outBuffer[0..res];
+	}
+};
+void tester179(ref TestContext ctx) {
+}
+*/
+
+@TestInfo()
+// empty source
+immutable test180 = q{--- test180};
