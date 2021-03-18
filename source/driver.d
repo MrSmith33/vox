@@ -24,6 +24,7 @@ struct Driver
 	CompilePassGlobal[] passes;
 
 	ArenaPool arenaPool;
+	LinkIndex hostModuleIndex;
 
 	static void funWithAddress(){}
 	void initialize(CompilePassGlobal[] passes_)
@@ -92,6 +93,7 @@ struct Driver
 		markAsRW(context.roStaticDataBuffer.bufPtr, divCeil(context.roStaticDataBuffer.length, PAGE_SIZE));
 		context.beginCompilation;
 		foreach(ref pass; passes) pass.clear;
+		hostModuleIndex = LinkIndex.init;
 	}
 
 	void addModule(SourceFileInfo moduleFile)
@@ -161,16 +163,23 @@ struct Driver
 		return reachesFromStart && reachesFromEnd;
 	}
 
+	LinkIndex getOrCreateHostModuleIndex() {
+		if (!hostModuleIndex.isDefined) {
+			ObjectModule hostModule = {
+				kind : ObjectModuleKind.isHost,
+				id : context.idMap.getOrRegNoDup(&context, ":host")
+			};
+			hostModuleIndex = context.objSymTab.addModule(hostModule);
+		}
+		return hostModuleIndex;
+	}
+
 	void addHostSymbols(HostSymbol[] hostSymbols)
 	{
 		if (hostSymbols.length > 0)
 			context.assertf(context.buildType == BuildType.jit, "Can only add host symbols in JIT mode");
 
-		ObjectModule hostModule = {
-			kind : ObjectModuleKind.isHost,
-			id : context.idMap.getOrRegNoDup(&context, ":host")
-		};
-		LinkIndex hostModuleIndex = context.objSymTab.addModule(hostModule);
+		getOrCreateHostModuleIndex();
 
 		foreach (HostSymbol hostSym; hostSymbols)
 		{
