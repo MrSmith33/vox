@@ -72,12 +72,14 @@ void name_register_self_enum(AstIndex nodeIndex, EnumDeclaration* node, ref Name
 
 void name_register_nested_enum(AstIndex nodeIndex, EnumDeclaration* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.memberType, state);
 	require_name_register(node.declarations, state);
 	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_enum(EnumDeclaration* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
+	require_name_resolve(node.memberType, state);
 	require_name_resolve(node.declarations, state);
 	node.state = AstNodeState.name_resolve_done;
 }
@@ -85,6 +87,7 @@ void name_resolve_enum(EnumDeclaration* node, ref NameResolveState state) {
 void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
+	require_type_check(node.memberType, state);
 	require_type_check(node.declarations, state);
 	node.state = AstNodeState.type_check_done;
 }
@@ -128,6 +131,7 @@ void name_register_self_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, re
 
 void name_register_nested_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
+	require_name_register(node.type, state);
 	if (node.initializer) require_name_register(node.initializer, state);
 	node.state = AstNodeState.name_register_nested_done;
 }

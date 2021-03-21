@@ -4074,3 +4074,16 @@ void tester179(ref TestContext ctx) {
 @TestInfo()
 // empty source
 immutable test180 = q{--- test180};
+
+
+@TestInfo()
+immutable test181 = q{--- test181
+	// alias as enum type
+	alias ENetSocketType = i32;
+	enum : ENetSocketType
+	{
+		ENET_SOCKET_TYPE_STREAM   = 1,
+		ENET_SOCKET_TYPE_DATAGRAM = 2,
+	}
+};
+

@@ -529,12 +529,12 @@ struct CompilationContext
 	AstNode* getAstNode(AstIndex index) { return getAst!AstNode(index); }
 	TypeNode* getAstType(AstIndex index) {
 		TypeNode* t = getAst!TypeNode(index);
-		assertf(t.isType, "node is %s", t.astType);
+		assertf(t.isType, t.loc, "node is not a type: %s", t.astType);
 		return t;
 	}
 	ExpressionNode* getAstExpr(AstIndex index) {
 		ExpressionNode* t = getAst!ExpressionNode(index);
-		assertf(t.isExpression, "node is %s", t.astType);
+		assertf(t.isExpression, t.loc, "node is not an expression: %s", t.astType);
 		return t;
 	}
 

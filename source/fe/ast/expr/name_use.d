@@ -133,7 +133,10 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 			break;
 		case decl_alias:
 			require_name_resolve(entity, state);
+			if (entityNode.isType) node.flags |= AstFlags.isType;
 			// replace current node with aliased entity
+			// this will only replace node index of the current owner, other references will remain
+			// happens for enum type for example: it is referenced from enum type and from enum members
 			nodeIndex = entity.get!AliasDeclNode(c).initializer;
 			break;
 		case type_ptr:
