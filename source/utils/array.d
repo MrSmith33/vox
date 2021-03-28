@@ -48,7 +48,7 @@ struct Array(T)
 			if (_capacity == NUM_INLINE_ITEMS)
 				return inlineItems[index];
 
-		if (capacity <= NUM_ITEMS_PER_PAGE)
+		if (_capacity <= NUM_ITEMS_PER_PAGE)
 			return externalArray[index];
 
 		size_t chunkIndex = index / NUM_ITEMS_PER_PAGE;
@@ -64,7 +64,7 @@ struct Array(T)
 			if (_capacity == NUM_INLINE_ITEMS)
 				return copy;
 
-		if (capacity <= NUM_ITEMS_PER_PAGE)
+		if (_capacity <= NUM_ITEMS_PER_PAGE)
 		{
 			size_t byteCapacity = nextPOT(_capacity * T.sizeof);
 
@@ -141,12 +141,27 @@ struct Array(T)
 
 			if (_length + delta > _capacity) extend(arena, cast(uint)delta);
 
-			foreach_reverse(i; at + numItemsToRemove.._length)
-			{
-				this[i + delta] = this[i];
+			scope(exit) _length += delta;
+
+			static if (NUM_INLINE_ITEMS > 0) {
+				if (_capacity == NUM_INLINE_ITEMS) {
+					foreach_reverse(i; at + numItemsToRemove.._length) {
+						inlineItems[i + delta] = inlineItems[i];
+					}
+					return;
+				}
 			}
 
-			_length += delta;
+			if (_capacity <= NUM_ITEMS_PER_PAGE) {
+				foreach_reverse(i; at + numItemsToRemove.._length) {
+					externalArray[i + delta] = externalArray[i];
+				}
+				return;
+			}
+
+			foreach_reverse(i; at + numItemsToRemove.._length) {
+				this[i + delta] = this[i];
+			}
 		}
 		else
 		{
@@ -182,7 +197,7 @@ struct Array(T)
 			if (_capacity == NUM_INLINE_ITEMS)
 				return; // noop
 
-		if (capacity <= NUM_ITEMS_PER_PAGE) {
+		if (_capacity <= NUM_ITEMS_PER_PAGE) {
 			size_t byteCapacity = nextPOT(_capacity * T.sizeof);
 			ubyte[] oldBlock = (cast(ubyte*)externalArray)[0..byteCapacity];
 			arena.freeBlock(oldBlock);
@@ -298,42 +313,81 @@ struct Array(T)
 		oldBlock = newBlock;
 	}
 
-	int opApply(scope int delegate(size_t, ref T) dg) {
+	int opApply(scope int delegate(size_t, ref T) dg) { return opApplyImpl!2(dg); }
+	int opApply(scope int delegate(ref T) dg) { return opApplyImpl!1(dg); }
+	private int opApplyImpl(uint size, Del)(scope Del dg) {
 		size_t index;
-		foreach (ref T item; this) {
-			if (int res = dg(index, item))
-				return res;
-			++index;
-		}
-		return 0;
-	}
-
-	int opApply(scope int delegate(ref T) dg) {
 		static if (NUM_INLINE_ITEMS > 0) {
 			if (_capacity == NUM_INLINE_ITEMS) {
-				foreach (ref T item; inlineItems[0.._length])
-					if (int res = dg(item))
-						return res;
+				foreach (ref T item; inlineItems[0.._length]) {
+					static if (size == 2) { if (int res = dg(index, item)) return res; }
+					else { if (int res = dg(item)) return res; }
+					++index;
+				}
 				return 0;
 			}
 		}
 
 		if (_capacity <= NUM_ITEMS_PER_PAGE)
 		{
-			foreach (ref T item; externalArray[0.._length])
-				if (int res = dg(item))
-					return res;
+			foreach (ref T item; externalArray[0.._length]) {
+				static if (size == 2) { if (int res = dg(index, item)) return res; }
+				else { if (int res = dg(item)) return res; }
+				++index;
+			}
 			return 0;
 		}
 
 		size_t numPages = _capacity / NUM_ITEMS_PER_PAGE;
 		size_t itemsLeft = _length;
-		foreach (i, T* subArray; chunkedArray[0..numPages])
+		foreach (T* subArray; chunkedArray[0..numPages])
 		{
 			size_t blockLength = min(itemsLeft, NUM_ITEMS_PER_PAGE);
-			foreach (ref T item; subArray[0..blockLength])
-				if (int res = dg(item))
-					return res;
+			foreach (ref T item; subArray[0..blockLength]) {
+				static if (size == 2) { if (int res = dg(index, item)) return res;}
+				else { if (int res = dg(item)) return res; }
+				++index;
+			}
+			itemsLeft -= blockLength;
+		}
+		return 0;
+	}
+
+	int opApplyReverse(scope int delegate(size_t, ref T) dg) { return opApplyReverseImpl!2(dg); }
+	int opApplyReverse(scope int delegate(ref T) dg) { return opApplyReverseImpl!1(dg); }
+	private int opApplyReverseImpl(uint size, Del)(scope Del dg) {
+		size_t index = _length;
+		static if (NUM_INLINE_ITEMS > 0) {
+			if (_capacity == NUM_INLINE_ITEMS) {
+				foreach_reverse (ref T item; inlineItems[0.._length]) {
+					--index;
+					static if (size == 2) { if (int res = dg(index, item)) return res; }
+					else { if (int res = dg(item)) return res; }
+				}
+				return 0;
+			}
+		}
+
+		if (_capacity <= NUM_ITEMS_PER_PAGE)
+		{
+			foreach_reverse (ref T item; externalArray[0.._length]) {
+				--index;
+				static if (size == 2) { if (int res = dg(index, item)) return res; }
+				else { if (int res = dg(item)) return res; }
+			}
+			return 0;
+		}
+
+		size_t numPages = _capacity / NUM_ITEMS_PER_PAGE;
+		size_t itemsLeft = _length;
+		foreach_reverse (T* subArray; chunkedArray[0..numPages])
+		{
+			size_t blockLength = min(itemsLeft, NUM_ITEMS_PER_PAGE);
+			foreach_reverse (ref T item; subArray[0..blockLength]) {
+				--index;
+				static if (size == 2) { if (int res = dg(index, item)) return res; }
+				else { if (int res = dg(item)) return res; }
+			}
 			itemsLeft -= blockLength;
 		}
 		return 0;
