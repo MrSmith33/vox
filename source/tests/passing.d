@@ -4087,3 +4087,20 @@ immutable test181 = q{--- test181
 	}
 };
 
+
+@TestInfo()
+immutable test182 = q{--- test182
+	// store {{}*, i8}* s0, {{}*, i8} {zeroinit, 1}
+	// isSameType gets to compare pointers to different structs, with different number of members
+	Struct run1() {
+		return Struct();
+	}
+	void run2() {
+		Struct s;
+	}
+	struct GLFWwindow;
+	struct Struct {
+		GLFWwindow* window;
+		bool isRunning = true;
+	}
+};

@@ -364,6 +364,7 @@ struct IrTypeStorage
 				if (b.typeKind != IrTypeKind.struct_t) return false;
 				IrTypeStructMember[] membersA = get!IrTypeStruct(a).members;
 				IrTypeStructMember[] membersB = get!IrTypeStruct(b).members;
+				if (membersA.length != membersB.length) return false;
 				foreach(i, IrTypeStructMember memA; membersA) {
 					if (!isSameType(memA.type, membersB[i].type)) return false;
 					if (memA.offset != membersB[i].offset) return false;
