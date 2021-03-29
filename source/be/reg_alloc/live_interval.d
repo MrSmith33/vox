@@ -9,6 +9,10 @@ struct LiveInterval
 {
 	Array!LiveRange ranges;
 	UsePosition[] uses;
+	// hint tells from which range to start searching
+	// Allows to restart search from the position we previously ended on.
+	// On big functions allows to reduce O(n^2) search complexity to 2 iterations per search.
+	LiveRangeIndex lastHit = LiveRangeIndex(0);
 
 	uint from() {
 		if (ranges.length > 0) return ranges[0].from;
@@ -45,14 +49,40 @@ struct LiveInterval
 		storageHint = hint;
 	}
 
-	// returns rangeId pointing to range covering position or one to the right of pos.
-	// returns NULL if no ranges left after pos.
-	LiveRangeIndex getRightRange(uint position)
+	// Skips all ranges to the left of the position, and returns first range after that
+	// Range before returned does not contain position
+	// Returned range.to > position
+	// Returned range.from may be <= position or may be > position
+	// If all ranges were skipped then returns NULL
+	LiveRangeIndex getRightmostRange(uint position)
 	{
-		foreach(i, range; ranges) {
-			if (position < range.to)
-				return LiveRangeIndex(i);
+		if (ranges.length == 0) return LiveRangeIndex.NULL;
+		LiveRangeIndex hint = lastHit;
+		if (lastHit >= ranges.length) hint = ranges.length - 1;
+		if (ranges[hint].to > position) {
+			if (hint == 0) {
+				lastHit = LiveRangeIndex(0);
+				return LiveRangeIndex(0);
+			}
+			foreach_reverse(i, range; ranges[0..hint]) {
+				if (range.to <= position) {
+					return LiveRangeIndex(i+1);
+				}
+				lastHit = LiveRangeIndex(i);
+			}
+		} else {
+			foreach(i, range; ranges[hint..$]) {
+				lastHit = LiveRangeIndex(i+hint);
+				if (range.to > position) {
+					return lastHit;
+				}
+			}
 		}
+
+		// Unoptimized
+		//foreach(i, range; ranges) {
+		//	if (position < range.to) return LiveRangeIndex(i);
+		//}
 		return LiveRangeIndex.NULL;
 	}
 

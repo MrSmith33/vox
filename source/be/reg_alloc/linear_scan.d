@@ -183,7 +183,7 @@ struct LinearScan
 				continue;
 			}
 
-			LiveRangeIndex rangeId = activeInt.getRightRange(position);
+			LiveRangeIndex rangeId = activeInt.getRightmostRange(position);
 
 			// if it ends before position then
 			if (rangeId.isNull)
@@ -220,7 +220,7 @@ struct LinearScan
 		{
 			IntervalIndex inactiveId = inactive[index];
 			LiveInterval* inactiveInt = &live.intervals[inactiveId];
-			LiveRangeIndex rangeId = inactiveInt.getRightRange(position);
+			LiveRangeIndex rangeId = inactiveInt.getRightmostRange(position);
 
 			// if it ends before position then
 			if (rangeId.isNull)

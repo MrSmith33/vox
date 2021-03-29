@@ -229,7 +229,7 @@ struct LivenessInfo
 			return parentInterval;
 		}
 
-		LiveRangeIndex rightIndex = it.getRightRange(optimalPos);
+		LiveRangeIndex rightIndex = it.getRightmostRange(optimalPos);
 
 		if (rightIndex.isNull) {
 			//writefln("  splitBefore after end %s %s %s split at max pos", parentInterval, optimalPos, rightIndex);
