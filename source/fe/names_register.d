@@ -99,7 +99,7 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 				uint insertPoint = cast(uint)(staticForeachNode.arrayIndex + sizeDelta);
 				items.replaceAtVoid(c.arrayArena, insertPoint, 1, numItemsToInsert);
 
-				foreach(i, AstIndex item; aliasArray.items)
+				foreach(idx, AstIndex item; aliasArray.items)
 				{
 					// Create scope for key/value vars
 					AstIndex instance_scope = c.appendAst!Scope;
@@ -113,7 +113,7 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 					if (staticForeachNode.keyId.isDefined) {
 						AstIndex keyNode = c.appendAst!EnumMemberDecl(staticForeachNode.loc);
 						auto enumMemberNode = keyNode.get!EnumMemberDecl(c);
-						enumMemberNode.initValue = c.constants.add(i, IsSigned.no, IrArgSize.size64);
+						enumMemberNode.initValue = c.constants.add(idx, IsSigned.no, IrArgSize.size64);
 						enumMemberNode.id = staticForeachNode.keyId;
 						enumMemberNode.type = CommonAstNodes.type_u64;
 						enumMemberNode.state = AstNodeState.type_check_done;
@@ -121,7 +121,7 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 					}
 					newScope.insert(staticForeachNode.valueId, item, c);
 
-					size_t insertAt = insertPoint + i * bodySize;
+					size_t insertAt = insertPoint + idx * bodySize;
 					foreach(j, AstIndex node; staticForeachNode.body)
 					{
 						cloneState.fixAstIndex(node);

@@ -79,6 +79,9 @@ struct LivenessInfo
 		uint numBucketsPerBlock = cast(uint)divCeil(numVregs, size_t.sizeof * 8);
 		bitmap.allocSets(context, numBucketsPerBlock, ir.numBasicBlocks);
 
+		foreach(ref i; intervals) {
+			i.ranges.free(context.arrayArena);
+		}
 		intervals.clear;
 		numFixedIntervals = cast(uint)context.machineInfo.numRegisters;
 		intervals.voidPut(context.arrayArena, numFixedIntervals + ir.numVirtualRegisters);
