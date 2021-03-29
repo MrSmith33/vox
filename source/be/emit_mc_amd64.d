@@ -139,8 +139,7 @@ struct CodeEmitter
 		funcSym.dataPtr = gen.pc;
 		funcSym.sectionOffset = cast(ulong)(gen.pc - context.codeBuffer.bufPtr);
 
-		Identifier mainId = context.idMap.getOrRegNoDup(context, "main");
-		if (fun.id == mainId)
+		if (fun.id == CommonIds.id_main)
 		{
 			if (context.entryPoint !is null)
 			{
