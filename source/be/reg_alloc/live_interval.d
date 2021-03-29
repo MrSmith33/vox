@@ -226,6 +226,9 @@ struct LiveInterval
 	}
 }
 
+// Typical usage is that a is short interval starting at monotonically growing position during linear scan
+// b is bigger interval beginning before a start.
+// hint of b should be very close to the start of a
 uint firstIntersection(LiveInterval* a, LiveInterval* b)
 {
 	size_t len_a = a.ranges.length;
@@ -239,6 +242,13 @@ uint firstIntersection(LiveInterval* a, LiveInterval* b)
 
 	LiveRange r_a = a.ranges[i_a];
 	LiveRange r_b = b.ranges[i_b];
+
+	// Optimization, skip the start of r_b
+	if (r_b.from < r_a.from) {
+		// We skip all ranges of b until the start of a. getRightmostRange can reuse hint, which dramatically cuts the number of iterations.
+		i_b = b.getRightmostRange(r_a.from);
+		r_b = b.ranges[i_b];
+	}
 
 	while (true)
 	{
