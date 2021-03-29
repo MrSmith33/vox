@@ -7,7 +7,8 @@ import all;
 
 struct LiveInterval
 {
-	Array!LiveRange ranges;
+	// See addRange for details on why
+	InvertedArray!LiveRange ranges;
 	UsePosition[] uses;
 	// hint tells from which range to start searching
 	// Allows to restart search from the position we previously ended on.
@@ -64,14 +65,14 @@ struct LiveInterval
 				lastHit = LiveRangeIndex(0);
 				return LiveRangeIndex(0);
 			}
-			foreach_reverse(i, range; ranges[0..hint]) {
+			foreach_reverse(i, range; ranges[0..hint].enumerate) {
 				if (range.to <= position) {
 					return LiveRangeIndex(i+1);
 				}
 				lastHit = LiveRangeIndex(i);
 			}
 		} else {
-			foreach(i, range; ranges[hint..$]) {
+			foreach(i, range; ranges[hint..$].enumerate) {
 				lastHit = LiveRangeIndex(i+hint);
 				if (range.to > position) {
 					return lastHit;
@@ -91,7 +92,7 @@ struct LiveInterval
 	LiveRangeIndex getLeftRange(uint position)
 	{
 		LiveRangeIndex result = LiveRangeIndex.NULL;
-		foreach(i, range; ranges) {
+		foreach(i, range; ranges[].enumerate) {
 			if (position >= range.from)
 				return result;
 			result = LiveRangeIndex(i);
@@ -115,6 +116,15 @@ struct LiveInterval
 		uses[$-1] = use;
 		--uses.length;
 	}
+
+	// Measurements showed that atm 100% of adds are either insert/merge at pos 0 or append
+	// And 100% of appends happen when length is 0, which is essentially free
+	// frontInserts 2499999 100% at pos 0
+	// mergeInserts  779987 100% at pos 0
+	// appends      2840014
+	// Inserts to the front happen because new ranges are added in reverse order, as we iterate the CFG
+	// The use of regular array caused quadratic time on add to the front, because all other items need to be shifted on each insert
+	// With reversed array all items are reversed, so prepending actually appends, which is O(1) with array (amortized)
 
 	// bounds are from block start to block end of the same block
 	// from is always == to block start for virtual intervals

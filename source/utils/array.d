@@ -240,3 +240,94 @@ struct Array(T)
 		sink("]");
 	}
 }
+
+struct InvertedArray(T)
+{
+	import utils : isPowerOfTwo, nextPOT, divCeil, min, max, writefln, ArrayArena, format;
+	import std.range : retro;
+	Array!(T) array;
+
+	bool empty() { return array._length == 0; }
+	uint length() { return array._length; }
+	uint opDollar() { return array._length; }
+	uint capacity() { return array._capacity; }
+	ref T front() { return array[$-1]; }
+	ref T back() { return array[0]; }
+	void clear() { array._length = 0; }
+
+	ref T opIndex(size_t index)
+	{
+		assert(index < array._capacity, format("opIndex(%s), capacity %s", index, array._capacity));
+		static if (array.NUM_INLINE_ITEMS > 0) {
+			if (array._capacity == array.NUM_INLINE_ITEMS) return array.inlineItems[array._length - index - 1];
+		}
+
+		return array.externalArray[array._length - index - 1];
+	}
+
+	InvertedArray!T dup(ref ArrayArena arena) {
+		InvertedArray!T copy = this;
+		copy.array = copy.array.dup(arena);
+		return copy;
+	}
+
+	void put(ref ArrayArena arena, T item) {
+		array.putAt(arena, 0, item);
+	}
+
+	// shifts items to the right
+	void putAt(ref ArrayArena arena, size_t at, T[] items...) {
+		array.replaceAt(arena, array._length - at, 0, items);
+	}
+
+	void replaceAt(A)(ref ArrayArena arena, size_t at, size_t numItemsToRemove, A itemsToInsert) {
+		assert(at + numItemsToRemove <= array._length);
+
+		size_t numItemsToInsert = itemsToInsert.length;
+
+		array.replaceAtVoid(arena, array._length-at-numItemsToRemove, numItemsToRemove, numItemsToInsert);
+		foreach(i; 0..numItemsToInsert)
+			this[at+numItemsToInsert-i-1] = itemsToInsert[i];
+	}
+
+	void unput(size_t numItems) {
+		array.removeByShift(0, numItems);
+	}
+
+	void reserve(ref ArrayArena arena, uint howMany) {
+		if (array._length + howMany > array._capacity) array.extend(arena, howMany);
+	}
+
+	// returns memory to arena and zeroes the length
+	void free(ref ArrayArena arena) {
+		array.free(arena);
+	}
+
+	auto opSlice() {
+		static if (array.NUM_INLINE_ITEMS > 0) {
+			if (array._capacity == array.NUM_INLINE_ITEMS) return array.inlineItems.ptr[0..array._length].retro;
+		}
+		return array.externalArray[0..array._length].retro;
+	}
+
+	auto opSlice(size_t from, size_t to) {
+		return this[][from..to];
+	}
+
+	void removeByShift(size_t at, size_t numToRemove = 1) {
+		array.removeByShift(array._length - at - numToRemove, numToRemove);
+	}
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		import std.format : formattedWrite;
+		sink("[");
+		size_t i;
+		foreach(ref T item; opSlice()) {
+			if (i > 0) sink(", ");
+			sink.formattedWrite("%s", item);
+			++i;
+		}
+		sink("]");
+	}
+}
+

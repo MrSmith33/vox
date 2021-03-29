@@ -269,7 +269,7 @@ struct LivenessInfo
 
 		assert(before >= it.from);
 
-		Array!LiveRange newRanges;
+		InvertedArray!LiveRange newRanges;
 
 		if (right.from < before)
 		{
@@ -326,7 +326,7 @@ struct LivenessInfo
 				else
 					sink.putf("% 3s %s [no reg]:", i, it.definition);
 
-				foreach(rIndex, range; it.ranges) {
+				foreach(rIndex, range; it.ranges[].enumerate) {
 					if (rIndex > 0) sink.put(" ");
 					sink.putf(" [%s; %s)", range.from, range.to);
 				}

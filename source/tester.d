@@ -17,18 +17,18 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(test171);
+	Test test = makeTest!(test7);
 
 	Driver driver;
 	driver.initialize(jitPasses);
 	driver.context.buildType = BuildType.jit;
 	version(Windows) driver.context.targetOs = TargetOs.windows;
 	else version(linux) driver.context.targetOs = TargetOs.linux;
-	else static assert(false, "Unnhandled OS");
+	else static assert(false, "Unhandled OS");
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
 	driver.context.printTodos = true;
-	//driver.context.runTesters = false;
+	driver.context.runTesters = false;
 	//driver.context.debugRegAlloc = true;
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -256,7 +256,6 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 	string expectedError;
 
 	enum NUM_ITERS = 1;
-	auto times = PerPassTimeMeasurements(NUM_ITERS, driver.passes);
 	auto time1 = currTime;
 
 		// setup modules
@@ -292,7 +291,6 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 			if (e.isICE) throw e;
 
 			// successfully matched the error message(s)
-			// TODO: we skip `times.print` below for failing tests, move it upward
 			if (equal(driver.context.errorSink.text, expectedErrorRange)) {
 				return TestResult.success;
 			}

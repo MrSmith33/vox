@@ -13,6 +13,7 @@ public import std.exception : enforce;
 public import std.format : formattedWrite;
 public import std.stdio : stdout, write, writef, writeln, writefln;
 public import std.string : format;
+public import std.range : enumerate;
 
 public import utils.arena;
 public import utils.arenapool;

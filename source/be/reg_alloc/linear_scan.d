@@ -444,7 +444,7 @@ struct LinearScan
 		version(RAPrint) writeln("  inactive:");
 		foreach (IntervalIndex inactiveId; inactiveFixed) {
 			LiveInterval* it = &live.intervals[inactiveId];
-			version(RAPrint) writef("   intp %s %s (next use %s)", IrIndexDump(it.reg, context, lir), IrIndexDump(it.definition, context, lir), FreeUntilPos(physRegs[it.reg].usePos));
+			version(RAPrint) writef("   intp %s %s (next use %s)", IrIndexDump(it.reg, context, lir), IrIndexDump(it.definition, context, lir), FreeUntilPos(physRegs.usePos[it.reg.arrayPhysRegIndex]));
 
 			// if current intersects both active and inactive, usePos stays 0
 			if (physRegs.usePos[it.reg.arrayPhysRegIndex] == 0) { version(RAPrint) writeln;
@@ -465,7 +465,7 @@ struct LinearScan
 			foreach (IntervalIndex inactiveId; inactiveVirtual) {
 				LiveInterval* it = &live.intervals[inactiveId];
 				assert(it.reg.isPhysReg, "not a reg");
-				version(RAPrint) writef("   intv %s %s (next use %s)", IrIndexDump(it.reg, context, lir), it.definition, FreeUntilPos(physRegs[it.reg].usePos));
+				version(RAPrint) writef("   intv %s %s (next use %s)", IrIndexDump(it.reg, context, lir), it.definition, FreeUntilPos(physRegs.usePos[it.reg.arrayPhysRegIndex]));
 
 				// if current intersects both active and inactive, usePos stays 0
 				if (physRegs.usePos[it.reg.arrayPhysRegIndex] == 0) { version(RAPrint) writeln;
@@ -527,6 +527,7 @@ struct LinearScan
 			version(RAPrint) writefln("    hint is %s", IrIndexDump(hintReg, context, lir));
 			if (hintReg.isVirtReg) hintReg = live.vint(hintReg).reg;
 			if (hintReg.isDefined) {
+				version(RAPrint) writefln("    currentEnd %s use %s hint %s", currentEnd, physRegs.usePos[hintReg.arrayPhysRegIndex], IrIndexDump(hintReg, context, lir));
 				if (currentEnd < physRegs.usePos[hintReg.arrayPhysRegIndex]) {
 					// register available for the whole interval
 					currentIt.reg = hintReg;
@@ -605,7 +606,7 @@ struct LinearScan
 			LiveInterval* it = &live.intervals[activeId];
 			physRegs.setUsePos(it.reg, it.nextUseAfter(currentStart));
 			physRegs[it.reg].activeInterval = activeId;
-			version(RAPrint) writefln("active virt usePos of %s %s use %s block %s", activeId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
+			version(RAPrint) writefln("active virt usePos of %s %s use %s block %s", activeId, *it, physRegs.usePos[it.reg.arrayPhysRegIndex], physRegs.blockPos[it.reg.arrayPhysRegIndex]);
 		}
 		// We only need to check inactive intervals when current interval was split
 		// because otherwise SSA form is intact, and there may not be intersections with inactive intervals
@@ -613,14 +614,14 @@ struct LinearScan
 			foreach (inactiveId; inactiveVirtual) {
 				LiveInterval* it = &live.intervals[inactiveId];
 				physRegs.setUsePos(it.reg, it.nextUseAfter(currentStart));
-				version(RAPrint) writefln("inactive virt usePos of %s %s use %s block %s", inactiveId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
+				version(RAPrint) writefln("inactive virt usePos of %s %s use %s block %s", inactiveId, *it, physRegs.usePos[it.reg.arrayPhysRegIndex], physRegs.blockPos[it.reg.arrayPhysRegIndex]);
 			}
 		}
 		foreach (IntervalIndex activeId; activeFixed) {
 			LiveInterval* it = &live.intervals[activeId];
 			physRegs.setBlockPos(it.reg, 0);
 			physRegs[it.reg].activeInterval = IntervalIndex.NULL;
-			version(RAPrint) writefln("active fixed usePos of %s %s use %s block %s", activeId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
+			version(RAPrint) writefln("active fixed usePos of %s %s use %s block %s", activeId, *it, physRegs.usePos[it.reg.arrayPhysRegIndex], physRegs.blockPos[it.reg.arrayPhysRegIndex]);
 		}
 		foreach (inactiveId; inactiveFixed) {
 			LiveInterval* it = &live.intervals[inactiveId];
@@ -629,7 +630,7 @@ struct LinearScan
 			{
 				physRegs.setBlockPos(it.reg, intersection);
 			}
-			version(RAPrint) writefln("inactive fixed usePos of %s %s use %s block %s", inactiveId, *it, physRegs[it.reg].usePos, physRegs[it.reg].blockPos);
+			version(RAPrint) writefln("inactive fixed usePos of %s %s use %s block %s", inactiveId, *it, physRegs.usePos[it.reg.arrayPhysRegIndex], physRegs.blockPos[it.reg.arrayPhysRegIndex]);
 		}
 
 		// reg = register with highest usePos
