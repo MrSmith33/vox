@@ -249,9 +249,3 @@ immutable input30 = q{--- test30
 		return 0;
 	}
 };
-auto test30 = Test("exe SDL", input30, null, null, null, [
-	DllModule("SDL2", ["SDL_SetMainReady", "SDL_Init", "SDL_Quit",
-		"SDL_CreateWindow", "SDL_CreateRenderer", "SDL_PollEvent",
-		"SDL_DestroyRenderer", "SDL_DestroyWindow"]),
-	DllModule("kernel32", ["ExitProcess"])]
-);

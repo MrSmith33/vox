@@ -100,7 +100,6 @@ else version(Windows)
 			writefln("allocate(%s:bytes, %s:location, %s:memoryType", bytes, location, memoryType);
 			writeln(sysErrorString(errCode));
 			assert(false, "VirtualAlloc alloc failed");
-			return null;
 		}
 
 		return cast(ubyte[])p[0 .. bytes];

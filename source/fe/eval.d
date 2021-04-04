@@ -194,7 +194,6 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 					c.unrecoverable_error(node.loc, "Cannot take address of %s while in CTFE", child.astType);
 					assert(false);
 			}
-			break;
 		default:
 			c.internal_error(node.loc, "%s not implemented in CTFE", node.op);
 			assert(false);

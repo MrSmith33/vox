@@ -14,7 +14,7 @@ struct ScaledNumberFmt(T)
 	import std.algorithm : min, max;
 	import std.format : formattedWrite, FormatSpec;
 	T value;
-	void toString(scope void delegate(const(char)[]) sink, const ref FormatSpec!char fmt)
+	void toString(scope void delegate(const(char)[]) sink, const ref FormatSpec!char fmt) const
 	{
 		if (fmt.spec == 'i') {
 			// Use binary prefixes instead of decimal prefixes

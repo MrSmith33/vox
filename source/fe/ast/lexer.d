@@ -490,7 +490,6 @@ struct Lexer
 				}
 				nextChar;
 			}
-			return TT.COMMENT;
 		}
 		if (c == '=') { nextChar;
 			return TT.SLASH_EQUAL;
@@ -626,10 +625,9 @@ struct Lexer
 		switch (c)
 		{
 			case 'a':
-				if (match("alias")) return TT.TYPE_ALIAS; break;
-				break;
+				if (match("alias")) { return TT.TYPE_ALIAS; } break;
 			case 't':
-				if (match("type")) return TT.TYPE_TYPE; break;
+				if (match("type")) { return TT.TYPE_TYPE; } break;
 			default: break;
 		}
 		consumeId();
@@ -643,17 +641,15 @@ struct Lexer
 			case 'i':
 				nextChar;
 				switch(c) {
-					case 'f': if (match("f")) return TT.HASH_IF; break;
-					case 'n': if (match("nline")) return TT.HASH_INLINE; break;
+					case 'f': if (match("f")) { return TT.HASH_IF; } break;
+					case 'n': if (match("nline")) { return TT.HASH_INLINE; } break;
 					default: break;
 				}
 				break;
 			case 'a':
-				if (match("assert")) return TT.HASH_ASSERT; break;
-				break;
+				if (match("assert")) { return TT.HASH_ASSERT; } break;
 			case 'f':
-				if (match("foreach")) return TT.HASH_FOREACH; break;
-				break;
+				if (match("foreach")) { return TT.HASH_FOREACH; } break;
 			default: break;
 		}
 		lexError(TT.INVALID, "Invalid # identifier");
@@ -665,69 +661,69 @@ struct Lexer
 		switch (c)
 		{
 			case 'a':
-				if (match("alias")) return TT.ALIAS_SYM; break;
+				if (match("alias")) { return TT.ALIAS_SYM; } break;
 			case 'b':
 				nextChar;
-				if (c == 'o' && match("ool")) return TT.TYPE_BOOL;
-				else if (c == 'r' && match("reak")) return TT.BREAK_SYM;
+				if (c == 'o' && match("ool")) { return TT.TYPE_BOOL; }
+				else if (c == 'r' && match("reak")) { return TT.BREAK_SYM; }
 				break;
 			case 'c':
 				nextChar;
-				if (c == 'o' && match("ontinue")) return TT.CONTINUE_SYM;
-				else if (c == 'a' && match("ast")) return TT.CAST;
+				if (c == 'o' && match("ontinue")) { return TT.CONTINUE_SYM; }
+				else if (c == 'a' && match("ast")) { return TT.CAST; }
 				break;
-			case 'd': if (match("do")) return TT.DO_SYM; break;
+			case 'd': if (match("do")) { return TT.DO_SYM; } break;
 			case 'e':
 				nextChar;
-				if (c == 'l' && match("lse")) return TT.ELSE_SYM;
-				else if (c == 'n' && match("num")) return TT.ENUM;
+				if (c == 'l' && match("lse")) { return TT.ELSE_SYM; }
+				else if (c == 'n' && match("num")) { return TT.ENUM; }
 				break;
 			case 'f':
 				nextChar;
-				if (c == 'a' && match("alse")) return TT.FALSE_LITERAL;
-				if (c == '3' && match("32")) return TT.TYPE_F32;
-				if (c == '6' && match("64")) return TT.TYPE_F64;
-				if (c == 'o' && match("or")) return TT.FOR_SYM;
-				if (c == 'u' && match("unction")) return TT.FUNCTION_SYM;
+				if (c == 'a' && match("alse")) { return TT.FALSE_LITERAL; }
+				if (c == '3' && match("32")) { return TT.TYPE_F32; }
+				if (c == '6' && match("64")) { return TT.TYPE_F64; }
+				if (c == 'o' && match("or")) { return TT.FOR_SYM; }
+				if (c == 'u' && match("unction")) { return TT.FUNCTION_SYM; }
 				break;
 			case 'i':
 				nextChar;
 				switch(c) {
-					case '1': if (match("16")) return TT.TYPE_I16; break;
-					case '3': if (match("32")) return TT.TYPE_I32; break;
-					case '6': if (match("64")) return TT.TYPE_I64; break;
-					case '8': if (match("8"))  return TT.TYPE_I8;  break;
-					case 's': if (match("size")) return TT.TYPE_ISIZE; break;
-					case 'f': if (match("f")) return TT.IF_SYM; break;
-					case 'm': if (match("mport")) return TT.IMPORT_SYM; break;
+					case '1': if (match("16")) { return TT.TYPE_I16; } break;
+					case '3': if (match("32")) { return TT.TYPE_I32; } break;
+					case '6': if (match("64")) { return TT.TYPE_I64; } break;
+					case '8': if (match("8"))  { return TT.TYPE_I8; }  break;
+					case 's': if (match("size")) { return TT.TYPE_ISIZE; } break;
+					case 'f': if (match("f")) { return TT.IF_SYM; } break;
+					case 'm': if (match("mport")) { return TT.IMPORT_SYM; } break;
 					default: break;
 				}
 				break;
 			case 'n':
 				nextChar;
-				if (match("ull")) return TT.NULL;
-				if (match("oreturn")) return TT.TYPE_NORETURN; break;
+				if (match("ull")) { return TT.NULL; }
+				if (match("oreturn")) { return TT.TYPE_NORETURN; }
 				break;
-			case 'r': if (match("return")) return TT.RETURN_SYM; break;
+			case 'r': if (match("return")) { return TT.RETURN_SYM; } break;
 			case 's':
 				nextChar;
-				if (match("truct")) return TT.STRUCT_SYM;
-				else if (match("witch")) return TT.SWITCH_SYM;
+				if (match("truct")) { return TT.STRUCT_SYM; }
+				else if (match("witch")) { return TT.SWITCH_SYM; }
 				break;
 			case 'u':
 				nextChar;
 				switch(c) {
-					case '1': if (match("16")) return TT.TYPE_U16; break;
-					case '3': if (match("32")) return TT.TYPE_U32; break;
-					case '6': if (match("64")) return TT.TYPE_U64; break;
-					case '8': if (match("8"))  return TT.TYPE_U8;  break;
-					case 's': if (match("size")) return TT.TYPE_USIZE; break;
+					case '1': if (match("16")) { return TT.TYPE_U16; } break;
+					case '3': if (match("32")) { return TT.TYPE_U32; } break;
+					case '6': if (match("64")) { return TT.TYPE_U64; } break;
+					case '8': if (match("8"))  { return TT.TYPE_U8; }  break;
+					case 's': if (match("size")) { return TT.TYPE_USIZE; } break;
 					default: break;
 				}
 				break;
-			case 't': if (match("true")) return TT.TRUE_LITERAL; break;
-			case 'v': if (match("void")) return TT.TYPE_VOID; break;
-			case 'w': if (match("while")) return TT.WHILE_SYM; break;
+			case 't': if (match("true")) { return TT.TRUE_LITERAL; } break;
+			case 'v': if (match("void")) { return TT.TYPE_VOID; } break;
+			case 'w': if (match("while")) { return TT.WHILE_SYM; } break;
 			default: break;
 		}
 

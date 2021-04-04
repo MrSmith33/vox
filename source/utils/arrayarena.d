@@ -30,7 +30,7 @@ struct ArrayArena
 	// arenas for buffers from 16 to 65536 bytes
 	enum NUM_ARENAS = 13;
 	enum MIN_BLOCK_BYTES = 16;
-	enum MAX_BLOCK_BYTES = 65536;
+	enum MAX_BLOCK_BYTES = 65_536;
 
 	private Arena!ubyte[NUM_ARENAS] arenas;
 	private size_t[NUM_ARENAS] arenaLengths;
@@ -63,7 +63,6 @@ struct ArrayArena
 	T[] allocArray(T)(size_t length) {
 		size_t blockSize = max(nextPOT(length * T.sizeof), MIN_BLOCK_BYTES);
 		ubyte[] newBlock = allocBlock(blockSize);
-		size_t capacity = newBlock.length / T.sizeof;
 		return (cast(T*)newBlock.ptr)[0..length];
 	}
 

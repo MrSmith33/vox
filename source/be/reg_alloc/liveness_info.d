@@ -244,7 +244,6 @@ struct LivenessInfo
 	{
 		uint minPos = it.from + 1;
 		uint maxPos = before;
-		IrIndex maxBlock;
 		uint maxBlockPos;
 
 		foreach (IrIndex blockIndex, ref IrBasicBlock block; lir.blocks)

@@ -55,6 +55,11 @@ struct LiveInterval
 	// Returned range.to > position
 	// Returned range.from may be <= position or may be > position
 	// If all ranges were skipped then returns NULL
+	//
+	// Unoptimized version:
+	// foreach(i, range; ranges) {
+	//     if (position < range.to) return LiveRangeIndex(i);
+	// }
 	LiveRangeIndex getRightmostRange(uint position)
 	{
 		if (ranges.length == 0) return LiveRangeIndex.NULL;
@@ -80,10 +85,6 @@ struct LiveInterval
 			}
 		}
 
-		// Unoptimized
-		//foreach(i, range; ranges) {
-		//	if (position < range.to) return LiveRangeIndex(i);
-		//}
 		return LiveRangeIndex.NULL;
 	}
 

@@ -207,6 +207,5 @@ void type_check_literal_array(ArrayLiteralExprNode* node, ref TypeCheckState sta
 {
 	node.state = AstNodeState.type_check;
 	require_type_check(node.items, state);
-	assert(false);
 	node.state = AstNodeState.type_check_done;
 }

@@ -14,7 +14,7 @@ struct ArenaPool
 	import std.format;
 	import std.stdio;
 
-	enum PAGE_SIZE = 65536;
+	enum PAGE_SIZE = 65_536;
 	ubyte[] buffer;
 	size_t takenBytes;
 

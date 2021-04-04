@@ -286,8 +286,6 @@ mixin template HashMapImpl()
 			++inserted_dib;
 			index = (index + 1) & (_capacity - 1); // % capacity
 		}
-
-		return &values[index];
 	}
 
 	inout(Value)* opBinaryRight(string op)(Key key) inout if (op == "in") {

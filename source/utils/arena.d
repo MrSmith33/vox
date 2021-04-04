@@ -17,7 +17,7 @@ struct Arena(T)
 	//    4k - 10.00% usage (12.9s)
 	//   64k -  0.95% usage (11.6s)
 	//  256k -  0.28% usage (11.5s)
-	enum COMMIT_PAGE_SIZE = 65536;
+	enum COMMIT_PAGE_SIZE = 65_536;
 
 	T* bufPtr;
 	/// How many items can be stored without commiting more memory (committed items)
@@ -117,7 +117,6 @@ struct Arena(T)
 	void makeSpace(size_t items) {
 		assert(items > (capacity - length));
 		size_t _committedBytes = committedBytes;
-		size_t itemsToCommit = items - (capacity - length);
 		size_t bytesToCommit = alignValue((items - (capacity - length)) * T.sizeof, COMMIT_PAGE_SIZE);
 		bytesToCommit = max(bytesToCommit, COMMIT_PAGE_SIZE);
 

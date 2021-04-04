@@ -435,7 +435,6 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			if (!base.isFuncSignature) goto default;
 			IrIndex irIndex = getRvalue(gen, node.loc, currentBlock, var.irValue);
 			return visitCall(gen, c.getAstNodeIndex(base), irIndex, currentBlock, nextStmt, node);
-			goto default;
 		default:
 			c.internal_error(node.loc, "Cannot call %s", callee.get_node_type(c).get_type(c).printer(c));
 			assert(false);
@@ -470,7 +469,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 		ExprValue lval = ir_gen_expr(gen, arg, currentBlock, afterArg);
 		currentBlock = afterArg.blockIndex;
 		n.argsValues[i+1] = getRvalue(gen, n.loc, currentBlock, lval); // account for callee in 0th index
-		debug c.assertf(node.irValue.isDefined, "Arg %s %s (%s) is undefined", i+1, node.astType, c.tokenLoc(node.loc));
+		debug c.assertf(n.argsValues[i+1].isDefined, "Arg %s %s (%s) is undefined", i+1, n.astType, c.tokenLoc(n.loc));
 	}
 
 	// default args are populated in type check
