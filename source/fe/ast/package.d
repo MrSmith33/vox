@@ -296,8 +296,9 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 }
 
 AstIndex get_expr_type(AstIndex nodeIndex, CompilationContext* c)
+	out(res; res.isDefined, "null result")
 {
-	if (nodeIndex.isUndefined) return nodeIndex;
+	assert(nodeIndex, "get_expr_type nodeIndex is null");
 
 	AstNode* node = c.getAstNode(nodeIndex);
 	//c.assertf(node.state >= AstNodeState.type_check_done, "get_expr_type on node in state %s", node.state);

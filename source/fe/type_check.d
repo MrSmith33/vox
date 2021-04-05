@@ -142,75 +142,53 @@ void require_type_check_expr(AstIndex targetType, ref AstIndex nodeIndex, ref Ty
 	state.parentType = temp;
 }
 
-// Returns error if no common type can be found
-AstIndex calcCommonType(AstIndex a, AstIndex b, CompilationContext* c)
+TypeConvResKind checkTypeConversion(AstIndex fromTypeIndex, AstIndex toTypeIndex, ref AstIndex expr, CompilationContext* c)
 {
-	TypeNode* typeA = a.get_type(c);
-	TypeNode* typeB = b.get_type(c);
+	if (same_type(fromTypeIndex, toTypeIndex, c)) return TypeConvResKind.no_i;
 
-	if (typeA.isTypeBasic && typeB.isTypeBasic) {
-		BasicType commonType = commonBasicType[typeA.as_basic.basicType][typeB.as_basic.basicType];
-		return c.basicTypeNodes(commonType);
-	} else if (typeA.isPointer && typeB.isTypeofNull) {
-		return a;
-	} else if (typeA.isTypeofNull && typeB.isPointer) {
-		return b;
+	TypeNode* fromType = fromTypeIndex.get_type(c);
+	TypeNode* toType = toTypeIndex.get_type(c);
+
+	restart_enum:
+	//writefln("checkTypeConversion %s %s", printer(c.getAstNodeIndex(fromType), c), printer(toTypeIndex, c));
+
+	switch (fromType.astType) with(AstType) {
+		case type_basic: return type_conv_basic(fromType.as_basic, toTypeIndex, expr, c);
+		case type_ptr: return type_conv_ptr(fromType.as_ptr, toTypeIndex, expr, c);
+		case type_slice: return type_conv_slice(fromType.as_slice, toTypeIndex, expr, c);
+		case type_static_array: return type_conv_static_array(fromType.as_static_array, toTypeIndex, expr, c);
+		case decl_enum:
+			fromType = fromType.as_enum.memberType.get_type(c);
+			goto restart_enum;
+		case type_func_sig: return type_conv_func_sig(fromType.as_func_sig, toTypeIndex, expr, c);
+		default:
+			c.internal_error(expr.loc(c), "Unhandled type conversion %s, %s %s", cast(AstType)fromType.astType, toType.astType);
+			assert(false);
 	}
-	return CommonAstNodes.type_error;
 }
 
-/// Returns true if types are equal or were converted to common type. False otherwise
-bool autoconvToCommonType(ref AstIndex leftIndex, ref AstIndex rightIndex, CompilationContext* c)
+struct CommonTypeResult {
+	AstIndex commonType;
+	TypeConvResKind kindA;
+	TypeConvResKind kindB;
+}
+
+CommonTypeResult calcCommonType(AstIndex typeA, AstIndex typeB, CompilationContext* c)
+	out(res; res.commonType.isDefined)
 {
-	AstNode* leftNode = leftIndex.get_node(c);
-	AstNode* rightNode = rightIndex.get_node(c);
+	if (same_type(typeA, typeB, c)) return CommonTypeResult(typeA, TypeConvResKind.no_i, TypeConvResKind.no_i);
 
-	if (leftNode.isType || rightNode.isType)
-	{
-		TypeNode* leftType = leftIndex.get_expr_type(c).get_type(c);
-		TypeNode* rightType = rightIndex.get_expr_type(c).get_type(c);
-		if (leftType.isTypeBasic && rightType.isTypeBasic) {
-			BasicType commonType = commonBasicType[leftType.as_basic.basicType][rightType.as_basic.basicType];
-			if (commonType == BasicType.t_error) return false;
+	TypeNode* fromType = typeA.get_type(c);
+	TypeNode* toType = typeB.get_type(c);
 
-			AstIndex type = c.basicTypeNodes(commonType);
-			bool successLeft = autoconvTo(leftIndex, type, c);
-			bool successRight = autoconvTo(rightIndex, type, c);
-			if(successLeft && successRight)
-				return true;
-		}
+	switch (fromType.astType) with(AstType) {
+		case type_basic: return common_type_basic(fromType.as_basic, typeB, c);
+		case type_slice: return CommonTypeResult(CommonAstNodes.type_error);
+		case type_ptr: return common_type_ptr(fromType.as_ptr, typeB, c);
+		default:
+			c.internal_error("Unhandled common type %s", cast(AstType)fromType.astType);
+			assert(false);
 	}
-
-	ExpressionNode* left = leftIndex.get_expr(c);
-	ExpressionNode* right = rightIndex.get_expr(c);
-	TypeNode* leftType = left.type.get_type(c);
-	TypeNode* rightType = right.type.get_type(c);
-
-	if (leftType.isTypeBasic && rightType.isTypeBasic)
-	{
-		BasicType commonType = commonBasicType[leftType.as_basic.basicType][rightType.as_basic.basicType];
-		if (commonType == BasicType.t_error) return false;
-
-		AstIndex type = c.basicTypeNodes(commonType);
-		bool successLeft = autoconvTo(leftIndex, type, c);
-		bool successRight = autoconvTo(rightIndex, type, c);
-		if(successLeft && successRight)
-			return true;
-	}
-	else if (leftType.isPointer && rightType.isTypeofNull) {
-		right.type = left.type;
-		return true;
-	}
-	else if (leftType.isTypeofNull && rightType.isPointer) {
-		left.type = right.type;
-		return true;
-	}
-	else
-	{
-		// error for user-defined types
-	}
-
-	return false;
 }
 
 void autoconvToBool(ref AstIndex exprIndex, CompilationContext* context)
@@ -222,156 +200,53 @@ void autoconvToBool(ref AstIndex exprIndex, CompilationContext* context)
 			expr.type.typeName(context));
 }
 
-bool isConvertibleTo(AstIndex fromTypeIndex, AstIndex toTypeIndex, CompilationContext* context)
+void insertCast(ref AstIndex exprIndex, AstIndex typeIndex, TypeConvResKind kind, CompilationContext* c)
 {
-	TypeNode* fromType = fromTypeIndex.get_type(context);
-	TypeNode* toType = toTypeIndex.get_type(context);
-
-	if (same_type(fromTypeIndex, toTypeIndex, context)) return true;
-
-	if (fromType.astType == AstType.type_basic && toType.astType == AstType.type_basic)
+	//writefln("cast %s", kind);
+	final switch(kind) with(TypeConvResKind)
 	{
-		BasicType fromTypeBasic = fromType.as_basic.basicType;
-		BasicType toTypeBasic = toType.as_basic.basicType;
-		bool isRegisterTypeFrom =
-			(fromTypeBasic >= BasicType.t_bool &&
-			fromTypeBasic <= BasicType.t_f64);
-		bool isRegisterTypeTo =
-			(toTypeBasic >= BasicType.t_bool &&
-			toTypeBasic <= BasicType.t_f64);
-		// all integer types, pointers and bool can be converted between
-		// TODO: bool is special (need to have 0 or 1)
-		return isRegisterTypeFrom && isRegisterTypeTo;
+		case fail: assert(false);
+		case no_e, no_i: return;
+		case ii_e, ii_i, if_e, if_i, ff_e, ff_i, fi_e, fi_i, string_literal_to_u8_ptr:
+			exprIndex = c.appendAst!TypeConvExprNode(exprIndex.loc(c), typeIndex, exprIndex);
+			exprIndex.setState(c, AstNodeState.type_check_done);
+			exprIndex.get_node(c).subType = kind;
+			return;
+		case override_expr_type_e, override_expr_type_i:
+			exprIndex.get_expr(c).type = typeIndex;
+			return;
+		case array_literal_to_slice:
+			ExpressionNode* expr = exprIndex.get_expr(c);
+			exprIndex = c.appendAst!UnaryExprNode(expr.loc, typeIndex, UnOp.staticArrayToSlice, exprIndex);
+			return;
 	}
-	if (fromType.isPointer && toType.isPointer) return true;
-	if (fromType.isPointer && toType.isInteger) return true;
-	if (fromType.isInteger && toType.isPointer) return true;
-	return false;
+}
+
+bool autoconvToCommonType(ref AstIndex leftIndex, ref AstIndex rightIndex, CompilationContext* c)
+{
+	AstIndex leftType = leftIndex.get_expr_type(c);
+	AstIndex rightType = rightIndex.get_expr_type(c);
+	CommonTypeResult res = calcCommonType(leftType, rightType, c);
+	//writefln("autoconvToCommonType %s %s %s", printer(leftType, c), printer(rightType, c), res);
+	if (res.commonType == CommonAstNodes.type_error) return false;
+	insertCast(leftIndex, res.commonType, res.kindA, c);
+	insertCast(rightIndex, res.commonType, res.kindB, c);
+	return true;
 }
 
 /// Returns true if conversion was successful. False otherwise
-bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* context)
+bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* c)
 {
-	CompilationContext* c = context;
+	AstIndex exprType = exprIndex.get_expr_type(c);
+	//writefln("autoconvTo %s %s", printer(exprType, c), printer(typeIndex, c));
+	if (exprType == typeIndex) return true;
 
-	AstNode* exprNode = exprIndex.get_node(c);
-	TypeNode* type = typeIndex.get_type(c);
-
-	if (exprNode.isType)
+	TypeConvResKind res = checkTypeConversion(exprType, typeIndex, exprIndex, c);
+	//writefln("autoconvTo %s %s %s", printer(exprType, c), printer(typeIndex, c), res);
+	if (res.canConvertImplicitly)
 	{
-		if (type.astType == AstType.type_basic)
-		{
-			auto basicType = type.as_basic.basicType;
-			if (basicType == BasicType.t_alias || basicType == BasicType.t_type) {
-				exprIndex = c.appendAst!TypeConvExprNode(exprNode.loc, typeIndex, exprIndex);
-				exprIndex.setState(c, AstNodeState.type_check_done);
-				return true;
-			}
-		}
-		return false;
-	}
-
-	ExpressionNode* expr = exprIndex.get_expr(c);
-
-	if (type.isError) { // Recover
-		expr.type = CommonAstNodes.type_error;
+		insertCast(exprIndex, typeIndex, res, c);
 		return true;
 	}
-
-	TypeNode* exprType = expr.type.get_type(c);
-
-	if (exprType.isError) { // Recover
-		expr.type = typeIndex;
-		return true;
-	}
-
-	if (same_type(expr.type, typeIndex, c)) return true;
-
-	if (exprType.astType == AstType.type_basic && type.astType == AstType.type_basic)
-	{
-		BasicType fromType = exprType.as_basic.basicType;
-		BasicType toType = type.as_basic.basicType;
-		bool canConvert = isAutoConvertibleFromToBasic[fromType][toType];
-		if (canConvert)
-		{
-			if (expr.astType == AstType.literal_int) {
-				//writefln("int %s %s -> %s", expr.loc, expr.type.printer(c), type.printer(c));
-				// change type of int literal inline
-				expr.type = typeIndex;
-			} else {
-				exprIndex = c.appendAst!TypeConvExprNode(expr.loc, typeIndex, exprIndex);
-				exprIndex.setState(c, AstNodeState.type_check_done);
-			}
-			return true;
-		}
-		else if (expr.astType == AstType.literal_int && toType.isInteger) {
-			auto lit = cast(IntLiteralExprNode*) expr;
-			if (lit.isSigned) {
-				if (numSignedBytesForInt(lit.value) <= integerSize(toType)) {
-					expr.type = typeIndex;
-					return true;
-				}
-			} else {
-				if (numUnsignedBytesForInt(lit.value) <= integerSize(toType)) {
-					expr.type = typeIndex;
-					return true;
-				}
-			}
-
-			c.error(expr.loc, "Cannot auto-convert integer `0x%X` of type %s to `%s`",
-				lit.value,
-				expr.type.printer(c),
-				type.printer(c));
-			return false;
-		}
-		else if (expr.astType == AstType.literal_float && toType.isFloat) {
-			expr.type = typeIndex;
-			return true;
-		}
-	}
-	// auto cast from string literal to c_char*
-	else if (expr.astType == AstType.literal_string)
-	{
-		if (type.astType == AstType.type_ptr)
-		{
-			TypeNode* ptrBaseType = type.as_ptr.base.get_type(c);
-			if (ptrBaseType.astType == AstType.type_basic &&
-				ptrBaseType.as_basic.basicType == BasicType.t_u8)
-			{
-				AstIndex parentScope; // no scope
-				auto memberExpr = c.appendAst!MemberExprNode(expr.loc, parentScope, exprIndex, Identifier(), typeIndex);
-				auto node = memberExpr.get!MemberExprNode(c);
-				node.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_ptr), 1, c);
-				node.state = AstNodeState.type_check;
-				exprIndex = memberExpr;
-				return true;
-			}
-		}
-	}
-	else if (exprType.isStaticArray && type.isSlice)
-	{
-		if (same_type(exprType.as_static_array.base, type.as_slice.base, c))
-		{
-			exprIndex = c.appendAst!UnaryExprNode(
-				expr.loc, typeIndex, UnOp.staticArrayToSlice, exprIndex);
-			return true;
-		}
-	}
-	else if (expr.astType == AstType.literal_null) {
-		if (type.isPointer) {
-			expr.type = typeIndex;
-			return true;
-		} else if (type.isSlice) {
-			expr.type = typeIndex;
-			return true;
-		}
-	}
-	else if (exprType.astType == AstType.type_func_sig && type.isAlias)
-	{
-		exprIndex = c.appendAst!TypeConvExprNode(expr.loc, typeIndex, exprIndex);
-		exprIndex.setState(c, AstNodeState.type_check_done);
-		return true;
-	}
-
 	return false;
 }

@@ -474,7 +474,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 		case DIV, MULT:
 			if (autoconvToCommonType(b.left, b.right, c))
 			{
-				resType = b.left.get_node_type(c);
+				resType = b.left.get_expr_type(c);
 			}
 			else
 			{
@@ -488,7 +488,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 		case REMAINDER, SHL, SHR, ASHR, BITWISE_AND, BITWISE_OR, XOR:
 			if (leftType.isInteger && rightType.isInteger && autoconvToCommonType(b.left, b.right, c))
 			{
-				resType = b.left.get_node_type(c);
+				resType = b.left.get_expr_type(c);
 			}
 			else
 			{
@@ -544,6 +544,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 			c.internal_error(b.loc, "Unimplemented op %s", b.op);
 			assert(false);
 	}
+	assert(resType.isDefined);
 	b.type = resType;
 }
 

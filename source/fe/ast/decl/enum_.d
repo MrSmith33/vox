@@ -89,7 +89,19 @@ void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 	require_type_check(node.memberType, state);
 	require_type_check(node.declarations, state);
+	if (!node.isAnonymous) {
+		AstIndex nodeIndex = state.context.getAstNodeIndex(node);
+		foreach(ref AstIndex member; node.declarations) {
+			auto m = member.get!EnumMemberDecl(state.context);
+			m.type = nodeIndex;
+		}
+	}
 	node.state = AstNodeState.type_check_done;
+}
+
+IrIndex gen_ir_type_enum(EnumDeclaration* t, CompilationContext* context)
+{
+	return gen_ir_type(t.memberType, context);
 }
 
 

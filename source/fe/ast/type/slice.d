@@ -7,7 +7,8 @@ import all;
 
 @(AstType.type_slice)
 struct SliceTypeNode {
-	mixin AstNodeData!(AstType.type_slice, AstFlags.isType, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.type_slice, AstFlags.isType | AstFlags.isExpression, AstNodeState.name_register_self_done);
+	AstIndex type = CommonAstNodes.type_type;
 	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	AstIndex base;
 	IrIndex irType;
@@ -76,4 +77,25 @@ IrIndex gen_ir_type_slice(SliceTypeNode* t, CompilationContext* context)
 	structType.members[1] = IrTypeStructMember(context.types.appendPtr(baseType), POINTER_SIZE);
 	structType.sizealign = t.sizealign;
 	return t.irType;
+}
+
+TypeConvResKind type_conv_slice(SliceTypeNode* node, AstIndex typeBIndex, ref AstIndex expr, CompilationContext* c)
+{
+	TypeNode* typeB = typeBIndex.get_type(c);
+
+	switch(typeB.astType) with(AstType) {
+		case type_ptr:
+			if (expr.astType(c) == AstType.literal_string) {
+				if (typeB.astType == AstType.type_ptr) {
+					TypeNode* ptrBaseType = typeB.as_ptr.base.get_type(c);
+					if (ptrBaseType.astType == AstType.type_basic &&
+						ptrBaseType.as_basic.basicType == BasicType.t_u8)
+					{
+						return TypeConvResKind.string_literal_to_u8_ptr;
+					}
+				}
+			}
+			return TypeConvResKind.fail;
+		default: return TypeConvResKind.fail;
+	}
 }

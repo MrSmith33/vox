@@ -172,6 +172,12 @@ bool same_type_func_sig(FunctionSignatureNode* t1, FunctionSignatureNode* t2, Co
 	return true;
 }
 
+TypeConvResKind type_conv_func_sig(FunctionSignatureNode* node, AstIndex typeBIndex, ref AstIndex expr, CompilationContext* c)
+{
+	if (typeBIndex.get_type(c).isAlias) return TypeConvResKind.ii_i;
+	return TypeConvResKind.fail;
+}
+
 IrIndex gen_ir_type_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 	out(res; res.isTypeFunction, "Not a function type")
 {

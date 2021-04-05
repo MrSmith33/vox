@@ -766,10 +766,10 @@ struct CompilationContext
 
 			// we want the index returned from appendAst to be equal to reqIndex
 			// because we have CommonAstNodes enum
-			AstIndex index = appendAst!BasicTypeNode(tokIndex, SizeAndAlignment(size, alignPow), minValue, maxValue, basicType, cast(ubyte)typeFlags);
+			AstIndex index = appendAst!BasicTypeNode(tokIndex, CommonAstNodes.type_type, SizeAndAlignment(size, alignPow), minValue, maxValue, basicType, cast(ubyte)typeFlags);
 			assertf(index == reqIndex,
-				"Result AstIndex of basic type (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
-				index, reqIndex);
+				"Result AstIndex of basic type %s (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
+				basicType, index, reqIndex);
 		}
 
 		// type nodes
@@ -797,15 +797,15 @@ struct CompilationContext
 		makeBasic(CommonAstNodes.type_type, 4, 2, uint.min, uint.max, BasicType.t_type);
 
 		// custom types
-		auto type_u8Ptr = appendAst!PtrTypeNode(TokenIndex(), CommonAstNodes.type_u8);
+		auto type_u8Ptr = appendAst!PtrTypeNode(TokenIndex(), CommonAstNodes.type_type, CommonAstNodes.type_u8);
 		assertf(type_u8Ptr == CommonAstNodes.type_u8Ptr, "AstIndex mismatch for type_u8Ptr %s != %s", type_u8Ptr, cast(AstIndex)CommonAstNodes.type_u8Ptr);
 		type_u8Ptr.gen_ir_type(&this); // we need to cache IR types too
 
-		auto type_u8Slice = appendAst!SliceTypeNode(TokenIndex(), CommonAstNodes.type_u8);
+		auto type_u8Slice = appendAst!SliceTypeNode(TokenIndex(), CommonAstNodes.type_type, CommonAstNodes.type_u8);
 		assertf(type_u8Slice == CommonAstNodes.type_u8Slice, "AstIndex mismatch for type_u8Slice %s != %s", type_u8Slice, cast(AstIndex)CommonAstNodes.type_u8Slice);
 		type_u8Slice.gen_ir_type(&this); // we need to cache IR types too
 
-		auto type_aliasSlice = appendAst!SliceTypeNode(TokenIndex(), CommonAstNodes.type_alias);
+		auto type_aliasSlice = appendAst!SliceTypeNode(TokenIndex(), CommonAstNodes.type_type, CommonAstNodes.type_alias);
 		assertf(type_aliasSlice == CommonAstNodes.type_aliasSlice, "AstIndex mismatch for type_aliasSlice %s != %s", type_aliasSlice, cast(AstIndex)CommonAstNodes.type_aliasSlice);
 		type_aliasSlice.gen_ir_type(&this); // we need to cache IR types too
 
@@ -902,36 +902,36 @@ enum CommonAstNodes : AstIndex
 	// basic type nodes
 	// The order is the same as in TokenType enum
 	// The order is the same as in BasicType enum
-	type_error               = AstIndex(first_type.storageIndex +   0),
-	type_noreturn            = AstIndex(first_type.storageIndex +  10),
-	type_void                = AstIndex(first_type.storageIndex +  20),
-	type_bool                = AstIndex(first_type.storageIndex +  30),
-	type_null                = AstIndex(first_type.storageIndex +  40),
+	type_error               = AstIndex(first_type.storageIndex +   0*NumBasicTypeNodeSlots),
+	type_noreturn            = AstIndex(first_type.storageIndex +  1*NumBasicTypeNodeSlots),
+	type_void                = AstIndex(first_type.storageIndex +  2*NumBasicTypeNodeSlots),
+	type_bool                = AstIndex(first_type.storageIndex +  3*NumBasicTypeNodeSlots),
+	type_null                = AstIndex(first_type.storageIndex +  4*NumBasicTypeNodeSlots),
 
-	type_i8                  = AstIndex(first_type.storageIndex +  50),
-	type_i16                 = AstIndex(first_type.storageIndex +  60),
-	type_i32                 = AstIndex(first_type.storageIndex +  70),
-	type_i64                 = AstIndex(first_type.storageIndex +  80),
+	type_i8                  = AstIndex(first_type.storageIndex +  5*NumBasicTypeNodeSlots),
+	type_i16                 = AstIndex(first_type.storageIndex +  6*NumBasicTypeNodeSlots),
+	type_i32                 = AstIndex(first_type.storageIndex +  7*NumBasicTypeNodeSlots),
+	type_i64                 = AstIndex(first_type.storageIndex +  8*NumBasicTypeNodeSlots),
 
-	type_u8                  = AstIndex(first_type.storageIndex +  90),
-	type_u16                 = AstIndex(first_type.storageIndex + 100),
-	type_u32                 = AstIndex(first_type.storageIndex + 110),
-	type_u64                 = AstIndex(first_type.storageIndex + 120),
+	type_u8                  = AstIndex(first_type.storageIndex +  9*NumBasicTypeNodeSlots),
+	type_u16                 = AstIndex(first_type.storageIndex + 10*NumBasicTypeNodeSlots),
+	type_u32                 = AstIndex(first_type.storageIndex + 11*NumBasicTypeNodeSlots),
+	type_u64                 = AstIndex(first_type.storageIndex + 12*NumBasicTypeNodeSlots),
 
-	type_f32                 = AstIndex(first_type.storageIndex + 130),
-	type_f64                 = AstIndex(first_type.storageIndex + 140),
+	type_f32                 = AstIndex(first_type.storageIndex + 13*NumBasicTypeNodeSlots),
+	type_f64                 = AstIndex(first_type.storageIndex + 14*NumBasicTypeNodeSlots),
 
-	type_alias               = AstIndex(first_type.storageIndex + 150),
-	type_type                = AstIndex(first_type.storageIndex + 160),
+	type_alias               = AstIndex(first_type.storageIndex + 15*NumBasicTypeNodeSlots),
+	type_type                = AstIndex(first_type.storageIndex + 16*NumBasicTypeNodeSlots),
 	// basic type nodes end
 
-	first_compound           = AstIndex(first_type.storageIndex + 170),
+	first_compound           = AstIndex(first_type.storageIndex + 17*NumBasicTypeNodeSlots),
 	// common custom types
 	type_u8Ptr               = AstIndex(first_compound.storageIndex + 0),
-	type_u8Slice             = AstIndex(first_compound.storageIndex + 4),
-	type_aliasSlice          = AstIndex(first_compound.storageIndex + 9),
+	type_u8Slice             = AstIndex(first_compound.storageIndex + 5),
+	type_aliasSlice          = AstIndex(first_compound.storageIndex + 11),
 
-	first_builtin            = AstIndex(first_compound.storageIndex + 14),
+	first_builtin            = AstIndex(first_compound.storageIndex + 17),
 
 	// builtin nodes
 	// The order is the same as in BuiltinId enum

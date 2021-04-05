@@ -42,13 +42,16 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 		case expr_member: return eval_static_expr_member(cast(MemberExprNode*)node, context);
 		case expr_bin_op: return eval_static_expr_bin_op(cast(BinaryExprNode*)node, context);
 		case expr_un_op: return eval_static_expr_un_op(cast(UnaryExprNode*)node, context);
-		case expr_type_conv: return eval_static_expr_type_conv(cast(TypeConvExprNode*)node, context);
+		case expr_type_conv: return eval_type_conv(cast(TypeConvExprNode*)node, eval_static_expr((cast(TypeConvExprNode*)node).expr, context), context);
 		case expr_call: return eval_static_expr_call(cast(CallExprNode*)node, context);
 		case literal_int: return ir_gen_literal_int(context, cast(IntLiteralExprNode*)node);
 		case literal_float: return ir_gen_literal_float(context, cast(FloatLiteralExprNode*)node);
 		case literal_string: return ir_gen_literal_string(context, cast(StringLiteralExprNode*)node);
 		case literal_null: return ir_gen_literal_null(context, cast(NullLiteralExprNode*)node);
 		case literal_bool: return ir_gen_literal_bool(context, cast(BoolLiteralExprNode*)node);
+
+		case type_basic, type_ptr, type_slice, type_static_array, decl_function:
+			return context.constants.add(nodeIndex.storageIndex, IsSigned.no, IrArgSize.size32);
 		default:
 			context.internal_error(node.loc, "Cannot evaluate static expression %s", node.astType);
 			assert(false);
@@ -198,16 +201,6 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 			c.internal_error(node.loc, "%s not implemented in CTFE", node.op);
 			assert(false);
 	}
-}
-
-IrIndex eval_static_expr_type_conv(TypeConvExprNode* node, CompilationContext* c)
-{
-	if (node.type == CommonAstNodes.type_alias || node.type == CommonAstNodes.type_type)
-	{
-		AstIndex aliasedNode = get_effective_node(node.expr, c);
-		return c.constants.add(aliasedNode.storageIndex, IsSigned.no, IrArgSize.size32);
-	}
-	return eval_static_expr(node.expr, c);
 }
 
 IrIndex eval_static_expr_call(CallExprNode* node, CompilationContext* c)

@@ -485,7 +485,7 @@ struct Parser
 			name.resolve(declarationOwner, context);
 			name.flags |= AstFlags.isType;
 			name.state = AstNodeState.name_resolve_done;
-			AstIndex thisType = make!PtrTypeNode(start, structName);
+			AstIndex thisType = make!PtrTypeNode(start, CommonAstNodes.type_type, structName);
 
 			AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, CommonIds.id_this, ushort(0));
 			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
@@ -817,27 +817,27 @@ struct Parser
 			else if (tok.type == TokenType.COLON)
 			{
 				Identifier enumId = makeIdentifier(id);
-				AstIndex type = parseColonType;
+				AstIndex memberType = parseColonType;
 				ScopeTempData scope_temp;
 				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member, scope_temp);
-				AstNodes members = tryParseEnumBody(type);
+				AstNodes members = tryParseEnumBody(memberType);
 				popScope(scope_temp);
 
 				// enum e7 : i32 { e7 }
 				// enum e8 : i32;
-				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, type, enumId);
+				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, memberType, enumId);
 			}
 			else if (tok.type == TokenType.LCURLY)
 			{
 				Identifier enumId = makeIdentifier(id);
-				AstIndex type = intType;
+				AstIndex memberType = intType;
 				ScopeTempData scope_temp;
 				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member, scope_temp);
-				AstNodes members = parse_enum_body(type);
+				AstNodes members = parse_enum_body(memberType);
 				popScope(scope_temp);
 
 				// enum e9 { e9 }
-				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, type, enumId);
+				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, memberType, enumId);
 			}
 			else
 			{
@@ -847,21 +847,21 @@ struct Parser
 		}
 		else if (tok.type == TokenType.COLON)
 		{
-			AstIndex type = parseColonType;
-			AstNodes members = parse_enum_body(type);
+			AstIndex memberType = parseColonType;
+			AstNodes members = parse_enum_body(memberType);
 			AstIndex memberScope; // no scope
 
 			// enum : i32 { e6 }
-			return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, type);
+			return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, memberType);
 		}
 		else if (tok.type == TokenType.LCURLY)
 		{
-			AstIndex type = intType;
-			AstNodes members = parse_enum_body(type);
+			AstIndex memberType = intType;
+			AstNodes members = parse_enum_body(memberType);
 			AstIndex memberScope; // no scope
 
 			// enum { e5 }
-			return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, type);
+			return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, memberType);
 		}
 		else if (isBasicTypeToken(tok.type))
 		{
@@ -1661,7 +1661,7 @@ AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rb
 	p.parseParameters(sig, p.NeedRegNames.no); // function types don't need to register their param names
 	// we don't have to register parameter names, since we have no body
 	sig.setState(p.context, AstNodeState.name_register_nested_done);
-	return p.make!PtrTypeNode(token.index, sig);
+	return p.make!PtrTypeNode(token.index, CommonAstNodes.type_type, sig);
 }
 
 // multiplication or pointer type
@@ -1671,10 +1671,10 @@ AstIndex leftStarOp(ref Parser p, PreferType preferType, Token token, int rbp, A
 	{
 		case STAR, COMMA, RPAREN, RBRACKET, SEMICOLON, FUNCTION_SYM /*,DELEGATE_SYM*/:
 			// pointer
-			return p.make!PtrTypeNode(token.index, left);
+			return p.make!PtrTypeNode(token.index, CommonAstNodes.type_type, left);
 		case DOT:
 			// hack for postfix star followed by dot
-			AstIndex ptr = p.make!PtrTypeNode(token.index, left);
+			AstIndex ptr = p.make!PtrTypeNode(token.index, CommonAstNodes.type_type, left);
 			Token tok = p.tok;
 			p.nextToken; // skip dot
 			return leftOpDot(p, PreferType.no, tok, 0, ptr);
@@ -1686,7 +1686,7 @@ AstIndex leftStarOp(ref Parser p, PreferType preferType, Token token, int rbp, A
 	if (preferType)
 	{
 		// pointer
-		return p.make!PtrTypeNode(token.index, left);
+		return p.make!PtrTypeNode(token.index, CommonAstNodes.type_type, left);
 	}
 
 	// otherwise it is multiplication

@@ -63,7 +63,7 @@ void type_check_expr_slice(SliceExprNode* node, ref TypeCheckState state)
 	{
 		case type_ptr, type_static_array:
 			AstIndex elemType = node.array.get_expr_type(c).get_type(c).getElementType(c);
-			node.type = c.appendAst!SliceTypeNode(node.loc, elemType);
+			node.type = c.appendAst!SliceTypeNode(node.loc, CommonAstNodes.type_type, elemType);
 			break;
 		case type_slice:
 			node.type = node.array.get_expr_type(c);

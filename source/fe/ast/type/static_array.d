@@ -7,7 +7,8 @@ import all;
 
 @(AstType.type_static_array)
 struct StaticArrayTypeNode {
-	mixin AstNodeData!(AstType.type_static_array, AstFlags.isType, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.type_static_array, AstFlags.isType | AstFlags.isExpression, AstNodeState.name_register_self_done);
+	AstIndex type = CommonAstNodes.type_type;
 	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	AstIndex base;
 	AstIndex length_expr;
@@ -53,6 +54,20 @@ void type_check_static_array(StaticArrayTypeNode* node, ref TypeCheckState state
 	IrIndex val = eval_static_expr(node.length_expr, c);
 	node.length = c.constants.get(val).i64.to!uint;
 	node.state = AstNodeState.type_check_done;
+}
+
+TypeConvResKind type_conv_static_array(StaticArrayTypeNode* node, AstIndex typeBIndex, ref AstIndex expr, CompilationContext* c)
+{
+	TypeNode* typeB = typeBIndex.get_type(c);
+	switch(typeB.astType) with(AstType)
+	{
+		case type_slice:
+			if (same_type(node.base, typeB.as_slice.base, c)) {
+				return TypeConvResKind.array_literal_to_slice;
+			}
+			return TypeConvResKind.fail;
+		default: return TypeConvResKind.fail;
+	}
 }
 
 bool same_type_static_array(StaticArrayTypeNode* t1, StaticArrayTypeNode* t2, CompilationContext* context)

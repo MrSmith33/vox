@@ -305,7 +305,7 @@ LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, I
 	if (id == CommonIds.id_ptr)
 	{
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_ptr), 1, c);
-		expr.type = c.appendAst!PtrTypeNode(sliceType.loc, sliceType.base);
+		expr.type = c.appendAst!PtrTypeNode(sliceType.loc, CommonAstNodes.type_type, sliceType.base);
 		expr.type.setState(c, AstNodeState.type_check_done);
 		return LookupResult.success;
 	}
@@ -325,7 +325,7 @@ LookupResult lookupStaticArrayMember(MemberExprNode* expr, StaticArrayTypeNode* 
 	if (id == CommonIds.id_ptr)
 	{
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.array_ptr), 0, c);
-		expr.type = c.appendAst!PtrTypeNode(arrType.loc, arrType.base);
+		expr.type = c.appendAst!PtrTypeNode(arrType.loc, CommonAstNodes.type_type, arrType.base);
 		expr.type.setState(c, AstNodeState.type_check_done);
 		return LookupResult.success;
 	}

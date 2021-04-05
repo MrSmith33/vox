@@ -445,13 +445,21 @@ immutable test31 = q{--- test31
 	enum e9 { e9 = 9 } // type
 
 	void print_num(i64 val);
+	e9 ret_enum(){ return e9.e9; }
+	void accept_enum(e9 e){print_num(e);}
 	void run() {
 		print_num(e3);
 		print_num(e4);
 		print_num(e5);
 		print_num(e6);
+		// enum implicitly casts to base
 		print_num(e7.e7);
 		print_num(e9.e9);
+		accept_enum(e9.e9);
+		// explicit cast of int to enum
+		accept_enum(cast(e9)42);
+		// makes sure that e9.e9 is of type e9 and that e9 is implicitly castable to i32
+		print_num(ret_enum());
 	}
 };
 extern(C) void test31_external_print_num(long param) {
@@ -461,7 +469,7 @@ void tester31(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(void)("run");
 	run();
 	//writefln("run() == '%s'", testSink.text);
-	assert(testSink.text == "345679");
+	assert(testSink.text == "3456799429");
 	testSink.clear;
 }
 
@@ -3064,7 +3072,7 @@ immutable test128 = q{--- test128
 
 
 @TestInfo()
-immutable test129 = q{--- test129
+immutable test129 = `--- test129
 	// Test inlining a recursive function inside non-recursive caller
 	i32 caller(i32 param) {
 		return callee(param) + 10;
@@ -3074,10 +3082,10 @@ immutable test129 = q{--- test129
 		if (param == 0) return 42;
 		return callee(param - 1);
 	}
-};
+`;
 
 @TestInfo()
-immutable test130 = q{--- test130
+immutable test130 = `--- test130
 	// Test inlining with phi function
 	// Test inlining with array used
 	i32 caller(i32 param) {
@@ -3089,7 +3097,7 @@ immutable test130 = q{--- test130
 		else if (number > 0) return 1;
 		else return 0;
 	}
-};
+`;
 
 
 @TestInfo(null, [HostSymbol("log", cast(void*)&external_print_i64_func)])
@@ -4104,3 +4112,16 @@ immutable test182 = q{--- test182
 		bool isRunning = true;
 	}
 };
+
+
+/*TestInfo()
+immutable test183 = q{--- test183
+	// operations on enum types
+	enum F : u32 {
+		f1 = 0b01,
+		f2 = 0b10,
+	}
+	u32 run() {
+		return F.f1 | F.f2;
+	}
+};*/

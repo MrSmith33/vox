@@ -105,6 +105,7 @@ struct TypeNode
 		return astType == AstType.type_basic &&
 		(as_basic.isAlias || as_basic.isType); }
 	bool isAlias() { return astType == AstType.type_basic && as_basic.isAlias; }
+	bool isEnum() { return astType == AstType.decl_enum; }
 
 	IsSigned isSigned() {
 		if (astType == AstType.type_basic) return as_basic.isSigned;
@@ -182,6 +183,7 @@ string typeName(TypeNode* type, CompilationContext* c)
 		case AstType.type_static_array: return "[num]";
 		case AstType.type_slice: return "[]";
 		case AstType.decl_struct: return c.idString(type.as_struct.id);
+		case AstType.decl_enum: return c.idString(type.as_enum.id);
 		case AstType.expr_name_use: return c.idString(type.as_name_use.id(c));
 		default: assert(false, format("got %s", type.astType));
 	}
@@ -278,6 +280,8 @@ bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* c) {
 			return same_type_slice(t1.as_slice, t2.as_slice, c);
 		case decl_struct:
 			return t1 == t2;
+		case decl_enum:
+			return t1 == t2;
 		default:
 			assert(false, format("got %s %s", t1.astType, t2.astType));
 	}
@@ -299,6 +303,7 @@ IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* c)
 		case AstType.decl_struct: return gen_ir_type_struct(typeNode.as_struct, c);
 		case AstType.type_func_sig: return gen_ir_type_func_sig(typeNode.as_func_sig, c);
 		case AstType.expr_name_use: return gen_ir_type(typeNode.as_name_use.entity.get_node_type(c), c);
+		case AstType.decl_enum: return gen_ir_type_enum(typeNode.as_enum, c);
 		default:
 			c.internal_error(typeNode.loc, "Cannot convert `%s` to ir type", typeNode.astType);
 			assert(false);

@@ -7,7 +7,8 @@ import all;
 
 @(AstType.type_basic)
 struct BasicTypeNode {
-	mixin AstNodeData!(AstType.type_basic, AstFlags.isType, AstNodeState.type_check_done);
+	mixin AstNodeData!(AstType.type_basic, AstFlags.isType | AstFlags.isExpression, AstNodeState.type_check_done);
+	AstIndex type = CommonAstNodes.type_type;
 	SizeAndAlignment sizealign;
 	ulong minValue;
 	ulong maxValue;
@@ -48,6 +49,8 @@ struct BasicTypeNode {
 	}
 }
 
+enum NumBasicTypeNodeSlots = 12;
+
 enum BasicTypeFlag : ubyte {
 	isFloat    = 1 << 0,
 	isInteger  = 1 << 1,
@@ -68,6 +71,7 @@ IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 		case BasicType.t_noreturn: return makeBasicTypeIndex(IrValueType.noreturn_t);
 		case BasicType.t_void: return makeBasicTypeIndex(IrValueType.void_t);
 		case BasicType.t_bool: return makeBasicTypeIndex(IrValueType.i8);
+		case BasicType.t_null: return makeBasicTypeIndex(IrValueType.i64);
 		case BasicType.t_u8: return makeBasicTypeIndex(IrValueType.i8);
 		case BasicType.t_i8: return makeBasicTypeIndex(IrValueType.i8);
 		case BasicType.t_i16: return makeBasicTypeIndex(IrValueType.i16);
@@ -83,5 +87,72 @@ IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 		default:
 			context.internal_error(t.loc, "Cannot convert %s to IrIndex", t.basicType);
 			assert(false);
+	}
+}
+
+CommonTypeResult common_type_basic(BasicTypeNode* node, AstIndex typeBIndex, CompilationContext* c)
+{
+	BasicType basicA = node.basicType;
+	TypeNode* typeB = typeBIndex.get_type(c);
+	switch(typeB.astType) with(AstType)
+	{
+		case type_basic:
+			BasicType basicB = typeB.as_basic.basicType;
+			BasicType commonType = commonBasicType[basicA][basicB];
+			TypeConvResKind kindA = basicConversionKind[basicA][commonType];
+			TypeConvResKind kindB = basicConversionKind[basicB][commonType];
+			return CommonTypeResult(c.basicTypeNodes(commonType), kindA, kindB);
+		case type_ptr:
+			if (basicA == BasicType.t_null) {
+				return CommonTypeResult(typeBIndex, TypeConvResKind.override_expr_type_i, TypeConvResKind.no_i);
+			}
+			return CommonTypeResult(CommonAstNodes.type_error);
+		default: assert(false);
+	}
+}
+
+TypeConvResKind type_conv_basic(BasicTypeNode* node, AstIndex typeBIndex, ref AstIndex expr, CompilationContext* c)
+{
+	BasicType fromTypeBasic = node.basicType;
+	TypeNode* typeB = typeBIndex.get_type(c);
+
+	switch(typeB.astType) with(AstType)
+	{
+		case type_basic:
+			auto res = basicConversionKind[fromTypeBasic][typeB.as_basic.basicType];
+			auto exprNode = expr.get_node(c);
+			switch(exprNode.astType) {
+				case AstType.literal_int:
+					if (res.canConvertImplicitly) return TypeConvResKind.override_expr_type_i;
+					if (typeB.isInteger)
+					{
+						ubyte toSize = integerSize(typeB.as_basic.basicType);
+						auto lit = exprNode.as!IntLiteralExprNode(c);
+						if (lit.isSigned) {
+							if (numSignedBytesForInt(lit.value) <= toSize) return TypeConvResKind.override_expr_type_i;
+						} else {
+							if (numUnsignedBytesForInt(lit.value) <= toSize) return TypeConvResKind.override_expr_type_i;
+						}
+					}
+					return res;
+				case AstType.literal_float:
+					if (res.canConvertImplicitly) return TypeConvResKind.override_expr_type_i;
+					if (typeB.isFloat) return TypeConvResKind.override_expr_type_i;
+					return res;
+				default: return res;
+			}
+		case type_ptr:
+			if (fromTypeBasic == BasicType.t_null) return TypeConvResKind.override_expr_type_i;
+			if (fromTypeBasic.isInteger) return TypeConvResKind.ii_e;
+			return TypeConvResKind.fail;
+		case type_slice:
+			if (fromTypeBasic == BasicType.t_null) return TypeConvResKind.override_expr_type_i;
+			return TypeConvResKind.fail;
+		case decl_enum:
+			auto res1 = type_conv_basic(node, typeB.as_enum.memberType, expr, c);
+			auto res2 = res1.allowExplicitOnly;
+			//writefln("type_conv_basic %s %s %s %s", fromTypeBasic, printer(typeB.as_enum.memberType, c), res1, res2);
+			return res2;
+		default: assert(false);
 	}
 }

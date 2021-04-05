@@ -10,6 +10,7 @@ import all;
 struct TypeConvExprNode {
 	mixin ExpressionNodeData!(AstType.expr_type_conv);
 	AstIndex expr;
+	TypeConvResKind convKind() { return cast(TypeConvResKind)subType; }
 }
 
 void print_type_conv(TypeConvExprNode* node, ref AstPrintState state)
@@ -37,19 +38,24 @@ void name_resolve_type_conv(TypeConvExprNode* node, ref NameResolveState state) 
 	node.state = AstNodeState.name_resolve_done;
 }
 
+// Checks cast() parsed from code
+// Casts inserted by the compiler skip this step
 void type_check_type_conv(TypeConvExprNode* node, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
-
 	node.state = AstNodeState.type_check;
 	require_type_check(node.expr, state);
-	if (!isConvertibleTo(node.expr.get_expr_type(c), node.type, c))
+	TypeConvResKind kind = checkTypeConversion(node.expr.get_expr_type(c), node.type, node.expr, c);
+	if (!kind.successful)
 	{
 		c.error(node.loc,
 			"Cannot convert expression of type `%s` to `%s`",
 			node.expr.get_expr_type(c).printer(c),
 			node.type.printer(c));
 	}
+	node.subType = kind;
+	// TODO: handling is different for user inserted casts and for implicit casts.
+	// because implicit casts can be omitted/replaced with other nodes.
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -78,72 +84,129 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 	ExpressionNode* childExpr = t.expr.get_expr(c);
 	TypeNode* sourceType = childExpr.type.get_type(c);
 	TypeNode* targetType = t.type.get_type(c);
-	c.assertf(sourceType.as_basic || sourceType.as_ptr, t.loc, "Source must have basic/ptr type, not %s", sourceType.printer(c));
-	c.assertf(targetType.as_basic || targetType.as_ptr, t.loc, "Target must have basic/ptr type, not %s", targetType.printer(c));
+
+	// fold the alias in the form of enum type
+	if (sourceType.astType == AstType.decl_enum) {
+		sourceType = sourceType.as_enum.memberType.get_type(c);
+	}
+	if (targetType.astType == AstType.decl_enum) {
+		targetType = targetType.as_enum.memberType.get_type(c);
+	}
+
 	IrIndex typeFrom = sourceType.gen_ir_type(c);
 	IrIndex typeTo = targetType.gen_ir_type(c);
 	uint typeSizeFrom = c.types.typeSize(typeFrom);
 	uint typeSizeTo = c.types.typeSize(typeTo);
-	CovertionKind convKind = cast(CovertionKind)(sourceType.isFloat << 1 | targetType.isFloat);
 
 	IrIndex result;
-	if (rval.isSimpleConstant)
-	{
-		result = rval;
+
+	if (rval.isSimpleConstant) {
+		//writefln("%s", FmtSrcLoc(t.loc, c));
+		result = eval_type_conv(t, rval, c);
 	}
-	else if (targetType.isBool)
-	{
-		ExtraInstrArgs extra = { type : typeTo, cond : IrUnaryCondition.not_zero };
-		result = gen.builder.emitInstr!(IrOpcode.set_unary_cond)(currentBlock, extra, rval).result;
-	}
-	else
-	{
-		ExtraInstrArgs extra = { type : typeTo, argSize : sizeToIrArgSize(typeSizeTo, c) };
-		final switch (convKind) {
-			case CovertionKind.ftof:
-				if (typeSizeFrom == typeSizeTo)
-					result = rval;
-				else if (typeSizeTo < typeSizeFrom)
-					result = gen.builder.emitInstr!(IrOpcode.fptrunc)(currentBlock, extra, rval).result;
-				else
-					result = gen.builder.emitInstr!(IrOpcode.fpext)(currentBlock, extra, rval).result;
-				break;
-			case CovertionKind.ftoi:
-				if (targetType.as_basic.isSigned)
-					result = gen.builder.emitInstr!(IrOpcode.fptosi)(currentBlock, extra, rval).result;
-				else
-					result = gen.builder.emitInstr!(IrOpcode.fptoui)(currentBlock, extra, rval).result;
-				break;
-			case CovertionKind.itof:
-				if (sourceType.as_basic.isSigned)
-					result = gen.builder.emitInstr!(IrOpcode.sitofp)(currentBlock, extra, rval).result;
-				else
-					result = gen.builder.emitInstr!(IrOpcode.uitofp)(currentBlock, extra, rval).result;
-				break;
-			case CovertionKind.itoi:
-				// bitcast
+	else final switch (t.convKind) with(TypeConvResKind) {
+		case fail: c.internal_error(t.loc, "IR gen of failed cast"); assert(false);
+		case no_e, no_i: result = rval; break;
+		case ii_e, ii_i, override_expr_type_e, override_expr_type_i:
+			if (targetType.isBool) {
+				ExtraInstrArgs extra = { type : typeTo, cond : IrUnaryCondition.not_zero };
+				result = gen.builder.emitInstr!(IrOpcode.set_unary_cond)(currentBlock, extra, rval).result;
+			} else {
+				ExtraInstrArgs extra = { type : typeTo, argSize : sizeToIrArgSize(typeSizeTo, c) };
 				if (typeSizeFrom == typeSizeTo) {
+					// bitcast
 					// needed in case of ptr conversion. Later we may need to look into pointed type
 					result = gen.builder.emitInstr!(IrOpcode.conv)(currentBlock, extra, rval).result;
-				}
-				// trunc
-				else if (typeSizeTo < typeSizeFrom)
-				{
+				} else if (typeSizeTo < typeSizeFrom) {
+					// trunc
 					result = gen.builder.emitInstr!(IrOpcode.trunc)(currentBlock, extra, rval).result;
-				}
-				// sext/zext
-				else
-				{
-					if (sourceType.as_basic.isSigned && targetType.as_basic.isSigned)
+				} else {
+					// sext/zext
+					if (sourceType.isSigned && targetType.isSigned)
 						result = gen.builder.emitInstr!(IrOpcode.sext)(currentBlock, extra, rval).result;
 					else
 						result = gen.builder.emitInstr!(IrOpcode.zext)(currentBlock, extra, rval).result;
 				}
-				break;
-		}
+			}
+			break;
+		case if_e, if_i:
+			ExtraInstrArgs extra = { type : typeTo, argSize : sizeToIrArgSize(typeSizeTo, c) };
+			assert(sourceType.as_basic);
+			if (sourceType.as_basic.isSigned)
+				result = gen.builder.emitInstr!(IrOpcode.sitofp)(currentBlock, extra, rval).result;
+			else
+				result = gen.builder.emitInstr!(IrOpcode.uitofp)(currentBlock, extra, rval).result;
+			break;
+
+		case ff_e, ff_i:
+			ExtraInstrArgs extra = { type : typeTo, argSize : sizeToIrArgSize(typeSizeTo, c) };
+			if (typeSizeFrom == typeSizeTo)
+				result = rval;
+			else if (typeSizeTo < typeSizeFrom)
+				result = gen.builder.emitInstr!(IrOpcode.fptrunc)(currentBlock, extra, rval).result;
+			else
+				result = gen.builder.emitInstr!(IrOpcode.fpext)(currentBlock, extra, rval).result;
+			break;
+
+		case fi_e, fi_i:
+			ExtraInstrArgs extra = { type : typeTo, argSize : sizeToIrArgSize(typeSizeTo, c) };
+			assert(sourceType.as_basic);
+			if (targetType.as_basic.isSigned)
+				result = gen.builder.emitInstr!(IrOpcode.fptosi)(currentBlock, extra, rval).result;
+			else
+				result = gen.builder.emitInstr!(IrOpcode.fptoui)(currentBlock, extra, rval).result;
+			break;
+
+		case string_literal_to_u8_ptr:
+			result = c.constants.getAggregateMember(rval, 1);
+			break;
+		case array_literal_to_slice:
+			assert(false, to!string(t.convKind));
 	}
 	gen.builder.addJumpToLabel(currentBlock, nextStmt);
 	return ExprValue(result);
+}
+
+IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext* c)
+{
+	c.assertf(rval.isSimpleConstant, node.loc, "Must be constant");
+	IrIndex result;
+
+	TypeNode* targetType = node.type.get_type(c);
+	if (targetType.astType == AstType.decl_enum) {
+		targetType = targetType.as_enum.memberType.get_type(c);
+	}
+	IrIndex typeTo = targetType.gen_ir_type(c);
+	uint typeSizeTo = c.types.typeSize(typeTo);
+
+	final switch (node.convKind) with(TypeConvResKind) {
+		case fail: c.internal_error(node.loc, "eval of failed cast"); assert(false);
+		case no_e, no_i: result = rval; break;
+		case ii_e, ii_i, override_expr_type_e, override_expr_type_i:
+			result = rval;
+			result.constantSize = sizeToIrArgSize(typeSizeTo, c);
+			break;
+		case if_e, if_i:
+			assert(false, "TODO");
+			break;
+
+		case ff_e, ff_i:
+			assert(false, "TODO");
+			break;
+
+		case fi_e, fi_i:
+			assert(false, "TODO");
+			break;
+
+		case string_literal_to_u8_ptr:
+			result = c.constants.getAggregateMember(rval, 1);
+			break;
+
+		case array_literal_to_slice:
+			assert(false, to!string(node.convKind));
+			assert(false, "TODO");
+	}
+	return result;
 }
 
 void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, TypeConvExprNode* t)

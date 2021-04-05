@@ -248,7 +248,7 @@ immutable fail22 = q{
 		return null;
 	}
 --- <error>
-fail22(3, 3): Error: Cannot implicitly convert expression of type `null` to `u32`
+fail22(3, 3): Error: Cannot implicitly convert expression of type `typeof(null)` to `u32`
 };
 
 @TestInfo()
@@ -442,3 +442,29 @@ immutable fail41 = q{--- fail41
 --- <error>
 fail41(1, 2): Error: Cannot find module `unknown`
 };
+
+
+@TestInfo()
+immutable fail42 = q{--- fail42
+	enum e7 : i32 { e7 = 7 } // type
+	enum e9 { e9 = 9 } // type
+	void accept_e9(e9){}
+	void run() {
+		accept_e9(e7.e7);
+	}
+--- <error>
+fail42(5, 15): Error: Argument 1, must have type e9, not e7
+};
+
+
+@TestInfo()
+immutable fail43 = q{--- fail43
+	enum e9 { e9 = 9 } // type
+	void accept_e9(e9){}
+	void run() {
+		accept_e9(42);
+	}
+--- <error>
+fail43(4, 13): Error: Argument 1, must have type e9, not u8
+};
+

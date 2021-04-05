@@ -56,12 +56,12 @@ void name_resolve_index(ref AstIndex nodeIndex, IndexExprNode* node, ref NameRes
 		{
 			// in the future this can also be slice expression
 			auto sliceType = cast(SliceTypeNode*)node;
-			*sliceType = SliceTypeNode(copy.loc, copy.array);
+			*sliceType = SliceTypeNode(copy.loc, CommonAstNodes.type_type, copy.array);
 		}
 		else if (copy.indicies.length == 1)
 		{
 			auto arrayType = cast(StaticArrayTypeNode*)node;
-			*arrayType = StaticArrayTypeNode(copy.loc, copy.array, copy.indicies[0]);
+			*arrayType = StaticArrayTypeNode(copy.loc, CommonAstNodes.type_type, copy.array, copy.indicies[0]);
 		}
 		else
 		{

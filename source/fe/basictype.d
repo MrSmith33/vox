@@ -60,27 +60,62 @@ bool isFloat(BasicType b) {
 	return b == BasicType.t_f32 || b == BasicType.t_f64;
 }
 
-// usage isAutoConvertibleFromToBasic[from][to]
-immutable bool[BasicType.max + 1][BasicType.max + 1] isAutoConvertibleFromToBasic = [
-	//err noreturn void bool null i8 i16 i32 i64  u8 u16 u32 u64 f32 f64 $alias $type // to
-	[   0,       0,   0,   0,   0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,     0,    0], // from error
-	[   0,       0,   0,   0,   0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,     0,    0], // from noreturn
-	[   0,       0,   0,   0,   0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,     0,    0], // from void
-	[   0,       0,   0,   0,   0, 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,     0,    0], // from bool
-	[   0,       0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,     0,    0], // from null
-	[   0,       0,   0,   1,   0, 0,  1,  1,  1,  0,  0,  0,  0,  1,  1,     0,    0], // from i8
-	[   0,       0,   0,   1,   0, 0,  0,  1,  1,  0,  0,  0,  0,  1,  1,     0,    0], // from i16
-	[   0,       0,   0,   1,   0, 0,  0,  0,  1,  0,  0,  0,  0,  1,  1,     0,    0], // from i32
-	[   0,       0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0,  1,  1,     0,    0], // from i64
-	[   0,       0,   0,   1,   0, 0,  1,  1,  1,  0,  1,  1,  1,  1,  1,     0,    0], // from u8
-	[   0,       0,   0,   1,   0, 0,  0,  1,  1,  0,  0,  1,  1,  1,  1,     0,    0], // from u16
-	[   0,       0,   0,   1,   0, 0,  0,  0,  1,  0,  0,  0,  1,  1,  1,     0,    0], // from u32
-	[   0,       0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0,  1,  1,     0,    0], // from u64
-	[   0,       0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  1,     0,    0], // from f32
-	[   0,       0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,     0,    0], // from f64
-	[   0,       0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,     0,    0], // from $alias
-	[   0,       0,   0,   1,   0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,     1,    0], // from $type
-];
+// 0b_000_0
+//        ^
+//        | 0 e 0 explicit conversion only
+//        ` 1 i 1 explicit and implicit conversion allowed
+enum TypeConvResKind : ubyte {
+	fail = 0b_000_0, // cannot convert
+	no_e = 0b_001_0, // noop, explicit conversion only
+	no_i = 0b_001_1, // noop, explicit and implicit conversion allowed
+
+	ii_e = 0b_010_0, // i to i explicit conversion only
+	ii_i = 0b_010_1, // i to i explicit and implicit conversion allowed
+	if_e = 0b_011_0, // i to f explicit conversion only
+	if_i = 0b_011_1, // i to f explicit and implicit conversion allowed
+	ff_e = 0b_100_0, // f to f explicit conversion only
+	ff_i = 0b_100_1, // f to f explicit and implicit conversion allowed
+	fi_e = 0b_101_0, // f to i explicit conversion only
+	fi_i = 0b_101_1, // f to i explicit and implicit conversion allowed
+
+	override_expr_type_e = 0b_110_0,
+	override_expr_type_i = 0b_110_1,
+
+	string_literal_to_u8_ptr = 0b_111_0,
+	array_literal_to_slice = 0b_111_1,
+}
+
+bool isNoop(TypeConvResKind kind) { return (kind & 0b_111_0) == TypeConvResKind.no_e; }
+bool successful(TypeConvResKind kind) { return kind != TypeConvResKind.fail; }
+bool canConvertImplicitly(TypeConvResKind kind) {
+	return (kind & 1) == 1 || kind >= TypeConvResKind.string_literal_to_u8_ptr; }
+TypeConvResKind allowExplicitOnly(TypeConvResKind kind) {
+	if (kind >= TypeConvResKind.string_literal_to_u8_ptr) return kind;
+	return cast(TypeConvResKind)(kind & 0b_111_0);
+}
+
+// usage basicConversionKind[from][to]
+immutable TypeConvResKind[BasicType.max + 1][BasicType.max + 1] basicConversionKind = (){ with(TypeConvResKind){ return [
+	//err noret void bool null   i8  i16  i32  i64   u8  u16  u32  u64  f32  f64 $alias $type  // to
+	[no_i, no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i, no_i, no_i], // from error
+	[no_i, fail,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i, fail, fail], // from noreturn
+	[no_i, fail,no_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, fail, fail], // from void
+	[no_i, fail,fail,no_i,fail,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,if_i,if_i, fail, fail], // from bool
+	[no_i, fail,fail,ii_i,no_i,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,fail,fail, fail, fail], // from null
+	[no_i, fail,fail,ii_i,fail,no_i,ii_i,ii_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i8
+	[no_i, fail,fail,ii_i,fail,ii_e,no_i,ii_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i16
+	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,no_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i32
+	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,ii_e,no_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i64
+	[no_i, fail,fail,ii_i,fail,ii_e,ii_i,ii_i,ii_i,no_i,ii_i,ii_i,ii_i,if_i,if_i, fail, fail], // from u8
+	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,ii_i,ii_i,ii_e,no_i,ii_i,ii_i,if_i,if_i, fail, fail], // from u16
+	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,ii_e,ii_i,ii_e,ii_e,no_i,ii_i,if_i,if_i, fail, fail], // from u32
+	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,no_i,if_i,if_i, fail, fail], // from u64
+	[no_i, fail,fail,ii_i,fail,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,no_i,ff_i, fail, fail], // from f32
+	[no_i, fail,fail,ii_i,fail,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,ff_e,no_i, fail, fail], // from f64
+	[no_i, fail,fail,ii_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, no_i, fail], // from $alias
+	[no_i, fail,fail,ii_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, ii_i, no_i], // from $type
+]; }
+}();
 
 immutable BasicType[BasicType.max + 1][BasicType.max + 1] commonBasicType = (){ with(BasicType){ return [
 	// error  noreturn    void     bool     null       i8      i16      i32      i64       u8      u16      u32      u64      f32      f64   $alias    $type
@@ -104,7 +139,7 @@ immutable BasicType[BasicType.max + 1][BasicType.max + 1] commonBasicType = (){ 
 ]; }
 }();
 
-string[BasicType.max + 1] basicTypeNames = ["error", "noreturn", "void", "bool", "null", "i8", "i16", "i32",
+string[BasicType.max + 1] basicTypeNames = ["error", "noreturn", "void", "bool", "typeof(null)", "i8", "i16", "i32",
 "i64", "u8", "u16", "u32", "u64", "f32", "f64", "$alias", "$type"];
 
 bool isBasicTypeToken(TokenType tt) {

@@ -7,7 +7,8 @@ import all;
 
 @(AstType.type_ptr)
 struct PtrTypeNode {
-	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType | AstFlags.isExpression, AstNodeState.name_register_self_done);
+	AstIndex type = CommonAstNodes.type_type;
 	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	AstIndex base;
 	IrIndex irType;
@@ -55,6 +56,35 @@ void type_check_ptr(PtrTypeNode* node, ref TypeCheckState state)
 bool same_type_ptr(PtrTypeNode* t1, PtrTypeNode* t2, CompilationContext* context)
 {
 	return same_type(t1.base, t2.base, context);
+}
+
+CommonTypeResult common_type_ptr(PtrTypeNode* node, AstIndex typeBIndex, CompilationContext* c)
+{
+	TypeNode* typeB = typeBIndex.get_type(c);
+	switch(typeB.astType) with(AstType)
+	{
+		case type_basic:
+			BasicType basicB = typeB.as_basic.basicType;
+			if (basicB == BasicType.t_null) {
+				return CommonTypeResult(c.getAstNodeIndex(node), TypeConvResKind.no_i, TypeConvResKind.override_expr_type_i);
+			}
+			return CommonTypeResult(CommonAstNodes.type_error);
+		default: return CommonTypeResult(CommonAstNodes.type_error);
+	}
+}
+
+TypeConvResKind type_conv_ptr(PtrTypeNode* node, AstIndex typeBIndex, ref AstIndex expr, CompilationContext* c)
+{
+	TypeNode* typeB = typeBIndex.get_type(c);
+	switch(typeB.astType) with(AstType) {
+		case type_basic:
+			auto toBasic = typeB.as_basic.basicType;
+			if (toBasic.isInteger) return TypeConvResKind.ii_e;
+			return TypeConvResKind.fail;
+		case type_ptr:
+			return TypeConvResKind.ii_e;
+		default: return TypeConvResKind.fail;
+	}
 }
 
 IrIndex gen_ir_type_ptr(PtrTypeNode* t, CompilationContext* context)

@@ -173,6 +173,11 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return ExprValue(irValue);
 		}
+		case type_basic, type_ptr, type_slice, type_static_array: {
+			IrIndex irValue = gen.context.constants.add(astIndex.storageIndex, IsSigned.no, IrArgSize.size32);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(irValue);
+		}
 		default:
 			c.internal_error(n.loc, "Expected expression, not %s", n.astType);
 			assert(false);

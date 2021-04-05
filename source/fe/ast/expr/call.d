@@ -210,8 +210,8 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, AstNodes ar
 		else
 		{
 			// calculate common type
-			AstIndex commonType = calcCommonType(result[ctParam.index], argTypeIndex, c);
-			if (commonType.isErrorType) {
+			CommonTypeResult res = calcCommonType(result[ctParam.index], argTypeIndex, c);
+			if (res.commonType.isErrorType) {
 				c.error("Cannot infer template parameter %s, from argument types %s and %s",
 					c.idString(ctParam.id),
 					result[ctParam.index].printer(c),
@@ -219,7 +219,7 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, AstNodes ar
 					);
 				success = false;
 			}
-			result[ctParam.index] = commonType;
+			result[ctParam.index] = res.commonType;
 		}
 	}
 
