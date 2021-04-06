@@ -157,6 +157,7 @@ SizeAndAlignment typeSizealign(TypeNode* type, CompilationContext* c)
 		case AstType.type_static_array: return type.as_static_array.sizealign(c);
 		case AstType.type_slice: return type.as_slice.sizealign;
 		case AstType.decl_struct: return type.as_struct.sizealign(c);
+		case AstType.decl_enum: return type.as_enum.sizealign(c);
 		case AstType.expr_name_use: return type.as_name_use.entity.typeSizealign(c);
 		default: assert(false, format("got %s", type.astType));
 	}

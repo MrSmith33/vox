@@ -37,7 +37,7 @@ struct EnumDeclaration
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
-		this.flags = AstFlags.isType | AstFlags.isScope | AstFlags.isDeclaration | Flags.isAnonymous;
+		this.flags = AstFlags.isScope | AstFlags.isDeclaration | Flags.isAnonymous;
 		this.parentScope = parentScope;
 		this.memberScope = memberScope;
 		this.declarations = members;
@@ -45,6 +45,11 @@ struct EnumDeclaration
 	}
 
 	bool isAnonymous() { return cast(bool)(flags & Flags.isAnonymous); }
+	SizeAndAlignment sizealign(CompilationContext* c) {
+		c.assertf(!isAnonymous, loc, "Anonymous enums are not a type");
+		c.assertf(memberType.isDefined, loc, "Enum has no member type");
+		return typeSizealign(memberType, c);
+	}
 }
 
 void print_enum(EnumDeclaration* node, ref AstPrintState state)

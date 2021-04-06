@@ -399,6 +399,15 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 	AstIndex rightTypeIndex = b.right.get_expr_type(c);
 	TypeNode* rightType = rightTypeIndex.get_type(c);
 
+	if (leftType.astType == AstType.decl_enum) {
+		leftTypeIndex = leftType.as_enum.memberType;
+		leftType = leftTypeIndex.get_type(c);
+	}
+	if (rightType.astType == AstType.decl_enum) {
+		rightTypeIndex = rightType.as_enum.memberType;
+		rightType = rightTypeIndex.get_type(c);
+	}
+
 	if (leftType.isError || rightType.isError) return;
 
 	switch(b.op) with(BinOp)

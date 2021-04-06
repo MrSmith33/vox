@@ -4114,14 +4114,29 @@ immutable test182 = q{--- test182
 };
 
 
-/*TestInfo()
+@TestInfo(&tester183)
 immutable test183 = q{--- test183
 	// operations on enum types
 	enum F : u32 {
 		f1 = 0b01,
 		f2 = 0b10,
 	}
-	u32 run() {
+	u32 run1() {
 		return F.f1 | F.f2;
 	}
-};*/
+	F run2() {
+		return F.f1 | F.f2;
+	}
+	F run3(F a, F b) {
+		return a | b;
+	}
+	F run4(F a) {
+		return ~a;
+	}
+};
+void tester183(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(uint)("run1")() == 3);
+	assert(ctx.getFunctionPtr!(uint)("run2")() == 3);
+	assert(ctx.getFunctionPtr!(uint, uint, uint)("run3")(1, 2) == 3);
+	assert(ctx.getFunctionPtr!(uint, uint)("run4")(1) == ~1);
+}
