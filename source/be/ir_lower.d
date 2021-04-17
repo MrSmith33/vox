@@ -45,9 +45,8 @@ void pass_ir_lower(CompilationContext* c, ModuleDeclNode* mod, FunctionDeclNode*
 }
 
 bool fitsIntoRegister(IrIndex type, CompilationContext* c) {
-	if (type.isTypeStruct) {
-		IrTypeStruct* structRes = &c.types.get!IrTypeStruct(type);
-		switch(structRes.sizealign.size) {
+	if (type.isTypeStruct || type.isTypeArray) {
+		switch(c.types.typeSize(type)) {
 			case 1: return true;
 			case 2: return true;
 			case 4: return true;

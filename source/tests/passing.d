@@ -4178,3 +4178,30 @@ immutable test187 = q{--- test187
 	i32 _import;
 	i32 _module;
 };
+
+
+@TestInfo()
+immutable test188 = q{--- test188
+	// Union
+	union VkClearColorValue {
+		f32[4]  float32;
+		i32[4]  int32;
+		u32[4]  uint32;
+	}
+	VkClearColorValue getf32(f32[4] val) {
+		VkClearColorValue result;
+		result.float32 = val;
+		return result;
+	}
+	VkClearColorValue geti32(i32[4] val) {
+		VkClearColorValue result;
+		result.int32 = val;
+		return result;
+	}
+	VkClearColorValue getu32(u32[4] val) {
+		VkClearColorValue result;
+		result.uint32 = val;
+		return result;
+	}
+};
+

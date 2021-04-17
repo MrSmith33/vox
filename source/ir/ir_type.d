@@ -91,7 +91,15 @@ align(8)
 struct IrTypeStruct
 {
 	IrTypeHeader header;
-	SizeAndAlignment sizealign;
+	uint size;
+	ubyte alignmentPower;
+	uint alignment() { return 1 << cast(uint)alignmentPower; }
+	SizeAndAlignment sizealign() { return SizeAndAlignment(size, alignmentPower); }
+	void sizealign(SizeAndAlignment sa) { size = sa.size; alignmentPower = sa.alignmentPower; }
+	// all members have size of 0
+	// alignment is max alignment of members
+	// IrAggregateConstant contains index of member in slot 0, and constant for that member in slot 1
+	bool isUnion;
 	uint numMembers;
 
 	// Prevent type from copying because members will not be copied. Need to use ptr.
@@ -137,7 +145,7 @@ struct IrTypeStorage
 	IrIndex firstType;
 	IrIndex lastType;
 
-	IrIndex appendStruct(uint numMembers)
+	IrIndex appendStruct(uint numMembers, bool isUnion = false)
 	{
 		IrIndex result = append!IrTypeStruct;
 
@@ -149,6 +157,7 @@ struct IrTypeStorage
 		}
 
 		get!IrTypeStruct(result).numMembers = numMembers;
+		get!IrTypeStruct(result).isUnion = isUnion;
 		return result;
 	}
 

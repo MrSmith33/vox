@@ -573,7 +573,10 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 			sink("{");
 			foreach(i, IrTypeStructMember member; struct_t.members)
 			{
-				if (i > 0) sink(", ");
+				if (i > 0) {
+					if (struct_t.isUnion) sink(" | ");
+					else sink(", ");
+				}
 				dumpIrType(sink, ctx, member.type);
 			}
 			sink("}");

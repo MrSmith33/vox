@@ -309,7 +309,7 @@ struct Parser
 		{
 			case ALIAS_SYM: // <alias_decl> ::= "alias" <id> "=" <expr> ";"
 				return parse_alias();
-			case STRUCT_SYM: // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
+			case STRUCT_SYM, UNION_SYM: // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
 				return parse_struct();
 			case ENUM:
 				return parse_enum();
@@ -673,6 +673,11 @@ struct Parser
 	//                          "struct" <id> ("[" <template_params> "]")? ";"
 	AstIndex parse_struct()
 	{
+		ushort structFlags;
+		if (tok.type == TokenType.UNION_SYM) {
+			structFlags |= StructFlags.isUnion;
+		}
+
 		TokenIndex start = tok.index;
 		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
 
@@ -687,7 +692,7 @@ struct Parser
 				nextToken; // skip semicolon
 				AstIndex structIndex = makeDecl!StructDeclNode(start, currentScopeIndex, AstIndex(), structId);
 				StructDeclNode* s = structIndex.get!StructDeclNode(context);
-				s.flags |= StructFlags.isOpaque;
+				s.flags |= structFlags | StructFlags.isOpaque;
 				return structIndex;
 			}
 
@@ -701,6 +706,7 @@ struct Parser
 
 			AstIndex structIndex = makeDecl!StructDeclNode(start, parentScope, memberScope, structId);
 			StructDeclNode* s = structIndex.get!StructDeclNode(context);
+			s.flags |= structFlags;
 
 			// store values back;
 			scope_temp.prev = attribState;
@@ -1203,7 +1209,7 @@ struct Parser
 			// declarations
 			case TokenType.ALIAS_SYM:
 				return parse_alias();
-			case TokenType.STRUCT_SYM:
+			case TokenType.STRUCT_SYM, TokenType.UNION_SYM:
 				return parse_struct();
 			case TokenType.ENUM:
 				return parse_enum();

@@ -89,6 +89,7 @@ enum TokenType : ubyte {
 	@("module")   MODULE_SYM,
 	@("return")   RETURN_SYM,
 	@("struct")   STRUCT_SYM,
+	@("union")    UNION_SYM,
 	@("while")    WHILE_SYM,
 	@("for")      FOR_SYM,
 	@("switch")   SWITCH_SYM,
@@ -217,13 +218,13 @@ enum char SOI_CHAR = '\2';
 enum char EOI_CHAR = '\3';
 
 immutable string[] keyword_strings = ["bool","true","false","alias","break","continue","do","else",
-	"function","f32","f64","i16","i32","i64","i8","if","import","module","isize","return","struct","u16","u32",
+	"function","f32","f64","i16","i32","i64","i8","if","import","module","isize","return","struct","union","u16","u32",
 	"u64","u8","usize","void","noreturn","while","for","switch","cast","enum","null"];
 enum NUM_KEYWORDS = keyword_strings.length;
 immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.TRUE_LITERAL,TT.FALSE_LITERAL,
 	TT.ALIAS_SYM, TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,TT.ELSE_SYM,TT.FUNCTION_SYM,TT.TYPE_F32,
 	TT.TYPE_F64,TT.TYPE_I16, TT.TYPE_I32,TT.TYPE_I64,TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.MODULE_SYM,
-	TT.TYPE_ISIZE,TT.RETURN_SYM, TT.STRUCT_SYM,TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
+	TT.TYPE_ISIZE,TT.RETURN_SYM, TT.STRUCT_SYM,TT.UNION_SYM,TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
 	TT.TYPE_VOID,TT.TYPE_NORETURN,TT.WHILE_SYM,TT.FOR_SYM,TT.SWITCH_SYM,TT.CAST,TT.ENUM,TT.NULL];
 
 //                          #        #######  #     #
@@ -719,6 +720,7 @@ struct Lexer
 					case '3': if (match("32")) { return TT.TYPE_U32; } break;
 					case '6': if (match("64")) { return TT.TYPE_U64; } break;
 					case '8': if (match("8"))  { return TT.TYPE_U8; }  break;
+					case 'n': if (match("nion")){ return TT.UNION_SYM; }  break;
 					case 's': if (match("size")) { return TT.TYPE_USIZE; } break;
 					default: break;
 				}

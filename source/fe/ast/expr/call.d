@@ -380,6 +380,10 @@ void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref Type
 	uint numStructMembers = c.types.get!IrTypeStruct(structType).numMembers;
 	node.argsValues = c.allocateTempArray!IrIndex(numStructMembers);
 
+	if (s.isUnion && node.args.length > 1) {
+		c.error(node.loc, "Union constructor can only have single argument, not %s", node.args.length);
+	}
+
 	size_t memberIndex;
 	foreach(AstIndex arg; s.declarations)
 	{

@@ -230,18 +230,42 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			if (vreg.type.isTypeStruct)
 			{
 				IrTypeStruct* structType = &c.types.get!IrTypeStruct(vreg.type);
-				c.assertf(instrHeader.numArgs == structType.numMembers,
-					"%s: create_aggregate invalid number of arguments, got %s, expected %s",
-					instrIndex, instrHeader.numArgs, structType.numMembers);
-
 				IrTypeStructMember[] structMembers = structType.members;
-				foreach (i, IrIndex arg; instrHeader.args(ir))
+				if (structType.isUnion)
 				{
-					IrIndex memberType = structMembers[i].type;
-					IrIndex argType = getValueType(arg, ir, c);
+					c.assertf(instrHeader.numArgs == 2,
+						"%s: create_aggregate invalid number of arguments for union type, got %s, expected 2",
+						instrIndex, instrHeader.numArgs);
+					IrIndex index = instrHeader.arg(ir, 0);
+					c.assertf(index.isSimpleConstant,
+						"%s: create_aggregate agr 0 must contain constant index, got %s",
+						instrIndex, IrIndexDump(index, c, ir));
+					ulong indexVal = c.constants.get(index).i64;
+					c.assertf(indexVal < structType.numMembers,
+						"%s: create_aggregate member index out of bounds, got %s, while union has %s members",
+						instrIndex, indexVal, structType.numMembers);
+					IrIndex value = instrHeader.arg(ir, 1);
+					IrIndex argType = getValueType(value, ir, c);
+					IrIndex memberType = structMembers[indexVal].type;
 					bool sameType = c.types.isSameType(argType, memberType);
-					c.assertf(sameType, "%s: create_aggregate type of arg %s mismatch. Expected %s, got %s",
-						instrIndex, i+1, IrIndexDump(memberType, c, ir), IrIndexDump(argType, c, ir));
+					c.assertf(sameType,
+						"%s: create_aggregate argument type mismatch of %s member of %s. Expected %s, got %s",
+						instrIndex, indexVal, IrIndexDump(vreg.type, c, ir), IrIndexDump(memberType, c, ir), IrIndexDump(argType, c, ir));
+				}
+				else
+				{
+					c.assertf(instrHeader.numArgs == structType.numMembers,
+						"%s: create_aggregate invalid number of arguments, got %s, expected %s",
+						instrIndex, instrHeader.numArgs, structType.numMembers);
+
+					foreach (i, IrIndex arg; instrHeader.args(ir))
+					{
+						IrIndex memberType = structMembers[i].type;
+						IrIndex argType = getValueType(arg, ir, c);
+						bool sameType = c.types.isSameType(argType, memberType);
+						c.assertf(sameType, "%s: create_aggregate type of arg %s mismatch. Expected %s, got %s",
+							instrIndex, i+1, IrIndexDump(memberType, c, ir), IrIndexDump(argType, c, ir));
+					}
 				}
 			}
 			else if (vreg.type.isTypeArray)
