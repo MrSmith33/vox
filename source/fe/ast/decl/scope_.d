@@ -15,9 +15,9 @@ enum ScopeKind : ubyte {
 struct Scope
 {
 	///
-	HashMap!(Identifier, AstIndex, Identifier.init) symbols;
+	AstNodeMap symbols;
 	/// Imported modules
-	Array!AstIndex imports;
+	AstNodes imports;
 	///
 	AstIndex parentScope;
 	///

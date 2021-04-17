@@ -434,7 +434,7 @@ IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrInd
 	return result;
 }
 
-void genBlock(ref IrGenState gen, AstNode* parent, ref Array!AstIndex statements, IrIndex currentBlock, ref IrLabel nextStmt)
+void genBlock(ref IrGenState gen, AstNode* parent, ref AstNodes statements, IrIndex currentBlock, ref IrLabel nextStmt)
 {
 	foreach (i, AstIndex stmt; statements)
 	{

@@ -44,7 +44,7 @@ struct IrBasicBlock
 		bool, "isLoopHeader", 1,
 		// true if block was created to split critial edge
 		bool, "replacesCriticalEdge", 1,
-		// used for block ordering
+		// used for block ordering. Gets reset to 0 after use
 		bool, "visitFlag",    1,
 		uint, "",             3,
 	));
@@ -188,6 +188,7 @@ void makeBlocksSequential(IrFunction* ir, IrIndex blockA, IrIndex blockB)
 // Instructions of block B are now owned by block A.
 // Fixes nextInstr / prevInstr of instrucitons.
 // Fixes firstInstr / lastInstr of block A.
+// Block B is not touched
 void concatBlockInstructions(IrFunction* ir, IrIndex blockA, IrIndex IAN2, IrIndex IBF, IrIndex IBL)
 {
 	IrBasicBlock* a = ir.getBlock(blockA);

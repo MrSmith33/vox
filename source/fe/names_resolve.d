@@ -76,6 +76,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case decl_builtin: assert(false);
 		case decl_builtin_attribute: assert(false);
 		case decl_module: name_resolve_module(cast(ModuleDeclNode*)node, state); break;
+		case decl_package: assert(false);
 		case decl_import: assert(false);
 		case decl_function: name_resolve_func(cast(FunctionDeclNode*)node, state); break;
 		case decl_var: name_resolve_var(cast(VariableDeclNode*)node, state); break;

@@ -184,6 +184,7 @@ o dll linking
 [Backend]
 - implement _chkstk and call it at the start of functions with frame size > 1 page
 - Keep in mind the need for fat binaries / compilation for multiple targets at the same time
+- after calling noreturn function compiler still goes to exit block. Maybe introduce a fake jump instruction to denote that. Can't remove exit block altogether, because liveness analysis/register allocation needs block ordering and goes over blocks in reverse. Blocks calling noreturn function must jump straight to exit block though. Exit block can be dropped in the far backend when it sees that all jumps to it are fake jumps. Or set a bit in basic block. Or replace return instruction with other instruction to store that info.
 
 
 [ABI]

@@ -85,9 +85,11 @@ One non-ordinary thing here is that `#if` condition or `#foreach` expression nee
 
 ## IR
 
+Program IR consists of globals, constants, types and functions. Functions belong to modules, but modules are pretty much unnessesary abstraction.
+
 ### Storage
 
-IR is stored in a set of arenas.
+Function IR is stored in a set of arenas.
 
 ```D
 Arena!IrInstrHeader     instrHeaderBuffer;
@@ -122,6 +124,18 @@ This imposes a restriction that only one function IR can be created / modified a
 Copying function IR requires only one memcopy per arena without the need of any fixups, since all references are done relative to the start of respective item slice.
 
 This also makes inlining fast. Function IR that is being inlined is appended to the end of the arena and all references in those items are offset by the size of the original IR. Such offset is done via an offset table thanks to clever design of `IrIndex`.
+
+### IrIndex
+
+`IrIndex` represents index of any IR entity.
+
+### Basic blocks
+
+Atm it is 40 bytes
+
+### Function inlining
+
+
 
 ## Function arguments and register allocation
 

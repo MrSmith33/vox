@@ -148,6 +148,19 @@ struct Parser
 		while (tok.type == TokenType.COMMENT);
 	}
 
+	void skipPast(TokenType tokType)
+	{
+		while (tok.type != TokenType.EOI)
+		{
+			++tok.index;
+			tok.type = context.tokenBuffer[tok.index];
+			if (tok.type == tokType) {
+				nextToken;
+				break;
+			}
+		}
+	}
+
 	bool hasMoreTokens() {
 		return tok.type != TokenType.EOI;
 	}
@@ -245,6 +258,7 @@ struct Parser
 
 		ScopeTempData scope_temp;
 		mod.memberScope = pushScope("Module", ScopeKind.global, scope_temp);
+			parse_module();
 			mod.declarations = parse_declarations(TokenType.EOI, AstFlags.isGlobal);
 		popScope(scope_temp);
 	}
@@ -301,6 +315,10 @@ struct Parser
 				return parse_enum();
 			case IMPORT_SYM:
 				return parse_import();
+			case MODULE_SYM:
+				context.error(tok.index, "Module declaration can only occur as first declaration of the module");
+				skipPast(TokenType.SEMICOLON);
+				return context.getAstNodeIndex(currentModule);
 			case HASH_IF:
 				return parse_hash_if();
 			case HASH_ASSERT:
@@ -881,9 +899,101 @@ struct Parser
 		TokenIndex start = tok.index;
 		version(print_parse) auto s = scop("import %s", start);
 		nextToken; // skip "import"
-		Identifier moduleId = expectIdentifier();
-		expectAndConsume(TokenType.SEMICOLON);
-		return makeDecl!ImportDeclNode(start, currentScopeIndex, moduleId);
+		Array!Identifier ids;
+
+		while (true) {
+			string after = ids.length == 0 ? "import" : null;
+			ids.put(context.arrayArena, expectIdentifier(after));
+
+			if (tok.type == TokenType.DOT) {
+				nextToken; // skip "."
+			} else if (tok.type == TokenType.SEMICOLON) {
+				nextToken; // skip ";"
+				break;
+			} else {
+				context.unrecoverable_error(tok.index,
+					"Expected `;` or `.` after identifier, while got `%s`",
+					context.getTokenString(tok.index));
+			}
+		}
+		return makeDecl!ImportDeclNode(start, currentScopeIndex, ids);
+	}
+
+	void parse_module()
+	{
+		TokenIndex start = tok.index;
+		AstIndex parentPackage = CommonAstNodes.node_root_package;
+		AstIndex conflictingModule;
+		AstIndex conflictingModPack;
+
+		// module declaration
+		if (tok.type == TokenType.MODULE_SYM)
+		{
+			nextToken; // skip "module"
+
+			while (true) {
+				Identifier lastId = expectIdentifier();
+
+				if (tok.type == TokenType.DOT) {
+					nextToken; // skip "."
+					auto parentPackageNode = parentPackage.get!PackageDeclNode(context);
+					parentPackage = parentPackageNode.getOrCreateSubpackage(start, lastId, conflictingModule, context);
+				} else if (tok.type == TokenType.SEMICOLON) {
+					nextToken; // skip ";"
+					currentModule.id = lastId;
+					break;
+				} else {
+					context.unrecoverable_error(tok.index,
+						"Expected `;` or `.` after identifier, while got `%s`",
+						context.getTokenString(tok.index));
+				}
+			}
+
+			currentModule.loc = start;
+		}
+		else
+		{
+			currentModule.loc = context.files[currentModule.moduleIndex.fileIndex].firstTokenIndex;
+		}
+
+		currentModule.parentPackage = parentPackage;
+		auto parentPackageNode = parentPackage.get!PackageDeclNode(context);
+		parentPackageNode.addModule(start, currentModule.id, context.getAstNodeIndex(currentModule), conflictingModPack, context);
+
+		void modConflict(ModuleDeclNode* newMod, ModuleDeclNode* oldMod)
+		{
+			context.error(newMod.loc,
+				"Module `%s` in file %s conflicts with another module `%s` in file %s",
+				ModuleNamePrinter(newMod, context),
+				context.files[newMod.moduleIndex.fileIndex].name,
+				ModuleNamePrinter(oldMod, context),
+				context.files[oldMod.moduleIndex.fileIndex].name, );
+		}
+
+		void modPackConflict(ModuleDeclNode* newMod, PackageDeclNode* oldPack)
+		{
+			context.error(newMod.loc,
+				"Module `%s` in file %s conflicts with package `%s` in files %s",
+				ModuleNamePrinter(newMod, context),
+				context.files[newMod.moduleIndex.fileIndex].name,
+				PackageNamePrinter(context.getAstNodeIndex(oldPack), context),
+				PackageFilesPrinter(oldPack, context));
+		}
+
+		if (conflictingModule.isDefined) {
+			modConflict(currentModule, conflictingModule.get!ModuleDeclNode(context));
+		}
+
+		if (conflictingModPack.isDefined) {
+			AstNode* conflictingNode = conflictingModPack.get_node(context);
+			if (conflictingNode.astType == AstType.decl_module) {
+				modConflict(currentModule, conflictingNode.as!ModuleDeclNode(context));
+				// module foo from file bar.d conflicts with another module foo from file foo.d
+			} else {
+				context.assertf(conflictingNode.astType == AstType.decl_package, "Must be package");
+				modPackConflict(currentModule, conflictingNode.as!PackageDeclNode(context));
+			}
+		}
 	}
 
 	AstIndex parse_hash_assert() /* "#assert(" <condition>, <message> ");"*/
@@ -980,7 +1090,7 @@ struct Parser
 
 		expectAndConsume(TokenType.LPAREN); // (
 
-		Array!AstIndex init_statements;
+		AstNodes init_statements;
 
 		// <init>
 		Identifier keyId = expectIdentifier;
@@ -1186,7 +1296,7 @@ struct Parser
 		pushScope("For", ScopeKind.local, scope_temp);
 		scope(exit) popScope(scope_temp);
 
-		Array!AstIndex init_statements;
+		AstNodes init_statements;
 
 		// <init>
 		while (tok.type != TokenType.SEMICOLON) // check after trailing comma
@@ -1207,7 +1317,7 @@ struct Parser
 		}
 		expectAndConsume(TokenType.SEMICOLON);
 
-		Array!AstIndex increment_statements;
+		AstNodes increment_statements;
 		// <increment>
 		while (tok.type != TokenType.RPAREN) // check after trailing comma
 		{

@@ -31,6 +31,7 @@ enum AstType : ubyte
 	decl_function,
 	decl_import,
 	decl_module,
+	decl_package,
 	decl_static_assert,
 	decl_static_foreach,
 	decl_static_if,
@@ -398,3 +399,4 @@ struct ErrorAstNode
 }
 
 alias AstNodes = Array!AstIndex;
+alias AstNodeMap = HashMap!(Identifier, AstIndex, Identifier.init);

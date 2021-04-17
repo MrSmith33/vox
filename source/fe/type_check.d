@@ -88,6 +88,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case decl_builtin: assert(false);
 		case decl_builtin_attribute: assert(false);
 		case decl_module: type_check_module(cast(ModuleDeclNode*)node, state); break;
+		case decl_package: assert(false);
 		case decl_import: assert(false);
 		case decl_function: type_check_func(cast(FunctionDeclNode*)node, state); break;
 		case decl_var: type_check_var(cast(VariableDeclNode*)node, state); break;

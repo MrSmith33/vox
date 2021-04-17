@@ -11,23 +11,31 @@ struct ModuleIndex
 	uint fileIndex;
 }
 
-///
+/// If `module` declaration is found in the module points to that token
 @(AstType.decl_module)
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module, 0, AstNodeState.name_register_self_done);
 	AstIndex memberScope;
 	/// Linear list of all functions of a module (including nested and methods and externals)
 	/// Order may be different from declaration order, because conditionaly compiled functions are added later
-	Array!AstIndex functions;
+	AstNodes functions;
 	IrModule irModule;
 	IrModule lirModule;
 	LinkIndex objectSymIndex;
 	ModuleIndex moduleIndex;
 	/// module identifier. Used by import declaration.
 	Identifier id;
+	/// Points to PackageDeclNode
+	AstIndex parentPackage = CommonAstNodes.node_root_package;
+
+	bool isTopLevel() { return parentPackage == CommonAstNodes.node_root_package; }
 
 	void addFunction(AstIndex func, CompilationContext* context) {
 		functions.put(context.arrayArena, func);
+	}
+
+	string fileName(CompilationContext* c) {
+		return c.files[moduleIndex.fileIndex].name;
 	}
 
 	FunctionDeclNode* findFunction(string idStr, CompilationContext* context) {
@@ -42,9 +50,24 @@ struct ModuleDeclNode {
 	}
 }
 
+
+struct ModuleNamePrinter {
+	ModuleDeclNode* mod;
+	CompilationContext* c;
+
+	void toString(scope void delegate(const(char)[]) sink) {
+		if (!mod.isTopLevel) {
+			printPackageName(mod.parentPackage, sink, c);
+			sink(".");
+		}
+		sink(c.idString(mod.id));
+	}
+}
+
 void print_module(ModuleDeclNode* node, ref AstPrintState state)
 {
-	state.print("MODULE ", state.context.files[node.moduleIndex.fileIndex].name);
+	state.print("MODULE ", state.context.files[node.moduleIndex.fileIndex].name,
+		" ", ModuleNamePrinter(node, state.context));
 	print_ast(node.declarations, state);
 }
 

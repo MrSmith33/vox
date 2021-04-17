@@ -20,7 +20,7 @@ struct EnumDeclaration
 		isAnonymous = AstFlags.userFlag
 	}
 
-	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, Array!AstIndex members, AstIndex memberType, Identifier id)
+	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, AstNodes members, AstIndex memberType, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
@@ -33,7 +33,7 @@ struct EnumDeclaration
 	}
 
 	/// Anonymous
-	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, Array!AstIndex members, AstIndex memberType)
+	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, AstNodes members, AstIndex memberType)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;

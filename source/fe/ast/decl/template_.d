@@ -330,6 +330,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case decl_builtin: break;
 		case decl_builtin_attribute: break;
 		case decl_module: assert(false);
+		case decl_package: assert(false);
 		case decl_import: post_clone_import(cast(ImportDeclNode*)node, state); break;
 		case decl_function: post_clone_func(cast(FunctionDeclNode*)node, state); break;
 		case decl_var: post_clone_var(cast(VariableDeclNode*)node, state); break;

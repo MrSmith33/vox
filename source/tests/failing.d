@@ -468,3 +468,133 @@ immutable fail43 = q{--- fail43
 fail43(4, 13): Error: Argument 1, must have type e9, not u8
 };
 
+// packages
+@TestInfo()
+immutable fail44 = q{--- fail44/mod1.vx
+	module fail44.mod1;
+	module fail44.mod2;
+--- <error>
+mod1(2, 2): Error: Module declaration can only occur as first declaration of the module
+};
+
+@TestInfo()
+immutable fail45 = q{--- fail45/mod1.vx
+	module mod1;
+--- fail45/mod2.vx
+	module mod1;
+--- <error>
+mod1(1, 2): Error: Module `mod1` in file fail45/mod2.vx conflicts with another module `mod1` in file fail45/mod1.vx
+};
+
+@TestInfo()
+immutable fail46 = q{--- fail46/mod1.vx
+	module fail46.mod1;
+--- fail46/mod2.vx
+	module fail46.mod1;
+--- <error>
+mod1(1, 2): Error: Module `fail46.mod1` in file fail46/mod2.vx conflicts with another module `fail46.mod1` in file fail46/mod1.vx
+};
+
+@TestInfo()
+immutable fail47 = q{--- fail47/mod1.vx
+	module fail47.mod1;
+--- fail47/mod2.vx
+	module fail47;
+--- <error>
+fail47(1, 2): Error: Module `fail47` in file fail47/mod2.vx conflicts with package `fail47` in files fail47/mod1.vx
+};
+
+@TestInfo()
+immutable fail48 = q{--- fail48/mod1.vx
+	module fail48;
+--- fail48/mod2.vx
+	module fail48.mod2;
+--- <error>
+mod2(1, 2): Error: Module `fail48.mod2` in file fail48/mod2.vx conflicts with another module `fail48` in file fail48/mod1.vx
+};
+
+@TestInfo()
+immutable fail49 = q{--- fail49/mod1.vx
+	module fail49.sub.mod1;
+--- fail49/mod2.vx
+	module fail49.sub;
+--- <error>
+sub(1, 2): Error: Module `fail49.sub` in file fail49/mod2.vx conflicts with package `fail49.sub` in files fail49/mod1.vx
+};
+
+@TestInfo()
+immutable fail50 = q{--- fail50/mod1.vx
+	module fail50.sub;
+--- fail50/mod2.vx
+	module fail50.sub.mod2;
+--- <error>
+mod2(1, 2): Error: Module `fail50.sub.mod2` in file fail50/mod2.vx conflicts with another module `fail50.sub` in file fail50/mod1.vx
+};
+
+@TestInfo()
+immutable fail51 = q{--- fail51/mod1.vx
+	module fail51.sub.mod1;
+--- fail51/mod2.vx
+	module fail51;
+--- <error>
+fail51(1, 2): Error: Module `fail51` in file fail51/mod2.vx conflicts with package `fail51` in files fail51/mod1.vx
+};
+
+@TestInfo()
+immutable fail52 = q{--- fail52/mod1.vx
+	module fail52;
+--- fail52/mod2.vx
+	module fail52.sub.mod2;
+--- <error>
+mod2(1, 2): Error: Module `fail52.sub.mod2` in file fail52/mod2.vx conflicts with another module `fail52` in file fail52/mod1.vx
+};
+
+@TestInfo()
+immutable fail53 = q{--- fail53/mod1.vx
+	module fail53.sub.mod1;
+--- fail53/mod2.vx
+	module fail53.sub.mod2;
+--- fail53/mod3.vx
+	module fail53.sub.mod3;
+--- fail53/mod4.vx
+	module fail53;
+--- <error>
+fail53(1, 2): Error: Module `fail53` in file fail53/mod4.vx conflicts with package `fail53` in files fail53/mod1.vx, fail53/mod2.vx and 1 more
+};
+
+@TestInfo()
+immutable fail54 = q{--- fail54/mod1.vx
+	module fail54.sub.mod1;
+--- fail54/mod2.vx
+	module fail54.sub.mod2;
+--- fail54/mod3.vx
+	module fail54.sub.mod3;
+--- fail54/mod4.vx
+	module fail54.sub.mod4;
+--- fail54/mod5.vx
+	module fail54;
+--- <error>
+fail54(1, 2): Error: Module `fail54` in file fail54/mod5.vx conflicts with package `fail54` in files fail54/mod4.vx, fail54/mod1.vx and 2 more
+};
+
+
+// package imports
+@TestInfo()
+immutable fail55 = q{--- fail55/mod1.vx
+	module fail55.mod1;
+--- fail55/mod2.vx
+	module fail55.mod2;
+	import fail55;
+--- <error>
+mod2(2, 2): Error: Cannot import package `fail55`
+};
+
+@TestInfo()
+immutable fail56 = q{--- fail56/mod1.vx
+	module fail56.mod1;
+--- fail56/mod2.vx
+	module fail56.mod2;
+	import fail56.mod1.mod1;
+--- <error>
+mod2(2, 2): Error: Cannot find module `fail56.mod1.mod1`. But there is module with name `fail56.mod1`
+};

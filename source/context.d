@@ -163,6 +163,9 @@ struct CompilationContext
 	/// If true, every pass that generates/changes IR, performs validation
 	bool validateIr = false;
 	bool runTesters = true;
+	/// More details in errors
+	bool verboseErrors = false;
+	bool conciseErrors() { return !verboseErrors; }
 
 	bool printTodos = false;
 	/// Print source before lexing
@@ -753,6 +756,10 @@ struct CompilationContext
 		AstIndex node_error = appendAst!ErrorAstNode();
 		assertf(node_error == CommonAstNodes.node_error, "AstIndex mismatch for node_error %s != %s", node_error, cast(AstIndex)CommonAstNodes.node_error);
 
+		// CommonAstNodes.node_root_package
+		AstIndex node_root_package = appendAst!PackageDeclNode();
+		assertf(node_root_package == CommonAstNodes.node_root_package, "AstIndex mismatch for node_root_package %s != %s", node_root_package, cast(AstIndex)CommonAstNodes.node_root_package);
+
 		// add basic types
 		void makeBasic(AstIndex reqIndex, uint size, ubyte alignPow, ulong minValue, ulong maxValue, BasicType basicType, int typeFlags = 0)
 		{
@@ -882,6 +889,9 @@ struct CompilationContext
 
 		externalSymbols.clear();
 
+		auto rootPackage = CommonAstNodes.node_root_package.get!PackageDeclNode(&this);
+		*rootPackage = PackageDeclNode.init;
+
 		// needed because all arrays are cleared
 		idMap.regCommonIds(&this);
 
@@ -897,12 +907,13 @@ enum CommonAstNodes : AstIndex
 
 	// error. Nodes can point to error when name resolution failed
 	node_error               = AstIndex(1),
+	node_root_package        = AstIndex(3),
 
-	first_type               = AstIndex(3),
+	first_type               = AstIndex(13),
 	// basic type nodes
 	// The order is the same as in TokenType enum
 	// The order is the same as in BasicType enum
-	type_error               = AstIndex(first_type.storageIndex +   0*NumBasicTypeNodeSlots),
+	type_error               = AstIndex(first_type.storageIndex +  0*NumBasicTypeNodeSlots),
 	type_noreturn            = AstIndex(first_type.storageIndex +  1*NumBasicTypeNodeSlots),
 	type_void                = AstIndex(first_type.storageIndex +  2*NumBasicTypeNodeSlots),
 	type_bool                = AstIndex(first_type.storageIndex +  3*NumBasicTypeNodeSlots),

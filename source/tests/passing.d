@@ -4140,3 +4140,34 @@ void tester183(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(uint, uint, uint)("run3")(1, 2) == 3);
 	assert(ctx.getFunctionPtr!(uint, uint)("run4")(1) == ~1);
 }
+
+
+// packages
+@TestInfo()
+immutable test184 = q{--- test184/mod1.vx
+	module test184.mod1;
+--- test184/mod2.vx
+	module test184.mod2;
+};
+
+
+@TestInfo()
+immutable test185 = q{--- test185/mod1.vx
+	module test185.mod1;
+--- test185/mod2.vx
+	module mod2;
+};
+
+
+@TestInfo(&tester186)
+immutable test186 = q{--- test186/mod1.vx
+	module test186.mod1;
+	i32 test() { return 42; }
+--- test186/mod2.vx
+	module test186.mod2;
+	import test186.mod1;
+	i32 run() { return test(); }
+};
+void tester186(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(uint)("run")() == 42);
+}
