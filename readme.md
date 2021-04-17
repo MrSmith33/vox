@@ -22,6 +22,7 @@
 - Conditional compilation
 - Templates, Variadic templates, and functions
 - C interoperability
+- Modules / Packages
 
 ## Differences from the D language
 

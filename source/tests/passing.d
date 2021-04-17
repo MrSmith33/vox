@@ -4171,3 +4171,10 @@ immutable test186 = q{--- test186/mod1.vx
 void tester186(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(uint)("run")() == 42);
 }
+
+@TestInfo()
+immutable test187 = q{--- test187
+	// lexer bug with leading underscore
+	i32 _import;
+	i32 _module;
+};

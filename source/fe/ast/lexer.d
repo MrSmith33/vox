@@ -405,7 +405,7 @@ struct Lexer
 				case '\\': nextChar; return TT.BACKSLASH;
 				case ']' : nextChar; return TT.RBRACKET;
 				case '^' : nextChar; return lex_multi_equal2(TT.XOR, TT.XOR_EQUAL);
-				case '_' : nextChar; return lex_LETTER();
+				case '_' : nextChar; consumeId(); return TT.IDENTIFIER;
 				case 'a' : ..case 'z': return lex_LETTER();
 				case '{' : nextChar; return TT.LCURLY;
 				case '|' : nextChar; return lex_multi_equal2_3('|', TT.OR, TT.OR_EQUAL, TT.OR_OR);
