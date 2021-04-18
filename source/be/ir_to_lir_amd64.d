@@ -155,7 +155,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				bool isBigConstant = rvalue.isConstant && context.constants.get(rvalue).payloadSize(rvalue) == IrArgSize.size64;
 
 				/// Cannot obtain address and store it in another address in one step
-				if (rvalue.isGlobal || rvalue.isStackSlot || isBigConstant)
+				if (rvalue.isGlobal || rvalue.isStackSlot || isBigConstant || rvalue.isFunction)
 				{
 					// copy to temp register
 					ExtraInstrArgs extra = { addUsers : false, type : srcType };

@@ -4205,3 +4205,20 @@ immutable test188 = q{--- test188
 	}
 };
 
+
+@TestInfo(&tester189)
+immutable test189 = q{--- test189
+	// Call function pointer in member variable
+	i32 get42(){ return 42; }
+	struct DispatchDevice {
+		i32 DestroyDevice() { return vkDestroyDevice(); }
+		i32 function() vkDestroyDevice = &get42;
+	}
+	i32 run() {
+		DispatchDevice dev;
+		return dev.DestroyDevice();
+	}
+};
+void tester189(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("run")() == 42);
+}

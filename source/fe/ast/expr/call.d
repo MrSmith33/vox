@@ -77,21 +77,33 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			require_type_check(callee, state);
 			return type_check_constructor_call(node, callee.get!StructDeclNode(c), state);
 		case AstType.expr_member:
-			MemberExprNode* member = callee.get!MemberExprNode(c);
+			MemberExprNode* memberNode = callee.get!MemberExprNode(c);
 			// Method call
-			LookupResult res = lookupMember(callee, member, state);
+			LookupResult res = lookupMember(callee, memberNode, state);
 			if (res == LookupResult.success) {
-				node.callee = member.member(c);
-				auto signature = node.callee.get_type(c).as_func_sig;
-				lowerThisArgument(signature, member.aggregate, member.loc, c);
-				node.args.putFront(c.arrayArena, member.aggregate);
-				return type_check_func_call(node, signature, member.memberId(c), state);
+				AstIndex memberIndex = memberNode.member(c);
+				auto calleeType = memberIndex.get_type(c);
+				if (calleeType.isPointer)
+				{
+					TypeNode* base = calleeType.as_ptr.base.get_type(c);
+					if (base.isFuncSignature)
+					{
+						auto signature = base.as_func_sig;
+						return type_check_func_call(node, signature, memberNode.memberId(c), state);
+					}
+				}
+				node.callee = memberIndex;
+				auto signature = calleeType.as_func_sig;
+				assert(signature);
+				lowerThisArgument(signature, memberNode.aggregate, memberNode.loc, c);
+				node.args.putFront(c.arrayArena, memberNode.aggregate);
+				return type_check_func_call(node, signature, memberNode.memberId(c), state);
 			}
 			// UFCS call
-			Identifier calleeName = member.memberId(c);
-			LookupResult ufcsRes = tryUFCSCall(callIndex, member, state);
+			Identifier calleeName = memberNode.memberId(c);
+			LookupResult ufcsRes = tryUFCSCall(callIndex, memberNode, state);
 			if (ufcsRes == LookupResult.failure) {
-				AstIndex objType = member.aggregate.get_node_type(c);
+				AstIndex objType = memberNode.aggregate.get_node_type(c);
 				node.type = CommonAstNodes.type_error;
 				c.error(node.loc, "`%s` has no member `%s`", objType.printer(c), c.idString(calleeName));
 				return;
@@ -437,8 +449,22 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			if (!varType.isPointer) goto default;
 			TypeNode* base = varType.as_ptr.base.get_type(c);
 			if (!base.isFuncSignature) goto default;
+
 			IrIndex irIndex = getRvalue(gen, node.loc, currentBlock, var.irValue);
 			return visitCall(gen, c.getAstNodeIndex(base), irIndex, currentBlock, nextStmt, node);
+		case AstType.expr_member:
+			// Can probably fold other cases into this one
+			TypeNode* exprType = callee.get_expr_type(c).get_type(c);
+			if (!exprType.isPointer) goto default;
+			TypeNode* base = exprType.as_ptr.base.get_type(c);
+			if (!base.isFuncSignature) goto default;
+
+			IrLabel afterCallee = IrLabel(currentBlock);
+			ExprValue calleeLval = ir_gen_expr(gen, callee, currentBlock, afterCallee);
+			currentBlock = afterCallee.blockIndex;
+			IrIndex calleeRval = getRvalue(gen, node.loc, currentBlock, calleeLval);
+
+			return visitCall(gen, c.getAstNodeIndex(base), calleeRval, currentBlock, nextStmt, node);
 		default:
 			c.internal_error(node.loc, "Cannot call %s", callee.get_node_type(c).get_type(c).printer(c));
 			assert(false);
@@ -451,7 +477,8 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 	auto signature = signatureIndex.get!FunctionSignatureNode(c);
 	uint numArgs = n.args.length;
 	uint numParams = signature.parameters.length;
-	c.assertf(numArgs+1 <= IrInstrHeader.MAX_ARGS,
+	c.assertf(callee.isDefined, n.loc, "Undefined callee");
+	c.assertf(numArgs+1 <= IrInstrHeader.MAX_ARGS, n.loc,
 		"Cannot generate a call with %s arguments, max args is %s",
 		numArgs, IrInstrHeader.MAX_ARGS-1);
 
