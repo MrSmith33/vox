@@ -198,8 +198,8 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 					assert(false);
 			}
 		default:
-			c.internal_error(node.loc, "%s not implemented in CTFE", node.op);
-			assert(false);
+			IrIndex childVal = eval_static_expr(node.child, c);
+			return calcUnOp(node.op, childVal, node.type.typeArgSize(c), c);
 	}
 }
 

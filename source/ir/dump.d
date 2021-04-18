@@ -539,7 +539,7 @@ struct IrTypeDump
 	}
 }
 
-void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext ctx, IrIndex type)
+void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext ctx, IrIndex type, bool recurse = true)
 {
 	if (type.isUndefined) {
 		sink("<null>");
@@ -559,7 +559,7 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 			}
 			break;
 		case pointer:
-			dumpIrType(sink, ctx, ctx.types.get!IrTypePointer(type).baseType);
+			dumpIrType(sink, ctx, ctx.types.get!IrTypePointer(type).baseType, false);
 			sink("*");
 			break;
 		case array:
@@ -569,6 +569,10 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 			sink("]");
 			break;
 		case struct_t:
+			if (!recurse) {
+				sink("{...}");
+				break;
+			}
 			IrTypeStruct* struct_t = &ctx.types.get!IrTypeStruct(type);
 			sink("{");
 			foreach(i, IrTypeStructMember member; struct_t.members)
@@ -577,7 +581,7 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 					if (struct_t.isUnion) sink(" | ");
 					else sink(", ");
 				}
-				dumpIrType(sink, ctx, member.type);
+				dumpIrType(sink, ctx, member.type, false);
 			}
 			sink("}");
 			break;

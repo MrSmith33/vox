@@ -274,3 +274,18 @@ enum UnOp : ubyte {
 	postDecrement, // x--
 	staticArrayToSlice,
 }
+
+IrIndex calcUnOp(UnOp op, IrIndex child, IrArgSize argSize, CompilationContext* c)
+{
+	IrConstant childCon = c.constants.get(child);
+
+	switch(op)
+	{
+		case UnOp.bitwiseNot:
+			return c.constants.add(~childCon.i64, cast(IsSigned)child.isSignedConstant, argSize);
+
+		default:
+			c.internal_error("Opcode `%s` is not implemented", op);
+			assert(false);
+	}
+}

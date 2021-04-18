@@ -243,6 +243,7 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 	  zeroinit however does have a type.
 - Validate all instructions
 + use actual arrays for users instead of linked lists
+- Figure out recursive type printing (Either use named types or use hashset to mark visited types)
 
 
 [Optimizations]

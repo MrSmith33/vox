@@ -104,11 +104,16 @@ void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-IrIndex gen_ir_type_enum(EnumDeclaration* t, CompilationContext* context)
+IrIndex gen_ir_type_enum(EnumDeclaration* node, CompilationContext* context)
 {
-	return gen_ir_type(t.memberType, context);
+	return gen_ir_type(node.memberType, context);
 }
 
+IrIndex gen_default_value_enum(EnumDeclaration* node, CompilationContext* c)
+{
+	c.assertf(node.declarations.length > 0, node.loc, "Enum %s has no members", c.idString(node.id));
+	return node.declarations[0].get!EnumMemberDecl(c).getInitVal(c);
+}
 
 @(AstType.decl_enum_member)
 struct EnumMemberDecl

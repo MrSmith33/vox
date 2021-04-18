@@ -4230,3 +4230,35 @@ immutable test190 = q{--- test190
 	enum VK_NULL_HANDLE = null;
 	void* run() { return VK_NULL_HANDLE; }
 };
+
+
+@TestInfo()
+immutable test191 = q{--- test191
+	// Unary op eval
+	enum VK_ATTACHMENT_UNUSED = (~0);
+};
+
+
+@TestInfo(&tester192)
+immutable test192 = q{--- test192
+	// Default value of enum
+	enum VkStructureType {
+		VK_STRUCTURE_TYPE_APPLICATION_INFO     = 0,
+		VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 1,
+	}
+	struct VkBaseInStructure {
+		VkStructureType     sType; // enum default value is needed
+		VkBaseInStructure*  pNext; // recursive type
+	}
+	VkStructureType run() {
+		VkBaseInStructure s;
+		return s.sType;
+	}
+};
+void tester192(ref TestContext ctx) {
+	enum VkStructureType {
+		VK_STRUCTURE_TYPE_APPLICATION_INFO     = 0,
+		VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 1,
+	}
+	assert(ctx.getFunctionPtr!(VkStructureType)("run")() == VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO);
+}
