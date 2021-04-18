@@ -197,6 +197,10 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 			}
 			goto default;
 
+		case AstType.decl_enum_member:
+			require_type_check(node._entity, state);
+			goto default;
+
 		default:
 			node.state = AstNodeState.type_check;
 			c.assertf(node.isSymResolved, node.loc, "not resolved");

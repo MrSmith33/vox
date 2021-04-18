@@ -4222,3 +4222,11 @@ immutable test189 = q{--- test189
 void tester189(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int)("run")() == 42);
 }
+
+
+@TestInfo()
+immutable test190 = q{--- test190
+	// Null enum initializer
+	enum VK_NULL_HANDLE = null;
+	void* run() { return VK_NULL_HANDLE; }
+};

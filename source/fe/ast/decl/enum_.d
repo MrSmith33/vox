@@ -148,14 +148,14 @@ void name_register_self_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, re
 
 void name_register_nested_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
-	require_name_register(node.type, state);
+	if (node.type) require_name_register(node.type, state);
 	if (node.initializer) require_name_register(node.initializer, state);
 	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_enum_member(EnumMemberDecl* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
-	require_name_resolve(node.type, state);
+	if (node.type) require_name_resolve(node.type, state);
 	if (node.initializer) require_name_resolve(node.initializer, state);
 	node.state = AstNodeState.name_resolve_done;
 }
@@ -163,11 +163,14 @@ void name_resolve_enum_member(EnumMemberDecl* node, ref NameResolveState state) 
 void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	require_type_check(node.type, state);
-
 	if (node.initializer) {
-		require_type_check_expr(node.type, node.initializer, state);
-		autoconvTo(node.initializer, node.type, state.context);
+		if (node.type) {
+			require_type_check_expr(node.type, node.initializer, state);
+			autoconvTo(node.initializer, node.type, state.context);
+		} else {
+			require_type_check(node.initializer, state);
+			node.type = get_expr_type(node.initializer, state.context);
+		}
 		node.initValue = eval_static_expr(node.initializer, state.context);
 	}
 	node.state = AstNodeState.type_check_done;

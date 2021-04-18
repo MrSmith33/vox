@@ -830,7 +830,8 @@ struct Parser
 				nextToken; // skip "="
 				Identifier enumId = makeIdentifier(id);
 				AstIndex value = expr(PreferType.no);
-				auto member = make!EnumMemberDecl(start, currentScopeIndex, intType, value, enumId);
+				// type will be taken from initializer
+				auto member = make!EnumMemberDecl(start, currentScopeIndex, AstIndex.init, value, enumId);
 
 				expectAndConsume(TokenType.SEMICOLON); // ";"
 
