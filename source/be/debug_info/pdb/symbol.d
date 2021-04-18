@@ -412,7 +412,7 @@ align(1) struct CompileSym {
 		ubyte,  "ambdata",     3, // ambient data model
 		ubyte,  "ambcode",     3, // ambient code model
 		bool,   "mode32",      1, // true if compiled 32 bit mode
-		ubyte,  "pad",         12, // reserved
+		uint,   "pad",        12, // reserved
 	));
 	// next follows compiler version string
 }
