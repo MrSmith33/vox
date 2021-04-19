@@ -24,7 +24,7 @@ struct EnumDeclaration
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
-		this.flags = AstFlags.isType | AstFlags.isScope | AstFlags.isDeclaration;
+		this.flags = AstFlags.isType | AstFlags.isDeclaration;
 		this.parentScope = parentScope;
 		this.memberScope = memberScope;
 		this.declarations = members;
@@ -37,7 +37,7 @@ struct EnumDeclaration
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
-		this.flags = AstFlags.isScope | AstFlags.isDeclaration | Flags.isAnonymous;
+		this.flags = AstFlags.isDeclaration | Flags.isAnonymous;
 		this.parentScope = parentScope;
 		this.memberScope = memberScope;
 		this.declarations = members;

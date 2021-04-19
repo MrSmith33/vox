@@ -65,6 +65,7 @@ void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 		case decl_static_assert: print_static_assert(cast(StaticAssertDeclNode*)node, state); break;
 		case decl_static_foreach: print_static_foreach(cast(StaticForeachDeclNode*)node, state); break;
 		case decl_static_if: print_static_if(cast(StaticIfDeclNode*)node, state); break;
+		case decl_static_version: print_static_version(cast(StaticVersionDeclNode*)node, state); break;
 		case decl_struct: print_struct(cast(StructDeclNode*)node, state); break;
 		case decl_template: print_template(cast(TemplateDeclNode*)node, state); break;
 		case decl_template_param: print_template_param(cast(TemplateParamDeclNode*)node, state); break;

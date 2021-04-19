@@ -9,7 +9,7 @@ import all;
 @(AstType.decl_static_foreach)
 struct StaticForeachDeclNode
 {
-	mixin AstNodeData!(AstType.decl_static_foreach, AstFlags.isDeclaration);
+	mixin ConditionalDeclNodeData!(AstType.decl_static_foreach);
 	AstIndex parentScope;
 	Identifier keyId; // optional
 	Identifier valueId;
@@ -22,9 +22,6 @@ struct StaticForeachDeclNode
 	AstIndex body_start;
 	/// Points to the next index after body data
 	AstIndex after_body;
-	AstIndex next; // Next conditional declaration. Used during expansion
-	AstIndex prev; // Prev conditional declaration. Used during expansion
-	uint arrayIndex; // Index into AstNodes of the parent node, where items are to be inserted
 }
 
 void print_static_foreach(StaticForeachDeclNode* node, ref AstPrintState state)

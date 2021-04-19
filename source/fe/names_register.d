@@ -60,29 +60,8 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 	while (condDecl)
 	{
 		AstNode* decl = condDecl.get_node(c);
-		if (decl.astType == AstType.decl_static_if)
+		if(decl.astType == AstType.decl_static_foreach)
 		{
-			auto staticIfNode = decl.as!StaticIfDeclNode(c);
-			require_name_register(staticIfNode.condition, state);
-			IrIndex val = eval_static_expr(staticIfNode.condition, c);
-
-			AstNodes itemsToInsert = staticIfNode.thenItems;
-			if (!c.constants.get(val).i64) itemsToInsert = staticIfNode.elseItems;
-
-			uint insertPoint = cast(uint)(staticIfNode.arrayIndex + sizeDelta);
-			items.replaceAt(c.arrayArena, insertPoint, 1, itemsToInsert);
-
-			// we replace #if with its children
-			//   #if is removed from the list (-1)
-			//   children are inserted (itemsToInsert.length)
-			sizeDelta += itemsToInsert.length - 1;
-			sizeDelta += require_name_register_self_sub_array(items, insertPoint, insertPoint+itemsToInsert.length, state);
-
-			condDecl = staticIfNode.next;
-		}
-		else
-		{
-			assert(decl.astType == AstType.decl_static_foreach);
 			auto staticForeachNode = decl.as!StaticForeachDeclNode(c);
 			require_name_register(staticForeachNode.iterableExpr, state);
 			require_name_resolve(staticForeachNode.iterableExpr, c);
@@ -142,6 +121,49 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 
 			condDecl = staticForeachNode.next;
 		}
+		else
+		{
+			auto condNode = decl.as!ConditionalDeclNode(c);
+			AstNodes itemsToInsert;
+
+			if (decl.astType == AstType.decl_static_if)
+			{
+				auto staticIfNode = condNode.as!StaticIfDeclNode(c);
+				require_name_register(staticIfNode.condition, state);
+				IrIndex val = eval_static_expr(staticIfNode.condition, c);
+				itemsToInsert = c.constants.get(val).i64 ? staticIfNode.thenItems : staticIfNode.elseItems;
+			}
+			else
+			{
+				assert(decl.astType == AstType.decl_static_version);
+				auto versionNode = condNode.as!StaticVersionDeclNode(c);
+				bool isEnabled = false;
+
+				// Is built-in version identifier
+				if (versionNode.versionId.index >= commonId_version_id_first && versionNode.versionId.index <= commonId_version_id_last)
+				{
+					uint versionIndex = versionNode.versionId.index - commonId_version_id_first;
+					isEnabled = (c.enabledVersionIdentifiers & (1 << versionIndex)) != 0;
+				}
+				else
+				{
+					c.error(decl.loc, "Only built-in versions are supported, not %s", c.idString(versionNode.versionId));
+				}
+
+				itemsToInsert = isEnabled ? versionNode.thenItems : versionNode.elseItems;
+			}
+
+			uint insertPoint = cast(uint)(condNode.arrayIndex + sizeDelta);
+			items.replaceAt(c.arrayArena, insertPoint, 1, itemsToInsert);
+
+			// we replace #if with its children
+			//   #if is removed from the list (-1)
+			//   children are inserted (itemsToInsert.length)
+			sizeDelta += itemsToInsert.length - 1;
+			sizeDelta += require_name_register_self_sub_array(items, insertPoint, insertPoint+itemsToInsert.length, state);
+
+			condDecl = condNode.next;
+		}
 	}
 
 	return sizeDelta;
@@ -179,24 +201,14 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 		case decl_struct: name_register_self_struct(nodeIndex, cast(StructDeclNode*)node, state); break;
 		case decl_enum: name_register_self_enum(nodeIndex, cast(EnumDeclaration*)node, state); break;
 		case decl_enum_member: name_register_self_enum_member(nodeIndex, cast(EnumMemberDecl*)node, state); break;
-		case decl_static_if:
-			auto staticIf = node.as!StaticIfDeclNode(c);
+		case decl_static_if, decl_static_version, decl_static_foreach:
+			auto condDecl = node.as!ConditionalDeclNode(c);
 			if (state.lastCondDecl)
-				state.lastCondDecl.get!StaticIfDeclNode(c).next = nodeIndex;
+				state.lastCondDecl.get!ConditionalDeclNode(c).next = nodeIndex;
 			else
 				state.firstCondDecl = nodeIndex;
-			staticIf.prev = state.lastCondDecl;
-			staticIf.arrayIndex = arrayIndex;
-			state.lastCondDecl = nodeIndex;
-			break;
-		case decl_static_foreach:
-			auto staticForeach = node.as!StaticForeachDeclNode(c);
-			if (state.lastCondDecl)
-				state.lastCondDecl.get!StaticForeachDeclNode(c).next = nodeIndex;
-			else
-				state.firstCondDecl = nodeIndex;
-			staticForeach.prev = state.lastCondDecl;
-			staticForeach.arrayIndex = arrayIndex;
+			condDecl.prev = state.lastCondDecl;
+			condDecl.arrayIndex = arrayIndex;
 			state.lastCondDecl = nodeIndex;
 			break;
 		case decl_template: name_register_self_template(nodeIndex, cast(TemplateDeclNode*)node, state); break;
@@ -243,6 +255,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case decl_enum_member: name_register_nested_enum_member(nodeIndex, cast(EnumMemberDecl*)node, state); break;
 		case decl_static_assert: name_register_nested_static_assert(cast(StaticAssertDeclNode*)node, state); break;
 		case decl_static_if: assert(false);
+		case decl_static_version: assert(false);
 
 		case stmt_block: name_register_nested_block(cast(BlockStmtNode*)node, state); break;
 		case stmt_if: name_register_nested_if(cast(IfStmtNode*)node, state); break;

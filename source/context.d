@@ -150,6 +150,9 @@ struct CompilationContext
 	///
 	bool useFramePointer = false;
 
+	// Bitset of built-in version identifiers that are enabled
+	uint enabledVersionIdentifiers;
+
 	/// True if current/last pass had errors
 	bool hasErrors;
 	/// Text output for errors
@@ -897,6 +900,7 @@ struct CompilationContext
 
 		addSections(&this);
 		createBuiltinFunctions(&this);
+		setVersionIds(&this);
 	}
 }
 
@@ -1100,6 +1104,14 @@ void addSections(CompilationContext* c)
 		buffer : &c.codeBuffer,
 	};
 	c.builtinSections[ObjectSectionType.code] = c.objSymTab.addSection(textSection);
+}
+
+void setVersionIds(CompilationContext* c)
+{
+	final switch(c.targetOs) {
+		case TargetOs.windows: c.enabledVersionIdentifiers |= 1 << VersionId.id_Windows; break;
+		case TargetOs.linux: c.enabledVersionIdentifiers |= 1 << VersionId.id_Linux; break;
+	}
 }
 
 struct Slice(T) {

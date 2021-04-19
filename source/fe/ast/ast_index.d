@@ -45,7 +45,6 @@ struct AstIndex
 	ref ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
 
 	bool isDeclaration(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isDeclaration); }
-	bool isScope(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isScope); }
 	bool isExpression(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isExpression); }
 	bool isStatement(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isStatement); }
 	bool isType(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isType); }

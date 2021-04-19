@@ -74,6 +74,7 @@ enum TokenType : ubyte {
 
 
 	@("#if")      HASH_IF,
+	@("#version") HASH_VERSION,
 	@("#inline")  HASH_INLINE,
 	@("#assert")  HASH_ASSERT,
 	@("#foreach") HASH_FOREACH,
@@ -652,6 +653,8 @@ struct Lexer
 				if (match("assert")) { return TT.HASH_ASSERT; } break;
 			case 'f':
 				if (match("foreach")) { return TT.HASH_FOREACH; } break;
+			case 'v':
+				if (match("version")) { return TT.HASH_VERSION; } break;
 			default: break;
 		}
 		lexError(TT.INVALID, "Invalid # identifier");

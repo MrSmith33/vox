@@ -4262,3 +4262,31 @@ void tester192(ref TestContext ctx) {
 	}
 	assert(ctx.getFunctionPtr!(VkStructureType)("run")() == VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO);
 }
+
+/*@TestInfo()
+immutable test193 = q{--- test193
+	// circular dependency on enum type
+	VkStructureType sType = VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO;
+	enum VkStructureType {
+		VK_STRUCTURE_TYPE_APPLICATION_INFO = 0,
+	}
+};
+*/
+
+
+@TestInfo(&tester194)
+immutable test194 = q{--- test194
+	// #version
+	#version(Windows) {
+		i32 run() { return 1; }
+	}
+	else #version(Linux) {
+		i32 run() { return 2; }
+	}
+	else #assert(false, "Unsupported OS");
+};
+void tester194(ref TestContext ctx) {
+	     version(Windows) int result = 1;
+	else version(linux)   int result = 2;
+	assert(ctx.getFunctionPtr!int("run")() == result);
+}

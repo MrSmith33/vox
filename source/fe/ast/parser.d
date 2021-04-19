@@ -319,7 +319,7 @@ struct Parser
 				context.error(tok.index, "Module declaration can only occur as first declaration of the module");
 				skipPast(TokenType.SEMICOLON);
 				return context.getAstNodeIndex(currentModule);
-			case HASH_IF:
+			case HASH_IF, HASH_VERSION:
 				return parse_hash_if();
 			case HASH_ASSERT:
 				return parse_hash_assert();
@@ -1063,18 +1063,12 @@ struct Parser
 		return items;
 	}
 
-	AstIndex parse_hash_if() /* "#if" <paren_expr> <statement/decl> */
+	void parseStaticIfThenElse(out AstNodes thenStatements, out AstNodes elseStatements)
 	{
-		TokenIndex start = tok.index;
-		nextToken; // skip #if
-		AstIndex condition = paren_expr();
-		AstNodes thenStatements;
-		AstNodes elseStatements;
-
 		if (declarationOwner.isDeclaration(context))
 		{
 			thenStatements = parseItems!statement();
-			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement/decl> */
+			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
 				nextToken; // skip else
 				elseStatements = parseItems!statement();
 			}
@@ -1082,12 +1076,36 @@ struct Parser
 		else
 		{
 			thenStatements = parseItems!parse_declaration();
-			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement/decl> */
+			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <decl> */
 				nextToken; // skip else
 				elseStatements = parseItems!parse_declaration();
 			}
 		}
-		return make!StaticIfDeclNode(start, condition, thenStatements, elseStatements);
+	}
+
+	AstIndex parse_hash_if() /* "#if/#version" <paren_expr> <statement/decl> */
+	{
+		TokenIndex start = tok.index;
+		if (tok.type == TokenType.HASH_IF)
+		{
+			nextToken; // skip #if
+			AstIndex condition = paren_expr();
+			AstNodes thenStatements;
+			AstNodes elseStatements;
+			parseStaticIfThenElse(thenStatements, elseStatements);
+			return make!StaticIfDeclNode(start, AstIndex.init, AstIndex.init, 0, condition, thenStatements, elseStatements);
+		}
+		else
+		{
+			nextToken; // skip #version
+			expectAndConsume(TokenType.LPAREN, "#version");
+			Identifier versionId = expectIdentifier("#version(");
+			expectAndConsume(TokenType.RPAREN, "#version(id");
+			AstNodes thenStatements;
+			AstNodes elseStatements;
+			parseStaticIfThenElse(thenStatements, elseStatements);
+			return make!StaticVersionDeclNode(start, AstIndex.init, AstIndex.init, 0, versionId, thenStatements, elseStatements);
+		}
 	}
 
 	AstIndex parse_hash_foreach() /* "#foreach" "(" [<index_id>], <val_id> ";" <ct_expr> ")" <statement> */
@@ -1128,7 +1146,7 @@ struct Parser
 		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
 		AstNodes body = statement_as_array;
 		AstIndex after_body = AstIndex(context.astBuffer.uintLength);
-		return make!StaticForeachDeclNode(start, currentScopeIndex, keyId, valId, ct_expr, body, body_start, after_body);
+		return make!StaticForeachDeclNode(start, AstIndex.init, AstIndex.init, 0, currentScopeIndex, keyId, valId, ct_expr, body, body_start, after_body);
 	}
 
 	AstNodes parse_enum_body(AstIndex type) { // { id [= val], ... }
@@ -1216,7 +1234,7 @@ struct Parser
 				return parse_enum();
 			case TokenType.IMPORT_SYM:
 				return parse_import();
-			case TokenType.HASH_IF:
+			case TokenType.HASH_IF, TokenType.HASH_VERSION:
 				return parse_hash_if();
 			case TokenType.HASH_ASSERT:
 				return parse_hash_assert();

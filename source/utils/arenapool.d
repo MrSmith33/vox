@@ -25,11 +25,11 @@ struct ArenaPool
 			import core.sys.posix.sys.mman : mmap, MAP_ANON, PROT_READ, PROT_WRITE, PROT_EXEC, MAP_PRIVATE, MAP_FAILED;
 			enum MAP_NORESERVE = 0x4000;
 			ubyte* ptr = cast(ubyte*)mmap(null, reservedBytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
-			assert(ptr != MAP_FAILED, format("mmap failed %s", errno));
+			assert(ptr != MAP_FAILED, format("mmap failed, errno %s: requested %s bytes", errno, size));
 		} else version(Windows) {
 			import core.sys.windows.windows : VirtualAlloc, MEM_RESERVE, PAGE_NOACCESS;
 			ubyte* ptr = cast(ubyte*)VirtualAlloc(null, reservedBytes, MEM_RESERVE, PAGE_NOACCESS);
-			assert(ptr !is null, "VirtualAlloc failed");
+			assert(ptr !is null, format("VirtualAlloc failed: requested %s bytes", size));
 		}
 		buffer = ptr[0..reservedBytes];
 	}

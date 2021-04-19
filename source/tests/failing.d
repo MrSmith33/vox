@@ -559,7 +559,7 @@ immutable fail53 = q{--- fail53/mod1.vx
 --- fail53/mod4.vx
 	module fail53;
 --- <error>
-fail53(1, 2): Error: Module `fail53` in file fail53/mod4.vx conflicts with package `fail53` in files fail53/mod1.vx, fail53/mod2.vx and 1 more
+fail53(1, 2): Error: Module `fail53` in file fail53/mod4.vx conflicts with package `fail53` in files fail53/mod3.vx, fail53/mod1.vx and 1 more
 };
 
 @TestInfo()
@@ -574,7 +574,7 @@ immutable fail54 = q{--- fail54/mod1.vx
 --- fail54/mod5.vx
 	module fail54;
 --- <error>
-fail54(1, 2): Error: Module `fail54` in file fail54/mod5.vx conflicts with package `fail54` in files fail54/mod1.vx, fail54/mod3.vx and 2 more
+fail54(1, 2): Error: Module `fail54` in file fail54/mod5.vx conflicts with package `fail54` in files fail54/mod4.vx, fail54/mod1.vx and 2 more
 };
 
 

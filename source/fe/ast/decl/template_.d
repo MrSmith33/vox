@@ -340,6 +340,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case decl_static_assert: post_clone_static_assert(cast(StaticAssertDeclNode*)node, state); break;
 		case decl_static_foreach: post_clone_static_foreach(cast(StaticForeachDeclNode*)node, state); break;
 		case decl_static_if: post_clone_static_if(cast(StaticIfDeclNode*)node, state); break;
+		case decl_static_version: post_clone_static_version(cast(StaticVersionDeclNode*)node, state); break;
 		case decl_template: post_clone_template(cast(TemplateDeclNode*)node, state); break;
 		case decl_template_param: break;
 

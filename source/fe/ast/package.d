@@ -35,6 +35,7 @@ enum AstType : ubyte
 	decl_static_assert,
 	decl_static_foreach,
 	decl_static_if,
+	decl_static_version,
 	decl_struct,
 	decl_template,
 	decl_template_param,
@@ -76,7 +77,6 @@ enum AstType : ubyte
 enum AstFlags : ushort
 {
 	isDeclaration    = 1 <<  0,
-	isScope          = 1 <<  1,
 	isExpression     = 1 <<  2,
 	/// Can be applied to expression if it is in place of stmt
 	isStatement      = 1 <<  3,
@@ -185,7 +185,6 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	}
 
 	bool isDeclaration(){ return cast(bool)(flags & AstFlags.isDeclaration); }
-	bool isScope()      { return cast(bool)(flags & AstFlags.isScope); }
 	bool isExpression() { return cast(bool)(flags & AstFlags.isExpression); }
 	bool isStatement()  { return cast(bool)(flags & AstFlags.isStatement); }
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
