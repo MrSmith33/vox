@@ -597,7 +597,7 @@ struct ExportSym {
 		bool,  "hasNoName",          1, // NONAME
 		bool,  "hasExplicitOrdinal", 1, // Ordinal was explicitly assigned
 		bool,  "isForwarder",        1, // This is a forwarder
-		ubyte, "pad",               10,
+		uint,  "pad",               10,
 	));
 	// next follows zero-terminated string (name)
 }
@@ -648,7 +648,7 @@ align(1) struct DefRangeRegisterRelSym {
 	mixin(bitfields!(
 		bool,  "spilledUdtMember",  1, // Spilled member for s.i.
 		ubyte, "",                  3,
-		ubyte, "offsetInParent",   12, // Offset in parent variable.
+		uint,  "offsetInParent",   12, // Offset in parent variable.
 	));
 	int basePointerOffset;             // offset to register
 

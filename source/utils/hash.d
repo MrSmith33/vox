@@ -231,6 +231,7 @@ mixin template HashMapImpl()
 			return put(arena, key, default_value);
 		}
 
+		if (_length == maxLength) extend(arena);
 		auto index = getHash(key) & (_capacity - 1); // % capacity
 		size_t inserted_dib = 0;
 		Value value;
@@ -266,6 +267,7 @@ mixin template HashMapImpl()
 			index = (index + 1) & (_capacity - 1); // % capacity
 		}
 
+		size_t numIters = 0;
 		// fixup invariant after insertion
 		while (true) {
 			if (keyBuckets[index].empty) { // bucket is empty
@@ -284,6 +286,8 @@ mixin template HashMapImpl()
 				inserted_dib = current_dib;
 			}
 			++inserted_dib;
+			assert(numIters < _capacity, format("bug %s %s %s", _capacity, numIters, _length));
+			++numIters;
 			index = (index + 1) & (_capacity - 1); // % capacity
 		}
 	}
