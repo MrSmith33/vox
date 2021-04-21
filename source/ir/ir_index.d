@@ -195,14 +195,14 @@ struct IrIndex
 			constantKind == IrConstantKind.intSignedBig);
 	}
 
-	IrIndex constantZeroType() {
+	IrIndex typeOfConstantZero() {
 		assert(isConstantZero);
 		IrIndex copy = this;
 		copy.kind = IrValueKind.type;
 		return copy;
 	}
 
-	IrIndex typeOfZeroConstant() {
+	IrIndex zeroConstantOfType() {
 		assert(isType);
 		IrIndex copy = this;
 		copy.kind = IrValueKind.constantZero;

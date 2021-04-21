@@ -379,7 +379,6 @@ bool $isSliceOf($type slice, $type elemType)
 
 bool $isArray($type type)
 bool $isArrayOf($type array, $type elemType)
-bool $isStruct($type type)
 
 u8[] $getIdentifier($alias a)
 
@@ -414,7 +413,7 @@ Selecting function depending on argument type:
 
 ```D
 $alias selectPrintFunc($type T) {
-    if (isInteger(T)) return $alias(printInt);
+    if ($isInteger(T)) return $alias(printInt);
     if (T.$isSliceOf(u8) || T.$isArrayOf(u8)) return $alias(print);
     $assert(false, "Invalid type");
 }

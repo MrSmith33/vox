@@ -100,10 +100,10 @@ struct IrConstantStorage
 
 		if (value == 0) {
 			final switch(constantSize) with(IrArgSize) {
-				case size8: return makeBasicTypeIndex(IrValueType.i8).typeOfZeroConstant;
-				case size16: return makeBasicTypeIndex(IrValueType.i16).typeOfZeroConstant;
-				case size32: return makeBasicTypeIndex(IrValueType.i32).typeOfZeroConstant;
-				case size64: return makeBasicTypeIndex(IrValueType.i64).typeOfZeroConstant;
+				case size8: return makeBasicTypeIndex(IrValueType.i8).zeroConstantOfType;
+				case size16: return makeBasicTypeIndex(IrValueType.i16).zeroConstantOfType;
+				case size32: return makeBasicTypeIndex(IrValueType.i32).zeroConstantOfType;
+				case size64: return makeBasicTypeIndex(IrValueType.i64).zeroConstantOfType;
 				case size128, size256, size512: assert(false, "Sizes bigger than 64 are not stored in IrConstant");
 			}
 		}
@@ -237,7 +237,7 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 	}
 	else if (index.isConstantZero)
 	{
-		uint typeSize = c.types.typeSize(index.constantZeroType);
+		uint typeSize = c.types.typeSize(index.typeOfConstantZero);
 		c.assertf(typeSize == buffer.length,
 			"Cannot store zero constant of size %s, into memory of size %s bytes",
 			typeSize, buffer.length);

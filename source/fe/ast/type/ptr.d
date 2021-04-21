@@ -68,7 +68,12 @@ CommonTypeResult common_type_ptr(PtrTypeNode* node, AstIndex typeBIndex, Compila
 			if (basicB == BasicType.t_null) {
 				return CommonTypeResult(c.getAstNodeIndex(node), TypeConvResKind.no_i, TypeConvResKind.override_expr_type_i);
 			}
-			return CommonTypeResult(CommonAstNodes.type_error);
+			goto default;
+		case type_ptr:
+			if (typeB.as_ptr.base == CommonAstNodes.type_void) {
+				return CommonTypeResult(c.getAstNodeIndex(node), TypeConvResKind.ii_i, TypeConvResKind.no_i);
+			}
+			goto default;
 		default: return CommonTypeResult(CommonAstNodes.type_error);
 	}
 }
@@ -82,6 +87,7 @@ TypeConvResKind type_conv_ptr(PtrTypeNode* node, AstIndex typeBIndex, ref AstInd
 			if (toBasic.isInteger) return TypeConvResKind.ii_e;
 			return TypeConvResKind.fail;
 		case type_ptr:
+			if (typeB.as_ptr.base == CommonAstNodes.type_void) return TypeConvResKind.ii_i;
 			return TypeConvResKind.ii_e;
 		default: return TypeConvResKind.fail;
 	}

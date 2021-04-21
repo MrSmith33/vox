@@ -946,23 +946,26 @@ enum CommonAstNodes : AstIndex
 	type_u8Slice             = AstIndex(first_compound.storageIndex + 5),
 	type_aliasSlice          = AstIndex(first_compound.storageIndex + 11),
 
-	first_builtin            = AstIndex(first_compound.storageIndex + 17),
+	first_builtin_member     = AstIndex(first_compound.storageIndex + 17),
 
 	// builtin nodes
 	// The order is the same as in BuiltinId enum
-	builtin_min              = AstIndex(first_builtin.storageIndex +  0),
-	builtin_max              = AstIndex(first_builtin.storageIndex +  4),
-	builtin_slice_length     = AstIndex(first_builtin.storageIndex +  8),
-	builtin_slice_ptr        = AstIndex(first_builtin.storageIndex + 12),
-	builtin_array_length     = AstIndex(first_builtin.storageIndex + 16),
-	builtin_array_ptr        = AstIndex(first_builtin.storageIndex + 20),
-	builtin_sizeof           = AstIndex(first_builtin.storageIndex + 24),
+	builtin_min              = AstIndex(first_builtin_member.storageIndex +  0),
+	builtin_max              = AstIndex(first_builtin_member.storageIndex +  4),
+	builtin_slice_length     = AstIndex(first_builtin_member.storageIndex +  8),
+	builtin_slice_ptr        = AstIndex(first_builtin_member.storageIndex + 12),
+	builtin_array_length     = AstIndex(first_builtin_member.storageIndex + 16),
+	builtin_array_ptr        = AstIndex(first_builtin_member.storageIndex + 20),
+	builtin_sizeof           = AstIndex(first_builtin_member.storageIndex + 24),
 	// builtin nodes end
 
 	// builtin functions
-	compile_error            = AstIndex(builtin_sizeof.storageIndex + 24),
-	is_slice                 = AstIndex(builtin_sizeof.storageIndex + 56),
-	is_integer               = AstIndex(builtin_sizeof.storageIndex + 88),
+	first_builtin_func       = AstIndex(builtin_sizeof.storageIndex + 24),
+
+	compile_error            = AstIndex(first_builtin_func.storageIndex + 0 * 32),
+	is_slice                 = AstIndex(first_builtin_func.storageIndex + 1 * 32),
+	is_integer               = AstIndex(first_builtin_func.storageIndex + 2 * 32),
+	is_pointer               = AstIndex(first_builtin_func.storageIndex + 3 * 32),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
@@ -993,10 +996,11 @@ private immutable AstIndex[BuiltinId.max + 1] builtinsArray = [
 	CommonAstNodes.builtin_array_ptr,
 	CommonAstNodes.builtin_sizeof,
 ];
-immutable AstIndex[3] builtinFuncsArray = [
+immutable AstIndex[4] builtinFuncsArray = [
 	CommonAstNodes.compile_error,
 	CommonAstNodes.is_slice,
 	CommonAstNodes.is_integer,
+	CommonAstNodes.is_pointer,
 ];
 
 void createBuiltinFunctions(CompilationContext* c)
@@ -1056,6 +1060,9 @@ void createBuiltinFunctions(CompilationContext* c)
 
 	addParam(CommonAstNodes.type_type, CommonIds.id_type);
 	make(CommonAstNodes.is_integer, CommonIds.cash_is_integer, CommonAstNodes.type_bool);
+
+	addParam(CommonAstNodes.type_type, CommonIds.id_type);
+	make(CommonAstNodes.is_pointer, CommonIds.cash_is_pointer, CommonAstNodes.type_bool);
 
 	//print_ast(CommonAstNodes.is_slice, c);
 }

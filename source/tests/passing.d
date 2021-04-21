@@ -4290,3 +4290,31 @@ void tester194(ref TestContext ctx) {
 	else version(linux)   int result = 2;
 	assert(ctx.getFunctionPtr!int("run")() == result);
 }
+
+/*
+@TestInfo()
+immutable test195 = q{--- test195
+	bool run() {
+		VkResult result;
+		return result != VkResult.VK_SUCCESS;
+	}
+	enum VkResult {
+		VK_SUCCESS = 0
+	}
+};*/
+
+
+@TestInfo()
+immutable test196 = q{--- test196
+	u8*[] var;
+};
+
+
+@TestInfo()
+immutable test197 = q{--- test197
+	void run() {
+		u8* ptr;
+		foo(ptr);
+	}
+	void foo(void*){}
+};

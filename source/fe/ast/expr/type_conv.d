@@ -97,6 +97,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 	IrIndex typeTo = targetType.gen_ir_type(c);
 	uint typeSizeFrom = c.types.typeSize(typeFrom);
 	uint typeSizeTo = c.types.typeSize(typeTo);
+	//writefln("cast %s %s -> %s", t.convKind, IrTypeDump(typeFrom, *c), IrTypeDump(typeTo, *c));
 
 	IrIndex result;
 
@@ -183,6 +184,9 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 		case fail: c.internal_error(node.loc, "eval of failed cast"); assert(false);
 		case no_e, no_i: result = rval; break;
 		case ii_e, ii_i, override_expr_type_e, override_expr_type_i:
+			if (rval.isConstantZero) {
+				return typeTo.zeroConstantOfType;
+			}
 			result = rval;
 			result.constantSize = sizeToIrArgSize(typeSizeTo, c);
 			break;

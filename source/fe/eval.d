@@ -50,7 +50,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 		case literal_null: return ir_gen_literal_null(context, cast(NullLiteralExprNode*)node);
 		case literal_bool: return ir_gen_literal_bool(context, cast(BoolLiteralExprNode*)node);
 
-		case type_basic, type_ptr, type_slice, type_static_array, decl_function:
+		case type_basic, type_ptr, type_slice, type_static_array, decl_function, decl_struct:
 			return context.constants.add(nodeIndex.storageIndex, IsSigned.no, IrArgSize.size32);
 		default:
 			context.internal_error(node.loc, "Cannot evaluate static expression %s", node.astType);
@@ -365,6 +365,10 @@ IrIndex eval_call_builtin(TokenIndex loc, IrVm* vm, AstIndex callee, IrIndex[] a
 			AstNode* node = c.getAstNode(nodeIndex);
 			if (node.astType != AstType.type_basic) return c.constants.ZERO;
 			return c.constants.add(cast(ubyte)node.as!BasicTypeNode(c).isInteger, IsSigned.no, IrArgSize.size8);
+		case CommonAstNodes.is_pointer.storageIndex:
+			AstIndex nodeIndex = astIndexFromIrValue(vm, args[0], c);
+			if (nodeIndex.isUndefined) return c.constants.ZERO;
+			return c.constants.add(nodeIndex.astType(c) == AstType.type_ptr, IsSigned.no, IrArgSize.size8);
 		default:
 			c.internal_error("Unknown builtin function %s", c.idString(callee.get_node_id(c)));
 			assert(false);

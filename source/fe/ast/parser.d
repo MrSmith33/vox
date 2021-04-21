@@ -1416,15 +1416,18 @@ struct Parser
 		AstIndex node = null_info.parser_null(this, preferType, t, null_info.rbp);
 		int nbp = null_info.nbp; // next bp
 		int lbp = g_tokenLookups.left_lookup[tok.type].lbp;
+		//writefln("%s %s rbp %s lbp %s nbp %s", t, tok, rbp, lbp, nbp);
 
 		while (rbp < lbp && lbp < nbp)
 		{
 			t = tok;
 			nextToken;
 			LeftInfo left_info = g_tokenLookups.left_lookup[t.type];
-			node = left_info.parser_left(this, preferType, t, left_info.rbp, node);
 			nbp = left_info.nbp; // next bp
+			// parser can modify nbp in case infix operator want to become postfix, like *
+			node = left_info.parser_left(this, preferType, t, left_info.rbp, node, nbp);
 			lbp = g_tokenLookups.left_lookup[tok.type].lbp;
+			//writefln("%s %s rbp %s lbp %s nbp %s", t, tok, rbp, lbp, nbp);
 		}
 
 		return node;
@@ -1444,10 +1447,10 @@ enum MIN_BP = 0;
 enum MAX_BP = 10000;
 enum COMMA_PREC = 10;
 
-alias LeftParser = AstIndex function(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left);
+alias LeftParser = AstIndex function(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left, ref int nbp);
 alias NullParser = AstIndex function(ref Parser p, PreferType preferType, Token token, int rbp);
 
-AstIndex left_error_parser(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left)
+AstIndex left_error_parser(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left, ref int nbp)
 {
 	if (token.type == TokenType.EOI)
 		p.context.unrecoverable_error(token.index, "Unexpected end of input");
@@ -1726,7 +1729,7 @@ AstIndex nullCast(ref Parser p, PreferType preferType, Token token, int rbp) {
 // Left Denotations -- tokens that take an expression on the left
 
 // <expr> "++" / "--"
-AstIndex leftIncDec(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left) {
+AstIndex leftIncDec(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left, ref int nbp) {
 	UnOp op;
 	switch(token.type) with(TokenType)
 	{
@@ -1741,7 +1744,7 @@ AstIndex leftIncDec(ref Parser p, PreferType preferType, Token token, int rbp, A
 // <expr> "[" "]"
 // <expr> "[" <expr> "," <expr>+ "]"
 // <expr> "[" <expr> .. <expr> "]"
-AstIndex leftIndex(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex array) {
+AstIndex leftIndex(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex array, ref int nbp) {
 	AstNodes indicies;
 	if (p.tok.type == TokenType.RBRACKET)
 	{
@@ -1773,7 +1776,7 @@ AstIndex leftIndex(ref Parser p, PreferType preferType, Token token, int rbp, As
 }
 
 // member access <expr> . <expr>
-AstIndex leftOpDot(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left)
+AstIndex leftOpDot(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left, ref int nbp)
 {
 	Identifier id;
 	if (p.tok.type == TokenType.IDENTIFIER)
@@ -1790,7 +1793,7 @@ AstIndex leftOpDot(ref Parser p, PreferType preferType, Token token, int rbp, As
 	return p.make!MemberExprNode(token.index, p.currentScopeIndex, left, id);
 }
 
-AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex returnType) {
+AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex returnType, ref int nbp) {
 	CallConvention callConvention = p.context.defaultCallConvention;
 	auto sig = p.make!FunctionSignatureNode(token.index, returnType, AstNodes.init, callConvention);
 	p.parseParameters(sig, p.NeedRegNames.no); // function types don't need to register their param names
@@ -1801,18 +1804,20 @@ AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rb
 
 // multiplication or pointer type
 // <expr> * <expr> or <expr>*
-AstIndex leftStarOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left) {
+AstIndex leftStarOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left, ref int nbp) {
 	switch (p.tok.type) with(TokenType)
 	{
-		case STAR, COMMA, RPAREN, RBRACKET, SEMICOLON, FUNCTION_SYM /*,DELEGATE_SYM*/:
+		case STAR, COMMA, RPAREN, RBRACKET, LBRACKET, SEMICOLON, FUNCTION_SYM /*,DELEGATE_SYM*/:
 			// pointer
+			nbp = 311; // make current node into a postfix op
 			return p.make!PtrTypeNode(token.index, CommonAstNodes.type_type, left);
 		case DOT:
 			// hack for postfix star followed by dot
 			AstIndex ptr = p.make!PtrTypeNode(token.index, CommonAstNodes.type_type, left);
 			Token tok = p.tok;
 			p.nextToken; // skip dot
-			return leftOpDot(p, PreferType.no, tok, 0, ptr);
+			int nbpDot;
+			return leftOpDot(p, PreferType.no, tok, 0, ptr, nbpDot);
 		default:
 			// otherwise it is multiplication
 			break;
@@ -1831,7 +1836,7 @@ AstIndex leftStarOp(ref Parser p, PreferType preferType, Token token, int rbp, A
 }
 
 // Normal binary operator <expr> op <expr>
-AstIndex leftBinaryOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left) {
+AstIndex leftBinaryOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left, ref int nbp) {
 	AstIndex right = p.expr(PreferType.no, rbp);
 	BinOp op;
 	switch(token.type) with(TokenType)
@@ -1866,7 +1871,7 @@ AstIndex leftBinaryOp(ref Parser p, PreferType preferType, Token token, int rbp,
 }
 
 // Binary assignment operator <expr> op= <expr>
-AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left) {
+AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex left, ref int nbp) {
 	AstIndex right = p.expr(PreferType.no, rbp);
 	BinOp op;
 	switch(token.type) with(TokenType)
@@ -1899,7 +1904,7 @@ AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp,
 }
 
 // <expr> "(" <expr_list> ")"
-AstIndex leftFuncCall(ref Parser p, PreferType preferType, Token token, int unused_rbp, AstIndex callee) {
+AstIndex leftFuncCall(ref Parser p, PreferType preferType, Token token, int unused_rbp, AstIndex callee, ref int nbp) {
 	AstNodes args;
 	p.parse_expr_list(args, TokenType.RPAREN);
 	return p.makeExpr!CallExprNode(token.index, callee, args);

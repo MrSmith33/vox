@@ -68,7 +68,7 @@ IrIndex simplifyConstant(IrIndex index, CompilationContext* c)
 	uint typeSize;
 	if (index.isConstantZero)
 	{
-		typeSize = c.types.typeSize(index.constantZeroType);
+		typeSize = c.types.typeSize(index.typeOfConstantZero);
 	}
 	else if (index.isConstantAggregate)
 	{
