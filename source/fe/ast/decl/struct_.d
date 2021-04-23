@@ -82,6 +82,20 @@ void type_check_struct(StructDeclNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
+TypeConvResKind type_conv_struct(StructDeclNode* node, AstIndex typeBIndex, ref AstIndex expr, CompilationContext* c)
+{
+	TypeNode* typeB = typeBIndex.get_type(c);
+
+	switch(typeB.astType) with(AstType)
+	{
+		case decl_enum:
+			if (c.getAstNodeIndex(node) == typeB.as_enum.memberType.get_node_type(c))
+				return TypeConvResKind.no_e;
+			goto default;
+		default: return TypeConvResKind.fail;
+	}
+}
+
 IrIndex gen_default_value_struct(StructDeclNode* node, CompilationContext* c)
 {
 	if (node.defaultVal.isDefined) return node.defaultVal;

@@ -4341,3 +4341,19 @@ immutable test200 = q{--- test200
 		MDBX_UTTERLY_NOSYNC = MDBX_SAFE_NOSYNC | 0x100000,
 	}
 };
+
+
+@TestInfo()
+immutable test201 = q{--- test201
+	// Enum of structs
+	enum Colors : Color {
+		UNEXPLORED = Color(0, 0, 0),
+		DARK_WALL = Color(0, 0, 100),
+	}
+	struct Color {
+		u8 r;
+		u8 g;
+		u8 b;
+	}
+};
+

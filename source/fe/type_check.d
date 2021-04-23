@@ -166,8 +166,9 @@ TypeConvResKind checkTypeConversion(AstIndex fromTypeIndex, AstIndex toTypeIndex
 			fromType = fromType.as_enum.memberType.get_type(c);
 			goto restart_enum;
 		case type_func_sig: return type_conv_func_sig(fromType.as_func_sig, toTypeIndex, expr, c);
+		case decl_struct: return type_conv_struct(fromType.as_struct, toTypeIndex, expr, c);
 		default:
-			c.internal_error(expr.loc(c), "Unhandled type conversion %s, %s %s", cast(AstType)fromTypeIndex.astType(c), toType.astType);
+			c.internal_error(expr.loc(c), "Unhandled type conversion %s, %s", cast(AstType)fromTypeIndex.astType(c), toType.astType);
 			assert(false);
 	}
 }
