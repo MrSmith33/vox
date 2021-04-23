@@ -17,7 +17,7 @@ import std.string : stripLeft, strip;
 
 void runDevTests()
 {
-	Test test = makeTest!(test7);
+	Test test = makeTest!(test200);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -28,7 +28,7 @@ void runDevTests()
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
 	driver.context.printTodos = true;
-	driver.context.runTesters = false;
+	//driver.context.runTesters = false;
 	//driver.context.debugRegAlloc = true;
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
@@ -48,8 +48,8 @@ void runDevTests()
 	//driver.context.printSource = true;
 	//driver.context.printLexemes = true;
 	//driver.context.printAstFresh = true;
-	//driver.context.printAstSema = true;
-	//driver.context.printIr = true;
+	driver.context.printAstSema = true;
+	driver.context.printIr = true;
 	//driver.context.printIrOptEach = true;
 	//driver.context.printIrOpt = true;
 	//driver.context.printIrLowerEach = true;
@@ -229,6 +229,7 @@ TextSink testSink;
 
 TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
 {
+	scope(exit) testSink.clear;
 	try
 	{
 		TestResult res = runSingleTest(driver, dumpSettings, dumpTest, curTest);
@@ -245,7 +246,6 @@ TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings
 		writeln(t);
 		return TestResult.failure;
 	}
-	return TestResult.success;
 }
 
 TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)

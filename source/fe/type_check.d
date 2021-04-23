@@ -148,6 +148,9 @@ TypeConvResKind checkTypeConversion(AstIndex fromTypeIndex, AstIndex toTypeIndex
 {
 	if (same_type(fromTypeIndex, toTypeIndex, c)) return TypeConvResKind.no_i;
 
+	if (fromTypeIndex == CommonAstNodes.type_error || toTypeIndex == CommonAstNodes.type_error)
+		return TypeConvResKind.no_i;
+
 	TypeNode* fromType = fromTypeIndex.get_type(c);
 	TypeNode* toType = toTypeIndex.get_type(c);
 
@@ -164,7 +167,7 @@ TypeConvResKind checkTypeConversion(AstIndex fromTypeIndex, AstIndex toTypeIndex
 			goto restart_enum;
 		case type_func_sig: return type_conv_func_sig(fromType.as_func_sig, toTypeIndex, expr, c);
 		default:
-			c.internal_error(expr.loc(c), "Unhandled type conversion %s, %s %s", cast(AstType)fromType.astType, toType.astType);
+			c.internal_error(expr.loc(c), "Unhandled type conversion %s, %s %s", cast(AstType)fromTypeIndex.astType(c), toType.astType);
 			assert(false);
 	}
 }
@@ -175,20 +178,32 @@ struct CommonTypeResult {
 	TypeConvResKind kindB;
 }
 
-CommonTypeResult calcCommonType(AstIndex typeA, AstIndex typeB, CompilationContext* c)
+CommonTypeResult calcCommonType(AstIndex indexA, AstIndex indexB, CompilationContext* c)
 	out(res; res.commonType.isDefined)
 {
-	if (same_type(typeA, typeB, c)) return CommonTypeResult(typeA, TypeConvResKind.no_i, TypeConvResKind.no_i);
+	if (same_type(indexA, indexB, c)) return CommonTypeResult(indexA, TypeConvResKind.no_i, TypeConvResKind.no_i);
 
-	TypeNode* fromType = typeA.get_type(c);
-	TypeNode* toType = typeB.get_type(c);
+	TypeNode* typeA = indexA.get_type(c);
+	TypeNode* typeB = indexB.get_type(c);
 
-	switch (fromType.astType) with(AstType) {
-		case type_basic: return common_type_basic(fromType.as_basic, typeB, c);
+	if (typeB.astType == AstType.decl_enum) {
+		indexB = typeB.as_enum.memberType;
+		typeB = indexB.get_type(c);
+	}
+
+	restart_enum:
+
+	switch (typeA.astType) with(AstType) {
+		case type_basic: return common_type_basic(typeA.as_basic, indexB, c);
 		case type_slice: return CommonTypeResult(CommonAstNodes.type_error);
-		case type_ptr: return common_type_ptr(fromType.as_ptr, typeB, c);
+		case type_ptr: return common_type_ptr(typeA.as_ptr, indexB, c);
+		case decl_enum:
+			indexA = typeA.as_enum.memberType;
+			typeA = indexA.get_type(c);
+			goto restart_enum;
 		default:
-			c.internal_error("Unhandled common type %s", cast(AstType)fromType.astType);
+			return CommonTypeResult(CommonAstNodes.type_error);
+			c.internal_error("Unhandled common type %s", cast(AstType)typeA.astType);
 			assert(false);
 	}
 }

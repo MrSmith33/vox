@@ -94,13 +94,6 @@ void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check;
 	require_type_check(node.memberType, state);
 	require_type_check(node.declarations, state);
-	if (!node.isAnonymous) {
-		AstIndex nodeIndex = state.context.getAstNodeIndex(node);
-		foreach(ref AstIndex member; node.declarations) {
-			auto m = member.get!EnumMemberDecl(state.context);
-			m.type = nodeIndex;
-		}
-	}
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -152,31 +145,59 @@ void name_register_self_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, re
 }
 
 void name_register_nested_enum_member(AstIndex nodeIndex, EnumMemberDecl* node, ref NameRegisterState state) {
+	CompilationContext* c = state.context;
 	node.state = AstNodeState.name_register_nested;
-	if (node.type) require_name_register(node.type, state);
+	if (node.type) {
+		auto type = node.type.get_node(c);
+		if (type.astType == AstType.decl_enum) {
+			require_name_register(type.as!EnumDeclaration(c).memberType, state);
+		} else require_name_register(node.type, state);
+	}
 	if (node.initializer) require_name_register(node.initializer, state);
 	node.state = AstNodeState.name_register_nested_done;
 }
 
 void name_resolve_enum_member(EnumMemberDecl* node, ref NameResolveState state) {
+	CompilationContext* c = state.context;
 	node.state = AstNodeState.name_resolve;
-	if (node.type) require_name_resolve(node.type, state);
+	if (node.type) {
+		auto type = node.type.get_node(c);
+		if (type.astType == AstType.decl_enum) {
+			require_name_resolve(type.as!EnumDeclaration(c).memberType, state);
+		} else require_name_resolve(node.type, state);
+	}
 	if (node.initializer) require_name_resolve(node.initializer, state);
 	node.state = AstNodeState.name_resolve_done;
 }
 
 void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 {
+	CompilationContext* c = state.context;
 	node.state = AstNodeState.type_check;
 	if (node.initializer) {
 		if (node.type) {
+			auto type = node.type.get_node(c);
+			if (type.astType == AstType.decl_enum) {
+				require_type_check(type.as!EnumDeclaration(c).memberType, state);
+			} else require_type_check(node.type, state);
 			require_type_check_expr(node.type, node.initializer, state);
-			autoconvTo(node.initializer, node.type, state.context);
+			//writefln("  autoconvTo %s", printer(node.type, c));
+			TypeConvResKind res = checkTypeConversion(node.initializer.get_expr_type(c), node.type, node.initializer, c);
+			if (res.successful) {
+				insertCast(node.initializer, node.type, res, c);
+				if (node.initializer.get_expr_type(c) != CommonAstNodes.type_error)
+					node.initValue = eval_static_expr(node.initializer, c);
+			} else {
+				c.error(node.initializer.loc(c),
+					"Cannot convert expression of type `%s` to `%s`",
+					node.initializer.get_expr_type(c).printer(c),
+					node.type.printer(c));
+			}
 		} else {
 			require_type_check(node.initializer, state);
-			node.type = get_expr_type(node.initializer, state.context);
+			node.type = get_expr_type(node.initializer, c);
+			node.initValue = eval_static_expr(node.initializer, c);
 		}
-		node.initValue = eval_static_expr(node.initializer, state.context);
 	}
 	node.state = AstNodeState.type_check_done;
 }

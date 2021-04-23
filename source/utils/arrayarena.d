@@ -22,6 +22,13 @@ struct FreeList
 	}
 }
 
+//version = USE_MIMALLOC;
+
+version(USE_MIMALLOC) {
+	extern(C) void* mi_malloc(size_t size);
+	extern(C) void mi_free(void* p);
+}
+
 struct ArrayArena
 {
 	import core.stdc.stdlib : malloc, free;
@@ -73,32 +80,47 @@ struct ArrayArena
 		array = null;
 	}
 
-	ubyte[] allocBlock(size_t size) {
-		assert(isPowerOfTwo(size));
-		assert(size >= MIN_BLOCK_BYTES);
-		if (size > MAX_BLOCK_BYTES) {
-			return (cast(ubyte*)malloc(size))[0..size];
+	version(USE_MIMALLOC)
+	{
+		ubyte[] allocBlock(size_t size) {
+			assert(isPowerOfTwo(size));
+			return (cast(ubyte*)mi_malloc(size))[0..size];
 		}
-		uint index = sizeToIndex(size);
-		ubyte[] block = freeLists[index].get(size);
-		if (block) {
-			assert(arenas[index].contains(block.ptr), format("allocBlock %s, freeList get %X, %s", size, block.ptr, block.length));
-			return block;
-		}
-		++arenaLengths[index];
-		ubyte[] result = arenas[index].voidPut(size);
-		return result;
-	}
 
-	void freeBlock(ubyte[] block) {
-		if (block.ptr is null) return;
-		assert(isPowerOfTwo(block.length));
-		assert(block.length >= MIN_BLOCK_BYTES);
-		if (block.length > MAX_BLOCK_BYTES) {
-			return free(block.ptr);
+		void freeBlock(ubyte[] block) {
+			if (block.ptr is null) return;
+			return mi_free(block.ptr);
 		}
-		uint index = sizeToIndex(block.length);
-		freeLists[index].put(block);
+	}
+	else
+	{
+		ubyte[] allocBlock(size_t size) {
+			assert(isPowerOfTwo(size));
+			assert(size >= MIN_BLOCK_BYTES);
+			if (size > MAX_BLOCK_BYTES) {
+				return (cast(ubyte*)malloc(size))[0..size];
+			}
+			uint index = sizeToIndex(size);
+			ubyte[] block = freeLists[index].get(size);
+			if (block) {
+				assert(arenas[index].contains(block.ptr), format("allocBlock %s, freeList get %X, %s", size, block.ptr, block.length));
+				return block;
+			}
+			++arenaLengths[index];
+			ubyte[] result = arenas[index].voidPut(size);
+			return result;
+		}
+
+		void freeBlock(ubyte[] block) {
+			if (block.ptr is null) return;
+			assert(isPowerOfTwo(block.length));
+			assert(block.length >= MIN_BLOCK_BYTES);
+			if (block.length > MAX_BLOCK_BYTES) {
+				return free(block.ptr);
+			}
+			uint index = sizeToIndex(block.length);
+			freeLists[index].put(block);
+		}
 	}
 
 	void clear() {

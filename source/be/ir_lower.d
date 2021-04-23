@@ -130,21 +130,20 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 	foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegisters)
 	{
-		if (vreg.type.isTypeStruct || vreg.type.isTypeArray)
-		{
-			//writefln("- vreg %s", vregIndex);
+		if (!(vreg.type.isTypeStruct || vreg.type.isTypeArray)) continue;
 
-			IrInstrHeader* definition = ir.getInstr(vreg.definition);
-			if (definition.op == IrOpcode.load_aggregate)
-			{
-				// we can omit stack allocation and reuse source memory
-				if (definition.isUniqueLoad)
-				{
-					vregInfos[vregIndex.storageUintIndex].redirectTo = definition.arg(ir, 0);
-					removeInstruction(ir, vreg.definition);
-				}
-			}
-		}
+		//writefln("- vreg %s", vregIndex);
+
+		//if (!vreg.definition.isInstruction) continue;
+
+		IrInstrHeader* definition = ir.getInstr(vreg.definition);
+		if (definition.op != IrOpcode.load_aggregate) continue;
+
+		// we can omit stack allocation and reuse source memory
+		if (!definition.isUniqueLoad) continue;
+
+		vregInfos[vregIndex.storageUintIndex].redirectTo = definition.arg(ir, 0);
+		removeInstruction(ir, vreg.definition);
 	}
 
 	// transforms instructions

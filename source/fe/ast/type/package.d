@@ -150,7 +150,7 @@ SizeAndAlignment typeSizealign(AstIndex typeIndex, CompilationContext* c)
 
 SizeAndAlignment typeSizealign(TypeNode* type, CompilationContext* c)
 {
-	c.assertf(type.state >= AstNodeState.type_check_done, type.loc, "%s %s", type.typeName(c), type.state);
+	//c.assertf(type.state >= AstNodeState.type_check_done, type.loc, "%s %s", type.typeName(c), type.state);
 	switch(type.astType)
 	{
 		case AstType.type_basic: return type.as_basic.sizealign;

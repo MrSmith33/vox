@@ -534,6 +534,7 @@ struct CompilationContext
 	Scope* getAstScope(AstIndex index) { return getAst!Scope(index); }
 	AstNode* getAstNode(AstIndex index) { return getAst!AstNode(index); }
 	TypeNode* getAstType(AstIndex index) {
+		assertf(index.isDefined, "getAstType: null index");
 		TypeNode* t = getAst!TypeNode(index);
 		assertf(t.isType, t.loc, "node is not a type: %s", t.astType);
 		return t;

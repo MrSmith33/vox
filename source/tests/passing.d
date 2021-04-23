@@ -271,7 +271,6 @@ void tester21(ref TestContext ctx) {
 	auto fibonacci = ctx.getFunctionPtr!(void)("fibonacci");
 	fibonacci();
 	assert(testSink.text == "1 1 2 3 5 8 13 21 34 55 89 144 233 377 610 987 1597 2584 4181 6765");
-	testSink.clear;
 }
 
 
@@ -365,7 +364,6 @@ void tester24(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(void)("run");
 	run();
 	assert(testSink.text == "Hello");
-	testSink.clear;
 }
 
 
@@ -386,7 +384,6 @@ void tester25(ref TestContext ctx) {
 	run();
 	//writefln("run() == '%s'", testSink.text);
 	assert(testSink.text == "Hello");
-	testSink.clear;
 }
 
 
@@ -425,7 +422,6 @@ void tester27(ref TestContext ctx) {
 	run();
 	//writefln("run() == '%s'", testSink.text);
 	assert(testSink.text == "AssignPtrAssignSlice");
-	testSink.clear;
 }
 
 
@@ -470,7 +466,6 @@ void tester31(ref TestContext ctx) {
 	run();
 	//writefln("run() == '%s'", testSink.text);
 	assert(testSink.text == "3456799429");
-	testSink.clear;
 }
 
 
@@ -1163,7 +1158,6 @@ void tester55(ref TestContext ctx) {
 	auto forward = ctx.getFunctionPtr!(void, Slice!(immutable(char)))("forward");
 	forward(Slice!(immutable(char))("testString"));
 	assert(testSink.text == "testString");
-	testSink.clear;
 }
 
 
@@ -1328,7 +1322,6 @@ void tester65(ref TestContext ctx) {
 	auto passStringLiteralArgument = ctx.getFunctionPtr!(void)("passStringLiteralArgument");
 	passStringLiteralArgument();
 	assert(testSink.text == "testString");
-	testSink.clear;
 }
 
 @TestInfo(&tester66)
@@ -2025,7 +2018,6 @@ void tester91(ref TestContext ctx) {
 
 	//writefln("%s", testSink.text);
 	assert(testSink.text == "(hi 0 0), (hi 1 1), (hi 2 2)");
-	testSink.clear;
 }
 
 @TestInfo(&tester92)
@@ -2332,7 +2324,6 @@ void tester96(ref TestContext ctx) {
 
 	//writefln("%s", testSink.text);
 	assert(testSink.text == "(hi 1 1)");
-	testSink.clear;
 }
 
 @TestInfo(&tester97)
@@ -3347,7 +3338,6 @@ void tester144(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(void)("run");
 	run();
 	assert(testSink.text == "Hello42");
-	testSink.clear;
 }
 
 
@@ -3442,7 +3432,6 @@ void tester150(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(void)("run");
 	run();
 	assert(testSink.text == "Hello42");
-	testSink.clear;
 }
 
 
@@ -3667,7 +3656,6 @@ void tester169(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(void)("run");
 	run();
 	assert(testSink.text == "Hello42");
-	testSink.clear;
 }
 
 
@@ -4263,7 +4251,7 @@ void tester192(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(VkStructureType)("run")() == VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO);
 }
 
-/*@TestInfo()
+@TestInfo()
 immutable test193 = q{--- test193
 	// circular dependency on enum type
 	VkStructureType sType = VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -4271,7 +4259,6 @@ immutable test193 = q{--- test193
 		VK_STRUCTURE_TYPE_APPLICATION_INFO = 0,
 	}
 };
-*/
 
 
 @TestInfo(&tester194)
@@ -4291,9 +4278,10 @@ void tester194(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!int("run")() == result);
 }
 
-/*
+
 @TestInfo()
 immutable test195 = q{--- test195
+	// Circular deps on enum type
 	bool run() {
 		VkResult result;
 		return result != VkResult.VK_SUCCESS;
@@ -4301,7 +4289,7 @@ immutable test195 = q{--- test195
 	enum VkResult {
 		VK_SUCCESS = 0
 	}
-};*/
+};
 
 
 @TestInfo()
@@ -4317,4 +4305,39 @@ immutable test197 = q{--- test197
 		foo(ptr);
 	}
 	void foo(void*){}
+};
+
+/*
+@TestInfo()
+immutable test198 = q{--- test198
+	// TODO: Need to either deduplicate types, or special code for == on types, or $sameType
+	bool isU8Ptr($type type) {
+		return type == u8*;
+	}
+	#assert(isU8Ptr(u8*));
+};
+*/
+
+@TestInfo(&tester199)
+immutable test199 = q{--- test199
+	alias i32_funType = i32 function();
+	enum i32_funType funPtrEnum = &i32Fun;
+	i32 i32Fun() { return 42; }
+	i32 test2() {
+		return funPtrEnum();
+	}
+};
+void tester199(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("test2")() == 42);
+}
+
+
+@TestInfo()
+immutable test200 = q{--- test200
+	// Common type between enum and u32
+	enum MDBX_env_flags_t : u32 {
+		MDBX_SAFE_NOSYNC = 0x10000,
+		MDBX_MAPASYNC = MDBX_SAFE_NOSYNC,
+		MDBX_UTTERLY_NOSYNC = MDBX_SAFE_NOSYNC | 0x100000,
+	}
 };

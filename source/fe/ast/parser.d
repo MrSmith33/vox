@@ -845,12 +845,16 @@ struct Parser
 				AstIndex memberType = parseColonType;
 				ScopeTempData scope_temp;
 				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member, scope_temp);
-				AstNodes members = tryParseEnumBody(memberType);
+				AstIndex enumIndex = makeDecl!EnumDeclaration(start, AstIndex.init, memberScope, AstNodes.init, memberType, enumId);
+				auto enumNode = enumIndex.get!EnumDeclaration(context);
+				AstNodes members = tryParseEnumBody(enumIndex);
 				popScope(scope_temp);
+				enumNode.declarations = members;
+				enumNode.parentScope = currentScopeIndex;
 
 				// enum e7 : i32 { e7 }
 				// enum e8 : i32;
-				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, memberType, enumId);
+				return enumIndex;
 			}
 			else if (tok.type == TokenType.LCURLY)
 			{
@@ -858,11 +862,15 @@ struct Parser
 				AstIndex memberType = intType;
 				ScopeTempData scope_temp;
 				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member, scope_temp);
-				AstNodes members = parse_enum_body(memberType);
+				AstIndex enumIndex = makeDecl!EnumDeclaration(start, AstIndex.init, memberScope, AstNodes.init, memberType, enumId);
+				auto enumNode = enumIndex.get!EnumDeclaration(context);
+				AstNodes members = parse_enum_body(enumIndex);
 				popScope(scope_temp);
+				enumNode.declarations = members;
+				enumNode.parentScope = currentScopeIndex;
 
 				// enum e9 { e9 }
-				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, memberType, enumId);
+				return enumIndex;
 			}
 			else
 			{
