@@ -4355,5 +4355,6 @@ immutable test201 = q{--- test201
 		u8 g;
 		u8 b;
 	}
+	// Cast from enum to base struct
+	Color color = Colors.DARK_WALL;
 };
-

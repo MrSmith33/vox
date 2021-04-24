@@ -154,7 +154,6 @@ TypeConvResKind checkTypeConversion(AstIndex fromTypeIndex, AstIndex toTypeIndex
 	TypeNode* fromType = fromTypeIndex.get_type(c);
 	TypeNode* toType = toTypeIndex.get_type(c);
 
-	restart_enum:
 	//writefln("checkTypeConversion %s %s", printer(c.getAstNodeIndex(fromType), c), printer(toTypeIndex, c));
 
 	switch (fromType.astType) with(AstType) {
@@ -162,9 +161,7 @@ TypeConvResKind checkTypeConversion(AstIndex fromTypeIndex, AstIndex toTypeIndex
 		case type_ptr: return type_conv_ptr(fromType.as_ptr, toTypeIndex, expr, c);
 		case type_slice: return type_conv_slice(fromType.as_slice, toTypeIndex, expr, c);
 		case type_static_array: return type_conv_static_array(fromType.as_static_array, toTypeIndex, expr, c);
-		case decl_enum:
-			fromType = fromType.as_enum.memberType.get_type(c);
-			goto restart_enum;
+		case decl_enum: return checkTypeConversion(fromType.as_enum.memberType, toTypeIndex, expr, c);
 		case type_func_sig: return type_conv_func_sig(fromType.as_func_sig, toTypeIndex, expr, c);
 		case decl_struct: return type_conv_struct(fromType.as_struct, toTypeIndex, expr, c);
 		default:
