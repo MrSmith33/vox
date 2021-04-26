@@ -380,7 +380,15 @@ struct IrTypeStorage
 				}
 				return true;
 			case IrTypeKind.func_t:
-				return a == b;
+				if (b.typeKind != IrTypeKind.func_t) return false;
+				IrTypeFunction* funcA = &get!IrTypeFunction(a);
+				IrTypeFunction* funcB = &get!IrTypeFunction(b);
+				if (funcA.numResults != funcB.numResults) return false;
+				if (funcA.numParameters != funcB.numParameters) return false;
+				foreach(i, IrIndex typeA; funcA.payload.ptr[0..funcA.numParameters+funcA.numParameters]) {
+					if (!isSameType(typeA, funcB.payload.ptr[i])) return false;
+				}
+				return true;
 		}
 	}
 }

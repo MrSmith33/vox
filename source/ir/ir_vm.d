@@ -23,30 +23,34 @@ struct IrVm
 	IrFunction* func;
 	/// Maps each vreg to frame slot. Relative to frameOffset
 	/// extra item is inserted that points past last item
-	uint* vregSlotOffsets;
-	/// Maps each stack slot to frame slot
-	uint* stackSlotOffsets;
+	uint* vmSlotOffsets;
 	uint frameOffset;
 	uint frameSize;
 
 	void pushFrame()
 	{
-		if (!func.vregSlotOffsets)
+		if (!func.vmSlotOffsets)
 		{
 			// allocate space for virt regs and stack slots
-			func.vregSlotOffsets = c.allocateTempArray!uint(func.numVirtualRegisters+1).ptr;
+			func.vmSlotOffsets = c.allocateTempArray!uint(func.numVirtualRegisters+func.numStackSlots+1).ptr;
 			uint offset = 0;
-			func.vregSlotOffsets[0] = offset;
+			func.vmSlotOffsets[0] = offset;
 			//writefln("vreg %s %s", 0, offset);
 			foreach(i; 0..func.numVirtualRegisters)
 			{
 				offset += c.types.typeSize(func.vregPtr[i].type);
 				//writefln("vreg %s %s", i+1, offset);
-				func.vregSlotOffsets[i+1] = offset;
+				func.vmSlotOffsets[i+1] = offset;
+			}
+			foreach(i; 0..func.numStackSlots)
+			{
+				offset += c.types.typeSize(c.types.getPointerBaseType(func.stackSlotPtr[i].type));
+				//writefln("slot %s %s", i+1, offset);
+				func.vmSlotOffsets[func.numVirtualRegisters + i+1] = offset;
 			}
 			func.frameSize = offset;
 		}
-		vregSlotOffsets = func.vregSlotOffsets;
+		vmSlotOffsets = func.vmSlotOffsets;
 		frameSize = func.frameSize;
 
 		frameOffset = c.pushVmStack(frameSize).offset;
@@ -64,8 +68,15 @@ struct IrVm
 
 	IrVmSlotInfo vregSlot(IrIndex vreg) {
 		assert(vreg.isVirtReg);
-		uint from = frameOffset + vregSlotOffsets[vreg.storageUintIndex];
-		uint to = frameOffset + vregSlotOffsets[vreg.storageUintIndex+1];
+		uint from = frameOffset + vmSlotOffsets[vreg.storageUintIndex];
+		uint to = frameOffset + vmSlotOffsets[vreg.storageUintIndex+1];
+		return IrVmSlotInfo(from, to - from);
+	}
+
+	IrVmSlotInfo stackSlotSlot(IrIndex slot) {
+		assert(slot.isStackSlot);
+		uint from = frameOffset + vmSlotOffsets[func.numVirtualRegisters + slot.storageUintIndex];
+		uint to = frameOffset + vmSlotOffsets[func.numVirtualRegisters + slot.storageUintIndex+1];
 		return IrVmSlotInfo(from, to - from);
 	}
 
@@ -158,6 +169,17 @@ struct IrVm
 					case IrOpcode.trunc:
 						long result = readInt(instrHeader.arg(func, 0));
 						writeInt(instrHeader.result(func), result);
+						break;
+
+					case IrOpcode.store:
+						IrVmSlotInfo memSlot = ptrToSlice(instrHeader.arg(func, 0));
+						copyToMem(memSlot, instrHeader.arg(func, 1));
+						break;
+
+					case IrOpcode.load:
+						IrVmSlotInfo sourceSlot = ptrToSlice(instrHeader.arg(func, 0));
+						IrVmSlotInfo resultSlot = vregSlot(instrHeader.result(func));
+						slotToSlice(resultSlot)[] = slotToSlice(sourceSlot);
 						break;
 
 					case IrOpcode.branch_binary:
@@ -278,6 +300,19 @@ struct IrVm
 			case 4: return *cast(  int*)slotToSlice(mem).ptr;
 			case 8: return *cast( long*)slotToSlice(mem).ptr;
 			default: c.internal_error("readInt %s", mem); assert(false);
+		}
+	}
+
+	IrVmSlotInfo ptrToSlice(IrIndex ptr)
+	{
+		IrIndex ptrType = getValueType(ptr, func, c);
+		IrIndex ptrMemType = c.types.getPointerBaseType(ptrType);
+		uint targetSize = c.types.typeSize(ptrMemType);
+		switch (ptr.kind) with(IrValueKind) {
+			case constant, constantZero: return IrVmSlotInfo(c.constants.get(ptr).i32, targetSize);
+			case virtualRegister: return IrVmSlotInfo(cast(uint)readInt(vregSlot(ptr)), targetSize);
+			case stackSlot: return stackSlotSlot(ptr);
+			default: c.internal_error("ptrToSlice %s", ptr); assert(false);
 		}
 	}
 

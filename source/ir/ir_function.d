@@ -31,7 +31,7 @@ struct IrFunction
 	StackSlot* stackSlotPtr;
 
 	// Optional. Used for IR interpretation
-	uint* vregSlotOffsets;
+	uint* vmSlotOffsets;
 	// Optional. Used for IR interpretation
 	uint frameSize;
 
