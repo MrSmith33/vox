@@ -325,19 +325,19 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 
 	if (numArgs < numRequiredArgs) {
 		if (numDefaultArgs == 0)
-			c.error(node.loc, "Insufficient arguments to `%s`, got %s, expected %s",
+			c.error(node.loc, "To few arguments to `%s`, got %s, expected %s",
 				c.idString(id), numArgs, numParams);
 		else
-			c.error(node.loc, "Insufficient arguments to `%s`, got %s, expected %s-%s",
+			c.error(node.loc, "To few arguments to `%s`, got %s, expected %s-%s",
 				c.idString(id), numArgs, numRequiredArgs, numParams);
 		return;
 	}
 	else if (numArgs > numParams) {
 		if (numDefaultArgs == 0)
-			c.error(node.loc, "Too much arguments to `%s`, got %s, expected %s",
+			c.error(node.loc, "Too many arguments to `%s`, got %s, expected %s",
 				c.idString(id), numArgs, numParams);
 		else
-			c.error(node.loc, "Too much arguments to `%s`, got %s, expected %s-%s",
+			c.error(node.loc, "Too many arguments to `%s`, got %s, expected %s-%s",
 				c.idString(id), numArgs, numRequiredArgs, numParams);
 
 		return;
