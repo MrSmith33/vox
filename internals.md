@@ -8,6 +8,35 @@ On linux I wasn't able to archive pure reserve, so compiler relies on overcommit
 
 ## Passes
 
+### General overview
+
+* Read source
+* Lex
+* Parse
+* Register names
+* Lookup names
+* Type check
+* Generate IR
+* Optimize
+    - inline
+    - DCE
+* IR lower
+    - lower ABI
+    - lower aggregates to stack slots
+    - lower switch
+    - lower GEP
+* IR to LIR AMD64
+* Live intervals
+* Linear scan
+* Stack layout
+* Code gen
+* Link executable
+* Write executable
+
+For me TAC means single operation per instruction, instruction takes arguments and returns some number of results (0 or 1 currently). In CFG basic blocks contain a list instructions with single entrance and single exit, and track a list of predecessor/successor basic blocks.
+
+Generate IR creates the IR with those properties and uses abstract instructions and virtual registers. Lower ABI introduces machine registers. IR to LIR switches from abstract to machine instructions. Linear scan replaces virtual registers with machine registers, destructs SSA form and also fixes two-operand form instructions. Code gen emits actual machine code.
+
 ### Read source
 
 Files use 2 arenas: one for file info records (`SourceFileInfo`) and one for file contents.
@@ -68,20 +97,119 @@ One non-ordinary thing here is that `#if` condition or `#foreach` expression nee
 
 #### Lookup names
 
+Every name use expression needs to resolve the node it references. To do this every name use node stores the parent scope in which it occured within source code. Parser tracks scopes and passes them into the node for future use.
 
+So, when name lookup pass comes to name use node it consults the scope tree.
+
+Algorithm is the same as in D (See <https://dlang.org/spec/module.html#name_lookup>).
+
+1. Walk up the scope tree looking at each step in the scope. Once found it the symbol.
+2. If not found. Then restart walking the scope tree, but this time check in imports.
+
+Another place where name resolution happens is member lookup in member expression (`parent.member`). This only check the parent scope for names.
 
 #### Type check
+
+Performs implicit type conversions. Checks types where specific type is expected, like function call argument (`foo(arg)`), variable assignment (`i32 a = 42;`) etc. Finds common type for binary operations (`a + b`).
+
 ### IR generation
+
+Uses algorithm from `Simple and Efficient Construction of Static Single Assignment Form by Braun et al. 2013`
+
 ### IR Optimization
+
+
+
 ### IR lowering
+
+It does 3 subpasses:
+* ABI lowering
+* Aggregate lowering
+* GEP-instruction lowering
+
+#### ABI lowering
+
+For each IR function it transforms `parameter` and `ret_val` instructions to follow own calling convention, and converts `call` instructions to follow callees calling convention.
+
+Currently Vox backend implements 3 CCs: `win64`, `sysv64`, and `sysv64_syscall`.
+
+
+
+#### Aggregate lowering
+
+Rewrites virtual registers that contain aggregates, that do not fit into a register, into stack slots. Atm algorithm is unfinished and produces redundant copies.
+
+#### Switch lowering
+
+Is written as part of aggregate lowering pass. Currently translates switch instruction into a chain of branches.
+
+#### GEP lowering
+
+Rewrites Get Element Pointer instructions into pointer arithmetic instructions.
+
 ### IR to LIR translation
     aka instruction selection
+
+
+
 ### Liveness analysis
 ### Register allocation
+
+Implements linear scan algorithm from `Linear Scan Register Allocation on SSA Form`
+
 ### Stack layout
+
+Parameters layout is determined by ABI lowering pass.
+
+Other stack slots are arranged by alignment (big to small). This way they are tightly packed and their alignment is respected.
+
 ### Code generation
+
+Here actual machine code is emitted. So far only amd64 is supported.
+
+First global variables are allocated to the static data sections (read-only and read-write). Symbols that are zeroed are allocated at the of those sections. In case we are producing executable, the file will not contain those zeroes.
+
+Then we walk all functions in the program and generate their machine code.
+
+First function prolog is emitted. It inserts code for frame pointer creation (if needed). Then stack reservation (if needed).
+
+Function body is compiled. We walk all basic blocks and instruction in each BB. Appropriate instruction encoding is selected depending on argument kind (register, stack slot, global, function, constant), register class (GPR, XMM) and instruction size. For arguments that reference globals or functions a new `ObjectSymbolReference` is created (needed for linking later).
+
+Some instructions modify stack pointer (`push`s before function call, `add`/`sub` to stack pointer), so we track that as an additional offset. Then, when compiling instructions that reference stack slots we need to add that offset to the stack slot offset to compensate.
+
+Jumps between basic blocks need further fixup. Code generator allocates a table of 2 pointers per basic blocks, allowing to have 0-2 successors per basic block. When compiling branch/jump instructions it will store the address of 4 byte offset into that buffer. No jump is generated if the target is the next block.
+
+Because IR guarantees single return instruction, epilog is generated as part of that instruction codegen. It deallocates stack and frame pointer as needed. Then return instruction is inserted.
+
+After that jump fixup is performed and size of final machine code is calculated.
+
 ### Linking
+
+When generating IR, frontend creates a new object symbol (`ObjectSymbol`), per function and per global variable. `ObjectModule` is created per module. There is also `ObjectSection`, which tracks section info of resulting excutable file, and `ObjectSymbolReference`, which represents reference from one symbol to another.
+
+After code generation step all globals are put in the globals arena, and have finalized address in the section (read-only or read-write data sections). Same with functions that have machine code in code arena.
+
+Linking pass walk all local modules, and for each reference performs a fixup.
+
+When compiling in JIT-mode host can export its own functions as symbols to the compiled program. They are put into a host module. If the registered function address is too far from the code that refences it, then it is put into import table. Linker handles both relative reference and indirection through import table.
+
+When compiling standalone executable, user can also pass `.dll` files to the compiler and all external functions will be resolved to one of them. Such references are implemented by generating import table in the executable (`.idata` for PE/COFF).
+
+### Executable creation
+
+Generation of `win64` and `elf64` executables is supported. For windows compiler can generate references to `.dll` files provided through CLI.
+
+Following sections are generated (if they are non-empty):
+* `.text` - Executable code section
+* `.idata` - Import table section (only on win64)
+* `.data` - Read-write static data section
+* `.rdata` - Read-only static data section
+
+First sections are created and import table is filled. Then linking pass is run. Necessary data is filled in the PE and COFF headers and written to the buffer. Section headers are written. Then data of each section is written. Now final executable is fully in the buffer.
+
 ### Writing executable
+
+Executable that was stored in arena buffer is written to the target file. On posix platform it is given `rwx` rights.
 
 ## IR
 
