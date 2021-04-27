@@ -3117,7 +3117,7 @@ immutable test132 = q{--- test132
 immutable test133 = q{--- test133
 	#assert(false, "Assert test");
 --- <error>
-test133(1, 2): Error: #assert: "Assert test"
+test133:1:2: Error: #assert: "Assert test"
 };
 
 
@@ -3225,7 +3225,7 @@ immutable test139 = q{--- test139
 	}
 	enum val = $compileError("CTFE error");
 --- <error>
-test139(5, 26): Error: CTFE error
+test139:5:26: Error: CTFE error
 };
 
 
@@ -3240,7 +3240,7 @@ immutable test140 = q{--- test140
 		return false;
 	}
 --- <error>
-test140(2, 2): Error: #assert: "test"
+test140:2:2: Error: #assert: "test"
 };
 
 
@@ -3452,7 +3452,7 @@ immutable test152 = q{
 	void fun[Args1..., Args2...]() {}
 	void run(){ fun(); }
 --- <error>
-test152(2, 21): Error: Only single variadic template parameter allowed
+test152:2:21: Error: Only single variadic template parameter allowed
 };
 
 
@@ -3463,7 +3463,7 @@ immutable test153 = q{
 	void fun[Args..., T]() {}
 	void run(){ fun(); }
 --- <error>
-test153(2, 20): Error: Cannot have template parameters after variadic parameter (WIP)
+test153:2:20: Error: Cannot have template parameters after variadic parameter (WIP)
 };
 
 
@@ -3679,7 +3679,7 @@ immutable test171 = q{
 	}
 	void run(){ fun(42); }
 --- <error>
-test171(2, 38): Error: Cannot have two expanded parameters
+test171:2:38: Error: Cannot have two expanded parameters
 };
 
 

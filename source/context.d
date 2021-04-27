@@ -545,28 +545,31 @@ struct CompilationContext
 		return t;
 	}
 
-	ModuleDeclNode* getModuleFromToken(TokenIndex tokIndex)
-	{
-		assert(tokIndex < tokenBuffer.length, format("getModuleFromToken(%s), numTokens %s", tokIndex, tokenBuffer.length));
+	SourceFileInfo* getFileFromToken(TokenIndex tokIndex) {
+		assert(tokIndex < tokenBuffer.length, format("getFileFromToken(%s), numTokens %s", tokIndex, tokenBuffer.length));
 
-		ModuleDeclNode* lastMod;
+		SourceFileInfo* lastFile;
 		foreach(ref SourceFileInfo file; files.data)
 		{
 			// We are parsing and this module is not parsed yet, so it's previous one
 			if (!file.firstTokenIndex.isValid) break;
 
 			if (tokIndex < file.firstTokenIndex) {
-				assertf(lastMod !is null,
+				assertf(lastFile !is null,
 					"Cannot find file of token %s, before first file starting at %s",
 					tokIndex, file.firstTokenIndex);
-				return lastMod;
+				return lastFile;
 			}
-			lastMod = file.mod;
+			lastFile = &file;
 		}
-		if (lastMod is null) {
+		if (lastFile is null) {
 			internal_error("Cannot find file of token %s, no files", tokIndex);
 		}
-		return lastMod;
+		return lastFile;
+	}
+
+	ModuleDeclNode* getModuleFromToken(TokenIndex tokIndex) {
+		return getFileFromToken(tokIndex).mod;
 	}
 
 	ModuleDeclNode* findModule(string moduleId)

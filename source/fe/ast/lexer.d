@@ -207,9 +207,10 @@ struct FmtSrcLoc
 	void toString(scope void delegate(const(char)[]) sink) {
 		if (tok.index == uint.max) return;
 		auto loc = ctx.tokenLoc(tok);
-		if (tok.index >= ctx.initializedTokenLocBufSize)
-			sink.formattedWrite("%s(%s, %s)",
-				ctx.idString(ctx.getModuleFromToken(tok).id), loc.line+1, loc.col+1);
+		if (tok.index >= ctx.initializedTokenLocBufSize) {
+			SourceFileInfo* fileInfo = ctx.getFileFromToken(tok);
+			sink.formattedWrite("%s:%s:%s", fileInfo.name, loc.line+1, loc.col+1);
+		}
 	}
 }
 

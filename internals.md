@@ -209,7 +209,7 @@ First sections are created and import table is filled. Then linking pass is run.
 
 ### Writing executable
 
-Executable that was stored in arena buffer is written to the target file. On posix platform it is given `rwx` rights.
+Executable that was stored in arena buffer is written to the target file. On posix platforms it is given `rwx` rights.
 
 ## IR
 
