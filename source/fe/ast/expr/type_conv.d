@@ -170,7 +170,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 
 IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext* c)
 {
-	c.assertf(rval.isSimpleConstant, node.loc, "Must be constant");
+	c.assertf(rval.isSomeConstant, node.loc, "Must be constant");
 	IrIndex result;
 
 	TypeNode* targetType = node.type.get_type(c);

@@ -4358,3 +4358,29 @@ immutable test201 = q{--- test201
 	// Cast from enum to base struct
 	Color color = Colors.DARK_WALL;
 };
+
+
+/*
+@TestInfo()
+immutable test202 = q{--- test202
+	// aggregate lowering with phi function (two paths that return a struct)
+	u8[] fromStringz(u8* cString, u64 len) {
+		if (cString == null) return null;
+		return cString[0..len];
+	}
+};*/
+
+
+@TestInfo()
+immutable test203 = q{--- test203
+	// String literal to u8* in ctfe
+	u8* ptr = "hello";
+	struct TracyLoc {
+		u8* name;
+		u8* func;
+		u8* file;
+		u32 line;
+		u32 color;
+	}
+	TracyLoc zone_loc = TracyLoc("Zonename", "update", "main.vx", 81, 0xFF00FF);
+};
