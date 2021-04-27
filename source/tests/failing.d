@@ -276,7 +276,7 @@ immutable fail25 = q{
 	void func(u32 arg1, u32 arg2 = 42) {}
 	void test() { func(); }
 --- <error>
-fail25(3, 20): Error: Insufficient arguments to `func`, got 0, expected 1-2
+fail25(3, 20): Error: Too few arguments to `func`, got 0, expected 1-2
 };
 
 @TestInfo()
@@ -286,7 +286,7 @@ immutable fail26 = q{
 	void func(u32 arg1 = 42) {}
 	void test() { func(1, 2); }
 --- <error>
-fail26(3, 20): Error: Too much arguments to `func`, got 2, expected 0-1
+fail26(3, 20): Error: Too many arguments to `func`, got 2, expected 0-1
 };
 
 @TestInfo()
@@ -296,7 +296,7 @@ immutable fail27 = q{
 	void func(u32 arg1) {}
 	void test() { func(1, 2); }
 --- <error>
-fail27(3, 20): Error: Too much arguments to `func`, got 2, expected 1
+fail27(3, 20): Error: Too many arguments to `func`, got 2, expected 1
 };
 
 @TestInfo()
