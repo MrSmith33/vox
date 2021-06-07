@@ -1,4 +1,4 @@
-## Memory management
+# Memory management
 
 Memory is allocated via a set of arenas. At the start compiler reserves a big chunk of memory (186 GiB atm), and bits of that memory are given to each arena.
 
@@ -6,9 +6,9 @@ On windows memory is reserved via a call to `VirtualAlloc` with `MEM_RESERVE` fl
 
 On linux I wasn't able to archive pure reserve, so compiler relies on overcommit to be enabled and commits the whole arena pool at the start. The OS is then responsible for allocating memory pages on first access.
 
-## Passes
+# Passes
 
-### General overview
+## General overview
 
 * Read source
 * Lex
@@ -37,7 +37,7 @@ For me TAC means single operation per instruction, instruction takes arguments a
 
 Generate IR creates the IR with those properties and uses abstract instructions and virtual registers. Lower ABI introduces machine registers. IR to LIR switches from abstract to machine instructions. Linear scan replaces virtual registers with machine registers, destructs SSA form and also fixes two-operand form instructions. Code gen emits actual machine code.
 
-### Read source
+## Read source
 
 Files use 2 arenas: one for file info records (`SourceFileInfo`) and one for file contents.
 
@@ -47,7 +47,7 @@ Before each source there is a start of input char `char SOI_CHAR = '\2'`, and af
 
 During lexing those turn into corresponding tokens: `TokenType.SOI`, `TokenType.EOI`.
 
-### Lexing
+## Lexing
 
 Lexer produces `TokenType` and `SourceLocation` per token generated. Those are put into 2 arenas (`tokenBuffer` and `tokenLocationBuffer`). Tokens of all source files live in the same arenas, so they share index space. Token index is 32-bit number. AST nodes then store just a single `TokenIndex`.
 
@@ -64,7 +64,7 @@ and `TokenType` is a single byte enumeration.
 
 `SourceFileInfo` also stores index of the first token of the source file. And since all files are loaded sequentially, `firstTokenIndex` also grows monotonically with each file added. We can then use `firstTokenIndex` to find the file that contains any given token. This is used for error location printing.
 
-### Parsing
+## Parsing
 
 Parsing uses recursive descend + Pratt parsing for expressions. Types are considered an expression too.
 
@@ -78,8 +78,8 @@ All AST node allocations are sequential in memory, so template system takes adva
 
 Named declaration nodes (`NameUseExprNode`/`AliasDeclNode`/`EnumDeclaration`/`EnumMemberDecl`/`FunctionDeclNode`/`StructDeclNode`/`TemplateDeclNode`/`VariableDeclNode`) keep track of parent scope, so that in `Register names` pass they can register themselves into that scope.
 
-### Semantic passes
-#### Register names
+## Semantic passes
+### Register names
 
 This pass walks the AST nodes in all files and registers itself in the parent scope.
 
@@ -95,7 +95,7 @@ Then we walk all the nodes in array and request registering of their children.
 
 One non-ordinary thing here is that `#if` condition or `#foreach` expression need to be evaluated, which means that condition subtree needs to be processed up to `Type check` stage and evaluated.
 
-#### Lookup names
+### Lookup names
 
 Every name use expression needs to resolve the node it references. To do this every name use node stores the parent scope in which it occured within source code. Parser tracks scopes and passes them into the node for future use.
 
@@ -108,26 +108,26 @@ Algorithm is the same as in D (See <https://dlang.org/spec/module.html#name_look
 
 Another place where name resolution happens is member lookup in member expression (`parent.member`). This only check the parent scope for names.
 
-#### Type check
+### Type check
 
 Performs implicit type conversions. Checks types where specific type is expected, like function call argument (`foo(arg)`), variable assignment (`i32 a = 42;`) etc. Finds common type for binary operations (`a + b`).
 
-### IR generation
+## IR generation
 
 Uses algorithm from `Simple and Efficient Construction of Static Single Assignment Form by Braun et al. 2013`
 
-### IR Optimization
+## IR Optimization
 
 
 
-### IR lowering
+## IR lowering
 
 It does 3 subpasses:
 * ABI lowering
 * Aggregate lowering
 * GEP-instruction lowering
 
-#### ABI lowering
+### ABI lowering
 
 For each IR function it transforms `parameter` and `ret_val` instructions to follow own calling convention, and converts `call` instructions to follow callees calling convention.
 
@@ -135,35 +135,43 @@ Currently Vox backend implements 3 CCs: `win64`, `sysv64`, and `sysv64_syscall`.
 
 
 
-#### Aggregate lowering
+### Aggregate lowering
 
 Rewrites virtual registers that contain aggregates, that do not fit into a register, into stack slots. Atm algorithm is unfinished and produces redundant copies.
 
-#### Switch lowering
+### Switch lowering
 
 Is written as part of aggregate lowering pass. Currently translates switch instruction into a chain of branches.
 
-#### GEP lowering
+### GEP lowering
 
 Rewrites Get Element Pointer instructions into pointer arithmetic instructions.
 
-### IR to LIR translation
+## IR to LIR translation
     aka instruction selection
 
+Vox compiler uses basic macro expansion approach, where for each instruction of IR an instruction of target architecture is emitted (currently only for amd64).
 
+* Empty LIR is created
+* I create an array to store mapping from IR virtual registers to LIR virtual registers
+* Stack slots are duplicated from IR to LIR without changes
+* Basic blocks and their phi functions are recreated in LIR. New basic blocks have identical indicies with old ones.
+* Old basic blocks are iterated
+* BB instructions are iterated
+* For each instruction we either emit a single instruction
 
-### Liveness analysis
-### Register allocation
+## Liveness analysis
+## Register allocation
 
 Implements linear scan algorithm from `Linear Scan Register Allocation on SSA Form`
 
-### Stack layout
+## Stack layout
 
 Parameters layout is determined by ABI lowering pass.
 
 Other stack slots are arranged by alignment (big to small). This way they are tightly packed and their alignment is respected.
 
-### Code generation
+## Code generation
 
 Here actual machine code is emitted. So far only amd64 is supported.
 
@@ -183,7 +191,7 @@ Because IR guarantees single return instruction, epilog is generated as part of 
 
 After that jump fixup is performed and size of final machine code is calculated.
 
-### Linking
+## Linking
 
 When generating IR, frontend creates a new object symbol (`ObjectSymbol`), per function and per global variable. `ObjectModule` is created per module. There is also `ObjectSection`, which tracks section info of resulting excutable file, and `ObjectSymbolReference`, which represents reference from one symbol to another.
 
@@ -195,7 +203,7 @@ When compiling in JIT-mode host can export its own functions as symbols to the c
 
 When compiling standalone executable, user can also pass `.dll` files to the compiler and all external functions will be resolved to one of them. Such references are implemented by generating import table in the executable (`.idata` for PE/COFF).
 
-### Executable creation
+## Executable creation
 
 Generation of `win64` and `elf64` executables is supported. For windows compiler can generate references to `.dll` files provided through CLI.
 
@@ -207,17 +215,17 @@ Following sections are generated (if they are non-empty):
 
 First sections are created and import table is filled. Then linking pass is run. Necessary data is filled in the PE and COFF headers and written to the buffer. Section headers are written. Then data of each section is written. Now final executable is fully in the buffer.
 
-### Writing executable
+## Writing executable
 
 Executable that was stored in arena buffer is written to the target file. On posix platforms it is given `rwx` rights.
 
-## IR
+# IR
 
 Program IR consists of globals, constants, types and functions. Functions belong to modules, but modules are pretty much unnessesary abstraction.
 
-### Storage
+## Storage
 
-Function IR is stored in a set of arenas.
+Function IR is stored in a set of arenas that reside in `CompilationContext`.
 
 ```D
 Arena!IrInstrHeader     instrHeaderBuffer;
@@ -253,19 +261,19 @@ Copying function IR requires only one memcopy per arena without the need of any 
 
 This also makes inlining fast. Function IR that is being inlined is appended to the end of the arena and all references in those items are offset by the size of the original IR. Such offset is done via an offset table thanks to clever design of `IrIndex`.
 
-### IrIndex
+## IrIndex
 
 `IrIndex` represents index of any IR entity.
 
-### Basic blocks
+## Basic blocks
 
 Atm it is 40 bytes
 
-### Function inlining
+## Function inlining
 
 
 
-## Function arguments and register allocation
+# Function arguments and register allocation
 
 Before register allocation there is ABI lowering pass that replaces calls of a form:
 
@@ -341,7 +349,7 @@ Here is the resulting live ranges
 
 Same idea works with instructions that use fixed registers for arguments and results such as `idiv`.
 
-## Handling two-address form instructions
+# Handling two-address form instructions
 
 Two-address form is used in instructions of form `dst = op src0 src1`, where `dst` is the same register as `src0`.
 
@@ -390,3 +398,133 @@ else // input: "r1 = op r2 r2"
     output: "r1 = op r1 r1"
 }
 ```
+
+# Testing
+
+Tests in Vox are defined in the source code via string literals annotated with `TestInfo` value. Test runner then iterates all definitions in test modules and gets those that marked with `@TestInfo`.
+
+Here is what inside `TestInfo`:
+```D
+struct TestInfo
+{
+    void function(ref TestContext) tester;
+    HostSymbol[] hostSymbols;
+    DllModule[] dllModules;
+}
+```
+
+Here is how the simplest test case looks like:
+```D
+@TestInfo() // annotation
+immutable test = q{}; // string with the source code
+```
+
+`immutable test = q{};` is equivalent to `immutable string test = "";`, in D you can omit `string` in this case and `q{}` denotes token literal, which for most cases just makes editor syntax highlight string content.
+
+Inside the test string I use [https://github.com/marler8997/har (HAR)](https://github.com/marler8997/har) format. Basic idea of which is that you can concatenate multiple text files into one, like an archive:
+
+```D
+--- main.vx
+import kernel32;
+void main() { ExitProcess(42); }
+--- kernel32.vx
+void ExitProcess(u32 uExitCode);
+```
+
+each file begins with the header of `--- <path>` format. This way we can define test cases with as many files as we want, in a single string.
+
+Now we can define a test case that defines `test.vx` module, with `get42` function in it:
+
+```D
+@TestInfo()
+immutable test = q{
+--- test.vx
+    i32 get42() {
+        return 42;
+    }
+};
+```
+
+Since we jit-compile test case we can also run the code we compiled:
+
+```D
+@TestInfo(&tester)
+immutable test = q{
+--- test.vx
+    i32 get42() {
+        return 42;
+    }
+};
+void tester(ref TestContext ctx) {
+    auto run = ctx.getFunctionPtr!(int)("get42"); // get pointer to get42
+    assert(run() == 42); // call it
+}
+```
+here we define D function called `tester`, and pass pointer to it to the `@TestInfo` annotation. After test runner compiles the test, it check if `TestInfo.tester` is set and if yes, `tester` is called.
+
+Inside the `tester` we can introspect compiled case. Usually test cases retreive function pointer to some function in the test case and call it. This is possible because Vox uses C calling convention by default, and D can call functions marked with `extern(C)`, which is what `getFunctionPtr` returns.
+
+After we get the function pointer we can call it with any arguments for testing purposes.
+
+But what if we want Vox program to call D code? This is possible too. There are two options:
+* bind D function to an external declaration within compiled test case
+* or pass function pointer to the Vox program
+
+Example of the first one:
+```D
+@TestInfo(&tester, [HostSymbol("add", cast(void*)&external_func)])
+immutable test = q{
+--- test.vx
+    i32 run(i32 par) {
+        return add(par, 10);
+    }
+    i32 add(i32, i32); // external declaration
+};
+extern(C) int external_func(int par1, int par2) {
+    return par1 + par2;
+}
+void tester(ref TestContext ctx) {
+    auto run = ctx.getFunctionPtr!(int, int)("run");
+    int result = run(13);
+    assert(result == 23);
+}
+```
+
+We declare a D function called `external_func` that sums two ints. `extern(C)` makes it use C calling convention. With the `HostSymbol("add", cast(void*)&external_func)` we define binding from `add` name to the `external_func` function. And when compiler stumbles upon external declaration of `add` it will link it to the provided pointer.
+
+Here is an example of the second option of passing function pointer manually:
+```D
+@TestInfo(&tester)
+immutable test = q{
+--- test.vx
+    i32 run(i32 par, i32 function(i32, i32) add) {
+        return add(par, 10);
+    }
+};
+extern(C) int external_func(int par1, int par2) {
+    return par1 + par2;
+}
+void tester(ref TestContext ctx) {
+    auto run = ctx.getFunctionPtr!(int, int, extern(C) int function(int, int))("run");
+    int result = run(13, &external_func);
+    assert(result == 23);
+}
+```
+
+To define a test case that must fail the compilation you need to add a special file named `<error>`. Test runner will look for it when setting the compiler. If it is present, the content of this file must match the error message that compiler generates.
+
+```D
+@TestInfo()
+immutable failing = q{
+--- failing.vx
+    i32 fun(){
+        bar();
+    }
+--- <error>
+failing.vx:2:3: Error: undefined identifier `bar`
+};
+```
+
+Test runner also supports building executables, which I use to test executable generation. I only have 2 tests that produce an executable, because it is much slower than doing everything in memory.
+
+At the time of writing I have 270 test, all of which take ~60ms. Of which 2 executable tests take ~10ms. This is on Windows. So on average 5ms per executable test, which compiles, writes executable file, runs the executable. And 0.19ms per JIT test, which doesn't perform any IO. Together with compiling compiler from scratch it takes me 3.6s to compile and run compiler with whole test suite. So, iteration time is quite nice.

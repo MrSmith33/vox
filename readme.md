@@ -84,6 +84,7 @@ T min[T](T a, T b) {
 ```
 
 - Roguelike tutorial using SDL2 - [repo](https://github.com/MrSmith33/rltut_2019)
+- Voxel engine that uses Vox as a scripting language: [Voxelman 2](https://github.com/MrSmith33/voxelman2)
 - Example of JIT compilation for amd64 from D code:
 
 <details>
@@ -161,14 +162,14 @@ vox hello.vx C:\Windows\System32\kernel32.dll
 * `.vx` files are source code files.
 * `.har` files, aka [Human Readable Archive files](https://github.com/marler8997/har). A text file that combines multiple textual files.
 
-Each file must begin with `--- <name>`, three dashes, space, and name.
+Each file must begin with `--- <path>`, three dashes, space, and name.
 
 Files can be nested inside directories `--- dir/dir2/file.txt`.
 
 Example:
 ```D
 --- main.vx
-import utils;
+import kernel32;
 void main() { ExitProcess(42); }
 --- kernel32.vx
 void ExitProcess(u32 uExitCode);
@@ -190,51 +191,8 @@ vox pdb-dump vox.pdb
 
 ## Stats
 
-- Impl size: 30k LoC of D, 2MB exe
-- Time to compile: 4.2s debug / 45s release
-- Test suite: 52ms for 184 tests
+- Impl size: 35k LoC of D, 2.4MB exe
+- Time to compile: 3.5s debug / 45s release
+- Test suite: 60ms for 270 tests
 
-## Passes
-
-* Parsing - produces AST
-* Semantic insert - Fills scopes with identifiers
-* Semantic lookup - Resolves symbol references
-* Semantic types - Type checking
-* IR gen - Conversion of AST into linear IR in SSA form
-* Optimization - optimizes machine-independent IR
-* IR to LIR - Conversion of high-level IR to machine code IR in SSA form (LIR)
-* Live intervals - Collects liveness info about values for use in register allocation
-* Linear Scan Register Allocation - Replaces virtual registers with physical ones
-* Stack layout - Calculates offsets for stack slots
-* Code gen - Converts LIR into machine code
-* Linking
-* Executable generation (optional, used in non-JIT mode)
-
-## Source code
-
-`source` directory content:
-
-* `/asmtest` - tests for instruction encodings.
-* `/ir` - IR specific stuff.
-* `amd64asm.d` - instruction encoding for amd64 architecture.
-* `ast.d` - Abstract Syntax Tree nodes.
-* `ast_to_ir.d` - IR generation.
-* `bench.d` - compilation benchmark.
-* `driver.d` - compiler driver.
-* `emit_mc_amd64.d` - final machine code generation for amd64 arch.
-* `identifier.d` - Identifier type.
-* `ir_test.d` - implementation of SSA IR construction algorithm.
-* `ir_to_lir_amd64.d` - instruction selection for amd64 arch.
-* `lir_amd64.d` - LIR for amd64 arch.
-* `liveness.d` - liveness analysis.
-* `main.d` - compiler entry.
-* `optimize.d` - some optimizations for IR.
-* `pecoff.d` - loading of `.lib`, `.obj` files. Generation of `.exe` files. Linking utilities. Dumping utilities. Works with files in PE/COFF format.
-* `register_allocation.d` - Linear Scan Register Allocation algorithm.
-* `semantics.d` - semantic analysis passes.
-* `stack_layout.d` - layout of stack slots.
-* `tests.d` - compiler test suite.
-
-# Test suite
-
-It uses jitting for most tests, which allows D code to call into a compiled test case and to pass D function pointers inside compiled code.
+For more in detail description of implementation see [internals.md](internals.md)
