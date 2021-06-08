@@ -448,6 +448,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 					instrHeader.numArgs = 1;
 					instrHeader.op = IrOpcode.move;
+					removeUser(c, ir, instrIndex, args[0]);
 					args[0] = loadInstr.result;
 					builder.addUser(instrIndex, args[0]);
 					break;
@@ -543,6 +544,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 				foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir)) {
 					if (phiArg.isSomeConstant) {
 						builder.emitInstrBefore!(IrOpcode.store)(ir.getBlock(predecessors[arg_i]).lastInstr, ExtraInstrArgs(), phi.result, phiArg);
+						phiArg = slot;
 					}
 				}
 				vreg.type = c.types.appendPtr(type);
