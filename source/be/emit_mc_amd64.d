@@ -289,18 +289,26 @@ struct CodeEmitter
 							genRegular(arg0, arg1, AMD64OpRegular.add, cast(IrArgSize)arg0.physRegSize, instrIndex);
 						}
 
-						if (arg0 == stackPointer && arg1.isConstant)
-						{
-							stackPointerExtraOffset -= context.constants.get(arg1).i64;
+						if (arg0 == stackPointer) {
+							if (arg1.isConstant) {
+								stackPointerExtraOffset -= context.constants.get(arg1).i64;
+							} else {
+								dumpFunction(context, lir, "Code gen");
+								context.internal_error("Cannot decrement stack pointer by non-constant in %s", instrIndex);
+							}
 						}
 						break;
 					case Amd64Opcode.sub:
 						IrIndex arg0 = instrHeader.arg(lir, 0);
 						IrIndex arg1 = instrHeader.arg(lir, 1);
 						genRegular(arg0, arg1, AMD64OpRegular.sub, cast(IrArgSize)arg0.physRegSize, instrIndex);
-						if (arg0 == stackPointer && arg1.isConstant)
-						{
-							stackPointerExtraOffset += context.constants.get(arg1).i64;
+						if (arg0 == stackPointer) {
+							if (arg1.isConstant) {
+								stackPointerExtraOffset += context.constants.get(arg1).i64;
+							} else {
+								dumpFunction(context, lir, "Code gen");
+								context.internal_error("Cannot increment stack pointer by non-constant in %s", instrIndex);
+							}
 						}
 						break;
 					case Amd64Opcode.xor:
@@ -873,7 +881,9 @@ struct CodeEmitter
 							context.internal_error("Not implemented: reg_to_reg %s %s", dst, src);
 					}
 				} else {
-					gen.mov(dstReg, srcReg, cast(ArgType)argSize);
+					if (dstReg != srcReg) {
+						gen.mov(dstReg, srcReg, cast(ArgType)argSize);
+					}
 				}
 				break;
 

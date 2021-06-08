@@ -542,7 +542,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				// is directly in stack
 				ExtraInstrArgs extra = { result : instrHeader.result(ir) };
 				IrIndex loadInstr;
-				if (type.isTypeArray || type.isTypeStruct) {
+				if (type.isTypeAggregate) {
 					// happens on sysv64
 					loadInstr = builder.emitInstr!(IrOpcode.load_aggregate)(extra, slot).instruction;
 				} else {

@@ -29,23 +29,23 @@ void pass_ir_lower(CompilationContext* c, ModuleDeclNode* mod, FunctionDeclNode*
 	builder.beginDup(loweredIrData, c);
 	IrIndex funcIndex = func.getIrIndex(c);
 
-	void doPass(FuncPassIr pass) {
+	void doPass(FuncPassIr pass, string passName) {
 		pass(c, loweredIrData, funcIndex, builder);
 		if (c.validateIr)
-			validateIrFunction(c, loweredIrData);
-		if (c.printIrLowerEach && c.printDumpOf(func)) dumpFunction(c, loweredIrData, "IR lowering each");
+			validateIrFunction(c, loweredIrData, passName);
+		if (c.printIrLowerEach && c.printDumpOf(func)) dumpFunction(c, loweredIrData, passName);
 	}
 
-	doPass(&func_pass_lower_abi);
-	doPass(&func_pass_lower_aggregates);
-	doPass(&func_pass_lower_gep);
+	doPass(&func_pass_lower_abi, "Lower ABI");
+	doPass(&func_pass_lower_aggregates, "Lower aggregates");
+	doPass(&func_pass_lower_gep, "Lower GEP");
 
 	if (!c.printIrLowerEach && c.printIrLower && c.printDumpOf(func)) dumpFunction(c, loweredIrData, "IR lowering all");
 	builder.finalizeIr;
 }
 
 bool fitsIntoRegister(IrIndex type, CompilationContext* c) {
-	if (type.isTypeStruct || type.isTypeArray) {
+	if (type.isTypeAggregate) {
 		switch(c.types.typeSize(type)) {
 			case 1: return true;
 			case 2: return true;
@@ -116,6 +116,25 @@ IrIndex genLoad(IrIndex ptr, uint offset, IrIndex ptrType, IrIndex beforeInstr, 
 struct LowerVreg
 {
 	IrIndex redirectTo;
+	LowerAggregateAs status;
+}
+
+enum LowerAggregateAs : ubyte
+{
+	// no action needed
+	none,
+	// redirect all users to the value of `redirectTo` (possibly recursively, if target is also redirectToPointer)
+	redirectToPointer,
+	// Will remain in a register. When aggregate is <= 8 bytes
+	value,
+	// No suitable memory found for the whole value graph
+	newSlot,
+	// same as newSlot, but no redirect needed
+	newPhiSlot,
+	// value graph starts from a unique load
+	//uniqueLoadPtr,
+	// value graph ends in a unique store
+	//uniqueStorePtr,
 }
 
 void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
@@ -123,14 +142,14 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 	//writefln("lower_aggregates %s", c.idString(ir.name));
 
 	// buffer for call/instruction arguments
-	enum MAX_ARGS = 255;
-	IrIndex[MAX_ARGS] argBuffer = void;
+	//enum MAX_ARGS = 255;
+	//IrIndex[MAX_ARGS] argBuffer = void;
 
 	LowerVreg[] vregInfos = makeParallelArray!LowerVreg(c, ir.numVirtualRegisters);
 
-	foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegisters)
+	/*foreach (IrIndex vregIndex, ref IrVirtualRegister vreg; ir.virtualRegisters)
 	{
-		if (!(vreg.type.isTypeStruct || vreg.type.isTypeArray)) continue;
+		if (!vreg.type.isTypeAggregate) continue;
 
 		//writefln("- vreg %s", vregIndex);
 
@@ -144,7 +163,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 		vregInfos[vregIndex.storageUintIndex].redirectTo = definition.arg(ir, 0);
 		removeInstruction(ir, vreg.definition);
-	}
+	}*/
 
 	// transforms instructions
 	// gathers all registers to be promoted to pointer
@@ -154,10 +173,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 		{
 			IrIndex type = ir.getVirtReg(phi.result).type;
 			if (!type.fitsIntoRegister(c)) {
-				//writefln("- phi %s", phiIndex);
-			}
-			foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir))
-			{
+				vregInfos[phi.result.storageUintIndex] = LowerVreg(phiIndex, LowerAggregateAs.newPhiSlot);
 			}
 		}
 
@@ -195,10 +211,16 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					}
 					else
 					{
-						IrIndex slot = builder.appendStackSlot(base, c.types.typeSizeAndAlignment(base), StackSlotKind.local);
-						genCopy(slot, instrHeader.arg(ir, 0), instrIndex, builder);
-
-						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = slot;
+						// we can omit stack allocation and reuse source memory
+						if (instrHeader.isUniqueLoad)
+						{
+							vregInfos[instrHeader.result(ir).storageUintIndex] = LowerVreg(instrHeader.arg(ir, 0), LowerAggregateAs.redirectToPointer);
+						}
+						else
+						{
+							genCopy(instrHeader.result(ir), instrHeader.arg(ir, 0), instrIndex, builder);
+							vregInfos[instrHeader.result(ir).storageUintIndex] = LowerVreg(base, LowerAggregateAs.newSlot);
+						}
 					}
 					removeInstruction(ir, instrIndex);
 					break;
@@ -210,7 +232,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					if (!type.fitsIntoRegister(c)) {
 						IrTypeStruct* structType = &c.types.get!IrTypeStruct(type);
 						IrIndex slot = builder.appendStackSlot(type, c.types.typeSizeAndAlignment(type), StackSlotKind.local);
-						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = slot;
+						vregInfos[instrHeader.result(ir).storageUintIndex] = LowerVreg(slot, LowerAggregateAs.redirectToPointer);
 
 						IrIndex[] members = instrHeader.args(ir);
 						c.assertf(members.length == structType.numMembers, "%s != %s", members.length, structType.numMembers);
@@ -237,6 +259,103 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						createSmallAggregate(instrIndex, type, instrHeader, ir, builder);
 					break;
 
+				case IrOpcode.insert_element:
+					//writefln("- insert_element %s", instrIndex);
+					IrIndex[] args = instrHeader.args(ir);
+					IrIndex aggrType = getValueType(args[0], ir, c);
+					uint targetTypeSize = c.types.typeSize(aggrType);
+					IrArgSize argSize = sizeToIrArgSize(targetTypeSize, c);
+					IrTypeStructMember member = c.types.getAggregateMember(aggrType, c, args[2..$]);
+					IrIndex memberType = member.type;
+					uint memberSize = c.types.typeSize(memberType);
+					//writefln("insert %s into %s at %s", memberSize, targetTypeSize, member.offset);
+
+					if (!aggrType.fitsIntoRegister(c)) {
+						IrIndex ptrType = c.types.appendPtr(memberType);
+
+						IrIndex ptr = args[0];
+
+						if (ptr.isSomeConstant) {
+							// TODO: delay slot alloc
+							IrIndex slot = builder.appendStackSlot(aggrType, c.types.typeSizeAndAlignment(aggrType), StackSlotKind.local);
+							builder.emitInstrBefore!(IrOpcode.store)(instrIndex, ExtraInstrArgs(), instrHeader.result(ir), ptr);
+							ptr = slot;
+							vregInfos[instrHeader.result(ir).storageUintIndex] = LowerVreg(slot, LowerAggregateAs.redirectToPointer);
+						} else {
+							vregInfos[instrHeader.result(ir).storageUintIndex] = LowerVreg(ptr, LowerAggregateAs.redirectToPointer);
+						}
+
+						IrIndex memberPtr = genAddressOffset(ptr, member.offset, ptrType, instrIndex, builder);
+						if (memberType.fitsIntoRegister(c))
+						{
+							builder.emitInstrBefore!(IrOpcode.store)(instrIndex, ExtraInstrArgs(), memberPtr, args[1]);
+						}
+						else
+						{
+							builder.emitInstrBefore!(IrOpcode.copy)(instrIndex, ExtraInstrArgs(), memberPtr, args[1]);
+						}
+					}
+					else
+					{
+						ulong aggregateMask = bitmask(targetTypeSize * 8);
+						ulong headerMask = bitmask((memberSize + member.offset) * 8);
+						ulong rightMask = bitmask(member.offset * 8);
+						ulong holeMask = aggregateMask ^ headerMask | rightMask;
+						//writefln("target %064b", aggregateMask);
+						//writefln("header %064b", headerMask);
+						//writefln("member %064b", rightMask);
+						//writefln("hole   %064b", holeMask);
+
+						if (holeMask == 0) {
+							// we will replace the whole aggregate
+							// rewrite instruction into move
+
+							instrHeader.op = IrOpcode.move;
+							args[0] = args[1];
+							instrHeader.numArgs = 1;
+							break;
+						}
+
+						bool isBigConstant = argSizeIntUnsigned(holeMask) == IrArgSize.size64;
+						IrIndex constIndex = c.constants.add(holeMask, IsSigned.no, argSize);
+
+						if (isBigConstant)
+						{
+							// copy to temp register
+							ExtraInstrArgs extra = { argSize : argSize, type : aggrType };
+							constIndex = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, constIndex).result;
+						}
+
+						ExtraInstrArgs extra3 = { argSize : argSize, type : aggrType };
+						IrIndex maskedAggregate = builder.emitInstrBefore!(IrOpcode.and)(instrIndex, extra3, args[0], constIndex).result;
+
+						IrIndex memberValue = args[1];
+						uint bit_offset = member.offset * 8;
+
+						if (memberSize < targetTypeSize) {
+							ExtraInstrArgs extra = { argSize : argSize, type : memberType };
+							switch(memberSize) { // zero extend 8 and 16 bit args to 32bit
+								case 1: memberValue = builder.emitInstrBefore!(IrOpcode.zext)(instrIndex, extra, memberValue).result; break;
+								case 2: memberValue = builder.emitInstrBefore!(IrOpcode.zext)(instrIndex, extra, memberValue).result; break;
+								default: break;
+							}
+						}
+
+						// shift
+						if (bit_offset != 0)
+						{
+							IrIndex rightArg = c.constants.add(bit_offset, IsSigned.no);
+							ExtraInstrArgs extra1 = { argSize : argSize, type : memberType };
+							memberValue = builder.emitInstrBefore!(IrOpcode.shl)(instrIndex, extra1, memberValue, rightArg).result;
+						}
+
+						// or
+						ExtraInstrArgs extra2 = { argSize : argSize, type : aggrType, result : instrHeader.result(ir) };
+						IrIndex result = builder.emitInstrBefore!(IrOpcode.or)(instrIndex, extra2, maskedAggregate, memberValue).result;
+					}
+					removeInstruction(ir, instrIndex);
+					break;
+
 				case IrOpcode.get_element:
 					// if source is stored inside register - extract with bit manipulation, otherwise lower to GEP
 
@@ -248,6 +367,16 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					IrTypeStructMember member = c.types.getAggregateMember(sourceType, c, args[1..$]);
 					IrIndex resultType = member.type;
 					uint resultSize = c.types.typeSize(resultType);
+
+					if (args[0].isSomeConstant) {
+						IrIndex value = args[0];
+						foreach (IrIndex memberIndex; args[1..$]) {
+							value = c.constants.getAggregateMember(value, memberIndex, c);
+						}
+						vregInfos[instrHeader.result(ir).storageUintIndex] = LowerVreg(value, LowerAggregateAs.value);
+						removeInstruction(ir, instrIndex);
+						break;
+					}
 
 					if (sourceType.fitsIntoRegister(c))
 					{
@@ -275,7 +404,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 							value = builder.emitInstrBefore!(IrOpcode.trunc)(instrIndex, extra, value).result;
 						}
 
-						vregInfos[instrHeader.result(ir).storageUintIndex].redirectTo = value;
+						vregInfos[instrHeader.result(ir).storageUintIndex] = LowerVreg(value, LowerAggregateAs.value);
 						removeInstruction(ir, instrIndex);
 						break;
 					}
@@ -283,10 +412,10 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					// reuse the same indicies from get_element and perform GEP on them, then do load
 					instrHeader.op = IrOpcode.get_element_ptr_0;
 
+					IrIndex ptrType = c.types.appendPtr(resultType);
 					if (resultType.fitsIntoRegister(c))
 					{
 						IrIndex loadResult = instrHeader.result(ir);
-						IrIndex ptrType = c.types.appendPtr(resultType);
 						IrIndex gepResult = builder.addVirtualRegister(instrIndex, ptrType);
 						instrHeader.result(ir) = gepResult;
 
@@ -294,6 +423,8 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						IrIndex loadInstr = builder.emitInstr!(IrOpcode.load)(extra2, gepResult).instruction;
 						builder.insertAfterInstr(instrIndex, loadInstr);
 					}
+
+					ir.getVirtReg(instrHeader.result(ir)).type = ptrType;
 					break;
 
 				case IrOpcode.get_aggregate_slice:
@@ -319,9 +450,6 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					instrHeader.op = IrOpcode.move;
 					args[0] = loadInstr.result;
 					builder.addUser(instrIndex, args[0]);
-					break;
-				case IrOpcode.insert_element:
-					//writefln("- insert_element %s", instrIndex);
 					break;
 
 				case IrOpcode.branch_switch:
@@ -378,11 +506,47 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 		}
 	}
 
-	foreach(i, info; vregInfos)
+	foreach(i, ref info; vregInfos)
 	{
-		if (info.redirectTo.isDefined)
-		{
-			builder.redirectVregUsersTo(IrIndex(cast(uint)i, IrValueKind.virtualRegister), info.redirectTo);
+		IrIndex vregIndex = IrIndex(cast(uint)i, IrValueKind.virtualRegister);
+		final switch (info.status) with(LowerAggregateAs) {
+			case none: break;
+			case value:
+				//writefln("Redirect value %s -> %s", IrIndex(cast(uint)i, IrValueKind.virtualRegister), info.redirectTo);
+				builder.redirectVregUsersTo(vregIndex, info.redirectTo);
+				break;
+			case redirectToPointer:
+				IrIndex redirectTo = info.redirectTo;
+				//writef("Redirect ptr %s -> %s", vregIndex, info.redirectTo);
+				while (redirectTo.isVirtReg)
+				{
+					if (vregInfos[redirectTo.storageUintIndex].redirectTo.isDefined) {
+						redirectTo = vregInfos[redirectTo.storageUintIndex].redirectTo;
+						//writef(" -> %s", redirectTo);
+					}
+					else break;
+				}
+				//writeln;
+				builder.redirectVregUsersTo(vregIndex, redirectTo);
+				break;
+			case newSlot:
+				IrIndex type = info.redirectTo;
+				IrIndex slot = builder.appendStackSlot(type, c.types.typeSizeAndAlignment(type), StackSlotKind.local);
+				builder.redirectVregUsersTo(vregIndex, slot);
+				break;
+			case newPhiSlot:
+				IrVirtualRegister* vreg = ir.getVirtReg(vregIndex);
+				IrPhi* phi = ir.getPhi(vreg.definition);
+				IrIndex type = vreg.type;
+				IrIndex slot = builder.appendStackSlot(type, c.types.typeSizeAndAlignment(type), StackSlotKind.local);
+				IrIndex[] predecessors = ir.getBlock(phi.blockIndex).predecessors.data(ir);
+				foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir)) {
+					if (phiArg.isSomeConstant) {
+						builder.emitInstrBefore!(IrOpcode.store)(ir.getBlock(predecessors[arg_i]).lastInstr, ExtraInstrArgs(), phi.result, phiArg);
+					}
+				}
+				vreg.type = c.types.appendPtr(type);
+				break;
 		}
 	}
 }
@@ -397,6 +561,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 	c.assertf(instrHeader.numArgs <= 8, "too much args %s", instrHeader.numArgs);
 	ulong constant = 0;
 	// how many non-constants are prepared in argBuffer
+	// after each insert has value of 0 or 1
 	uint numBufferedValues = 0;
 
 	IrIndex[2] argBuffer;
@@ -489,6 +654,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 	}
 	else
 	{
+		assert(numBufferedValues == 0);
 		result = constIndex;
 	}
 	builder.redirectVregUsersTo(instrHeader.result(ir), result);
@@ -560,7 +726,7 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 	IrIndex aggrPtrType = getValueType(aggrPtr, builder.ir, context);
 
 	context.assertf(aggrPtrType.isTypePointer,
-		"First argument to GEP instruction must be pointer, not %s", aggrPtr.typeKind);
+		"First argument to GEP instruction must be pointer, not %s %s", IrIndexDump(aggrPtrType, &builder), IrIndexDump(aggrPtr, &builder));
 
 	IrIndex aggrType = context.types.getPointerBaseType(aggrPtrType);
 	uint aggrSize = context.types.typeSize(aggrType);

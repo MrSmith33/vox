@@ -159,7 +159,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 			break;
 
 		case string_literal_to_u8_ptr:
-			result = c.constants.getAggregateMember(rval, 1);
+			result = c.constants.getAggregateMember(rval, c.constants.ONE, c);
 			break;
 		case array_literal_to_slice:
 			assert(false, to!string(t.convKind));
@@ -203,7 +203,7 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 			break;
 
 		case string_literal_to_u8_ptr:
-			result = c.constants.getAggregateMember(rval, 1);
+			result = c.constants.getAggregateMember(rval, c.constants.ONE, c);
 			break;
 
 		case array_literal_to_slice:

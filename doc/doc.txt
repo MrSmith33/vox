@@ -281,19 +281,31 @@ REX prefix | Opcode |   mod  reg  r/m |
       | +------------------------v
       +-------------------> Rrrr Bbbb
 
-# is addressing mode. It is the same for encodings with or without SIB byte
 
-#  Mod    Addressing      R/M
-9  00   [RIP + disp32]  BP,R13
-3  00   [R/M         ]  !SP,BP,R12,R13
-S  00   [SIB         ]  SP,R12
-7  01   [R/M +  disp8]  !SP,R12
-S  01   [SIB +  disp8]  SP,R12
-4  10   [R/M + disp32]  !SP,R12
-S  10   [SIB + disp32]  SP,R12
+When mod == 11 then it is reg-reg encoding
+
+Here is the table that explains decoding of Mod != 11
+Mod column selects one of 3 mods (00, 01, 10)
+Then we look at R/M field, which determines the rest of the encoding
+
+#      Mod  R/M             Addressing
+9      00   BP,R13          [RIP + disp32]
+1,2,5  00   SP,R12          [SIB         ]
+3      00   !SP,BP,R12,R13  [R/M         ]
+S      01   SP,R12          [SIB +  disp8]
+7      01   !SP,R12         [R/M +  disp8]
+S      10   SP,R12          [SIB + disp32]
+4      10   !SP,R12         [R/M + disp32]
+# is addressing mode. It is the same for encodings with or without SIB byte
 S uses SIB byte
 ! means any except following registers
 R/M is Base register here
+
+Explanation:
+If Mod == 00
+  If R/M is BP or R13, then addressing mode is [RIP + disp32] denoted as 9 in the table below
+  If R/M is SP or R12, then addressing mode uses SIB byte after modrm byte, corresponds to lines 1,2 or 5
+    It is variant 1 if index field is SP
 
 
 Figure 2-6. Memory Addressing With a SIB Byte
@@ -306,8 +318,8 @@ REX prefix   | Opcode |   mod  reg  r/m |   scale  index  base |
 
 
 #  Index  Base  Mod              Addressing
-1   SP     BP-   00     [                     disp32]
-2  ANY^    BP-   00     [       (index * s) + disp32]
+1   SP   BP/R13  00     [                     disp32]
+2  ANY^  BP/R13  00     [       (index * s) + disp32]
 3   SP    ANY*   00     [base                       ]
 4   SP    ANY    10     [base +             + disp32]
 5  ANY^   ANY*   00     [base + (index * s)         ]
@@ -316,7 +328,6 @@ REX prefix   | Opcode |   mod  reg  r/m |   scale  index  base |
 8  ANY^   ANY    01     [base + (index * s) + disp8 ]
 9   -      -     --     [RIP  +             + disp32] without SIB
 
-- BP can be replaced with R13 here
 * ANY can be any GPR except BP, R13
 ^ ANY can be any GPR except SP
 See: http://wiki.osdev.org/X86-64_Instruction_Encoding#32.2F64-bit_addressing

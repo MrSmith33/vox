@@ -96,7 +96,7 @@ struct IrTypeStruct
 	uint alignment() { return 1 << cast(uint)alignmentPower; }
 	SizeAndAlignment sizealign() { return SizeAndAlignment(size, alignmentPower); }
 	void sizealign(SizeAndAlignment sa) { size = sa.size; alignmentPower = sa.alignmentPower; }
-	// all members have size of 0
+	// all members have offset of 0
 	// alignment is max alignment of members
 	// IrAggregateConstant contains index of member in slot 0, and constant for that member in slot 1
 	bool isUnion;

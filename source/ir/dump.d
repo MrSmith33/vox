@@ -89,6 +89,7 @@ struct FuncDumpSettings
 	bool printPregLiveness = false;
 	bool printUses = true;
 	bool printLiveness = false;
+	bool printPassName = true;
 	bool escapeForDot = false;
 }
 
@@ -168,7 +169,14 @@ void dumpFunctionImpl(IrDumpContext* c)
 		sink.putf("%s", IrIndexDump(param, printer));
 	}
 	sink.put(")");
-	sink.putfln(` %s bytes ir:"%s" {`, ir.byteLength, instr_set_names[ir.instructionSet]);
+	sink.putf(` %s bytes ir:"%s"`, ir.byteLength, instr_set_names[ir.instructionSet]);
+	if (settings.printPassName && c.passName.length) {
+		sink.put(` pass:"`);
+		sink.put(c.passName);
+		sink.put(`"`);
+	}
+	sink.putln(" {");
+
 	int indexPadding = max(ir.numBasicBlocks, ir.numInstructions).numDigitsInNumber10;
 	int liveIndexPadding = 0;
 	if (liveness) liveIndexPadding = liveness.maxLinearIndex.numDigitsInNumber10;
@@ -499,7 +507,14 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref CompilationContext
 		case array: sink.formattedWrite("arr%s", index.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i.%s", index.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
-		case constant: sink.formattedWrite("%s", context.constants.get(index).i64); break;
+		case constant:
+			final switch(index.constantKind) with(IrConstantKind) {
+				case intUnsignedSmall: sink.formattedWrite("%s", index.constantIndex); break;
+				case intSignedSmall: sink.formattedWrite("%s", (cast(int)index.constantIndex << 8) >> 8); break;
+				case intUnsignedBig: sink.formattedWrite("%s", context.constants.get(index).u64); break;
+				case intSignedBig: sink.formattedWrite("%s", context.constants.get(index).i64); break;
+			}
+			break;
 		case constantAggregate:
 			sink("{");
 			foreach(i, m; context.constants.getAggregate(index).members) {

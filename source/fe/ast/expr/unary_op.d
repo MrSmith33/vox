@@ -70,6 +70,7 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 	{
 		case addrOf:
 			// make sure that variable gets stored in memory
+			//writefln("addrOf %s", child.astType);
 			switch(child.astType)
 			{
 				case AstType.expr_name_use:
@@ -78,6 +79,8 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 					switch (entity.astType)
 					{
 						case AstType.decl_var:
+							// TODO: fix test 205. We do not detect all cases where pointer of local var is taken
+							// For example taking address of some member is not detected, only direct address obtaining.
 							entity.flags |= VariableFlags.isAddressTaken; // mark variable
 							node.type = c.appendAst!PtrTypeNode(node.child.loc(c), CommonAstNodes.type_type, node.child.get_expr_type(c));
 							break;

@@ -154,7 +154,7 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 			}
 
 			uint insertPoint = cast(uint)(condNode.arrayIndex + sizeDelta);
-			items.replaceAt(c.arrayArena, insertPoint, 1, itemsToInsert);
+			items.replaceAt(c.arrayArena, insertPoint, 1, itemsToInsert[]);
 
 			// we replace #if with its children
 			//   #if is removed from the list (-1)

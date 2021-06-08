@@ -76,9 +76,9 @@ immutable CompilePassGlobal[] frontendPasses = [
 	global_pass("Read source", &pass_source),
 	global_pass("Lex", &pass_lexer),
 	global_pass("Parse", &pass_parser),
-	global_pass("Semantic insert", &pass_names_register),
-	global_pass("Semantic lookup", &pass_names_resolve),
-	global_pass("Semantic types", &pass_type_check),
+	global_pass("Register names", &pass_names_register),
+	global_pass("Lookup names", &pass_names_resolve),
+	global_pass("Check types", &pass_type_check),
 ];
 
 immutable CompilePassGlobal[] backendPasses = [

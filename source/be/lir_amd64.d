@@ -526,7 +526,14 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref CompilationC
 		case array: sink.formattedWrite("arr%s", i.storageUintIndex); break;
 		case instruction: sink.formattedWrite("i%s", i.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
-		case constant: sink.formattedWrite("%s", context.constants.get(i).i64); break;
+		case constant:
+			final switch(i.constantKind) with(IrConstantKind) {
+				case intUnsignedSmall: sink.formattedWrite("%s", i.constantIndex); break;
+				case intSignedSmall: sink.formattedWrite("%s", (cast(int)i.constantIndex << 8) >> 8); break;
+				case intUnsignedBig: sink.formattedWrite("%s", context.constants.get(i).u64); break;
+				case intSignedBig: sink.formattedWrite("%s", context.constants.get(i).i64); break;
+			}
+			break;
 		case constantAggregate: sink.formattedWrite("cagg%s", i.storageUintIndex); break;
 		case constantZero:
 			if (i.typeKind == IrTypeKind.basic)

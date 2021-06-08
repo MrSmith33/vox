@@ -137,7 +137,7 @@ struct IrConstantStorage
 	/// Creates aggrecate constant without initializing members
 	IrIndex addAggrecateConstant(IrIndex type, uint numMembers)
 	{
-		assert (type.isTypeStruct || type.isTypeArray);
+		assert(type.isTypeAggregate);
 		IrIndex resultIndex = IrIndex(cast(uint)aggregateBuffer.length, IrValueKind.constantAggregate);
 		uint allocSize = cast(uint)divCeil(IrAggregateConstant.sizeof, uint.sizeof) + numMembers;
 		aggregateBuffer.voidPut(allocSize);
@@ -163,13 +163,25 @@ struct IrConstantStorage
 
 	///
 	ref IrAggregateConstant getAggregate(IrIndex index) {
-		assert(index.kind == IrValueKind.constantAggregate, format("Not a constantAggregate (%s)", index));
+		assert(index.isConstantAggregate, format("Not a constantAggregate (%s)", index));
 		return *cast(IrAggregateConstant*)(&aggregateBuffer[index.storageUintIndex]);
 	}
 
-	///
-	IrIndex getAggregateMember(IrIndex index, uint memberIndex) {
-		return getAggregate(index).members[memberIndex];
+	/// memberIndex must be an integer constant
+	// IrIndex aggrType, CompilationContext* c, IrIndex[] indicies...
+	IrIndex getAggregateMember(IrIndex aggrValue, IrIndex memberIndex, CompilationContext* c) {
+		if (aggrValue.isConstantAggregate) {
+			uint memberIndexVal = get(memberIndex).i32;
+			return getAggregate(aggrValue).members[memberIndexVal];
+		} else if (aggrValue.isConstantZero) {
+			IrIndex type = aggrValue.typeOfConstantZero;
+			IrTypeStructMember member = c.types.getAggregateMember(type, c, memberIndex);
+			return member.type.zeroConstantOfType;
+		}
+		else {
+			c.unreachable();
+			assert(false);
+		}
 	}
 
 	///

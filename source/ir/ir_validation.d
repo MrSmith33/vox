@@ -9,12 +9,37 @@ import all;
 import ir.ir_index;
 
 ///
-void validateIrFunction(CompilationContext* context, IrFunction* ir)
+void validateIrFunction(CompilationContext* context, IrFunction* ir, string passName = null)
 {
-	scope(failure) dumpFunction(context, ir);
+	scope(failure) dumpFunction(context, ir, passName);
 
 	auto funcInstrInfos = allInstrInfos[ir.instructionSet];
 	auto instrValidator = instrValidators[ir.instructionSet];
+
+	// Defined vregs
+	size_t[] definedVregsBitmap = context.allocateTempArray!size_t(cast(uint)divCeil(ir.numVirtualRegisters, size_t.sizeof * 8));
+	scope(exit) context.freeTempArray(cast(uint[])definedVregsBitmap);
+	definedVregsBitmap[] = 0;
+
+	// Verify defined vregs indicies
+	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
+	{
+		void checkResult(IrIndex definition, IrIndex result) {
+			if (!result.isVirtReg) return;
+			if (result.storageUintIndex > ir.numVirtualRegisters)
+				context.internal_error("Virtual register %s defined in %s %s is out of bounds (> %s)",
+					result, blockIndex, definition, ir.numVirtualRegisters);
+
+			// Mark all reachable vregs as live
+			// later we can see if undefined vreg is used by some instruction
+			definedVregsBitmap.setBitAt(result.storageUintIndex);
+		}
+		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
+			checkResult(phiIndex, phi.result);
+		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
+			if (instrHeader.hasResult)
+				checkResult(instrIndex, instrHeader.result(ir));
+	}
 
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
@@ -40,6 +65,14 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir)
 		void checkArg(IrIndex argUser, IrIndex arg)
 		{
 			if (!arg.isVirtReg) return;
+
+			if (arg.storageUintIndex > ir.numVirtualRegisters)
+				context.internal_error("Virtual register %s used in %s %s is out of bounds (> %s)",
+					arg, blockIndex, argUser, ir.numVirtualRegisters);
+
+			if (!definedVregsBitmap.getBitAt(arg.storageUintIndex))
+				context.internal_error("Undefined virtual register %s is used in %s %s",
+					arg, blockIndex, argUser);
 
 			IrVirtualRegister* vreg = ir.getVirtReg(arg);
 
@@ -201,7 +234,7 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			if (ptr.isPhysReg || value.isPhysReg) break;
 
 			IrIndex ptrType = getValueType(ptr, ir, c);
-			c.assertf(ptrType.isTypePointer, "%s: first argument must be pointer, not: %s", instrIndex, ptrType.kind);
+			c.assertf(ptrType.isTypePointer, "%s: first argument must be pointer, not: %s", instrIndex, IrIndexDump(ptrType, c, ir));
 			IrIndex valueType = getValueType(value, ir, c);
 			IrIndex baseType = c.types.getPointerBaseType(ptrType);
 			if (c.types.isSameType(baseType, valueType)) {
@@ -285,8 +318,30 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 				}
 			}
 			else
-				c.assertf(false, "%s: create_aggregate result type must be struct or array, got %s",
-						instrIndex, vreg.type.kind);
+				c.internal_error("%s: create_aggregate result type must be struct or array, got %s",
+					instrIndex, vreg.type.kind);
+			break;
+
+		case IrOpcode.insert_element:
+			c.assertf(instrHeader.hasResult, "%s: insert_element has no result", instrIndex);
+
+			IrIndex result = instrHeader.result(ir);
+			c.assertf(result.isVirtReg, "%s: insert_element result is %s. virtualRegister expected", instrIndex, result.kind);
+
+			IrVirtualRegister* vreg = ir.getVirtReg(result);
+			c.assertf(vreg.type.isType, "%s: result type is not a type: %s", instrIndex, vreg.type.kind);
+
+			IrIndex resultType = vreg.type;
+			c.assertf(resultType.isTypeAggregate, "%s: result must be an aggregate, not: %s", instrIndex, IrIndexDump(resultType, c, ir));
+
+			IrIndex aggr = instrHeader.arg(ir, 0);
+			IrIndex aggrType = getValueType(aggr, ir, c);
+			c.assertf(aggrType.isTypeAggregate, "%s: first argument must be an aggregate, not: %s", instrIndex, IrIndexDump(aggrType, c, ir));
+
+			bool sameType = c.types.isSameType(resultType, aggrType);
+			c.assertf(sameType, "%s: type of first argument must match result type: result %s, aggregate %s", instrIndex, IrIndexDump(resultType, c, ir), IrIndexDump(aggrType, c, ir));
+
+			// TODO: check indicies
 			break;
 
 		default: break;

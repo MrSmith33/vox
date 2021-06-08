@@ -12,13 +12,13 @@ import all;
 alias FuncPassIr = void function(CompilationContext*, IrFunction*, IrIndex, ref IrBuilder);
 alias FuncPass = void function(CompilationContext*, IrFunction*);
 
-void apply_lir_func_pass(CompilationContext* context, FuncPass pass)
+void apply_lir_func_pass(CompilationContext* context, FuncPass pass, string passName)
 {
 	foreach (ref SourceFileInfo file; context.files.data)
 	foreach (IrFunction* lir; file.mod.lirModule.functions) {
 		pass(context, lir);
 		if (context.validateIr)
-			validateIrFunction(context, lir);
+			validateIrFunction(context, lir, passName);
 	}
 }
 
@@ -172,10 +172,10 @@ void func_pass_remove_dead_code(CompilationContext* context, IrFunction* ir, IrI
 			if (hasSideEffects(cast(IrOpcode)instrHeader.op)) continue;
 			if (!instrHeader.hasResult) continue;
 
-			context.assertf(instrHeader.result(ir).isVirtReg, "instruction result must be virt reg");
+			if (!instrHeader.result(ir).isVirtReg) continue;
 			if (ir.getVirtReg(instrHeader.result(ir)).users.length > 0) continue;
 
-			// we found some dead instruction, remove it
+			// instruction's result is unused, remove that instruction
 			foreach(ref IrIndex arg; instrHeader.args(ir)) {
 				removeUser(context, ir, instrIndex, arg);
 			}
@@ -211,7 +211,7 @@ void lir_func_pass_simplify(ref CompilationContext context, ref IrFunction ir)
 */
 void pass_optimize_lir(CompilationContext* context)
 {
-	apply_lir_func_pass(context, &pass_optimize_lir_func);
+	apply_lir_func_pass(context, &pass_optimize_lir_func, "Optimize LIR");
 }
 
 void pass_optimize_lir_func(CompilationContext* context, IrFunction* ir)

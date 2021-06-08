@@ -20,27 +20,34 @@ struct InstrWithResult
 	IrIndex result;
 }
 
+/// Controls behavior of emitInstr functions
 struct ExtraInstrArgs
 {
-	IrOpcode opcode; // used when `InstrInfo.opcode` is IrOpcode.invalid
-	ubyte cond; // used when IrInstrFlags.hasCondition is set
+	/// Gets copied into InstrHeader.op when IrInstrFlags.isGeneric is set
+	IrOpcode opcode;
+
+	/// Gets copied into InstrHeader.cond when IrInstrFlags.hasCondition is set
+	ubyte cond;
+
+	/// Always gets copied into InstrHeader.argSize
 	IrArgSize argSize;
 
+	/// When true newly created instruction is added as a user of each argument
 	bool addUsers = true;
 
-	/// Is checked when instruction has variadic result (IrInstrFlags.hasVariadicResult).
-	/// If `hasResult` is false, no result is allocated and `result` value is ignored.
+	/// Is checked when instruction has variadic result (IrInstrFlags.hasVariadicResult)
+	/// If `hasResult` is false, no result is allocated and `result` value is ignored
 	/// If `hasResult` is true, then `result` is checked:
 	///    If `result` is defined:
-	///       then instrHeader.result is set to its value.
-	///       or else a new virtual register is created.
+	///       then instrHeader.result is set to its value
+	///       or else a new virtual register is created
 	bool hasResult;
 
 	/// Will be added to the number of allocated argument slots and to number of arguments
 	ubyte extraArgSlots;
 
-	/// If instruction has variadic result, see 'hasResult' comment.
-	/// If instruction always has result, then 'result' is used when defined.
+	/// If instruction has variadic result, see docs on 'hasResult'
+	/// If instruction always has result, then 'result' is used when defined
 	///    when not defined, new virtual register is created
 	/// If instruction always has no result, 'result' value is ignored
 	IrIndex result;

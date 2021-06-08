@@ -47,6 +47,7 @@ enum ExprValueKind : ubyte {
 	// for example 5th parameter of function that is passed as pointer to struct on stack in win64 CC
 	ptr_to_ptr_to_data,
 	// irValue is variable (isLvalue=true), constant or vreg (isLvalue=false)
+	// variable can contain aggregate value as well as pointer to aggregate
 	// numIndicies indicates number of gepBuf indicies being used
 	struct_sub_index,
 }
@@ -62,7 +63,7 @@ struct ExprValue
 	// true if can be assigned or address taken
 	IsLvalue isLvalue = IsLvalue.no;
 	// indicates number of gepBuf indicies being used
-	ubyte numIndicies = 0;
+	Array!IrIndex indicies;
 }
 
 enum IsLvalue : bool {
@@ -212,6 +213,7 @@ void ir_gen_branch(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref 
 /// destination must be pointer or variable
 void store(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue destination, IrIndex value)
 {
+	CompilationContext* c = gen.context;
 	//writefln("store %s %s", destination, value);
 	switch (destination.kind)
 	{
@@ -236,6 +238,29 @@ void store(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue d
 			}
 			break;
 
+		case ExprValueKind.struct_sub_index:
+			IrIndex aggr = gen.builder.readVariable(currentBlock, destination.irValue);
+			IrIndex aggrType = gen.ir.getValueType(c, aggr);
+			//writefln("Store %s", IrIndexDump(aggrType, c, gen.ir));
+			switch (aggrType.typeKind) {
+				case IrTypeKind.pointer:
+					IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, destination.indicies[]);
+					gen.builder.emitInstr!(IrOpcode.store)(currentBlock, ExtraInstrArgs(), ptr, value);
+					break;
+				case IrTypeKind.struct_t:
+				case IrTypeKind.array:
+					IrIndex[] args = gen.gepBuf[0..destination.indicies.length+2];
+					args[0] = aggr;
+					args[1] = value;
+					args[2..$] = destination.indicies[];
+					ExtraInstrArgs extra = { type : aggrType };
+					IrIndex res = gen.builder.emitInstr!(IrOpcode.insert_element)(currentBlock, extra, args).result;
+					gen.builder.writeVariable(currentBlock, destination.irValue, res);
+					break;
+				default: c.internal_error("%s", aggrType.typeKind); assert(false);
+			}
+			return;
+
 		default:
 			switch (destination.irValue.kind) with(IrValueKind)
 			{
@@ -251,7 +276,7 @@ void store(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue d
 					break;
 			}
 	}
-	gen.context.internal_error(loc, "Cannot store into %s", destination.irValue.kind);
+	c.internal_error(loc, "Cannot store into %s", destination.irValue.kind);
 	assert(false);
 }
 
@@ -273,6 +298,27 @@ IrIndex getRvalue(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, Expr
 		case ptr_to_ptr_to_data:
 			IrIndex ptr = load(gen, loc, currentBlock, source.irValue);
 			return load(gen, loc, currentBlock, ptr);
+		case struct_sub_index:
+			IrIndex aggr = source.irValue;
+			if (aggr.isVariable) {
+				aggr = gen.builder.readVariable(currentBlock, aggr);
+			}
+
+			IrIndex aggrType = gen.ir.getValueType(c, aggr);
+			switch (aggrType.typeKind) {
+				case IrTypeKind.pointer:
+					IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, source.indicies[]);
+					return load(gen, loc, currentBlock, ptr);
+				case IrTypeKind.array:
+				case IrTypeKind.struct_t:
+					IrIndex memberType = c.types.getAggregateMember(aggrType, c, source.indicies[]).type;
+					ExtraInstrArgs extra = { type : memberType };
+					IrIndex[] args = gen.gepBuf[0..source.indicies.length+1];
+					args[0] = aggr;
+					args[1..$] = source.indicies[];
+					return gen.builder.emitInstr!(IrOpcode.get_element)(currentBlock, extra, args).result;
+				default: c.internal_error("%s", aggrType.typeKind); assert(false);
+			}
 		default:
 			c.internal_error(loc, "Cannot load from %s", source.kind);
 			assert(false);
@@ -314,12 +360,29 @@ IrIndex load(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrIndex s
 }
 
 ExprValue getAggregateMember(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue aggr, IrIndex[] indicies...)
+out(res) {
+	//writefln("  -3 %s", res);
+}
+do
 {
 	CompilationContext* c = gen.context;
-	//writefln("getAggregateMember %s", aggr);
+	//writefln("getAggregateMember %s %s", aggr, indicies);
+
 	if (aggr.irValue.isVariable) {
-		aggr.irValue = gen.builder.readVariable(currentBlock, aggr.irValue);
-		//writefln("  %s", IrIndexDump(aggr.irValue, &gen.builder));
+		switch (aggr.kind) with(ExprValueKind)
+		{
+			case value:
+				Array!IrIndex resIndicies;
+				resIndicies.put(c.arrayArena, indicies);
+				return ExprValue(aggr.irValue, ExprValueKind.struct_sub_index, IsLvalue.yes, resIndicies);
+			case struct_sub_index:
+				aggr.indicies.put(c.arrayArena, indicies);
+				return aggr;
+			default:
+				aggr.irValue = gen.builder.readVariable(currentBlock, aggr.irValue);
+				//writefln("  -1 %s", IrIndexDump(aggr.irValue, &gen.builder));
+				break;
+		}
 	}
 
 	switch (aggr.kind) with(ExprValueKind)
@@ -331,7 +394,7 @@ ExprValue getAggregateMember(ref IrGenState gen, TokenIndex loc, IrIndex current
 	}
 
 	IrIndex aggrType = gen.ir.getValueType(c, aggr.irValue);
-	//writefln("  %s", IrIndexDump(aggrType, &gen.builder));
+	//writefln("  -2 %s", IrIndexDump(aggrType, &gen.builder));
 
 	switch (aggrType.typeKind) {
 		case IrTypeKind.pointer: return ExprValue(buildGEP(gen, loc, currentBlock, aggr.irValue, c.constants.ZERO, indicies), ExprValueKind.ptr_to_data, IsLvalue.yes);
@@ -345,32 +408,21 @@ ExprValue getAggregateMember(ref IrGenState gen, TokenIndex loc, IrIndex current
 IrIndex getStructMember(ref IrGenState gen, IrIndex currentBlock, IrIndex aggr, IrIndex[] indicies...)
 {
 	CompilationContext* c = gen.context;
-	IrIndex aggrType = gen.ir.getValueType(c, aggr);
-
-	foreach (i, IrIndex memberIndex; indicies)
-	{
-		c.assertf(memberIndex.isSimpleConstant,
-			"Structs can only be indexed with constants, not with %s", memberIndex);
-		gen.gepBuf[i+1] = memberIndex;
-		c.assertf(aggrType.isTypeStruct, "Cannot index %s", IrIndexDump(aggrType, c, gen.ir));
-
-		aggrType = c.types.getAggregateMember(aggrType, c, memberIndex).type;
-
-		if (aggr.kind == IrValueKind.constantAggregate || aggr.kind == IrValueKind.constantZero)
-		{
-			uint memberIndexVal = c.constants.get(memberIndex).i32;
-			aggr = c.constants.getAggregateMember(aggr, memberIndexVal);
-		}
-	}
 
 	switch (aggr.kind) with(IrValueKind) {
-		case constantAggregate, constantZero, global:
+		case constantAggregate, constantZero:
+			foreach (i, IrIndex memberIndex; indicies) {
+				aggr = c.constants.getAggregateMember(aggr, memberIndex, c);
+			}
 			assert(aggr.isDefined);
 			break;
 		case virtualRegister:
-			ExtraInstrArgs extra = { type : aggrType };
+			IrIndex aggrType = gen.ir.getValueType(c, aggr);
+			IrIndex memberType = c.types.getAggregateMember(aggrType, c, indicies).type;
+			ExtraInstrArgs extra = { type : memberType };
 			IrIndex[] args = gen.gepBuf[0..indicies.length+1];
 			args[0] = aggr;
+			args[1..$] = indicies;
 			aggr = gen.builder.emitInstr!(IrOpcode.get_element)(currentBlock, extra, args).result;
 			break;
 		default:

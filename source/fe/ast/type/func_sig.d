@@ -71,7 +71,7 @@ void expandVariadicParam(FunctionSignatureNode* node, CompilationContext* c)
 	auto types = param.type.get_effective_node(c).get!AliasArrayDeclNode(c);
 
 	uint numVariadicParams = types.items.length;
-	node.parameters.replaceAt(c.arrayArena, variadicIndex, 1, types.items);
+	node.parameters.replaceAt(c.arrayArena, variadicIndex, 1, types.items[]);
 
 	AstNodes vars;
 	vars.reserve(c.arrayArena, numVariadicParams);

@@ -382,7 +382,7 @@ struct LinearScan
 		moveSolver.release();
 		lir.removeAllPhis;
 
-		if (context.validateIr) validateIrFunction(context, lir);
+		if (context.validateIr) validateIrFunction(context, lir, "Reg alloc");
 
 		//writefln("finished scan of %s\n", context.idString(lir.name));
 	}

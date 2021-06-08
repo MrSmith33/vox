@@ -91,7 +91,7 @@
 	- xchg
 	+ save/restore of callee saved xmm registers need to have proper size
 	- scratch spill slot is hardcoded to 64bits (maybe it is a good idea to take max of all sizes that is being put into the thing and update the size of the slot)
-- union
++ union
 - struct
 	+ struct methods
 		+ access from inside method
@@ -102,7 +102,7 @@
 	+ struct literal
 	+ UFCS functions
 	+ return small complex structs
-	- lower aggregates in IR by replacing phis taking in aggregates with scalar phis. Only non-phi users must remain.
+	+ lower aggregates in IR by replacing phis taking in aggregates with scalar phis. Only non-phi users must remain.
 	+ detect all zero members and emit constantZero
 	+ separate func_pass_lower_aggregates pass
 	- empty structs need to be 1 byte in size

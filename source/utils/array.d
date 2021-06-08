@@ -71,12 +71,12 @@ struct Array(T)
 		_length += howMany;
 	}
 
-	void put(ref ArrayArena arena, T item)
+	void put(ref ArrayArena arena, T[] items...)
 	{
-		if (_length == _capacity) extend(arena, 1);
+		if (_length + items.length > _capacity) extend(arena, cast(uint)items.length);
 
-		this[_length] = item;
-		++_length;
+		_length += items.length;
+		this[_length-items.length..$][] = items;
 	}
 
 	void putFront(ref ArrayArena arena, T item)
@@ -90,15 +90,14 @@ struct Array(T)
 		replaceAt(arena, at, 0, items);
 	}
 
-	void replaceAt(A)(ref ArrayArena arena, size_t at, size_t numItemsToRemove, A itemsToInsert)
+	void replaceAt(ref ArrayArena arena, size_t at, size_t numItemsToRemove, T[] itemsToInsert)
 	{
 		assert(at + numItemsToRemove <= _length);
 
 		size_t numItemsToInsert = itemsToInsert.length;
 
 		replaceAtVoid(arena, at, numItemsToRemove, numItemsToInsert);
-		foreach(i; 0..numItemsToInsert)
-			this[at+i] = itemsToInsert[i];
+		this[at..at+numItemsToInsert][] = itemsToInsert;
 	}
 
 	void replaceAtVoid(ref ArrayArena arena, size_t at, size_t numItemsToRemove, size_t numItemsToInsert)
@@ -193,7 +192,7 @@ struct Array(T)
 		oldBlock = newBlock;
 	}
 
-	T[] opSlice()
+	inout(T)[] opSlice() inout
 	{
 		static if (NUM_INLINE_ITEMS > 0) {
 			if (_capacity == NUM_INLINE_ITEMS) return inlineItems.ptr[0.._length];
@@ -201,7 +200,7 @@ struct Array(T)
 		return externalArray[0.._length];
 	}
 
-	auto opSlice(size_t from, size_t to)
+	inout(T)[] opSlice(size_t from, size_t to) inout
 	{
 		return this[][from..to];
 	}
@@ -228,11 +227,11 @@ struct Array(T)
 		_length -= numToRemove;
 	}
 
-	void toString(scope void delegate(const(char)[]) sink) {
+	void toString(scope void delegate(const(char)[]) sink) const {
 		import std.format : formattedWrite;
 		sink("[");
 		size_t i;
-		foreach(ref T item; opSlice()) {
+		foreach(const ref T item; opSlice()) {
 			if (i > 0) sink(", ");
 			sink.formattedWrite("%s", item);
 			++i;

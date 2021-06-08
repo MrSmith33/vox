@@ -964,12 +964,12 @@ enum CommonAstNodes : AstIndex
 	// builtin nodes end
 
 	// builtin functions
-	first_builtin_func       = AstIndex(builtin_sizeof.storageIndex + 24),
+	first_builtin_func       = AstIndex(builtin_sizeof.storageIndex + 30),
 
-	compile_error            = AstIndex(first_builtin_func.storageIndex + 0 * 32),
-	is_slice                 = AstIndex(first_builtin_func.storageIndex + 1 * 32),
-	is_integer               = AstIndex(first_builtin_func.storageIndex + 2 * 32),
-	is_pointer               = AstIndex(first_builtin_func.storageIndex + 3 * 32),
+	compile_error            = AstIndex(first_builtin_func.storageIndex + 0 * 38),
+	is_slice                 = AstIndex(first_builtin_func.storageIndex + 1 * 38),
+	is_integer               = AstIndex(first_builtin_func.storageIndex + 2 * 38),
+	is_pointer               = AstIndex(first_builtin_func.storageIndex + 3 * 38),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [

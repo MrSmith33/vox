@@ -463,3 +463,23 @@ void tester137(ref TestContext ctx) {
 	auto pass_vec6 = ctx.getFunctionPtr!(vec6, vec6)("pass_vec6");
 	assert(pass_vec6(vec6(1, 2, 3, 4)) == vec6(1, 2, 3, 4));
 }
+
+
+@TestInfo(&tester138)
+immutable aggr138 = q{--- aggr138
+	// lowering
+	struct Point { i32 x; i32 y; }
+	i32 getX(Point neighbor) {
+		return neighbor.x; // neighbor.x is member 0
+	}
+	i32 getY(Point neighbor) {
+		return neighbor.y; // neighbor.y is member 1
+	}
+};
+void tester138(ref TestContext ctx) {
+	static struct Point { int x; int y; }
+	auto getX = ctx.getFunctionPtr!(int, Point)("getX");
+	auto getY = ctx.getFunctionPtr!(int, Point)("getY");
+	assert(getX(Point(1, 2)) == 1);
+	assert(getY(Point(1, 2)) == 2);
+}

@@ -44,7 +44,7 @@ enum PrintAscii { no = false, yes = true }
 // prints indentStr, then indentation number of spaces, then data.
 void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAscii.no, const(char)[] indentStr = null, uint indentation = 0)
 {
-	import std.stdio;
+	import std.stdio : write, writef, writefln;
 	import std.range : repeat;
 
 	size_t index = 0;
@@ -69,8 +69,7 @@ void printHex(ubyte[] buffer, size_t lineLength, PrintAscii printAscii = PrintAs
 		}
 	}
 
-	if (index < buffer.length)
-	{
+	if (index < buffer.length) {
 		write(indentStr);
 		write(' '.repeat(indentation));
 		writef("%(%02X %)", buffer[index..buffer.length]);
@@ -124,6 +123,11 @@ T roundUp(T)(T value, T multiple) pure
 T paddingSize(T)(T address, T alignment)
 {
 	return cast(T)(alignValue(address, alignment) - address);
+}
+
+ulong bitmask(size_t n) {
+	if (n >= 64) return ulong.max;
+	return (1UL << n) - 1;
 }
 
 MonoTime currTime() { return MonoTime.currTime(); }

@@ -25,7 +25,7 @@ void pass_ir_to_lir_amd64(CompilationContext* context, IrBuilder* builder, Modul
 	processFunc(context, builder, irData, lirData);
 	builder.finalizeIr;
 
-	if (context.validateIr) validateIrFunction(context, lirData);
+	if (context.validateIr) validateIrFunction(context, lirData, "IR -> LIR");
 	if (context.printLir && context.printDumpOf(func)) dumpFunction(context, lirData, "IR -> LIR");
 }
 
@@ -421,33 +421,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 			switch(instrHeader.op)
 			{
-				case IrOpcode.get_element:
-					IrIndex aggr = instrHeader.arg(ir, 0);
-					IrIndex aggrPtr = getFixedIndex(aggr);
-					IrIndex resType = ir.getVirtReg(instrHeader.result(ir)).type;
-					IrIndex ptrType = lir.getValueType(context, aggrPtr);
-					context.assertf(aggr.isVirtReg, "%s", aggr);
-					if (ptrType.isTypePointer)
-					{
-						IrIndex aggrType = ir.getVirtReg(aggr).type;
-						IrTypeStructMember member = context.types.getAggregateMember(aggrType, context, instrHeader.args(ir)[1..$]);
-						IrIndex offset = context.constants.add(member.offset, IsSigned.no);
-						IrIndex memberPtrType = context.types.appendPtr(member.type);
-						ExtraInstrArgs extra = { addUsers : false, type : memberPtrType };
-						aggrPtr = builder.emitInstr!(Amd64Opcode.add)(lirBlockIndex, extra, aggrPtr, offset).result;
-
-						IrArgSize argSize = typeToIrArgSize(memberPtrType, context);
-						ExtraInstrArgs extra2 = { addUsers : false, type : resType, argSize : argSize };
-						IrIndex result = builder.emitInstr!(Amd64Opcode.load)(lirBlockIndex, extra2, aggrPtr).result;
-						recordIndex(instrHeader.result(ir), result);
-					}
-					else
-					{
-						writefln("get_element %s | %s", instrHeader.arg(ir, 0), aggr);
-						assert(false);
-					}
-					break;
-
 				case IrOpcode.call:
 					lir.numCalls += 1;
 					foreach(i; 0..instrHeader.numArgs) {

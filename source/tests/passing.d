@@ -4360,15 +4360,14 @@ immutable test201 = q{--- test201
 };
 
 
-/*
 @TestInfo()
 immutable test202 = q{--- test202
-	// aggregate lowering with phi function (two paths that return a struct)
+	// aggregate lowering with phi function (two paths that return a big struct) and phi has constant argument
 	u8[] fromStringz(u8* cString, u64 len) {
 		if (cString == null) return null;
 		return cString[0..len];
 	}
-};*/
+};
 
 
 @TestInfo()
@@ -4383,4 +4382,63 @@ immutable test203 = q{--- test203
 		u32 color;
 	}
 	TracyLoc zone_loc = TracyLoc("Zonename", "update", "main.vx", 81, 0xFF00FF);
+};
+
+
+@TestInfo()
+immutable test204 = q{--- test204
+	// aggregate lowering
+	struct A {
+		i32 val1;
+		i32 val2;
+	}
+	A run(A res, bool cond, i32 val) {
+		if (cond) res.val1 = val;
+		return res;
+	}
+};
+
+
+@TestInfo(&tester205)
+immutable test205 = q{--- test205
+	// aggregate lowering
+	struct Struct {
+		i32 member;
+		void set42() {
+			this.member += 42;
+			member = 42;
+		}
+	}
+	i32 testMethod5() {
+		Struct[1] s;
+		s[0].set42;
+		return s[0].member;
+	}
+};
+void tester205(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("testMethod5")() == 42);
+}
+
+
+@TestInfo()
+immutable test206 = q{--- test206
+	//
+	struct Tile {
+		bool blocked;
+		bool block_sight;
+	}
+
+	struct GameMap {
+		enum map_width = 40;
+		enum map_height = 40;
+		Tile[40] tiles;
+	}
+
+	void initialize_tiles(Tile[40]* map, i32 x) {
+		(*map)[x].block_sight = true;
+	}
+	void initialize_tiles2(i32 x) {
+		Tile[40] map;
+		map[x].block_sight = true;
+	}
 };

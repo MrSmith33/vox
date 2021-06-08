@@ -110,7 +110,7 @@ enum IrInstrFlags : uint {
 	singleMemArg = 1 << 14,
 	/// If all non-fixed arguments can be memory operands
 	allMemArg = 1 << 15,
-	/// If set opcode of instruction is set from ExtraInstrArgs.opcode
+	/// If set, then opcode of instruction is set from ExtraInstrArgs.opcode
 	isGeneric = 1 << 16,
 }
 
@@ -190,6 +190,7 @@ enum IrOpcode : ushort
 	@_ii(1, IFLG.hasResult) load,
 	/// Args: aggregate pointer, 1 or more index
 	/// Returns: member pointer
+	@_ii(1, IFLG.hasResult) load_aggregate, // TODO: remove. Use load instead
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element_ptr,
 	/// Args: aggregate pointer, 1 or more index
 	/// Returns: member pointer
@@ -197,7 +198,6 @@ enum IrOpcode : ushort
 	/// 0 indixies do not make sense, because then instuction is no op and can replaced with first arg
 	/// Indicies are compatible with ones from get_element and insert_element
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element_ptr_0,
-	@_ii(1, IFLG.hasResult) load_aggregate, // TODO: remove. Use load instead
 	/// Args: aggregate members
 	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasResult) create_aggregate,
 	/// Args: aggregate, 1 or more index
@@ -209,6 +209,10 @@ enum IrOpcode : ushort
 	@_ii(2, IFLG.hasResult) get_aggregate_slice,
 	/// Args: aggregate, new element value, 1 or more index
 	/// Returns: aggregate with replaced element
+	/// Restriction: original aggregate's member that is being replaced here, must not
+	/// be read from in postdominating instructions. But it can be read on other control flow paths.
+	/// In other words, after this instruction got executed, original aggregate can not be read. All reads
+	/// must go through result of this instruction.
 	@_ii(3, IFLG.hasVariadicArgs | IFLG.hasResult) insert_element,
 
 	/// One's complement negation

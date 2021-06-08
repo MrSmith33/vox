@@ -17,16 +17,6 @@ struct CodegenTester
 		assertEqual!(file, line)(expected, toHexString(gen.encoder.code));
 		gen.encoder.resetPC();
 	}
-
-	void setup()
-	{
-		gen.encoder.setBuffer(alloc_executable_memory(PAGE_SIZE * 1024));
-	}
-
-	void free()
-	{
-		free_executable_memory(gen.encoder.freeBuffer);
-	}
 }
 
 void assertEqual(string file = __MODULE__, size_t line = __LINE__, A, B)(A expected, B generated)
