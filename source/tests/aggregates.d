@@ -483,3 +483,28 @@ void tester138(ref TestContext ctx) {
 	assert(getX(Point(1, 2)) == 1);
 	assert(getY(Point(1, 2)) == 2);
 }
+
+
+@TestInfo(&tester139, [HostSymbol("external", cast(void*)&aggr139_external)])
+immutable aggr139 = q{--- aggr139
+	// passing address of member var
+	struct Struct {
+		u64 var2;
+		u64 var;
+		u64 fun() {
+			external(&var);
+			return var;
+		}
+	}
+	u64 run() {
+		Struct s;
+		return s.fun();
+	}
+	void external(u64*);
+};
+extern(C) void aggr139_external(ulong* ptr) {
+	*ptr = 42;
+}
+void tester139(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("run")() == 42);
+}

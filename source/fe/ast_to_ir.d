@@ -294,7 +294,14 @@ IrIndex getRvalue(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, Expr
 				default: return source.irValue;
 			}
 		case ptr_to_data:
-			return load(gen, loc, currentBlock, source.irValue);
+			if (source.isLvalue) {
+				return load(gen, loc, currentBlock, source.irValue);
+			} else {
+				if (source.irValue.isVariable) {
+					return gen.builder.readVariable(currentBlock, source.irValue);
+				}
+				return source.irValue;
+			}
 		case ptr_to_ptr_to_data:
 			IrIndex ptr = load(gen, loc, currentBlock, source.irValue);
 			return load(gen, loc, currentBlock, ptr);
@@ -308,7 +315,11 @@ IrIndex getRvalue(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, Expr
 			switch (aggrType.typeKind) {
 				case IrTypeKind.pointer:
 					IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, source.indicies[]);
-					return load(gen, loc, currentBlock, ptr);
+					if (source.isLvalue) {
+						return load(gen, loc, currentBlock, ptr);
+					} else {
+						return ptr;
+					}
 				case IrTypeKind.array:
 				case IrTypeKind.struct_t:
 					IrIndex memberType = c.types.getAggregateMember(aggrType, c, source.indicies[]).type;

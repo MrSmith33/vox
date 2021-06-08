@@ -144,7 +144,6 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			currentBlock = afterChild.blockIndex;
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			lval.isLvalue = IsLvalue.no;
-			lval.kind = ExprValueKind.value;
 			return lval;
 
 		case bitwiseNot:
