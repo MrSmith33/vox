@@ -264,6 +264,7 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 + store use arrays in liveness info
 + store fixed intervals separately from virtual register intervals while doing RA
 + reuse spill stack slot
++ move solver needed to disambiguate mov from load from stack slot, because stack slot can occur as phi argument
 - allow src operands to be stack slots
 	- differentiate uses that require value in a register and ones that dont
 	  phi uses do not require register location for example

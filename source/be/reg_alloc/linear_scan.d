@@ -747,7 +747,7 @@ struct LinearScan
 		else
 		{
 			IrIndex type = lir.getValueType(context, it.definition);
-			IrIndex slot = builder.appendStackSlot(type, context.types.typeSizeAndAlignment(type), StackSlotKind.local);
+			IrIndex slot = builder.appendStackSlot(type, context.types.typeSizeAndAlignment(type), StackSlotKind.spillSlot);
 			state.spillSlot = slot; // cache slot
 			version(RAPrint) writefln("assignSpillSlot %s new slot %s", it.definition, slot);
 			it.reg = slot;
@@ -1058,7 +1058,7 @@ struct LinearScan
 			{
 				IrArgSize argSize = getMoveArgSize(vreg);
 				version(RAPrint_resolve) writefln("    vreg %s, pred %s succ %s size %s", vreg, IrIndexDump(predLoc, context, lir), IrIndexDump(succLoc, context, lir), argSize);
-				moveSolver.addMove(predLoc, succLoc, argSize);
+				moveSolver.addMove(predLoc, succLoc, argSize, FromValue.no);
 			}
 		}
 
@@ -1077,7 +1077,13 @@ struct LinearScan
 					IrArgSize argSize = getMoveArgSize(phi.result);
 					version(RAPrint_resolve) writefln(" arg %s %s size %s", argBlock, IrIndexDump(arg, context, lir), argSize);
 
-					moveSolver.addMove(moveFrom, moveTo, argSize);
+					FromValue fromValue = FromValue.no;
+					if (moveFrom.isStackSlot) {
+						if (lir.getStackSlot(moveFrom).kind != StackSlotKind.spillSlot) {
+							fromValue = FromValue.yes;
+						}
+					}
+					moveSolver.addMove(moveFrom, moveTo, argSize, fromValue);
 				}
 			}
 		}
@@ -1172,7 +1178,7 @@ struct LinearScan
 			{
 				IrIndex vreg = it.definition;
 				IrArgSize argSize = getMoveArgSize(vreg);
-				moveSolver.addMove(moveFrom, moveTo, argSize);
+				moveSolver.addMove(moveFrom, moveTo, argSize, FromValue.no);
 				prevPos = splitPos;
 			}
 		}

@@ -4442,3 +4442,19 @@ immutable test206 = q{--- test206
 		map[x].block_sight = true;
 	}
 };
+
+
+@TestInfo(&tester207)
+immutable test207 = q{--- test207
+	// aggregate lowering
+	u8[] fromStringz(u8* cString) {
+		if (cString == null) return null;
+		u8* cursor = cString;
+		while(*cursor) ++cursor;
+		u64 length = cast(u64)(cursor - cString);
+		return cString[0..length];
+	}
+};
+void tester207(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(Slice!(const(char)), const(char)*)("fromStringz")("test") == "test");
+}

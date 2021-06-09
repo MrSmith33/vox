@@ -543,7 +543,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 				IrIndex[] predecessors = ir.getBlock(phi.blockIndex).predecessors.data(ir);
 				foreach(size_t arg_i, ref IrIndex phiArg; phi.args(ir)) {
 					if (phiArg.isSomeConstant) {
-						builder.emitInstrBefore!(IrOpcode.store)(ir.getBlock(predecessors[arg_i]).lastInstr, ExtraInstrArgs(), phi.result, phiArg);
+						builder.emitInstrBefore!(IrOpcode.store)(ir.getBlock(predecessors[arg_i]).lastInstr, ExtraInstrArgs(), slot, phiArg);
 						phiArg = slot;
 					}
 				}

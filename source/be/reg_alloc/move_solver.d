@@ -63,7 +63,7 @@ struct MoveSolver
 		}
 	}
 
-	void addMove(IrIndex fromIndex, IrIndex toIndex, IrArgSize argSize)
+	void addMove(IrIndex fromIndex, IrIndex toIndex, IrArgSize argSize, FromValue fromIsValue)
 	{
 		assert(fromIndex.isDefined);
 		assert(toIndex.isDefined);
@@ -72,7 +72,7 @@ struct MoveSolver
 		ValueInfo* from = &getInfo(fromIndex);
 		ValueInfo* to = &getInfo(toIndex);
 
-		from.onRead(fromIndex);
+		from.onRead(fromIndex, fromIsValue);
 		// no longer write only
 		if (from.numReads == 1 && from.readFrom.isDefined) {
 			wo_to_rw(from.arrayPos);
@@ -159,6 +159,13 @@ struct MoveSolver
 			builder.insertBeforeInstr(beforeInstr, instr.instruction);
 		}
 
+		void makeMov(IrIndex dst, IrIndex src, IrArgSize argSize)
+		{
+			ExtraInstrArgs extra = { result : dst, argSize : argSize };
+			InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, src);
+			builder.insertBeforeInstr(beforeInstr, instr.instruction);
+		}
+
 		while (numWrittenNodes)
 		{
 			IrIndex toIndex = writtenNodesPtr[numWrittenNodes-1];
@@ -186,9 +193,13 @@ struct MoveSolver
 						scratchReg.physRegSize = IrArgSize.size64;
 						makeLoad(scratchReg, scratchSpillSlot, IrArgSize.size64);
 					}
-					else // con or reg -> stack slot
+					else // stack slot -> con or reg
 					{
-						makeLoad(toIndex, fromIndex, to.argSize);
+						assert(toIndex.isSomeReg);
+						if (from.isValue)
+							makeMov(toIndex, fromIndex, to.argSize);
+						else
+							makeLoad(toIndex, fromIndex, to.argSize);
 					}
 				}
 				else // from is reg or constant
@@ -199,9 +210,7 @@ struct MoveSolver
 					}
 					else // con or reg -> reg
 					{
-						ExtraInstrArgs extra = { result : toIndex, argSize : to.argSize };
-						InstrWithResult instr = builder.emitInstr!(Amd64Opcode.mov)(extra, fromIndex);
-						builder.insertBeforeInstr(beforeInstr, instr.instruction);
+						makeMov(toIndex, fromIndex, to.argSize);
 					}
 				}
 
@@ -240,16 +249,23 @@ struct MoveSolver
 	}
 }
 
+enum FromValue : bool {
+	no = false,
+	yes = true,
+}
+
 struct ValueInfo
 {
 	uint arrayPos; // index into writtenNodes
 	IrIndex readFrom; // can be null
 	ushort numReads;
 	IrArgSize argSize; // used for memory moves
+	FromValue isValue;
 
-	void onRead(IrIndex self)
+	void onRead(IrIndex self, FromValue isValue)
 	{
 		++numReads;
+		this.isValue = isValue;
 	}
 
 	void onWrite(IrIndex from, IrIndex self, IrArgSize argSize)

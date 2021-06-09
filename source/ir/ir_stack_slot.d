@@ -10,6 +10,7 @@ import all;
 ///
 enum StackSlotKind : ubyte {
 	local,
+	spillSlot, // same allocation as local
 	parameter,
 	argument
 }
