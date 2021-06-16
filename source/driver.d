@@ -32,7 +32,7 @@ struct Driver
 		passes = passes_;
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		size_t BYTES_TO_RESERVE = GiB*186;
+		size_t BYTES_TO_RESERVE = GiB*185;
 		arenaPool.reserve(BYTES_TO_RESERVE);
 		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
@@ -40,8 +40,8 @@ struct Driver
 		/// Code must be able to use RIP-relative addressing into static data (and into import data when in JIT mode)
 		context.importBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.codeBuffer.setBuffer(arenaPool.take(GiB), 0);
-		context.staticDataBuffer.setBuffer(arenaPool.take(GiB), 0);
-		context.roStaticDataBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.staticDataBuffer.setBuffer(arenaPool.take(GiB/2), 0);
+		context.roStaticDataBuffer.setBuffer(arenaPool.take(GiB/2), 0);
 
 		context.sourceBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.files.setBuffer(arenaPool.take(GiB), 0);

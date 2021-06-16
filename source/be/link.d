@@ -27,7 +27,7 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 		//if (fromSymbol.isString)
 		//	writefln(` "%s"`, (cast(char*)(fromSymbol.dataPtr))[0..fromSymbol.length]);
 		//else writeln;
-		//writefln("    fromSection %s %X", context.idString(fromSection.id), fromSection.sectionData);
+		//writefln("    fromSection %s %X", context.idString(fromSection.id), fromSection.buffer.bufPtr);
 
 		LinkIndex symRefIndex = fromSymbol.firstRef;
 		while (symRefIndex.isDefined)
@@ -39,13 +39,17 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 
 			ObjectSymbol* toSymbol = context.objSymTab.getSymbol(symRef.referencedSymbol);
 			ObjectSection* toSection = context.objSymTab.getSection(toSymbol.sectionIndex);
-			//writefln("      toSection %s %X", context.idString(toSection.id), toSection.sectionData);
+			//writefln("      toSection %s %X", context.idString(toSection.id), toSection.buffer.bufPtr);
 
 			// section + symbol offset + reference offset
 			ulong fromAddr = fromSymAddr + symRef.refOffset;
 			ulong toAddr = toSection.sectionAddress + toSymbol.sectionOffset;
 			//writefln("      refAddr %X", fromAddr);
 			//writefln("      toAddr %X", toAddr);
+
+			if (toAddr == 0 && toSection.type == ObjectSectionType.host) {
+				context.internal_error("Trying to referece null host symbol %s from %s", context.idString(toSymbol.id), context.idString(fromSymbol.id));
+			}
 
 			void* fixupLocation = cast(void*)(fromSection.buffer.bufPtr + fromSymbol.sectionOffset + symRef.refOffset);
 
@@ -59,6 +63,10 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 					break;
 
 				case relative32:
+					ptrdiff_t diff = toAddr - fromAddr;
+					context.assertf(diff >= int.min && diff <= int.max,
+						"Cannot encode relative 32-bit offset from %s at 0x%X to %s at 0x%X, because offset is bigger than 2GiB (%s) bytes",
+						context.idString(fromSymbol.id), fromAddr, context.idString(toSymbol.id), toAddr, diff);
 					int value = cast(int)(toAddr - fromAddr) - symRef.extraOffset;
 					int* fixup = cast(int*)fixupLocation;
 					//writefln("      value %X -> %X", *fixup, value);

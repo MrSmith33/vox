@@ -22,6 +22,9 @@
 			- replace with @inline(bool) attribute
 		+- #ctfe (only inferred right now)
 			- replace with @ctfe(bool) attribute
+			- functions calling ctfe-only functions are not inferred as ctfe-only, and end up being compiled
+			  For now built-in functions will have an address of special stub that asserts.
+			  Ideally ctfe-only functions should not be compiled at all.
 		- #likely
 		- #unlikely
 		- #likely_when(<expr>)
@@ -244,6 +247,7 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 - Validate all instructions
 + use actual arrays for users instead of linked lists
 - Figure out recursive type printing (Either use named types or use hashset to mark visited types)
+- Handle cases where multiple predecessors are the same block: https://c9x.me/notes/2017-02-09.html
 
 
 [Optimizations]

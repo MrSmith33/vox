@@ -2,7 +2,7 @@
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
 
-/// Given LIR produces a set of live intervals and live in bitmap
+/// Given LIR produces a set of live intervals and "live in" bitmap
 /// Implementation of:
 /// "Linear Scan Register Allocation on SSA Form"
 // TODO: backward propagation of hints
@@ -334,4 +334,14 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 
 	// Reset length from 0 to actual length
 	liveness.resetIntervalUsesLength(context, ir);
+
+	//if (context.validateIr)
+	//foreach(interval; liveness.intervals) {
+	//	LiveRange prev;
+	//	foreach(i, range; interval.ranges) {
+	//		context.assertf(range.from < range.to, "Invalid range %s [%s, %s)", i, range.from, range.to);
+	//		if (i == 0) continue;
+	//		context.assertf(prev.to < range.from, "Ranges are not sequential %s [%s, %s) %s [%s, %s)", i-1, prev.from, prev.to, i, range.from, range.to);
+	//	}
+	//}
 }

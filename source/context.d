@@ -1007,6 +1007,10 @@ immutable AstIndex[4] builtinFuncsArray = [
 	CommonAstNodes.is_pointer,
 ];
 
+void builtin_function_stub() {
+	assert(false, "Trying to call CTFE-only function at runtime");
+}
+
 void createBuiltinFunctions(CompilationContext* c)
 {
 	ObjectModule builtinModule = {
@@ -1042,12 +1046,17 @@ void createBuiltinFunctions(CompilationContext* c)
 		funcNode.state = AstNodeState.type_check_done;
 		funcNode.flags |= FuncDeclFlags.isBuiltin;
 
+		ulong sectionOffset = c.importBuffer.length;
+		ulong ptr = cast(ulong)&builtin_function_stub;
+		c.importBuffer.put(*cast(ubyte[8]*)&ptr);
+
 		ObjectSymbol sym = {
 			kind : ObjectSymbolKind.isHost,
-			sectionIndex : c.builtinSections[ObjectSectionType.host],
-			moduleIndex : c.builtinModuleIndex,
-			alignmentPower : 0,
+			flags : ObjectSymbolFlags.isIndirect,
 			id : id,
+			sectionOffset : sectionOffset,
+			sectionIndex : c.builtinSections[ObjectSectionType.imports],
+			moduleIndex : c.builtinModuleIndex,
 		};
 		funcNode.backendData.objectSymIndex = c.objSymTab.addSymbol(sym);
 

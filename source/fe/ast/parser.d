@@ -1621,9 +1621,11 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 		case STRING_LITERAL:
 			// omit " at the start and end of token
 			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
-			// handle escape sequences
+
+			// handle escape sequences and copy string to RO buffer.
 			value = handleEscapedString(p.context.roStaticDataBuffer, value);
 			p.context.roStaticDataBuffer.put(0); // add zero terminator
+
 			AstIndex type = CommonAstNodes.type_u8Slice;
 
 			IrIndex irValue;
