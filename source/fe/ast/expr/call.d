@@ -74,7 +74,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			auto signature = func.signature.get!FunctionSignatureNode(c);
 			return type_check_func_call(node, signature, func.id, state);
 		case AstType.decl_struct:
-			require_type_check(callee, state);
+			require_type_check(callee, state, IsNested.no);
 			return type_check_constructor_call(node, callee.get!StructDeclNode(c), state);
 		case AstType.expr_member:
 			MemberExprNode* memberNode = callee.get!MemberExprNode(c);
@@ -324,7 +324,7 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 	CompilationContext* c = state.context;
 
 	AstIndex signatureIndex = c.getAstNodeIndex(signature);
-	require_type_check(signatureIndex, state);
+	require_type_check(signatureIndex, state, IsNested.no);
 	node.type = signature.returnType;
 
 	AstNodes params = signature.parameters;

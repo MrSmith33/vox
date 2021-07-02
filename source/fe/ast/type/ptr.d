@@ -7,7 +7,7 @@ import all;
 
 @(AstType.type_ptr)
 struct PtrTypeNode {
-	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType | AstFlags.isExpression, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.type_ptr, AstFlags.isType, AstNodeState.name_register_self_done);
 	AstIndex type = CommonAstNodes.type_type;
 	TypeNode* typeNode() return { return cast(TypeNode*)&this; }
 	AstIndex base;

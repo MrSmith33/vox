@@ -7,7 +7,7 @@ import all;
 
 @(AstType.type_basic)
 struct BasicTypeNode {
-	mixin AstNodeData!(AstType.type_basic, AstFlags.isType | AstFlags.isExpression, AstNodeState.type_check_done);
+	mixin AstNodeData!(AstType.type_basic, AstFlags.isType, AstNodeState.type_check_done);
 	AstIndex type = CommonAstNodes.type_type;
 	SizeAndAlignment sizealign;
 	ulong minValue;

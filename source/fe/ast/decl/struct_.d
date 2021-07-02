@@ -26,7 +26,7 @@ struct StructDeclNode {
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_struct;
-		this.flags = AstFlags.isDeclaration | AstFlags.isType;
+		this.flags = AstFlags.isType;
 		this.parentScope = parentScope;
 		this.memberScope = memberScope;
 		this.id = id;

@@ -24,7 +24,7 @@ struct EnumDeclaration
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
-		this.flags = AstFlags.isType | AstFlags.isDeclaration;
+		this.flags = AstFlags.isType;
 		this.parentScope = parentScope;
 		this.memberScope = memberScope;
 		this.declarations = members;
@@ -32,12 +32,12 @@ struct EnumDeclaration
 		this.id = id;
 	}
 
-	/// Anonymous
+	/// Anonymous / not a type
 	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, AstNodes members, AstIndex memberType)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
-		this.flags = AstFlags.isDeclaration | Flags.isAnonymous;
+		this.flags = Flags.isAnonymous;
 		this.parentScope = parentScope;
 		this.memberScope = memberScope;
 		this.declarations = members;
@@ -111,7 +111,7 @@ IrIndex gen_default_value_enum(EnumDeclaration* node, CompilationContext* c)
 @(AstType.decl_enum_member)
 struct EnumMemberDecl
 {
-	mixin AstNodeData!(AstType.decl_enum_member, AstFlags.isDeclaration | AstFlags.isStatement);
+	mixin AstNodeData!(AstType.decl_enum_member);
 	AstIndex parentScope;
 	AstIndex type;
 	AstIndex initializer;
@@ -178,7 +178,7 @@ void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 		if (node.type) {
 			auto type = node.type.get_node(c);
 			if (type.astType == AstType.decl_enum) {
-				require_type_check(type.as!EnumDeclaration(c).memberType, state);
+				require_type_check(type.as!EnumDeclaration(c).memberType, state, IsNested.no);
 			} else require_type_check(node.type, state);
 			require_type_check_expr(node.type, node.initializer, state);
 			//writefln("  autoconvTo %s", printer(node.type, c));

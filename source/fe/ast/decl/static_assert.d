@@ -9,7 +9,7 @@ import all;
 @(AstType.decl_static_assert)
 struct StaticAssertDeclNode
 {
-	mixin AstNodeData!(AstType.decl_static_assert, AstFlags.isDeclaration, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.decl_static_assert, 0, AstNodeState.name_register_self_done);
 	AstIndex condition;
 	AstIndex message; // for now only single string is allowed, nullable
 }

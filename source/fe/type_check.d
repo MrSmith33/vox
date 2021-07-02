@@ -25,6 +25,12 @@ void pass_type_check(ref CompilationContext context, CompilePassPerModule[] subP
 	}
 }
 
+// TODO: remove later, when no calls that pass IsNested.no remain.
+enum IsNested : bool {
+	no = false,
+	yes = true,
+}
+
 struct TypeCheckState
 {
 	CompilationContext* context;
@@ -33,12 +39,13 @@ struct TypeCheckState
 }
 
 /// Type checking for static context
-void require_type_check(ref AstIndex nodeIndex, CompilationContext* context)
+void require_type_check(ref AstIndex nodeIndex, CompilationContext* context, IsNested isNested = IsNested.yes)
 {
 	auto state = TypeCheckState(context);
-	require_type_check(nodeIndex, state);
+	require_type_check(nodeIndex, state, isNested);
 }
 
+// Assumes IsNested.yes
 void require_type_check(ref AstNodes items, ref TypeCheckState state)
 {
 	foreach(ref AstIndex item; items) require_type_check(item, state);
@@ -46,15 +53,26 @@ void require_type_check(ref AstNodes items, ref TypeCheckState state)
 
 /// Annotates all expression nodes with their type
 /// Type checking, casting
-void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
+/// isNested:
+///   If true, then type check must be performed. If check is already in progress then it is an error.
+///   Indirect check requests over expr_name_use, expr_member pass false.
+void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNested isNested = IsNested.yes)
 {
 	AstNode* node = state.context.getAstNode(nodeIndex);
-	//writefln("require_type_check %s %s", node.astType, node.state);
+	//writefln("require_type_check %s %s %s", node.astType, node.state, isNested);
 
 	switch(node.state) with(AstNodeState)
 	{
-		case name_register_self, name_register_nested, name_resolve, type_check:
-			state.context.circular_dependency; return;
+		case name_register_self, name_register_nested, name_resolve:
+			state.context.circular_dependency;
+			assert(false);
+		case type_check:
+			if (isNested == IsNested.no) {
+				// this is allowed. We simply return.
+				return;
+			}
+			state.context.circular_dependency;
+			assert(false);
 		case parse_done:
 			auto name_state = NameRegisterState(state.context);
 			require_name_register_self(0, nodeIndex, name_state);
@@ -73,6 +91,9 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state)
 		case type_check_done, ir_gen_done: return; // already type checked
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
+
+	state.context.push_analized_node(nodeIndex);
+	scope(success) state.context.pop_analized_node;
 
 	if (node.hasAttributes) {
 		type_check_attributes(node.attributeInfo, state);
@@ -209,7 +230,7 @@ CommonTypeResult calcCommonType(AstIndex indexA, AstIndex indexB, CompilationCon
 void autoconvToBool(ref AstIndex exprIndex, CompilationContext* context)
 {
 	ExpressionNode* expr = exprIndex.get_expr(context);
-	if (expr.type.get_type(context).isError) return;
+	if (expr.type.isErrorType) return;
 	if (!autoconvTo(exprIndex, CommonAstNodes.type_bool, context))
 		context.error(expr.loc, "Cannot implicitly convert `%s` to bool",
 			expr.type.typeName(context));

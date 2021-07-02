@@ -9,7 +9,7 @@ import all;
 @(AstType.stmt_if)
 struct IfStmtNode
 {
-	mixin AstNodeData!(AstType.stmt_if, AstFlags.isStatement, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.stmt_if, 0, AstNodeState.name_register_self_done);
 	AstIndex condition;
 	AstNodes thenStatements; // can be empty
 	AstNodes elseStatements; // can be empty

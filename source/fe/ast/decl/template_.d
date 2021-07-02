@@ -12,7 +12,7 @@ import all;
 @(AstType.decl_template)
 struct TemplateDeclNode
 {
-	mixin AstNodeData!(AstType.decl_template, AstFlags.isDeclaration | AstFlags.isTemplate);
+	mixin AstNodeData!(AstType.decl_template);
 	/// For template name register
 	AstIndex parentScope;
 	/// Template parameters
@@ -81,7 +81,7 @@ enum TemplateParamDeclFlags : ushort
 @(AstType.decl_template_param)
 struct TemplateParamDeclNode
 {
-	mixin AstNodeData!(AstType.decl_template_param, AstFlags.isDeclaration);
+	mixin AstNodeData!(AstType.decl_template_param);
 	Identifier id;
 	ushort index; // index in the list of template parameters
 

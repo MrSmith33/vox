@@ -178,6 +178,7 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
+			state.context.push_analized_node(nodeIndex);
 			c.circular_dependency; assert(false);
 		case parse_done:
 			// all requirement are done
@@ -188,6 +189,9 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 		default:
 			c.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
+
+	state.context.push_analized_node(nodeIndex);
+	scope(success) state.context.pop_analized_node;
 
 	switch(node.astType) with(AstType)
 	{
@@ -225,6 +229,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
+			state.context.push_analized_node(nodeIndex);
 			state.context.circular_dependency; assert(false);
 		case parse_done:
 			auto name_state = NameRegisterState(state.context);
@@ -235,6 +240,9 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case name_register_nested_done, name_resolve_done, type_check_done, ir_gen_done: return; // already name registered
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
+
+	state.context.push_analized_node(nodeIndex);
+	scope(success) state.context.pop_analized_node;
 
 	if (node.hasAttributes) {
 		name_register_nested_attributes(node.attributeInfo, state);

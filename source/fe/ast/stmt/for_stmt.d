@@ -8,7 +8,7 @@ import all;
 
 @(AstType.stmt_for)
 struct ForStmtNode {
-	mixin AstNodeData!(AstType.stmt_for, AstFlags.isStatement, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.stmt_for, 0, AstNodeState.name_register_self_done);
 	AstNodes init_statements;
 	AstIndex condition; // Nullable
 	AstNodes increment_statements;

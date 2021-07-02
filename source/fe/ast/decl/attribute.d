@@ -45,14 +45,14 @@ enum BuiltinAttribSubType : ubyte {
 @(AstType.decl_builtin_attribute)
 struct BuiltinAttribNode
 {
-	mixin AstNodeData!(AstType.decl_builtin_attribute, AstFlags.isDeclaration, AstNodeState.type_check_done);
+	mixin AstNodeData!(AstType.decl_builtin_attribute, 0, AstNodeState.type_check_done);
 	uint data;
 
 	this(TokenIndex loc, BuiltinAttribSubType subType, uint data)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_builtin_attribute;
-		this.flags = AstFlags.isDeclaration;
+		this.flags = 0;
 		this.state = AstNodeState.type_check_done;
 		this.subType = subType;
 		this.data = data;

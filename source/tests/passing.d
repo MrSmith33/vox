@@ -4506,3 +4506,35 @@ void tester208(ref TestContext ctx) {
 		"EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"~
 		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
 }
+
+
+@TestInfo()
+immutable test209 = q{--- test209
+	//
+	$alias selectPrintFunc($type T) {
+		return printInt;
+	}
+	void printInt() {
+		print("res");
+	}
+	void print[Args...](Args... args) {
+		alias func = selectPrintFunc(u8[]);
+		func();
+	}
+};
+
+/*
+@TestInfo(&tester210)
+immutable test210 = q{--- test210
+	// struct size with forward reference
+	u64 run() { return VkExtensionProperties.sizeof; } // 260
+
+	VkExtensionProperties[11] extensions;
+	struct VkExtensionProperties {
+		u8[256] extensionName;
+		u32 specVersion;
+	}
+};
+void tester210(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("run")() == 260);
+}*/

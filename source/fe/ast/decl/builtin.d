@@ -22,7 +22,7 @@ immutable string[] builtinIdStrings = gatherEnumStrings!BuiltinId();
 @(AstType.decl_builtin)
 struct BuiltinNode
 {
-	mixin AstNodeData!(AstType.decl_builtin, AstFlags.isDeclaration, AstNodeState.type_check_done);
+	mixin AstNodeData!(AstType.decl_builtin, 0, AstNodeState.type_check_done);
 	Identifier id;
 	BuiltinId builtin;
 }

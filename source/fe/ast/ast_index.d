@@ -44,12 +44,8 @@ struct AstIndex
 	void setState(CompilationContext* c, AstNodeState newState) { return c.getAstNode(this).state = newState; }
 	ref ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
 
-	bool isDeclaration(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isDeclaration); }
-	bool isExpression(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isExpression); }
-	bool isStatement(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isStatement); }
 	bool isType(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isType); }
 	bool isLvalue(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLvalue); }
-	bool isTemplate(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isTemplate); }
 
 	// type functions
 	AstIndex getElementType(CompilationContext* c) { return get_type(c).getElementType(c); }

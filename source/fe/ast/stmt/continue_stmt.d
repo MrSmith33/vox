@@ -8,7 +8,7 @@ import all;
 
 @(AstType.stmt_continue)
 struct ContinueStmtNode {
-	mixin AstNodeData!(AstType.stmt_continue, AstFlags.isStatement, AstNodeState.type_check_done);
+	mixin AstNodeData!(AstType.stmt_continue, 0, AstNodeState.type_check_done);
 }
 
 void print_continue(ContinueStmtNode* node, ref AstPrintState state)

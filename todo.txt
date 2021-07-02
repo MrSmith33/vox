@@ -222,9 +222,6 @@ x globals need to have IrIndex to initializer and coexist with raw data initiali
 
 
 [IR]
-- Inlining call that passes u8 constant, and inside u8 is zero extended doesn't compile
-  because zext of contant is not possible in amd64. This needs to be constant folded in later pass.
-  Make worklist or recursive constant folder.
 + Consider storing vreg users in hash map instead of array. (Now uses multihashset)
 - Allocate argument stack slots for multiple calls from the same space (for structs copies that are passed by ptr)
 - IrBuilder must prevent adding instructions from wrong instruction set
@@ -258,6 +255,11 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 	+ IR inliner is done
 	- Deciding when to inline is not implemented
 	+ Stack slots need to be copied on inline
+	- Inlining call that passes u8 constant, and inside u8 is zero extended doesn't compile
+	  because zext of contant is not possible in amd64. This needs to be constant folded in later pass.
+	  Make worklist or recursive constant folder.
+	- Do not save registers before calling noreturn function: https://old.reddit.com/r/Compilers/comments/o9k92y/95_branch_prediction_accuracy/h3cmrov/
+- Outlining ; cold/hot code separation ; branch prediction: https://old.reddit.com/r/Compilers/comments/o9k92y/95_branch_prediction_accuracy/
 + DCE exhibits O(n^2) behavior, because for each removed instruction (O(n)), we remove user from the vreg user list (O(n)). - Switched to multihashset.
 - Loop alignment (https://kunalspathak.github.io/2021-03-15-Loop-Alignment)
 

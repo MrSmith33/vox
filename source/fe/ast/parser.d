@@ -401,7 +401,6 @@ struct Parser
 		{
 			// expression
 			AstNode* statementNode = context.getAstNode(expr_or_type);
-			statementNode.flags |= AstFlags.isStatement;
 			if (consume_terminator) expectAndConsume(var_terminator);
 			return expr_or_type;
 		}
@@ -450,12 +449,6 @@ struct Parser
 			nextToken; // skip "="
 			initializerIndex = expr(PreferType.no);
 			AstNode* initializerNode = context.getAstNode(initializerIndex);
-			if (!initializerNode.isExpression) {
-				const(char)[] tokenString = context.getTokenString(initializerNode.loc);
-				context.unrecoverable_error(initializerNode.loc,
-					"Variable declaration can be only initialized with expressions, not with %s, '%s'",
-					initializerNode.astType, tokenString);
-			}
 		}
 
 		if (tok.type == TokenType.SEMICOLON || tok.type == TokenType.COMMA) // <var_declaration> ::= <type> <id> (";" / ",")
@@ -1073,7 +1066,7 @@ struct Parser
 
 	void parseStaticIfThenElse(out AstNodes thenStatements, out AstNodes elseStatements)
 	{
-		if (declarationOwner.isDeclaration(context))
+		if (declarationOwner.astType(context) == AstType.decl_function)
 		{
 			thenStatements = parseItems!statement();
 			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
@@ -1356,7 +1349,6 @@ struct Parser
 		{
 			AstIndex incExpr = expr(PreferType.no);
 			AstNode* incExprNode = context.getAstNode(incExpr);
-			incExprNode.flags |= AstFlags.isStatement;
 			increment_statements.put(context.arrayArena, incExpr);
 
 			if (tok.type == TokenType.COMMA)

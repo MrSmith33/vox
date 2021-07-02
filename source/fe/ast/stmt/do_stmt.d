@@ -8,7 +8,7 @@ import all;
 
 @(AstType.stmt_do_while)
 struct DoWhileStmtNode {
-	mixin AstNodeData!(AstType.stmt_do_while, AstFlags.isStatement, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.stmt_do_while, 0, AstNodeState.name_register_self_done);
 	AstIndex condition;
 	AstNodes statements;
 }

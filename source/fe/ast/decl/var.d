@@ -15,7 +15,7 @@ enum VariableFlags : ushort {
 @(AstType.decl_var)
 struct VariableDeclNode
 {
-	mixin AstNodeData!(AstType.decl_var, AstFlags.isDeclaration | AstFlags.isStatement);
+	mixin AstNodeData!(AstType.decl_var);
 	AstIndex parentScope;
 	AstIndex type;
 	AstIndex initializer; // may be null, stores initializer for variables, default argument for parameters

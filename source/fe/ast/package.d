@@ -76,26 +76,21 @@ enum AstType : ubyte
 
 enum AstFlags : ushort
 {
-	isDeclaration    = 1 <<  0,
-	isExpression     = 1 <<  2,
-	/// Can be applied to expression if it is in place of stmt
-	isStatement      = 1 <<  3,
-	isType           = 1 <<  4,
-	/// Is added to expression nodes that are being assigned to
-	isLvalue         = 1 <<  5,
 	/// Before AST node AttributeInfo struct allocated
-	hasAttributes    = 1 <<  6,
-	/// stores ScopeKind
-	scopeKindMask    = 1 << 7 | 1 << 8, // used for reading value
-	isLocal          = 0 << 7,          // used for setting flags
-	isGlobal         = 1 << 7,          // used for setting flags
-	isMember         = 2 << 7,          // used for setting flags
+	hasAttributes      = 1 <<  0,
 
-	isTemplate       = 1 << 9,
-	isTemplateInstance = 1 << 10,
-	isError          = 1 << 11,
+	isType             = 1 <<  1,
+	/// Is added to expression nodes that are being assigned to
+	isLvalue           = 1 <<  2,
+	/// stores ScopeKind
+	scopeKindMask      = 1 <<  3 | 1 << 4, // used for reading value
+	isLocal            = 0 <<  3,          // used for setting flags
+	isGlobal           = 1 <<  3,          // used for setting flags
+	isMember           = 2 <<  3,          // used for setting flags
+
+	isTemplateInstance = 1 <<  5,
 	// used for node specific flags
-	userFlag         = 1 << 12,
+	userFlag           = 1 <<  6,
 }
 
 enum hasAstNodeType(T) = getUDAs!(T, AstType).length > 0;
@@ -184,13 +179,9 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		return null;
 	}
 
-	bool isDeclaration(){ return cast(bool)(flags & AstFlags.isDeclaration); }
-	bool isExpression() { return cast(bool)(flags & AstFlags.isExpression); }
-	bool isStatement()  { return cast(bool)(flags & AstFlags.isStatement); }
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
 	bool isLvalue()     { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool hasAttributes(){ return cast(bool)(flags & AstFlags.hasAttributes); }
-	bool isTemplate() { return cast(bool)(flags & AstFlags.isTemplate); }
 	bool isTemplateInstance() { return cast(bool)(flags & AstFlags.isTemplateInstance); }
 	bool isGlobal()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isGlobal; }
 	bool isMember()     { return (flags & AstFlags.scopeKindMask) == AstFlags.isMember; }
@@ -237,6 +228,9 @@ void print_node_name(ref TextSink sink, AstIndex nodeIndex, CompilationContext* 
 				print_node_name(sink, param, c);
 			}
 			sink.put(")");
+			break;
+		case expr_call:
+			print_node_name(sink, node.as!CallExprNode(c).callee, c);
 			break;
 		default: assert(false, format("got %s", node.astType));
 	}

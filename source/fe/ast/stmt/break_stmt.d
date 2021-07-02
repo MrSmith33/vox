@@ -8,7 +8,7 @@ import all;
 
 @(AstType.stmt_break)
 struct BreakStmtNode {
-	mixin AstNodeData!(AstType.stmt_break, AstFlags.isStatement, AstNodeState.type_check_done);
+	mixin AstNodeData!(AstType.stmt_break, 0, AstNodeState.type_check_done);
 }
 
 void print_break(BreakStmtNode* node, ref AstPrintState state)

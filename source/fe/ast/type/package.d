@@ -89,10 +89,6 @@ struct TypeNode
 		return astType == AstType.type_basic &&
 			as_basic.basicType == BasicType.t_void;
 	}
-	bool isError() {
-		return astType == AstType.type_basic &&
-			as_basic.basicType == BasicType.t_error;
-	}
 	bool isPointer() { return astType == AstType.type_ptr; }
 	bool isSlice() { return astType == AstType.type_slice; }
 	bool isStaticArray() { return astType == AstType.type_static_array; }

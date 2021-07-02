@@ -259,7 +259,8 @@ void force_callee_ir_gen(FunctionDeclNode* callee, AstIndex calleeIndex, Compila
 	switch(callee.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check, ir_gen:
-			c.circular_dependency; assert(false);
+			c.push_analized_node(calleeIndex);
+			c.circular_dependency(); assert(false);
 		case parse_done:
 			auto name_state = NameRegisterState(c);
 			require_name_register_self(0, calleeIndex, name_state);
@@ -279,12 +280,16 @@ void force_callee_ir_gen(FunctionDeclNode* callee, AstIndex calleeIndex, Compila
 			c.throwOnErrors;
 			goto case;
 		case type_check_done:
-			IrGenState state = IrGenState(c);
-			ir_gen_function(state, callee);
-			goto case; // all requirement are done
-		case ir_gen_done: break; // already has IR
+			break; // all requirement are done
+		case ir_gen_done: return; // already has IR
 		default: c.internal_error(callee.loc, "Node %s in %s state", callee.astType, callee.state);
 	}
+
+	c.push_analized_node(calleeIndex);
+	scope(success) c.pop_analized_node;
+
+	IrGenState state = IrGenState(c);
+	ir_gen_function(state, callee);
 }
 
 IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)

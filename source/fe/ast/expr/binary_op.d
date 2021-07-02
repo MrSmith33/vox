@@ -408,7 +408,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 		rightType = rightTypeIndex.get_type(c);
 	}
 
-	if (leftType.isError || rightType.isError) return;
+	if (leftTypeIndex.isErrorType || rightTypeIndex.isErrorType) return;
 
 	switch(b.op) with(BinOp)
 	{

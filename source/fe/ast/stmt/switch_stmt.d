@@ -9,7 +9,7 @@ import all;
 @(AstType.stmt_switch)
 struct SwitchStmtNode
 {
-	mixin AstNodeData!(AstType.stmt_switch, AstFlags.isStatement, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.stmt_switch, 0, AstNodeState.name_register_self_done);
 	AstIndex condition;
 	AstIndex elseStmt; // else block stmt, nullable
 	Array!SwitchCase cases;

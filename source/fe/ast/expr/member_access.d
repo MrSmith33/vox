@@ -70,7 +70,6 @@ struct MemberExprNode {
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_member;
-		this.flags = AstFlags.isExpression;
 		this.state = AstNodeState.name_register_self_done;
 		this.parentScope = parentScope;
 		this.aggregate = aggregate;
@@ -83,7 +82,6 @@ struct MemberExprNode {
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_member;
-		this.flags = AstFlags.isExpression;
 		this.state = AstNodeState.name_register_self_done;
 		this.parentScope = parentScope;
 		this.aggregate = aggregate;
@@ -223,7 +221,7 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 		return LookupResult.success;
 	}
 
-	require_type_check(expr.aggregate, state);
+	require_type_check(expr.aggregate, state, IsNested.no);
 	TypeNode* objType = expr.aggregate.get_type(c);
 
 	Identifier memberId = expr.memberId(c);

@@ -31,7 +31,6 @@ struct NameUseExprNode {
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_name_use;
-		this.flags = AstFlags.isExpression;
 		this.state = AstNodeState.name_register_nested_done;
 		this.parentScope = parentScope;
 		this._id = id;
@@ -103,7 +102,6 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 	if (entity == CommonAstNodes.node_error)
 	{
 		c.error(node.loc, "undefined identifier `%s`", c.idString(id));
-		node.flags |= AstFlags.isError;
 		node.resolve(CommonAstNodes.node_error, c);
 		return;
 	}
@@ -145,7 +143,6 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 			nodeIndex = entity;
 			break;
 		case decl_template:
-			node.flags |= AstFlags.isTemplate;
 			break;
 		default:
 			c.internal_error("Unknown entity %s", entityNode.astType);
@@ -198,7 +195,7 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 			goto default;
 
 		case AstType.decl_enum_member:
-			require_type_check(node._entity, state);
+			require_type_check(node._entity, state, IsNested.no);
 			goto default;
 
 		default:

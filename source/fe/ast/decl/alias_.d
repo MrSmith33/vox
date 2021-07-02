@@ -11,7 +11,7 @@ import all;
 @(AstType.decl_alias)
 struct AliasDeclNode
 {
-	mixin AstNodeData!(AstType.decl_alias, AstFlags.isDeclaration | AstFlags.isStatement);
+	mixin AstNodeData!(AstType.decl_alias);
 	AstIndex parentScope;
 	Identifier id;
 	AstIndex initializer;

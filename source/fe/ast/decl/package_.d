@@ -9,7 +9,7 @@ import all;
 /// All packages and modules have parent package. Top-level package is root package (CommonAstNodes.node_root_package)
 @(AstType.decl_package)
 struct PackageDeclNode {
-	mixin AstNodeData!(AstType.decl_package, AstFlags.isDeclaration, AstNodeState.ir_gen_done);
+	mixin AstNodeData!(AstType.decl_package, 0, AstNodeState.ir_gen_done);
 	AstNodeMap declarations; // nested modules/packages
 	Identifier id;
 	/// Points to PackageDeclNode

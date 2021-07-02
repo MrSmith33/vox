@@ -7,7 +7,7 @@ import all;
 
 
 mixin template ConditionalDeclNodeData(AstType _astType, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse_done) {
-	mixin AstNodeData!(_astType, default_flags | AstFlags.isDeclaration, _init_state);
+	mixin AstNodeData!(_astType, default_flags, _init_state);
 	AstIndex next; // Next conditional declaration. Used during expansion
 	AstIndex prev; // Prev conditional declaration. Used during expansion
 	uint arrayIndex; // Index into AstNodes of the parent node, where items are to be inserted

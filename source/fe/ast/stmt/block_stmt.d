@@ -8,7 +8,7 @@ import all;
 
 @(AstType.stmt_block)
 struct BlockStmtNode {
-	mixin AstNodeData!(AstType.stmt_block, AstFlags.isStatement, AstNodeState.name_register_self_done);
+	mixin AstNodeData!(AstType.stmt_block, 0, AstNodeState.name_register_self_done);
 	/// Each node can be expression, declaration or expression
 	AstNodes statements;
 }

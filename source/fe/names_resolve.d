@@ -46,6 +46,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
+			state.context.push_analized_node(nodeIndex);
 			state.context.circular_dependency;
 			assert(false);
 		case parse_done:
@@ -61,6 +62,9 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case name_resolve_done, type_check_done, ir_gen_done: return; // already name resolved
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
+
+	state.context.push_analized_node(nodeIndex);
+	scope(success) state.context.pop_analized_node;
 
 	if (node.hasAttributes) {
 		name_resolve_attributes(node.attributeInfo, state);

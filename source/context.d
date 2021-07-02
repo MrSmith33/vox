@@ -381,7 +381,7 @@ struct CompilationContext
 			TokenIndex tokIdx = currentIndex.loc(&this);
 			if (currentIndex == same) sink.put("> ");
 			else sink.put("  ");
-			sink.putf("%s: %s %s ", FmtSrcLoc(tokIdx, &this), currentIndex.state(&this), currentIndex.astType(&this));
+			sink.putf("%s: node.%s %s %s ", FmtSrcLoc(tokIdx, &this), currentIndex.storageIndex, currentIndex.state(&this), currentIndex.astType(&this));
 			print_node_name(sink, currentIndex, &this);
 			sink.putln;
 			analisysStack.unput(1);
@@ -539,11 +539,7 @@ struct CompilationContext
 		assertf(t.isType, t.loc, "node is not a type: %s", t.astType);
 		return t;
 	}
-	ExpressionNode* getAstExpr(AstIndex index) {
-		ExpressionNode* t = getAst!ExpressionNode(index);
-		assertf(t.isExpression, t.loc, "node is not an expression: %s", t.astType);
-		return t;
-	}
+	ExpressionNode* getAstExpr(AstIndex index) { return getAst!ExpressionNode(index); }
 
 	SourceFileInfo* getFileFromToken(TokenIndex tokIndex) {
 		assert(tokIndex < tokenBuffer.length, format("getFileFromToken(%s), numTokens %s", tokIndex, tokenBuffer.length));
@@ -891,7 +887,7 @@ struct CompilationContext
 		idMap.strings.clear;
 		idMap.map = typeof(idMap.map).init;
 
-		analisysStack.clear();
+		analisysStack = analisysStack.init;
 		currentFunction = null;
 
 		externalSymbols.clear();

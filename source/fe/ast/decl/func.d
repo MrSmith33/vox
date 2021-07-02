@@ -33,7 +33,7 @@ struct FunctionBackendData
 
 @(AstType.decl_function)
 struct FunctionDeclNode {
-	mixin AstNodeData!(AstType.decl_function, AstFlags.isDeclaration);
+	mixin AstNodeData!(AstType.decl_function);
 	AstIndex _module;
 	AstIndex parentScope;
 	AstIndex signature; // FunctionSignatureNode
@@ -51,7 +51,7 @@ struct FunctionDeclNode {
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_function;
-		this.flags = AstFlags.isDeclaration;
+		this.flags = 0;
 		this._module = _module;
 		this.parentScope = parentScope;
 		this.signature = signature;
