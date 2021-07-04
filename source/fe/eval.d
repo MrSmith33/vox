@@ -8,8 +8,8 @@ module fe.eval;
 
 import all;
 
-/// Eval only expressions now. No CTFE yet
-/// Returns integer constant
+/// Eval expression
+/// Returns a constant
 IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 {
 	AstNode* node = context.getAstNode(nodeIndex);
@@ -132,8 +132,8 @@ IrIndex eval_builtin_member(BuiltinId builtin, AstIndex obj, TokenIndex loc, Com
 			require_type_check(objType, c);
 			return c.constants.add(objType.get!StaticArrayTypeNode(c).length, IsSigned.no, IrArgSize.size64);
 		case type_sizeof:
-			require_type_check(objType, c);
-			return c.constants.add(objType.get_type(c).sizealign(c).size, IsSigned.no, IrArgSize.size64);
+			SizeAndAlignment sizealign = objType.require_type_size(c);
+			return c.constants.add(sizealign.size, IsSigned.no, IrArgSize.size64);
 		default:
 			c.unrecoverable_error(loc,
 				"Cannot access .%s member of %s while in CTFE",
@@ -259,7 +259,7 @@ void force_callee_ir_gen(FunctionDeclNode* callee, AstIndex calleeIndex, Compila
 	switch(callee.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check, ir_gen:
-			c.push_analized_node(calleeIndex);
+			c.push_analized_node(AnalysedNode(calleeIndex, CalculatedProperty.ir_gen));
 			c.circular_dependency(); assert(false);
 		case parse_done:
 			auto name_state = NameRegisterState(c);
@@ -285,7 +285,7 @@ void force_callee_ir_gen(FunctionDeclNode* callee, AstIndex calleeIndex, Compila
 		default: c.internal_error(callee.loc, "Node %s in %s state", callee.astType, callee.state);
 	}
 
-	c.push_analized_node(calleeIndex);
+	c.push_analized_node(AnalysedNode(calleeIndex, CalculatedProperty.ir_gen));
 	scope(success) c.pop_analized_node;
 
 	IrGenState state = IrGenState(c);

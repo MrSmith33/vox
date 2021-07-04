@@ -4523,7 +4523,7 @@ immutable test209 = q{--- test209
 	}
 };
 
-/*
+
 @TestInfo(&tester210)
 immutable test210 = q{--- test210
 	// struct size with forward reference
@@ -4537,4 +4537,4 @@ immutable test210 = q{--- test210
 };
 void tester210(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(ulong)("run")() == 260);
-}*/
+}

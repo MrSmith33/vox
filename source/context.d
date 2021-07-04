@@ -123,7 +123,7 @@ struct CompilationContext
 
 	// errors and debug
 
-	Array!AstIndex analisysStack;
+	Array!AnalysedNode analisysStack;
 	// Used for error message, when crashing in the backend
 	FunctionDeclNode* currentFunction;
 
@@ -371,18 +371,18 @@ struct CompilationContext
 
 	void circular_dependency()
 	{
-		AstIndex same;
-		if (!analisysStack.empty) same = analisysStack.back;
+		AnalysedNode top;
+		if (!analisysStack.empty) top = analisysStack.back;
 		size_t startLen = sink.data.length;
 		sink.putfln("Error: Circular dependency");
 		while(!analisysStack.empty)
 		{
-			AstIndex currentIndex = analisysStack.back;
-			TokenIndex tokIdx = currentIndex.loc(&this);
-			if (currentIndex == same) sink.put("> ");
+			AnalysedNode currentItem = analisysStack.back;
+			TokenIndex tokIdx = currentItem.nodeIndex.loc(&this);
+			if (currentItem.nodeIndex == top.nodeIndex) sink.put("> ");
 			else sink.put("  ");
-			sink.putf("%s: node.%s %s %s ", FmtSrcLoc(tokIdx, &this), currentIndex.storageIndex, currentIndex.state(&this), currentIndex.astType(&this));
-			print_node_name(sink, currentIndex, &this);
+			sink.putf("%s: node.%s %s %s ", FmtSrcLoc(tokIdx, &this), currentItem.nodeIndex.storageIndex, currentItem.prop, currentItem.nodeIndex.astType(&this));
+			print_node_name(sink, currentItem.nodeIndex, &this);
 			sink.putln;
 			analisysStack.unput(1);
 		}
@@ -434,8 +434,8 @@ struct CompilationContext
 		if (hasErrors) throw new CompilationException();
 	}
 
-	void push_analized_node(AstIndex index) {
-		analisysStack.put(arrayArena, index);
+	void push_analized_node(AnalysedNode item) {
+		analisysStack.put(arrayArena, item);
 	}
 
 	void pop_analized_node() {
@@ -902,6 +902,21 @@ struct CompilationContext
 		createBuiltinFunctions(&this);
 		setVersionIds(&this);
 	}
+}
+
+struct AnalysedNode
+{
+	AstIndex nodeIndex;
+	CalculatedProperty prop;
+}
+
+enum CalculatedProperty : ubyte {
+	name_register_self,
+	name_register_nested,
+	name_resolve,
+	type_check,
+	ir_gen,
+	type_size,
 }
 
 enum CommonAstNodes : AstIndex

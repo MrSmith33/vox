@@ -36,7 +36,7 @@ struct TypeNode
 	}
 
 	SizeAndAlignment sizealign(CompilationContext* c) {
-		return typeSizealign(&this, c);
+		return require_type_size(&this, c);
 	}
 
 	IrArgSize argSize(CompilationContext* c)
@@ -139,12 +139,12 @@ struct TypeNode
 	}
 }
 
-SizeAndAlignment typeSizealign(AstIndex typeIndex, CompilationContext* c)
+SizeAndAlignment require_type_size(AstIndex typeIndex, CompilationContext* c)
 {
-	return typeIndex.get_type(c).typeSizealign(c);
+	return typeIndex.get_type(c).require_type_size(c);
 }
 
-SizeAndAlignment typeSizealign(TypeNode* type, CompilationContext* c)
+SizeAndAlignment require_type_size(TypeNode* type, CompilationContext* c)
 {
 	//c.assertf(type.state >= AstNodeState.type_check_done, type.loc, "%s %s", type.typeName(c), type.state);
 	switch(type.astType)
@@ -155,14 +155,14 @@ SizeAndAlignment typeSizealign(TypeNode* type, CompilationContext* c)
 		case AstType.type_slice: return type.as_slice.sizealign;
 		case AstType.decl_struct: return type.as_struct.sizealign(c);
 		case AstType.decl_enum: return type.as_enum.sizealign(c);
-		case AstType.expr_name_use: return type.as_name_use.entity.typeSizealign(c);
+		case AstType.expr_name_use: return type.as_name_use.entity.require_type_size(c);
 		default: assert(false, format("got %s", type.astType));
 	}
 }
 
 IrArgSize typeArgSize(AstIndex typeIndex, CompilationContext* c)
 {
-	return typeIndex.typeSizealign(c).size.sizeToIrArgSize(c);
+	return typeIndex.require_type_size(c).size.sizeToIrArgSize(c);
 }
 
 string typeName(AstIndex typeIndex, CompilationContext* c)
@@ -285,13 +285,42 @@ bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* c) {
 	}
 }
 
-IrIndex gen_ir_type(AstIndex typeIndex, CompilationContext* c)
+IrIndex gen_ir_type(AstIndex nodeIndex, CompilationContext* c)
 {
-	return gen_ir_type(c.getAst!TypeNode(typeIndex), c);
+	return gen_ir_type(c.getAst!TypeNode(nodeIndex), c);
 }
 
 IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* c)
 {
+	AstIndex nodeIndex = c.getAstNodeIndex(typeNode);
+
+	switch(typeNode.state) with(AstNodeState)
+	{
+		case name_register_self, name_register_nested, name_resolve:
+			c.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.ir_gen));
+			c.circular_dependency;
+			assert(false);
+		case type_check: break;
+		case name_register_self_done:
+			require_name_register(nodeIndex, c);
+			c.throwOnErrors;
+			goto case;
+		case name_register_nested_done:
+			require_name_resolve(nodeIndex, c);
+			c.throwOnErrors;
+			goto case;
+		case name_resolve_done:
+			// perform type checking of forward referenced node
+			require_type_check(nodeIndex, c);
+			c.throwOnErrors;
+			break;
+		case type_check_done: break; // all requirement are done
+		default: c.internal_error(typeNode.loc, "Node %s in %s state", typeNode.astType, typeNode.state);
+	}
+
+	c.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.ir_gen));
+	scope(success) c.pop_analized_node;
+
 	switch (typeNode.astType)
 	{
 		case AstType.type_basic: return gen_ir_type_basic(typeNode.as_basic, c);

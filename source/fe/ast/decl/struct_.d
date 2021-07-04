@@ -5,12 +5,22 @@ module fe.ast.decl.struct_;
 
 import all;
 
-enum StructFlags
+enum TypeFlags : ushort
 {
-	isOpaque   = AstFlags.userFlag << 0,
+	type_size_mask      = 1 << 0 | 1 << 1, // used for reading value
+	size_not_calculated = 0 << 1,          // used for setting flags
+	size_is_calculating = 1 << 1,          // used for setting flags
+	size_is_calculated  = 2 << 1,          // used for setting flags
+
+	userFlag            = 1 << 2,
+}
+
+enum StructFlags : ushort
+{
+	isOpaque   = TypeFlags.userFlag << 0,
 	// Set if struct contains meta type member variables or methods
-	isCtfeOnly = AstFlags.userFlag << 1,
-	isUnion    = AstFlags.userFlag << 2,
+	isCtfeOnly = TypeFlags.userFlag << 1,
+	isUnion    = TypeFlags.userFlag << 2,
 }
 
 @(AstType.decl_struct)

@@ -15,8 +15,9 @@ struct StaticArrayTypeNode {
 	uint length;
 	IrIndex irType;
 	IrIndex defaultVal;
-	SizeAndAlignment sizealign(CompilationContext* context) {
-		SizeAndAlignment elemInfo = base.typeSizealign(context);
+	SizeAndAlignment sizealign(CompilationContext* c) {
+		c.assertf(state >= AstNodeState.type_check_done, loc, "size is unknown in %s state. Must be semantically analized", state);
+		SizeAndAlignment elemInfo = base.require_type_size(c);
 		return SizeAndAlignment(elemInfo.size * length, elemInfo.alignmentPower);
 	}
 }

@@ -48,7 +48,7 @@ struct EnumDeclaration
 	SizeAndAlignment sizealign(CompilationContext* c) {
 		c.assertf(!isAnonymous, loc, "Anonymous enums are not a type");
 		c.assertf(memberType.isDefined, loc, "Enum has no member type");
-		return typeSizealign(memberType, c);
+		return require_type_size(memberType, c);
 	}
 }
 

@@ -64,6 +64,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 	switch(node.state) with(AstNodeState)
 	{
 		case name_register_self, name_register_nested, name_resolve:
+			state.context.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.type_check));
 			state.context.circular_dependency;
 			assert(false);
 		case type_check:
@@ -71,6 +72,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 				// this is allowed. We simply return.
 				return;
 			}
+			state.context.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.type_check));
 			state.context.circular_dependency;
 			assert(false);
 		case parse_done:
@@ -92,7 +94,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 		default: state.context.internal_error(node.loc, "Node %s in %s state", node.astType, node.state);
 	}
 
-	state.context.push_analized_node(nodeIndex);
+	state.context.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.type_check));
 	scope(success) state.context.pop_analized_node;
 
 	if (node.hasAttributes) {
