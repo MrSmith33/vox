@@ -18,14 +18,13 @@ version(standalone) int main(string[] args)
 {
 	scope(exit) stdout.flush;
 	version(cli) return runCli(args);
-	version(bench) runBench(args);
-	//benchSpeed();
-	version(devtest) runDevTests();
-	version(test) {
-		int numFailedTests = runAllTests(StopOnFirstFail.no);
-		return numFailedTests;
+	else version(bench) {
+		return runBench(args);
+		//return benchSpeed();
 	}
-	return 0;
+	else version(devtest) return runDevTests();
+	else version(test) return runAllTests(StopOnFirstFail.no);
+	else return 0;
 }
 
 unittest

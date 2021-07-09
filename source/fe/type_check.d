@@ -224,8 +224,6 @@ CommonTypeResult calcCommonType(AstIndex indexA, AstIndex indexB, CompilationCon
 			goto restart_enum;
 		default:
 			return CommonTypeResult(CommonAstNodes.type_error);
-			c.internal_error("Unhandled common type %s", cast(AstType)typeA.astType);
-			assert(false);
 	}
 }
 

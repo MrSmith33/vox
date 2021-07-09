@@ -12,7 +12,7 @@ import std.string : stripLeft;
 import tests.passing;
 
 /// --tsv  output in tsv format with greek µ instead of u
-void runBench(string[] args)
+int runBench(string[] args)
 {
 	bool outputTsv;
 	foreach(arg; args) if (arg == "--tsv") outputTsv = true;
@@ -46,6 +46,8 @@ void runBench(string[] args)
 
 	if (outputTsv) times.printTsv;
 	else times.print;
+
+	return 0;
 }
 
 immutable input = q{--- fibonacci
@@ -63,7 +65,7 @@ immutable input = q{--- fibonacci
 	}
 };
 
-void benchSpeed()
+int benchSpeed()
 {
 	auto test = Test("Fib", input);
 
@@ -91,4 +93,6 @@ void benchSpeed()
 
 	writefln("run time %ss", scaledNumberFmt(time2-time1));
 	writefln("res %s", res);
+
+	return 0;
 }

@@ -19,9 +19,9 @@ enum BuildType : ubyte {
 ///
 class CompilationException : Exception
 {
-	this(bool isICE = false)
+	this(bool isICE, string file = __MODULE__, int line = __LINE__)
 	{
-		super(null);
+		super(null, file, line);
 		this.isICE = isICE;
 	}
 	/// True if Internal Compiler Error and not regular compilation error
@@ -302,7 +302,7 @@ struct CompilationContext
 			catch (Exception e)
 				sink.putf("%s", e.info);
 		hasErrors = true;
-		throw new CompilationException();
+		throw new CompilationException(false);
 	}
 
 	void assertf(Args...)(bool cond, string fmt, Args args, string file = __MODULE__, int line = __LINE__)
@@ -317,7 +317,7 @@ struct CompilationContext
 			errorSink.put(sink.data[startLen..$]);
 			hasErrors = true;
 			handleICE;
-			throw new CompilationException(true);
+			throw new CompilationException(true, file, line);
 		}
 		else assert(false);
 	}
@@ -334,7 +334,7 @@ struct CompilationContext
 			errorSink.put(sink.data[startLen..$]);
 			hasErrors = true;
 			handleICE;
-			throw new CompilationException(true);
+			throw new CompilationException(true, file, line);
 		}
 		else assert(false);
 	}
@@ -369,12 +369,24 @@ struct CompilationContext
 		else assert(false);
 	}
 
-	void circular_dependency()
+	void circular_dependency(string file = __MODULE__, int line = __LINE__)
+	{
+		sink.putfln("Error: Circular dependency");
+		print_analysis_stack;
+		if (printTraceOnError)
+			try
+				throw new Exception(null);
+			catch (Exception e)
+				sink.putf("%s", e.info);
+		hasErrors = true;
+		throw new CompilationException(false, file, line);
+	}
+
+	void print_analysis_stack()
 	{
 		AnalysedNode top;
 		if (!analisysStack.empty) top = analisysStack.back;
 		size_t startLen = sink.data.length;
-		sink.putfln("Error: Circular dependency");
 		while(!analisysStack.empty)
 		{
 			AnalysedNode currentItem = analisysStack.back;
@@ -387,13 +399,6 @@ struct CompilationContext
 			analisysStack.unput(1);
 		}
 		errorSink.put(sink.data[startLen..$]);
-		if (printTraceOnError)
-			try
-				throw new Exception(null);
-			catch (Exception e)
-				sink.putf("%s", e.info);
-		hasErrors = true;
-		throw new CompilationException();
 	}
 
 	private void internal_error_impl(Args...)(string format, string file, int line, Args args)
@@ -404,7 +409,7 @@ struct CompilationContext
 		errorSink.put(sink.data[startLen..$]);
 		hasErrors = true;
 		handleICE;
-		throw new CompilationException(true);
+		throw new CompilationException(true, file, line);
 	}
 
 	void todo(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
@@ -429,9 +434,9 @@ struct CompilationContext
 		}
 	}
 
-	void throwOnErrors()
+	void throwOnErrors(string file = __MODULE__, int line = __LINE__)
 	{
-		if (hasErrors) throw new CompilationException();
+		if (hasErrors) throw new CompilationException(false, file, line);
 	}
 
 	void push_analized_node(AnalysedNode item) {

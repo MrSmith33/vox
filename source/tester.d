@@ -15,9 +15,9 @@ public import all : HostSymbol, DllModule, Slice, SliceString;
 public import std.format : formattedWrite, format;
 import std.string : stripLeft, strip;
 
-void runDevTests()
+int runDevTests()
 {
-	Test test = makeTest!(test200);
+	Test test = makeTest!(test211);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -34,7 +34,7 @@ void runDevTests()
 	//driver.passes = exePasses;
 	//driver.context.targetOs = TargetOs.linux;
 	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
-	//driver.context.setDumpFilter("returnBigStruct");
+	//driver.context.setDumpFilter("fun");
 
 	scope(exit) {
 		//driver.context.printMemSize;
@@ -48,8 +48,8 @@ void runDevTests()
 	//driver.context.printSource = true;
 	//driver.context.printLexemes = true;
 	//driver.context.printAstFresh = true;
-	driver.context.printAstSema = true;
-	driver.context.printIr = true;
+	//driver.context.printAstSema = true;
+	//driver.context.printIr = true;
 	//driver.context.printIrOptEach = true;
 	//driver.context.printIrOpt = true;
 	//driver.context.printIrLowerEach = true;
@@ -62,8 +62,10 @@ void runDevTests()
 	//driver.context.printCodeHex = true;
 	//driver.context.printTimings = true;
 
-	tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test);
+	TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test);
 	//writefln("%s", driver.context.numCtfeRuns);
+
+	return cast(int)(res == TestResult.failure);
 }
 
 enum StopOnFirstFail : bool { no = false, yes = true }
@@ -225,6 +227,7 @@ struct TestContext
 }
 
 /// Global test output for jit tests
+/// Cleared automatically after each test
 TextSink testSink;
 
 TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
@@ -274,6 +277,7 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 			}
 		}
 
+		// We strip beginning to allow newline between `q{` and `--- <filename>` for better readability
 		string strippedHar = curTest.harData.stripLeft;
 		parseHar(driver.context, "test.har", strippedHar, &onHarFile);
 

@@ -4538,3 +4538,20 @@ immutable test210 = q{--- test210
 void tester210(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(ulong)("run")() == 260);
 }
+
+
+@TestInfo(&tester211)
+immutable test211 = q{--- test211
+	// code gen of `add reg global`
+	VkExtensionProperties[11] extensions;
+	struct VkExtensionProperties {
+		u8[256] extensionName;
+	}
+	u8* get(i32 i) {
+		return extensions[i].extensionName.ptr;
+	}
+};
+void tester211(ref TestContext ctx) {
+	auto get = ctx.getFunctionPtr!(ubyte*, int)("get");
+	assert(get(1) - get(0) == 256);
+}

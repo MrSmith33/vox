@@ -192,15 +192,12 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 			break;
 		case if_e, if_i:
 			assert(false, "TODO");
-			break;
 
 		case ff_e, ff_i:
 			assert(false, "TODO");
-			break;
 
 		case fi_e, fi_i:
 			assert(false, "TODO");
-			break;
 
 		case string_literal_to_u8_ptr:
 			result = c.constants.getAggregateMember(rval, c.constants.ONE, c);

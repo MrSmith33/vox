@@ -81,6 +81,40 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		}
 	}
 
+	// Fixes virtual registers
+	// Legalizes complex arguments into a separate instruction
+	IrIndex getFixedLegalIndex(IrIndex index, IrIndex lirBlockIndex)
+	{
+		assert(index.isDefined);
+		assert(!(index.isBasicBlock || index.isPhi || index.isInstruction), format("%s", index));
+		final switch (index.kind) with(IrValueKind) {
+			case none, array, instruction, basicBlock, phi, type, variable: assert(false);
+			case physicalRegister:
+			case constantAggregate:
+			case constantZero:
+				return index;
+			case constant:
+				final switch(index.constantKind) with(IrConstantKind) {
+					case intUnsignedSmall, intSignedSmall: return index;
+					case intUnsignedBig, intSignedBig:
+						if (context.constants.get(index).payloadSize(index) == IrArgSize.size64)
+							break;
+						return index;
+				}
+				goto case;
+			case global:
+			case stackSlot:
+			case func:
+				// copy to temp register
+				IrIndex type = ir.getValueType(context, index);
+				ExtraInstrArgs extra = { type : type };
+				return builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, index).result;
+
+			case virtualRegister:
+				return mirror[index];
+		}
+	}
+
 	void makeMov(IrIndex to, IrIndex from, IrArgSize argSize, IrIndex block) {
 		ExtraInstrArgs extra = { addUsers : false, result : to, argSize : argSize };
 		builder.emitInstr!(Amd64Opcode.mov)(block, extra, from);
@@ -401,7 +435,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				static assert(!getInstrInfo!I.hasVariadicResult);
 
 				IrIndex[getInstrInfo!I.numArgs] fixedArgs = instrHeader.args(ir);
-				foreach(ref arg; fixedArgs) fixIndex(arg);
+				foreach(ref arg; fixedArgs) arg = getFixedLegalIndex(arg, lirBlockIndex);
 
 				static if (getInstrInfo!I.hasResult)
 				{
@@ -568,19 +602,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						lirBlockIndex, extra, stackPtrReg, getFixedIndex(instrHeader.arg(ir, 0)));
 					break;
 				case IrOpcode.push:
-					IrIndex fixedArg = getFixedIndex(instrHeader.arg(ir, 0));
-					if (fixedArg.isStackSlot ||
-						fixedArg.isGlobal ||
-						fixedArg.isFunction ||
-						fixedArg.isConstant && context.constants.get(fixedArg).payloadSize(fixedArg) == IrArgSize.size64)
-					{
-						// pushing stack slot / global / function will not push memory address, but data in memory
-						// push cannot push 64bit constants
-						// copy to temp register
-						IrIndex type = ir.getValueType(context, fixedArg);
-						ExtraInstrArgs extra = { type : type };
-						fixedArg = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, fixedArg).result;
-					}
+					IrIndex fixedArg = getFixedLegalIndex(instrHeader.arg(ir, 0), lirBlockIndex);
 					ExtraInstrArgs extra = { addUsers : false };
 					builder.emitInstr!(Amd64Opcode.push)(lirBlockIndex, extra, fixedArg);
 					break;
