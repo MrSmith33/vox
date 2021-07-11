@@ -41,6 +41,15 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 				checkResult(instrIndex, instrHeader.result(ir));
 	}
 
+	// Function must have at least 2 basic blocks
+	if (ir.numBasicBlocks < 2) {
+		context.internal_error("IR must have at least 2 basic blocks, but has %s", ir.numBasicBlocks);
+	}
+
+	// Entry block must have 0 phis and 0 predecessors
+	context.assertf(ir.getBlock(ir.entryBasicBlock).hasPhis == false, "Entry basic block can not have phi functions");
+	context.assertf(ir.getBlock(ir.entryBasicBlock).predecessors.length == 0, "Entry basic block can not have predecessors");
+
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		context.assertf(blockIndex.storageUintIndex < ir.numBasicBlocks, "basic block out of bounds %s", blockIndex);
