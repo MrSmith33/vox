@@ -4264,17 +4264,21 @@ immutable test193 = q{--- test193
 @TestInfo(&tester194)
 immutable test194 = q{--- test194
 	// #version
-	#version(Windows) {
+	#version(windows) {
 		i32 run() { return 1; }
 	}
-	else #version(Linux) {
+	else #version(linux) {
 		i32 run() { return 2; }
+	}
+	else #version(macos) {
+		i32 run() { return 3; }
 	}
 	else #assert(false, "Unsupported OS");
 };
 void tester194(ref TestContext ctx) {
 	     version(Windows) int result = 1;
 	else version(linux)   int result = 2;
+	else version(OSX)     int result = 3;
 	assert(ctx.getFunctionPtr!int("run")() == result);
 }
 
@@ -4555,3 +4559,13 @@ void tester211(ref TestContext ctx) {
 	auto get = ctx.getFunctionPtr!(ubyte*, int)("get");
 	assert(get(1) - get(0) == 256);
 }
+
+
+/*@TestInfo()
+immutable test212 = q{--- test212
+	// Forward reference for variable init value -> enum init value -> enum member init value
+	VkQueryType queryType;
+	enum VkQueryType {
+		VK_QUERY_TYPE_OCCLUSION = 0,
+	}
+};*/

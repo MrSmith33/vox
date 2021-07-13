@@ -46,7 +46,8 @@ debug (ASSERTF) {
 
 enum TargetOs : ubyte {
 	windows,
-	linux
+	linux,
+	macos,
 }
 
 ///
@@ -259,6 +260,7 @@ struct CompilationContext
 		final switch(targetOs) {
 			case TargetOs.windows: return CallConvention.win64;
 			case TargetOs.linux: return CallConvention.sysv64;
+			case TargetOs.macos: return CallConvention.sysv64;
 		}
 	}
 
@@ -331,6 +333,7 @@ struct CompilationContext
 			size_t startLen = sink.data.length;
 			sink.putf("%s(%s): %s: ICE: Assertion failure: ", file, line, FmtSrcLoc(tokIdx, &this));
 			sink.putfln(fmt, args);
+			print_analysis_stack;
 			errorSink.put(sink.data[startLen..$]);
 			hasErrors = true;
 			handleICE;
@@ -398,7 +401,6 @@ struct CompilationContext
 			sink.putln;
 			analisysStack.unput(1);
 		}
-		errorSink.put(sink.data[startLen..$]);
 	}
 
 	private void internal_error_impl(Args...)(string format, string file, int line, Args args)
@@ -1145,8 +1147,9 @@ void addSections(CompilationContext* c)
 void setVersionIds(CompilationContext* c)
 {
 	final switch(c.targetOs) {
-		case TargetOs.windows: c.enabledVersionIdentifiers |= 1 << VersionId.id_Windows; break;
-		case TargetOs.linux: c.enabledVersionIdentifiers |= 1 << VersionId.id_Linux; break;
+		case TargetOs.windows: c.enabledVersionIdentifiers |= 1 << VersionId.id_windows; break;
+		case TargetOs.linux: c.enabledVersionIdentifiers |= 1 << VersionId.id_linux; break;
+		case TargetOs.macos: c.enabledVersionIdentifiers |= 1 << VersionId.id_macos; break;
 	}
 }
 

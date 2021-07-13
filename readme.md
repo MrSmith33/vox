@@ -37,11 +37,11 @@
 Supported:
 - windows-x64 - host and target
 - linux-x64 - host and target
+- macos-x64 - only jit-mode
 
 Planned:
 - linux-arm64
 - wasm
-- mac-x64?
 - windows-arm64?
 - spirv (Vulkan/OpenCL/OpenGL shaders)
 

@@ -120,7 +120,7 @@ struct EnumMemberDecl
 	IrIndex initValue; // cached value of initializer, calculated in type check
 
 	IrIndex getInitVal(CompilationContext* c) {
-		c.assertf(initValue.isDefined, loc, "Enum member value is undefined");
+		c.assertf(initValue.isDefined, loc, "getInitVal: Enum init value is undefined");
 		return initValue;
 	}
 }

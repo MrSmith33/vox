@@ -21,6 +21,7 @@ void pass_create_executable(ref CompilationContext context, CompilePassPerModule
 	final switch(context.targetOs) {
 		case TargetOs.windows: make_pe_exe(&context); break;
 		case TargetOs.linux: make_elf_exe(&context); break;
+		case TargetOs.macos: context.internal_error("MacOS exe write is not implemented"); break;
 	}
 }
 

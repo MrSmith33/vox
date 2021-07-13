@@ -117,18 +117,20 @@ enum CommonIds : Identifier
 	@("$isPointer") cash_is_pointer = Identifier(id_main.index + 4),
 
 	// Conditional compilation identifiers
-	@("Windows")  id_Windows = Identifier(cash_is_pointer.index + 1),
-	@("Linux")    id_Linux   = Identifier(cash_is_pointer.index + 2),
+	@("windows")  id_windows = Identifier(cash_is_pointer.index + 1),
+	@("linux")    id_linux   = Identifier(cash_is_pointer.index + 2),
+	@("macos")    id_macos   = Identifier(cash_is_pointer.index + 2),
 }
 
 enum uint commonId_builtin_func_first = CommonIds.cash_compile_error.index;
 enum uint commonId_builtin_func_last  = CommonIds.cash_is_pointer.index;
-enum uint commonId_version_id_first = CommonIds.id_Windows.index;
-enum uint commonId_version_id_last  = CommonIds.id_Linux.index;
+enum uint commonId_version_id_first = CommonIds.id_windows.index;
+enum uint commonId_version_id_last  = CommonIds.id_macos.index;
 
 enum VersionId : ubyte {
-	id_Windows,
-	id_Linux,
+	id_windows,
+	id_linux,
+	id_macos,
 }
 
 

@@ -35,11 +35,15 @@ int runCli(string[] args)
 
 	version(Windows) {
 		outputTarget = "windows-x64";
-		targetHelp = "Choose target. [windows-x64(default), linux-x64]";
+		targetHelp = "Choose target. [windows-x64(default), linux-x64, macos-x64]";
 	}
 	else version(linux) {
 		outputTarget = "linux-x64";
-		targetHelp = "Choose target. [windows-x64, linux-x64(default)]";
+		targetHelp = "Choose target. [windows-x64, linux-x64(default), macos-x64]";
+	}
+	else version(OSX) {
+		outputTarget = "macos-x64";
+		targetHelp = "Choose target. [windows-x64, linux-x64, macos-x64(default)]";
 	}
 	else static assert(false, "Unnhandled OS");
 
@@ -114,7 +118,8 @@ int runCli(string[] args)
 
 		switch(outputTarget) {
 			case "windows-x64": driver.context.targetOs = TargetOs.windows; break;
-			case "linux-x64": driver.context.targetOs = TargetOs.linux; break;
+			case "linux-x64":   driver.context.targetOs = TargetOs.linux;   break;
+			case "macos-x64":   driver.context.targetOs = TargetOs.macos;   break;
 			//case "linux-arm64": driver.context.targetOs = TargetOs.linux; driver.context.targetArch = TargetArch.arm64; break;
 			default:
 				writefln("Unknown target: %s", outputTarget);

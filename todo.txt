@@ -196,6 +196,9 @@ o dll linking
 + Initial ELF64 support
 	- Add import section support
 
+[MacOS]
++ target
+- write executable
 
 [Error messages]
 - in error on unexpected EOF show unterminated ([{ symbol
