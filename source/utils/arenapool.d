@@ -22,10 +22,11 @@ struct ArenaPool
 		size_t reservedBytes = alignValue(size, PAGE_SIZE); // round up to page size
 		version(Posix) {
 			import core.stdc.errno : errno;
+			import core.stdc.string : strerror;
 			import core.sys.posix.sys.mman : mmap, MAP_ANON, PROT_READ, PROT_WRITE, PROT_EXEC, MAP_PRIVATE, MAP_FAILED;
 			enum MAP_NORESERVE = 0x4000;
 			ubyte* ptr = cast(ubyte*)mmap(null, reservedBytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
-			assert(ptr != MAP_FAILED, format("mmap failed, errno %s: requested %s bytes", errno, size));
+			assert(ptr != MAP_FAILED, format("mmap failed, errno %s, %s: requested %s bytes", errno, strerror(errno), size));
 		} else version(Windows) {
 			import core.sys.windows.windows : VirtualAlloc, MEM_RESERVE, PAGE_NOACCESS;
 			ubyte* ptr = cast(ubyte*)VirtualAlloc(null, reservedBytes, MEM_RESERVE, PAGE_NOACCESS);
@@ -44,10 +45,11 @@ struct ArenaPool
 	void decommitAll() {
 		version(Posix) {
 			import core.stdc.errno : errno;
+			import core.stdc.string : strerror;
 			import core.sys.posix.sys.mman : munmap;
 			if (buffer.ptr is null) return;
 			int res = munmap(buffer.ptr, buffer.length);
-			assert(res == 0, format("munmap(%X, %s) failed, %s", buffer.ptr, buffer.length, errno));
+			assert(res == 0, format("munmap(%X, %s) failed, %s, %s", buffer.ptr, buffer.length, errno, strerror(errno)));
 		} else version(Windows) {
 			import core.sys.windows.windows : VirtualFree, MEM_DECOMMIT;
 			int res = VirtualFree(buffer.ptr, buffer.length, MEM_DECOMMIT);
