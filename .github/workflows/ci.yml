@@ -96,6 +96,6 @@ jobs:
           # --clobber Overwrite existing assets of the same name
           gh release upload $tag \
             './linux-x64/vox#linux-x64' \
-            './macos-x64/vox.exe#macos-x64' \
+            './macos-x64/vox#macos-x64' \
             './windows-x64/vox.exe#windows-x64' \
             --clobber
