@@ -30,6 +30,7 @@ struct ArenaPool
 			import core.sys.posix.sys.mman : mmap, MAP_ANON, PROT_READ, PROT_WRITE, PROT_EXEC, MAP_PRIVATE, MAP_FAILED;
 			enum MAP_NORESERVE = 0x4000;
 			auto flags = MAP_PRIVATE | MAP_ANON;
+			// MacOS doesn't support MAP_NORESERVE. See https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/mmap.2.html
 			version(linux) flags |= MAP_NORESERVE;
 			ubyte* ptr = cast(ubyte*)mmap(null, reservedBytes, PROT_READ | PROT_WRITE, flags, -1, 0);
 			assert(ptr != MAP_FAILED, format("mmap failed, errno %s, %s: requested %s bytes", errno, strerror(errno).fromStringz, size));
