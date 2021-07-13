@@ -50,6 +50,12 @@ enum TargetOs : ubyte {
 	macos,
 }
 
+immutable string[] TARGET_OS_STRING = [
+	"windows-x64",
+	"linux-x64",
+	"macos-x64",
+];
+
 ///
 struct CompilationContext
 {
@@ -138,8 +144,13 @@ struct CompilationContext
 
 	/// Target machine info
 	MachineInfo* machineInfo = &mach_info_amd64;
+	/// Host OS
+	     version(Windows) enum TargetOs hostOS = TargetOs.windows;
+	else version(linux)   enum TargetOs hostOS = TargetOs.linux;
+	else version(OSX)     enum TargetOs hostOS = TargetOs.macos;
+	else static assert(false, "Unhandled OS");
 	/// Target OS
-	TargetOs targetOs;
+	TargetOs targetOs = hostOS;
 	///
 	BuildType buildType;
 	/// Build executable

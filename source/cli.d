@@ -29,20 +29,17 @@ int runCli(string[] args)
 	bool printMem;
 	bool checkOnly;
 	string outputFilename;
-	string outputTarget;
+	string outputTarget = TARGET_OS_STRING[driver.context.hostOS];
 	string filterFuncName;
 	string targetHelp;
 
 	version(Windows) {
-		outputTarget = "windows-x64";
 		targetHelp = "Choose target. [windows-x64(default), linux-x64, macos-x64]";
 	}
 	else version(linux) {
-		outputTarget = "linux-x64";
 		targetHelp = "Choose target. [windows-x64, linux-x64(default), macos-x64]";
 	}
 	else version(OSX) {
-		outputTarget = "macos-x64";
 		targetHelp = "Choose target. [windows-x64, linux-x64, macos-x64(default)]";
 	}
 	else static assert(false, "Unnhandled OS");
