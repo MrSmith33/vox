@@ -119,7 +119,7 @@ enum CommonIds : Identifier
 	// Conditional compilation identifiers
 	@("windows")  id_windows = Identifier(cash_is_pointer.index + 1),
 	@("linux")    id_linux   = Identifier(cash_is_pointer.index + 2),
-	@("macos")    id_macos   = Identifier(cash_is_pointer.index + 2),
+	@("macos")    id_macos   = Identifier(cash_is_pointer.index + 3),
 }
 
 enum uint commonId_builtin_func_first = CommonIds.cash_compile_error.index;

@@ -4279,7 +4279,6 @@ void tester194(ref TestContext ctx) {
 	     version(Windows) int result = 1;
 	else version(linux)   int result = 2;
 	else version(OSX)     int result = 3;
-	writefln("result %s", ctx.getFunctionPtr!int("run")());
 	assert(ctx.getFunctionPtr!int("run")() == result);
 }
 
