@@ -83,6 +83,8 @@ T min[T](T a, T b) {
 }
 ```
 
+- Fibonacci <https://gist.github.com/MrSmith33/9645d9552b567fdbdc1a4d8822b4f1f7>
+- Fannkuch <https://gist.github.com/MrSmith33/ac14e66a83b9d047793adede464ca1ef>
 - Roguelike tutorial using SDL2 - [repo](https://github.com/MrSmith33/rltut_2019)
 - Voxel engine that uses Vox as a scripting language: [Voxelman 2](https://github.com/MrSmith33/voxelman2)
 - Example of JIT compilation for amd64 from D code:

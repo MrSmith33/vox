@@ -16,6 +16,8 @@
     - [Compile-time assert `#assert`](#compile-time-assert-assert)
     - [Conditional compilation](#conditional-compilation)
         - [\#if](#if)
+        - [\#version](#version)
+            - [Predefined versions](#predefined-versions)
         - [\#foreach](#foreach)
     - [Templates](#templates)
         - [Function templates](#function-templates)
@@ -234,6 +236,25 @@ void fun()
 }
 ```
 
+### \#version
+* Behaves in the same way as `#if`, but instead of an expression accepts one of the predefined identifiers. If the version identifier is defined it will evaluate to `true`.
+
+```D
+#version(linux) {
+    // code for linux
+} else #version(windows) {
+    // code for windows
+} else #version(macos) {
+    // code for macos
+} else {
+    #assert(false, "OS not supported");
+}
+```
+
+#### Predefined versions
+* `windows` - defined if target OS is Windows
+* `linux` - defined if target OS is Linux
+* `macos` - defined if target OS is MacOS
 
 ### \#foreach
 * `#foreach` will copy a body for each iteration, declaring element and optional index.
