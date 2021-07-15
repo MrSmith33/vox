@@ -4569,3 +4569,13 @@ immutable test212 = q{--- test212
 		VK_QUERY_TYPE_OCCLUSION = 0,
 	}
 };*/
+
+
+/*@TestInfo()
+immutable test213 = q{--- test213
+	// Recursive type
+	struct Qq
+	{
+		i32[Qq.sizeof]* a;
+	}
+};*/
