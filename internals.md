@@ -195,9 +195,11 @@ After that jump fixup is performed and size of final machine code is calculated.
 
 When generating IR, frontend creates a new object symbol (`ObjectSymbol`), per function and per global variable. `ObjectModule` is created per module. There is also `ObjectSection`, which tracks section info of resulting excutable file, and `ObjectSymbolReference`, which represents reference from one symbol to another.
 
+Symbols are abstracted as arrays of bytes within a section and module. Reference is a slice of a symbol that contains address (absolute or relative) to another symbol + extra data.
+
 After code generation step all globals are put in the globals arena, and have finalized address in the section (read-only or read-write data sections). Same with functions that have machine code in code arena.
 
-Linking pass walk all local modules, and for each reference performs a fixup.
+Linking pass walks all local modules, and for each reference performs a fixup.
 
 When compiling in JIT-mode host can export its own functions as symbols to the compiled program. They are put into a host module. If the registered function address is too far from the code that refences it, then it is put into import table. Linker handles both relative reference and indirection through import table.
 
