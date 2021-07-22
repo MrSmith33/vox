@@ -4561,14 +4561,14 @@ void tester211(ref TestContext ctx) {
 }
 
 
-/*@TestInfo()
+@TestInfo()
 immutable test212 = q{--- test212
 	// Forward reference for variable init value -> enum init value -> enum member init value
 	VkQueryType queryType;
 	enum VkQueryType {
 		VK_QUERY_TYPE_OCCLUSION = 0,
 	}
-};*/
+};
 
 
 /*@TestInfo()
