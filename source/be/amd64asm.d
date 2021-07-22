@@ -810,7 +810,10 @@ struct CodeGen_x86_64
 						} break;
 
 					case ArgType.WORD:  encoder.putInstrBinaryRegImm2!(EncFlg.OP_SIZE)  (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm16); break;
-					case ArgType.DWORD: encoder.putInstrBinaryRegImm2!(0) (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm32); break;
+					case ArgType.DWORD:
+						if (param.argType == ArgType.QWORD) goto case ArgType.QWORD;
+						encoder.putInstrBinaryRegImm2!(0) (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm32);
+						break;
 					case ArgType.QWORD: encoder.putInstrBinaryRegImm2!(EncFlg.REXW_FORCE) (OP1(0x81), op_tbl_un[param.op], dst.reg, src.imm32); break;
 				} break;
 

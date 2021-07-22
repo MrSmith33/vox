@@ -4557,7 +4557,10 @@ immutable test211 = q{--- test211
 };
 void tester211(ref TestContext ctx) {
 	auto get = ctx.getFunctionPtr!(ubyte*, int)("get");
+	void* arenaPtr = ctx.driver.context.staticDataBuffer.bufPtr;
 	assert(get(1) - get(0) == 256);
+	assert(get(0) == arenaPtr);
+	assert(get(1) == arenaPtr + 256);
 }
 
 
@@ -4579,3 +4582,25 @@ immutable test213 = q{--- test213
 		i32[Qq.sizeof]* a;
 	}
 };*/
+
+
+@TestInfo(&tester214)
+immutable test214 = q{--- test214
+	// code gen of add rax, imm32 generated add eax, imm32
+	VkExtensionProperties[11] extensions;
+	struct VkExtensionProperties {
+		u8[256] extensionName;
+		u32 specVersion;
+	}
+	void* get(i32 i) {
+		return &extensions[i].specVersion;
+	}
+};
+void tester214(ref TestContext ctx) {
+	auto get = ctx.getFunctionPtr!(void*, int)("get");
+	void* arenaPtr = ctx.driver.context.staticDataBuffer.bufPtr;
+	void* ptr = get(0);
+
+	assert(ptr == arenaPtr + 256);
+	assert(get(1) - get(0) == 260);
+}
