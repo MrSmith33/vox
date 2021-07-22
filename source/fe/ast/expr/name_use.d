@@ -220,7 +220,7 @@ ExprValue ir_gen_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel 
 		case decl_enum_member:
 		{
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
-			return ExprValue(node.entity.get!EnumMemberDecl(c).getInitVal(c));
+			return ExprValue(node.entity.get!EnumMemberDecl(c).gen_init_value_enum_member(c));
 		}
 		case decl_var:
 		{

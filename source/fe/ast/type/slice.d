@@ -55,7 +55,7 @@ bool same_type_slice(SliceTypeNode* t1, SliceTypeNode* t2, CompilationContext* c
 	return same_type(t1.base, t2.base, context);
 }
 
-IrIndex gen_default_value_slice(SliceTypeNode* node, CompilationContext* c)
+IrIndex gen_init_value_slice(SliceTypeNode* node, CompilationContext* c)
 {
 	if (node.defaultVal.isDefined) return node.defaultVal;
 	node.defaultVal = c.constants.addZeroConstant(gen_ir_type_slice(node, c));

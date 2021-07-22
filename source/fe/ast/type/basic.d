@@ -24,7 +24,7 @@ struct BasicTypeNode {
 	bool isAlias() { return basicType == BasicType.t_alias; }
 	bool isType() { return basicType == BasicType.t_type; }
 
-	IrIndex gen_default_value(CompilationContext* c)
+	IrIndex gen_init_value(CompilationContext* c)
 	{
 		switch(basicType)
 		{

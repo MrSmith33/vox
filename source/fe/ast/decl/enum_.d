@@ -15,7 +15,7 @@ struct EnumDeclaration
 	AstIndex memberType;
 	Identifier id;
 
-	private enum Flags
+	private enum Flags : ushort
 	{
 		isAnonymous = AstFlags.userFlag
 	}
@@ -102,10 +102,10 @@ IrIndex gen_ir_type_enum(EnumDeclaration* node, CompilationContext* context)
 	return gen_ir_type(node.memberType, context);
 }
 
-IrIndex gen_default_value_enum(EnumDeclaration* node, CompilationContext* c)
+IrIndex gen_init_value_enum(EnumDeclaration* node, CompilationContext* c)
 {
 	c.assertf(node.declarations.length > 0, node.loc, "Enum %s has no members", c.idString(node.id));
-	return node.declarations[0].get!EnumMemberDecl(c).getInitVal(c);
+	return node.declarations[0].get!EnumMemberDecl(c).gen_init_value_enum_member(c);
 }
 
 @(AstType.decl_enum_member)
@@ -119,10 +119,46 @@ struct EnumMemberDecl
 	ushort scopeIndex;
 	IrIndex initValue; // cached value of initializer, calculated in type check
 
-	IrIndex getInitVal(CompilationContext* c) {
-		c.assertf(initValue.isDefined, loc, "getInitVal: Enum init value is undefined");
-		return initValue;
+	private enum Flags : ushort
+	{
+		calculatingInitVal = AstFlags.userFlag
 	}
+
+	bool calculatingInitVal() { return cast(bool)(flags & Flags.calculatingInitVal); }
+}
+
+IrIndex gen_init_value_enum_member(EnumMemberDecl* node, CompilationContext* c) {
+	if (node.initValue.isDefined) return node.initValue;
+	if (node.calculatingInitVal) {
+		c.push_analized_node(AnalysedNode(c.getAstNodeIndex(node), CalculatedProperty.init_value));
+		c.circular_dependency;
+	}
+	if (node.initializer) {
+		if (node.type) {
+			auto type = node.type.get_node(c);
+			if (type.astType == AstType.decl_enum) {
+				require_type_check(type.as!EnumDeclaration(c).memberType, c, IsNested.no);
+			} else require_type_check(node.type, c);
+			require_type_check_expr(node.type, node.initializer, c);
+			//writefln("  autoconvTo %s", printer(node.type, c));
+			TypeConvResKind res = checkTypeConversion(node.initializer.get_expr_type(c), node.type, node.initializer, c);
+			if (res.successful) {
+				insertCast(node.initializer, node.type, res, c);
+				if (node.initializer.get_expr_type(c) != CommonAstNodes.type_error)
+					node.initValue = eval_static_expr(node.initializer, c);
+			} else {
+				c.error(node.initializer.loc(c),
+					"Cannot convert expression of type `%s` to `%s`",
+					node.initializer.get_expr_type(c).printer(c),
+					node.type.printer(c));
+			}
+		} else {
+			require_type_check(node.initializer, c);
+			node.type = get_expr_type(node.initializer, c);
+			node.initValue = eval_static_expr(node.initializer, c);
+		}
+	}
+	return node.initValue;
 }
 
 void print_enum_member(EnumMemberDecl* node, ref AstPrintState state)
@@ -174,30 +210,6 @@ void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
 	node.state = AstNodeState.type_check;
-	if (node.initializer) {
-		if (node.type) {
-			auto type = node.type.get_node(c);
-			if (type.astType == AstType.decl_enum) {
-				require_type_check(type.as!EnumDeclaration(c).memberType, state, IsNested.no);
-			} else require_type_check(node.type, state);
-			require_type_check_expr(node.type, node.initializer, state);
-			//writefln("  autoconvTo %s", printer(node.type, c));
-			TypeConvResKind res = checkTypeConversion(node.initializer.get_expr_type(c), node.type, node.initializer, c);
-			if (res.successful) {
-				insertCast(node.initializer, node.type, res, c);
-				if (node.initializer.get_expr_type(c) != CommonAstNodes.type_error)
-					node.initValue = eval_static_expr(node.initializer, c);
-			} else {
-				c.error(node.initializer.loc(c),
-					"Cannot convert expression of type `%s` to `%s`",
-					node.initializer.get_expr_type(c).printer(c),
-					node.type.printer(c));
-			}
-		} else {
-			require_type_check(node.initializer, state);
-			node.type = get_expr_type(node.initializer, c);
-			node.initValue = eval_static_expr(node.initializer, c);
-		}
-	}
+	node.gen_init_value_enum_member(c);
 	node.state = AstNodeState.type_check_done;
 }

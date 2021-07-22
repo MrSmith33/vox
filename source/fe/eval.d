@@ -37,7 +37,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 
 	switch (node.astType) with(AstType)
 	{
-		case decl_enum_member: return node.as!EnumMemberDecl(context).getInitVal(context);
+		case decl_enum_member: return node.as!EnumMemberDecl(context).gen_init_value_enum_member(context);
 		case expr_name_use: return eval_static_expr_name_use(cast(NameUseExprNode*)node, context);
 		case expr_member: return eval_static_expr_member(cast(MemberExprNode*)node, context);
 		case expr_bin_op: return eval_static_expr_bin_op(cast(BinaryExprNode*)node, context);
@@ -224,7 +224,7 @@ IrIndex eval_constructor(CallExprNode* node, AstIndex callee, CompilationContext
 	StructDeclNode* s = callee.get!StructDeclNode(c);
 
 	if (node.args.length == 0) {
-		return s.gen_default_value_struct(c);
+		return s.gen_init_value_struct(c);
 	}
 
 	IrIndex structType = s.gen_ir_type_struct(c);
@@ -245,7 +245,7 @@ IrIndex eval_constructor(CallExprNode* node, AstIndex callee, CompilationContext
 			args[memberIndex] = memberValue;
 			if (!memberValue.isConstantZero) allZeroes = false;
 		} else { // init with initializer from struct definition
-			args[memberIndex] = memberVar.gen_default_value_var(c);
+			args[memberIndex] = memberVar.gen_init_value_var(c);
 		}
 
 		++memberIndex;
@@ -318,7 +318,7 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 		// use default argument value
 		VariableDeclNode* param = c.getAst!VariableDeclNode(signature.parameters[i]);
 		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
-		args[i] = param.gen_default_value_var(c);
+		args[i] = param.gen_init_value_var(c);
 	}
 
 	if (func.isBuiltin) {

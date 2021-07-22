@@ -159,6 +159,13 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 	}
 }
 
+void require_type_check_expr(AstIndex targetType, ref AstIndex nodeIndex, CompilationContext* context)
+{
+	auto state = TypeCheckState(context);
+	state.parentType = targetType;
+	require_type_check(nodeIndex, state);
+}
+
 void require_type_check_expr(AstIndex targetType, ref AstIndex nodeIndex, ref TypeCheckState state)
 {
 	auto temp = state.parentType;

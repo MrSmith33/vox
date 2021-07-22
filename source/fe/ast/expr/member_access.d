@@ -425,7 +425,7 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 			c.unreachable("Not implemented");
 			assert(false);
 		case enum_member:
-			IrIndex result = m.member(c).get!EnumMemberDecl(c).getInitVal(c);
+			IrIndex result = m.member(c).get!EnumMemberDecl(c).gen_init_value_enum_member(c);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return ExprValue(result);
 		case builtin_member:

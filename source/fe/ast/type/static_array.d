@@ -76,14 +76,14 @@ bool same_type_static_array(StaticArrayTypeNode* t1, StaticArrayTypeNode* t2, Co
 	return (t1.length == t2.length) && same_type(t1.base, t2.base, context);
 }
 
-IrIndex gen_default_value_static_array(StaticArrayTypeNode* node, CompilationContext* c)
+IrIndex gen_init_value_static_array(StaticArrayTypeNode* node, CompilationContext* c)
 {
 	if (node.defaultVal.isDefined) return node.defaultVal;
 
 	IrIndex arrayType = node.gen_ir_type_static_array(c);
 	uint numElements = c.types.get!IrTypeArray(arrayType).numElements;
 
-	IrIndex elemDefault = node.base.get_type(c).gen_default_value(c);
+	IrIndex elemDefault = node.base.get_type(c).gen_init_value(c);
 
 	if (elemDefault.isConstantZero)
 	{

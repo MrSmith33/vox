@@ -123,17 +123,17 @@ struct TypeNode
 		}
 	}
 
-	IrIndex gen_default_value(CompilationContext* c)
+	IrIndex gen_init_value(CompilationContext* c)
 	{
 		switch(astType)
 		{
-			case AstType.type_basic: return as_basic.gen_default_value(c);
-			case AstType.type_ptr: return as_ptr.gen_default_value(c);
-			case AstType.type_static_array: return as_static_array.gen_default_value_static_array(c);
-			case AstType.type_slice: return as_slice.gen_default_value_slice(c);
-			case AstType.decl_struct: return as_struct.gen_default_value_struct(c);
-			case AstType.decl_enum: return as_enum.gen_default_value_enum(c);
-			case AstType.expr_name_use: return as_name_use.entity.get_type(c).gen_default_value(c);
+			case AstType.type_basic: return as_basic.gen_init_value(c);
+			case AstType.type_ptr: return as_ptr.gen_init_value(c);
+			case AstType.type_static_array: return as_static_array.gen_init_value_static_array(c);
+			case AstType.type_slice: return as_slice.gen_init_value_slice(c);
+			case AstType.decl_struct: return as_struct.gen_init_value_struct(c);
+			case AstType.decl_enum: return as_enum.gen_init_value_enum(c);
+			case AstType.expr_name_use: return as_name_use.entity.get_type(c).gen_init_value(c);
 			default: assert(false, format("got %s", astType));
 		}
 	}

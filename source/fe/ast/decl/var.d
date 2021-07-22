@@ -121,21 +121,21 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 	}
 
 	if (!node.isLocal)
-		gen_default_value_var(node, c);
+		gen_init_value_var(node, c);
 }
 
 // only called for members, parameters and globals
-IrIndex gen_default_value_var(VariableDeclNode* node, CompilationContext* c)
+IrIndex gen_init_value_var(VariableDeclNode* node, CompilationContext* c)
 {
 	if (node.defaultVal.isDefined) return node.defaultVal;
-	c.assertf(node.isParameter || node.isMember || node.isGlobal, node.loc, "gen_default_value_var");
+	c.assertf(node.isParameter || node.isMember || node.isGlobal, node.loc, "gen_init_value_var");
 	if (node.initializer)
 	{
 		node.defaultVal = eval_static_expr(node.initializer, c);
 	}
 	else
 	{
-		node.defaultVal = node.type.get_type(c).gen_default_value(c);
+		node.defaultVal = node.type.get_type(c).gen_init_value(c);
 	}
 	return node.defaultVal;
 }
@@ -189,7 +189,7 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 		}
 		else
 		{
-			IrIndex value = varType.gen_default_value(c);
+			IrIndex value = varType.gen_init_value(c);
 			store(gen, v.loc, curBlock, v.irValue, value);
 		}
 	}

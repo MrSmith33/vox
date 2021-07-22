@@ -935,6 +935,7 @@ enum CalculatedProperty : ubyte {
 	type_check,
 	ir_gen,
 	type_size,
+	init_value,
 }
 
 enum CommonAstNodes : AstIndex

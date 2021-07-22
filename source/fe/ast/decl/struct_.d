@@ -106,7 +106,7 @@ TypeConvResKind type_conv_struct(StructDeclNode* node, AstIndex typeBIndex, ref 
 	}
 }
 
-IrIndex gen_default_value_struct(StructDeclNode* node, CompilationContext* c)
+IrIndex gen_init_value_struct(StructDeclNode* node, CompilationContext* c)
 {
 	if (node.defaultVal.isDefined) return node.defaultVal;
 
@@ -123,7 +123,7 @@ IrIndex gen_default_value_struct(StructDeclNode* node, CompilationContext* c)
 		AstNode* memberVarNode = member.get_node(c);
 		if (memberVarNode.astType != AstType.decl_var) continue;
 		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
-		IrIndex memberValue = memberVar.gen_default_value_var(c);
+		IrIndex memberValue = memberVar.gen_init_value_var(c);
 		if (!memberValue.isConstantZero) allZeroes = false;
 		if (node.isUnion) {
 			args[0] = c.constants.ZERO; // member index

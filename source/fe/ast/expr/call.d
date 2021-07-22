@@ -357,7 +357,7 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 
 	// We need to allocate for each call, because calls can be nested
 	// We allocate here instead of in IR gen, because eval cannot happen at IR gen,
-	// and we need to call gen_default_value_var for default args, which may need to eval
+	// and we need to call gen_init_value_var for default args, which may need to eval
 	node.argsValues = c.allocateTempArray!IrIndex(numParams + 1); // first argument is callee
 
 	// check arguments
@@ -380,7 +380,7 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 		// eval default argument values
 		VariableDeclNode* param = c.getAst!VariableDeclNode(params[i]);
 		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
-		node.argsValues[i+1] = param.gen_default_value_var(c);
+		node.argsValues[i+1] = param.gen_init_value_var(c);
 	}
 }
 
@@ -414,7 +414,7 @@ void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref Type
 					node.args[memberIndex].get_expr_type(c).printer(c));
 			}
 		} else { // init with initializer from struct definition
-			node.argsValues[memberIndex] = memberVar.gen_default_value_var(c);
+			node.argsValues[memberIndex] = memberVar.gen_init_value_var(c);
 		}
 		++memberIndex;
 	}
@@ -441,7 +441,7 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			if (!varType.isPointer) goto default;
 			TypeNode* base = varType.as_ptr.base.get_type(c);
 			if (!base.isFuncSignature) goto default;
-			IrIndex irIndex = callee.get!EnumMemberDecl(c).getInitVal(c);
+			IrIndex irIndex = callee.get!EnumMemberDecl(c).gen_init_value_enum_member(c);
 			return visitCall(gen, c.getAstNodeIndex(base), irIndex, currentBlock, nextStmt, node);
 		case AstType.decl_var:
 			VariableDeclNode* var = callee.get!VariableDeclNode(c);
@@ -549,7 +549,7 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 
 	if (numArgs == 0)
 	{
-		return ExprValue(s.gen_default_value_struct(c));
+		return ExprValue(s.gen_init_value_struct(c));
 	}
 
 	bool allConstants = true;

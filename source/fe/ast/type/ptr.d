@@ -17,7 +17,7 @@ struct PtrTypeNode {
 		return context.getAstType(base).isVoid;
 	}
 
-	IrIndex gen_default_value(CompilationContext* c)
+	IrIndex gen_init_value(CompilationContext* c)
 	{
 		return c.constants.addZeroConstant(gen_ir_type_ptr(&this, c));
 	}
