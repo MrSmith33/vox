@@ -250,13 +250,7 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 		case AstType.decl_struct: return lookupStructMember(nodeIndex, expr, objType.as_struct, memberId, state);
 		case AstType.decl_enum: return lookupEnumMember(expr, objType.as_enum, memberId, c);
 		case AstType.type_basic: return lookupBasicMember(expr, objType.as_basic, memberId, c);
-		default:
-			c.unrecoverable_error(expr.loc,
-				"Cannot resolve `%s` for %s",
-				c.idString(memberId),
-				get_node_kind_name(objType.get_ast_index(c), c));
-			expr.type = CommonAstNodes.type_error;
-			return LookupResult.error;
+		default: return LookupResult.error;
 	}
 }
 

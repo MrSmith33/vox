@@ -4604,3 +4604,19 @@ void tester214(ref TestContext ctx) {
 	assert(ptr == arenaPtr + 256);
 	assert(get(1) - get(0) == 260);
 }
+
+
+@TestInfo()
+immutable test215 = q{--- test215
+	// UFCS for ptr type
+	VkExtensionProperties[11] extensions;
+	struct VkExtensionProperties {
+		u8[256] extensionName;
+		u32 specVersion;
+	}
+	void run() {
+		extensions[0].extensionName.ptr.fromStringz;
+	}
+	void fromStringz(u8*){}
+};
+
