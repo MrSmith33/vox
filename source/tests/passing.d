@@ -4631,10 +4631,9 @@ immutable test216 = q{--- test216
 };
 
 
-/*
 @TestInfo()
 immutable test217 = q{--- test217
-	// UFCS bug
+	// doIfti missing ref on AstNodes, causing UFCS call that replaced node to use stale array
 	struct VkLayerProperties {
 		u8[1] description;
 	}
@@ -4644,4 +4643,4 @@ immutable test217 = q{--- test217
 		VkLayerProperties layer;
 		println(layer.description.ptr.fromStringz);
 	}
-};*/
+};

@@ -165,7 +165,8 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 
 
 // Returns inferred template parameters
-AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, AstNodes args, out bool success, ref TypeCheckState state)
+// args needs to be ref, because type-check needs it to be ref
+AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNodes args, out bool success, ref TypeCheckState state)
 {
 	// - run through all provided runtime args
 	// - get type of runtime parameter, if it is template type arg (T or T... here), then
