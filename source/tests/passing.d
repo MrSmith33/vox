@@ -4629,3 +4629,19 @@ immutable test216 = q{--- test216
 	#assert($baseOf(u8[10]) == u8);
 	#assert($baseOf(u16[10]) != u8);
 };
+
+
+/*
+@TestInfo()
+immutable test217 = q{--- test217
+	// UFCS bug
+	struct VkLayerProperties {
+		u8[1] description;
+	}
+	u8[] fromStringz(u8* cString) { return null; }
+	void println[Args...](Args... args) {}
+	void run() {
+		VkLayerProperties layer;
+		println(layer.description.ptr.fromStringz);
+	}
+};*/
