@@ -4642,5 +4642,6 @@ immutable test217 = q{--- test217
 	void run() {
 		VkLayerProperties layer;
 		println(layer.description.ptr.fromStringz);
+		println("", layer.description.ptr.fromStringz);
 	}
 };

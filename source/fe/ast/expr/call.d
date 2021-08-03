@@ -246,18 +246,16 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNode
 		// group 2
 		foreach(size_t i; group1_size..rt_group12_size)
 		{
-			AstIndex arg = args[i];
-			require_type_check(arg, state);
-			AstIndex argTypeIndex = arg.get_expr_type(c);
+			require_type_check(args[i], state); // do not cache args, because require_type_check may modify it
+			AstIndex argTypeIndex = args[i].get_expr_type(c);
 			result.put(c.arrayArena, argTypeIndex);
 		}
 
 		// group 3
 		foreach(size_t i; rt_group12_size..numRtArgs)
 		{
-			AstIndex arg = args[i];
-			require_type_check(arg, state);
-			AstIndex argTypeIndex = arg.get_expr_type(c);
+			require_type_check(args[i], state); // do not cache args, because require_type_check may modify it
+			AstIndex argTypeIndex = args[i].get_expr_type(c);
 			uint rtParamIndex = cast(uint)(i - rt_group2_size + 1); // 1 skips variadic param
 
 			AstNode* rtType = rt_params[rtParamIndex].get!VariableDeclNode(c).type.get_node(c);
@@ -282,7 +280,7 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNode
 	// group 1
 	foreach(size_t i, ref AstIndex arg; args)
 	{
-		require_type_check(arg, state);
+		require_type_check(arg, state); // do not cache arg, because require_type_check may modify it
 		AstIndex argTypeIndex = arg.get_expr_type(c);
 		AstNode* rtType = rt_params[i].get!VariableDeclNode(c).type.get_node(c);
 		if (rtType.astType == AstType.expr_name_use)
