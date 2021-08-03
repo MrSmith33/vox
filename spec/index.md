@@ -397,6 +397,10 @@ bool $isSlice($type type)
 bool $isSliceOf($type slice, $type elemType)
 #assert($isSlice(i8[]));
 #assert($isSliceOf(i8[], i8));
+$type baseOf($type type);
+#assert($baseOf(i8*) == i8);
+#assert($baseOf(i8[]) == i8);
+#assert($baseOf(i8[10]) == i8);
 
 bool $isArray($type type)
 bool $isArrayOf($type array, $type elemType)

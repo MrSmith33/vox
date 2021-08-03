@@ -4620,3 +4620,12 @@ immutable test215 = q{--- test215
 	void fromStringz(u8*){}
 };
 
+
+@TestInfo()
+immutable test216 = q{--- test216
+	// $baseOf
+	#assert($baseOf(u8[]) == u8);
+	#assert($baseOf(u8*) == u8);
+	#assert($baseOf(u8[10]) == u8);
+	#assert($baseOf(u16[10]) != u8);
+};

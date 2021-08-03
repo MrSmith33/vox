@@ -340,7 +340,6 @@ struct IrInstrHeader
 			ubyte,      "cond",      4,
 			// Not always possible to infer arg size from arguments (like in store ptr, imm)
 			IrArgSize,  "argSize",   3,
-			// Only used for loads to mark source pointer as uniqely owned by load
 		));
 
 		// for calls
@@ -358,6 +357,7 @@ struct IrInstrHeader
 		// for loads
 		mixin(bitfields!(
 			uint, "",                       1, // hasResult
+			// Only used for loads to mark source pointer as uniqely owned by load
 			bool, "isUniqueLoad",           1,
 			uint, "",                       6,
 		));

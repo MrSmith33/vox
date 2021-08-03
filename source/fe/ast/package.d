@@ -232,7 +232,7 @@ void print_node_name(ref TextSink sink, AstIndex nodeIndex, CompilationContext* 
 		case expr_call:
 			print_node_name(sink, node.as!CallExprNode(c).callee, c);
 			break;
-		default: assert(false, format("got %s", node.astType));
+		default: sink.formattedWrite("%s", node.astType);
 	}
 }
 

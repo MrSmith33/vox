@@ -385,6 +385,7 @@ struct CompilationContext
 
 	void circular_dependency(string file = __MODULE__, int line = __LINE__)
 	{
+		size_t startLen = sink.data.length;
 		sink.putfln("Error: Circular dependency");
 		print_analysis_stack;
 		if (printTraceOnError)
@@ -392,6 +393,7 @@ struct CompilationContext
 				throw new Exception(null);
 			catch (Exception e)
 				sink.putf("%s", e.info);
+		errorSink.put(sink.data[startLen..$]);
 		hasErrors = true;
 		throw new CompilationException(false, file, line);
 	}
@@ -400,7 +402,6 @@ struct CompilationContext
 	{
 		AnalysedNode top;
 		if (!analisysStack.empty) top = analisysStack.back;
-		size_t startLen = sink.data.length;
 		while(!analisysStack.empty)
 		{
 			AnalysedNode currentItem = analisysStack.back;
@@ -441,9 +442,11 @@ struct CompilationContext
 			case IceBehavior.breakpoint:
 				writeln(sink.text);
 				stdout.flush;
-				version(DMD) asm { db 0xCC; } // breakpoint
+				version(DMD) {
+					asm { db 0xCC; } // breakpoint
+					break;
+				}
 				version(LDC) assert(false); // LDC has no data in assembler
-				break;
 		}
 	}
 
@@ -1000,6 +1003,7 @@ enum CommonAstNodes : AstIndex
 	is_slice                 = AstIndex(first_builtin_func.storageIndex + 1 * 38),
 	is_integer               = AstIndex(first_builtin_func.storageIndex + 2 * 38),
 	is_pointer               = AstIndex(first_builtin_func.storageIndex + 3 * 38),
+	base_of                  = AstIndex(first_builtin_func.storageIndex + 4 * 38),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
@@ -1030,11 +1034,12 @@ private immutable AstIndex[BuiltinId.max + 1] builtinsArray = [
 	CommonAstNodes.builtin_array_ptr,
 	CommonAstNodes.builtin_sizeof,
 ];
-immutable AstIndex[4] builtinFuncsArray = [
+immutable AstIndex[5] builtinFuncsArray = [
 	CommonAstNodes.compile_error,
 	CommonAstNodes.is_slice,
 	CommonAstNodes.is_integer,
 	CommonAstNodes.is_pointer,
+	CommonAstNodes.base_of,
 ];
 
 void builtin_function_stub() {
@@ -1106,6 +1111,9 @@ void createBuiltinFunctions(CompilationContext* c)
 
 	addParam(CommonAstNodes.type_type, CommonIds.id_type);
 	make(CommonAstNodes.is_pointer, CommonIds.cash_is_pointer, CommonAstNodes.type_bool);
+
+	addParam(CommonAstNodes.type_type, CommonIds.id_type);
+	make(CommonAstNodes.base_of, CommonIds.cash_base_of, CommonAstNodes.type_type);
 
 	//print_ast(CommonAstNodes.is_slice, c);
 }
