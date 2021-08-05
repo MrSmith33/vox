@@ -393,10 +393,13 @@ bool $isEnum($alias a)
 bool $isStruct($type type)
 bool $isInteger($type type)
 bool $isFloating($type type)
+
 bool $isSlice($type type)
-bool $isSliceOf($type slice, $type elemType)
 #assert($isSlice(i8[]));
+
+bool $isSliceOf($type slice, $type elemType)
 #assert($isSliceOf(i8[], i8));
+
 $type baseOf($type type);
 #assert($baseOf(i8*) == i8);
 #assert($baseOf(i8[]) == i8);

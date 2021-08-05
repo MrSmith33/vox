@@ -174,7 +174,7 @@ Example:
 import kernel32;
 void main() { ExitProcess(42); }
 --- kernel32.vx
-void ExitProcess(u32 uExitCode);
+noreturn ExitProcess(u32 uExitCode);
 ```
 Can be compiled with `vox program.har C:\Windows\System32\kernel32.dll`
 

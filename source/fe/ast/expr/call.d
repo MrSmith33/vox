@@ -507,10 +507,6 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 	// TODO: support more than plain func() calls. Such as func_array[42](), (*func_ptr)() etc
 	// need handling of function pointers
 
-	if (n.isLvalue) {
-		c.internal_error(n.loc, "Call cannot be an l-value");
-	}
-
 	if (signature.returnType.isVoidType(c))
 	{
 		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.call)(currentBlock, n.argsValues);

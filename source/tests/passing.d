@@ -4645,3 +4645,28 @@ immutable test217 = q{--- test217
 		println("", layer.description.ptr.fromStringz);
 	}
 };
+
+@TestInfo(&tester218)
+immutable test218 = q{--- test218
+	// indexing of call
+	struct App {
+		u8*[1] validationLayers;
+		void init() {
+			validationLayers[0] = "VK_LAYER_KHRONOS_validation";
+		}
+		u8** get() {
+			return validationLayers.ptr;
+		}
+	}
+	u8* run() {
+		App app;
+		app.init;
+		return app.get()[0];
+	}
+};
+void tester218(ref TestContext ctx) {
+	import std.string : fromStringz;
+	auto run = ctx.getFunctionPtr!(char*)("run");
+	assert(run().fromStringz == "VK_LAYER_KHRONOS_validation");
+}
+
