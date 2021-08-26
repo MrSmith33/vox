@@ -81,12 +81,12 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 	IrLabel afterFrom = IrLabel(curBlock);
 	ExprValue fromIndexLvalue = ir_gen_expr(gen, node.fromIndex, curBlock, afterFrom);
 	curBlock = afterFrom.blockIndex;
-	IrIndex fromIndexRvalue = getRvalue(gen, node.loc, curBlock, fromIndexLvalue);
+	IrIndex fromIndexRvalue = fromIndexLvalue.rvalue(gen, node.loc, curBlock);
 
 	IrLabel afterTo = IrLabel(curBlock);
 	ExprValue toIndexLvalue = ir_gen_expr(gen, node.toIndex, curBlock, afterTo);
 	curBlock = afterTo.blockIndex;
-	IrIndex toIndexRvalue = getRvalue(gen, node.loc, curBlock, toIndexLvalue);
+	IrIndex toIndexRvalue = toIndexLvalue.rvalue(gen, node.loc, curBlock);
 
 	IrLabel afterArray = IrLabel(curBlock);
 	ExprValue arrayLvalue = ir_gen_expr(gen, node.array, curBlock, afterArray);
@@ -107,15 +107,15 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 		{
 			case type_ptr:
 				// read pointer variable for T*
-				ptr = getRvalue(gen, node.loc, curBlock, arrayLvalue);
+				ptr = arrayLvalue.rvalue(gen, node.loc, curBlock);
 				break;
 			case type_static_array:
 				// need to convert [n x T]* into T* for static arrays
 				ptr = buildGEP(gen, node.loc, curBlock, arrayLvalue.irValue, c.constants.ZERO, c.constants.ZERO);
 				break;
 			case type_slice:
-				ExprValue ptrLvalue = getAggregateMember(gen, node.loc, curBlock, arrayLvalue, slicePtrIndex);
-				ptr = getRvalue(gen, node.loc, curBlock, ptrLvalue);
+				ExprValue ptrLvalue = arrayLvalue.member(gen, node.loc, curBlock, slicePtrIndex);
+				ptr = ptrLvalue.rvalue(gen, node.loc, curBlock);
 				break;
 			default: assert(false);
 		}
@@ -132,8 +132,8 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 				ptr = buildGEP(gen, node.loc, curBlock, arrayLvalue.irValue, c.constants.ZERO, fromIndexRvalue);
 				break;
 			case type_slice:
-				ExprValue ptrLvalue = getAggregateMember(gen, node.loc, curBlock, arrayLvalue, slicePtrIndex);
-				ptr = getRvalue(gen, node.loc, curBlock, ptrLvalue);
+				ExprValue ptrLvalue = arrayLvalue.member(gen, node.loc, curBlock, slicePtrIndex);
+				ptr = ptrLvalue.rvalue(gen, node.loc, curBlock);
 				ptr = buildGEP(gen, node.loc, curBlock, ptr, fromIndexRvalue);
 				break;
 			default: assert(false);

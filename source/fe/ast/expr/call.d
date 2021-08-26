@@ -449,7 +449,7 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			TypeNode* base = varType.as_ptr.base.get_type(c);
 			if (!base.isFuncSignature) goto default;
 
-			IrIndex irIndex = getRvalue(gen, node.loc, currentBlock, var.irValue);
+			IrIndex irIndex = var.irValue.rvalue(gen, node.loc, currentBlock);
 			return visitCall(gen, c.getAstNodeIndex(base), irIndex, currentBlock, nextStmt, node);
 		case AstType.expr_member:
 			// Can probably fold other cases into this one
@@ -461,7 +461,7 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			IrLabel afterCallee = IrLabel(currentBlock);
 			ExprValue calleeLval = ir_gen_expr(gen, callee, currentBlock, afterCallee);
 			currentBlock = afterCallee.blockIndex;
-			IrIndex calleeRval = getRvalue(gen, node.loc, currentBlock, calleeLval);
+			IrIndex calleeRval = calleeLval.rvalue(gen, node.loc, currentBlock);
 
 			return visitCall(gen, c.getAstNodeIndex(base), calleeRval, currentBlock, nextStmt, node);
 		default:
@@ -498,7 +498,7 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 		ExpressionNode* nodeArg = arg.get_expr(c);
 		ExprValue lval = ir_gen_expr(gen, arg, currentBlock, afterArg);
 		currentBlock = afterArg.blockIndex;
-		n.argsValues[i+1] = getRvalue(gen, n.loc, currentBlock, lval); // account for callee in 0th index
+		n.argsValues[i+1] = lval.rvalue(gen, n.loc, currentBlock); // account for callee in 0th index
 		debug c.assertf(n.argsValues[i+1].isDefined, "Arg %s %s (%s) is undefined", i+1, n.astType, c.tokenLoc(n.loc));
 	}
 
@@ -561,7 +561,7 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 		IrLabel afterArg = IrLabel(currentBlock);
 		ExprValue lval = ir_gen_expr(gen, n.args[memberIndex], currentBlock, afterArg);
 		currentBlock = afterArg.blockIndex;
-		IrIndex memberValue = getRvalue(gen, n.loc, currentBlock, lval);
+		IrIndex memberValue = lval.rvalue(gen, n.loc, currentBlock);
 		if (memberValue.isVirtReg) allConstants = false;
 		if (!memberValue.isConstantZero) allZeroes = false;
 		n.argsValues[memberIndex] = memberValue;

@@ -84,7 +84,7 @@ ExprValue ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref Ir
 		IrLabel afterRight = IrLabel(currentBlock);
 		ExprValue rightLvalue = ir_gen_expr(gen, b.right, currentBlock, afterRight);
 		currentBlock = afterRight.blockIndex;
-		IrIndex rightRvalue = getRvalue(gen, b.loc, currentBlock, rightLvalue);
+		IrIndex rightRvalue = rightLvalue.rvalue(gen, b.loc, currentBlock);
 
 		ExpressionNode* leftExpr = b.left.get_expr(c);
 		ExpressionNode* rightExpr = b.right.get_expr(c);
@@ -93,22 +93,22 @@ ExprValue ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref Ir
 		c.assertf(rightLvalue.irValue.isDefined, rightExpr.loc, "%s null IR val", rightExpr.astType);
 
 		if (b.op == BinOp.ASSIGN) {
-			store(gen, b.loc, currentBlock, leftLvalue, rightRvalue);
+			leftLvalue.store(gen, b.loc, currentBlock, rightRvalue);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return rightLvalue;
 		}
 		else if (b.op == BinOp.PTR_PLUS_INT_ASSIGN)
 		{
-			IrIndex leftRvalue = getRvalue(gen, b.loc, currentBlock, leftLvalue);
+			IrIndex leftRvalue = leftLvalue.rvalue(gen, b.loc, currentBlock);
 			assert(leftExpr.type.get_type(c).isPointer && rightExpr.type.get_type(c).isInteger);
 			IrIndex irValue = buildGEP(gen, b.loc, currentBlock, leftRvalue, rightRvalue);
-			store(gen, b.loc, currentBlock, leftLvalue, irValue);
+			leftLvalue.store(gen, b.loc, currentBlock, irValue);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return ExprValue(irValue);
 		}
 		else
 		{
-			IrIndex leftRvalue = getRvalue(gen, b.loc, currentBlock, leftLvalue);
+			IrIndex leftRvalue = leftLvalue.rvalue(gen, b.loc, currentBlock);
 			IrIndex irValue;
 
 			if (leftRvalue.isSimpleConstant && rightRvalue.isSimpleConstant)
@@ -127,7 +127,7 @@ ExprValue ir_gen_expr_binary_op(ref IrGenState gen, IrIndex currentBlock, ref Ir
 					currentBlock, extra, leftRvalue, rightRvalue).result;
 			}
 
-			store(gen, b.loc, currentBlock, leftLvalue, irValue);
+			leftLvalue.store(gen, b.loc, currentBlock, irValue);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return ExprValue(irValue);
 		}
@@ -198,8 +198,8 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 	c.assertf(leftLvalue.irValue.isDefined, leftExpr.loc, "%s null IR val", leftExpr.astType);
 	c.assertf(rightLvalue.irValue.isDefined, rightExpr.loc, "%s null IR val", rightExpr.astType);
 
-	auto leftValue = getRvalue(gen, b.loc, currentBlock, leftLvalue);
-	auto rightValue = getRvalue(gen, b.loc, currentBlock, rightLvalue);
+	auto leftValue = leftLvalue.rvalue(gen, b.loc, currentBlock);
+	auto rightValue = rightLvalue.rvalue(gen, b.loc, currentBlock);
 
 	// constant folding
 	if (leftValue.isSimpleConstant && rightValue.isSimpleConstant)

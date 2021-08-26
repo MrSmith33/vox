@@ -98,7 +98,7 @@ void ir_gen_switch(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStm
 	IrLabel afterExpr = IrLabel(currentBlock);
 	ExprValue lval = ir_gen_expr(gen, node.condition, currentBlock, afterExpr);
 	currentBlock = afterExpr.blockIndex;
-	IrIndex rval = getRvalue(gen, node.loc, currentBlock, lval);
+	IrIndex rval = lval.rvalue(gen, node.loc, currentBlock);
 
 	node.argsValues[0] = rval;
 	gen.builder.emitInstr!(IrOpcode.branch_switch)(currentBlock, node.argsValues);

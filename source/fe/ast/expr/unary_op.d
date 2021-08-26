@@ -142,15 +142,15 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			IrLabel afterChild = IrLabel(currentBlock);
 			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
+			ExprValue res = lval.addrOf(gen, u.loc, currentBlock);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
-			lval.isLvalue = IsLvalue.no;
-			return lval;
+			return res;
 
 		case bitwiseNot:
 			IrLabel afterChild = IrLabel(currentBlock);
 			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
-			IrIndex rval = getRvalue(gen, u.loc, currentBlock, lval);
+			IrIndex rval = lval.rvalue(gen, u.loc, currentBlock);
 			ExtraInstrArgs extra = {type : u.type.gen_ir_type(c), argSize : u.type.typeArgSize(c) };
 			IrIndex result = gen.builder.emitInstr!(IrOpcode.not)(currentBlock, extra, rval).result;
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
@@ -167,7 +167,7 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			IrLabel afterChild = IrLabel(currentBlock);
 			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
-			IrIndex rval = getRvalue(gen, u.loc, currentBlock, lval);
+			IrIndex rval = lval.rvalue(gen, u.loc, currentBlock);
 			ExtraInstrArgs extra = {type : u.type.gen_ir_type(c), argSize : u.type.typeArgSize(c) };
 			IrIndex result = gen.builder.emitInstr!(IrOpcode.neg)(currentBlock, extra, rval).result;
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
@@ -191,7 +191,7 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			}
 
 			IrArgSize argSize = childType.argSize(c);
-			IrIndex rval = getRvalue(gen, u.loc, currentBlock, lval);
+			IrIndex rval = lval.rvalue(gen, u.loc, currentBlock);
 			ExtraInstrArgs extra = {
 				opcode : opcode,
 				type : childType.gen_ir_type(c),
@@ -199,7 +199,7 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			};
 			IrIndex opResult = gen.builder.emitInstr!(IrOpcode.generic_binary)(
 				currentBlock, extra, rval, increment).result;
-			store(gen, u.loc, currentBlock, lval, opResult);
+			lval.store(gen, u.loc, currentBlock, opResult);
 
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 
@@ -212,19 +212,9 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			IrLabel afterChild = IrLabel(currentBlock);
 			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
+			ExprValue res = lval.deref(gen, u.loc, currentBlock);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
-			lval.isLvalue = IsLvalue.yes;
-			switch (lval.kind) {
-				case ExprValueKind.value:
-					lval.kind = ExprValueKind.ptr_to_data;
-					break;
-				case ExprValueKind.ptr_to_data:
-					lval.kind = ExprValueKind.ptr_to_ptr_to_data;
-					break;
-				default:
-					c.internal_error(u.loc, "%s", lval.kind);
-			}
-			return lval;
+			return res;
 
 		case staticArrayToSlice:
 			IrLabel afterChild = IrLabel(currentBlock);
@@ -232,7 +222,6 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
 
-			c.assertf(lval.isLvalue, "%s", lval); // pointer to static array
 			// pointer to first element
 			IrIndex ptr = buildGEP(gen, u.loc, currentBlock, lval.irValue, c.constants.ZERO, c.constants.ZERO);
 			// array length

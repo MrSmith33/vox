@@ -141,7 +141,7 @@ ExprValue ir_gen_index(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStm
 	IrLabel afterRight = IrLabel(curBlock);
 	ExprValue indexLvalue = ir_gen_expr(gen, node.indicies[0], curBlock, afterRight);
 	curBlock = afterRight.blockIndex;
-	IrIndex indexRvalue = getRvalue(gen, node.loc, curBlock, indexLvalue);
+	IrIndex indexRvalue = indexLvalue.rvalue(gen, node.loc, curBlock);
 
 	IrLabel afterIndex = IrLabel(curBlock);
 	ExprValue arrayLvalue = ir_gen_expr(gen, node.array, curBlock, afterIndex);
@@ -154,19 +154,19 @@ ExprValue ir_gen_index(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStm
 	switch (arrayExpr.type.get_type(c).astType) with(AstType)
 	{
 		case type_ptr:
-			IrIndex ptrRvalue = getRvalue(gen, node.loc, curBlock, arrayLvalue);
+			IrIndex ptrRvalue = arrayLvalue.rvalue(gen, node.loc, curBlock);
 			IrIndex result = buildGEP(gen, node.loc, curBlock, ptrRvalue, indexRvalue);
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return ExprValue(result, ExprValueKind.ptr_to_data, IsLvalue.yes);
 
 		case type_static_array:
-			ExprValue result = getAggregateMember(gen, node.loc, curBlock, arrayLvalue, indexRvalue);
+			ExprValue result = arrayLvalue.member(gen, node.loc, curBlock, indexRvalue);
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return result;
 
 		case type_slice:
-			ExprValue ptrLvalue = getAggregateMember(gen, node.loc, curBlock, arrayLvalue, slicePtrIndex);
-			IrIndex ptr = getRvalue(gen, node.loc, curBlock, ptrLvalue);
+			ExprValue ptrLvalue = arrayLvalue.member(gen, node.loc, curBlock, slicePtrIndex);
+			IrIndex ptr = ptrLvalue.rvalue(gen, node.loc, curBlock);
 			IrIndex result = buildGEP(gen, node.loc, curBlock, ptr, indexRvalue);
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return ExprValue(result, ExprValueKind.ptr_to_data, IsLvalue.yes);

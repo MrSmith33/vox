@@ -79,7 +79,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 	IrLabel afterExpr = IrLabel(currentBlock);
 	ExprValue lval = ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
 	currentBlock = afterExpr.blockIndex;
-	IrIndex rval = getRvalue(gen, t.loc, currentBlock, lval);
+	IrIndex rval = lval.rvalue(gen, t.loc, currentBlock);
 
 	ExpressionNode* childExpr = t.expr.get_expr(c);
 	TypeNode* sourceType = childExpr.type.get_type(c);
@@ -216,7 +216,7 @@ void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLab
 	IrLabel afterExpr = IrLabel(currentBlock);
 	ExprValue lval = ir_gen_expr(gen, t.expr, currentBlock, afterExpr);
 	currentBlock = afterExpr.blockIndex;
-	IrIndex rval = getRvalue(gen, t.loc, currentBlock, lval);
+	IrIndex rval = lval.rvalue(gen, t.loc, currentBlock);
 
 	ExpressionNode* childExpr = t.expr.get_expr(c);
 	IrIndex from = childExpr.type.gen_ir_type(c);

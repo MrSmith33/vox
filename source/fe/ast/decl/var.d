@@ -155,7 +155,7 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 		ExtraInstrArgs extra = {type : irType};
 		InstrWithResult param = gen.builder.emitInstr!(IrOpcode.parameter)(gen.ir.entryBasicBlock, extra);
 		gen.ir.get!IrInstr_parameter(param.instruction).index(gen.ir) = v.scopeIndex;
-		store(gen, v.loc, curBlock, v.irValue, param.result);
+		v.irValue.store(gen, v.loc, curBlock, param.result);
 	}
 	else
 	{
@@ -166,11 +166,9 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 
 		if (needsStackSlot)
 		{
-			ExprValueKind valueKind = ExprValueKind.ptr_to_data;
-
 			// allocate stack slot
 			IrIndex slot = gen.builder.appendStackSlot(irType, c.types.typeSizeAndAlignment(irType), StackSlotKind.local);
-			v.irValue = ExprValue(slot, valueKind, IsLvalue.yes);
+			v.irValue = ExprValue(slot, ExprValueKind.ptr_to_data, IsLvalue.yes);
 		}
 		else
 		{
@@ -184,13 +182,13 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 			IrLabel afterExpr = IrLabel(curBlock);
 			ExprValue initValue = ir_gen_expr(gen, v.initializer, curBlock, afterExpr);
 			curBlock = afterExpr.blockIndex;
-			IrIndex val = getRvalue(gen, v.loc, curBlock, initValue);
-			store(gen, v.loc, curBlock, v.irValue, val);
+			IrIndex val = initValue.rvalue(gen, v.loc, curBlock);
+			v.irValue.store(gen, v.loc, curBlock, val);
 		}
 		else
 		{
 			IrIndex value = varType.gen_init_value(c);
-			store(gen, v.loc, curBlock, v.irValue, value);
+			v.irValue.store(gen, v.loc, curBlock, value);
 		}
 	}
 

@@ -412,7 +412,7 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 			currentBlock = afterAggr.blockIndex;
 
 			IrIndex memberIndex = c.constants.add(m.memberIndex(c), IsSigned.no);
-			ExprValue result = getAggregateMember(gen, m.loc, currentBlock, aggr, memberIndex);
+			ExprValue result = aggr.member(gen, m.loc, currentBlock, memberIndex);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return result;
 		case static_struct_member, struct_method:

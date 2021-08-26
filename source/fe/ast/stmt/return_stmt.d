@@ -82,7 +82,7 @@ void ir_gen_return(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStm
 		IrLabel afterExpr = IrLabel(currentBlock);
 		ExprValue lval = ir_gen_expr(gen, r.expression, currentBlock, afterExpr);
 		currentBlock = afterExpr.blockIndex;
-		IrIndex rval = getRvalue(gen, r.loc, currentBlock, lval);
+		IrIndex rval = lval.rvalue(gen, r.loc, currentBlock);
 		gen.builder.addReturn(currentBlock, rval);
 	}
 	else gen.builder.addReturn(currentBlock);
