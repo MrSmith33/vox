@@ -62,7 +62,7 @@ struct ExprValue
 	ExprValueKind kind = ExprValueKind.value;
 	// true if can be assigned or address taken
 	IsLvalue isLvalue = IsLvalue.no;
-	// indicates number of gepBuf indicies being used
+	//
 	Array!IrIndex indicies;
 }
 
@@ -441,6 +441,36 @@ IrIndex getStructMember(ref IrGenState gen, IrIndex currentBlock, IrIndex aggr, 
 	}
 
 	return aggr;
+}
+
+IrIndex buildGEPEx(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue aggrPtrExpr, IrIndex ptrIndex, IrIndex[] indicies...)
+{
+	CompilationContext* c = gen.context;
+	IrIndex aggrPtr = aggrPtrExpr.irValue;
+	if (aggrPtr.isVariable) {
+		aggrPtr = gen.builder.readVariable(currentBlock, aggrPtr);
+	}
+	switch (aggrPtrExpr.kind) with(ExprValueKind)
+	{
+		case value: assert(false); break;
+		case ptr_to_data: break;
+		case ptr_to_ptr_to_data:
+			aggrPtr = load(gen, loc, currentBlock, aggrPtr);
+			assert(false); break;
+		case struct_sub_index:
+			IrIndex aggrType = gen.ir.getValueType(c, aggrPtr);
+			switch (aggrType.typeKind) {
+				case IrTypeKind.pointer:
+					aggrPtr = buildGEP(gen, loc, currentBlock, aggrPtr, c.constants.ZERO, aggrPtrExpr.indicies[]);
+					break;
+				case IrTypeKind.array:
+				case IrTypeKind.struct_t: assert(false);
+				default: c.internal_error("%s", aggrType.typeKind); assert(false);
+			}
+			break;
+		default: assert(false);
+	}
+	return buildGEP(gen, loc, currentBlock, aggrPtr, ptrIndex, indicies);
 }
 
 IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrIndex aggrPtr, IrIndex ptrIndex, IrIndex[] indicies...)

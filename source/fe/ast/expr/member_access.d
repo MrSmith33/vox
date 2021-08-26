@@ -430,7 +430,7 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 					IrLabel afterAggr = IrLabel(currentBlock);
 					ExprValue aggr = ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
 					currentBlock = afterAggr.blockIndex;
-					IrIndex ptr = buildGEP(gen, m.loc, currentBlock, aggr.irValue, c.constants.ZERO, c.constants.ZERO);
+					IrIndex ptr = buildGEPEx(gen, m.loc, currentBlock, aggr, c.constants.ZERO, c.constants.ZERO);
 					gen.builder.addJumpToLabel(currentBlock, nextStmt);
 					return ExprValue(ptr);
 				default:

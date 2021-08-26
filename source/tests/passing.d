@@ -4670,3 +4670,30 @@ void tester218(ref TestContext ctx) {
 	assert(run().fromStringz == "VK_LAYER_KHRONOS_validation");
 }
 
+@TestInfo(&tester219)
+immutable test219 = q{--- test219
+	// Assigning struct member array
+	struct S {
+		u8** ptr;
+	}
+	struct App {
+		u8*[1] validationLayers;
+		void init() {
+			validationLayers[0] = "VK_LAYER_KHRONOS_validation";
+		}
+		S get() {
+			return S(validationLayers.ptr);
+		}
+	}
+	S run() {
+		App app;
+		app.init;
+		return app.get();
+	}
+};
+void tester219(ref TestContext ctx) {
+	import std.string : fromStringz;
+	auto run = ctx.getFunctionPtr!(char**)("run");
+	assert((*run()).fromStringz == "VK_LAYER_KHRONOS_validation");
+}
+

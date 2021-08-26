@@ -10,28 +10,28 @@ On linux I wasn't able to archive pure reserve, so compiler relies on overcommit
 
 ## General overview
 
-* Read source
-* Lex
-* Parse
-* Register names
-* Lookup names
+* Read source - reads source files into memory
+* Lex - produces token array per source file
+* Parse - produces AST
+* Register names - register definitions within scopes
+* Lookup names - resolves symbol references
 * Type check
-* Generate IR
-* Optimize
+* Generate IR - conversion of AST into linear IR in SSA form
+* Optimize - optimizes machine-independent IR
     - inline
-    - DCE
+    - DCE - Dead Code Elimination: removes instructions with unused results and no side-effects
 * IR lower
     - lower ABI
     - lower aggregates to stack slots
     - lower switch
     - lower GEP
-* IR to LIR AMD64
-* Live intervals
-* Linear scan
-* Stack layout
-* Code gen
+* IR to LIR AMD64 - Conversion of high-level IR to amd64 machine code IR in SSA form (LIR)
+* Live intervals - Collects liveness info about values for use in register allocation
+* Linear Scan Register Allocation - Replaces virtual registers with physical ones
+* Stack layout - Calculates offsets for stack slots
+* Code gen - Converts LIR into machine code
 * Link executable
-* Write executable
+* Write executable (optional, used in non-JIT mode)
 
 For me TAC means single operation per instruction, instruction takes arguments and returns some number of results (0 or 1 currently). In CFG basic blocks contain a list instructions with single entrance and single exit, and track a list of predecessor/successor basic blocks.
 
@@ -220,6 +220,44 @@ First sections are created and import table is filled. Then linking pass is run.
 ## Writing executable
 
 Executable that was stored in arena buffer is written to the target file. On posix platforms it is given `rwx` rights.
+
+# AST
+
+AST nodes are allocated sequentially in an arena.
+
+```D
+Arena!uint astBuffer;
+```
+
+AST nodes are addressed with indicies. Indexing goes in 4 byte granularity. 32-bit indicies x 4 bytes gives 16 GiB of addressable memory.
+
+All arrays/hashmaps for AST are stored in a separate set of arenas. For example list of children node indicies are stored in such array. IR arrays use dedicated arena.
+
+Each AST node has common header (8 bytes in total):
+
+```D
+struct AstNode
+{
+    // Index to the token from the lexer
+    TokenIndex loc;     // 4 bytes
+
+    // Type of AST node. Code often switches on it
+    AstType astType;    // 1 byte
+
+    // Tracks node state as it progresses through semantic passes
+    // This is needed because nodes can be analysed in any order
+    // Needed to find ciclic dependencies in the program
+    AstNodeState state; // 4 bits
+
+    // Some nodes may need to further differentiate node type
+    uint subType;       // 4 bits
+
+    // Bitflags
+    ushort flags;       // 2 bytes
+}
+```
+
+
 
 # IR
 

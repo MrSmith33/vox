@@ -353,6 +353,83 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			// TODO: check indicies
 			break;
 
+		case IrOpcode.get_element_ptr:
+			c.assertf(instrHeader.hasResult, "%s: get_element_ptr has no result", instrIndex);
+			c.assertf(instrHeader.numArgs >= 2, "%s: get_element_ptr must have at least 2 arguments, while has %s",
+				instrIndex, instrHeader.numArgs);
+
+			IrIndex result = instrHeader.result(ir);
+			c.assertf(result.isVirtReg, "%s: get_element_ptr result is %s. virtualRegister expected", instrIndex, result.kind);
+
+			IrVirtualRegister* vreg = ir.getVirtReg(result);
+			c.assertf(vreg.type.isType, "%s: get_element_ptr result type is not a type: %s", instrIndex, vreg.type.kind);
+
+			IrIndex resultType = vreg.type;
+			c.assertf(resultType.isTypePointer, "%s: get_element_ptr result must be a pointer, not: %s", instrIndex, IrIndexDump(resultType, c, ir));
+
+			IrIndex aggrPtr = instrHeader.arg(ir, 0);
+			IrIndex aggrPtrType = getValueType(aggrPtr, ir, c);
+			c.assertf(aggrPtrType.isTypePointer, "%s: first argument must be a pointer, not: %s", instrIndex, IrIndexDump(aggrPtrType, c, ir));
+
+			// first index indexes pointer itself
+
+			IrIndex ptrIndex = instrHeader.arg(ir, 1);
+			IrIndex ptrIndexType = getValueType(ptrIndex, ir, c);
+			c.assertf(ptrIndex.isSimpleConstant || ptrIndex.isVirtReg,
+				"%s: pointer can only be indexed with constant or virtual register, not: %s", instrIndex, ptrIndex.kind);
+
+			IrIndex calculatedResultType = c.types.getPointerBaseType(aggrPtrType);
+
+			IrIndex[] indicies = instrHeader.args(ir)[2..$];
+
+			foreach(IrIndex memberIndex; indicies)
+			{
+				switch(calculatedResultType.typeKind)
+				{
+					case IrTypeKind.array:
+						IrTypeArray* array = &c.types.get!IrTypeArray(calculatedResultType);
+
+						if (memberIndex.isSimpleConstant) {
+							ulong indexVal = c.constants.get(memberIndex).i64;
+							c.assertf(indexVal < array.numElements,
+								"%s: indexing element %s of %s-element array",
+								instrIndex, indexVal, array.numElements);
+						} else {
+							c.assertf(memberIndex.isVirtReg,
+								"%s: arrays can only be indexed with constants or virtual registers, not with %s",
+								instrIndex, memberIndex);
+						}
+
+						calculatedResultType = array.elemType;
+						break;
+
+					case IrTypeKind.struct_t:
+						c.assertf(memberIndex.isSimpleConstant,
+							"%s: structs can only be indexed with constants, not with %s",
+							instrIndex, memberIndex);
+
+						ulong indexVal = c.constants.get(memberIndex).i64;
+						IrTypeStructMember[] members = c.types.get!IrTypeStruct(calculatedResultType).members;
+
+						c.assertf(indexVal < members.length,
+							"%s: indexing member %s of %s-member struct",
+							instrIndex, indexVal, members.length);
+
+						IrTypeStructMember member = members[indexVal];
+						calculatedResultType = member.type;
+						break;
+
+					default:
+						c.internal_error("%s: get_element_ptr cannot index into %s", instrIndex, calculatedResultType.typeKind);
+						break;
+				}
+			}
+
+			IrIndex resultBaseType = c.types.getPointerBaseType(resultType);
+			bool sameType = c.types.isSameType(resultBaseType, calculatedResultType);
+			c.assertf(sameType, "%s: type of member must match result type: result %s, member %s", instrIndex, IrIndexDump(resultBaseType, c, ir), IrIndexDump(calculatedResultType, c, ir));
+			break;
+
 		default: break;
 	}
 }

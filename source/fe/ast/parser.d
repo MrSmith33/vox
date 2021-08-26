@@ -113,6 +113,7 @@ struct Parser
 	AstNodes attributeStack;
 
 	// TODO: for now only immediate attributes are implemented
+	// Allocates AttributeInfo in AST arena, so it will be before next AST node allocated.
 	// returns 0 or AstFlags.hasAttributes flag. Must be added to node flags.
 	ushort createAttributeInfo() {
 		if (attribState.numEffectiveAttributes == 0) return 0;
