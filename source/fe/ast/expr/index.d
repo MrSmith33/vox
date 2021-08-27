@@ -125,10 +125,15 @@ void type_check_index(ref AstIndex nodeIndex, IndexExprNode* node, ref TypeCheck
 		autoconvTo(node.indicies[0], CommonAstNodes.type_i64, c);
 		switch (node.array.get_expr_type(c).astType(c)) with(AstType)
 		{
-			case type_ptr, type_static_array, type_slice: break; // valid
-			default: c.internal_error("Cannot index value of type `%s`", node.array.get_expr_type(c).printer(c));
+			case type_ptr, type_static_array, type_slice:
+				// valid
+				node.type = node.array.get_expr_type(c).get_type(c).getElementType(c);
+				break;
+			default:
+				node.type = CommonAstNodes.type_error;
+				c.error(node.loc, "Cannot index value of type `%s`", node.array.get_expr_type(c).printer(c));
+				break;
 		}
-		node.type = node.array.get_expr_type(c).get_type(c).getElementType(c);
 	}
 }
 

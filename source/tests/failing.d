@@ -608,3 +608,16 @@ immutable fail57 = q{--- fail57.vx
 --- <error>
 fail57.vx:1:2: Error: SEMICOLON is not an expression
 };
+
+
+@TestInfo()
+immutable fail58 = q{--- fail58.vx
+	// indexing struct
+	struct S[T] {}
+	u8* run() {
+		S[u8*] s;
+		s[0];
+	}
+--- <error>
+fail58.vx:5:4: Error: Cannot index value of type `S[u8*]`
+};
