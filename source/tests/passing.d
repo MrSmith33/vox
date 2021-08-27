@@ -4722,3 +4722,18 @@ void tester220(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(char*)("run");
 	assert(run().fromStringz == "VK_LAYER_KHRONOS_validation");
 }
+
+
+@TestInfo()
+immutable test221 = q{--- test221
+	// store function pointer into struct member
+	// `debugCallback` IR type was not generated because it is located after `run`
+	struct S {
+		void function() funcPtr;
+	}
+	void run() {
+		S createInfo;
+		createInfo.funcPtr = &debugCallback;
+	}
+	void debugCallback() {}
+};

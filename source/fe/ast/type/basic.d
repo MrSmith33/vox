@@ -153,6 +153,6 @@ TypeConvResKind type_conv_basic(BasicTypeNode* node, AstIndex typeBIndex, ref As
 			auto res2 = res1.allowExplicitOnly;
 			//writefln("type_conv_basic %s %s %s %s", fromTypeBasic, printer(typeB.as_enum.memberType, c), res1, res2);
 			return res2;
-		default: assert(false);
+		default: return TypeConvResKind.fail;
 	}
 }

@@ -149,6 +149,8 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 		}
 	}
 
+	if (!c.hasErrors) gen_ir_type_func_sig(node, c);
+
 	node.state = AstNodeState.type_check_done;
 }
 

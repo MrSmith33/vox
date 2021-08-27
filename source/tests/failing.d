@@ -621,3 +621,15 @@ immutable fail58 = q{--- fail58.vx
 --- <error>
 fail58.vx:5:4: Error: Cannot index value of type `S[u8*]`
 };
+
+
+@TestInfo()
+immutable fail59 = q{--- fail59
+	// Returning a type instead of a type instance
+	struct S{}
+	S run() {
+		return S;
+	}
+--- <error>
+fail59:4:3: Error: Cannot implicitly convert expression of type `$type` to `S`
+};
