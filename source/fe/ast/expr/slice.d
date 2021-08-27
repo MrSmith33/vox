@@ -111,7 +111,7 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 				break;
 			case type_static_array:
 				// need to convert [n x T]* into T* for static arrays
-				ptr = buildGEP(gen, node.loc, curBlock, arrayLvalue.irValue, c.constants.ZERO, c.constants.ZERO);
+				ptr = buildGEP(gen, node.loc, curBlock, ptr, c.constants.ZERO, c.constants.ZERO);
 				break;
 			case type_slice:
 				ExprValue ptrLvalue = arrayLvalue.member(gen, node.loc, curBlock, slicePtrIndex);

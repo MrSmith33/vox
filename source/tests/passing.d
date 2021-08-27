@@ -4679,10 +4679,10 @@ immutable test219 = q{--- test219
 	struct App {
 		u8*[1] validationLayers;
 		void init() {
-			validationLayers[0] = "VK_LAYER_KHRONOS_validation";
+			validationLayers[0] = "VK_LAYER_KHRONOS_validation"; // here
 		}
 		S get() {
-			return S(validationLayers.ptr);
+			return S(validationLayers.ptr); // also test access via .ptr
 		}
 	}
 	S run() {
@@ -4697,3 +4697,28 @@ void tester219(ref TestContext ctx) {
 	assert((*run()).fromStringz == "VK_LAYER_KHRONOS_validation");
 }
 
+
+@TestInfo(&tester220)
+immutable test220 = q{--- test220
+	// slicing of static array bug
+	struct App {
+		u8*[1] validationLayers;
+		void init() {
+			validationLayers[0] = "VK_LAYER_KHRONOS_validation";
+		}
+		u8* get() {
+			return accessor(validationLayers); // here
+		}
+	}
+	u8* accessor(u8*[] layers) { return layers[0]; }
+	u8* run() {
+		App app;
+		app.init;
+		return app.get();
+	}
+};
+void tester220(ref TestContext ctx) {
+	import std.string : fromStringz;
+	auto run = ctx.getFunctionPtr!(char*)("run");
+	assert(run().fromStringz == "VK_LAYER_KHRONOS_validation");
+}

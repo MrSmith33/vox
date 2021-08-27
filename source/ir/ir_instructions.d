@@ -63,6 +63,7 @@ struct InstrInfo
 	bool isCommutative() const { return (flags & IFLG.isCommutative) != 0; }
 	bool isCall() const { return (flags & IFLG.isCall) != 0; }
 	bool isGeneric() const { return (flags & IFLG.isGeneric) != 0; }
+	bool hasSideEffects() const { return (flags & IFLG.hasSideEffects) != 0; }
 
 	bool mayHaveResult() { return hasResult || hasVariadicResult; }
 }
@@ -112,6 +113,8 @@ enum IrInstrFlags : uint {
 	allMemArg = 1 << 15,
 	/// If set, then opcode of instruction is set from ExtraInstrArgs.opcode
 	isGeneric = 1 << 16,
+	/// Not safe to delete or reorder. Instruction is not a candidate for simple user-based instruction DCE
+	hasSideEffects = 1 << 17,
 }
 
 // shortcut
@@ -132,30 +135,30 @@ enum IrOpcode : ushort
 	// used as placeholder inside generic instructions. Must not remain in IR.
 	@_ii() invalid,
 
-	@_ii(0, IFLG.isBlockExit) jump,
+	@_ii(0, IFLG.isBlockExit | IFLG.hasSideEffects) jump,
 	/// Uses IrUnaryCondition inside IrInstrHeader.cond
-	@_ii(1, IFLG.hasCondition | IFLG.isBlockExit) branch_unary,
+	@_ii(1, IFLG.hasCondition | IFLG.isBlockExit | IFLG.hasSideEffects) branch_unary,
 	/// Uses IrBinaryCondition inside IrInstrHeader.cond
-	@_ii(2, IFLG.hasCondition | IFLG.isBlockExit) branch_binary,
+	@_ii(2, IFLG.hasCondition | IFLG.isBlockExit | IFLG.hasSideEffects) branch_binary,
 	/// Args:
 	///   iNN value to be switched on
 	///   _k_ >= 0 integer constants (no duplicated constants allowed)
 	/// Basic block successors are in the following order
 	///   default basic block
 	///   0 or more case blocks
-	@_ii(1, IFLG.hasVariadicArgs | IFLG.isBlockExit) branch_switch,
-	@_ii(0, IFLG.isBlockExit) ret,
+	@_ii(1, IFLG.hasVariadicArgs | IFLG.isBlockExit | IFLG.hasSideEffects) branch_switch,
+	@_ii(0, IFLG.isBlockExit | IFLG.hasSideEffects) ret,
 	/// Only for ABI handling
-	@_ii(1, IFLG.isBlockExit) ret_val,
-	@_ii(0, IFLG.isBlockExit) unreachable,
+	@_ii(1, IFLG.isBlockExit | IFLG.hasSideEffects) ret_val,
+	@_ii(0, IFLG.isBlockExit | IFLG.hasSideEffects) unreachable,
 
 	/// Emitted by frontend and replaced in lowering pass
 	/// Extra argument represents parameter index and stored as plain uint of type IrValueKind.none.
-	@_ii(0, IFLG.hasResult, 1) parameter,
+	@_ii(0, IFLG.hasResult | IFLG.hasSideEffects, 1) parameter,
 	// first argument is function or function pointer
-	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) call,
+	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasVariadicResult | IFLG.hasSideEffects) call,
 	// first argument is syscall number
-	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasVariadicResult) syscall,
+	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasVariadicResult | IFLG.hasSideEffects) syscall,
 	// Special instruction used during inlining. Should not occur in other places.
 	@_ii(0) inline_marker,
 
@@ -172,23 +175,23 @@ enum IrOpcode : ushort
 	@_ii(1, IFLG.hasResult) move,
 	/// Lowered into load+store sequence
 	/// Args: T* dst, T* src
-	@_ii(2) copy,
+	@_ii(2, IFLG.hasSideEffects) copy,
 	/// Only for ABI handling
 	/// Args: int that is added to stack pointer
-	@_ii(1) shrink_stack,
+	@_ii(1, IFLG.hasSideEffects) shrink_stack,
 	/// Only for ABI handling
 	/// Args: int that is substracted from stack pointer
-	@_ii(1) grow_stack,
+	@_ii(1, IFLG.hasSideEffects) grow_stack,
 	/// Only for ABI handling
 	/// Args: iNN
-	@_ii(1) push,
+	@_ii(1, IFLG.hasSideEffects) push,
 
 	/// Args: T*, T
-	@_ii(2) store,
+	@_ii(2, IFLG.hasSideEffects) store,
 	/// Args: T*
 	/// Returns: T
 	@_ii(1, IFLG.hasResult) load,
-	/// Args: aggregate pointer, 1 or more index
+	/// Args: aggregate pointer
 	/// Returns: member pointer
 	@_ii(1, IFLG.hasResult) load_aggregate, // TODO: remove. Use load instead
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element_ptr,
@@ -200,14 +203,14 @@ enum IrOpcode : ushort
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element_ptr_0,
 	/// Args: aggregate members
 	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasResult) create_aggregate,
-	/// Args: aggregate, 1 or more index
-	/// Returns: member of aggregate
-	/// For now indicies must be constant
+	/// Args: aggregate, byte offset
+	/// Returns: member of aggregate at given offset
+	/// For now offset must be a constant
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element,
 	/// Gets a register sized slice of aggregate
 	/// Args: aggregate, 1 index of 8byte chunk
 	@_ii(2, IFLG.hasResult) get_aggregate_slice,
-	/// Args: aggregate, new element value, 1 or more index
+	/// Args: aggregate, byte offset, new element value
 	/// Returns: aggregate with replaced element
 	/// Restriction: original aggregate's member that is being replaced here, must not
 	/// be read from in postdominating instructions. But it can be read on other control flow paths.
@@ -286,11 +289,8 @@ enum IrOpcode : ushort
 	@_ii(2, IFLG.hasResult) fsub,
 	@_ii(2, IFLG.hasResult) fmul,
 	@_ii(2, IFLG.hasResult) fdiv,
-}
 
-bool hasSideEffects(IrOpcode opcode)
-{
-	return opcode == IrOpcode.store || opcode == IrOpcode.call;
+	@_ii(0) noop,
 }
 
 enum IrArgSize : ubyte {

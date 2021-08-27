@@ -165,17 +165,21 @@ void func_pass_invert_conditions(CompilationContext* context, IrFunction* ir, Ir
 
 void func_pass_remove_dead_code(CompilationContext* context, IrFunction* ir, IrIndex funcIndex, ref IrBuilder builder)
 {
+	auto funcInstrInfos = allInstrInfos[ir.instructionSet];
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
 		{
-			if (hasSideEffects(cast(IrOpcode)instrHeader.op)) continue;
-			if (!instrHeader.hasResult) continue;
+			if (funcInstrInfos[instrHeader.op].hasSideEffects) continue;
 
-			if (!instrHeader.result(ir).isVirtReg) continue;
-			if (ir.getVirtReg(instrHeader.result(ir)).users.length > 0) continue;
+			if (instrHeader.hasResult) {
+				if (!instrHeader.result(ir).isVirtReg) continue;
+				if (ir.getVirtReg(instrHeader.result(ir)).users.length > 0) continue;
+			}
 
-			// instruction's result is unused, remove that instruction
+			// instruction without side effects
+			// instruction's result is unused or has no result
+			// remove that instruction
 			foreach(ref IrIndex arg; instrHeader.args(ir)) {
 				removeUser(context, ir, instrIndex, arg);
 			}

@@ -223,7 +223,7 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			currentBlock = afterChild.blockIndex;
 
 			// pointer to first element
-			IrIndex ptr = buildGEP(gen, u.loc, currentBlock, lval.irValue, c.constants.ZERO, c.constants.ZERO);
+			IrIndex ptr = buildGEPEx(gen, u.loc, currentBlock, lval, c.constants.ZERO, c.constants.ZERO);
 			// array length
 			IrIndex length = c.constants.add(childExpr.type.get_type(c).as_static_array.length, IsSigned.no, IrArgSize.size64);
 
