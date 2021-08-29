@@ -2,12 +2,12 @@
 ## Optimization
 ### Inlining
 
-* [Inlining Decisions in Visual Studio**](https://devblogs.microsoft.com/cppblog/inlining-decisions-in-visual-studio/)
+* [Inlining Decisions in Visual Studio](https://devblogs.microsoft.com/cppblog/inlining-decisions-in-visual-studio/)
 * [C++ Inliner Improvements: The Zipliner](https://devblogs.microsoft.com/cppblog/c-inliner-improvements-the-zipliner/)
 * [John Carmack on Inlined Code](https://collincode.wordpress.com/2016/07/19/john-carmack-on-inlined-code/)
 * [John Carmack on Inlined Code](http://number-none.com/blow/john_carmack_on_inlined_code.html)
 * [How RyuJIT inlines a function (heuristics)](https://web.archive.org/web/20210517175814/https://egorbo.com/how-inlining-works.html)
-* [Smarter C/C++ inlining with __attribute__((flatten))](https://awesomekling.github.io/Smarter-C++-inlining-with-attribute-flatten/)
+* [Smarter C/C++ inlining with `__attribute__((flatten))`](https://awesomekling.github.io/Smarter-C++-inlining-with-attribute-flatten/)
 * [Do compilers take inline as a hint?](https://blog.tartanllama.xyz/inline-hints/)
 * [cmd/compile: improve inlining cost model](https://github.com/golang/go/issues/17566)
 * [What does 'inline' mean?](https://forum.dlang.org/thread/mailman.3723.1591596899.31109.digitalmars-d@puremagic.com)
