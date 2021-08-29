@@ -1,0 +1,28 @@
+# Compiler design
+## Optimization
+### Inlining
+
+* [Inlining Decisions in Visual Studio**](https://devblogs.microsoft.com/cppblog/inlining-decisions-in-visual-studio/)
+* [C++ Inliner Improvements: The Zipliner](https://devblogs.microsoft.com/cppblog/c-inliner-improvements-the-zipliner/)
+* [John Carmack on Inlined Code](https://collincode.wordpress.com/2016/07/19/john-carmack-on-inlined-code/)
+* [John Carmack on Inlined Code](http://number-none.com/blow/john_carmack_on_inlined_code.html)
+* [How RyuJIT inlines a function (heuristics)](https://web.archive.org/web/20210517175814/https://egorbo.com/how-inlining-works.html)
+* [Smarter C/C++ inlining with __attribute__((flatten))](https://awesomekling.github.io/Smarter-C++-inlining-with-attribute-flatten/)
+* [Do compilers take inline as a hint?](https://blog.tartanllama.xyz/inline-hints/)
+* [cmd/compile: improve inlining cost model](https://github.com/golang/go/issues/17566)
+* [What does 'inline' mean?](https://forum.dlang.org/thread/mailman.3723.1591596899.31109.digitalmars-d@puremagic.com)
+* [Zebu VM check_should_inline_func()](https://gitlab.anu.edu.au/mu/mu-impl-fast/-/blob/6572fe39ae65e424bdaf612f461fe60c8fc0b95f/src/compiler/passes/inlining.rs#L89)
+* [Warp: Improved JS performance in Firefox 83](https://hacks.mozilla.org/2020/11/warp-improved-js-performance-in-firefox-83/)
+* [shouldInline](https://searchfox.org/mozilla-central/rev/cecdac0aa5733fee515a166b6e31e38cc58abf32/js/src/jit/TrialInlining.cpp#504)
+* [When Short Methods Pay Off: JIT Inlining](https://dzone.com/articles/jit-inlining)
+* [cross-module inlining in guile -- wingolog](https://wingolog.org/archives/2021/05/13/cross-module-inlining-in-guile)
+* [Inline In Rust](https://matklad.github.io//2021/07/09/inline-in-rust.html)
+* [It’s Not Always iCache](https://matklad.github.io/2021/07/10/its-not-always-icache.html)
+* [[2003][PDF] Adaptive Online Context-Sensitive Inlining](http://www.cs.cmu.edu/afs/cs/academic/class/15745-s07/www/papers/hazelwood-cgo03.pdf)
+* [[2003][PDF] To Inline or Not to Inline. Enhanced Inlining Decisions](https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.6.946&rep=rep1&type=pdf)
+* [[2004][PDF] Fast and Effective Procedure Inlining](https://guenchi.github.io/Scheme/doc/Fast%20and%20Effective%20Procedure%20Inlining.pdf)
+* [[2016][PDF] CSE P 501 - Compilers. Inlining and Devirtualization](https://courses.cs.washington.edu/courses/csep501/18sp/lectures/X1-inlining.pdf)
+* [[2017][PDF] TurboFan Inlining Heuristics](https://docs.google.com/document/d/1VoYBhpDhJC4VlqMXCKvae-8IGuheBGxy32EOgC2LnT8/edit)
+* [[2019][PDF] Guiding Inlining Decisions Using Post-Inlining Transformations](https://webdocs.cs.ualberta.ca/~amaral/thesis/ErickOchoaMSc.pdf)
+* [[2019][PDF] An Optimization-Driven Incremental Inline Substitution Algorithm for Just-in-Time Compilers](http://aleksandar-prokopec.com/resources/docs/prio-inliner-final.pdf)
+* [[2021][PDF] Inlining for Code Size Reduction](https://homepages.dcc.ufmg.br/~fernando/publications/papers/SBLP21Pacheco.pdf)
