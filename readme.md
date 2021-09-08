@@ -3,7 +3,7 @@
 [![CI](https://github.com/MrSmith33/vox/workflows/CI/badge.svg?branch=master&event=push)](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
 
 * [Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
-* [Channel on /r/ProgrammingLanguages discord](https://discord.gg/HpYYhH4)
+* [Channel on /r/ProgrammingLanguages discord](https://discord.gg/HpYYhH4) - Projects N-Z -> Vox
 
 # Vox programming language
 
@@ -188,6 +188,22 @@ Prints content of vox.pdb file into stdout.
 ```
 vox pdb-dump vox.pdb
 ```
+
+# Syntax highlighting
+
+## GitHub
+
+To get some syntax highlighting on GitHub define `.gitattributes` file in the repository with the following content ([docs](https://github.com/github/linguist/blob/master/docs/overrides.md):
+
+```
+*.vx linguist-language=D
+```
+
+All `.vx` files will be highlighted and classified as D.
+
+## Editor
+
+* [Vim](https://github.com/jedekar/vim-vox)
 
 # Compiler overview
 

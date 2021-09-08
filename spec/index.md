@@ -3,9 +3,10 @@
 <!-- MarkdownTOC autolink="true" markdown_preview="github" -->
 
 - [Built-in types](#built-in-types)
-        - [Basic types](#basic-types)
-        - [Slices](#slices)
-        - [Static arrays](#static-arrays)
+    - [Basic types](#basic-types)
+    - [Slices](#slices)
+    - [Static arrays](#static-arrays)
+    - [Structs](#structs)
     - [Function type](#function-type)
 - [Functions](#functions)
     - [External functions](#external-functions)
@@ -36,7 +37,7 @@
 
 # Built-in types
 
-### Basic types
+## Basic types
 
 - `noreturn`
 - `void`
@@ -60,7 +61,7 @@
 - `$type`
 - `$value`
 
-### Slices
+## Slices
 
 Slices are equivalent of `struct { size_t length; T* ptr; }`
 
@@ -80,7 +81,7 @@ slice[1..10]; // slicing. End is exclusive
 slice[]; // slicing. Same as slice[0..slice.length]
 ```
 
-### Static arrays
+## Static arrays
 
 Static array has fixed size and is passed by value as a whole.
 
@@ -99,6 +100,16 @@ array.ptr; // u8*
 array[1..10]; // slicing. End is exclusive
 array[]; // slicing. Same as array[0..array.length]
 ```
+
+## Structs
+
+```D
+struct <identifier> {
+    <body>
+}
+```
+
+Struct body can contain any declarations that modules can.
 
 ## Function type
 
@@ -157,7 +168,7 @@ u8 WriteConsoleA(
 );
 ```
 
-When program is compiled like `tjc main.vx C:\Windows\System32\kernel32.dll`, `WriteConsoleA` function will bind to the symbol from `kernel32.dll`.
+When program is compiled like `vox main.vx C:\Windows\System32\kernel32.dll`, `WriteConsoleA` function will bind to the symbol from `kernel32.dll`.
 
 Right now there is no precise control over the search scope per external function. 
 

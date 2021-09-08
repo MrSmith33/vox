@@ -61,6 +61,8 @@ void name_resolve_func_sig(FunctionSignatureNode* node, ref NameResolveState sta
 	node.state = AstNodeState.name_resolve_done;
 }
 
+// This happend when we are name resolving function signature inside template instance,
+// so we already have final values for variadic template argument
 void expandVariadicParam(FunctionSignatureNode* node, CompilationContext* c)
 {
 	uint variadicIndex = node.numParamsBeforeVariadic;
