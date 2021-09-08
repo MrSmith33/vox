@@ -193,7 +193,7 @@ vox pdb-dump vox.pdb
 
 ## GitHub
 
-To get some syntax highlighting on GitHub define `.gitattributes` file in the repository with the following content ([docs](https://github.com/github/linguist/blob/master/docs/overrides.md):
+To get some syntax highlighting on GitHub define `.gitattributes` file in the repository with the following content ([docs](https://github.com/github/linguist/blob/master/docs/overrides.md)):
 
 ```
 *.vx linguist-language=D

@@ -190,6 +190,77 @@ $alias alias_var = func2()(); // call return value of func2
 
 # Attributes
 
+Attributes can be specified in one of 3 forms
+
+1. Apply attributes to the end of the current scope. Doesn't apply to nested scopes.
+   @attr1 @attr2 @attr3 @attr4 apply to all declarations defined later in the current scope
+```D
+@attr1 @attr2:
+@attr3 @attr4:
+decl1;
+decl2;
+```
+
+Here, only `decl3` and `decl5` will gain the `@attr` attribute:
+
+```D
+decl1;
+{
+    decl2;
+  @attr:
+    decl3;
+    {
+        decl4;
+    }
+    decl5;
+}
+decl6;
+```
+
+2. Attribute block. Doesn't apply to nested scopes.
+   @attr5 @attr6 apply to all declarations defined in curly braces (`decl1` and `decl3`). Curly braces do not introduce a new scope:
+
+   ```
+   @attr5 @attr6 {
+       decl1;
+       {
+           decl2;
+       }
+       decl3;
+   }
+   ```
+
+3. Direct attachment.
+
+   Zero or more attributes can precede the declaration.
+
+   In this case attributes will only affect single declaration.
+
+   Can be applied to variable, enum, enum member, function, function parameter, template parameter, module declaration.
+
+   ```D
+   @attr i32 var = 1;
+   
+   @attr
+   void foo(@attr int param) {}
+   
+   @attr struct S {}
+   
+   struct S[@attr T] {}
+   void foo[@attr T]() {}
+   
+   @attr
+   module mod;
+   
+   @attr
+   enum E : i32 {
+       @attr a,
+       @attr b,
+   }
+   
+   @attr enum CONST = 42;
+   ```
+
 ## Built-in attributes
 
 * `@extern(syscall, <int>)`
@@ -199,6 +270,20 @@ $alias alias_var = func2()(); // call return value of func2
 void exit();
 ```
 Functions declared with this attribute will receive calling convention of the target system. For example when compiled for `linux-x64` target calling convention will match System V syscall convention. On targets that have no syscall defined this will result in error. The integer parameter specifies syscall number.
+
+* `@extern(module, "external module name")`
+
+External functions with this attribute will generate entry in import table for the specified module (second parameter). By default the name of external module is used as a name of `.so`/`.dll` library when compiling as an executable. `.so`/`.dll` suffix will be added as (and if) required by the target plaform. External module name should not have `.so`/`.dll` suffix in the source file.
+
+To override the module file name use `--externModule=<external_mod>:<file_name>` CLI switch
+
+```D
+@extern(module, "kernel32")
+noreturn ExitProcess(u32 uExitCode);
+```
+
+[See more](https://gist.github.com/MrSmith33/b55f6f36c211fc07eb581de2e676e256)
+
 
 # Metaprogramming
 
