@@ -108,7 +108,8 @@ enum CommonIds : Identifier
 	@("type")    id_type    = Identifier(7),
 	@("extern")  id_extern  = Identifier(8),
 	@("syscall") id_syscall = Identifier(9),
-	@("main")    id_main    = Identifier(10),
+	@("module")  id_module  = Identifier(10),
+	@("main")    id_main    = Identifier(11),
 
 	// Built-in function identifiers
 	@("$compileError") cash_compile_error = Identifier(id_main.index + 1),

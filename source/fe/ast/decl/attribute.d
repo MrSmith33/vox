@@ -39,7 +39,8 @@ void type_check_attributes(AttributeInfo* attribs, ref TypeCheckState state) {
 }
 
 enum BuiltinAttribSubType : ubyte {
-	extern_syscall
+	extern_syscall,
+	extern_module
 }
 
 @(AstType.decl_builtin_attribute)
@@ -64,6 +65,9 @@ void print_builtin_attribute(BuiltinAttribNode* node, ref AstPrintState state)
 	final switch(cast(BuiltinAttribSubType)node.subType) {
 		case BuiltinAttribSubType.extern_syscall:
 			state.print("ATTRIB @extern(syscall, ", node.data, ")");
+			break;
+		case BuiltinAttribSubType.extern_module:
+			state.print("ATTRIB @extern(module, ", node.data, ")");
 			break;
 	}
 }
