@@ -2,8 +2,9 @@
 
 <!-- MarkdownTOC autolink="true" markdown_preview="github" -->
 
-- [Built-in types](#built-in-types)
+- [Types](#types)
     - [Basic types](#basic-types)
+    - [Enums](#enums)
     - [Slices](#slices)
     - [Static arrays](#static-arrays)
     - [Structs](#structs)
@@ -35,7 +36,7 @@
 
 `NEI` marks not yet implemented features.
 
-# Built-in types
+# Types
 
 ## Basic types
 
@@ -60,6 +61,26 @@
 - `$alias`
 - `$type`
 - `$value`
+
+## Enums
+
+Enums define a new type. Enums can have enum members. Enums have base type, which defaults to `i32`.
+
+```D
+enum E; // defines new enum type
+enum e9 { e9 = 9 } // new enum type with member (implicit base type)
+enum e7 : i32 { m7 = 7 } // new enum type `e7`, with member `m7` (explicit base type)
+
+// enum members within anonymous enums are visible in the outer scope
+enum { m5 = 5 } // anonymous enum with member
+enum : i32 { m6 = 6 } // anonymous enum with explicit type and with member
+
+// instead of defining enum members inside anonymous enums, you can define them separately
+enum m3 = 3; // enum member
+enum i32 m4 = 4; // enum member with explicit type
+```
+
+Enum members have the type of enum type (if inside named enum). In that case they will implicitly convert to the enum base type. But the conversion from base type to enum type requires explicit casting.
 
 ## Slices
 
@@ -192,7 +213,7 @@ $alias alias_var = func2()(); // call return value of func2
 
 Attributes can be specified in one of 3 forms
 
-1. Apply attributes to the end of the current scope. Doesn't apply to nested scopes.
+1. `NEI` Apply attributes to the end of the current scope. Doesn't apply to nested scopes.
    @attr1 @attr2 @attr3 @attr4 apply to all declarations defined later in the current scope
 ```D
 @attr1 @attr2:
@@ -217,7 +238,7 @@ decl1;
 decl6;
 ```
 
-2. Attribute block. Doesn't apply to nested scopes.
+2. `NEI` Attribute block. Doesn't apply to nested scopes.
    @attr5 @attr6 apply to all declarations defined in curly braces (`decl1` and `decl3`). Curly braces do not introduce a new scope:
 
    ```
@@ -271,7 +292,7 @@ void exit();
 ```
 Functions declared with this attribute will receive calling convention of the target system. For example when compiled for `linux-x64` target calling convention will match System V syscall convention. On targets that have no syscall defined this will result in error. The integer parameter specifies syscall number.
 
-* `@extern(module, "external module name")`
+* `NEI` `@extern(module, "external module name")`
 
 External functions with this attribute will generate entry in import table for the specified module (second parameter). By default the name of external module is used as a name of `.so`/`.dll` library when compiling as an executable. `.so`/`.dll` suffix will be added as (and if) required by the target plaform. External module name should not have `.so`/`.dll` suffix in the source file.
 
