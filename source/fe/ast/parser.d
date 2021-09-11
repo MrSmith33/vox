@@ -352,7 +352,7 @@ struct Parser
 
 		Identifier externKindId;
 		if (tok.type == TokenType.MODULE_SYM) {
-			externKindId = makeIdentifier(tok.index);
+			externKindId = CommonIds.id_module;
 			expectAndConsume(TokenType.MODULE_SYM, "@extern(");
 		} else {
 			externKindId = expectIdentifier("@extern(");
