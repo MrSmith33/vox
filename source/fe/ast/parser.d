@@ -367,17 +367,15 @@ struct Parser
 				import std.algorithm.iteration : filter;
 				uint syscallNumber = value.filter!(c => c != '_').to!uint;
 				nextToken; // skip integer
-				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_syscall, syscallNumber);
+				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_syscall, Identifier(syscallNumber));
 				break;
 			case CommonIds.id_module.index:
 				expectAndConsume(TokenType.COMMA, "@extern(module");
 				expect(TT.STRING_LITERAL, "@extern(module,");
 				string value = cast(string)context.getTokenString(tok.index);
-				//import std.algorithm.iteration : filter;
-				//uint syscallNumber = value.filter!(c => c != '_').to!uint;
 				nextToken; // skip lib name
-				//TODO: pass value as data
-				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_module, 0);
+				Identifier moduleId = context.idMap.getOrRegNoDup(context, value);
+				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_module, moduleId);
 				break;
 			default:
 				context.unrecoverable_error(start, "Unknown @extern kind `%s`", context.idString(externKindId));

@@ -47,9 +47,9 @@ enum BuiltinAttribSubType : ubyte {
 struct BuiltinAttribNode
 {
 	mixin AstNodeData!(AstType.decl_builtin_attribute, 0, AstNodeState.type_check_done);
-	uint data;
+	Identifier data;
 
-	this(TokenIndex loc, BuiltinAttribSubType subType, uint data)
+	this(TokenIndex loc, BuiltinAttribSubType subType, Identifier data)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_builtin_attribute;
@@ -67,7 +67,7 @@ void print_builtin_attribute(BuiltinAttribNode* node, ref AstPrintState state)
 			state.print("ATTRIB @extern(syscall, ", node.data, ")");
 			break;
 		case BuiltinAttribSubType.extern_module:
-			state.print("ATTRIB @extern(module, ", node.data, ")");
+			state.print("ATTRIB @extern(module, ", state.context.idString(node.data), ")");
 			break;
 	}
 }

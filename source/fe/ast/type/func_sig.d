@@ -139,7 +139,7 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 				if (externAttrib.isDefined) {
 					c.error(attribNode.loc, "Duplicate @extern attribute");
 				}
-				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data;
+				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data.index;
 				if (syscall_number > ushort.max) {
 					c.error(attribNode.loc, "Max supported syscall number is 65k");
 				}
@@ -200,7 +200,7 @@ IrIndex gen_ir_type_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 			if (attribNode.astType == AstType.decl_builtin_attribute &&
 				attribNode.subType == BuiltinAttribSubType.extern_syscall)
 			{
-				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data;
+				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data.index;
 				funcType.callConv = CallConvention.sysv64_syscall;
 				funcType.syscallNumber = cast(ushort)syscall_number;
 			}
