@@ -166,17 +166,25 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		return cast(AttributeInfo*)(cast(void*)(&this) - AttributeInfo.sizeof);
 	}
 
-	BuiltinAttribNode* findExternSyscallAttrib(CompilationContext* c) {
+	BuiltinAttribNode* findExternAttrib(CompilationContext* c, BuiltinAttribSubType type) {
 		if (!hasAttributes) return null;
 		foreach(AstIndex attrib; attributeInfo.attributes) {
 			auto attribNode = attrib.get_node(c);
 			if (attribNode.astType == AstType.decl_builtin_attribute &&
-				attribNode.subType == BuiltinAttribSubType.extern_syscall)
+				attribNode.subType == type)
 			{
 				return attribNode.as!BuiltinAttribNode(c);
 			}
 		}
 		return null;
+	}
+
+	BuiltinAttribNode* findExternSyscallAttrib(CompilationContext* c) {
+		return findExternAttrib(c, BuiltinAttribSubType.extern_syscall);
+	}
+
+	BuiltinAttribNode* findExternModuleAttrib(CompilationContext* c) {
+		return findExternAttrib(c, BuiltinAttribSubType.extern_module);
 	}
 
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
