@@ -110,9 +110,9 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 			symbolIndex = c.externalSymbols.get(node.id, LinkIndex());
 
 			if (!symbolIndex.isDefined) {
-				// Allowed if it is marked with @extern(syscall)
+				// Allowed if it is marked with @extern(syscall) or @extern(module)
 				auto sig = node.signature.get!FunctionSignatureNode(c);
-				if (!sig.findExternSyscallAttrib(c)) {
+				if (!sig.findExternSyscallAttrib(c) && !sig.findExternModuleAttrib(c)) {
 					c.error(node.loc, "Unresolved external function %s", c.idString(node.id));
 				}
 			}

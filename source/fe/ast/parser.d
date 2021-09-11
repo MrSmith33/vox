@@ -12,7 +12,7 @@ Authors: Andrey Penechko.
 module fe.ast.parser;
 
 import std.format : formattedWrite;
-import std.string : format;
+import std.string : format, strip;
 import std.range : repeat;
 import std.stdio;
 import std.conv : to;
@@ -349,7 +349,15 @@ struct Parser
 	void parse_extern_attribute(TokenIndex start)
 	{
 		expectAndConsume(TokenType.LPAREN, "@extern");
-		Identifier externKindId = expectIdentifier("@extern(");
+
+		Identifier externKindId;
+		if (tok.type == TokenType.MODULE_SYM) {
+			externKindId = CommonIds.id_module;
+			expectAndConsume(TokenType.MODULE_SYM, "@extern(");
+		} else {
+			externKindId = expectIdentifier("@extern(");
+		}
+
 		AstIndex attribute;
 		switch(externKindId.index) {
 			case CommonIds.id_syscall.index:
@@ -360,6 +368,14 @@ struct Parser
 				uint syscallNumber = value.filter!(c => c != '_').to!uint;
 				nextToken; // skip integer
 				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_syscall, syscallNumber);
+				break;
+			case CommonIds.id_module.index:
+				expectAndConsume(TokenType.COMMA, "@extern(module");
+				expect(TT.STRING_LITERAL, "@extern(module,");
+				string value = cast(string)context.getTokenString(tok.index);
+				nextToken; // skip lib name
+				Identifier moduleId = context.idMap.getOrRegNoDup(context, value[1..$-1]);
+				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_module, moduleId.index);
 				break;
 			default:
 				context.unrecoverable_error(start, "Unknown @extern kind `%s`", context.idString(externKindId));

@@ -633,3 +633,40 @@ immutable fail59 = q{--- fail59
 --- <error>
 fail59:4:3: Error: Cannot implicitly convert expression of type `$type` to `S`
 };
+
+
+@TestInfo()
+immutable fail60 = q{--- fail60
+	// Trying to define extern module function
+	@extern(module, "kernel32")
+	u8 getByte() {
+		return 10;
+	}
+--- <error>
+fail60:2:2: Error: External function cannot have a body
+};
+
+
+version(linux)
+@TestInfo()
+immutable fail61 = q{--- fail61
+	// 2 Extern attributes
+	@extern(syscall, 60)
+	@extern(module, "kernel32")
+	void exit();
+--- <error>
+fail61:3:2: Error: Duplicate @extern attribute
+};
+
+
+version(linux)
+@TestInfo()
+immutable fail62 = q{--- fail62
+	// Trying to define extern syscall function
+	@extern(syscall, 50)
+	u8 mmap() {
+		return 10;
+	}
+--- <error>
+fail62:2:2: Error: External function cannot have a body
+};

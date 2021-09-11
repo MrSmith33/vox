@@ -3725,7 +3725,7 @@ immutable test174 = q{--- test174
 
 		// member func attribute
 		@extern(syscall, 3)
-		void foo(){}
+		void foo();
 	}
 };
 
@@ -4736,4 +4736,11 @@ immutable test221 = q{--- test221
 		createInfo.funcPtr = &debugCallback;
 	}
 	void debugCallback() {}
+};
+
+
+@TestInfo()
+immutable test222 = q{--- test222
+	@extern(module, "kernel32")
+	noreturn ExitProcess(u32 uExitCode);
 };
