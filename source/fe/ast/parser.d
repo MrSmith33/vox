@@ -12,7 +12,7 @@ Authors: Andrey Penechko.
 module fe.ast.parser;
 
 import std.format : formattedWrite;
-import std.string : format;
+import std.string : format, strip;
 import std.range : repeat;
 import std.stdio;
 import std.conv : to;
@@ -374,7 +374,7 @@ struct Parser
 				expect(TT.STRING_LITERAL, "@extern(module,");
 				string value = cast(string)context.getTokenString(tok.index);
 				nextToken; // skip lib name
-				Identifier moduleId = context.idMap.getOrRegNoDup(context, value);
+				Identifier moduleId = context.idMap.getOrRegNoDup(context, strip(value, ['\"']));
 				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_module, moduleId.index);
 				break;
 			default:
