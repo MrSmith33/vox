@@ -374,7 +374,7 @@ struct Parser
 				expect(TT.STRING_LITERAL, "@extern(module,");
 				string value = cast(string)context.getTokenString(tok.index);
 				nextToken; // skip lib name
-				Identifier moduleId = context.idMap.getOrRegNoDup(context, strip(value, ['\"']));
+				Identifier moduleId = context.idMap.getOrRegNoDup(context, value[1..$-1]);
 				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_module, moduleId.index);
 				break;
 			default:
