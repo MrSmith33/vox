@@ -659,6 +659,7 @@ fail61:3:2: Error: Duplicate @extern attribute
 };
 
 
+version(linux)
 @TestInfo()
 immutable fail62 = q{--- fail62
 	// Trying to define extern syscall function
