@@ -4737,3 +4737,21 @@ immutable test221 = q{--- test221
 	}
 	void debugCallback() {}
 };
+
+
+@TestInfo()
+immutable test222 = q{--- test222
+	@extern(module, "kernel32")
+	i32 test(i32 number) {
+		i32 result;
+		if (1 == 1)
+		{
+			result = 1;
+		}
+		else
+		{
+			result = 0;
+		}
+		return result;
+	}
+};
