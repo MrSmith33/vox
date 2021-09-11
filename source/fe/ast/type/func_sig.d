@@ -136,9 +136,13 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 			if (attribNode.astType == AstType.decl_builtin_attribute &&
 				attribNode.subType == BuiltinAttribSubType.extern_syscall)
 			{
+				if (!state.curFunc.isExternal) {
+					c.error(attribNode.loc, "External function cannot have a body");
+				}
 				if (externAttrib.isDefined) {
 					c.error(attribNode.loc, "Duplicate @extern attribute");
 				}
+
 				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data;
 				if (syscall_number > ushort.max) {
 					c.error(attribNode.loc, "Max supported syscall number is 65k");
@@ -147,6 +151,18 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 
 				if (c.targetOs != TargetOs.linux)
 					c.error(attribNode.loc, "@extern(syscall) attribute is only implemented on linux");
+			}
+
+			if (attribNode.astType == AstType.decl_builtin_attribute &&
+				attribNode.subType == BuiltinAttribSubType.extern_module)
+			{
+				if (!state.curFunc.isExternal) {
+					c.error(attribNode.loc, "External function cannot have a body");
+				}
+				if (externAttrib.isDefined) {
+					c.error(attribNode.loc, "Duplicate @extern attribute");
+				}
+				externAttrib = attrib;
 			}
 		}
 	}

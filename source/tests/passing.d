@@ -3725,7 +3725,7 @@ immutable test174 = q{--- test174
 
 		// member func attribute
 		@extern(syscall, 3)
-		void foo(){}
+		void foo();
 	}
 };
 
