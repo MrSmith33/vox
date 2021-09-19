@@ -643,7 +643,7 @@ immutable fail60 = q{--- fail60
 		return 10;
 	}
 --- <error>
-fail60:2:2: Error: External function cannot have a body
+fail60:3:2: Error: External function cannot have a body
 };
 
 

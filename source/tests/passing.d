@@ -4739,8 +4739,20 @@ immutable test221 = q{--- test221
 };
 
 
-@TestInfo()
+@TestInfo(null, [HostSymbol("ExitProcess", cast(void*)&external_noop)])
 immutable test222 = q{--- test222
+	/// @extern(module)
+	@extern(module, "kernel32")
+	noreturn ExitProcess(u32 uExitCode);
+};
+
+
+@TestInfo(null, [HostSymbol("ExitProcess", cast(void*)&external_noop)])
+immutable test223 = q{--- test223_1
+	/// Issue #16. `TypeCheckState.curFunc` was used in func signature, while it pointed to the caller function.
+	void main() {
+		ExitProcess(0);
+	}
 	@extern(module, "kernel32")
 	noreturn ExitProcess(u32 uExitCode);
 };

@@ -110,9 +110,10 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 			symbolIndex = c.externalSymbols.get(node.id, LinkIndex());
 
 			if (!symbolIndex.isDefined) {
-				// Allowed if it is marked with @extern(syscall) or @extern(module)
+				// Allowed if it is marked with @extern(syscall)
 				auto sig = node.signature.get!FunctionSignatureNode(c);
-				if (!sig.findExternSyscallAttrib(c) && !sig.findExternModuleAttrib(c)) {
+				// TODO: Revisit @extern(module) is implemented
+				if (!sig.findExternSyscallAttrib(c)) {
 					c.error(node.loc, "Unresolved external function %s", c.idString(node.id));
 				}
 			}
@@ -168,6 +169,15 @@ void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
 	state.curFunc = node;
 
 	require_type_check(node.signature, state);
+
+	// Check that function `isExternal` matches `isExternal` of signature
+	auto signature = node.signature.get!FunctionSignatureNode(c);
+	if (node.isExternal && !signature.isExternal) {
+		// allow until @extern(module) is implemented
+	}
+	if (!node.isExternal && signature.isExternal) {
+		c.error(node.loc, "External function cannot have a body");
+	}
 
 	if (node.block_stmt)
 	{
