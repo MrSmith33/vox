@@ -577,11 +577,11 @@ IrIndex buildGEPEx(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, Exp
 	}
 	switch (aggrPtrExpr.kind) with(ExprValueKind)
 	{
-		case value: assert(false); break;
+		case value: assert(false);
 		case ptr_to_data: break;
 		case ptr_to_ptr_to_data:
 			aggrPtr = ExprValue(aggrPtr).load(gen, loc, currentBlock);
-			assert(false); break;
+			assert(false);
 		case struct_sub_index:
 			IrIndex aggrType = gen.ir.getValueType(c, aggrPtr);
 			switch (aggrType.typeKind) {
