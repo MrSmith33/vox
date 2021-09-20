@@ -8,11 +8,42 @@
 
     "excludedSourceFiles":
     [
-        "source/main.d",
-        "source/cli.d",
-        "source/bench.d",
-        "source/tester.d",
-        "source/be/asmtest/*.d",
-        "source/tests/*.d"
+        "source/be/asmtest/*.d"
+    ],
+
+    "configurations":
+    [
+        {
+            "name": "library",
+            "targetType": "library",
+            "excludedSourceFiles":
+            [
+                "source/main.d",
+                "source/cli.d",
+                "source/bench.d",
+                "source/tester.d",
+                "source/tests/*.d"
+            ],
+        },
+        {
+            "name": "cli",
+            "targetType": "executable",
+            "versions": [ "cli" ]
+        },
+        {
+            "name": "bench",
+            "targetType": "executable",
+            "versions": [ "bench" ]
+        },
+        {
+            "name": "devtest",
+            "targetType": "executable",
+            "versions": [ "devtest" ]
+        },
+        {
+            "name": "test",
+            "targetType": "executable",
+            "versions": [ "test" ]
+        }
     ]
 }
