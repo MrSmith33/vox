@@ -1,0 +1,18 @@
+{
+    "name": "vox",
+
+    "sourcePaths":
+    [
+        "source"
+    ],
+
+    "excludedSourceFiles":
+    [
+        "source/main.d",
+        "source/cli.d",
+        "source/bench.d",
+        "source/tester.d",
+        "source/be/asmtest/*.d",
+        "source/tests/*.d"
+    ]
+}
