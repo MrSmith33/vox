@@ -21,9 +21,6 @@ jobs:
       - uses: dlang-community/setup-dlang@v1
         with:
           compiler: ${{ env.DC }}
-      - name: Print env
-        shell: bash
-        run: echo '${{toJSON(github)}}'
       - name: Test
         shell: bash
         run: |
