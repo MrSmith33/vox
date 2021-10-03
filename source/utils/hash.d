@@ -107,6 +107,7 @@ mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 		static if (SINGLE_ALLOC) {
 			size_t size = max(ArrayArena.MIN_BLOCK_BYTES, Bucket_size * _capacity);
 			arena.freeBlock((cast(ubyte*)keyBuckets)[0..size]);
+			//values = null; // not needed, because values ptr is derived from keys
 		} else {
 			size_t keySize = max(ArrayArena.MIN_BLOCK_BYTES, KeyBucketT.sizeof * _capacity);
 			arena.freeBlock((cast(ubyte*)keyBuckets)[0..keySize]);
@@ -114,9 +115,9 @@ mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 				size_t valSize = max(ArrayArena.MIN_BLOCK_BYTES, Value.sizeof * _capacity);
 				arena.freeBlock((cast(ubyte*)values)[0..valSize]);
 			}
+			values = null;
 		}
 		keyBuckets = null;
-		values = null;
 		_capacity = 0;
 		_length = 0;
 	}
@@ -141,8 +142,7 @@ mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 			size_t newSize = max(ArrayArena.MIN_BLOCK_BYTES, Bucket_size * newCapacity);
 			ubyte[] newBlock = arena.allocBlock(newSize);
 			keyBuckets = cast(KeyBucketT*)(newBlock.ptr);
-			static if (store_values)
-				values = cast(Value*)(newBlock.ptr + newCapacity*KeyBucketT.sizeof);
+			// values is based on keyBuckets ptr
 		} else {
 			size_t newKeySize = max(ArrayArena.MIN_BLOCK_BYTES, KeyBucketT.sizeof * newCapacity);
 			ubyte[] newKeysBlock = arena.allocBlock(newKeySize);
@@ -186,9 +186,19 @@ mixin template HashTablePart(KeyBucketT, StoreValues store_values)
 // DIB - distance to initial bucket
 mixin template HashMapImpl()
 {
+	private enum bool SINGLE_ALLOC = Key.sizeof == Value.sizeof;
+
 	static assert(isPowerOfTwo(Value.sizeof));
 	KeyBucketT* keyBuckets;
-	Value* values;
+
+	static if(SINGLE_ALLOC) {
+		// Save space in the hashmap
+		inout(Value)* values() pure inout {
+			return cast(Value*)(cast(void*)keyBuckets + _capacity*KeyBucketT.sizeof);
+		}
+	} else {
+		Value* values;
+	}
 
 	alias KeyT = Key;
 	alias ValueT = Value;

@@ -104,6 +104,7 @@ struct CompilationContext
 	Arena!ubyte importBuffer;
 
 	/// Symbols provided by the environment (host/dll symbols)
+	// TODO: this uses GC
 	LinkIndex[Identifier] externalSymbols;
 	/// Symbols, sections and references
 	ObjectSymbolTable objSymTab;
@@ -941,6 +942,12 @@ enum CalculatedProperty : ubyte {
 	init_value,
 }
 
+// How many 4 byte slots are required to store node in astBuffer
+enum slotsPerNode(T) = divCeil(T.sizeof, uint.sizeof);
+
+enum BASE_NODE_SLOTS = slotsPerNode!AstNode;
+enum BUILTIN_FUNC_SLOTS = slotsPerNode!VariableDeclNode + slotsPerNode!FunctionSignatureNode + slotsPerNode!FunctionDeclNode; // assumes single parameter
+
 enum CommonAstNodes : AstIndex
 {
 	// reserved for undefined
@@ -948,9 +955,9 @@ enum CommonAstNodes : AstIndex
 
 	// error. Nodes can point to error when name resolution failed
 	node_error               = AstIndex(1),
-	node_root_package        = AstIndex(3),
+	node_root_package        = AstIndex(node_error.storageIndex+BASE_NODE_SLOTS),
 
-	first_type               = AstIndex(13),
+	first_type               = AstIndex(node_root_package.storageIndex + slotsPerNode!PackageDeclNode),
 	// basic type nodes
 	// The order is the same as in TokenType enum
 	// The order is the same as in BasicType enum
@@ -978,32 +985,33 @@ enum CommonAstNodes : AstIndex
 	// basic type nodes end
 
 	first_compound           = AstIndex(first_type.storageIndex + 17*NumBasicTypeNodeSlots),
-	// common custom types
-	type_u8Ptr               = AstIndex(first_compound.storageIndex + 0),
-	type_u8Slice             = AstIndex(first_compound.storageIndex + 5),
-	type_aliasSlice          = AstIndex(first_compound.storageIndex + 11),
 
-	first_builtin_member     = AstIndex(first_compound.storageIndex + 17),
+	// common custom types
+	type_u8Ptr               = AstIndex(first_compound.storageIndex),
+	type_u8Slice             = AstIndex(type_u8Ptr.storageIndex + slotsPerNode!PtrTypeNode),
+	type_aliasSlice          = AstIndex(type_u8Slice.storageIndex + slotsPerNode!SliceTypeNode),
+
+	first_builtin_member     = AstIndex(type_aliasSlice.storageIndex + slotsPerNode!SliceTypeNode),
 
 	// builtin nodes
 	// The order is the same as in BuiltinId enum
-	builtin_min              = AstIndex(first_builtin_member.storageIndex +  0),
-	builtin_max              = AstIndex(first_builtin_member.storageIndex +  4),
-	builtin_slice_length     = AstIndex(first_builtin_member.storageIndex +  8),
-	builtin_slice_ptr        = AstIndex(first_builtin_member.storageIndex + 12),
-	builtin_array_length     = AstIndex(first_builtin_member.storageIndex + 16),
-	builtin_array_ptr        = AstIndex(first_builtin_member.storageIndex + 20),
-	builtin_sizeof           = AstIndex(first_builtin_member.storageIndex + 24),
+	builtin_min              = AstIndex(first_builtin_member.storageIndex + 0*slotsPerNode!BuiltinNode),
+	builtin_max              = AstIndex(first_builtin_member.storageIndex + 1*slotsPerNode!BuiltinNode),
+	builtin_slice_length     = AstIndex(first_builtin_member.storageIndex + 2*slotsPerNode!BuiltinNode),
+	builtin_slice_ptr        = AstIndex(first_builtin_member.storageIndex + 3*slotsPerNode!BuiltinNode),
+	builtin_array_length     = AstIndex(first_builtin_member.storageIndex + 4*slotsPerNode!BuiltinNode),
+	builtin_array_ptr        = AstIndex(first_builtin_member.storageIndex + 5*slotsPerNode!BuiltinNode),
+	builtin_sizeof           = AstIndex(first_builtin_member.storageIndex + 6*slotsPerNode!BuiltinNode),
 	// builtin nodes end
 
 	// builtin functions
-	first_builtin_func       = AstIndex(builtin_sizeof.storageIndex + 30),
+	first_builtin_func       = AstIndex(first_builtin_member.storageIndex + 7*slotsPerNode!BuiltinNode + slotsPerNode!VariableDeclNode + slotsPerNode!FunctionSignatureNode),
 
-	compile_error            = AstIndex(first_builtin_func.storageIndex + 0 * 38),
-	is_slice                 = AstIndex(first_builtin_func.storageIndex + 1 * 38),
-	is_integer               = AstIndex(first_builtin_func.storageIndex + 2 * 38),
-	is_pointer               = AstIndex(first_builtin_func.storageIndex + 3 * 38),
-	base_of                  = AstIndex(first_builtin_func.storageIndex + 4 * 38),
+	compile_error            = AstIndex(first_builtin_func.storageIndex + 0*BUILTIN_FUNC_SLOTS),
+	is_slice                 = AstIndex(first_builtin_func.storageIndex + 1*BUILTIN_FUNC_SLOTS),
+	is_integer               = AstIndex(first_builtin_func.storageIndex + 2*BUILTIN_FUNC_SLOTS),
+	is_pointer               = AstIndex(first_builtin_func.storageIndex + 3*BUILTIN_FUNC_SLOTS),
+	base_of                  = AstIndex(first_builtin_func.storageIndex + 4*BUILTIN_FUNC_SLOTS),
 }
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [

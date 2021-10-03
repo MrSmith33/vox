@@ -5,6 +5,7 @@
 - [Types](#types)
     - [Basic types](#basic-types)
     - [Enums](#enums)
+    - [Pointers](#pointers)
     - [Slices](#slices)
     - [Static arrays](#static-arrays)
     - [Structs](#structs)
@@ -60,7 +61,9 @@
 
 - `$alias`
 - `$type`
-- `$value`
+- `$value` `NEI`
+
+`noreturn` implicitly casts to any other type. After calling the function returning `noreturn`, control flow will never return to the caller.
 
 ## Enums
 
@@ -81,6 +84,20 @@ enum i32 m4 = 4; // enum member with explicit type
 ```
 
 Enum members have the type of enum type (if inside named enum). In that case they will implicitly convert to the enum base type. But the conversion from base type to enum type requires explicit casting.
+
+## Pointers
+
+`<type>*`
+
+Pointers behave like in C and D.
+
+```D
+i32 integer;
+i32* pointer = &integer;
+*pointer = 42;
+pointer[0] = 42;
+i32[] slice = pointer[0..1]; // slicing a pointer gives a slice result
+```
 
 ## Slices
 

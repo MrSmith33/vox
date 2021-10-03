@@ -206,6 +206,9 @@ struct IrTypeStorage
 
 		//uint len = buffer.uintLength;
 		IrIndex typeIndex;
+		if (buffer.uintLength >= (1 << IrIndex.TYPE_INDEX_BITS)) {
+			throw new Exception("Out of index space in IrIndex.typeIndex in IrTypeStorage");
+		}
 		typeIndex.typeIndex = buffer.uintLength;
 		typeIndex.typeKind = typeKind;
 		typeIndex.kind = getIrValueKind!T;

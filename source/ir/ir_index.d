@@ -66,13 +66,15 @@ struct IrIndex
 			IrValueKind,     "",               4  // index kind
 		));
 
+		enum TYPE_INDEX_BITS = 24;
+
 		// used when kind == IrValueKind.type || kind == IrValueKind.constantZero
 		// types are stored in 8-byte chunked buffer
 		mixin(bitfields!(
 			// if typeKind is basic, then typeIndex contains IrValueType
-			uint,        "typeIndex",        24, // may be 0 for defined index
-			IrTypeKind,  "typeKind",          4, // type kind
-			IrValueKind, "",                  4  // index kind
+			uint,        "typeIndex", TYPE_INDEX_BITS, // may be 0 for defined index
+			IrTypeKind,  "typeKind",                4, // type kind
+			IrValueKind, "",                        4  // index kind
 		));
 
 		// used when kind == IrValueKind.physicalRegister

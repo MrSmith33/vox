@@ -123,12 +123,15 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 {
 	import std.bitmanip : bitfields;
 
+	// how many fields this mixin template has
+	private enum NUM_BASE_FIELDS = 5;
+
 	this(Args...)(TokenIndex loc, Args args) {
 		this(loc);
-		enum len = this.tupleof.length - 4;
+		enum len = this.tupleof.length - NUM_BASE_FIELDS;
 		enum numDefault = len - args.length;
 		static assert(args.length <= len, "Too many args");
-		this.tupleof[4..$-numDefault] = args;
+		this.tupleof[NUM_BASE_FIELDS..$-numDefault] = args;
 	}
 
 	this(TokenIndex loc) {
@@ -146,6 +149,8 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		uint,          "subType",   4,
 	));
 	ushort flags = cast(ushort)default_flags;
+
+	uint propertyStates;
 
 	T* as(T)(CompilationContext* c) {
 		static if (hasAstNodeType!T)
