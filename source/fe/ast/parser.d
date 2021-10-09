@@ -12,7 +12,7 @@ Authors: Andrey Penechko.
 module fe.ast.parser;
 
 import std.format : formattedWrite;
-import std.string : format, strip;
+import std.string : format;
 import std.range : repeat;
 import std.stdio;
 import std.conv : to;
@@ -85,13 +85,23 @@ void pass_parser(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 	}
 }
 
+// Attribute stack has the following structure at runtime
+//
+// - uneffective attributes (0 or more)
+// - effective attributes   (0 or more)
+// - immediate attributes   (0 or more) top of the stack
+//
+// when a new attribute is parsed it is added to the top of the attribute stack
+//
 struct AttribState
 {
 	// Number of attributes on the top of `attributeStack`, that
-	// will be added to the following declaration
+	// will be applied to the following declaration
+	// they will remain on the stack without dropping them from the stack
 	ushort numEffectiveAttributes;
 	// Number of attributes on the top of `attributeStack`, that
-	// will be dropped from the stack by the following declaration
+	// will be added to the following declaration
+	// and will be dropped from the stack
 	ushort numImmediateAttributes;
 }
 
@@ -120,14 +130,20 @@ struct Parser
 
 		AstNodes attributes;
 		attributes.voidPut(context.arrayArena, attribState.numEffectiveAttributes);
+		uint attribFlags;
+
 		auto offset = attributeStack.length - attribState.numEffectiveAttributes;
 		foreach(i; 0..attribState.numEffectiveAttributes) {
-			attributes[i] = attributeStack[offset + i];
+			AstIndex attrib = attributeStack[offset + i];
+			attributes[i] = attrib;
+			attribFlags |= calcAttribFlags(attrib, context);
 		}
+
 		attributeStack.unput(attribState.numImmediateAttributes);
 		attribState.numEffectiveAttributes -= attribState.numImmediateAttributes;
 		attribState.numImmediateAttributes = 0;
-		context.appendAst!AttributeInfo(attributes);
+
+		context.appendAst!AttributeInfo(attributes, attribFlags);
 		return AstFlags.hasAttributes;
 	}
 
@@ -304,6 +320,8 @@ struct Parser
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
 
+		uint numAttributesParsed;
+
 		loop:
 		while(true)
 		switch(tok.type) with(TokenType)
@@ -336,6 +354,10 @@ struct Parser
 						break;
 					default:
 						context.unrecoverable_error(start, "Unknown attribute name `%s`", context.idString(attributeId));
+				}
+				++numAttributesParsed;
+				if (tok.type == TokenType.COLON) {
+					// TODO:
 				}
 				continue loop;
 			default: // <func_declaration> / <var_declaration>

@@ -45,6 +45,7 @@ struct AstIndex
 	ref ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
 
 	bool isType(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isType); }
+	bool isTypeVoid() { return this == CommonAstNodes.type_void; }
 	bool isLvalue(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLvalue); }
 
 	// type functions

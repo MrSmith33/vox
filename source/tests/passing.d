@@ -4748,11 +4748,24 @@ immutable test222 = q{--- test222
 
 
 @TestInfo(null, [HostSymbol("ExitProcess", cast(void*)&external_noop)])
-immutable test223 = q{--- test223_1
+immutable test223 = q{
 	/// Issue #16. `TypeCheckState.curFunc` was used in func signature, while it pointed to the caller function.
 	void main() {
 		ExitProcess(0);
 	}
 	@extern(module, "kernel32")
 	noreturn ExitProcess(u32 uExitCode);
+};
+
+
+@TestInfo()
+immutable test224 = q{--- test224
+	/// Bug with circular dependency
+	void main() {
+		Client client;
+		client.run(); // 1 call
+	}
+	struct Client { // 4 Client
+		void run() {} // 2 func signature, 3 Client* this, 5 run function, 6 func signature
+	}
 };

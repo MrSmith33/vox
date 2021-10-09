@@ -10,12 +10,14 @@ import all;
 struct AttributeInfo
 {
 	AstNodes attributes;
-	ulong flags;
+	uint flags;
 
 	// Returns pointer to the node this struct is attached to
 	AstNode* node() return {
 		return cast(AstNode*)(cast(void*)(&this) + AttributeInfo.sizeof);
 	}
+
+	bool isExternal() { return cast(bool)(flags & AttribInfoFlags.isExternal); }
 }
 
 void print_attributes(AttributeInfo* attribs, ref AstPrintState state) {
@@ -38,9 +40,24 @@ void type_check_attributes(AttributeInfo* attribs, ref TypeCheckState state) {
 	require_type_check(attribs.attributes, state);
 }
 
+enum AttribInfoFlags : uint {
+	isExternal = 1 <<  0, // set if AttributeInfo contains some @extern attribute
+}
+
 enum BuiltinAttribSubType : ubyte {
 	extern_syscall,
 	extern_module
+}
+
+immutable uint[BuiltinAttribSubType.max+1] builtinAttribFlags = [
+	AttribInfoFlags.isExternal, // extern_syscall
+	AttribInfoFlags.isExternal, // extern_module
+];
+
+uint calcAttribFlags(AstIndex attrib, CompilationContext* c) {
+	auto attribNode = attrib.get_node(c);
+	if (attribNode.astType != AstType.decl_builtin_attribute) return 0;
+	return builtinAttribFlags[attribNode.subType];
 }
 
 @(AstType.decl_builtin_attribute)

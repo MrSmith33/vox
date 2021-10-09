@@ -119,6 +119,33 @@ enum AstNodeState : ubyte
 }
 static assert(AstNodeState.max <= 15, "Assumed to fit in 4 bits");
 
+// Used for fine-grained dependency tracking
+// Instead of depending on the whole AST node being in some state
+// node can depend on exact property it intends to read after request
+// All property readers need to check the property state and calculate it if needed
+enum PropertyState : ubyte
+{
+	not_calculated,
+	calculating,
+	calculated,
+	//error_calculating, // no need for now
+}
+
+bool isCalculated(PropertyState s) {
+	return s == PropertyState.calculated;
+}
+
+enum NodeProperty : ubyte {
+	name_register_self,
+	name_register_nested,
+	name_resolve,
+	type_check,
+	type,
+	ir_header,
+	ir_body,
+}
+static assert(NodeProperty.max <= 15, "Max number of properties per uint is 16 (2 bits per property)");
+
 mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse_done)
 {
 	import std.bitmanip : bitfields;
@@ -150,7 +177,17 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	));
 	ushort flags = cast(ushort)default_flags;
 
+	// Stores one PropertyState per NodeProperty for up to 16 properties
 	uint propertyStates;
+
+	PropertyState getPropertyState(NodeProperty prop) {
+		return cast(PropertyState)((propertyStates >> (prop * 2)) & 0b11);
+	}
+
+	void setPropertyState(NodeProperty prop, PropertyState state) {
+		uint mask = ~(uint(0b11) << (prop * 2));
+		propertyStates = (propertyStates & mask) | (uint(state) << (prop * 2));
+	}
 
 	T* as(T)(CompilationContext* c) {
 		static if (hasAstNodeType!T)

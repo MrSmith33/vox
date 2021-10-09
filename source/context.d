@@ -937,6 +937,7 @@ enum CalculatedProperty : ubyte {
 	name_register_nested,
 	name_resolve,
 	type_check,
+	ir_type_header,
 	ir_gen,
 	type_size,
 	init_value,

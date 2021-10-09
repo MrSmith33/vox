@@ -17,7 +17,7 @@ import std.string : stripLeft, strip;
 
 int runDevTests()
 {
-	Test test = makeTest!(test211);
+	Test test = makeTest!(test221);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -235,7 +235,6 @@ TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings
 		return res;
 	}
 	catch(CompilationException e) {
-		writeln(driver.context.sink.text);
 		if (e.isICE)
 			writeln(e);
 		return TestResult.failure;

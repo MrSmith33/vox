@@ -59,6 +59,9 @@ struct FunctionDeclNode {
 	}
 
 	IrIndex getIrIndex(CompilationContext* c) {
+		// IR index of the function depends on full IR type of the signature
+		signature.get!FunctionSignatureNode(c).getIrType(c);
+
 		AstIndex index = get_ast_index(&this, c);
 		return IrIndex(index.storageIndex, IrValueKind.func);
 	}
@@ -196,7 +199,12 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 	f.state = AstNodeState.ir_gen;
 	scope(exit) f.state = AstNodeState.ir_gen_done;
 
-	// skip external functions, they don't have a body
+	// function type must be generated even if it is external
+	auto signature = f.signature.get!FunctionSignatureNode(c);
+	IrIndex type = f.signature.gen_ir_type(c);
+
+
+	// Do not generate body for the external functions
 	if (f.isExternal) return;
 
 	gen.fun = f;
@@ -209,8 +217,7 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 	IrFunction* ir = gen.ir;
 	ir.name = f.id;
 
-	auto signature = f.signature.get!FunctionSignatureNode(c);
-	ir.type = f.signature.gen_ir_type(c);
+	ir.type = type;
 	ir.instructionSet = IrInstructionSet.ir;
 
 	builder.begin(ir, c);

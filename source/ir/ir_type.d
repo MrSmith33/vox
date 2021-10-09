@@ -397,30 +397,30 @@ struct IrTypeStorage
 }
 
 /// Returns type of value
-IrIndex getValueType(IrIndex value, IrFunction* ir, CompilationContext* context)
+IrIndex getValueType(IrIndex value, IrFunction* ir, CompilationContext* c)
 	out (res; res.isType, format("Not a type %s -> %s", value, res))
 {
 	switch(value.kind) with(IrValueKind)
 	{
 		case constant:
-			return context.constants.get(value).type(value);
+			return c.constants.get(value).type(value);
 		case constantAggregate:
-			return context.constants.getAggregate(value).type;
+			return c.constants.getAggregate(value).type;
 		case constantZero:
 			value.kind = IrValueKind.type;
 			return value;
 		case global:
-			IrGlobal* global = context.globals.get(value);
-			context.assertf(global.type.isDefined, "Global has no type");
+			IrGlobal* global = c.globals.get(value);
+			c.assertf(global.type.isDefined, "Global has no type");
 			return global.type;
 		case stackSlot:
 			return ir.getStackSlot(value).type;
 		case virtualRegister:
 			return ir.getVirtReg(value).type;
 		case func:
-			return context.types.appendPtr(context.getFunction(value).signature.get!FunctionSignatureNode(context).irType);
+			return c.types.appendPtr(c.getFunction(value).signature.get!FunctionSignatureNode(c).getIrType(c));
 		default:
-			context.internal_error("Cannot get type of %s", value.kind);
+			c.internal_error("Cannot get type of %s", value.kind);
 			assert(false);
 	}
 }
