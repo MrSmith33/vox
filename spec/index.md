@@ -230,7 +230,7 @@ $alias alias_var = func2()(); // call return value of func2
 
 Attributes can be specified in one of 3 forms
 
-1. `NEI` Apply attributes to the end of the current scope. Doesn't apply to nested scopes.
+1. Apply attributes to the end of the current scope. Doesn't apply to nested scopes.
    @attr1 @attr2 @attr3 @attr4 apply to all declarations defined later in the current scope
 ```D
 @attr1 @attr2:
@@ -302,25 +302,32 @@ decl6;
 ## Built-in attributes
 
 * `@extern(syscall, <int>)`
+  Can be attached to a function without a body, to make it perform a syscall on call.
 
-```D
-@extern(syscall, 60)
-void exit();
-```
-Functions declared with this attribute will receive calling convention of the target system. For example when compiled for `linux-x64` target calling convention will match System V syscall convention. On targets that have no syscall defined this will result in error. The integer parameter specifies syscall number.
+  ```D
+  @extern(syscall, 60)
+  void exit();
+  ```
+  Functions declared with this attribute will receive calling convention of the target system. For example when compiled for `linux-x64` target calling convention will match System V syscall convention. On targets that have no syscall defined this will result in error. The integer parameter specifies syscall number.
+
+  If several attributes of this type are attached, only latest attribute applies.
 
 * `NEI` `@extern(module, "external module name")`
 
-External functions with this attribute will generate entry in import table for the specified module (second parameter). By default the name of external module is used as a name of `.so`/`.dll` library when compiling as an executable. `.so`/`.dll` suffix will be added as (and if) required by the target plaform. External module name should not have `.so`/`.dll` suffix in the source file.
+  External functions with this attribute will generate entry in import table for the specified module (second parameter). By default the name of external module is used as a name of `.so`/`.dll` library when compiling as an executable. `.so`/`.dll` suffix will be added as (and if) required by the target plaform. External module name should not have `.so`/`.dll` suffix in the source file.
 
-To override the module file name use `--externModule=<external_mod>:<file_name>` CLI switch
+  To override the module file name use `--externModule=<external_mod>:<file_name>` CLI switch
 
-```D
-@extern(module, "kernel32")
-noreturn ExitProcess(u32 uExitCode);
-```
+  ```D
+  @extern(module, "kernel32")
+  noreturn ExitProcess(u32 uExitCode);
+  ```
 
-[See more](https://gist.github.com/MrSmith33/b55f6f36c211fc07eb581de2e676e256)
+  If several attributes of this type are attached, only latest attribute applies.
+
+  [See more](https://gist.github.com/MrSmith33/b55f6f36c211fc07eb581de2e676e256)
+
+
 
 
 # Metaprogramming

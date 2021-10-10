@@ -173,15 +173,6 @@ void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
 
 	require_type_check(node.signature, state);
 
-	// Check that function `isExternal` matches `isExternal` of signature
-	auto signature = node.signature.get!FunctionSignatureNode(c);
-	if (node.isExternal && !signature.isExternal) {
-		// allow until @extern(module) is implemented
-	}
-	if (!node.isExternal && signature.isExternal) {
-		c.error(node.loc, "External function cannot have a body");
-	}
-
 	if (node.block_stmt)
 	{
 		require_type_check(node.block_stmt, state);

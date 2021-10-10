@@ -11,6 +11,7 @@ enum FuncSignatureFlags : ushort
 	isCtfeOnly = AstFlags.userFlag << 0,
 	// Function has parameter with expanded type
 	hasExpandedParam = AstFlags.userFlag << 1,
+	attachedToFunctionWithBody = AstFlags.userFlag << 2,
 }
 
 @(AstType.type_func_sig)
@@ -36,6 +37,7 @@ struct FunctionSignatureNode {
 
 	bool isCtfeOnly() { return cast(bool)(flags & FuncSignatureFlags.isCtfeOnly); }
 	bool hasExpandedParam() { return cast(bool)(flags & FuncSignatureFlags.hasExpandedParam); }
+	bool attachedToFunctionWithBody() { return cast(bool)(flags & FuncSignatureFlags.attachedToFunctionWithBody); }
 	bool isExternal() { return hasAttributes && attributeInfo.isExternal; }
 }
 
@@ -120,6 +122,12 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 
 	node.state = AstNodeState.type_check;
 
+	// ir_header
+	gen_ir_header_func_sig(node, c);
+
+	// Process @extern attribute
+	process_externs(node, c);
+
 	require_type_check(node.returnType, state);
 	check_is_type(node.returnType, c);
 
@@ -135,6 +143,91 @@ void type_check_func_sig(FunctionSignatureNode* node, ref TypeCheckState state)
 	if (caclIsCtfeOnly(node, c)) node.flags |= FuncSignatureFlags.isCtfeOnly;
 
 	node.state = AstNodeState.type_check_done;
+}
+
+// Validate @extern attributes, bind externals and update calling conventions
+// depends on ir_header
+void process_externs(FunctionSignatureNode* node, CompilationContext* c)
+{
+	// Check that function `isExternal` matches `isExternal` of signature
+	if (!node.attachedToFunctionWithBody && !node.isExternal) {
+		// allow until @extern(module) is implemented
+		// TODO: we don't know atm if we are attached to function without body or it is free function type
+	}
+
+	if (!node.isExternal) return; // skip if no extern properties are bound to this node
+
+	AstIndex lastExternAttrib;
+
+	foreach(AstIndex attrib; node.attributeInfo.attributes)
+	{
+		auto attribNode = attrib.get_node(c);
+
+		if (attribNode.astType != AstType.decl_builtin_attribute) continue;
+
+		void onExternAttrib() {
+			// check for duplicates
+			if (lastExternAttrib.isDefined) {
+				// check if previous @extern attribute is broadcasted
+				// NOTE: all broadcasted attributes are located before direct attributes
+				//       so we can detect multiple directly applied @extern attributes by detecting 2 consecutive @extern attributes
+				if (!attribNode.as!BuiltinAttribNode(c).isBroadcasted)
+				{
+					if (lastExternAttrib.get!BuiltinAttribNode(c).isBroadcasted) {
+						// allow duplicates in cases when only one @extern attribute is directly applied
+						// and others are broadcast applied (like `@extern(...):` and `@extern(...){...}`)
+					} else {
+						c.error(attribNode.loc, "Duplicate @extern attribute");
+					}
+				}
+			}
+			lastExternAttrib = attrib; // save last @extern attribute
+		}
+
+		final switch(cast(BuiltinAttribSubType)attribNode.subType) {
+			case BuiltinAttribSubType.extern_syscall:
+				onExternAttrib();
+				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data;
+
+				if (syscall_number > ushort.max) {
+					c.error(attribNode.loc, "Max supported syscall number is 64k, got %s", syscall_number);
+					return;
+				}
+
+				if (c.targetOs != TargetOs.linux) {
+					c.error(attribNode.loc, "@extern(syscall) attribute is only implemented on linux");
+					return;
+				}
+				break;
+
+			case BuiltinAttribSubType.extern_module:
+				onExternAttrib();
+				break;
+		}
+	}
+
+	// Apply the last @extern attribute
+	auto attribNode = lastExternAttrib.get_node(c);
+	final switch(cast(BuiltinAttribSubType)attribNode.subType) {
+		case BuiltinAttribSubType.extern_syscall:
+			uint syscall_number = attribNode.as!BuiltinAttribNode(c).data;
+			auto funcType = &c.types.get!IrTypeFunction(node.irType);
+			funcType.callConv = CallConvention.sysv64_syscall;
+			funcType.syscallNumber = cast(ushort)syscall_number;
+			break;
+
+		case BuiltinAttribSubType.extern_module:
+			// TODO: lookup by the name in external host module, or create import entry for dll symbols
+			break;
+	}
+
+	if (node.attachedToFunctionWithBody) {
+		if (attribNode.as!BuiltinAttribNode(c).isBroadcasted) {
+			// allow broadcasted @extern attribute on function with body
+		} else {
+			c.error(node.loc, "External function cannot have a body");
+		}
+	}
 }
 
 private bool caclIsCtfeOnly(FunctionSignatureNode* node, CompilationContext* c) {
@@ -163,57 +256,20 @@ TypeConvResKind type_conv_func_sig(FunctionSignatureNode* node, AstIndex typeBIn
 	return TypeConvResKind.fail;
 }
 
-// Validate @extern attributes, bind externals and update calling conventions
-void process_externs(FunctionSignatureNode* node, CompilationContext* c)
+void gen_ir_header_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 {
-	if (!node.isExternal) return; // skip if no extern properties are bound to this node
-
-	AstIndex externAttrib;
-
-	foreach(AstIndex attrib; node.attributeInfo.attributes)
-	{
-		auto attribNode = attrib.get_node(c);
-
-		if (attribNode.astType != AstType.decl_builtin_attribute) continue;
-
-		void onExternAttrib() {
-			// check for duplicates
-			// TODO: allow duplicates in cases when only one @extern attribute is immediatly applied
-			//       and others are broadcast applied (like `@extern(...):` and `@extern(...){...}`)
-			if (externAttrib.isDefined) {
-				c.error(attribNode.loc, "Duplicate @extern attribute");
-			}
-			externAttrib = attrib;
-		}
-
-		final switch(cast(BuiltinAttribSubType)attribNode.subType) {
-			case BuiltinAttribSubType.extern_syscall:
-				onExternAttrib();
-				uint syscall_number = attribNode.as!BuiltinAttribNode(c).data;
-
-				if (syscall_number > ushort.max) {
-					c.error(attribNode.loc, "Max supported syscall number is 65k");
-					return;
-				}
-
-				if (c.targetOs != TargetOs.linux) {
-					c.error(attribNode.loc, "@extern(syscall) attribute is only implemented on linux");
-					return;
-				}
-
-				auto funcType = &c.types.get!IrTypeFunction(node.irType);
-				funcType.callConv = CallConvention.sysv64_syscall;
-				funcType.syscallNumber = cast(ushort)syscall_number;
-				break;
-
-			case BuiltinAttribSubType.extern_module:
-				onExternAttrib();
-				// TODO: lookup by the name in external host module, or create import entry for dll symbols
-				break;
-		}
+	final switch(node.getPropertyState(NodeProperty.ir_header)) {
+		case PropertyState.not_calculated: break;
+		case PropertyState.calculating: assert(false);
+		case PropertyState.calculated: return;
 	}
+
+	uint numResults = node.returnType.isTypeVoid ? 0 : 1;
+	node.irType = c.types.appendFuncSignature(numResults, node.parameters.length, node.callConvention);
+	node.setPropertyState(NodeProperty.ir_header, PropertyState.calculated);
 }
 
+// depends on ir_header
 IrIndex gen_ir_type_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 	out(res; res.isTypeFunction, "Not a function type")
 {
@@ -223,13 +279,7 @@ IrIndex gen_ir_type_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 		case PropertyState.calculated: return node.irType;
 	}
 
-	// ir_header
-	uint numResults = node.returnType.isTypeVoid ? 0 : 1;
-	node.irType = c.types.appendFuncSignature(numResults, node.parameters.length, node.callConvention);
-	node.setPropertyState(NodeProperty.ir_header, PropertyState.calculated);
-
-	// Process @extern attribute
-	process_externs(node, c);
+	gen_ir_header_func_sig(node, c);
 
 	node.setPropertyState(NodeProperty.ir_body, PropertyState.calculating);
 	scope(exit) node.setPropertyState(NodeProperty.ir_body, PropertyState.calculated);

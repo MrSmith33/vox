@@ -7,6 +7,7 @@ import all;
 
 /// If AstNode has any attributes attached at parse time then AttributeInfo is allocated
 /// in memory before such AstNode and node receives AstFlags.hasAttributes flag.
+/// All broadcasted nodes are located before direct attributes.
 struct AttributeInfo
 {
 	AstNodes attributes;
@@ -60,18 +61,30 @@ uint calcAttribFlags(AstIndex attrib, CompilationContext* c) {
 	return builtinAttribFlags[attribNode.subType];
 }
 
+enum AnyAttributeFlags : ushort
+{
+	// Set if attribute was applied to multiple nodes at once via `@attr{}` or `@attr:` syntax
+	// If not set, attribute was applied directly
+	isBroadcasted = AstFlags.userFlag << 0,
+}
+
 @(AstType.decl_builtin_attribute)
 struct BuiltinAttribNode
 {
 	mixin AstNodeData!(AstType.decl_builtin_attribute, 0, AstNodeState.type_check_done);
 	uint data;
 
+	bool isBroadcasted() { return cast(bool)(flags & AnyAttributeFlags.isBroadcasted); }
+
 	this(TokenIndex loc, BuiltinAttribSubType subType, uint data)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_builtin_attribute;
 		this.flags = 0;
-		this.state = AstNodeState.type_check_done;
+		if (subType == BuiltinAttribSubType.extern_syscall)
+			this.state = AstNodeState.name_resolve_done;
+		else
+			this.state = AstNodeState.type_check_done;
 		this.subType = subType;
 		this.data = data;
 	}
@@ -81,11 +94,27 @@ void print_builtin_attribute(BuiltinAttribNode* node, ref AstPrintState state)
 {
 	final switch(cast(BuiltinAttribSubType)node.subType) {
 		case BuiltinAttribSubType.extern_syscall:
-			state.print("ATTRIB @extern(syscall, ", node.data, ")");
+			state.print("ATTRIB @extern(syscall, ", node.data, ")", AttributeFlagPrinter(node.flags));
 			break;
 		case BuiltinAttribSubType.extern_module:
-			state.print("ATTRIB @extern(module, ", state.context.idString(Identifier(node.data)), ")");
+			state.print("ATTRIB @extern(module, ", state.context.idString(Identifier(node.data)), ")", AttributeFlagPrinter(node.flags));
 			break;
 	}
 }
 
+struct AttributeFlagPrinter {
+	ushort flags;
+	void toString(scope void delegate(const(char)[]) sink) {
+		if (flags == 0) return;
+		if (flags & AnyAttributeFlags.isBroadcasted) sink(" /broadcasted");
+	}
+}
+
+void type_check_builtin_attribute(BuiltinAttribNode* node, ref TypeCheckState state)
+{
+	if (node.subType == BuiltinAttribSubType.extern_syscall && node.isBroadcasted)
+	{
+		// forbid broadcasting @extern(syscall) as it makes no sense, since it carries data, which should be different for each function
+		state.context.error(node.loc, "Broadcasting @extern(syscall) attribute is forbidden");
+	}
+}

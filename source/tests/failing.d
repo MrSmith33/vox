@@ -670,3 +670,14 @@ immutable fail62 = q{--- fail62
 --- <error>
 fail62:3:2: Error: External function cannot have a body
 };
+
+
+version(linux)
+@TestInfo()
+immutable fail63 = q{--- fail63
+	/// Broadcasting @extern(syscall) is forbidden
+	@extern(syscall, 0):
+	void withAttribA();
+--- <error>
+fail63:2:2: Error: Broadcasting @extern(syscall) attribute is forbidden
+};

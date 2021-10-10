@@ -109,7 +109,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 		case decl_alias: type_check_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_alias_array: assert(false);
 		case decl_builtin: assert(false);
-		case decl_builtin_attribute: assert(false);
+		case decl_builtin_attribute: type_check_builtin_attribute(cast(BuiltinAttribNode*)node, state); break;
 		case decl_module: type_check_module(cast(ModuleDeclNode*)node, state); break;
 		case decl_package: assert(false);
 		case decl_import: assert(false);

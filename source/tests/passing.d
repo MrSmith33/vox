@@ -4769,3 +4769,52 @@ immutable test224 = q{--- test224
 		void run() {} // 2 func signature, 3 Client* this, 5 run function, 6 func signature
 	}
 };
+
+
+@TestInfo()
+immutable test225 = q{--- test225
+	/// Feature: `@attr:`
+	/// Should not give an error if function with the body has broadcasted @extern attribute
+	@extern(module, "modA"): // both are broadcasted
+	@extern(module, "modB"): // each attribute with its own :
+	void withAttrib(){}
+};
+
+
+@TestInfo()
+immutable test226 = q{--- test226
+	/// Feature: `@attr:`
+	@extern(module, "modA")  // both are broadcasted
+	@extern(module, "modB"): // with single :
+	void withAttrib(){}
+};
+
+
+@TestInfo(null, [HostSymbol("withAttribA", cast(void*)&external_noop), HostSymbol("withAttribB", cast(void*)&external_noop)])
+immutable test227 = q{--- test227
+	/// Feature: `@attr:`
+	/// Multiple functions with the same attribute
+	@extern(module, "host"):
+	void withAttribA();
+	void withAttribB();
+};
+
+
+/* // TODO:
+immutable
+	/// Feature: `@attr:`
+	/// Overriding with later attribute
+	@extern(module, "host1"):
+	void withAttribA();
+	@extern(module, "host2"):
+	void withAttribB();
+};
+immutable
+	/// Feature: `@attr:`
+	/// Overriding with later attribute
+	@extern(module, "host1"):
+	void withAttribA();
+	@extern(module, "host2")
+	void withAttribB();
+};
+*/

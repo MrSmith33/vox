@@ -250,6 +250,15 @@ struct Parser
 
 	void popScope(ScopeTempData temp)
 	{
+		// mark the rest of effective nodes as broadcasted
+		auto offset = attributeStack.length - attribState.numEffectiveAttributes;
+		foreach(i; 0..attribState.numEffectiveAttributes) {
+			AstIndex attrib = attributeStack[offset + i];
+			attrib.flags(context) |= AnyAttributeFlags.isBroadcasted;
+		}
+
+		// drop broadcasted attributes at the end of the scope
+		attributeStack.unput(attribState.numEffectiveAttributes);
 		attribState = temp.prev;
 
 		if (currentScope.parentScope) {
@@ -320,8 +329,6 @@ struct Parser
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
 
-		uint numAttributesParsed;
-
 		loop:
 		while(true)
 		switch(tok.type) with(TokenType)
@@ -345,20 +352,7 @@ struct Parser
 			case HASH_FOREACH:
 				return parse_hash_foreach();
 			case AT:
-				TokenIndex start = tok.index;
-				nextToken; // skip @
-				Identifier attributeId = expectIdentifier("@");
-				switch(attributeId.index) {
-					case CommonIds.id_extern.index:
-						parse_extern_attribute(start);
-						break;
-					default:
-						context.unrecoverable_error(start, "Unknown attribute name `%s`", context.idString(attributeId));
-				}
-				++numAttributesParsed;
-				if (tok.type == TokenType.COLON) {
-					// TODO:
-				}
+				parse_attribute();
 				continue loop;
 			default: // <func_declaration> / <var_declaration>
 				AstIndex funcIndex = parse_var_func_declaration(ConsumeTerminator.yes, TokenType.SEMICOLON);
@@ -366,6 +360,31 @@ struct Parser
 				return funcIndex;
 		}
 		assert(false);
+	}
+
+	void parse_attribute()
+	{
+		TokenIndex start = tok.index;
+		nextToken; // skip @
+		Identifier attributeId = expectIdentifier("@");
+		switch(attributeId.index) {
+			case CommonIds.id_extern.index:
+				parse_extern_attribute(start);
+				break;
+			default:
+				context.unrecoverable_error(start, "Unknown attribute name `%s`", context.idString(attributeId));
+		}
+
+		if (tok.type == TokenType.COLON) {
+			nextToken; // skip :
+			attribState.numImmediateAttributes = 0;
+		}/* else if (tok.type == TokenType.LCURLY) {
+			nextToken; // skip {
+
+			parse_declaration();
+
+			expectAndConsume(TokenType.RCURLY, "@{");
+		}*/ // TODO: This would require returning multiple declarations / stmts, or pass node array here
 	}
 
 	void parse_extern_attribute(TokenIndex start)
@@ -569,6 +588,7 @@ struct Parser
 			declarationOwner = func;
 			scope(exit) declarationOwner = prevOwner;
 			func.get!FunctionDeclNode(context).block_stmt = block_stmt();
+			signature.flags(context) |= FuncSignatureFlags.attachedToFunctionWithBody;
 		}
 		else expectAndConsume(TokenType.SEMICOLON); // external function
 
@@ -1094,6 +1114,7 @@ struct Parser
 			while (tok.type != TokenType.RCURLY)
 			{
 				if (tok.type == TokenType.EOI) break;
+				// TODO, BUG: doesn't repeat the behaviour of parse_declarations
 				items.put(context.arrayArena, itemParser());
 			}
 			expectAndConsume(TokenType.RCURLY);
