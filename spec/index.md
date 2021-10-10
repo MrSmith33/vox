@@ -232,28 +232,28 @@ Attributes can be specified in one of 3 forms
 
 1. Apply attributes to the end of the current scope. Doesn't apply to nested scopes.
    @attr1 @attr2 @attr3 @attr4 apply to all declarations defined later in the current scope
-```D
-@attr1 @attr2:
-@attr3 @attr4:
-decl1;
-decl2;
-```
+   ```D
+   @attr1 @attr2:
+   @attr3 @attr4:
+   decl1;
+   decl2;
+   ```
 
-Here, only `decl3` and `decl5` will gain the `@attr` attribute:
+   Here, only `decl3` and `decl5` will gain the `@attr` attribute:
 
-```D
-decl1;
-{
-    decl2;
-  @attr:
-    decl3;
-    {
-        decl4;
-    }
-    decl5;
-}
-decl6;
-```
+   ```D
+   decl1;
+   {
+       decl2;
+     @attr:
+       decl3;
+       {
+           decl4;
+       }
+       decl5;
+   }
+   decl6;
+   ```
 
 2. `NEI` Attribute block. Doesn't apply to nested scopes.
    @attr5 @attr6 apply to all declarations defined in curly braces (`decl1` and `decl3`). Curly braces do not introduce a new scope:
@@ -380,17 +380,17 @@ void fun()
 ### \#version
 * Behaves in the same way as `#if`, but instead of an expression accepts one of the predefined identifiers. If the version identifier is defined it will evaluate to `true`.
 
-```D
-#version(linux) {
-    // code for linux
-} else #version(windows) {
-    // code for windows
-} else #version(macos) {
-    // code for macos
-} else {
-    #assert(false, "OS not supported");
-}
-```
+  ```D
+  #version(linux) {
+      // code for linux
+  } else #version(windows) {
+      // code for windows
+  } else #version(macos) {
+      // code for macos
+  } else {
+      #assert(false, "OS not supported");
+  }
+  ```
 
 #### Predefined versions
 * `windows` - defined if target OS is Windows
@@ -425,38 +425,38 @@ Template parameters must be known by the compiler at instantiation time.
 ### Function templates
 Function templates are defined as regular functions with additional list of compile-time parameters. Template agrument can be:
 
-- `Identifier` just a type (shortcut for `$type Identifier`)
+* `Identifier` just a type (shortcut for `$type Identifier`)
 
-```D
-T min[T](T a, T b) {
-    if (a < b) return a;
-    return b;
-}
-#assert(min[i32](42, 2) == 2);
-```
+  ```D
+  T min[T](T a, T b) {
+      if (a < b) return a;
+      return b;
+  }
+  #assert(min[i32](42, 2) == 2);
+  ```
 
-- `T Identifier` some compile-time known value of type `T` (NEI).
+* `T Identifier` some compile-time known value of type `T` (NEI).
 
-```D
-T min[$type T](T a, T b) {
-    if (a < b) return a;
-    return b;
-}
-#assert(min[i32](42, 2) == 2);
-```
+  ```D
+  T min[$type T](T a, T b) {
+      if (a < b) return a;
+      return b;
+  }
+  #assert(min[i32](42, 2) == 2);
+  ```
 
-- `Identifier...` Variadic parameters. Must be the last template argument. (args with default value may follow).
+* `Identifier...` Variadic parameters. Must be the last template argument. (args with default value may follow).
 
-`...` is needed on type of `args` because compiler needs to know that signature has expanded parameter type before `#if` and `#foreach` are expanded.
+  `...` is needed on type of `args` because compiler needs to know that signature has expanded parameter type before `#if` and `#foreach` are expanded.
 
-```D
-void write[Args...](Args... args) {
-    #foreach(i, arg; args) {
-        alias func = selectPrintFunc(Args[i]);
-        func(arg);
-    }
-}
-```
+  ```D
+  void write[Args...](Args... args) {
+      #foreach(i, arg; args) {
+          alias func = selectPrintFunc(Args[i]);
+          func(arg);
+      }
+  }
+  ```
 
 ### Struct templates
 
@@ -493,7 +493,6 @@ S func2() { ... } // CTFE-only function
 
 - `$alias` is an alias to any symbol in the program.
 - `$alias` values can be compared.
-- 
 
 ```D
 void fun(){}
