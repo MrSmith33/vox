@@ -129,7 +129,7 @@ It does 3 subpasses:
 
 ### ABI lowering
 
-For each IR function it transforms `parameter` and `ret_val` instructions to follow own calling convention, and converts `call` instructions to follow callees calling convention.
+For each IR function it transforms `parameter` and `ret_val` instructions to follow own calling convention, and converts `call` instructions to follow callee's calling convention.
 
 Currently Vox backend implements 3 CCs: `win64`, `sysv64`, and `sysv64_syscall`.
 
@@ -261,9 +261,11 @@ struct AstNode
 
 # IR
 
-Program IR consists of globals, constants, types and functions. Functions belong to modules, but modules are pretty much unnessesary abstraction.
+Program IR consists of globals, constants, types and functions. Functions belong to modules, but modules are pretty much unnessesary abstraction at this point.
 
-## Storage
+## IR Function
+
+### Storage
 
 Function IR is stored in a set of arenas that reside in `CompilationContext`.
 
@@ -279,9 +281,11 @@ Arena!IrBasicBlock      basicBlockBuffer;
 Arena!StackSlot         stackSlotBuffer;
 ```
 
-Each IR function then points to a slice of items within each of those arenas. (see IrFunction struct)
+Each IR function then points to a slice of items within each of those arenas. (see `IrFunction` struct)
+Length of the slice is stored in the corresponding field of the `IrFunction`.
 
 ```D
+// Pointers
 IrInstrHeader*     instrPtr;
 IrIndex*           instrPayloadPtr;
 IrIndex*           instrNextPtr;
@@ -291,27 +295,326 @@ uint*              arrayPtr;
 IrVirtualRegister* vregPtr;
 IrBasicBlock*      basicBlockPtr;
 StackSlot*         stackSlotPtr;
+
+// Length of:
+uint numInstructions;     // instrPtr, instrNextPtr, instrPrevPtr
+uint numPayloadSlots;     // instrPayloadPtr
+uint numPhis;             // phiPtr
+uint arrayLength;         // arrayPtr
+uint numVirtualRegisters; // vregPtr
+uint numBasicBlocks;      // basicBlockPtr
+uint numStackSlots;       // stackSlotPtr
 ```
 
-The way allocation works is that IR of the function which is currently being created must be at the end of each arena. This way adding new items to any arena if O(1) with no reallocation.
+Because each arena works as virtually infinite array all new items are added to the end of the array.
 
-This imposes a restriction that only one function IR can be created / modified at a time. Modification that needs to add new items requires function copy to be created at the end of the arenas.
+This imposes a restriction that only one function IR can be created / modified at a time. Modification that needs to add new items requires a function copy to be created at the end of the arenas.
 
 Copying function IR requires only one memcopy per arena without the need of any fixups, since all references are done relative to the start of respective item slice.
 
 This also makes inlining fast. Function IR that is being inlined is appended to the end of the arena and all references in those items are offset by the size of the original IR. Such offset is done via an offset table thanks to clever design of `IrIndex`.
 
+To add a new item to the any of the function arrays we need to tell the corresponding arena to provide space for one more item at the end and grow the corresponding length field in the `IrFunction`.
+
+For example adding a new instruction looks like:
+
+```D
+ir.numInstructions += numSlots;
+context.irStorage.instrHeaderBuffer.voidPut(numSlots);
+context.irStorage.instrNextBuffer.voidPut(numSlots);
+context.irStorage.instrPrevBuffer.voidPut(numSlots);
+```
+
+adding new virtual register:
+
+```D
+ir.numPhis += 1;
+context.irStorage.phiBuffer.put(IrPhi());
+```
+
+etc. See [`ir_builder.d`](source/ir/ir_builder.d) for more.
+
+---
+
+All function IR entities are accessed by index into the corresponding array.
+
+Function consists of a linked list of basic blocks (BB). There are two special BBs: `entry` and `exit` blocks.
+
+BBs are stored in a memory described with `basicBlockPtr/numBasicBlocks` pair.
+
+`entry` BB always has index `0`.
+
+`exit` BB always has index `1`.
+
+
+## IR Basic Block
+
+Each BB has a linked list of phi functions and a linked list of instructions.
+
+Each BB has pointers to the next and previous BBs in a function. They specify the order of BBs in a function.
+
+Each BB also has a list of predecessor BBs and successor BBs. They represent the control flow edges between BBs. The order of predecessors matches the order of phi functions. Number of arguments of each phi function in that BB matches the number of predecessors and they correspond by index.
+
+Each BB has at least one instruction. Each BB must end in an instruction that trasfers the control (jump, branch or return). The successors specify the target BBs of the that last instruction.
+
+```D
+IrIndex firstInstr; // first instruction
+IrIndex lastInstr;  // last instruction
+IrIndex prevBlock;  // null only if this is entryBasicBlock
+IrIndex nextBlock;  // null only if this is exitBasicBlock
+IrIndex firstPhi;   // may be null
+IrSmallArray predecessors;
+IrSmallArray successors;
+```
+
+## IR Instruction
+
+### Header
+
+All instructions have common header (`IrInstrHeader`), which is stored in `instrPtr/numInstructions` arena.
+
+The instruction format supports instructions with 0 or 1 results and with up to 255 arguments.
+
+Header contains:
+- 16-bit opcode field
+- 8-bit number of arguments
+- 8-bit bitfield for various purposes
+    - 1 bit for `hasResult` flag (on all instructions)
+    - 4 bits for condition kind (for instructions with condition, like comparison or conditional jump)
+- 32-bit payload offset index. Needed because number of arguments is not fixed.
+
+```D
+ushort op;
+ubyte numArgs;
+ubyte flags;
+uint payloadOffset;
+```
+
+Separation of header from payload gives us dense indexing, which is important if we want to associate extra data with each instruction. This is handy during liveness anaysis and register allocation when we need to map between instruction and its global index for linear scan register allocation algorithm.
+
+Dense indexing is also used during instruction selection, but with virtual registers.
+
+### Payload
+
+Instruction payload is stored in `instrPayloadPtr/numInstructions` arena.
+
+The layout is the following:
+
+`[0-or-1 result][0-255 arguments][optional payload]`
+
+`payloadOffset` points to the 0-th argument.
+
+If instruction has result, it is located before the arguments. Can be accessed with `instrPayloadPtr[payloadOffset-1]`.
+
+Optional payload can be used to store additional data that is specific to concrete opcode. It's size is opcode specified. Atm only `parameter` instruction uses it to store parameter index.
+
+`result` field (if present) specifies virtual register that stores the result of the instruction. In some cases it may specify the physical register, like in the case of machine instructions.
+
+In case the result is of virtual register kind, the virtual register will point its `definition` field to the defining instruction.
+
+Arguments specify instruction arguments and they may be of `virtualRegister`/`constant`/`constantAggregate`/`constantZero`/`func`/`stackSlot`/`global` kinds.
+
+### Instruction order
+
+Since we are storing all instructions in an array we cannot add/remove/reorder them easily and cheaply. To solve that each instruction has associated indicies of next/prev instruction. They are stored separately, so that only indicies for the relevant iteration direction are loaded into data cache, as passes usually iterate over all BB instructions either forwards or backwards.
+
+Most of the instructions remain in the order they were generated by the frontend, so in most cases the next instruction will be adjacent in memory. (Disclaimer: I didn't measure different layouts of next/prev instruction indicies).
+
+Next/prev indicies are stored in `instrNextPtr/numInstructions` and `instrPrevPtr/numInstructions` arenas.
+
+## Phi functions
+
+They are stored in `phiPtr/numPhis` arena.
+
+```D
+IrIndex blockIndex;
+IrIndex result;
+IrIndex var;
+IrIndex nextPhi;
+IrIndex prevPhi;
+IrSmallArray args;
+```
+
+Each BB has index of the first phi function (`firstPhi` field).
+
+After that all phi functions are stored in an intrusive linked list specified by `nextPhi`/`prevPhi`.
+
+`blockIndex` specifies the BB that phi function resides in.
+
+Order of arguments matches the `blockIndex.predecessors`.
+
+`var` field is used during initial SSA IR construction, and is ignored afterwards.
+
+`args` stores the array of arguments of the phi function. One argument per predecessor BB.
+
+`result` specifies virtual register that stores the result.
+
+## Virtual register
+
+```D
+IrIndex definition;
+IrIndex type;
+IrSmallSet users;
+```
+
+`definition` stores index of instruction or phi that defines this register. Since we have SSA form, each vreg has single definition point.
+
+`type` stores type index.
+
+`users` is a multi-hash-set that stores a set of all instruction or phi indicies that use this register. Before it was an array, but this caused O(n^2) time in DCE pass when a lot of instructions were dead. The precise number of users is needed because this info is used in liveness analysis.
+
+The way allocation works is that IR of the function which is currently being created must be at the end of each arena. This way adding new items to any arena if O(1) with no reallocation.
+
+## Arrays
+
+In `arrayPtr/arrayLength` arena we store array payload for big `IrSmallArray`/`IrSmallSet`.
+
+`IrSmallArray` consists of 2 `IrIndex` slots, which either encode 0-2 items inline, or `offset + length` into the `arrayPtr`.
+
+`IrSmallSet` consists of 4 `IrIndex` slots, which either encode 0-4 items inline, or `offset + length + unique length + capacity` into the `arrayPtr`.
+
 ## IrIndex
 
 `IrIndex` represents index of any IR entity.
 
-## Basic blocks
+It is a 32 bit value.
 
-Atm it is 40 bytes
+Top 4 bits of `IrIndex` stores the `kind`:
+
+```
+enum IrValueKind {
+    none
+    instruction
+    basicBlock
+    constant
+    constantAggregate
+    constantZero
+    global
+    phi
+    stackSlot
+    virtualRegister
+    physicalRegister
+    type
+    variable
+    func
+    array
+}
+```
+
+At the moment 15 out of 16 possible values are used.
+
+The meaning of the rest of the 28 bits depends on the `kind` value.
+
+- `none` - when the whole `IrIndex` is zero it represents undefined index. In some cases lowest 28 bits can be used to store plain integer data. For example it is used in such way in `IrSmallArray`/`IrSmallSet` to store length/capacity. Values of this kind will not be fixed during IR appending during inlining.
+- `instruction` - index into the `IrFunction.instrPtr`
+- `basicBlock` - index into the `IrFunction.basicBlockPtr`
+- `constant` - see IR Constant section
+- `constantAggregate` - lower 28 bits is an index into `IrConstantStorage.aggregateBuffer` arena, which stores `IrAggregateConstant` values. `IrAggregateConstant` has `IrIndex type` and `uint numMembers`. Then follow the values of the members of this aggregate. In case of array/struct value of each member follows. In case of union there are always 2 members: member 0 is an index, member 1 is a value.
+- `constantZero` - means that it is a constant of some type where all values bits are zero. The type of the constant is encoded in the same way as when `IrIndex` is of `IrValueKind.type` `kind`.
+- `global` - index of a global (`IrGlobal`). Globals are stored in `CompilationContext.globals.buffer` arena.
+- `phi` - index into the `IrFunction.phiPtr`
+- `stackSlot` - index into the `IrFunction.stackSlotPtr`
+- `virtualRegister` - index into the `IrFunction.vregPtr`
+- `physicalRegister`
+    + next highest 8 bits specify register class
+    + next highest 8 bits specify register size
+    + lowest 12 bits specify register index
+- `type` - next highest 4 bits specify type kind (`IrTypeKind`), and lowest 24 bits are an index of a type. Index points into `CompilationContext.types.buffer` arena.
+- `variable` is used by frontend to refer to specific variable in the source language, and IR builder uses it in its SSA creation process. After IR is created `variable` is no longer used anywhere.
+- `func` - atm lowest 28 bits just store an index of the AST node. Needs to point to backend owned data.
+- `array` - used by `IrSmallArray`/`IrSmallSet` to refer to an offset into the `IrFunction.arrayPtr` when big array/map is needed.
+
+### IR Constant
+
+Next 2 highest bits specify the kind of a constant (`IrConstantKind`)
+- `intUnsignedSmall` and `intSignedSmall` specify that lowest 24 bits store actual constant bits. Signedness is needed to correctly sign-extend the value to the full size.
+- `intUnsignedBig` and `intSignedBig` specify that the value doesn't fit into lowest 24 bits of `IrIndex` and instead are stored in `IrConstantStorage.buffer` arena. That arena stores `IrConstant` 64 bit values.
+
+Next 2 highest bits specify the size of a constant (8/16/32/64 bits)
+
+### IR type
+
+```D
+enum IrTypeKind {
+    basic,
+    pointer,
+    array,
+    struct_t,
+    func_t
+}
+```
+
+- `basic` - lowest 24 bits encode one of the basic types (misnamed as `IrValueType` atm)
+  ```D
+  enum IrValueType {
+      noreturn_t,
+      void_t,
+      i8,
+      i16,
+      i32,
+      i64,
+      f32,
+      f64,
+  }
+  ```
+- `pointer` - points into the type arena (`IrTypePointer`), where base type of the pointer is stored (`IrIndex baseType`).
+- `array` - points into the type arena (`IrTypeArray`), where base type of the array (`IrIndex elemType`) and number of elements (`uint numElements`) is stored.
+- `struct_t` - points into the type arena (`IrTypeStruct`).
+  ```D
+  struct IrTypeStruct {
+      uint size;
+      ubyte alignmentPower;
+      bool isUnion;
+      uint numMembers;
+      IrTypeStructMember[0] members_payload; // all struct/union members follow in memory
+  }
+  struct IrTypeStructMember {
+      IrIndex type;
+      uint offset;
+  }
+  ```
+- `func_t` - points into the type arena (`IrTypeFunction`).
+```D
+struct IrTypeFunction {
+    uint numResults;
+    uint numParameters;
+    CallConvention callConv;
+    ushort syscallNumber;
+    IrIndex[0] payload; // result types followed by parameter types
+}
+```
+
+### IR global
+
+Stores its type and symbol index for linking process.
 
 ## Function inlining
 
+Before inlining starts the caller is already in modifiable state, meaning that functions data is located at the end of the arenas.
 
+### Appending the callee
+
+We copy the callee's IR to the end of the callers IR.
+
+Now we need to increment indicies in the appended IR to account for callers IR entities.
+
+In `instrHeaderBuffer` only `_payloadOffset` needs an increment by `callerIr.numPayloadSlots`.
+
+All other items are made in a way, so that they can be viewed as valid `IrIndex[]` and a single increment per `IrIndex` is performed. The increment depends on the kind of index. Currently there is only 16 kinds, so we build an offset table with 16 entries, populated by the arena sizes of caller IR.
+
+```D
+uint[16] offsets;
+offsets[IrValueKind.instruction] = callerIr.numInstructions;
+offsets[IrValueKind.basicBlock]  = callerIr.numBasicBlocks;
+...
+// items that need no increment remain 0 and do not affect IrIndex being fixed
+```
+
+Then we walk the `IrIndex[]` and per each item we do:
+
+```D
+index.asUint = oldIndex.asUint + offsets[oldIndex.kind];
+```
 
 # Function arguments and register allocation
 
