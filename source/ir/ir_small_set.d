@@ -9,7 +9,7 @@ import std.format : formattedWrite;
 import all;
 
 /// Stores 0-4 items inline
-/// Allocates memory from IrFuncStorage.arrayBuffer for sets with > 3 slots
+/// Allocates memory from IrFuncStorage.arrayBuffer for sets with > 4 slots
 /// IrIndex.init is used as an empty key, it is illegal key
 struct IrSmallSet
 {

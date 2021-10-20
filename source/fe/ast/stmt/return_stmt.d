@@ -9,6 +9,7 @@ import all;
 @(AstType.stmt_return)
 struct ReturnStmtNode {
 	mixin AstNodeData!(AstType.stmt_return, 0, AstNodeState.name_register_nested_done);
+	AstIndex parentFunction;
 	AstIndex expression; // Nullable
 }
 
@@ -20,6 +21,7 @@ void print_return(ReturnStmtNode* node, ref AstPrintState state)
 
 void post_clone_return(ReturnStmtNode* node, ref CloneState state)
 {
+	state.fixAstIndex(node.parentFunction);
 	state.fixAstIndex(node.expression);
 }
 
@@ -35,14 +37,8 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 	CompilationContext* c = state.context;
 
 	node.state = AstNodeState.type_check;
-	if (!state.curFunc)
-	{
-		c.error(node.loc,
-			"Return statement is not inside function");
-		return;
-	}
 
-	AstIndex retTypeIndex = state.curFunc.signature.get!FunctionSignatureNode(c).returnType;
+	AstIndex retTypeIndex = node.parentFunction.get!FunctionDeclNode(c).signature.get!FunctionSignatureNode(c).returnType;
 	bool isVoidFunc = retTypeIndex.isVoidType(c);
 
 	if (node.expression)

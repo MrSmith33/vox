@@ -15,11 +15,11 @@ import all;
 @(IrValueKind.basicBlock)
 struct IrBasicBlock
 {
-	IrIndex firstInstr; // null or first instruction
-	IrIndex lastInstr; // null or last instruction
-	IrIndex prevBlock; // null only if this is entryBasicBlock
-	IrIndex nextBlock; // null only if this is exitBasicBlock
-	IrIndex firstPhi; // may be null
+	IrIndex firstInstr; // first instruction
+	IrIndex lastInstr;  // last instruction
+	IrIndex prevBlock;  // null only if this is entryBasicBlock
+	IrIndex nextBlock;  // null only if this is exitBasicBlock
+	IrIndex firstPhi;   // may be null
 
 	PhiIterator phis(IrFunction* ir) return { return PhiIterator(ir, &this); }
 	InstrIterator instructions(IrFunction* ir) { return InstrIterator(ir, firstInstr); }
@@ -29,6 +29,7 @@ struct IrBasicBlock
 	IrSmallArray predecessors;
 	IrSmallArray successors;
 
+	// This 4-byte field must be able to be interpreted as an IrIndex
 	// Top 4 bits must be 0 at the time of inlining, so that IrIndex fixing can be performed
 	mixin(bitfields!(
 		/// used for sequential block indexing

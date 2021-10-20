@@ -157,9 +157,10 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 		default:
 			// unknown / unimplemented case
 			node.type = CommonAstNodes.type_error;
-			c.error(node.loc, "Cannot call %s", callee.astType(c));
-			c.internal_error(node.loc,
-				"Only direct function calls are supported right now");
+			c.error(node.loc, "Cannot call %s", get_node_kind_name(callee, c));
+			//c.internal_error(node.loc,
+			//	"Only direct function calls are supported right now");
+			return;
 	}
 }
 

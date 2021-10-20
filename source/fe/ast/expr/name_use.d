@@ -14,6 +14,12 @@ enum NameUseFlags : ushort
 	forbidParenthesesFreeCall = AstFlags.userFlag << 1,
 }
 
+enum NameUseSubType : ubyte {
+	referTo,
+	takeAddressOf,
+	takeAliasOf,
+}
+
 @(AstType.expr_name_use)
 struct NameUseExprNode {
 	mixin ExpressionNodeData!(AstType.expr_name_use);
@@ -112,11 +118,11 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 	switch(entityNode.astType) with(AstType) {
 		case decl_var:
 			auto var = entityNode.as!VariableDeclNode(c);
-			if (var.isMember) lowerToMember(nodeIndex, node, var.scopeIndex, MemberSubType.struct_member, state);
+			if (var.isMember) lowerToMember(nodeIndex, entity, node, var.scopeIndex, MemberSubType.struct_member, state);
 			break;
 		case decl_function:
 			auto func = entityNode.as!FunctionDeclNode(c);
-			if (func.isMember) lowerToMember(nodeIndex, node, 0, MemberSubType.struct_method, state);
+			if (func.isMember) lowerToMember(nodeIndex, entity, node, 0, MemberSubType.struct_method, state);
 			break;
 		case decl_enum_member, error:
 			// valid expr
@@ -149,14 +155,14 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 	}
 }
 
-private void lowerToMember(ref AstIndex nodeIndex, NameUseExprNode* node, uint scopeIndex, MemberSubType subType, ref NameResolveState state)
+private void lowerToMember(ref AstIndex nodeIndex, AstIndex entity, NameUseExprNode* node, uint scopeIndex, MemberSubType subType, ref NameResolveState state)
 {
 	CompilationContext* c = state.context;
 	// rewrite as this.entity
 	// let member_access handle everything else
 	AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, node.parentScope, CommonIds.id_this);
 	require_name_resolve(thisName, state);
-	AstIndex member = c.appendAst!MemberExprNode(node.loc, node.parentScope, thisName, nodeIndex, scopeIndex, subType);
+	AstIndex member = c.appendAst!MemberExprNode(node.loc, node.parentScope, thisName, entity, scopeIndex, subType);
 	if (node.isLvalue)
 		member.flags(c) |= AstFlags.isLvalue;
 	nodeIndex = member;
@@ -167,11 +173,29 @@ private void lowerToMember(ref AstIndex nodeIndex, NameUseExprNode* node, uint s
 // Get type from variable declaration
 void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref TypeCheckState state)
 {
+	type_calc_name_use(nodeIndex, node, state);
+}
+
+void type_calc_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref TypeCheckState state)
+{
 	CompilationContext* c = state.context;
 
-	if (state.parentType.isDefined &&
-		state.parentType.get_effective_node(c) == CommonAstNodes.type_alias) {
-		node.flags |= NameUseFlags.forbidParenthesesFreeCall;
+	final switch(node.getPropertyState(NodeProperty.type)) {
+		case PropertyState.not_calculated: break;
+		case PropertyState.calculating:
+			c.circular_dependency(nodeIndex, CalculatedProperty.type);
+		case PropertyState.calculated: return;
+	}
+
+	node.setPropertyState(NodeProperty.type, PropertyState.calculating);
+	scope(exit) node.setPropertyState(NodeProperty.type, PropertyState.calculated);
+
+	AstIndex parentType;
+	if (state.parentType.isDefined)
+	{
+		parentType = state.parentType.get_effective_node(c);
+		if (parentType == CommonAstNodes.type_alias)
+			node.flags |= NameUseFlags.forbidParenthesesFreeCall;
 	}
 
 	c.assertf(node.entity.isDefined, node.loc, "name null %s %s", node.isSymResolved, node.state);
@@ -194,6 +218,15 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 			}
 			goto default;
 
+		case AstType.decl_var:
+			if (parentType == CommonAstNodes.type_alias) {
+				node.type = CommonAstNodes.type_alias;
+				node.state = AstNodeState.type_check_done;
+				//node.subType = NameUseSubType.takeAliasOf;
+				break;
+			}
+			goto default;
+
 		case AstType.decl_enum_member:
 			require_type_check(node._entity, state, IsNested.no);
 			goto default;
@@ -201,7 +234,7 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 		default:
 			node.state = AstNodeState.type_check;
 			c.assertf(node.isSymResolved, node.loc, "not resolved");
-			node.type = node.entity.get_node_type(state.context);
+			node.type = node.entity.get_expr_type(state.context);
 			assert(node.type.isDefined);
 			node.state = AstNodeState.type_check_done;
 			break;
@@ -211,28 +244,12 @@ void type_check_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Type
 ExprValue ir_gen_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, NameUseExprNode* node)
 {
 	CompilationContext* c = gen.context;
-	AstNode* entity = node.entity.get_node(c);
 
-	c.assertf(entity !is null, node.loc, "name null %s %s", node.isSymResolved, node.state);
+	c.assertf(node.entity.isDefined, node.loc, "name null %s %s", node.isSymResolved, node.state);
 
-	switch (entity.astType) with(AstType)
-	{
-		case decl_enum_member:
-		{
-			gen.builder.addJumpToLabel(currentBlock, nextStmt);
-			return ExprValue(node.entity.get!EnumMemberDecl(c).gen_init_value_enum_member(c));
-		}
-		case decl_var:
-		{
-			ExprValue result = node.varDecl(c).irValue;
-			gen.builder.addJumpToLabel(currentBlock, nextStmt);
-			return result;
-		}
-		case decl_function:
-			gen.builder.addJumpToLabel(currentBlock, nextStmt);
-			return ExprValue(entity.as!FunctionDeclNode(c).getIrIndex(c));
-		default:
-			c.internal_error(node.loc, "ir_gen_name_use %s", entity.astType);
-			assert(false);
+	if (node.type == CommonAstNodes.type_alias) {
+		return ExprValue(c.constants.add(node.entity.storageIndex, IsSigned.no, IrArgSize.size32));
+	} else {
+		return ir_gen_expr(gen, node.entity, currentBlock, nextStmt);
 	}
 }

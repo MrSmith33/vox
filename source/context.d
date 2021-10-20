@@ -384,7 +384,13 @@ struct CompilationContext
 		else assert(false);
 	}
 
-	void circular_dependency(string file = __MODULE__, int line = __LINE__)
+	noreturn circular_dependency(AstIndex nodeIndex, CalculatedProperty prop, string file = __MODULE__, int line = __LINE__)
+	{
+		push_analized_node(AnalysedNode(nodeIndex, prop));
+		circular_dependency(file, line);
+	}
+
+	noreturn circular_dependency(string file = __MODULE__, int line = __LINE__)
 	{
 		size_t startLen = sink.data.length;
 		sink.putfln("Error: Circular dependency");
@@ -939,6 +945,7 @@ enum CalculatedProperty : ubyte {
 	type_check,
 	ir_type_header,
 	ir_gen,
+	type,
 	type_size,
 	init_value,
 }

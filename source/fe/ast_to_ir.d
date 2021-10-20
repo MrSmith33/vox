@@ -140,10 +140,23 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return ExprValue(irValue);
 		}
-		case type_basic, type_ptr, type_slice, type_static_array: {
+		case decl_struct, type_basic, type_ptr, type_slice, type_static_array: {
 			IrIndex irValue = gen.context.constants.add(astIndex.storageIndex, IsSigned.no, IrArgSize.size32);
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return ExprValue(irValue);
+		}
+		case decl_enum_member: {
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(n.as!EnumMemberDecl(c).gen_init_value_enum_member(c));
+		}
+		case decl_var: {
+			ExprValue result = n.as!VariableDeclNode(c).irValue;
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return result;
+		}
+		case decl_function: {
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(n.as!FunctionDeclNode(c).getIrIndex(c));
 		}
 		default:
 			c.internal_error(n.loc, "Expected expression, not %s", n.astType);

@@ -63,7 +63,7 @@ AstIndex eval_static_expr_alias(AstIndex nodeIndex, CompilationContext* c)
 {
 	IrIndex val = eval_static_expr(nodeIndex, c);
 	AstNode* node = c.getAstNode(nodeIndex);
-	AstIndex retType = nodeIndex.get_node_type(c);
+	AstIndex retType = nodeIndex.get_node_alias(c);
 	if (!(retType == CommonAstNodes.type_alias || retType == CommonAstNodes.type_type)) {
 		c.internal_error(node.loc, "Cannot evaluate static expression %s as $alias", node.astType);
 	}
@@ -80,7 +80,7 @@ AstIndex eval_static_expr_type(AstIndex nodeIndex, CompilationContext* c)
 {
 	IrIndex val = eval_static_expr(nodeIndex, c);
 	AstNode* node = c.getAstNode(nodeIndex);
-	if (nodeIndex.get_node_type(c) != CommonAstNodes.type_type)
+	if (nodeIndex.get_node_alias(c) != CommonAstNodes.type_type)
 		c.internal_error(node.loc, "Cannot evaluate static expression %s as $type", node.astType);
 	if (!val.isSomeConstant)
 		c.internal_error(node.loc, "Cannot obtain $type from %s", val);

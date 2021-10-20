@@ -132,7 +132,7 @@ struct IrTypeFunction
 	// Prevent type from copying because members will not be copied. Need to use ptr.
 	@disable this(this);
 
-	IrIndex[0] payload; // result types followed by paramter types
+	IrIndex[0] payload; // result types followed by parameter types
 	/// This must be called on the value in the buffer, not stack-local value
 	IrIndex[] resultTypes() return { return payload.ptr[0..numResults];}
 	IrIndex[] parameterTypes() return { return payload.ptr[numResults..numResults+numParameters];}
@@ -165,7 +165,7 @@ struct IrTypeStorage
 	{
 		IrIndex result = append!IrTypeFunction;
 
-		{ // add slots for results and paramters
+		{ // add slots for results and parameters
 			uint numIndicies = numResults + numParameters;
 			size_t numSlots = divCeil(IrIndex.sizeof * numIndicies, ulong.sizeof);
 			ulong[] data = buffer.voidPut(numSlots);

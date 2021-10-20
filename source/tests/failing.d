@@ -681,3 +681,15 @@ immutable fail63 = q{--- fail63
 --- <error>
 fail63:2:2: Error: Broadcasting @extern(syscall) attribute is forbidden
 };
+
+
+@TestInfo()
+immutable fail64 = q{--- fail64
+	/// Bug #20. Crash
+	u32 hey;
+	$alias getHey() {
+		return $alias(hey);
+	}
+--- <error>
+fail64:4:16: Error: Cannot call basic type
+};

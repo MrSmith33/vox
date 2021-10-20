@@ -25,7 +25,7 @@ struct IrFunction
 	IrPhi* phiPtr;
 	uint* arrayPtr;
 	IrVirtualRegister* vregPtr;
-	// index 0 must be always start block
+	// index 0 must be always entry block
 	// index 1 must be always exit block
 	IrBasicBlock* basicBlockPtr;
 	StackSlot* stackSlotPtr;
@@ -37,15 +37,15 @@ struct IrFunction
 
 	/// Used for instrPtr, instrNextPtr, instrPrevPtr
 	uint numInstructions;
-	uint numPayloadSlots; /// instrPayloadPtr
-	uint numPhis; /// phiPtr
-	uint arrayLength; /// arrayPtr
+	uint numPayloadSlots;     /// instrPayloadPtr
+	uint numPhis;             /// phiPtr
+	uint arrayLength;         /// arrayPtr
 	uint numVirtualRegisters; /// vregPtr
-	uint numBasicBlocks; /// basicBlockPtr
-	uint numStackSlots; /// stackSlotPtr
+	uint numBasicBlocks;      /// basicBlockPtr
+	uint numStackSlots;       /// stackSlotPtr
 
 
-	/// Special block. Automatically created. Program start. Created first.
+	/// Special block. Automatically created. Program entry. Created first.
 	enum IrIndex entryBasicBlock = IrIndex(0, IrValueKind.basicBlock);
 	/// Special block. Automatically created. All returns must jump to it.
 	enum IrIndex exitBasicBlock = IrIndex(1, IrValueKind.basicBlock);

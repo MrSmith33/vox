@@ -40,6 +40,7 @@ struct StructDeclNode {
 		this.parentScope = parentScope;
 		this.memberScope = memberScope;
 		this.id = id;
+		setPropertyState(NodeProperty.type, PropertyState.calculated);
 	}
 
 	TypeNode* typeNode() return { return cast(TypeNode*)&this; }

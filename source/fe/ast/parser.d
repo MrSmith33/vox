@@ -111,7 +111,7 @@ struct Parser
 	CompilationContext* context;
 	ModuleDeclNode* currentModule;
 	/// For member functions
-	/// mmodule, struct or function
+	/// module, struct or function
 	AstIndex declarationOwner;
 	Scope* currentScope;
 	AstIndex currentScopeIndex() { return currentScope.get_ast_index(context); }
@@ -1345,7 +1345,8 @@ struct Parser
 				nextToken;
 				AstIndex expression = tok.type != TokenType.SEMICOLON ? expr(PreferType.no) : AstIndex.init;
 				expectAndConsume(TokenType.SEMICOLON);
-				return make!ReturnStmtNode(start, expression);
+				context.assertf(declarationOwner.isDefined && declarationOwner.astType(context) == AstType.decl_function, start, "Return statement is not inside function");
+				return make!ReturnStmtNode(start, declarationOwner, expression);
 			case TokenType.BREAK_SYM:  /* break; */
 				nextToken;
 				expectAndConsume(TokenType.SEMICOLON);

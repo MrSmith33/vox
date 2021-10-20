@@ -34,7 +34,6 @@ enum IsNested : bool {
 struct TypeCheckState
 {
 	CompilationContext* context;
-	FunctionDeclNode* curFunc;
 	AstIndex parentType;
 }
 
@@ -184,7 +183,9 @@ TypeConvResKind checkTypeConversion(AstIndex fromTypeIndex, AstIndex toTypeIndex
 	TypeNode* fromType = fromTypeIndex.get_type(c);
 	TypeNode* toType = toTypeIndex.get_type(c);
 
-	//writefln("checkTypeConversion %s %s", printer(c.getAstNodeIndex(fromType), c), printer(toTypeIndex, c));
+	//writefln("checkTypeConversion %s -> %s", printer(fromTypeIndex, c), printer(toTypeIndex, c));
+	//writefln("checkTypeConversion %s -> %s", printer(c.getAstNodeIndex(fromType), c), printer(c.getAstNodeIndex(toType), c));
+	//writefln("checkTypeConversion %s", fromType.astType);
 
 	switch (fromType.astType) with(AstType) {
 		case type_basic: return type_conv_basic(fromType.as_basic, toTypeIndex, expr, c);
@@ -281,7 +282,7 @@ bool autoconvToCommonType(ref AstIndex leftIndex, ref AstIndex rightIndex, Compi
 bool autoconvTo(ref AstIndex exprIndex, AstIndex typeIndex, CompilationContext* c)
 {
 	AstIndex exprType = exprIndex.get_expr_type(c);
-	//writefln("autoconvTo %s %s", printer(exprType, c), printer(typeIndex, c));
+	//writefln("autoconvTo %s -> %s", printer(exprType, c), printer(typeIndex, c));
 	if (exprType == typeIndex) return true;
 
 	TypeConvResKind res = checkTypeConversion(exprType, typeIndex, exprIndex, c);

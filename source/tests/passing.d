@@ -4818,3 +4818,20 @@ immutable
 	void withAttribB();
 };
 */
+
+
+@TestInfo()
+immutable test228 = q{--- test228
+	/// Take alias of global var
+	u32 hey;
+	$alias getHey() {
+		return hey;
+	}
+
+	void run() {
+		alias u = getHey();
+		foo(u);
+	}
+
+	void foo(u32 a){}
+};

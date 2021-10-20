@@ -54,7 +54,7 @@ struct MemberExprNode {
 		_memberIndex = memberIndex;
 	}
 
-	AstIndex member(CompilationContext* c) {
+	ref AstIndex member(CompilationContext* c) return {
 		c.assertf(isSymResolved, loc, "Member access is %s, %s", cast(MemberSubType)subType, state);
 		return _member;
 	}
@@ -210,7 +210,8 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 {
 	CompilationContext* c = state.context;
 	if (expr.isSymResolved) {
-		expr.type = expr.member(c).get_node_type(c);
+		require_type_check(expr.aggregate, c, IsNested.no);
+		expr.type = expr._member.get_node_type(c);
 		return LookupResult.success;
 	}
 
@@ -221,7 +222,7 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 		return LookupResult.success;
 	}
 
-	require_type_check(expr.aggregate, state, IsNested.no);
+	require_type_check(expr.aggregate, c, IsNested.no);
 	TypeNode* objType = expr.aggregate.get_type(c);
 
 	Identifier memberId = expr.memberId(c);
