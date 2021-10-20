@@ -103,9 +103,11 @@ struct CompilationContext
 	/// Buffer for import section when in exe mode
 	Arena!ubyte importBuffer;
 
-	/// Symbols provided by the environment (host/dll symbols)
-	// TODO: this uses GC
-	LinkIndex[Identifier] externalSymbols;
+	/// External modules that are provided by driver or created at runtime from @extern(module) dll functions
+	HashMap!(Identifier, LinkIndex, Identifier.init) externalModules;
+	/// Symbols provided by the environment (host symbols must be provided prior to compilation)
+	/// Symbols imported from dll that are demanded by functions marked with @extern(module)
+	HashMap!(ExternalSymbolId, LinkIndex, ExternalSymbolId.init) externalSymbols;
 	/// Symbols, sections and references
 	ObjectSymbolTable objSymTab;
 
@@ -592,6 +594,81 @@ struct CompilationContext
 		return lastFile;
 	}
 
+	// Checks if symbol can be accessed from code segment with 32bit signed offset
+	private bool canReferenceFromCode(void* hostSym)
+	{
+		void* start = codeBuffer.bufPtr;
+		void* end = codeBuffer.bufPtr + codeBuffer.length;
+		bool reachesFromStart = (hostSym - start) == cast(int)(hostSym - start);
+		bool reachesFromEnd = (hostSym - end) == cast(int)(hostSym - end);
+		return reachesFromStart && reachesFromEnd;
+	}
+
+	/// Returns index of external (host or dll) module
+	LinkIndex getOrCreateExternalModule(Identifier modId, ObjectModuleKind modKind) {
+		LinkIndex externalModuleIndex = externalModules.get(modId);
+		if (externalModuleIndex.isDefined) return externalModuleIndex;
+
+		ObjectModule externalModule = {
+			kind : modKind,
+			id : modId
+		};
+		externalModuleIndex = objSymTab.addModule(externalModule);
+		externalModules.put(arrayArena, modId, externalModuleIndex);
+
+		return externalModuleIndex;
+	}
+
+	void addHostSymbol(LinkIndex hostModuleIndex, ExternalSymbolId externalId, void* symPtr)
+	{
+		LinkIndex importedSymbolIndex;
+
+		if (canReferenceFromCode(symPtr))
+		{
+			ObjectSymbol importedSymbol = {
+				kind : ObjectSymbolKind.isHost,
+				id : externalId.symId,
+				dataPtr : cast(ubyte*)symPtr,
+				sectionOffset : cast(ulong)symPtr,
+				sectionIndex : builtinSections[ObjectSectionType.host],
+				moduleIndex : hostModuleIndex,
+			};
+			importedSymbolIndex = objSymTab.addSymbol(importedSymbol);
+		}
+		else
+		{
+			ulong sectionOffset = importBuffer.length;
+			ulong ptr = cast(ulong)symPtr;
+			importBuffer.put(*cast(ubyte[8]*)&ptr);
+
+			ObjectSymbol importedSymbol = {
+				kind : ObjectSymbolKind.isHost,
+				flags : ObjectSymbolFlags.isIndirect,
+				id : externalId.symId,
+				sectionOffset : sectionOffset,
+				sectionIndex : builtinSections[ObjectSectionType.imports],
+				moduleIndex : hostModuleIndex,
+			};
+			importedSymbolIndex = objSymTab.addSymbol(importedSymbol);
+		}
+		externalSymbols.put(arrayArena, externalId, importedSymbolIndex);
+	}
+
+	LinkIndex addDllModuleSymbol(LinkIndex dllModuleIndex, ExternalSymbolId externalId)
+	{
+		ObjectSymbol importedSymbol = {
+			kind : ObjectSymbolKind.isImported,
+			flags : ObjectSymbolFlags.isIndirect,
+			id : externalId.symId,
+			alignmentPower : 3, // pointer size
+			sectionIndex : builtinSections[ObjectSectionType.imports],
+			moduleIndex : dllModuleIndex,
+		};
+		LinkIndex importedSymbolIndex = objSymTab.addSymbol(importedSymbol);
+		externalSymbols.put(arrayArena, externalId, importedSymbolIndex);
+		return importedSymbolIndex;
+	}
+
 	ModuleDeclNode* getModuleFromToken(TokenIndex tokIndex) {
 		return getFileFromToken(tokIndex).mod;
 	}
@@ -918,7 +995,8 @@ struct CompilationContext
 		analisysStack = analisysStack.init;
 		currentFunction = null;
 
-		externalSymbols.clear();
+		externalModules = externalModules.init;
+		externalSymbols = externalSymbols.init;
 
 		auto rootPackage = CommonAstNodes.node_root_package.get!PackageDeclNode(&this);
 		*rootPackage = PackageDeclNode.init;
@@ -1139,7 +1217,7 @@ void addSections(CompilationContext* c)
 	ObjectSection hostSection = {
 		type : ObjectSectionType.host,
 		alignmentPower : 0,
-		id : c.idMap.getOrRegNoDup(c, ":host")
+		id : c.idMap.getOrRegNoDup(c, ".host")
 	};
 	c.builtinSections[ObjectSectionType.host] = c.objSymTab.addSection(hostSection);
 

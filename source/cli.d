@@ -184,30 +184,6 @@ int runCli(string[] args)
 			string ext = filename.extension;
 			switch(ext)
 			{
-				case ".dll":
-					string libName = filename.baseName;
-					LinkIndex importedModule = driver.addDllModule(libName);
-
-					void onDllSymbol(uint ordinal, string symName) {
-						driver.addDllModuleSymbol(importedModule, symName);
-					}
-
-					size_t savedLength = driver.context.sourceBuffer.length;
-					scope(exit) driver.context.sourceBuffer.length = savedLength;
-
-					if (!exists(filename))
-					{
-						driver.context.error("File `%s` not found", absolutePath(filename));
-						break;
-					}
-
-					auto file = File(filename, "r");
-					char[] sourceBuffer = driver.context.sourceBuffer.voidPut(file.size);
-					char[] dllData = file.rawRead(sourceBuffer);
-					file.close();
-
-					getExportNames(driver.context, filename, cast(ubyte[])dllData, &onDllSymbol);
-					break;
 				case ".har":
 					if (!exists(filename))
 					{
@@ -273,66 +249,4 @@ int runCli(string[] args)
 	}
 
 	return 0;
-}
-
-void getExportNames(ref CompilationContext context, string filename, ubyte[] dllData, void delegate(uint, string) onExport)
-{
-	import be.pecoff;
-	import std.string : fromStringz;
-
-	if (dllData.length < DosHeader.sizeof) {
-		context.error("`%s` is invalid .dll file. Size is %s bytes.", filename, dllData.length);
-		return;
-	}
-
-	auto slicer = FileDataSlicer(dllData);
-	DosHeader* dosHeader = slicer.getPtrTo!DosHeader;
-	slicer.fileCursor = dosHeader.e_lfanew;
-	PeSignature peSignature = *slicer.getPtrTo!PeSignature;
-
-	if (peSignature != PeSignature.init) {
-		context.error("`%s` is not a PE file", filename);
-		return;
-	}
-
-	CoffFileHeader* header = slicer.getPtrTo!CoffFileHeader;
-	if (header.Machine != MachineType.amd64) {
-		context.error("`%s` machine type is %s", filename, header.Machine);
-		return;
-	}
-
-	size_t sectionPtr = slicer.fileCursor + header.SizeOfOptionalHeader;
-
-	OptionalHeader* opt = slicer.getPtrTo!OptionalHeader;
-	if (!opt.isValidMember!"ExportTable"(header.SizeOfOptionalHeader)) return; // no export table in optional header
-	if (opt.NumberOfRvaAndSizes < 1) return; // no export table in optional header
-
-	uint exportsRVA = opt.ExportTable.VirtualAddress;
-
-	slicer.fileCursor = sectionPtr;
-	SectionHeader[] sectionHeaders = slicer.getArrayOf!SectionHeader(header.NumberOfSections);
-
-	char[8] edataName = ".edata\0\0";
-	foreach(ref section; sectionHeaders)
-	{
-		// export table is inside this section
-		if (exportsRVA >= section.VirtualAddress && exportsRVA < section.VirtualAddress + section.SizeOfRawData)
-		{
-			ptrdiff_t offset = section.VirtualAddress - section.PointerToRawData;
-			slicer.fileCursor = exportsRVA - offset;
-			auto exportDir = slicer.getPtrTo!ExportDirectoryEntry;
-
-			size_t nameTblPtr = exportDir.AddressOfNames - offset;
-			slicer.fileCursor = nameTblPtr;
-			uint[] namePointers = slicer.getArrayOf!uint(exportDir.NumberOfNames);
-
-			foreach(size_t ordinal, uint namePtr; namePointers)
-			{
-				slicer.fileCursor = namePtr - offset;
-				char* namez = slicer.getPtrTo!char;
-				string name = cast(string)fromStringz(namez);
-				onExport(cast(uint)ordinal, name);
-			}
-		}
-	}
 }

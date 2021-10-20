@@ -186,6 +186,7 @@ immutable test15 = q{--- test15
 	i32 run(i32 par) {
 		return external(par, 10, 20);
 	}
+	@extern(module, "host")
 	i32 external(i32, i32, i32);
 };
 extern(C) int test15_external_func(int par1, int par2, int par3) {
@@ -205,6 +206,7 @@ immutable test16 = q{--- test16
 	i32 run(i32 par) {
 		return external(par, 10, 20, 30, 40);
 	}
+	@extern(module, "host")
 	i32 external(i32, i32, i32, i32, i32);
 };
 extern(C) int test16_external_func(int par1, int par2, int par3, int par4, int par5) {
@@ -224,6 +226,7 @@ immutable test17 = q{--- test17
 	i32 run(i32 par) {
 		return external(par, 10, 20, 30, 40, 50);
 	}
+	@extern(module, "host")
 	i32 external(i32, i32, i32, i32, i32, i32);
 };
 extern(C) int test17_external_func(int par1, int par2, int par3, int par4, int par5, int par6) {
@@ -277,6 +280,7 @@ void tester21(ref TestContext ctx) {
 @TestInfo(&tester21, [HostSymbol("print", cast(void*)&external_print_i32_func)])
 immutable test21 = q{--- test21
 	// test fibonacci. while loop. func call
+	@extern(module, "host")
 	void print(i32); // external
 	void fibonacci() {
 		i32 lo = 0;
@@ -294,6 +298,7 @@ immutable test21 = q{--- test21
 immutable test21_2 = q{--- test21_2
 	// Causes other order of phi functions, which requires correct move sequence to resolve
 	// Tests phi resolution after register allocation
+	@extern(module, "host")
 	void print(i32); // external
 	void fibonacci() {
 		i32 lo = 0;
@@ -354,6 +359,7 @@ void tester23(ref TestContext ctx) {
 @TestInfo(&tester24, [HostSymbol("print", cast(void*)&test24_external_print)])
 immutable test24 = q{--- test24
 	// test string literal as u8* param
+	@extern(module, "host")
 	void print(u8*);
 	void run(){ print("Hello"); }
 };
@@ -371,6 +377,7 @@ void tester24(ref TestContext ctx) {
 immutable test25 = q{--- test25
 	// test struct creation, member set, stack struct as func argument
 	struct string { u64 length; u8* ptr; }
+	@extern(module, "host")
 	void print(string);
 	void run(){
 		string str;
@@ -391,6 +398,7 @@ void tester25(ref TestContext ctx) {
 immutable test26 = q{--- test26
 	// test global parameter, assignment
 	struct string { u64 length; u8* ptr; }
+	@extern(module, "host")
 	void print(string);
 	string str;
 	void run(){
@@ -404,6 +412,7 @@ immutable test26 = q{--- test26
 @TestInfo(&tester27, [HostSymbol("print", cast(void*)&external_print_string)])
 immutable test27 = q{--- test27
 	// test slices
+	@extern(module, "host")
 	void print(u8[]);
 	void run() {
 		u8[] array;
@@ -440,6 +449,7 @@ immutable test31 = q{--- test31
 	enum e8 : i32; // type, body omitted
 	enum e9 { e9 = 9 } // type
 
+	@extern(module, "host")
 	void print_num(i64 val);
 	e9 ret_enum(){ return e9.e9; }
 	void accept_enum(e9 e){print_num(e);}
@@ -472,6 +482,7 @@ void tester31(ref TestContext ctx) {
 @TestInfo(&tester21, [HostSymbol("print", cast(void*)&external_print_i32_func)])
 immutable test32 = q{--- test32
 	// Test reg alloc xchg generation
+	@extern(module, "host")
 	void print(i32); // external
 	void fibonacci() {
 		i32 lo = 0;
@@ -508,6 +519,7 @@ immutable test32 = q{--- test32
 immutable test33 = q{
 --- test33_1
 	// test multifile compilation
+	@extern(module, "host")
 	void print(i32); // external
 --- test33_2
 	import test33_1;
@@ -1149,6 +1161,7 @@ immutable test54 = q{--- test54
 @TestInfo(&tester55, [HostSymbol("print", cast(void*)&external_print_string)])
 immutable test55 = q{--- test55
 	// test slice forwarding
+	@extern(module, "host")
 	void print(u8[] str);
 	void forward(u8[] str) {
 		print(str);
@@ -1307,6 +1320,7 @@ immutable test63 = q{--- test63
 @TestInfo(&tester65, [HostSymbol("print", cast(void*)&external_print_string)])
 immutable test65 = q{--- test65
 	// Test string literals
+	@extern(module, "host")
 	void print(u8[]); // external
 	u8[] returnStringLiteral() {
 		return "testString";
@@ -2568,6 +2582,7 @@ immutable test106 = q{--- test106
 	void fun(i32, i32, i32, u8, u8, u8, u8[] name, bool){
 		fun2(name);
 	}
+	@extern(module, "host")
 	void fun2(u8[]);
 	void run()
 	{
@@ -3100,6 +3115,7 @@ immutable test131 = q{--- test131
 			return fac(x - 1) * x;
 		}
 	}
+	@extern(module, "host")
 	void log(i64);
 	void run() {
 		log(fac(5));
@@ -3203,6 +3219,7 @@ immutable test137 = q{--- test137
 @TestInfo(null, [HostSymbol("crash", cast(void*)&external_noop)])
 immutable test138 = q{--- test138
 	// noreturn
+	@extern(module, "host")
 	noreturn crash();
 	void run1() {
 		crash();
@@ -3308,7 +3325,9 @@ void tester143(ref TestContext ctx) {
 	HostSymbol("printInt", cast(void*)&external_print_i64_func)])
 immutable test144 = q{--- test144
 	// select function
+	@extern(module, "host")
 	void printStr(u8[]);
+	@extern(module, "host")
 	void printInt(i64 i);
 	bool isInteger($type type) {
 		return type == u8
@@ -3410,7 +3429,9 @@ immutable test149 = q{--- test149
 	HostSymbol("printInt", cast(void*)&external_print_i64_func)])
 immutable test150 = q{--- test150
 	// $isInteger + IFTI
+	@extern(module, "host")
 	void printStr(u8[]);
+	@extern(module, "host")
 	void printInt(i64 i);
 	$alias selectPrintFunc($type T) {
 		if ($isInteger(T))
@@ -3633,7 +3654,9 @@ immutable test168 = q{--- test168
 	HostSymbol("printInt", cast(void*)&external_print_i64_func)])
 immutable test169 = q{--- test169
 	// #foreach with multiple statements
+	@extern(module, "host")
 	void printStr(u8[]);
+	@extern(module, "host")
 	void printInt(i64 i);
 	$alias selectPrintFunc($type T) {
 		if ($isInteger(T))
@@ -4485,6 +4508,7 @@ immutable test208 = q{--- test208
 		print("EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE");
 		print("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
 	}
+	@extern(module, "host")
 	void print(u8[]);
 };
 extern(C) void test208_print(SliceString str) {
@@ -4742,7 +4766,7 @@ immutable test221 = q{--- test221
 @TestInfo(null, [HostSymbol("ExitProcess", cast(void*)&external_noop)])
 immutable test222 = q{--- test222
 	/// @extern(module)
-	@extern(module, "kernel32")
+	@extern(module, "host")
 	noreturn ExitProcess(u32 uExitCode);
 };
 
@@ -4753,7 +4777,7 @@ immutable test223 = q{
 	void main() {
 		ExitProcess(0);
 	}
-	@extern(module, "kernel32")
+	@extern(module, "host")
 	noreturn ExitProcess(u32 uExitCode);
 };
 

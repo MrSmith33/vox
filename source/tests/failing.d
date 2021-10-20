@@ -7,6 +7,10 @@ import tester;
 
 Test[] failingTests() { return collectTests!(tests.failing)(); }
 
+
+extern(C) void external_noop() {}
+
+
 @TestInfo()
 immutable fail1 = `
 --- fail1
@@ -692,4 +696,33 @@ immutable fail64 = q{--- fail64
 	}
 --- <error>
 fail64:4:16: Error: Cannot call basic type
+};
+
+
+@TestInfo()
+immutable fail65 = q{--- fail65
+	/// Error for external function without @extern annotation
+	void external();
+--- <error>
+fail65:2:2: Error: External function `external` must be annotated with @extern attribute
+};
+
+
+@TestInfo()
+immutable fail66 = q{--- fail66
+	/// Error for external function pointing to non-existing module
+	@extern(module, "non_existing")
+	void external();
+--- <error>
+fail66:3:2: Error: Cannot find external symbol `external` in host module `non_existing`. No such module defined
+};
+
+
+@TestInfo(null, [HostSymbol("external_noop", cast(void*)&external_noop)])
+immutable fail67 = q{--- fail67
+	/// Error for external function pointing to non-existing function in existing module
+	@extern(module, "host")
+	void external();
+--- <error>
+fail67:3:2: Error: Cannot find external symbol `external` in host module `host`
 };

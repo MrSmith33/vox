@@ -312,11 +312,13 @@ Attributes can be specified in one of 3 forms
 
   If several attributes of this type are attached, only latest attribute applies.
 
-* `NEI` `@extern(module, "external module name")`
+* `@extern(module, "external module name")`
 
   External functions with this attribute will generate entry in import table for the specified module (second parameter). By default the name of external module is used as a name of `.so`/`.dll` library when compiling as an executable. `.so`/`.dll` suffix will be added as (and if) required by the target plaform. External module name should not have `.so`/`.dll` suffix in the source file.
 
-  To override the module file name use `--externModule=<external_mod>:<file_name>` CLI switch
+  `NEI` To override the module file name use `--externModule=<external_mod>:<file_name>` CLI switch
+
+  `NEI` Doesn't yet support binding to `.so` libraries
 
   ```D
   @extern(module, "kernel32")

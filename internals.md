@@ -823,7 +823,6 @@ struct TestInfo
 {
     void function(ref TestContext) tester;
     HostSymbol[] hostSymbols;
-    DllModule[] dllModules;
 }
 ```
 

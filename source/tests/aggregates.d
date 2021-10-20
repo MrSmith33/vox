@@ -281,6 +281,7 @@ void tester131(ref TestContext ctx) {
 immutable aggr132 = q{--- aggr132
 	// Bug. Wrong size of shl used when building small aggregate
 	struct Point { i32 x; i32 y; }
+	@extern(module, "host")
 	void consume(i32, i32);
 	void run(Point* player)
 	{
@@ -306,6 +307,7 @@ void tester132(ref TestContext ctx) {
 immutable aggr133 = q{--- aggr133
 	// Bug. Wrong size of shr used when deconstructing small aggregate
 	struct Point { i32 x; i32 y; }
+	@extern(module, "host")
 	void consume(i32, i32);
 	void run(Point point)
 	{
@@ -500,6 +502,7 @@ immutable aggr139 = q{--- aggr139
 		Struct s;
 		return s.fun();
 	}
+	@extern(module, "host")
 	void external(u64*);
 };
 extern(C) void aggr139_external(ulong* ptr) {

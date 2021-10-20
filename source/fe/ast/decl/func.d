@@ -104,20 +104,59 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 
 	// Create link object
 	{
-		LinkIndex symbolIndex;
-
 		if (node.isExternal)
 		{
-			// When JIT-compiling, host can provide a set of external functions
-			// we will use provided function pointer
-			symbolIndex = c.externalSymbols.get(node.id, LinkIndex());
+			auto sig = node.signature.get!FunctionSignatureNode(c);
+			if (!sig.hasExternAttrib) {
+				c.error(node.loc, "External function `%s` must be annotated with @extern attribute", c.idString(node.id));
+			} else {
+				auto attrib = sig.getExternAttrib(c).as!BuiltinAttribNode(c);
 
-			if (!symbolIndex.isDefined) {
-				// Allowed if it is marked with @extern(syscall)
-				auto sig = node.signature.get!FunctionSignatureNode(c);
-				// TODO: Revisit @extern(module) is implemented
-				if (!sig.findExternSyscallAttrib(c)) {
-					c.error(node.loc, "Unresolved external function %s", c.idString(node.id));
+				final switch(cast(BuiltinAttribSubType)attrib.subType) {
+					case BuiltinAttribSubType.extern_syscall:
+						// Allowed if it is marked with @extern(syscall)
+						// noop, syscall instruction will be generated
+						break;
+
+					case BuiltinAttribSubType.extern_module:
+						Identifier modId = Identifier(attrib.data);
+						Identifier symId = node.id;
+						auto externalId = ExternalSymbolId(modId, symId);
+
+						final switch(c.buildType) {
+							case BuildType.jit:
+								// When JIT-compiling, host can provide a set of modules that define external functions
+								LinkIndex symbolIndex = c.externalSymbols.get(externalId);
+
+								if (!symbolIndex.isDefined) {
+									if (c.externalModules.get(modId).isDefined)
+										c.error(node.loc, "Cannot find external symbol `%s` in host module `%s`", c.idString(symId), c.idString(modId));
+									else
+										c.error(node.loc, "Cannot find external symbol `%s` in host module `%s`. No such module defined", c.idString(symId), c.idString(modId));
+									break;
+								}
+
+								// TODO: check that parameters match
+								node.backendData.objectSymIndex = symbolIndex;
+								break;
+
+							case BuildType.exe:
+								// Will create a new module if not found
+								// Dll symbols will be
+								LinkIndex moduleIndex = c.getOrCreateExternalModule(modId, ObjectModuleKind.isImported);
+
+								// When compiling exe, external symbol will point to a shared library
+								LinkIndex symbolIndex = c.externalSymbols.get(externalId);
+
+								if (!symbolIndex.isDefined) {
+									// Create symbol if it doesn't exist
+									symbolIndex = c.addDllModuleSymbol(moduleIndex, externalId);
+								}
+
+								node.backendData.objectSymIndex = symbolIndex;
+								break;
+						}
+						break;
 				}
 			}
 		}
@@ -130,11 +169,8 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 				alignmentPower : 0,
 				id : node.id,
 			};
-			symbolIndex = c.objSymTab.addSymbol(sym);
+			node.backendData.objectSymIndex = c.objSymTab.addSymbol(sym);
 		}
-
-		// TODO: check that parameters match
-		node.backendData.objectSymIndex = symbolIndex;
 	}
 
 	node.state = AstNodeState.name_register_self_done;

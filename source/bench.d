@@ -33,7 +33,6 @@ int runBench(string[] args)
 		auto time1 = currTime;
 		driver.beginCompilation();
 		driver.addHostSymbols(curTest.hostSymbols);
-		driver.addDllModules(curTest.dllModules);
 		string strippedHar = curTest.harData.stripLeft;
 		driver.addHar("test.har", strippedHar);
 		driver.compile();
@@ -75,7 +74,6 @@ int benchSpeed()
 
 	driver.beginCompilation();
 	driver.addHostSymbols(test.hostSymbols);
-	driver.addDllModules(test.dllModules);
 	string strippedHar = test.harData.stripLeft;
 	driver.addHar("test.har", strippedHar);
 	driver.compile();

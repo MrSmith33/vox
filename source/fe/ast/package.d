@@ -208,25 +208,21 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		return cast(AttributeInfo*)(cast(void*)(&this) - AttributeInfo.sizeof);
 	}
 
-	BuiltinAttribNode* findExternAttrib(CompilationContext* c, BuiltinAttribSubType type) {
+	bool hasExternAttrib() {
+		if (!hasAttributes) return false;
+		return attributeInfo.isExternal;
+	}
+
+	// Returns last @extern attribute attached to the node
+	AstNode* getExternAttrib(CompilationContext* c) {
 		if (!hasAttributes) return null;
-		foreach(AstIndex attrib; attributeInfo.attributes) {
+		foreach_reverse(AstIndex attrib; attributeInfo.attributes) {
 			auto attribNode = attrib.get_node(c);
-			if (attribNode.astType == AstType.decl_builtin_attribute &&
-				attribNode.subType == type)
-			{
-				return attribNode.as!BuiltinAttribNode(c);
-			}
+			if (attribNode.astType != AstType.decl_builtin_attribute) continue;
+			if (attribNode.subType == BuiltinAttribSubType.extern_syscall) return attribNode;
+			if (attribNode.subType == BuiltinAttribSubType.extern_module) return attribNode;
 		}
 		return null;
-	}
-
-	BuiltinAttribNode* findExternSyscallAttrib(CompilationContext* c) {
-		return findExternAttrib(c, BuiltinAttribSubType.extern_syscall);
-	}
-
-	BuiltinAttribNode* findExternModuleAttrib(CompilationContext* c) {
-		return findExternAttrib(c, BuiltinAttribSubType.extern_module);
 	}
 
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }

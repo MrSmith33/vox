@@ -13,6 +13,7 @@ extern(C) void external_void_func(){}
 @TestInfo(&tester1, [HostSymbol("callee", cast(void*)&external_void_func)])
 immutable reg_alloc1 = q{--- reg_alloc1
 	// test register allocation
+	@extern(module, "host")
 	void callee(); // uses all registers causing spilling
 	i32 run(i32 a)
 	{
@@ -27,6 +28,7 @@ void tester1(ref TestContext ctx) {
 @TestInfo(&tester2, [HostSymbol("callee", cast(void*)&external_void_func)])
 immutable reg_alloc2 = q{--- reg_alloc2
 	// test register allocation
+	@extern(module, "host")
 	void callee();
 	i32 run(i32 a, i32 b, i32 c, i32 d)
 	{
@@ -42,6 +44,7 @@ void tester2(ref TestContext ctx) {
 @TestInfo(&tester3, [HostSymbol("callee", cast(void*)&external_void_func)])
 immutable reg_alloc3 = q{--- reg_alloc3
 	// test register allocation
+	@extern(module, "host")
 	void callee();
 	i32 run(i32 a, i32 b, i32 c, i32 d)
 	{

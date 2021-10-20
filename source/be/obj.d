@@ -14,14 +14,20 @@ import all;
 
 struct HostSymbol
 {
-	string name;
+	this(string symName, void* ptr, string modName = "host") {
+		this.symName = symName;
+		this.modName = modName;
+		this.ptr = ptr;
+	}
+	string symName;
+	string modName;
 	void* ptr;
 }
 
-struct DllModule
+struct ExternalSymbolId
 {
-	string libName;
-	string[] importedSymbols;
+	Identifier modId;
+	Identifier symId;
 }
 
 enum getLinkIndexKind(T) = getUDAs!(T, LinkIndexKind)[0];
@@ -169,6 +175,7 @@ struct ObjectModule
 
 	bool isLocal() { return kind == ObjectModuleKind.isLocal; }
 	bool isImported() { return kind == ObjectModuleKind.isImported; }
+	bool isExternal() { return isLocal || isImported; }
 }
 
 @(LinkIndexKind.section)

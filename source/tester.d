@@ -10,7 +10,7 @@ import tests.passing;
 import tests.failing;
 import tests.exe;
 import tests.reg_alloc;
-public import all : HostSymbol, DllModule, Slice, SliceString;
+public import all : HostSymbol, Slice, SliceString;
 
 public import std.format : formattedWrite, format;
 import std.string : stripLeft, strip;
@@ -181,13 +181,12 @@ struct Test
 	string harData;
 	void function(ref TestContext) tester;
 	HostSymbol[] hostSymbols;
-	DllModule[] dllModules;
 }
 
 Test makeTest(alias test)() {
 	static assert (__traits(getAttributes, test).length > 0);
 	TestInfo info = __traits(getAttributes, test)[0];
-	return Test(__traits(identifier, test), test, info.tester, info.hostSymbols, info.dllModules);
+	return Test(__traits(identifier, test), test, info.tester, info.hostSymbols);
 }
 
 Test[] collectTests(alias M)()
@@ -210,7 +209,6 @@ struct TestInfo
 {
 	void function(ref TestContext) tester;
 	HostSymbol[] hostSymbols;
-	DllModule[] dllModules;
 }
 
 struct TestContext
@@ -237,6 +235,8 @@ TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings
 	catch(CompilationException e) {
 		if (e.isICE)
 			writeln(e);
+		else
+			writeln(driver.context.sink.text);
 		return TestResult.failure;
 	}
 	catch(Throwable t) {
@@ -259,7 +259,6 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 		// setup modules
 		driver.beginCompilation();
 		driver.addHostSymbols(curTest.hostSymbols);
-		driver.addDllModules(curTest.dllModules);
 
 		void onHarFile(SourceFileInfo fileInfo)
 		{

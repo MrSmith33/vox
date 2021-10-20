@@ -12,19 +12,17 @@ import all;
 /// 1. initialize(passes)
 /// 2. beginCompilation()
 /// 3. addHostSymbols(hostSymbols)  --+
-/// 4. addDllModules(dllModules)      | In any order
-/// foreach(module; modules)          |
-/// 5. addModule(module)  ------------+
-/// 6. compile()
-/// 7. markCodeAsExecutable() if in JIT mode
-/// 8. releaseMemory()
+/// foreach(module; modules)          | In any order
+/// 4. addModule(module)  ------------+
+/// 5. compile()
+/// 6. markCodeAsExecutable() if in JIT mode
+/// 7. releaseMemory()
 struct Driver
 {
 	CompilationContext context;
 	CompilePassGlobal[] passes;
 
 	ArenaPool arenaPool;
-	LinkIndex hostModuleIndex;
 
 	static void funWithAddress(){}
 	void initialize(CompilePassGlobal[] passes_)
@@ -93,7 +91,6 @@ struct Driver
 		markAsRW(context.roStaticDataBuffer.bufPtr, divCeil(context.roStaticDataBuffer.length, PAGE_SIZE));
 		context.beginCompilation;
 		foreach(ref pass; passes) pass.clear;
-		hostModuleIndex = LinkIndex.init;
 	}
 
 	void addModule(SourceFileInfo moduleFile)
@@ -154,113 +151,17 @@ struct Driver
 		context.staticDataBuffer.voidPut(context.zeroDataLength)[] = 0; // zero initialize
 	}
 
-	private bool canReferenceFromCode(void* hostSym)
-	{
-		void* start = context.codeBuffer.bufPtr;
-		void* end = context.codeBuffer.bufPtr + context.codeBuffer.length;
-		bool reachesFromStart = (hostSym - start) == cast(int)(hostSym - start);
-		bool reachesFromEnd = (hostSym - end) == cast(int)(hostSym - end);
-		return reachesFromStart && reachesFromEnd;
-	}
-
-	LinkIndex getOrCreateHostModuleIndex() {
-		if (!hostModuleIndex.isDefined) {
-			ObjectModule hostModule = {
-				kind : ObjectModuleKind.isHost,
-				id : context.idMap.getOrRegNoDup(&context, ":host")
-			};
-			hostModuleIndex = context.objSymTab.addModule(hostModule);
-		}
-		return hostModuleIndex;
-	}
-
 	void addHostSymbols(HostSymbol[] hostSymbols)
 	{
 		if (hostSymbols.length > 0)
 			context.assertf(context.buildType == BuildType.jit, "Can only add host symbols in JIT mode");
 
-		getOrCreateHostModuleIndex();
+		LinkIndex hostModuleIndex = context.getOrCreateExternalModule(CommonIds.id_host, ObjectModuleKind.isHost);
 
 		foreach (HostSymbol hostSym; hostSymbols)
 		{
-			addHostSymbol(hostModuleIndex, hostSym);
-		}
-	}
-
-	void addHostSymbol(LinkIndex hostModuleIndex, HostSymbol hostSym)
-	{
-		Identifier symId = context.idMap.getOrRegNoDup(&context, hostSym.name);
-
-		if (canReferenceFromCode(hostSym.ptr))
-		{
-			ObjectSymbol importedSymbol = {
-				kind : ObjectSymbolKind.isHost,
-				id : symId,
-				dataPtr : cast(ubyte*)hostSym.ptr,
-				sectionOffset : cast(ulong)hostSym.ptr,
-				sectionIndex : context.builtinSections[ObjectSectionType.host],
-				moduleIndex : hostModuleIndex,
-			};
-			LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
-			context.externalSymbols[symId] = importedSymbolIndex;
-		}
-		else
-		{
-			ulong sectionOffset = context.importBuffer.length;
-			ulong ptr = cast(ulong)hostSym.ptr;
-			context.importBuffer.put(*cast(ubyte[8]*)&ptr);
-
-			ObjectSymbol importedSymbol = {
-				kind : ObjectSymbolKind.isHost,
-				flags : ObjectSymbolFlags.isIndirect,
-				id : symId,
-				sectionOffset : sectionOffset,
-				sectionIndex : context.builtinSections[ObjectSectionType.imports],
-				moduleIndex : hostModuleIndex,
-			};
-			LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
-			context.externalSymbols[symId] = importedSymbolIndex;
-		}
-	}
-
-	/// Returns index of imported module
-	LinkIndex addDllModule(string libName)
-	{
-		ObjectModule importedModule = {
-			kind : ObjectModuleKind.isImported,
-			id : context.idMap.getOrRegNoDup(&context, libName)
-		};
-		return context.objSymTab.addModule(importedModule);
-	}
-
-	void addDllModuleSymbol(LinkIndex dllModuleIndex, string symName)
-	{
-		Identifier symId = context.idMap.getOrReg(&context, symName);
-		ObjectSymbol importedSymbol = {
-			kind : ObjectSymbolKind.isImported,
-			flags : ObjectSymbolFlags.isIndirect,
-			id : symId,
-			alignmentPower : 3, // pointer size
-			sectionIndex : context.builtinSections[ObjectSectionType.imports],
-			moduleIndex : dllModuleIndex,
-		};
-		LinkIndex importedSymbolIndex = context.objSymTab.addSymbol(importedSymbol);
-		context.externalSymbols[symId] = importedSymbolIndex;
-	}
-
-	void addDllModules(DllModule[] dllModules)
-	{
-		if (dllModules.length > 0)
-			context.assertf(context.buildType == BuildType.exe, "Can only use dll symbols in exe mode");
-
-		foreach (ref DllModule dllModule; dllModules)
-		{
-			LinkIndex importedModuleIndex = addDllModule(dllModule.libName);
-
-			foreach (string symName; dllModule.importedSymbols)
-			{
-				addDllModuleSymbol(importedModuleIndex, symName);
-			}
+			Identifier symId = context.idMap.getOrRegNoDup(&context, hostSym.symName);
+			context.addHostSymbol(hostModuleIndex, ExternalSymbolId(CommonIds.id_host, symId), hostSym.ptr);
 		}
 	}
 }

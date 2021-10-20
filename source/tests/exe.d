@@ -17,8 +17,9 @@ immutable exe1 = q{--- exe1
 };
 
 
-@TestInfo(null, null, [DllModule("kernel32", ["WriteConsoleA", "GetStdHandle"])])
+@TestInfo()
 immutable exe2 = q{--- exe2
+	@extern(module, "kernel32"):
 	u8 WriteConsoleA(
 		void* hConsoleOutput,
 		u8* lpBuffer,
