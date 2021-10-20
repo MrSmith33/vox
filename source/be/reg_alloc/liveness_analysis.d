@@ -6,7 +6,7 @@
 /// Implementation of:
 /// "Linear Scan Register Allocation on SSA Form"
 // TODO: backward propagation of hints
-module be.reg_alloc.liveness_analisys;
+module be.reg_alloc.liveness_analysis;
 
 import all;
 
