@@ -83,6 +83,7 @@ T min[T](T a, T b) {
 }
 ```
 
+- Cross-platform hello world <https://gist.github.com/MrSmith33/34a7557ad5ac23ebe6cf27bef15a39a6>
 - Fibonacci <https://gist.github.com/MrSmith33/9645d9552b567fdbdc1a4d8822b4f1f7>
 - Fannkuch <https://gist.github.com/MrSmith33/ac14e66a83b9d047793adede464ca1ef>
 - Roguelike tutorial using SDL2 - [repo](https://github.com/MrSmith33/rltut_2019)
@@ -147,17 +148,12 @@ Pretty asserts with stack traces are disabled in non-debug builds by default.
 # Using Commandline interface
 
 ## Getting help
+
 Gives the full list of flags
 ```D
 vox --help
 ```
 
-## Hello world
-Produces hello.exe
-
-```
-vox hello.vx C:\Windows\System32\kernel32.dll
-```
 
 ## Input files
 
@@ -174,11 +170,11 @@ Example:
 import kernel32;
 void main() { ExitProcess(42); }
 --- kernel32.vx
+@extern(module, "kernel32")
 noreturn ExitProcess(u32 uExitCode);
 ```
-Can be compiled with `vox program.har C:\Windows\System32\kernel32.dll`
+Can be compiled with `vox program.har`
 
-* `.dll` files. Compiler will link external functions by searching symbols inside provided `.dll` file(s).
 
 # CLI Tools
 The compiler contains embedded tools:

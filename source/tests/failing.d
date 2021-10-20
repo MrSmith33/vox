@@ -655,8 +655,8 @@ version(linux)
 @TestInfo()
 immutable fail61 = q{--- fail61
 	// 2 Extern attributes
-	@extern(syscall, 60)
 	@extern(module, "kernel32")
+	@extern(syscall, 60)
 	void exit();
 --- <error>
 fail61:3:2: Error: Duplicate @extern attribute
