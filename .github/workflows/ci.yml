@@ -90,7 +90,7 @@ jobs:
           7z a -mx9 vox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.EXE}} ${{matrix.DBG_FILE}}
       - uses: actions/upload-artifact@v2
         with:
-          name: ${{matrix.PLATFORM}}
+          name: ${{matrix.PLATFORM}}-dbg
           path: ./source/vox-${{matrix.PLATFORM}}-dbg.zip
 
   upload:
@@ -127,9 +127,9 @@ jobs:
           # --clobber Overwrite existing assets of the same name
           gh release upload $tag \
             './linux-x64/vox-linux-x64.zip' \
-            './linux-x64/vox-linux-x64-dbg.zip' \
+            './linux-x64-dbg/vox-linux-x64-dbg.zip' \
             './macos-x64/vox-macos-x64.zip' \
-            './macos-x64/vox-macos-x64-dbg.zip' \
+            './macos-x64-dbg/vox-macos-x64-dbg.zip' \
             './windows-x64/vox-windows-x64.zip' \
-            './windows-x64/vox-windows-x64-dbg.zip' \
+            './windows-x64-dbg/vox-windows-x64-dbg.zip' \
             --clobber
