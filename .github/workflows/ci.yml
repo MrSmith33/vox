@@ -86,7 +86,7 @@ jobs:
         shell: bash
         run: |
           cd source
-          ldc2 -m64 -O3 -debug -g -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -of=${{matrix.EXE}} -i main.d
+          ldc2 -m64 -O3 --d-debug -g -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -of=${{matrix.EXE}} -i main.d
           7z a -mx9 vox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.EXE}} ${{matrix.DBG_FILE}}
       - uses: actions/upload-artifact@v2
         with:
