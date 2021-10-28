@@ -8,9 +8,6 @@ import tester;
 Test[] failingTests() { return collectTests!(tests.failing)(); }
 
 
-extern(C) void external_noop() {}
-
-
 @TestInfo()
 immutable fail1 = `
 --- fail1
@@ -725,4 +722,16 @@ immutable fail67 = q{--- fail67
 	void external();
 --- <error>
 fail67:3:2: Error: Cannot find external symbol `external` in host module `host`
+};
+
+
+@TestInfo()
+immutable fail68 = q{--- fail68
+	/// Attribute scope. Check that attribute block doesn't introduce a scope. Checked with double definition
+	@extern(module, "host") {
+		void foo(){}
+	}
+	void foo(){}
+--- <error>
+fail68:5:2: Error: declaration `foo` is already defined at fail68:3:3
 };

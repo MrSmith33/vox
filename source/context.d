@@ -30,6 +30,7 @@ class CompilationException : Exception
 
 ///
 enum IceBehavior : ubyte {
+	exception,
 	error,
 	breakpoint
 }
@@ -177,7 +178,7 @@ struct CompilationContext
 	/// If true, stack traces are added to output
 	bool printTraceOnError;
 	/// What happens on Internal Compiler Error
-	IceBehavior iceBehavior = IceBehavior.breakpoint;
+	IceBehavior iceBehavior = IceBehavior.exception;
 	/// If true, every pass that generates/changes IR, performs validation
 	bool validateIr = false;
 	bool runTesters = true;
@@ -447,15 +448,20 @@ struct CompilationContext
 	{
 		final switch(iceBehavior)
 		{
+			case IceBehavior.exception: return;
 			case IceBehavior.error: assert(false);
 			case IceBehavior.breakpoint:
 				writeln(sink.text);
 				stdout.flush;
-				version(DMD) {
-					asm { db 0xCC; } // breakpoint
+				version(D_InlineAsm_X86_64) {
+					asm nothrow @nogc { int 3; } // breakpoint
 					break;
+				} else version(LDC) {
+					import ldc.intrinsics: llvm_debugtrap;
+					llvm_debugtrap();
+				} else {
+					assert(false);
 				}
-				version(LDC) assert(false); // LDC has no data in assembler
 		}
 	}
 

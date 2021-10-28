@@ -179,6 +179,7 @@ void make_pe_exe(CompilationContext* context)
 	//context.objSymTab.print_dd64_debug_info(&context);
 }
 
+// Walks all imported symbols and calculates import section size
 CoffImportSectionSize calcImportSize(CompilationContext* context)
 {
 	CoffImportSectionSize impSize;

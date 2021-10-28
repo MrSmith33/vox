@@ -6,9 +6,10 @@ module fe.ast.decl.scope_;
 import all;
 
 enum ScopeKind : ubyte {
-	local,
-	member,
-	global
+	no_scope, // scope created by @attr{} or by #version or #if or #foreach
+	local,  // function
+	member, // struct, enum
+	global, // module
 }
 
 ///
@@ -37,10 +38,6 @@ struct Scope
 		}
 		symbols.put(c.arrayArena, id, nodeIndex);
 	}
-}
-
-struct ScopeTempData {
-	AttribState prev;
 }
 
 mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse_done) {

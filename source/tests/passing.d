@@ -13,7 +13,6 @@ Test[] passingTests() { return collectTests!(tests.passing)(); }
 /// Without it, 42.54f will be store as dobule by the compiler
 T force(T)(T t) { return t; }
 
-extern(C) void external_noop() {}
 extern(C) void external_print_i32_func(int par1) {
 	formattedWrite(testSink, "%s ", par1);
 }
@@ -4858,4 +4857,15 @@ immutable test228 = q{--- test228
 	}
 
 	void foo(u32 a){}
+};
+
+
+@TestInfo()
+immutable test229 = q{--- test229
+	/// Attribute scope
+	@extern(module, "host") {
+		void foo(u32 a){}
+	}
+	// shouldn't get the attribute. TODO: need ability to assert that.
+	void bar(u32 a){}
 };

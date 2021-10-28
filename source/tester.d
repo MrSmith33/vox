@@ -224,6 +224,8 @@ struct TestContext
 /// Cleared automatically after each test
 TextSink testSink;
 
+extern(C) void external_noop() {}
+
 TestResult tryRunSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, DumpTest dumpTest, Test curTest)
 {
 	scope(exit) testSink.clear;

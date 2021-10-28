@@ -99,10 +99,21 @@ struct AttribState
 	// will be applied to the following declaration
 	// they will remain on the stack without dropping them from the stack
 	ushort numEffectiveAttributes;
+	// Number of attributes introduced by the current scope
+	// numScopeAttributes <= numEffectiveAttributes
+	ushort numScopeAttributes;
 	// Number of attributes on the top of `attributeStack`, that
 	// will be added to the following declaration
 	// and will be dropped from the stack
+	// numImmediateAttributes <= numScopeAttributes
+	// numImmediateAttributes <= numEffectiveAttributes
 	ushort numImmediateAttributes;
+}
+
+struct ScopeTempData
+{
+	AttribState prev;
+	bool isNonScope;
 }
 
 //version = print_parse;
@@ -113,11 +124,12 @@ struct Parser
 	/// For member functions
 	/// module, struct or function
 	AstIndex declarationOwner;
-	Scope* currentScope;
-	AstIndex currentScopeIndex() { return currentScope.get_ast_index(context); }
+	AstIndex currentScopeIndex;
 
+	// Current token
 	Token tok;
 
+	// Saved to ScopeTempData on scope push/pop
 	AttribState attribState;
 	// Attributes affecting next declaration
 	AstNodes attributeStack;
@@ -141,6 +153,7 @@ struct Parser
 
 		attributeStack.unput(attribState.numImmediateAttributes);
 		attribState.numEffectiveAttributes -= attribState.numImmediateAttributes;
+		attribState.numScopeAttributes -= attribState.numImmediateAttributes;
 		attribState.numImmediateAttributes = 0;
 
 		context.appendAst!AttributeInfo(attributes, attribFlags);
@@ -231,41 +244,58 @@ struct Parser
 	}
 
 	// temp data is used instead of separate stack to push/pop
-	AstIndex pushScope(string name, ScopeKind kind, ref ScopeTempData temp)
+	ScopeTempData pushScope(string name, ScopeKind kind)
 	{
+		ScopeTempData temp;
 		temp.prev = attribState;
-		attribState = AttribState(0, 0);
 
-		AstIndex newScopeIndex = context.appendAst!Scope;
-		Scope* newScope = context.getAst!Scope(newScopeIndex);
-		newScope.debugName = name;
-		newScope.kind = kind;
+		if (kind == ScopeKind.no_scope)
+		{
+			// no_scope scopes do not effectively introduce a new scope for attributes, nor for declarations/statements
+			temp.isNonScope = true;
 
-		if (currentScope)
-			newScope.parentScope = currentScope.get_ast_index(context);
-		currentScope = newScope;
+			// Outer effective attributes are effective inside no_scope scopes
+			attribState = AttribState(attribState.numEffectiveAttributes, 0, 0);
+		}
+		else
+		{
+			// Outer attributes are not visible inside
+			attribState = AttribState(0, 0, 0);
 
-		return newScopeIndex;
+			AstIndex newScopeIndex = context.appendAst!Scope;
+			Scope* newScope = context.getAst!Scope(newScopeIndex);
+			newScope.debugName = name;
+			newScope.kind = kind;
+
+			newScope.parentScope = currentScopeIndex;
+			currentScopeIndex = newScopeIndex;
+		}
+
+		return temp;
 	}
 
 	void popScope(ScopeTempData temp)
 	{
 		// mark the rest of effective nodes as broadcasted
-		auto offset = attributeStack.length - attribState.numEffectiveAttributes;
-		foreach(i; 0..attribState.numEffectiveAttributes) {
+		auto offset = attributeStack.length - attribState.numScopeAttributes;
+		foreach(i; 0..attribState.numScopeAttributes) {
 			AstIndex attrib = attributeStack[offset + i];
 			attrib.flags(context) |= AnyAttributeFlags.isBroadcasted;
 		}
 
-		// drop broadcasted attributes at the end of the scope
-		attributeStack.unput(attribState.numEffectiveAttributes);
-		attribState = temp.prev;
+		// drop broadcasted attributes introduced by this scope at the end of the scope
+		attributeStack.unput(attribState.numScopeAttributes);
 
-		if (currentScope.parentScope) {
-			currentScope = currentScope.parentScope.get_scope(context);
+		if (temp.isNonScope)
+		{
+			// no scope was introduced
 		}
 		else
-			currentScope = null;
+		{
+			currentScopeIndex = currentScopeIndex.get_scope(context).parentScope;
+		}
+
+		attribState = temp.prev;
 	}
 
 	// ------------------------------ PARSING ----------------------------------
@@ -282,109 +312,150 @@ struct Parser
 		mod.state = AstNodeState.name_register_self_done;
 		declarationOwner = context.getAstNodeIndex(mod);
 
-		ScopeTempData scope_temp;
-		mod.memberScope = pushScope("Module", ScopeKind.global, scope_temp);
+		ScopeTempData scope_temp = pushScope("Module", ScopeKind.global);
+			mod.memberScope = currentScopeIndex;
 			parse_module();
-			mod.declarations = parse_declarations(TokenType.EOI, AstFlags.isGlobal);
+			parse_declarations(mod.declarations, TokenType.EOI);
 		popScope(scope_temp);
 	}
 
-	AstNodes parse_declarations(TokenType until, ushort declFlags = 0) { // <declaration>*
-		AstNodes declarations;
-		ushort varIndex = 0;
+	void parse_declarations(ref AstNodes declarations, TokenType until) { // <declaration>*
 		while (tok.type != until)
 		{
 			if (tok.type == TokenType.EOI) break;
-			AstIndex declIndex = parse_declaration;
-			AstNode* declNode = context.getAstNode(declIndex);
-			declNode.flags |= declFlags;
-			if (declNode.astType == AstType.decl_var)
-			{
-				auto var = declNode.as!VariableDeclNode(context);
-				var.scopeIndex = varIndex++;
-				if (declNode.isGlobal)
-				{
-					// register global variable, type is not set yet
-					IrIndex globalIndex = context.globals.add();
-					IrGlobal* global = context.globals.get(globalIndex);
-					var.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
-
-					ObjectSymbol sym = {
-						kind : ObjectSymbolKind.isLocal,
-						sectionIndex : context.builtinSections[ObjectSectionType.rw_data],
-						moduleIndex : currentModule.objectSymIndex,
-						flags : ObjectSymbolFlags.isMutable,
-						id : var.id,
-					};
-
-					global.objectSymIndex = context.objSymTab.addSymbol(sym);
-				}
-			}
-			declarations.put(context.arrayArena, declIndex);
+			parse_declaration(declarations);
 		}
-		return declarations;
 	}
 
-	AstIndex parse_declaration() // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
+	void parse_declaration(ref AstNodes declarations) // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
 
-		loop:
-		while(true)
 		switch(tok.type) with(TokenType)
 		{
 			case ALIAS_SYM: // <alias_decl> ::= "alias" <id> "=" <expr> ";"
-				return parse_alias();
+				AstIndex declIndex = parse_alias();
+				declarations.put(context.arrayArena, declIndex);
+				return;
 			case STRUCT_SYM, UNION_SYM: // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
-				return parse_struct();
+				AstIndex declIndex = parse_struct();
+				declarations.put(context.arrayArena, declIndex);
+				return;
 			case ENUM:
-				return parse_enum();
+				AstIndex declIndex = parse_enum();
+				declarations.put(context.arrayArena, declIndex);
+				return;
 			case IMPORT_SYM:
-				return parse_import();
+				AstIndex declIndex = parse_import();
+				declarations.put(context.arrayArena, declIndex);
+				return;
 			case MODULE_SYM:
 				context.error(tok.index, "Module declaration can only occur as first declaration of the module");
 				skipPast(TokenType.SEMICOLON);
-				return context.getAstNodeIndex(currentModule);
+				AstIndex declIndex = context.getAstNodeIndex(currentModule);
+				declarations.put(context.arrayArena, declIndex);
+				return;
 			case HASH_IF, HASH_VERSION:
-				return parse_hash_if();
+				AstIndex declIndex = parse_hash_if();
+				declarations.put(context.arrayArena, declIndex);
+				return;
 			case HASH_ASSERT:
-				return parse_hash_assert();
+				AstIndex declIndex = parse_hash_assert();
+				declarations.put(context.arrayArena, declIndex);
+				return;
 			case HASH_FOREACH:
-				return parse_hash_foreach();
+				AstIndex declIndex = parse_hash_foreach();
+				declarations.put(context.arrayArena, declIndex);
+				return;
 			case AT:
-				parse_attribute();
-				continue loop;
+				parse_attribute(declarations);
+				return;
 			default: // <func_declaration> / <var_declaration>
-				AstIndex funcIndex = parse_var_func_declaration(ConsumeTerminator.yes, TokenType.SEMICOLON);
-				AstNode* node = context.getAstNode(funcIndex);
-				return funcIndex;
+				TokenIndex start = tok.index;
+				AstIndex body_start = AstIndex(context.astBuffer.uintLength);
+				AstIndex typeIndex = expr(PreferType.yes, 0);
+				AstIndex nodeIndex = parse_var_func_declaration_after_type(start, body_start, typeIndex, ConsumeTerminator.yes, TokenType.SEMICOLON);
+				AstIndex declIndex = nodeIndex;
+				declarations.put(context.arrayArena, declIndex);
+				return;
 		}
 		assert(false);
 	}
 
-	void parse_attribute()
+	// parses all attributes and one or more declarations that it is attached too
+	void parse_attribute(ref AstNodes declarations)
 	{
-		TokenIndex start = tok.index;
-		nextToken; // skip @
-		Identifier attributeId = expectIdentifier("@");
-		switch(attributeId.index) {
-			case CommonIds.id_extern.index:
-				parse_extern_attribute(start);
-				break;
+		while(true)
+		{
+			TokenIndex start = tok.index;
+			nextToken; // skip @
+
+			Identifier attributeId = expectIdentifier("@");
+
+			switch(attributeId.index) {
+				case CommonIds.id_extern.index:
+					parse_extern_attribute(start);
+					break;
+				default:
+					context.unrecoverable_error(start, "Unknown built-in attribute `%s`", context.idString(attributeId));
+			}
+
+			switch(tok.type)
+			{
+			case TokenType.AT:
+				break; // next attribute
+			case TokenType.COLON:
+				nextToken; // skip :
+				// Mark all immediate attributes as scoped attributes.
+				// They will be effective until the end of current scope, then the will be popped by popScope
+				attribState.numImmediateAttributes = 0;
+				// next comes another attribute or declaration
+				if (tok.type == TokenType.AT) break; // next attribute
+				goto default;
+			case TokenType.LCURLY:
+				nextToken; // skip {
+				// all attributes before {} will be applied to all declarations in {}
+				// attributes before {} are initially classified as immediate
+				// Remove them, and then move them into the scope
+				// @attr1 @attr2 { // number of attributes == numImmediateAttributes
+				//     decl1;
+				//     decl2;
+				// }
+				// is the same as:
+				// {
+				//     @attr1 @attr2:
+				//     decl1;
+				//     decl2;
+				// }
+
+				// number of attributes
+				ushort numScopeBlockAttributes = attribState.numImmediateAttributes;
+
+				// remove attributes from current scope
+				attribState.numImmediateAttributes -= numScopeBlockAttributes;
+				attribState.numScopeAttributes -= numScopeBlockAttributes;
+				attribState.numEffectiveAttributes -= numScopeBlockAttributes;
+
+				// enter the scope
+				ScopeTempData scope_temp = pushScope("@{}", ScopeKind.no_scope);
+
+				// add them as @: attributes
+				attribState.numScopeAttributes += numScopeBlockAttributes;
+				attribState.numEffectiveAttributes += numScopeBlockAttributes;
+
+				// declarations
+				parse_declarations(declarations, TokenType.RCURLY);
+
+				// @: attributes are cleared by the scope end inside popScope
+				popScope(scope_temp);
+
+				expectAndConsume(TokenType.RCURLY, "@{");
+				return;
 			default:
-				context.unrecoverable_error(start, "Unknown attribute name `%s`", context.idString(attributeId));
+				parse_declaration(declarations);
+				return;
+			}
 		}
-
-		if (tok.type == TokenType.COLON) {
-			nextToken; // skip :
-			attribState.numImmediateAttributes = 0;
-		}/* else if (tok.type == TokenType.LCURLY) {
-			nextToken; // skip {
-
-			parse_declaration();
-
-			expectAndConsume(TokenType.RCURLY, "@{");
-		}*/ // TODO: This would require returning multiple declarations / stmts, or pass node array here
 	}
 
 	void parse_extern_attribute(TokenIndex start)
@@ -424,6 +495,7 @@ struct Parser
 
 		expectAndConsume(TokenType.RPAREN, "@extern(...");
 		++attribState.numImmediateAttributes;
+		++attribState.numScopeAttributes;
 		++attribState.numEffectiveAttributes;
 		attributeStack.put(context.arrayArena, attribute);
 	}
@@ -465,15 +537,6 @@ struct Parser
 	}
 
 	enum ConsumeTerminator : bool { no, yes }
-	/// var_terminator can be ";" or ",". Used to parse var declaration
-	/// or to parse var declaration in foreach
-	AstIndex parse_var_func_declaration(ConsumeTerminator consume_terminator, TokenType var_terminator = TokenType.init)
-	{
-		TokenIndex start = tok.index;
-		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
-		AstIndex typeIndex = expr(PreferType.yes, 0);
-		return parse_var_func_declaration_after_type(start, body_start, typeIndex, consume_terminator, var_terminator);
-	}
 
 	bool canBeType(AstIndex someExpr)
 	{
@@ -487,7 +550,7 @@ struct Parser
 		}
 	}
 
-	AstIndex parse_var_func_declaration_after_type(TokenIndex start, AstIndex body_start, AstIndex typeIndex, ConsumeTerminator consume_terminator, TokenType var_terminator = TokenType.init)
+	AstIndex parse_var_func_declaration_after_type(TokenIndex start, AstIndex body_start, AstIndex typeIndex, ConsumeTerminator consume_terminator, TokenType var_terminator)
 	{
 		version(print_parse) auto s2 = scop("<func_declaration> / <var_declaration> %s", start);
 
@@ -511,13 +574,43 @@ struct Parser
 
 		if (tok.type == TokenType.SEMICOLON || tok.type == TokenType.COMMA) // <var_declaration> ::= <type> <id> (";" / ",")
 		{
+			// variable
 			version(print_parse) auto s3 = scop("<var_declaration> %s", start);
 			if (consume_terminator) expectAndConsume(var_terminator);
 			// leave ";" or "," for parent to decide
-			return makeDecl!VariableDeclNode(start, currentScopeIndex, typeIndex, initializerIndex, declarationId);
+			AstIndex varIndex = makeDecl!VariableDeclNode(start, currentScopeIndex, typeIndex, initializerIndex, declarationId);
+			auto var = varIndex.get!VariableDeclNode(context);
+			ushort varFlags;
+			switch (declarationOwner.astType(context))
+			{
+				case AstType.decl_struct:
+					varFlags |= AstFlags.isMember;
+					break;
+				case AstType.decl_module:
+					varFlags |= AstFlags.isGlobal;
+					// register global variable, type is not set yet
+					IrIndex globalIndex = context.globals.add();
+					IrGlobal* global = context.globals.get(globalIndex);
+					var.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
+
+					ObjectSymbol sym = {
+						kind : ObjectSymbolKind.isLocal,
+						sectionIndex : context.builtinSections[ObjectSectionType.rw_data],
+						moduleIndex : currentModule.objectSymIndex,
+						flags : ObjectSymbolFlags.isMutable,
+						id : var.id,
+					};
+
+					global.objectSymIndex = context.objSymTab.addSymbol(sym);
+					break;
+				default: break;
+			}
+			var.flags |= varFlags;
+			return varIndex;
 		}
 		else if (tok.type == TokenType.LBRACKET) // <func_declaration> ::= <type> <id> "[" <template_params> "]" "(" <param_list> ")" (<block_statement> / ';')
 		{
+			// templated function
 			AstNodes template_params;
 			ushort numParamsBeforeVariadic;
 			parse_template_parameters(template_params, numParamsBeforeVariadic);
@@ -527,6 +620,7 @@ struct Parser
 		}
 		else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 		{
+			// function
 			return parse_func(start, typeIndex, declarationId);
 		}
 		else
@@ -540,26 +634,35 @@ struct Parser
 	{
 		version(print_parse) auto s3 = scop("<func_declaration> %s", start);
 		AstNodes params;
+		ushort funcFlags;
 
 		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-		ScopeTempData scope_temp;
-		pushScope(context.idString(declarationId), ScopeKind.local, scope_temp);
+		ScopeTempData scope_temp = pushScope(context.idString(declarationId), ScopeKind.local);
 		scope(exit) popScope(scope_temp);
 
-		// add this pointer
-		if (declarationOwner.astType(context) == AstType.decl_struct)
+		// add this pointer parameter
+		switch (declarationOwner.astType(context))
 		{
-			AstIndex structName = make!NameUseExprNode(start, currentScopeIndex, declarationOwner.get!StructDeclNode(context).id);
-			NameUseExprNode* name = structName.get_name_use(context);
-			name.resolve(declarationOwner, context);
-			name.flags |= AstFlags.isType;
-			name.state = AstNodeState.name_resolve_done;
-			AstIndex thisType = make!PtrTypeNode(start, CommonAstNodes.type_type, structName);
+			case AstType.decl_struct:
+				funcFlags |= AstFlags.isMember;
 
-			AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, CommonIds.id_this, ushort(0));
-			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
-			paramNode.flags |= VariableFlags.isParameter;
-			params.put(context.arrayArena, param);
+				AstIndex structName = make!NameUseExprNode(start, currentScopeIndex, declarationOwner.get!StructDeclNode(context).id);
+				NameUseExprNode* name = structName.get_name_use(context);
+				name.resolve(declarationOwner, context);
+				name.flags |= AstFlags.isType;
+				name.state = AstNodeState.name_resolve_done;
+				AstIndex thisType = make!PtrTypeNode(start, CommonAstNodes.type_type, structName);
+
+				// parameter
+				AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, CommonIds.id_this, ushort(0));
+				VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
+				paramNode.flags |= VariableFlags.isParameter;
+				params.put(context.arrayArena, param);
+				break;
+			case AstType.decl_module:
+				funcFlags |= AstFlags.isGlobal;
+				break;
+			default: break;
 		}
 
 		// restore attributes earlier, so signature receives attributes
@@ -571,7 +674,7 @@ struct Parser
 		// store values back;
 		scope_temp.prev = attribState;
 		// no attributes go to the parameters and body
-		attribState = AttribState(0, 0);
+		attribState = AttribState(0, 0, 0);
 
 		parseParameters(signature, NeedRegNames.yes); // functions need to register their param names
 		AstIndex func = makeDecl!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
@@ -579,7 +682,7 @@ struct Parser
 		if (tok.type == TokenType.HASH_INLINE)
 		{
 			nextToken; // skip #inline
-			func.get!FunctionDeclNode(context).flags |= FuncDeclFlags.isInline;
+			funcFlags |= FuncDeclFlags.isInline;
 		}
 
 		if (tok.type != TokenType.SEMICOLON)
@@ -591,6 +694,8 @@ struct Parser
 			signature.flags(context) |= FuncSignatureFlags.attachedToFunctionWithBody;
 		}
 		else expectAndConsume(TokenType.SEMICOLON); // external function
+
+		func.get!FunctionDeclNode(context).flags |= funcFlags;
 
 		return func;
 	}
@@ -749,8 +854,8 @@ struct Parser
 			}
 
 			AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-			ScopeTempData scope_temp;
-			AstIndex memberScope = pushScope(context.idString(structId), ScopeKind.member, scope_temp);
+			ScopeTempData scope_temp = pushScope(context.idString(structId), ScopeKind.member);
+			AstIndex memberScope = currentScopeIndex;
 			scope(exit) popScope(scope_temp);
 
 			// restore attributes earlier, so signature receives attributes
@@ -763,7 +868,7 @@ struct Parser
 			// store values back;
 			scope_temp.prev = attribState;
 			// no attributes go to the body
-			attribState = AttribState(0, 0);
+			attribState = AttribState(0, 0, 0);
 
 			expectAndConsume(TokenType.LCURLY);
 			{
@@ -771,7 +876,15 @@ struct Parser
 				declarationOwner = structIndex;
 				scope(exit) declarationOwner = prevOwner;
 
-				s.declarations = parse_declarations(TokenType.RCURLY, AstFlags.isMember);
+				parse_declarations(s.declarations, TokenType.RCURLY);
+
+				ushort varIndex = 0;
+				foreach(AstIndex declIndex; s.declarations) {
+					AstNode* declNode = context.getAstNode(declIndex);
+					if (declNode.astType == AstType.decl_var) {
+						declNode.as!VariableDeclNode(context).scopeIndex = varIndex++;
+					}
+				}
 			}
 			expectAndConsume(TokenType.RCURLY);
 
@@ -895,8 +1008,8 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex memberType = parseColonType;
-				ScopeTempData scope_temp;
-				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member, scope_temp);
+				ScopeTempData scope_temp = pushScope(context.idString(enumId), ScopeKind.member);
+				AstIndex memberScope = currentScopeIndex;
 				AstIndex enumIndex = makeDecl!EnumDeclaration(start, AstIndex.init, memberScope, AstNodes.init, memberType, enumId);
 				auto enumNode = enumIndex.get!EnumDeclaration(context);
 				AstNodes members = tryParseEnumBody(enumIndex);
@@ -912,8 +1025,8 @@ struct Parser
 			{
 				Identifier enumId = makeIdentifier(id);
 				AstIndex memberType = intType;
-				ScopeTempData scope_temp;
-				AstIndex memberScope = pushScope(context.idString(enumId), ScopeKind.member, scope_temp);
+				ScopeTempData scope_temp = pushScope(context.idString(enumId), ScopeKind.member);
+				AstIndex memberScope = currentScopeIndex;
 				AstIndex enumIndex = makeDecl!EnumDeclaration(start, AstIndex.init, memberScope, AstNodes.init, memberType, enumId);
 				auto enumNode = enumIndex.get!EnumDeclaration(context);
 				AstNodes members = parse_enum_body(enumIndex);
@@ -1104,42 +1217,43 @@ struct Parser
 		return make!StaticAssertDeclNode(start, condition, message);
 	}
 
-	AstNodes parseItems(alias itemParser)()
+	void parseItems(alias itemParser)(ref AstNodes items, ScopeKind scopeKind)
 	{
-		AstNodes items;
 		TokenIndex start = tok.index;
 		if (tok.type == TokenType.LCURLY)
 		{
 			nextToken; // skip {
+			ScopeTempData scope_temp = pushScope(null, scopeKind);
 			while (tok.type != TokenType.RCURLY)
 			{
 				if (tok.type == TokenType.EOI) break;
-				// TODO, BUG: doesn't repeat the behaviour of parse_declarations
-				items.put(context.arrayArena, itemParser());
+				itemParser(items);
 			}
+			popScope(scope_temp);
 			expectAndConsume(TokenType.RCURLY);
 		}
 		else
-			items.put(context.arrayArena, itemParser());
-		return items;
+		{
+			itemParser(items);
+		}
 	}
 
-	void parseStaticIfThenElse(out AstNodes thenStatements, out AstNodes elseStatements)
+	void parseStaticIfThenElse(ref AstNodes thenStatements, ref AstNodes elseStatements)
 	{
 		if (declarationOwner.astType(context) == AstType.decl_function)
 		{
-			thenStatements = parseItems!statement();
+			parseItems!statement(thenStatements, ScopeKind.no_scope);
 			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
 				nextToken; // skip else
-				elseStatements = parseItems!statement();
+				parseItems!statement(elseStatements, ScopeKind.no_scope);
 			}
 		}
 		else
 		{
-			thenStatements = parseItems!parse_declaration();
+			parseItems!parse_declaration(thenStatements, ScopeKind.no_scope);
 			if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <decl> */
 				nextToken; // skip else
-				elseStatements = parseItems!parse_declaration();
+				parseItems!parse_declaration(elseStatements, ScopeKind.no_scope);
 			}
 		}
 	}
@@ -1205,7 +1319,8 @@ struct Parser
 		expectAndConsume(TokenType.RPAREN);
 
 		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
-		AstNodes body = statement_as_array;
+		AstNodes body;
+		statement_as_array(body);
 		AstIndex after_body = AstIndex(context.astBuffer.uintLength);
 		return make!StaticForeachDeclNode(start, AstIndex.init, AstIndex.init, 0, currentScopeIndex, keyId, valId, ct_expr, body, body_start, after_body);
 	}
@@ -1241,46 +1356,41 @@ struct Parser
 		return members;
 	}
 
-	AstNodes parse_block() // "{" <statement>* "}"
+	void parse_block(ref AstNodes statements) // "{" <statement>* "}"
 	{
-		AstNodes statements;
 		expectAndConsume(TokenType.LCURLY);
 		while (tok.type != TokenType.RCURLY)
 		{
 			if (tok.type == TokenType.EOI) break;
-
-			statements.put(context.arrayArena, statement());
+			statement(statements);
 		}
 		expectAndConsume(TokenType.RCURLY);
-		return statements;
 	}
 
 	AstIndex block_stmt() // <block_statement> ::= "{" <statement>* "}"
 	{
 		version(print_parse) auto s1 = scop("block_stmt %s", loc);
 		TokenIndex start = tok.index;
-		ScopeTempData scope_temp;
-		pushScope("Block", ScopeKind.local, scope_temp);
-		AstNodes statements = parse_block;
+		ScopeTempData scope_temp = pushScope("Block", ScopeKind.local);
+		AstNodes statements;
+		parse_block(statements);
 		popScope(scope_temp);
 		return make!BlockStmtNode(start, statements);
 	}
 
-	AstNodes statement_as_array()
+	void statement_as_array(ref AstNodes statements)
 	{
 		if (tok.type == TokenType.LCURLY)
 		{
-			return parse_block;
+			parse_block(statements);
 		}
 		else
 		{
-			AstNodes items;
-			items.put(context.arrayArena, statement);
-			return items;
+			statement(statements);
 		}
 	}
 
-	AstIndex statement()
+	void statement(ref AstNodes items)
 	{
 		version(print_parse) auto s1 = scop("statement %s", loc);
 		TokenIndex start = tok.index;
@@ -1288,86 +1398,108 @@ struct Parser
 		{
 			// declarations
 			case TokenType.ALIAS_SYM:
-				return parse_alias();
+				items.put(context.arrayArena, parse_alias());
+				return;
 			case TokenType.STRUCT_SYM, TokenType.UNION_SYM:
-				return parse_struct();
+				items.put(context.arrayArena, parse_struct());
+				return;
 			case TokenType.ENUM:
-				return parse_enum();
+				items.put(context.arrayArena, parse_enum());
+				return;
 			case TokenType.IMPORT_SYM:
-				return parse_import();
+				items.put(context.arrayArena, parse_import());
+				return;
 			case TokenType.HASH_IF, TokenType.HASH_VERSION:
-				return parse_hash_if();
+				items.put(context.arrayArena, parse_hash_if());
+				return;
 			case TokenType.HASH_ASSERT:
-				return parse_hash_assert();
+				items.put(context.arrayArena, parse_hash_assert());
+				return;
 			case TokenType.HASH_FOREACH:
-				return parse_hash_foreach();
+				items.put(context.arrayArena, parse_hash_foreach());
+				return;
 
 			// statements
 			case TokenType.IF_SYM: /* "if" <paren_expr> <statement> */
 				nextToken;
 				AstIndex condition = paren_expr();
-				ScopeTempData scope_temp;
-				pushScope("Then", ScopeKind.local, scope_temp);
-				AstNodes thenStatements = statement_as_array;
+				ScopeTempData scope_temp = pushScope("Then", ScopeKind.local);
+				AstNodes thenStatements;
+				statement_as_array(thenStatements);
 				popScope(scope_temp);
 				AstNodes elseStatements;
 				if (tok.type == TokenType.ELSE_SYM) { /* ... "else" <statement> */
 					nextToken;
-					ScopeTempData scope_temp2;
-					pushScope("Else", ScopeKind.local, scope_temp2);
-					elseStatements = statement_as_array;
+					ScopeTempData scope_temp2 = pushScope("Else", ScopeKind.local);
+					statement_as_array(elseStatements);
 					popScope(scope_temp2);
 				}
-				return make!IfStmtNode(start, condition, thenStatements, elseStatements);
+				AstIndex stmt = make!IfStmtNode(start, condition, thenStatements, elseStatements);
+				items.put(context.arrayArena, stmt);
+				return;
 			case TokenType.WHILE_SYM:  /* "while" <paren_expr> <statement> */
 				nextToken;
-				ScopeTempData scope_temp;
-				pushScope("While", ScopeKind.local, scope_temp);
+				ScopeTempData scope_temp = pushScope("While", ScopeKind.local);
 				AstIndex condition = paren_expr();
-				AstNodes statements = statement_as_array;
+				AstNodes statements;
+				statement_as_array(statements);
 				popScope(scope_temp);
-				return make!WhileStmtNode(start, condition, statements);
+				AstIndex stmt = make!WhileStmtNode(start, condition, statements);
+				items.put(context.arrayArena, stmt);
+				return;
 			case TokenType.DO_SYM:  /* "do" <statement> "while" <paren_expr> ";" */
 				nextToken;
-				ScopeTempData scope_temp;
-				pushScope("do", ScopeKind.local, scope_temp);
-				AstNodes statements = statement_as_array;
+				ScopeTempData scope_temp = pushScope("do", ScopeKind.local);
+				AstNodes statements;
+				statement_as_array(statements);
 				expectAndConsume(TokenType.WHILE_SYM);
 				AstIndex condition = paren_expr();
 				popScope(scope_temp);
 				expectAndConsume(TokenType.SEMICOLON);
-				return make!DoWhileStmtNode(start, condition, statements);
+				AstIndex stmt = make!DoWhileStmtNode(start, condition, statements);
+				items.put(context.arrayArena, stmt);
+				return;
 			case TokenType.FOR_SYM:  /* "for" "(" <statement> ";" <statement> ";" "while" <paren_expr> ";" */
-				return parse_for;
+				items.put(context.arrayArena, parse_for());
+				return;
 			case TokenType.SWITCH_SYM:
-				return parse_switch;
+				items.put(context.arrayArena, parse_switch());
+				return;
 			case TokenType.RETURN_SYM:  /* return <expr> */
 				nextToken;
 				AstIndex expression = tok.type != TokenType.SEMICOLON ? expr(PreferType.no) : AstIndex.init;
 				expectAndConsume(TokenType.SEMICOLON);
 				context.assertf(declarationOwner.isDefined && declarationOwner.astType(context) == AstType.decl_function, start, "Return statement is not inside function");
-				return make!ReturnStmtNode(start, declarationOwner, expression);
+				AstIndex stmt = make!ReturnStmtNode(start, declarationOwner, expression);
+				items.put(context.arrayArena, stmt);
+				return;
 			case TokenType.BREAK_SYM:  /* break; */
 				nextToken;
 				expectAndConsume(TokenType.SEMICOLON);
-				return make!BreakStmtNode(start);
+				AstIndex stmt = make!BreakStmtNode(start);
+				items.put(context.arrayArena, stmt);
+				return;
 			case TokenType.CONTINUE_SYM:  /* continue; */
 				nextToken;
 				expectAndConsume(TokenType.SEMICOLON);
-				return make!ContinueStmtNode(start);
+				AstIndex stmt = make!ContinueStmtNode(start);
+				items.put(context.arrayArena, stmt);
+				return;
 			case TokenType.SEMICOLON:  /* ";" */
 				context.error(tok.index, "Cannot use `;` as an empty statement. Use `{}` instead");
 				nextToken;
-				return make!BlockStmtNode(start, AstNodes());
+				return;
 			case TokenType.LCURLY:  /* "{" { <statement> } "}" */
-				return block_stmt();
+				items.put(context.arrayArena, block_stmt());
+				return;
 			default:
 			{
 				// expression or var/func declaration
 				version(print_parse) auto s2 = scop("default %s", loc);
 				// <expr> ";" / var decl / func decl
 				AstIndex expression = parse_expr_or_id_decl(ConsumeTerminator.yes, TokenType.SEMICOLON);
-				return expression;
+				items.put(context.arrayArena, expression);
+				return;
 			}
 		}
 	}
@@ -1379,8 +1511,7 @@ struct Parser
 
 		expectAndConsume(TokenType.LPAREN); // (
 
-		ScopeTempData scope_temp;
-		pushScope("For", ScopeKind.local, scope_temp);
+		ScopeTempData scope_temp = pushScope("For", ScopeKind.local);
 		scope(exit) popScope(scope_temp);
 
 		AstNodes init_statements;
@@ -1418,7 +1549,8 @@ struct Parser
 		}
 		expectAndConsume(TokenType.RPAREN);
 
-		AstNodes statements = statement_as_array;
+		AstNodes statements;
+		statement_as_array(statements);
 
 		return make!ForStmtNode(start, init_statements, condition, increment_statements, statements);
 	}

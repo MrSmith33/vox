@@ -14,23 +14,17 @@
     - [External functions](#external-functions)
     - [Calls](#calls)
 - [Attributes](#attributes)
-    - [Built-in attributes](#built-in-attributes)
-- [Metaprogramming](#metaprogramming)
-    - [Compile-time assert `#assert`](#compile-time-assert-assert)
-    - [Conditional compilation](#conditional-compilation)
-        - [\#if](#if)
-        - [\#version](#version)
-            - [Predefined versions](#predefined-versions)
-        - [\#foreach](#foreach)
-    - [Templates](#templates)
-        - [Function templates](#function-templates)
-        - [Struct templates](#struct-templates)
-    - [Meta types \(NEI\)](#meta-types-nei)
-        - [$alias](#alias)
-        - [$type](#type)
-        - [Builtin functions for working with meta types](#builtin-functions-for-working-with-meta-types)
-        - [Using meta types in CTFE](#using-meta-types-in-ctfe)
-    - [CTFE-only functions](#ctfe-only-functions)
+- [assert\(, \);](#assert-)
+- [if\(\)](#if)
+- [if\(\)  else](#if--else)
+- [if\(debug_cond\) { // Module scope](#ifdebug_cond---module-scope)
+- [assert\($isSlice(i8\[\]\));](#assertisslicei8)
+- [assert\($isSliceOf(i8\[\], i8\));](#assertissliceofi8-i8)
+- [assert\($baseOf(i8*\) == i8);](#assertbaseofi8--i8)
+- [assert\($baseOf(i8\[\]\) == i8);](#assertbaseofi8--i8-1)
+- [assert\($baseOf(i8\[10\]\) == i8);](#assertbaseofi810--i8)
+- [assert\(isInteger(i32\));](#assertisintegeri32)
+- [assert\(!isInteger(bool\));](#assertisintegerbool)
     - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
 
 <!-- /MarkdownTOC -->
@@ -230,45 +224,12 @@ $alias alias_var = func2()(); // call return value of func2
 
 Attributes can be specified in one of 3 forms
 
-1. Apply attributes to the end of the current scope. Doesn't apply to nested scopes.
-   @attr1 @attr2 @attr3 @attr4 apply to all declarations defined later in the current scope
-   ```D
-   @attr1 @attr2:
-   @attr3 @attr4:
-   decl1;
-   decl2;
-   ```
+```D
+@attr1 decl1; // 1. Directly attached attribute. Applies only to decl1
 
-   Here, only `decl3` and `decl5` will gain the `@attr` attribute:
+@attr2: // 2. 
 
-   ```D
-   decl1;
-   {
-       decl2;
-     @attr:
-       decl3;
-       {
-           decl4;
-       }
-       decl5;
-   }
-   decl6;
-   ```
-
-2. `NEI` Attribute block. Doesn't apply to nested scopes.
-   @attr5 @attr6 apply to all declarations defined in curly braces (`decl1` and `decl3`). Curly braces do not introduce a new scope:
-
-   ```
-   @attr5 @attr6 {
-       decl1;
-       {
-           decl2;
-       }
-       decl3;
-   }
-   ```
-
-3. Direct attachment.
+1. Direct attachment
 
    Zero or more attributes can precede the declaration.
 
@@ -298,6 +259,95 @@ Attributes can be specified in one of 3 forms
    
    @attr enum CONST = 42;
    ```
+
+2. Apply attributes to the end of the current scope.
+   
+   Doesn't apply to nested scopes (unless it is an attribute block, or #if/#version/#foreach scope, ).
+
+   Can only occur inside module or struct.
+
+   @attr1 @attr2 @attr3 @attr4 apply to all declarations defined later in the current scope
+   ```D
+   @attr1 @attr2:
+   @attr3 @attr4:
+   decl1;
+   decl2;
+   ```
+
+   Here, only `decl3` and `decl5` will gain the `@attr` attribute:
+
+   ```D
+   decl1;
+   {
+       decl2;
+     @attr:
+       decl3;
+       {
+           decl4;
+       }
+       decl5;
+   }
+   decl6;
+   ```
+
+   Next example shows that `@:` attributes apply inside conditional blocks and attribute blocks. It also shows that those block terminate the effect of `@:` attributes like any other block.
+
+   ```D
+   @attr1: // applies to declarations inside #version, #if, #foreach, attribute blocks
+   #version(windows) {
+       @attr2:
+       decl1; // @attr1 @attr2
+   }
+   #if(true) {
+       @attr3:
+       decl2; // @attr1 @attr3
+   }
+   #foreach(item; items) {
+       @attr4:
+       decl3; // @attr1 @attr4
+   }
+   @attr5 {
+       @attr6:
+       decl4; // @attr1 @attr5 @attr6
+   }
+   void foo() {
+       decl5; // no attributes
+   }
+   struct S {
+       decl6; // no attributes
+   }
+   ```
+
+3. Attribute block. Doesn't apply to nested scopes.
+   Attributes that are followed by a block apply to all declarations defined in the block (`decl1` and `decl3`).
+
+   ```D
+   @attr1:
+   @attr2 @attr3 {
+       decl1;        // @attr1 @attr2 @attr3
+       @attr4 decl2; // @attr1 @attr2 @attr3 @attr4
+   }
+   decl3; // @attr1
+   ```
+
+   This is equivalent to:
+
+   ```D
+   @attr1:
+   {
+       @attr2 @attr3:
+       decl1;
+       @attr4 decl2;
+   }
+   decl3;
+   ```
+
+   Attribute block can only occur inside module or struct.
+
+   Attribute block as well as conditionally compiled blocks do not introduce a new scope.
+
+   Also, in those cases outer attributes will be applied to declarations inside curly braces.
+
 
 ## Built-in attributes
 
@@ -330,7 +380,9 @@ Attributes can be specified in one of 3 forms
   [See more](https://gist.github.com/MrSmith33/b55f6f36c211fc07eb581de2e676e256)
 
 
+## User-defined attributes
 
+`NEI`
 
 # Metaprogramming
 
