@@ -10,7 +10,7 @@ module ir.ir_value_kind;
 /// Is used as UDA on IR entities
 enum IrValueKind : ubyte
 {
-	none, /// Used for undefined indicies
+	none, /// Used for undefined indices
 	instruction,
 	basicBlock,
 	constant,

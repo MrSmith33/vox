@@ -163,12 +163,12 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			AstIndex effective_array = index.array.get_effective_node(c);
 			AstType array_ast_type = effective_array.astType(c);
 
-			require_type_check(index.indicies, state);
+			require_type_check(index.indices, state);
 
 			if (array_ast_type == AstType.decl_template)
 			{
 				// template instantiation
-				callee = get_template_instance(effective_array, node.loc, index.indicies, state);
+				callee = get_template_instance(effective_array, node.loc, index.indices, state);
 				if (callee == CommonAstNodes.node_error) {
 					node.type = CommonAstNodes.type_error;
 					return;
@@ -180,7 +180,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 
 			if (array_ast_type == AstType.expr_member)
 			{
-				templateArgs = index.indicies;
+				templateArgs = index.indices;
 				callee = effective_array;
 				node.callee = callee;
 				goto case AstType.expr_member;

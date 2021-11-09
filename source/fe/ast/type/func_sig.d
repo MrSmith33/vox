@@ -97,7 +97,7 @@ void expandVariadicParam(FunctionSignatureNode* node, CompilationContext* c)
 		vars.put(c.arrayArena, newParamIndex);
 	}
 
-	// update indicies of other params
+	// update indices of other params
 	foreach(size_t i; variadicIndex + numVariadicParams..node.parameters.length)
 	{
 		auto rtParam = node.parameters[i].get!VariableDeclNode(c);

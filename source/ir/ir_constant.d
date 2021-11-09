@@ -168,7 +168,7 @@ struct IrConstantStorage
 	}
 
 	/// memberIndex must be an integer constant
-	// IrIndex aggrType, CompilationContext* c, IrIndex[] indicies...
+	// IrIndex aggrType, CompilationContext* c, IrIndex[] indices...
 	IrIndex getAggregateMember(IrIndex aggrValue, IrIndex memberIndex, CompilationContext* c) {
 		if (aggrValue.isConstantAggregate) {
 			uint memberIndexVal = get(memberIndex).i32;

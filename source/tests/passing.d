@@ -4918,4 +4918,5 @@ immutable test230 = q{--- test230
 	// UFCS
 	// call func ptr variable
 	// call through alias
+	// call member functions through pointer
 };

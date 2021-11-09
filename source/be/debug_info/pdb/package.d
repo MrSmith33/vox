@@ -40,7 +40,7 @@ Meta-stream stores information about all streams in .pdb file. It has following 
 	uint[][numStreams] streamPages
 	Note: some streams produced by MSVC have uint.max size. We interpret that as 0 size.
 	It is stored in a list of pages.
-	Array of indicies to those pages are stored in a page `metaStreamHeaderPage`
+	Array of indices to those pages are stored in a page `metaStreamHeaderPage`
 Free page bitmap is a page that stores a bit per page. 1 if page is free, 0 if not.
 Page map...
 
@@ -153,14 +153,14 @@ struct PdbReader
 		slicer.fileCursor = pdb.msfHeader.metaStreamHeaderPage * pdb.msfHeader.pageSize;
 		writefln("meta stream header page %s, offset 0x%X", pdb.msfHeader.metaStreamHeaderPage, slicer.fileCursor);
 
-		uint[] metaStreamPagesIndicies = slicer.getArrayOf!uint(pdb.msfHeader.numMetaStreamPages);
-		writefln("meta stream pages %s", metaStreamPagesIndicies);
+		uint[] metaStreamPagesIndices = slicer.getArrayOf!uint(pdb.msfHeader.numMetaStreamPages);
+		writefln("meta stream pages %s", metaStreamPagesIndices);
 
 		StreamReader metaStream;
 		metaStream.fileData = fileData;
 		metaStream.streamBytes = pdb.msfHeader.metaStreamBytes;
 		metaStream.pageSize = pdb.msfHeader.pageSize;
-		metaStream.pages = metaStreamPagesIndicies;
+		metaStream.pages = metaStreamPagesIndices;
 
 		uint numStreams = metaStream.read!uint;
 		writefln("Number of streams %s", numStreams);
@@ -558,9 +558,9 @@ struct PdbReader
 		writefln("  num modules %s", sourceInfoHeader.numModules);
 		writefln("  num sources %s", sourceInfoHeader.numSourceFiles);
 
-		ushort[] modIndicies = new ushort[sourceInfoHeader.numModules];
-		dbiSourceInfoStream.readIntoArray(modIndicies);
-		writefln("  mod indicies %s", modIndicies);
+		ushort[] modIndices = new ushort[sourceInfoHeader.numModules];
+		dbiSourceInfoStream.readIntoArray(modIndices);
+		writefln("  mod indices %s", modIndices);
 
 		ushort[] modFileCounts = new ushort[sourceInfoHeader.numModules];
 		dbiSourceInfoStream.readIntoArray(modFileCounts);
@@ -599,8 +599,8 @@ struct PdbReader
 		writefln("##  dbiOptionalDbgHeader subtream: %s bytes", dbiOptionalDbgHeaderStream.remainingBytes);
 		ushort[11] dbgStreamArray;
 		dbgStreamArray[] = ushort.max; // init with unknown stream id if less than 11 recors present
-		uint numDbgStreamIndicies = min(dbiOptionalDbgHeaderStream.remainingBytes / 2, 11); // we only understand 11 records, ignore if more present
-		dbiOptionalDbgHeaderStream.readIntoArray(dbgStreamArray[0..numDbgStreamIndicies]);
+		uint numDbgStreamIndices = min(dbiOptionalDbgHeaderStream.remainingBytes / 2, 11); // we only understand 11 records, ignore if more present
+		dbiOptionalDbgHeaderStream.readIntoArray(dbgStreamArray[0..numDbgStreamIndices]);
 		pdb.setStreamName(dbgStreamArray[0], "FPO Data");
 		writefln("  FPO Data: %s", dbgStreamArray[0]);
 		pdb.setStreamName(dbgStreamArray[1], "Exception Data");
@@ -2051,7 +2051,7 @@ struct CVType_SKIP
 struct CVType_ARGLIST
 {
 	uint count; // number of arguments
-	// next follow `count` type indicies of type TypeIndex
+	// next follow `count` type indices of type TypeIndex
 }
 
 // LF_DERIVED

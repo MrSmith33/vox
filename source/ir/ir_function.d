@@ -13,7 +13,7 @@ import all;
 /// Stores info about single function in IR
 /// All data of a function is stored in a number of arenas
 /// Every function has its data stored sequentially in each arena, and items in each function have separate indexing
-/// Indicies are relative to the pointers.
+/// Indices are relative to the pointers.
 /// All this implies that in order to modify the function's IR it needs to be at the end of each arena.
 /// Then we can freely append new items to the end of arenas.
 struct IrFunction

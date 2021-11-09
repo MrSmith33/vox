@@ -703,7 +703,7 @@ struct PecoffLib
 	string filename;
 	ubyte[] fileData;
 	uint[] memberOffsets;
-	ushort[] indicies;
+	ushort[] indices;
 	string stringTable;
 	PecoffObj[] objs;
 	string longNames;
@@ -770,7 +770,7 @@ struct PecoffLib
 			lib.objs.reserve(numOfMembers);
 			lib.memberOffsets = secondSlicer.getArrayOf!uint(numOfMembers);
 			uint numOfSymbols = *secondSlicer.getPtrTo!uint;
-			lib.indicies = secondSlicer.getArrayOf!ushort(numOfSymbols);
+			lib.indices = secondSlicer.getArrayOf!ushort(numOfSymbols);
 			ubyte[] stringTableData = secondSlicer.fileData[secondSlicer.fileCursor..$];
 			lib.stringTable = cast(string)stringTableData;
 			slicer.advanceToAlignment(2);
@@ -819,8 +819,8 @@ struct PecoffLib
 		formattedWrite(sink, "%s:\n", filename);
 		formattedWrite(sink, "  memberOffsets: %s records [%(%X, %)]\n",
 			memberOffsets.length, memberOffsets);
-		formattedWrite(sink, "  indicies: %s records  [%(%X, %)]\n",
-			indicies.length, indicies);
+		formattedWrite(sink, "  indices: %s records  [%(%X, %)]\n",
+			indices.length, indices);
 		formattedWrite(sink, "\nFile table: %s files\n", objs.length);
 		foreach(i, ref obj; objs) formattedWrite(sink, "% 8X  %s\n", i, obj.filename);
 		sink.put("\nSymbol table:\n");

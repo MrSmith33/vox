@@ -99,8 +99,8 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
 		// Is also where phi functions are located
-		uint blockFromPos = liveness.linearIndicies.basicBlock(blockIndex);
-		uint blockToPos = liveness.linearIndicies.instr(block.lastInstr);
+		uint blockFromPos = liveness.linearIndices.basicBlock(blockIndex);
+		uint blockToPos = liveness.linearIndices.instr(block.lastInstr);
 		version(LivePrint) writefln("[LIVE] % 3s %s", blockFromPos, blockIndex);
 
 		// live = union of successor.liveIn for each successor of block
@@ -133,7 +133,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			}
 		}
 
-		//writef("in %s %s live:", blockIndex, liveness.linearIndicies.basicBlock(blockIndex));
+		//writef("in %s %s live:", blockIndex, liveness.linearIndices.basicBlock(blockIndex));
 		//foreach (size_t index; liveness.bitmap.live.bitsSet)
 		//	writef(" %s", index);
 		//writeln;
@@ -153,7 +153,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			IrIndex result = instrHeader.tryGetResult(ir); // nullable
 			IrIndex[] args = instrHeader.args(ir);
 
-			uint linearInstrIndex = liveness.linearIndicies.instr(instrIndex);
+			uint linearInstrIndex = liveness.linearIndices.instr(instrIndex);
 			version(LivePrint) writefln("[LIVE]   % 3s %s", linearInstrIndex, instrIndex);
 
 			InstrInfo instrInfo = context.machineInfo.instrInfo[instrHeader.op];
@@ -281,7 +281,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 			IrIndex loopEnd = blockIndex;
 			//     loopEnd = last block of the loop starting at b
 			foreach(IrIndex pred; block.predecessors.range(ir)) {
-				uint blockEndPos = liveness.linearIndicies[ir.getBlock(pred).lastInstr]+2;
+				uint blockEndPos = liveness.linearIndices[ir.getBlock(pred).lastInstr]+2;
 				if (blockEndPos > maxPos) {
 					maxPos = blockEndPos;
 					loopEnd = pred;
@@ -321,7 +321,7 @@ void pass_live_intervals_func(CompilationContext* context, IrFunction* ir, Liven
 		if (instrInfo.isMov) {
 			IrIndex from = instrHeader.arg(ir, 0);
 			if (from.isPhysReg) {
-				uint linearInstrIndex = liveness.linearIndicies.instr(instrIndex);
+				uint linearInstrIndex = liveness.linearIndices.instr(instrIndex);
 				liveness.pint(from).addRange(context, 1, linearInstrIndex);
 			}
 			IrIndex result = instrHeader.result(ir);

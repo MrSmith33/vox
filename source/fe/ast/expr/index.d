@@ -11,27 +11,27 @@ struct IndexExprNode {
 	mixin ExpressionNodeData!(AstType.expr_index);
 	AstIndex parentScope; // needed to resolve `this` pointer in member access
 	AstIndex array;
-	AstNodes indicies;
+	AstNodes indices;
 }
 
 void print_index(IndexExprNode* node, ref AstPrintState state)
 {
 	state.print("INDEX");
 	print_ast(node.array, state);
-	print_ast(node.indicies, state);
+	print_ast(node.indices, state);
 }
 
 void post_clone_index(IndexExprNode* node, ref CloneState state)
 {
 	state.fixScope(node.parentScope);
 	state.fixAstIndex(node.array);
-	state.fixAstNodes(node.indicies);
+	state.fixAstNodes(node.indices);
 }
 
 void name_register_nested_index(IndexExprNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_nested;
 	require_name_register(node.array, state);
-	require_name_register(node.indicies, state);
+	require_name_register(node.indices, state);
 	node.state = AstNodeState.name_register_nested_done;
 }
 
@@ -42,7 +42,7 @@ void name_resolve_index(ref AstIndex nodeIndex, IndexExprNode* node, ref NameRes
 	node.state = AstNodeState.name_resolve;
 	AstIndex arrayCopy = node.array; // link to node before it replaces itself
 	require_name_resolve(node.array, state);
-	require_name_resolve(node.indicies, state);
+	require_name_resolve(node.indices, state);
 
 	AstIndex effective_array = node.array.get_effective_node(c);
 
@@ -54,20 +54,20 @@ void name_resolve_index(ref AstIndex nodeIndex, IndexExprNode* node, ref NameRes
 		static assert(IndexExprNode.sizeof >= StaticArrayTypeNode.sizeof, "IndexExprNode.sizeof < StaticArrayTypeNode.sizeof");
 		static assert(IndexExprNode.sizeof >= SliceTypeNode.sizeof, "IndexExprNode.sizeof < SliceTypeNode.sizeof");
 		IndexExprNode copy = *node;
-		if (copy.indicies.length == 0)
+		if (copy.indices.length == 0)
 		{
 			// in the future this can also be slice expression
 			auto sliceType = cast(SliceTypeNode*)node;
 			*sliceType = SliceTypeNode(copy.loc, CommonAstNodes.type_type, copy.array);
 		}
-		else if (copy.indicies.length == 1)
+		else if (copy.indices.length == 1)
 		{
 			auto arrayType = cast(StaticArrayTypeNode*)node;
-			*arrayType = StaticArrayTypeNode(copy.loc, CommonAstNodes.type_type, copy.array, copy.indicies[0]);
+			*arrayType = StaticArrayTypeNode(copy.loc, CommonAstNodes.type_type, copy.array, copy.indices[0]);
 		}
 		else
 		{
-			c.error(node.loc, "Invalid number of indicies: %s", copy.indicies.length);
+			c.error(node.loc, "Invalid number of indices: %s", copy.indices.length);
 			node.type = CommonAstNodes.type_error;
 		}
 	}
@@ -77,14 +77,14 @@ void name_resolve_index(ref AstIndex nodeIndex, IndexExprNode* node, ref NameRes
 		if (effective_array.get!TemplateDeclNode(c).body.isType(c))
 			node.flags |= AstFlags.isType;
 	}
-	else if (effective_array.astType(c) == AstType.decl_alias_array && node.indicies.length == 1)
+	else if (effective_array.astType(c) == AstType.decl_alias_array && node.indices.length == 1)
 	{
 		if (arrayCopy.astType(c) == AstType.expr_name_use)
 		{
 			auto nameUse = arrayCopy.get!NameUseExprNode(c);
 			// replace current node with aliased entity
 			// reuse name_use
-			IrIndex indexVal = eval_static_expr(node.indicies[0], c);
+			IrIndex indexVal = eval_static_expr(node.indices[0], c);
 			AstIndex item = effective_array.get!AliasArrayDeclNode(c).items[c.constants.get(indexVal).i64];
 			if (item.get_effective_node(c).isType(c))
 				nameUse.flags |= AstFlags.isType;
@@ -107,9 +107,9 @@ void type_check_index(ref AstIndex nodeIndex, IndexExprNode* node, ref TypeCheck
 
 	if (array_ast_type == AstType.decl_template)
 	{
-		require_type_check(node.indicies, state);
+		require_type_check(node.indices, state);
 		// template instantiation
-		nodeIndex = get_template_instance(effective_array, node.loc, node.indicies, state);
+		nodeIndex = get_template_instance(effective_array, node.loc, node.indices, state);
 		if (nodeIndex == CommonAstNodes.node_error) {
 			node.type = CommonAstNodes.type_error;
 			return;
@@ -146,18 +146,18 @@ void type_check_index(ref AstIndex nodeIndex, IndexExprNode* node, ref TypeCheck
 
 	node.array.flags(c) |= AstFlags.isLvalue;
 	require_type_check(node.array, state);
-	require_type_check(node.indicies, state);
+	require_type_check(node.indices, state);
 
 	{
-		if (node.indicies.length != 1)
+		if (node.indices.length != 1)
 		{
-			c.error(node.loc, "Array indexing only supports single index, not %s", node.indicies.length);
-			if (node.indicies.length < 1) return;
+			c.error(node.loc, "Array indexing only supports single index, not %s", node.indices.length);
+			if (node.indices.length < 1) return;
 			// if > 1 continue with 0-th index
 		}
 
 		// array/ptr/slice indexing
-		autoconvTo(node.indicies[0], CommonAstNodes.type_i64, c);
+		autoconvTo(node.indices[0], CommonAstNodes.type_i64, c);
 		switch (node.array.get_expr_type(c).astType(c)) with(AstType)
 		{
 			case type_ptr, type_static_array, type_slice:
@@ -176,10 +176,10 @@ ExprValue ir_gen_index(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStm
 {
 	CompilationContext* c = gen.context;
 
-	c.assertf(node.indicies.length == 1, "%s", node.indicies.length);
+	c.assertf(node.indices.length == 1, "%s", node.indices.length);
 
 	IrLabel afterRight = IrLabel(curBlock);
-	ExprValue indexLvalue = ir_gen_expr(gen, node.indicies[0], curBlock, afterRight);
+	ExprValue indexLvalue = ir_gen_expr(gen, node.indices[0], curBlock, afterRight);
 	curBlock = afterRight.blockIndex;
 	IrIndex indexRvalue = indexLvalue.rvalue(gen, node.loc, curBlock);
 

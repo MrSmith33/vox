@@ -380,7 +380,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 	}
 
 	// dup basic blocks
-	// old and new blocks have the same indicies
+	// old and new blocks have the same indices
 	foreach (size_t i, ref IrBasicBlock irBlock; ir.blocksArray)
 	{
 		IrIndex blockIndex = IrIndex(cast(uint)i, IrValueKind.basicBlock);
@@ -423,7 +423,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 		lirBlock.isSealed = true;
 		lirBlock.isFinished = true;
 
-		// old and new blocks have the same indicies
+		// old and new blocks have the same indices
 		IrIndex irBlockIndex = lirBlockIndex;
 
 		// Add instructions with old args

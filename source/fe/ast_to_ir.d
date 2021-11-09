@@ -21,7 +21,7 @@ void pass_ir_gen(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 	}
 }
 
-enum MAX_GEP_INDICIES = 255;
+enum MAX_GEP_INDICES = 255;
 struct IrGenState
 {
 	CompilationContext* context;
@@ -31,7 +31,7 @@ struct IrGenState
 	IrFunction* ir;
 	FunctionDeclNode* fun;
 
-	IrIndex[MAX_GEP_INDICIES+2] gepBuf = void; // 2 is extra parameters to GEP instruction
+	IrIndex[MAX_GEP_INDICES+2] gepBuf = void; // 2 is extra parameters to GEP instruction
 
 	IrLabel* currentLoopHeader;
 	IrLabel* currentLoopEnd;
@@ -309,7 +309,7 @@ enum ExprValueKind : ubyte {
 	ptr_to_ptr_to_data,
 	// irValue is variable (isLvalue=true), constant or vreg (isLvalue=false)
 	// variable can contain aggregate value as well as pointer to aggregate
-	// numIndicies indicates number of gepBuf indicies being used
+	// numIndices indicates number of gepBuf indices being used
 	struct_sub_index,
 }
 
@@ -329,7 +329,7 @@ struct ExprValue
 	// true if can be assigned or address taken
 	private IsLvalue isLvalue = IsLvalue.no;
 	//
-	private Array!IrIndex indicies;
+	private Array!IrIndex indices;
 	// used as offset into aggregate values
 	//IrIndex offset;
 
@@ -418,7 +418,7 @@ struct ExprValue
 				IrIndex aggrType = gen.ir.getValueType(c, aggr);
 				switch (aggrType.typeKind) {
 					case IrTypeKind.pointer:
-						IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, source.indicies[]);
+						IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, source.indices[]);
 						if (source.isLvalue) {
 							return ExprValue(ptr).load(gen, loc, currentBlock);
 						} else {
@@ -426,11 +426,11 @@ struct ExprValue
 						}
 					case IrTypeKind.array:
 					case IrTypeKind.struct_t:
-						IrIndex memberType = c.types.getAggregateMember(aggrType, c, source.indicies[]).type;
+						IrIndex memberType = c.types.getAggregateMember(aggrType, c, source.indices[]).type;
 						ExtraInstrArgs extra = { type : memberType };
-						IrIndex[] args = gen.gepBuf[0..source.indicies.length+1];
+						IrIndex[] args = gen.gepBuf[0..source.indices.length+1];
 						args[0] = aggr;
-						args[1..$] = source.indicies[];
+						args[1..$] = source.indices[];
 						return gen.builder.emitInstr!(IrOpcode.get_element)(currentBlock, extra, args).result;
 					default: c.internal_error("%s", aggrType.typeKind);
 				}
@@ -474,15 +474,15 @@ struct ExprValue
 				//writefln("Store %s", IrIndexDump(aggrType, c, gen.ir));
 				switch (aggrType.typeKind) {
 					case IrTypeKind.pointer:
-						IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, destination.indicies[]);
+						IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, destination.indices[]);
 						gen.builder.emitInstr!(IrOpcode.store)(currentBlock, ExtraInstrArgs(), ptr, value);
 						break;
 					case IrTypeKind.struct_t:
 					case IrTypeKind.array:
-						IrIndex[] args = gen.gepBuf[0..destination.indicies.length+2];
+						IrIndex[] args = gen.gepBuf[0..destination.indices.length+2];
 						args[0] = aggr;
 						args[1] = value;
-						args[2..$] = destination.indicies[];
+						args[2..$] = destination.indices[];
 						ExtraInstrArgs extra = { type : aggrType };
 						IrIndex res = gen.builder.emitInstr!(IrOpcode.insert_element)(currentBlock, extra, args).result;
 						gen.builder.writeVariable(currentBlock, destination.irValue, res);
@@ -521,11 +521,11 @@ struct ExprValue
 			switch (aggr.kind) with(ExprValueKind)
 			{
 				case value:
-					Array!IrIndex resIndicies;
-					resIndicies.put(c.arrayArena, index);
-					return ExprValue(aggr.irValue, ExprValueKind.struct_sub_index, IsLvalue.yes, resIndicies);
+					Array!IrIndex resIndices;
+					resIndices.put(c.arrayArena, index);
+					return ExprValue(aggr.irValue, ExprValueKind.struct_sub_index, IsLvalue.yes, resIndices);
 				case struct_sub_index:
-					aggr.indicies.put(c.arrayArena, index);
+					aggr.indices.put(c.arrayArena, index);
 					return aggr;
 				default:
 					aggr.irValue = gen.builder.readVariable(currentBlock, aggr.irValue);
@@ -573,7 +573,7 @@ struct ExprValue
 	}
 }
 
-IrIndex buildGEPEx(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue aggrPtrExpr, IrIndex ptrIndex, IrIndex[] indicies...)
+IrIndex buildGEPEx(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, ExprValue aggrPtrExpr, IrIndex ptrIndex, IrIndex[] indices...)
 {
 	CompilationContext* c = gen.context;
 	IrIndex aggrPtr = aggrPtrExpr.irValue;
@@ -587,7 +587,7 @@ IrIndex buildGEPEx(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, Exp
 			IrIndex aggrType = gen.ir.getValueType(c, aggrPtr);
 			switch (aggrType.typeKind) {
 				case IrTypeKind.pointer:
-					aggrPtr = buildGEP(gen, loc, currentBlock, aggrPtr, c.constants.ZERO, aggrPtrExpr.indicies[]);
+					aggrPtr = buildGEP(gen, loc, currentBlock, aggrPtr, c.constants.ZERO, aggrPtrExpr.indices[]);
 					break;
 
 				default: c.internal_error("aggrType.typeKind == %s", aggrType.typeKind);
@@ -596,15 +596,15 @@ IrIndex buildGEPEx(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, Exp
 
 		default: c.internal_error("aggrPtrExpr.kind == %s", aggrPtrExpr.kind);
 	}
-	return buildGEP(gen, loc, currentBlock, aggrPtr, ptrIndex, indicies);
+	return buildGEP(gen, loc, currentBlock, aggrPtr, ptrIndex, indices);
 }
 
-IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrIndex aggrPtr, IrIndex ptrIndex, IrIndex[] indicies...)
+IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrIndex aggrPtr, IrIndex ptrIndex, IrIndex[] indices...)
 {
 	CompilationContext* c = gen.context;
-	c.assertf(indicies.length < MAX_GEP_INDICIES,
-		"too much indicies for GEP instruction (%s) > %s",
-		indicies.length, MAX_GEP_INDICIES);
+	c.assertf(indices.length < MAX_GEP_INDICES,
+		"too much indices for GEP instruction (%s) > %s",
+		indices.length, MAX_GEP_INDICES);
 
 	if (aggrPtr.isVariable) {
 		aggrPtr = gen.builder.readVariable(currentBlock, aggrPtr);
@@ -613,7 +613,7 @@ IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrInd
 	IrIndex aggrPtrType = gen.ir.getValueType(c, aggrPtr);
 	IrIndex aggrType = c.types.getPointerBaseType(aggrPtrType);
 
-	foreach (i, IrIndex memberIndex; indicies)
+	foreach (i, IrIndex memberIndex; indices)
 	{
 		gen.gepBuf[i+2] = memberIndex;
 		final switch(aggrType.typeKind)
@@ -639,11 +639,11 @@ IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrInd
 		}
 	}
 
-	if (indicies.length == 0 && ptrIndex.isConstantZero)
+	if (indices.length == 0 && ptrIndex.isConstantZero)
 		return aggrPtr; // skip no op GEP
 
 	ExtraInstrArgs extra = { type : c.types.appendPtr(aggrType) };
-	IrIndex[] args = gen.gepBuf[0..indicies.length+2];
+	IrIndex[] args = gen.gepBuf[0..indices.length+2];
 	args[0] = aggrPtr;
 	args[1] = ptrIndex;
 	IrIndex result = gen.builder.emitInstr!(IrOpcode.get_element_ptr)(currentBlock, extra, args).result;

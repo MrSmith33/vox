@@ -770,7 +770,7 @@ struct LinearScan
 				{
 					case none, array, virtualRegister, physicalRegister, constant, constantAggregate, constantZero, global, basicBlock, stackSlot, type, func: assert(false);
 					case instruction:
-						uint pos = live.linearIndicies.instr(userIndex);
+						uint pos = live.linearIndices.instr(userIndex);
 						IrIndex reg = live.getRegFor(vregIndex, pos);
 						foreach (ref IrIndex arg; lir.getInstr(userIndex).args(lir))
 							if (arg == vregIndex)
@@ -786,7 +786,7 @@ struct LinearScan
 							if (phiArg == vregIndex)
 							{
 								IrIndex lastInstr = lir.getBlock(preds[i]).lastInstr;
-								uint pos = live.linearIndicies.instr(lastInstr);
+								uint pos = live.linearIndices.instr(lastInstr);
 								IrIndex reg = live.getRegFor(vregIndex, pos);
 								//writefln("set %s arg reg %s -> %s at %s", userIndex, phiArg, reg, pos);
 								phiArg = reg;
@@ -807,7 +807,7 @@ struct LinearScan
 			switch(vreg.definition.kind) with(IrValueKind)
 			{
 				case instruction:
-					uint pos = live.linearIndicies.instr(vreg.definition);
+					uint pos = live.linearIndices.instr(vreg.definition);
 					IrIndex resultReg = live.getRegFor(vregIndex, pos);
 
 					IrIndex instrIndex = vreg.definition;
@@ -839,7 +839,7 @@ struct LinearScan
 
 				case phi:
 					IrPhi* irPhi = lir.getPhi(vreg.definition);
-					uint pos = live.linearIndicies.basicBlock(irPhi.blockIndex);
+					uint pos = live.linearIndices.basicBlock(irPhi.blockIndex);
 					IrIndex reg = live.getRegFor(vregIndex, pos);
 					irPhi.result = reg;
 					break;
@@ -1031,11 +1031,11 @@ struct LinearScan
 		IrIndex succIndex, ref IrBasicBlock succBlock)
 	{
 		// those are already handled at split site
-		// we have no linearIndicies for new blocks
+		// we have no linearIndices for new blocks
 		if (predBlock.replacesCriticalEdge || succBlock.replacesCriticalEdge) return;
 
-		uint succPos = live.linearIndicies.basicBlock(succIndex);
-		uint predPos = live.linearIndicies.instr(predBlock.lastInstr);
+		uint succPos = live.linearIndices.basicBlock(succIndex);
+		uint predPos = live.linearIndices.instr(predBlock.lastInstr);
 
 		moveSolver.reset();
 

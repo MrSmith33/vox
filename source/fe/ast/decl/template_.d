@@ -3,7 +3,7 @@
 /// Authors: Andrey Penechko.
 
 /// We rely on the fact that nodes are allocated sequentially,
-/// which allows us to simply copy a range on slots and fix indicies,
+/// which allows us to simply copy a range on slots and fix indices,
 /// in order to create template instance.
 module fe.ast.decl.template_;
 
@@ -98,7 +98,7 @@ struct CloneState
 {
 	CompilationContext* context;
 
-	// We need to add this offset to all indicies inside copied slots that point into copied slots
+	// We need to add this offset to all indices inside copied slots that point into copied slots
 	uint offset;
 
 	/// Points to original nodes
@@ -283,7 +283,7 @@ void set_instance_id(AstIndex instance_index, AstNodes instance_args, Compilatio
 /// Perform copiying of AST subtree and index fixing
 /// node_start..after_node is the range of slots to be copied
 /// instance_scope is the scope created around AST subtree copy
-/// All nodes need to fixed via CloneState through indicies pointing inside cloned tree
+/// All nodes need to fixed via CloneState through indices pointing inside cloned tree
 CloneState clone_node(AstIndex node_start, AstIndex after_node, AstIndex instance_scope, CompilationContext* c)
 {
 	c.assertf(after_node.storageIndex > node_start.storageIndex, "%s > %s", node_start, after_node);
@@ -308,7 +308,7 @@ CloneState clone_node(AstIndex node_start, AstIndex after_node, AstIndex instanc
 	return state;
 }
 
-/// Applies offset to indicies pointing into copied area
+/// Applies offset to indices pointing into copied area
 /// Happens before name register
 void post_clone(AstIndex nodeIndex, ref CloneState state)
 {

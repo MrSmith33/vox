@@ -185,7 +185,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 		if (!settings.printLiveness) return;
 		if (liveness is null) return;
 
-		uint linearInstrIndex = liveness.linearIndicies[linearKeyIndex];
+		uint linearInstrIndex = liveness.linearIndices[linearKeyIndex];
 
 		if (settings.printPregLiveness)
 		{
@@ -248,7 +248,7 @@ void dumpFunctionImpl(IrDumpContext* c)
 									// we only want phi functions that are in blocks that have this block as predecessor
 									if (preds[arg_i] == prevBlock && phiArg == interval.definition)
 									{
-										uint phiPos = liveness.linearIndicies[phi.blockIndex];
+										uint phiPos = liveness.linearIndices[phi.blockIndex];
 										if (phiPos < linearInstrIndex)
 											useState |= UseState.above; // vreg is used by phi above
 										else

@@ -58,10 +58,10 @@ struct LivenessInfo
 	ubyte[NUM_REG_CLASSES] physRegOffsetByClass;
 	/// instructionIndex -> seqIndex
 	/// blockIndex -> seqIndex
-	IrMirror!uint linearIndicies;
-	// maps even indicies to instructions and basic blocks
+	IrMirror!uint linearIndices;
+	// maps even indices to instructions and basic blocks
 	IrIndex[] evenIndexToIrIndex;
-	uint maxLinearIndex; // max value stored in linearIndicies
+	uint maxLinearIndex; // max value stored in linearIndices
 
 	auto virtualIntervals() { return intervals[numFixedIntervals..$]; }
 	auto physicalIntervals() { return intervals[0..numFixedIntervals]; }
@@ -104,8 +104,8 @@ struct LivenessInfo
 			*vint(vregIndex.storageUintIndex) = it;
 		}
 
-		linearIndicies.createBasicBlockMirror(context, ir);
-		linearIndicies.createInstrMirror(context, ir);
+		linearIndices.createBasicBlockMirror(context, ir);
+		linearIndices.createInstrMirror(context, ir);
 	}
 
 	void assignSequentialIndices(CompilationContext* context, IrFunction* ir) {
@@ -118,14 +118,14 @@ struct LivenessInfo
 		{
 			version(LivePrint) writefln("[LIVE] %s %s", index * ENUM_STEP, blockIndex);
 			// Allocate index for block start
-			linearIndicies.basicBlock(blockIndex) = index * ENUM_STEP;
+			linearIndices.basicBlock(blockIndex) = index * ENUM_STEP;
 			evenIndexToIrIndex[index] = blockIndex;
 			++index;
 			// enumerate instructions
 			foreach (IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructions(ir))
 			{
 				version(LivePrint) writefln("[LIVE]   %s %s", index * ENUM_STEP, instrIndex);
-				linearIndicies.instr(instrIndex) = index * ENUM_STEP;
+				linearIndices.instr(instrIndex) = index * ENUM_STEP;
 				evenIndexToIrIndex[index] = instrIndex;
 				++index;
 			}
@@ -164,9 +164,9 @@ struct LivenessInfo
 		while (next.isDefined)
 		{
 			IrBasicBlock* block = ir.getBlock(next);
-			uint blockFromPos = linearIndicies.basicBlock(next);
+			uint blockFromPos = linearIndices.basicBlock(next);
 			if (pos == blockFromPos) return true;
-			uint blockToPos = linearIndicies.instr(block.lastInstr);
+			uint blockToPos = linearIndices.instr(block.lastInstr);
 			if (pos <= blockToPos) return false;
 			next = block.nextBlock;
 		}
@@ -248,7 +248,7 @@ struct LivenessInfo
 
 		foreach (IrIndex blockIndex, ref IrBasicBlock block; lir.blocks)
 		{
-			uint blockPos = linearIndicies.basicBlock(blockIndex);
+			uint blockPos = linearIndices.basicBlock(blockIndex);
 			if (blockPos > maxPos) break;
 			maxBlockPos = blockPos;
 		}

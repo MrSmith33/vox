@@ -22,7 +22,7 @@ IrIndex inline_call(IrBuilder* builder, IrFunction* calleeIr, IrIndex callInstrI
 	// copy buffers of inlined function
 	// this will place data of each buffer at the end of buffer for current function
 	// update length of current function buffers
-	// fix all indicies
+	// fix all indices
 	appendIrStorage(ir, calleeIr, c);
 
 	// Gather blocks

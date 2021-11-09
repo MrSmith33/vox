@@ -293,7 +293,7 @@ LookupResult lookupBasicMember(MemberExprNode* expr, BasicTypeNode* basicType, I
 
 LookupResult lookupSliceMember(MemberExprNode* expr, SliceTypeNode* sliceType, Identifier id, CompilationContext* c)
 {
-	// use integer indicies, because slice is a struct
+	// use integer indices, because slice is a struct
 	if (id == CommonIds.id_ptr)
 	{
 		expr.resolve(MemberSubType.slice_member, c.builtinNodes(BuiltinId.slice_ptr), 1, c);

@@ -9,8 +9,8 @@ import all;
 /// Reorders a set of moves, to produce correct behavior
 /// Nodes can be in 3 states:
 ///   RO - value is only read. Those are not added to writtenNodes array.
-///   RW - value is read 1 or more times and written 1 time. Indicies of these nodes are at the beginning of writtenNodes
-///   WO - value is only written. Indicies are at the end of writtenNodes.
+///   RW - value is read 1 or more times and written 1 time. Indices of these nodes are at the beginning of writtenNodes
+///   WO - value is only written. Indices are at the end of writtenNodes.
 struct MoveSolver
 {
 	CompilationContext* context;

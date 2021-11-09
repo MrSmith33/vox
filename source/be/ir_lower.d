@@ -380,7 +380,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 					if (sourceType.fitsIntoRegister(c))
 					{
-						// do simple variant where all indicies are constant
+						// do simple variant where all indices are constant
 						IrIndex value = args[0];
 						if (member.offset > 0)
 						{
@@ -409,7 +409,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						break;
 					}
 
-					// reuse the same indicies from get_element and perform GEP on them, then do load
+					// reuse the same indices from get_element and perform GEP on them, then do load
 					instrHeader.op = IrOpcode.get_element_ptr_0;
 
 					IrIndex ptrType = c.types.appendPtr(resultType);

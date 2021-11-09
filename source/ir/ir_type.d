@@ -166,8 +166,8 @@ struct IrTypeStorage
 		IrIndex result = append!IrTypeFunction;
 
 		{ // add slots for results and parameters
-			uint numIndicies = numResults + numParameters;
-			size_t numSlots = divCeil(IrIndex.sizeof * numIndicies, ulong.sizeof);
+			uint numIndices = numResults + numParameters;
+			size_t numSlots = divCeil(IrIndex.sizeof * numIndices, ulong.sizeof);
 			ulong[] data = buffer.voidPut(numSlots);
 			data[] = 0;
 		}
@@ -285,11 +285,11 @@ struct IrTypeStorage
 		return get!IrTypeArray(arrayType).elemType;
 	}
 
-	/// Returns offset + type of member indicated by indicies
-	IrTypeStructMember getAggregateMember(IrIndex aggrType, CompilationContext* c, IrIndex[] indicies...)
+	/// Returns offset + type of member indicated by indices
+	IrTypeStructMember getAggregateMember(IrIndex aggrType, CompilationContext* c, IrIndex[] indices...)
 	{
 		ulong offset = 0;
-		foreach(IrIndex memberIndex; indicies)
+		foreach(IrIndex memberIndex; indices)
 		{
 			c.assertf(memberIndex.isSimpleConstant, "Aggregates can only be indexed with constants, not with %s", memberIndex);
 			ulong indexVal = c.constants.get(memberIndex).i64;

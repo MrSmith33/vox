@@ -21,7 +21,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 	scope(exit) context.freeTempArray(cast(uint[])definedVregsBitmap);
 	definedVregsBitmap[] = 0;
 
-	// Verify defined vregs indicies
+	// Verify defined vregs indices
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
 		void checkResult(IrIndex definition, IrIndex result) {
@@ -165,7 +165,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 
 			// TODO: check that all types of args match type of result
 
-			// TODO: check correspondense of basic block indicies with phi arg indicies
+			// TODO: check correspondense of basic block indices with phi arg indices
 
 			// check that phi-function receives values from all predecessors
 			size_t numPredecessors = 0;
@@ -349,7 +349,7 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			bool sameType = c.types.isSameType(resultType, aggrType);
 			c.assertf(sameType, "%s: type of first argument must match result type: result %s, aggregate %s", instrIndex, IrIndexDump(resultType, c, ir), IrIndexDump(aggrType, c, ir));
 
-			// TODO: check indicies
+			// TODO: check indices
 			break;
 
 		case IrOpcode.get_element_ptr:
@@ -379,9 +379,9 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 
 			IrIndex calculatedResultType = c.types.getPointerBaseType(aggrPtrType);
 
-			IrIndex[] indicies = instrHeader.args(ir)[2..$];
+			IrIndex[] indices = instrHeader.args(ir)[2..$];
 
-			foreach(IrIndex memberIndex; indicies)
+			foreach(IrIndex memberIndex; indices)
 			{
 				switch(calculatedResultType.typeKind)
 				{

@@ -1933,18 +1933,18 @@ AstIndex leftIncDec(ref Parser p, PreferType preferType, Token token, int rbp, A
 // <expr> "[" <expr> "," <expr>+ "]"
 // <expr> "[" <expr> .. <expr> "]"
 AstIndex leftIndex(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex array, ref int nbp) {
-	AstNodes indicies;
+	AstNodes indices;
 	if (p.tok.type == TokenType.RBRACKET)
 	{
 		p.nextToken;
-		return p.makeExpr!IndexExprNode(token.index, p.currentScopeIndex, array, indicies);
+		return p.makeExpr!IndexExprNode(token.index, p.currentScopeIndex, array, indices);
 	}
 	AstIndex index = p.expr(PreferType.no, 0);
 	if (p.tok.type == TokenType.RBRACKET)
 	{
 		p.nextToken;
-		indicies.put(p.context.arrayArena, index);
-		return p.makeExpr!IndexExprNode(token.index, p.currentScopeIndex, array, indicies);
+		indices.put(p.context.arrayArena, index);
+		return p.makeExpr!IndexExprNode(token.index, p.currentScopeIndex, array, indices);
 	}
 
 	if (preferType == PreferType.yes)

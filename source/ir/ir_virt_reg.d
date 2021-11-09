@@ -16,7 +16,7 @@ struct IrVirtualRegister
 	IrIndex definition;
 	///
 	IrIndex type;
-	/// Instruction or phi indicies that use this register
+	/// Instruction or phi indices that use this register
 	/// This cannot be regular array because deletion is O(n), and it can cause O(n^2) time in DCE pass when lots of instructions are dead.
 	/// This must store precise count of users, because this number is used for liveness info allocation
 	/// If number is inacurate then it will result in insufficient storage allocated when user occurs multiple times

@@ -199,7 +199,7 @@ enum IrOpcode : ushort
 	/// Returns: member pointer
 	/// Same as get_element_ptr, but first index is hardcoded to be 0.
 	/// 0 indixies do not make sense, because then instuction is no op and can replaced with first arg
-	/// Indicies are compatible with ones from get_element and insert_element
+	/// Indices are compatible with ones from get_element and insert_element
 	@_ii(2, IFLG.hasVariadicArgs | IFLG.hasResult) get_element_ptr_0,
 	/// Args: aggregate members
 	@_ii(1, IFLG.hasVariadicArgs | IFLG.hasResult) create_aggregate,
