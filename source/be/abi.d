@@ -878,7 +878,6 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				case PassClass.byPtrMemory:
 				case PassClass.byValueMemory:
 					c.internal_error("invalid return class", callee_state.abi.returnClass);
-					break;
 				case PassClass.ignore: break; // no result, or empty struct
 			}
 		}
@@ -925,7 +924,6 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				break;
 			case PassClass.byValueMemory, PassClass.byPtrMemory:
 				c.internal_error("Invalid return class %s", state.abi.returnClass);
-				break;
 			case PassClass.ignore:
 				break;
 		}

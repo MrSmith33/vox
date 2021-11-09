@@ -44,7 +44,6 @@ struct BasicTypeNode {
 			case BasicType.t_type: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
 			default:
 				c.internal_error(loc, "Cannot convert %s to IrIndex", basicType);
-				assert(false);
 		}
 	}
 }
@@ -86,7 +85,6 @@ IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 		case BasicType.t_type: return makeBasicTypeIndex(IrValueType.i32);
 		default:
 			context.internal_error(t.loc, "Cannot convert %s to IrIndex", t.basicType);
-			assert(false);
 	}
 }
 

@@ -208,8 +208,14 @@ int runCli(string[] args)
 	}
 	catch(CompilationException e) {
 		writeln(driver.context.sink.text);
-		if (e.isICE)
+		if (e.isICE) {
 			writeln(e);
+			auto func = driver.context.currentFunction;
+			if (func) {
+				auto mod = func._module.get!ModuleDeclNode(&driver.context);
+				writefln("Failed in %s.%s", driver.context.idString(mod.id), driver.context.idString(func.id));
+			}
+		}
 		return 1;
 	}
 	catch(Throwable t) {

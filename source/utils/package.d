@@ -100,7 +100,7 @@ T nextPOT(T)(T x)
 	return x;
 }
 
-T isPowerOfTwo(T)(T x)
+bool isPowerOfTwo(T)(T x)
 {
 	return (x != 0) && ((x & (~x + 1)) == x);
 }

@@ -314,7 +314,6 @@ IrArgSize sizeToIrArgSize(uint typeSize, CompilationContext* context) {
 		case 64: return IrArgSize.size512;
 		default:
 			context.internal_error("Type of size %s cannot be stored in a register", typeSize);
-			assert(false);
 	}
 }
 

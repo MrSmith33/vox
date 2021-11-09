@@ -334,7 +334,6 @@ struct CodeEmitter
 								break;
 							default:
 								context.internal_error("imul %s not implemented", instrHeader.args(lir));
-								assert(false);
 						}
 						break;
 					case Amd64Opcode.div:
@@ -615,13 +614,11 @@ struct CodeEmitter
 							default:
 								context.internal_error("Cannot encode %s %s in %s %s",
 									cast(Amd64Opcode)instrHeader.op, src, context.idString(lir.name), instrIndex);
-								assert(false);
 						}
 						stackPointerExtraOffset += STACK_ITEM_SIZE;
 						break;
 					default:
 						context.internal_error("Unimplemented instruction `%s`", cast(Amd64Opcode)instrHeader.op);
-						break;
 				}
 			}
 
@@ -651,7 +648,6 @@ struct CodeEmitter
 
 			default:
 				context.internal_error("addRefTo %s %s", entity, offset);
-				assert(false);
 		}
 
 		addRefTo(entityIndex, offset);
@@ -743,7 +739,6 @@ struct CodeEmitter
 			case global, stackSlot:
 				// This should not happen. Stack slot or global must go through mov or load instruction.
 				context.internal_error("Cannot encode %s %s %s in %s %s", op, dst, src, context.idString(lir.name), instrIndex);
-				assert(false);
 		}
 		gen.encodeRegular(argDst, argSrc, param);
 	}
@@ -770,7 +765,6 @@ struct CodeEmitter
 		{
 			default:
 				context.internal_error("Invalid move from %s to %s", IrIndexDump(dst, context, lir), IrIndexDump(src, context, lir));
-				assert(false);
 
 			case MoveType.const_to_reg:
 				IrConstant con = context.constants.get(src);
@@ -801,7 +795,6 @@ struct CodeEmitter
 								break;
 							case size128, size256, size512:
 								context.internal_error("Not implemented: const_to_reg %s %s", dst, src);
-								break;
 						}
 					} else if (dst.physRegClass == AMD64_REG_CLASS.XMM) {
 						LinkIndex roSectionIndex = context.builtinSections[ObjectSectionType.ro_data];
@@ -859,7 +852,6 @@ struct CodeEmitter
 					final switch(argSize) with(IrArgSize) {
 						case size8, size16:
 							context.internal_error("Not implemented: reg_to_reg %s %s", dst, src);
-							break;
 						case size32: gen.movss(dstReg, srcReg); break;
 						case size64: gen.movsd(dstReg, srcReg); break;
 						case size128: gen.movups(dstReg, srcReg); break;
@@ -938,7 +930,6 @@ struct CodeEmitter
 
 			default:
 				context.internal_error("invalid source of load %s", src.kind);
-				break;
 		}
 	}
 
@@ -1014,7 +1005,6 @@ struct CodeEmitter
 				break;
 			default:
 				context.internal_error("store %s <- %s is not implemented", dst.kind, src.kind);
-				break;
 		}
 	}
 }

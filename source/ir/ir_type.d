@@ -313,7 +313,6 @@ struct IrTypeStorage
 
 				default:
 					c.internal_error("Cannot index into %s", aggrType.typeKind);
-					break;
 			}
 		}
 		return IrTypeStructMember(aggrType, cast(uint)offset);
@@ -348,7 +347,6 @@ struct IrTypeStorage
 			}
 		}
 		c.internal_error("cannot get call convention %s", callee);
-		assert(false);
 	}
 
 	bool isSameType(IrIndex a, IrIndex b) {
@@ -421,7 +419,6 @@ IrIndex getValueType(IrIndex value, IrFunction* ir, CompilationContext* c)
 			return c.types.appendPtr(c.getFunction(value).signature.get!FunctionSignatureNode(c).getIrType(c));
 		default:
 			c.internal_error("Cannot get type of %s", value.kind);
-			assert(false);
 	}
 }
 

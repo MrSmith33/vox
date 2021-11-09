@@ -127,7 +127,6 @@ IrIndex ir_gen_literal_null(CompilationContext* context, NullLiteralExprNode* n)
 	} else if (n.type.get_type(c).isTypeofNull) {
 		return c.constants.add(0, IsSigned.no, SIZET_SIZE);
 	} else c.internal_error(n.loc, "%s", n.type.printer(c));
-	assert(false);
 }
 
 

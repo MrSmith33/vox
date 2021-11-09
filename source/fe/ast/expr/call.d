@@ -17,6 +17,7 @@ import all;
 @(AstType.expr_call)
 struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
+	AstIndex parentScope; // needed to resolve `this` pointer in member access
 	AstIndex callee;
 	AstNodes args;
 	IrIndex[] argsValues;
@@ -38,6 +39,7 @@ void print_call(CallExprNode* node, ref AstPrintState state)
 
 void post_clone_call(CallExprNode* node, ref CloneState state)
 {
+	state.fixScope(node.parentScope);
 	state.fixAstIndex(node.callee);
 	state.fixAstNodes(node.args);
 }
@@ -64,6 +66,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 	node.state = AstNodeState.type_check;
 	scope(exit) node.state = AstNodeState.type_check_done;
 
+	AstNodes templateArgs;
 	AstIndex callee = node.callee.get_effective_node(c);
 
 	switch (callee.astType(c))
@@ -71,18 +74,38 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 		// static function call
 		case AstType.decl_function:
 			auto func = callee.get!FunctionDeclNode(c);
+			if (func.isMember) {
+				// rewrite as method[](args) as method[](this, args)
+				// let member_access handle everything else
+				AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, node.parentScope, CommonIds.id_this);
+				require_name_resolve(thisName, c);
+				node.args.putFront(c.arrayArena, thisName);
+			}
 			auto signature = func.signature.get!FunctionSignatureNode(c);
 			return type_check_func_call(node, signature, func.id, state);
+
 		case AstType.decl_struct:
 			require_type_check(callee, state, IsNested.no);
 			return type_check_constructor_call(node, callee.get!StructDeclNode(c), state);
+
 		case AstType.expr_member:
 			MemberExprNode* memberNode = callee.get!MemberExprNode(c);
 			// Method call
 			LookupResult res = lookupMember(callee, memberNode, state);
 			if (res == LookupResult.success) {
 				AstIndex memberIndex = memberNode.member(c);
+
+				if (memberNode.subType == MemberSubType.struct_templ_method) {
+					memberIndex = get_template_instance(memberIndex, node.loc, templateArgs, state);
+
+					if (memberIndex == CommonAstNodes.node_error) {
+						node.type = CommonAstNodes.type_error;
+						return;
+					}
+				}
+
 				auto calleeType = memberIndex.get_type(c);
+
 				if (calleeType.isPointer)
 				{
 					TypeNode* base = calleeType.as_ptr.base.get_type(c);
@@ -92,13 +115,16 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 						return type_check_func_call(node, signature, memberNode.memberId(c), state);
 					}
 				}
+
 				node.callee = memberIndex;
+
 				auto signature = calleeType.as_func_sig;
 				assert(signature);
 				lowerThisArgument(signature, memberNode.aggregate, memberNode.loc, c);
 				node.args.putFront(c.arrayArena, memberNode.aggregate);
 				return type_check_func_call(node, signature, memberNode.memberId(c), state);
 			}
+
 			// UFCS call
 			Identifier calleeName = memberNode.memberId(c);
 			LookupResult ufcsRes = tryUFCSCall(callIndex, memberNode, state);
@@ -109,6 +135,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 				return;
 			}
 			break;
+
 		case AstType.decl_var, AstType.decl_enum_member:
 			// check if func ptr
 			TypeNode* varType = callee.get_node_type(c).get_type(c);
@@ -130,23 +157,51 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 				goto case AstType.decl_function;
 			}
 			goto default;
+
 		case AstType.expr_index:
-			require_type_check(callee, state);
-			if (callee.astType(c) != AstType.decl_function)
-				goto case AstType.decl_var;
-			node.callee = callee;
-			goto case AstType.decl_function;
+			auto index = callee.get!IndexExprNode(c);
+			AstIndex effective_array = index.array.get_effective_node(c);
+			AstType array_ast_type = effective_array.astType(c);
+
+			require_type_check(index.indicies, state);
+
+			if (array_ast_type == AstType.decl_template)
+			{
+				// template instantiation
+				callee = get_template_instance(effective_array, node.loc, index.indicies, state);
+				if (callee == CommonAstNodes.node_error) {
+					node.type = CommonAstNodes.type_error;
+					return;
+				}
+				node.callee = callee;
+
+				goto case AstType.decl_function;
+			}
+
+			if (array_ast_type == AstType.expr_member)
+			{
+				templateArgs = index.indicies;
+				callee = effective_array;
+				node.callee = callee;
+				goto case AstType.expr_member;
+			}
+
+			goto case AstType.decl_var;
 		case AstType.decl_template:
 			auto templ = callee.get!TemplateDeclNode(c);
+
 			if (templ.body.astType(c) != AstType.decl_function) {
 				c.unrecoverable_error(node.loc, "Cannot call template of %s", templ.body.astType(c));
 			}
-			auto func = templ.body.get!FunctionDeclNode(c);
-			auto signature = func.signature.get!FunctionSignatureNode(c);
+
+			auto templFunc = templ.body.get!FunctionDeclNode(c);
+			auto templSignature = templFunc.signature.get!FunctionSignatureNode(c);
+
 			bool success;
-			AstNodes types = doIfti(templ, signature, node.args, success, state);
+			AstNodes types = doIfti(templ, templSignature, node.args, success, state);
 			if (!success)
 				c.unrecoverable_error(node.loc, "Cannot infer template arguments from runtime arguments");
+
 			callee = get_template_instance(callee, node.loc, types, state);
 			node.callee = callee;
 			if (callee == CommonAstNodes.node_error) {
@@ -467,7 +522,6 @@ ExprValue ir_gen_call(ref IrGenState gen, IrIndex currentBlock, ref IrLabel next
 			return visitCall(gen, c.getAstNodeIndex(base), calleeRval, currentBlock, nextStmt, node);
 		default:
 			c.internal_error(node.loc, "Cannot call %s", callee.get_node_type(c).get_type(c).printer(c));
-			assert(false);
 	}
 }
 

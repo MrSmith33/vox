@@ -119,7 +119,7 @@ struct TypeNode
 			case AstType.type_ptr: return as_ptr.base;
 			case AstType.type_static_array: return as_static_array.base;
 			case AstType.type_slice: return as_slice.base;
-			default: c.internal_error(loc, "%s is not indexable", astType); assert(false);
+			default: c.internal_error(loc, "%s is not indexable", astType);
 		}
 	}
 
@@ -281,7 +281,7 @@ bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* c) {
 		case decl_enum:
 			return t1 == t2;
 		default:
-			assert(false, format("got %s %s", t1.astType, t2.astType));
+			c.internal_error("got %s %s", t1.astType, t2.astType);
 	}
 }
 
@@ -299,7 +299,6 @@ IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* c)
 		case name_register_self, name_register_nested, name_resolve:
 			c.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.ir_gen));
 			c.circular_dependency;
-			assert(false);
 		case type_check: break;
 		case name_register_self_done:
 			require_name_register(nodeIndex, c);
@@ -333,6 +332,5 @@ IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* c)
 		case AstType.decl_enum: return gen_ir_type_enum(typeNode.as_enum, c);
 		default:
 			c.internal_error(typeNode.loc, "Cannot convert `%s` to ir type", typeNode.astType);
-			assert(false);
 	}
 }

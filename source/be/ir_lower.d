@@ -761,11 +761,9 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 		{
 			case IrTypeKind.basic:
 				context.internal_error("Cannot index basic type %s", aggrType.typeKind);
-				break;
 
 			case IrTypeKind.pointer:
 				context.internal_error("Cannot index pointer with GEP instruction, use load first");
-				break;
 
 			case IrTypeKind.array:
 				IrIndex elemType = context.types.getArrayElementType(aggrType);
@@ -802,7 +800,6 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 
 			case IrTypeKind.func_t:
 				context.internal_error("Cannot index function type");
-				break;
 		}
 	}
 

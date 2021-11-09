@@ -267,7 +267,7 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 				irValue = gen.builder.emitInstr!(IrOpcode.generic_binary)(
 					currentBlock, extra, leftValue, rightValue).result;
 				break;
-			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); assert(false);
+			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op);
 		}
 		c.assertf(irValue.isDefined, b.loc, "%s null IR val", b.astType);
 		gen.builder.addJumpToLabel(currentBlock, trueExit);
@@ -282,7 +282,7 @@ IrIndex visitBinOpImpl(bool forValue)(ref IrGenState gen, ref IrIndex currentBlo
 					currentBlock, convertBinOpToIrCond(b.op, leftExpr.type.isSigned(c), leftExpr.type.isFloat(c)), leftExpr.type.typeArgSize(c),
 					leftValue, rightValue, trueExit, falseExit);
 				break;
-			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op); break;
+			default: c.internal_error(b.loc, "Opcode `%s` is not implemented", b.op);
 		}
 		return IrIndex();
 	}
@@ -317,7 +317,6 @@ IrOpcode binOpcode(BinOp binop, IsSigned isSigned, bool isFloat, TokenIndex loc,
 		case BITWISE_OR, BITWISE_OR_ASSIGN: return IrOpcode.or;
 		default:
 			context.internal_error(loc, "assign op %s not implemented", binop);
-			assert(false);
 	}
 }
 
@@ -372,7 +371,6 @@ IrIndex calcBinOp(BinOp op, IrIndex left, IrIndex right, IrArgSize argSize, Comp
 
 		default:
 			context.internal_error("Opcode `%s` is not implemented", op);
-			assert(false);
 	}
 }
 
@@ -551,7 +549,6 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 
 		default:
 			c.internal_error(b.loc, "Unimplemented op %s", b.op);
-			assert(false);
 	}
 	assert(resType.isDefined);
 	b.type = resType;

@@ -776,7 +776,6 @@ struct IrBuilder
 				break;
 			default:
 				context.unreachable;
-				assert(false);
 		}
 	}
 
@@ -803,7 +802,6 @@ struct IrBuilder
 					break;
 				default:
 					context.unreachable;
-					assert(false);
 			}
 		}
 

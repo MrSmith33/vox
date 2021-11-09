@@ -9,6 +9,7 @@ import all;
 @(AstType.expr_index)
 struct IndexExprNode {
 	mixin ExpressionNodeData!(AstType.expr_index);
+	AstIndex parentScope; // needed to resolve `this` pointer in member access
 	AstIndex array;
 	AstNodes indicies;
 }
@@ -22,6 +23,7 @@ void print_index(IndexExprNode* node, ref AstPrintState state)
 
 void post_clone_index(IndexExprNode* node, ref CloneState state)
 {
+	state.fixScope(node.parentScope);
 	state.fixAstIndex(node.array);
 	state.fixAstNodes(node.indicies);
 }
@@ -100,19 +102,52 @@ void type_check_index(ref AstIndex nodeIndex, IndexExprNode* node, ref TypeCheck
 	node.state = AstNodeState.type_check;
 	scope(exit) node.state = AstNodeState.type_check_done;
 
-	node.array.flags(c) |= AstFlags.isLvalue;
-	require_type_check(node.array, state);
-	require_type_check(node.indicies, state);
-
 	AstIndex effective_array = node.array.get_effective_node(c);
 	AstType array_ast_type = effective_array.astType(c);
 
 	if (array_ast_type == AstType.decl_template)
 	{
+		require_type_check(node.indicies, state);
 		// template instantiation
 		nodeIndex = get_template_instance(effective_array, node.loc, node.indicies, state);
+		if (nodeIndex == CommonAstNodes.node_error) {
+			node.type = CommonAstNodes.type_error;
+			return;
+		}
+
+		if (nodeIndex.astType(c) == AstType.decl_function)
+		{
+			nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), node.parentScope, nodeIndex);
+			nodeIndex.setState(c, AstNodeState.name_resolve_done);
+		}
+
+		require_type_check(nodeIndex, state);
+		return;
 	}
-	else
+
+	if (array_ast_type == AstType.expr_member)
+	{
+		// template instantiation
+		MemberExprNode* memberExpr = effective_array.get!MemberExprNode(c);
+		LookupResult res = lookupMember(effective_array, memberExpr, state);
+
+		if (res == LookupResult.success) {
+			AstIndex memberIndex = memberExpr.member(c);
+
+			if (memberExpr.subType == MemberSubType.struct_templ_method) {
+				// rewrite as call
+				nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), node.parentScope, nodeIndex);
+				nodeIndex.setState(c, AstNodeState.name_resolve_done);
+				require_type_check(nodeIndex, state);
+				return;
+			}
+		}
+	}
+
+	node.array.flags(c) |= AstFlags.isLvalue;
+	require_type_check(node.array, state);
+	require_type_check(node.indicies, state);
+
 	{
 		if (node.indicies.length != 1)
 		{
@@ -178,6 +213,5 @@ ExprValue ir_gen_index(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStm
 
 		default:
 			c.internal_error("Cannot index %s", arrayExpr.type.printer(c));
-			assert(false);
 	}
 }

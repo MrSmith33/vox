@@ -182,6 +182,8 @@ o dll linking
 - test that sections get correct offsets in executable
 - split struct tests
 - all comptime expressions that must evaluate to bool (#if, #assert etc), check what happens with struct, array, slice, string, float... Must have the same logic as regular if.
+- all call variants
+- check all expressions being used as a statement
 
 
 [Backend]

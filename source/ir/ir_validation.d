@@ -258,7 +258,6 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 			}
 			c.internal_error("%s: cannot store %s %s into %s",
 				instrIndex, IrIndexDump(value, c, ir), IrIndexDump(valueType, c, ir), IrIndexDump(ptrType, c, ir));
-			break;
 
 		case IrOpcode.create_aggregate:
 			c.assertf(instrHeader.hasResult, "%s: create_aggregate has no result", instrIndex);
@@ -421,7 +420,6 @@ void validateIrInstruction(CompilationContext* c, IrFunction* ir, IrIndex instrI
 
 					default:
 						c.internal_error("%s: get_element_ptr cannot index into %s", instrIndex, calculatedResultType.typeKind);
-						break;
 				}
 			}
 

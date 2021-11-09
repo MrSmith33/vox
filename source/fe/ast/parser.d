@@ -626,7 +626,6 @@ struct Parser
 		else
 		{
 			context.unrecoverable_error(tok.index, "Expected '(' or ';', while got '%s'", context.getTokenString(tok.index));
-			assert(false);
 		}
 	}
 
@@ -948,7 +947,6 @@ struct Parser
 				context.unrecoverable_error(tok.index,
 					"Expected `;` or `{` at the end of enum declaration, while got `%s`",
 					context.getTokenString(tok.index));
-				return AstNodes();
 			}
 		}
 
@@ -1070,7 +1068,6 @@ struct Parser
 			context.unrecoverable_error(tok.index,
 				"Invalid enum declaration, got %s after `enum`",
 				context.getTokenString(tok.index));
-			assert(false);
 		}
 	}
 
@@ -1649,7 +1646,6 @@ AstIndex left_error_parser(ref Parser p, PreferType preferType, Token token, int
 		p.context.unrecoverable_error(token.index, "Unexpected end of input");
 	else
 		p.context.unrecoverable_error(token.index, "%s is not an expression", token.type);
-	assert(false);
 }
 
 AstIndex null_error_parser(ref Parser p, PreferType preferType, Token token, int rbp)
@@ -1658,7 +1654,6 @@ AstIndex null_error_parser(ref Parser p, PreferType preferType, Token token, int
 		p.context.unrecoverable_error(token.index, "Unexpected end of input");
 	else
 		p.context.unrecoverable_error(token.index, "%s is not an expression", token.type);
-	assert(false);
 }
 
 struct LeftInfo
@@ -1869,7 +1864,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			BasicType t = token.type.tokenTypeToBasicType;
 			return p.context.basicTypeNodes(t);
 		default:
-			p.context.internal_error("nullLiteral %s", token.type); assert(false);
+			p.context.internal_error("nullLiteral %s", token.type);
 	}
 }
 
@@ -1906,8 +1901,7 @@ AstIndex nullPrefixOp(ref Parser p, PreferType preferType, Token token, int rbp)
 		case AND: op = UnOp.addrOf; break;
 		case PLUS_PLUS: op = UnOp.preIncrement; break;
 		case MINUS_MINUS: op = UnOp.preDecrement; break;
-		default:
-			p.context.unreachable(); assert(false);
+		default: p.context.unreachable;
 	}
 	return p.makeExpr!UnaryExprNode(token.index, op, right);
 }
@@ -1930,8 +1924,7 @@ AstIndex leftIncDec(ref Parser p, PreferType preferType, Token token, int rbp, A
 	{
 		case PLUS_PLUS: op = UnOp.postIncrement; break;
 		case MINUS_MINUS: op = UnOp.postDecrement; break;
-		default:
-			p.context.unreachable(); assert(false);
+		default: p.context.unreachable;
 	}
 	return p.makeExpr!UnaryExprNode(token.index, op, left);
 }
@@ -1944,14 +1937,14 @@ AstIndex leftIndex(ref Parser p, PreferType preferType, Token token, int rbp, As
 	if (p.tok.type == TokenType.RBRACKET)
 	{
 		p.nextToken;
-		return p.makeExpr!IndexExprNode(token.index, array, indicies);
+		return p.makeExpr!IndexExprNode(token.index, p.currentScopeIndex, array, indicies);
 	}
 	AstIndex index = p.expr(PreferType.no, 0);
 	if (p.tok.type == TokenType.RBRACKET)
 	{
 		p.nextToken;
 		indicies.put(p.context.arrayArena, index);
-		return p.makeExpr!IndexExprNode(token.index, array, indicies);
+		return p.makeExpr!IndexExprNode(token.index, p.currentScopeIndex, array, indicies);
 	}
 
 	if (preferType == PreferType.yes)
@@ -2060,7 +2053,6 @@ AstIndex leftBinaryOp(ref Parser p, PreferType preferType, Token token, int rbp,
 
 		default:
 			p.context.internal_error(token.index, "parse leftBinaryOp %s", token.type);
-			assert(false);
 	}
 	return p.makeExpr!BinaryExprNode(token.index, op, left, right);
 }
@@ -2086,7 +2078,6 @@ AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp,
 		case XOR_EQUAL: op = BinOp.XOR_ASSIGN; break;             // ^=
 		default:
 			p.context.internal_error(token.index, "parse leftAssignOp %s", token.type);
-			assert(false);
 	}
 	AstNode* leftNode = p.context.getAstNode(left);
 	leftNode.flags |= AstFlags.isLvalue;
@@ -2102,5 +2093,5 @@ AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp,
 AstIndex leftFuncCall(ref Parser p, PreferType preferType, Token token, int unused_rbp, AstIndex callee, ref int nbp) {
 	AstNodes args;
 	p.parse_expr_list(args, TokenType.RPAREN);
-	return p.makeExpr!CallExprNode(token.index, callee, args);
+	return p.makeExpr!CallExprNode(token.index, p.currentScopeIndex, callee, args);
 }

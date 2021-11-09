@@ -287,7 +287,7 @@ struct IrVm
 		switch (index.kind) with(IrValueKind) {
 			case constant, constantZero: return c.constants.get(index).i64;
 			case virtualRegister: return readInt(vregSlot(index));
-			default: c.internal_error("readInt %s", index); assert(false);
+			default: c.internal_error("readInt %s", index);
 		}
 	}
 
@@ -299,7 +299,7 @@ struct IrVm
 			case 2: return *cast(short*)slotToSlice(mem).ptr;
 			case 4: return *cast(  int*)slotToSlice(mem).ptr;
 			case 8: return *cast( long*)slotToSlice(mem).ptr;
-			default: c.internal_error("readInt %s", mem); assert(false);
+			default: c.internal_error("readInt %s", mem);
 		}
 	}
 
@@ -312,7 +312,7 @@ struct IrVm
 			case constant, constantZero: return IrVmSlotInfo(c.constants.get(ptr).i32, targetSize);
 			case virtualRegister: return IrVmSlotInfo(cast(uint)readInt(vregSlot(ptr)), targetSize);
 			case stackSlot: return stackSlotSlot(ptr);
-			default: c.internal_error("ptrToSlice %s", ptr); assert(false);
+			default: c.internal_error("ptrToSlice %s", ptr);
 		}
 	}
 
@@ -325,7 +325,7 @@ struct IrVm
 			case 2: *cast(short*)slotToSlice(mem).ptr = cast(short)value; break;
 			case 4: *cast(  int*)slotToSlice(mem).ptr = cast(  int)value; break;
 			case 8: *cast( long*)slotToSlice(mem).ptr = cast( long)value; break;
-			default: c.internal_error("writeInt %s", mem); assert(false);
+			default: c.internal_error("writeInt %s", mem);
 		}
 	}
 

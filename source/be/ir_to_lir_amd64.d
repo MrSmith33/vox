@@ -260,7 +260,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						members = context.constants.getAggregate(irValue).members;
 						break;
 
-					default: context.internal_error("%s", irValue.kind); assert(false);
+					default: context.internal_error("%s", irValue.kind);
 				}
 
 				context.assertf(members.length == structType.numMembers, "%s != %s", members.length, structType.numMembers);
@@ -321,7 +321,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						members = context.constants.getAggregate(irValue).members;
 						break;
 
-					default: context.internal_error("%s", irValue.kind); assert(false);
+					default: context.internal_error("%s", irValue.kind);
 				}
 
 				context.assertf(members.length == arrayType.numElements, "%s != %s", members.length, arrayType.numElements);
@@ -333,7 +333,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				break;
 
 			default:
-				context.internal_error("%s", valueType.typeKind); assert(false);
+				context.internal_error("%s", valueType.typeKind);
 		}
 	}
 
@@ -642,7 +642,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 								case size16: emitLirInstr!(Amd64Opcode.movsx_btow); break;
 								case size32: emitLirInstr!(Amd64Opcode.movsx_btod); break;
 								case size64: emitLirInstr!(Amd64Opcode.movsx_btoq); break;
-								default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, sizeTo); break;
+								default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, sizeTo);
 							}
 							break;
 						case size16:
@@ -650,14 +650,14 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							{
 								case size32: emitLirInstr!(Amd64Opcode.movsx_wtod); break;
 								case size64: emitLirInstr!(Amd64Opcode.movsx_wtoq); break;
-								default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, sizeTo); break;
+								default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, sizeTo);
 							}
 							break;
 						case size32:
 							context.assertf(sizeTo == size64, "%s:%s: Invalid target size %s", funName, instrIndex, sizeTo);
 							emitLirInstr!(Amd64Opcode.movsx_dtoq);
 							break;
-						case size64, size128, size256, size512: context.internal_error("%s:%s: Invalid source size %s", funName, instrIndex, sizeFrom); break;
+						case size64, size128, size256, size512: context.internal_error("%s:%s: Invalid source size %s", funName, instrIndex, sizeFrom);
 					}
 					break;
 				case IrOpcode.zext:
@@ -672,7 +672,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 								case size16: emitLirInstr!(Amd64Opcode.movzx_btow); break;
 								case size32: emitLirInstr!(Amd64Opcode.movzx_btod); break;
 								case size64: emitLirInstr!(Amd64Opcode.movzx_btoq); break; // TODO use movzx_btod
-								default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, sizeTo); break;
+								default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, sizeTo);
 							}
 							break;
 						case size16:
@@ -680,14 +680,14 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 							{
 								case size32: emitLirInstr!(Amd64Opcode.movzx_wtod); break;
 								case size64: emitLirInstr!(Amd64Opcode.movzx_wtoq); break; // TODO use movzx_wtod
-								default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, sizeTo); break;
+								default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, sizeTo);
 							}
 							break;
 						case size32:
 							context.assertf(sizeTo == size64, "Invalid target size %s", sizeTo);
 							emitLirInstr!(Amd64Opcode.mov);
 							break;
-						case size64, size128, size256, size512: context.internal_error("%s:%s: Invalid source size %s", funName, instrIndex, sizeFrom); break;
+						case size64, size128, size256, size512: context.internal_error("%s:%s: Invalid source size %s", funName, instrIndex, sizeFrom);
 					}
 					break;
 				case IrOpcode.trunc:

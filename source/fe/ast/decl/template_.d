@@ -322,8 +322,8 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 
 	final switch(node.astType) with(AstType)
 	{
-		case error: c.internal_error(node.loc, "Visiting error node"); break;
-		case abstract_node: c.internal_error(node.loc, "Visiting abstract node"); break;
+		case error: c.internal_error(node.loc, "Visiting error node");
+		case abstract_node: c.internal_error(node.loc, "Visiting abstract node");
 
 		case decl_alias: post_clone_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_alias_array: break;

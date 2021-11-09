@@ -179,8 +179,7 @@ struct IrConstantStorage
 			return member.type.zeroConstantOfType;
 		}
 		else {
-			c.unreachable();
-			assert(false);
+			c.unreachable;
 		}
 	}
 
@@ -287,7 +286,7 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 					constantToMem(buffer[memberOffset..memberOffset+elemSize], args[i], c, handler);
 				}
 				break;
-			default: assert(false);
+			default: c.internal_error("%s", con.type.typeKind);
 		}
 	}
 	else
@@ -331,7 +330,6 @@ IrIndex memToConstant(ubyte[] buffer, IrIndex type, CompilationContext* c, IsSig
 			break;
 		default:
 			c.internal_error("memToConstant %s", cast(IrValueType)type.typeIndex);
-			assert(false);
 	}
 	return c.constants.add(value, signed, constSize);
 }

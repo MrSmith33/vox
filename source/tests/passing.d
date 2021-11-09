@@ -4869,3 +4869,53 @@ immutable test229 = q{--- test229
 	// shouldn't get the attribute. TODO: need ability to assert that.
 	void bar(u32 a){}
 };
+
+
+@TestInfo()
+immutable test230 = q{--- test230
+	/// All call variants
+	struct S {
+		void methodCaller() {
+			method;
+			method();
+
+			methodT;
+			methodT();
+
+			methodT[];
+			methodT[]();
+		}
+		void method() {}
+		void methodT[]() {}
+	}
+
+	void funcCaller() {
+		S s;
+
+		s.method;
+		s.method();
+
+		s.methodT;
+		s.methodT();
+
+		s.methodT[];
+		s.methodT[]();
+
+		func;
+		func();
+
+		funcT;
+		funcT();
+
+		funcT[];
+		funcT[]();
+	}
+
+	void func() {}
+	void funcT[]() {}
+
+	// TODO:
+	// UFCS
+	// call func ptr variable
+	// call through alias
+};

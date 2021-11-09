@@ -54,7 +54,6 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 			return context.constants.add(nodeIndex.storageIndex, IsSigned.no, IrArgSize.size32);
 		default:
 			context.internal_error(node.loc, "Cannot evaluate static expression %s", node.astType);
-			assert(false);
 	}
 }
 
@@ -113,7 +112,6 @@ IrIndex eval_static_expr_member(MemberExprNode* node, CompilationContext* c)
 				c.idString(get_node_id(nodeIndex, c)),
 				get_node_kind_name(nodeIndex, c),
 				cast(MemberSubType)node.subType);
-			assert(false);
 	}
 }
 
@@ -139,7 +137,6 @@ IrIndex eval_builtin_member(BuiltinId builtin, AstIndex obj, TokenIndex loc, Com
 				"Cannot access .%s member of %s while in CTFE",
 				builtinIdStrings[builtin],
 				get_node_kind_name(objType, c));
-			assert(false);
 	}
 }
 
@@ -187,15 +184,11 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 								return v.getIrIndex(c);
 							else
 								c.unrecoverable_error(node.loc, "Can only take address of global variable while in CTFE");
-							assert(false);
 						default:
 							c.unrecoverable_error(node.loc, "Cannot take address of %s while in CTFE", entity.astType);
-							assert(false);
 					}
-					assert(false);
 				default:
 					c.unrecoverable_error(node.loc, "Cannot take address of %s while in CTFE", child.astType);
-					assert(false);
 			}
 		default:
 			IrIndex childVal = eval_static_expr(node.child, c);
@@ -215,7 +208,6 @@ IrIndex eval_static_expr_call(CallExprNode* node, CompilationContext* c)
 			return eval_call(node, callee, c);
 		default:
 			c.internal_error(node.loc, "Cannot call %s at compile-time", callee.get_node_type(c).get_type(c).printer(c));
-			assert(false);
 	}
 }
 
@@ -260,7 +252,7 @@ void force_callee_ir_gen(FunctionDeclNode* callee, AstIndex calleeIndex, Compila
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check, ir_gen:
 			c.push_analized_node(AnalysedNode(calleeIndex, CalculatedProperty.ir_gen));
-			c.circular_dependency(); assert(false);
+			c.circular_dependency();
 		case parse_done:
 			auto name_state = NameRegisterState(c);
 			require_name_register_self(0, calleeIndex, name_state);
@@ -357,7 +349,6 @@ IrIndex eval_call_builtin(TokenIndex loc, IrVm* vm, AstIndex callee, IrIndex[] a
 	switch (callee.storageIndex) {
 		case CommonAstNodes.compile_error.storageIndex:
 			c.unrecoverable_error(loc, "%s", stringFromIrValue(vm, args[0], c));
-			assert(false);
 		case CommonAstNodes.is_slice.storageIndex:
 			AstIndex nodeIndex = astIndexFromIrValue(vm, args[0], c);
 			if (nodeIndex.isUndefined) return c.constants.ZERO;
@@ -389,6 +380,5 @@ IrIndex eval_call_builtin(TokenIndex loc, IrVm* vm, AstIndex callee, IrIndex[] a
 			return c.constants.add(baseType.storageIndex, IsSigned.no, IrArgSize.size32);
 		default:
 			c.internal_error("Unknown builtin function %s", c.idString(callee.get_node_id(c)));
-			assert(false);
 	}
 }

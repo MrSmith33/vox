@@ -127,7 +127,6 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 			break;
 		default:
 			c.internal_error("un op %s not implemented", node.op);
-			node.type = node.child.get_expr_type(c);
 	}
 	node.state = AstNodeState.type_check_done;
 }
@@ -235,7 +234,6 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 
 		default:
 			c.internal_error(u.loc, "un op %s not implemented", u.op);
-			assert(false);
 	}
 }
 
@@ -248,7 +246,7 @@ void ir_gen_branch_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabe
 			ir_gen_branch(gen, u.child, currentBlock, falseExit, trueExit);
 			break;
 
-		default: c.internal_error(u.loc, "Opcode `%s` is not implemented", u.op); break;
+		default: c.internal_error(u.loc, "Opcode `%s` is not implemented", u.op);
 	}
 }
 
@@ -277,6 +275,5 @@ IrIndex calcUnOp(UnOp op, IrIndex child, IrArgSize argSize, CompilationContext* 
 
 		default:
 			c.internal_error("Opcode `%s` is not implemented", op);
-			assert(false);
 	}
 }

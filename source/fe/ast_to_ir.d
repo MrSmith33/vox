@@ -47,7 +47,6 @@ void ir_gen_decl(ref IrGenState gen, AstIndex nodeIndex)
 		case decl_var: ir_gen_decl_var(gen, cast(VariableDeclNode*)n); break;
 		default:
 			c.internal_error(n.loc, "ir_gen_decl %s in %s state", n.astType, n.state);
-			assert(false);
 	}
 }
 
@@ -84,7 +83,6 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case literal_bool:
 		case decl_template_param:
 			c.internal_error(n.loc, "stmt %s in %s state", n.astType, n.state);
-			assert(false);
 
 		// declaration statement
 		case decl_alias:
@@ -97,7 +95,7 @@ void ir_gen_stmt(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref Ir
 		case decl_import:      gen.builder.addJumpToLabel(curBlock, nextStmt); break;
 		case decl_var:         ir_gen_local_var(gen, curBlock, nextStmt, cast(VariableDeclNode*)n); break;
 
-		default: c.internal_error("%s", n.astType); assert(false);
+		default: c.internal_error("%s", n.astType);
 	}
 }
 
@@ -160,7 +158,6 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 		}
 		default:
 			c.internal_error(n.loc, "Expected expression, not %s", n.astType);
-			assert(false);
 	}
 }
 
@@ -172,7 +169,6 @@ void ir_gen_branch(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, ref 
 	{
 		case literal_int, literal_float, literal_string, expr_index, expr_slice: // TODO: expr_index may return bool
 			gen.internal_error("Trying to branch directly on %s, must be wrapped in convertion to bool", n.astType);
-			break;
 		case expr_bin_op:    ir_gen_branch_binary_op   (gen, curBlock, trueExit, falseExit, cast(BinaryExprNode*)n); break;
 		case expr_type_conv: ir_gen_branch_type_conv   (gen, curBlock, trueExit, falseExit, cast(TypeConvExprNode*)n); break;
 		case expr_un_op:     ir_gen_branch_unary_op    (gen, curBlock, trueExit, falseExit, cast(UnaryExprNode*)n); break;
@@ -353,7 +349,6 @@ struct ExprValue
 				return ExprValue(irValue, ExprValueKind.ptr_to_ptr_to_data, IsLvalue.yes);
 			default:
 				gen.context.internal_error(loc, "%s", kind);
-				assert(false);
 		}
 	}
 
@@ -385,7 +380,6 @@ struct ExprValue
 
 			default:
 				c.internal_error(loc, "Cannot load from %s", source.kind);
-				assert(false);
 		}
 	}
 
@@ -438,11 +432,10 @@ struct ExprValue
 						args[0] = aggr;
 						args[1..$] = source.indicies[];
 						return gen.builder.emitInstr!(IrOpcode.get_element)(currentBlock, extra, args).result;
-					default: c.internal_error("%s", aggrType.typeKind); assert(false);
+					default: c.internal_error("%s", aggrType.typeKind);
 				}
 			default:
 				c.internal_error(loc, "Cannot load from %s", source.kind);
-				assert(false);
 		}
 	}
 
@@ -494,7 +487,7 @@ struct ExprValue
 						IrIndex res = gen.builder.emitInstr!(IrOpcode.insert_element)(currentBlock, extra, args).result;
 						gen.builder.writeVariable(currentBlock, destination.irValue, res);
 						break;
-					default: c.internal_error("%s", aggrType.typeKind); assert(false);
+					default: c.internal_error("%s", aggrType.typeKind);
 				}
 				return;
 
@@ -514,7 +507,6 @@ struct ExprValue
 				}
 		}
 		c.internal_error(loc, "Cannot store into %s", destination.irValue.kind);
-		assert(false);
 	}
 
 	/// Returns reference to aggregate member
@@ -573,10 +565,10 @@ struct ExprValue
 						aggrVal = gen.builder.emitInstr!(IrOpcode.get_element)(currentBlock, extra, args).result;
 						return ExprValue(aggrVal);
 					default:
-						c.internal_error("Cannot read struct member from %s", aggrVal.kind); assert(false);
+						c.internal_error("Cannot read struct member from %s", aggrVal.kind);
 				}
 			}
-			default: c.internal_error("%s", aggrType.typeKind); assert(false);
+			default: c.internal_error("%s", aggrType.typeKind);
 		}
 	}
 }
@@ -590,23 +582,19 @@ IrIndex buildGEPEx(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, Exp
 	}
 	switch (aggrPtrExpr.kind) with(ExprValueKind)
 	{
-		case value: assert(false);
 		case ptr_to_data: break;
-		case ptr_to_ptr_to_data:
-			aggrPtr = ExprValue(aggrPtr).load(gen, loc, currentBlock);
-			assert(false);
 		case struct_sub_index:
 			IrIndex aggrType = gen.ir.getValueType(c, aggrPtr);
 			switch (aggrType.typeKind) {
 				case IrTypeKind.pointer:
 					aggrPtr = buildGEP(gen, loc, currentBlock, aggrPtr, c.constants.ZERO, aggrPtrExpr.indicies[]);
 					break;
-				case IrTypeKind.array:
-				case IrTypeKind.struct_t: assert(false);
-				default: c.internal_error("%s", aggrType.typeKind); assert(false);
+
+				default: c.internal_error("aggrType.typeKind == %s", aggrType.typeKind);
 			}
 			break;
-		default: assert(false);
+
+		default: c.internal_error("aggrPtrExpr.kind == %s", aggrPtrExpr.kind);
 	}
 	return buildGEP(gen, loc, currentBlock, aggrPtr, ptrIndex, indicies);
 }
@@ -632,11 +620,9 @@ IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrInd
 		{
 			case IrTypeKind.basic:
 				c.internal_error(loc, "Cannot index basic type %s", aggrType.typeKind);
-				break;
 
 			case IrTypeKind.pointer:
 				c.internal_error(loc, "Cannot index pointer with GEP instruction, use load first");
-				break;
 
 			case IrTypeKind.array:
 				aggrType = c.types.getArrayElementType(aggrType);
@@ -650,7 +636,6 @@ IrIndex buildGEP(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, IrInd
 
 			case IrTypeKind.func_t:
 				c.internal_error(loc, "Cannot index function type");
-				break;
 		}
 	}
 

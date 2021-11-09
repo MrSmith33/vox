@@ -49,7 +49,6 @@ uint typeToRegSize(IrIndex type, CompilationContext* context) {
 		default:
 			context.internal_error("Type %s of size %s cannot be stored in a register",
 				IrTypeDump(type, *context), typeSize);
-			assert(false);
 	}
 }
 

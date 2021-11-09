@@ -49,8 +49,8 @@ void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 
 	final switch(node.astType) with(AstType)
 	{
-		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
-		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
+		case error: state.context.internal_error(node.loc, "Visiting error node");
+		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node");
 
 		case decl_alias: print_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_alias_array: print_alias_array(cast(AliasArrayDeclNode*)node, state); break;

@@ -179,7 +179,7 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
 			state.context.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.name_register_self));
-			c.circular_dependency; assert(false);
+			c.circular_dependency;
 		case parse_done:
 			// all requirement are done
 			break;
@@ -195,8 +195,8 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 
 	switch(node.astType) with(AstType)
 	{
-		case error: c.internal_error(node.loc, "Visiting error node"); break;
-		case abstract_node: c.internal_error(node.loc, "Visiting abstract node"); break;
+		case error: c.internal_error(node.loc, "Visiting error node");
+		case abstract_node: c.internal_error(node.loc, "Visiting abstract node");
 
 		case decl_alias: name_register_self_alias(nodeIndex, cast(AliasDeclNode*)node, state); break;
 		case decl_import: name_register_self_import(cast(ImportDeclNode*)node, state); break;
@@ -217,7 +217,7 @@ void require_name_register_self(uint arrayIndex, ref AstIndex nodeIndex, ref Nam
 			break;
 		case decl_template: name_register_self_template(nodeIndex, cast(TemplateDeclNode*)node, state); break;
 
-		default: c.internal_error(node.loc, "Visiting %s node %s", node.astType, node.state); break;
+		default: c.internal_error(node.loc, "Visiting %s node %s", node.astType, node.state);
 	}
 }
 
@@ -230,7 +230,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 	{
 		case name_register_self, name_register_nested, name_resolve, type_check:
 			state.context.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.name_register_nested));
-			state.context.circular_dependency; assert(false);
+			state.context.circular_dependency;
 		case parse_done:
 			auto name_state = NameRegisterState(state.context);
 			require_name_register_self(0, nodeIndex, name_state);
@@ -250,8 +250,8 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 
 	switch(node.astType) with(AstType)
 	{
-		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
-		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
+		case error: state.context.internal_error(node.loc, "Visiting error node");
+		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node");
 
 		case decl_alias: assert(false);
 		case decl_module: name_register_nested_module(cast(ModuleDeclNode*)node, state); break;
@@ -297,7 +297,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case type_static_array: name_register_nested_static_array(cast(StaticArrayTypeNode*)node, state); break;
 		case type_slice: name_register_nested_slice(cast(SliceTypeNode*)node, state); break;
 
-		default: state.context.internal_error(node.loc, "Visiting %s node", node.astType); break;
+		default: state.context.internal_error(node.loc, "Visiting %s node", node.astType);
 	}
 }
 

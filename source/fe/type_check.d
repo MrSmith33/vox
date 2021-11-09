@@ -65,7 +65,6 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 		case name_register_self, name_register_nested, name_resolve:
 			state.context.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.type_check));
 			state.context.circular_dependency;
-			assert(false);
 		case type_check:
 			if (isNested == IsNested.no) {
 				// this is allowed. We simply return.
@@ -73,7 +72,6 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 			}
 			state.context.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.type_check));
 			state.context.circular_dependency;
-			assert(false);
 		case parse_done:
 			auto name_state = NameRegisterState(state.context);
 			require_name_register_self(0, nodeIndex, name_state);
@@ -102,8 +100,8 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 
 	final switch(node.astType) with(AstType)
 	{
-		case error: state.context.internal_error(node.loc, "Visiting error node"); break;
-		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node"); break;
+		case error: state.context.internal_error(node.loc, "Visiting error node");
+		case abstract_node: state.context.internal_error(node.loc, "Visiting abstract node");
 
 		case decl_alias: type_check_alias(cast(AliasDeclNode*)node, state); break;
 		case decl_alias_array: assert(false);
@@ -197,7 +195,6 @@ TypeConvResKind checkTypeConversion(AstIndex fromTypeIndex, AstIndex toTypeIndex
 		case decl_struct: return type_conv_struct(fromType.as_struct, toTypeIndex, expr, c);
 		default:
 			c.internal_error(expr.loc(c), "Unhandled type conversion %s, %s", cast(AstType)fromTypeIndex.astType(c), toType.astType);
-			assert(false);
 	}
 }
 

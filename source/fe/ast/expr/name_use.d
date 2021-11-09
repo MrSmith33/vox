@@ -151,7 +151,7 @@ void name_resolve_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref Na
 		case decl_template:
 			break;
 		default:
-			c.internal_error("Unknown entity %s", entityNode.astType);
+			c.internal_error(entityNode.loc, "Unknown entity %s", entityNode.astType);
 	}
 }
 
@@ -203,6 +203,19 @@ void type_calc_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref TypeC
 	{
 		case AstType.decl_template:
 			node.state = AstNodeState.type_check_done;
+
+			auto templ = node.entity.get!TemplateDeclNode(c);
+			if (templ.body.astType(c) != AstType.decl_function) break;
+
+			if (!node.forbidParenthesesFreeCall)
+			{
+				// Call without parenthesis
+				// rewrite as call
+				nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), node.parentScope, nodeIndex);
+				nodeIndex.setState(c, AstNodeState.name_resolve_done);
+				require_type_check(nodeIndex, state);
+				break;
+			}
 			break;
 
 		case AstType.decl_function:
@@ -211,7 +224,7 @@ void type_calc_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref TypeC
 			{
 				// Call without parenthesis
 				// rewrite as call
-				nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), nodeIndex);
+				nodeIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), node.parentScope, nodeIndex);
 				nodeIndex.setState(c, AstNodeState.name_resolve_done);
 				require_type_check(nodeIndex, state);
 				break;

@@ -12,6 +12,7 @@ enum MemberSubType
 	static_struct_member,
 	struct_member,
 	struct_method,
+	struct_templ_method,
 	enum_member,
 	slice_member,
 	alias_array_length,
@@ -27,18 +28,18 @@ enum MemberExprFlags : ushort {
 struct MemberExprNode {
 	mixin ExpressionNodeData!(AstType.expr_member);
 
+	AstIndex parentScope; // set in parser
 	AstIndex aggregate;
 	union
 	{
 		// when unresolved
 		struct {
 			private Identifier _memberId; // member name before resolution
-			private AstIndex parentScope; // set in parser
 		}
 		// when resolved
 		struct {
 			private AstIndex _member; // member node after resolution
-			private uint _memberIndex; // resolved index of member being accessed
+			private uint _memberIndex; // resolved index of member being accessed. TODO: remove
 		}
 	}
 
@@ -113,7 +114,7 @@ void name_register_nested_member(MemberExprNode* node, ref NameRegisterState sta
 void name_resolve_member(MemberExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	assert(!node.isSymResolved);
-	// name resolution is done in type check pass
+	// name resolution is done in type check pass, because we need to know type of aggregate expression
 	require_name_resolve(node.aggregate, state);
 	node.state = AstNodeState.name_resolve_done;
 }
@@ -163,32 +164,30 @@ LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref
 	if (ufcsAstType == AstType.decl_function)
 	{
 		// rewrite as call
-		createMethodCall(callIndex, memberNode.loc, memberNode.aggregate, ufcsNodeIndex, memberNode.memberId(c), state);
+		createMethodCall(callIndex, memberNode, ufcsNodeIndex, state);
 		return LookupResult.success;
 	}
-	else
-		c.internal_error(memberNode.loc, "call of %s is not supported", ufcsAstType);
 
-	return LookupResult.failure;
+	c.internal_error(memberNode.loc, "call of %s is not supported", ufcsAstType);
 }
 
-void createMethodCall(ref AstIndex callIndex, TokenIndex loc, AstIndex aggregate, AstIndex member, Identifier calleeId, ref TypeCheckState state)
+void createMethodCall(ref AstIndex callIndex, MemberExprNode* memberNode, AstIndex member, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
-
 	if (callIndex.isUndefined)
-		callIndex = c.appendAst!CallExprNode(loc);
+		callIndex = c.appendAst!CallExprNode(memberNode.loc, AstIndex(), memberNode.parentScope);
 
 	auto call = callIndex.get!CallExprNode(c);
 	call.state = AstNodeState.name_resolve_done;
 	call.callee = member;
 	auto method = call.callee.get!FunctionDeclNode(c);
 	auto signature = method.signature.get!FunctionSignatureNode(c);
-	if (method.isMember) lowerThisArgument(signature, aggregate, loc, c);
+	AstIndex aggregate = memberNode.aggregate;
+	if (method.isMember) lowerThisArgument(signature, aggregate, memberNode.loc, c);
 	call.args.putFront(c.arrayArena, aggregate);
 
 	// type check call
-	type_check_func_call(call, signature, calleeId, state);
+	type_check_func_call(call, signature, memberNode.memberId(c), state);
 }
 
 /// Makes sure that aggregate is of pointer type
@@ -196,7 +195,6 @@ void lowerThisArgument(FunctionSignatureNode* signature, ref AstIndex aggregate,
 {
 	auto thisType = signature.parameters[0].get_node_type(c); // Struct*
 	auto structType = thisType.get!PtrTypeNode(c).base.get_node_type(c); // Struct
-	auto aggType = aggregate.get_node_type(c); // Struct or Struct*
 	if (aggregate.get_node_type(c) == structType) // rewrite Struct as Struct*
 	{
 		aggregate.flags(c) |= AstFlags.isLvalue;
@@ -211,7 +209,8 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 	CompilationContext* c = state.context;
 	if (expr.isSymResolved) {
 		require_type_check(expr.aggregate, c, IsNested.no);
-		expr.type = expr._member.get_node_type(c);
+		if (expr.type.isUndefined)
+			expr.type = expr._member.get_node_type(c);
 		return LookupResult.success;
 	}
 
@@ -359,22 +358,28 @@ LookupResult lookupStructMember(ref AstIndex nodeIndex, MemberExprNode* node, St
 			node.resolve(MemberSubType.static_struct_member, entity, 0, c);
 			node.type = entity.get_node_type(c);
 			c.internal_error("member structs are not implemented");
-			assert(false);
 
 		case AstType.decl_enum:
 			node.resolve(MemberSubType.static_struct_member, entity, 0, c);
 			node.type = entity.get_node_type(c);
 			c.internal_error("member enums are not implemented");
-			assert(false);
 
 		case AstType.decl_enum_member:
 			node.resolve(MemberSubType.enum_member, entity, 0, c);
 			node.type = entity.get_node_type(c);
 			return LookupResult.success;
 
+		case AstType.decl_template:
+			node.resolve(MemberSubType.struct_templ_method, entity, 0, c);
+			node.type = CommonAstNodes.type_alias;
+			auto templ = entity.get!TemplateDeclNode(c);
+			if (templ.body.astType(c) != AstType.decl_function) {
+				c.unrecoverable_error(node.loc, "Cannot call template of %s", templ.body.astType(c));
+			}
+			return LookupResult.success;
+
 		default:
 			c.internal_error("Unexpected struct member %s", entityAstType);
-			assert(false);
 	}
 }
 
@@ -387,11 +392,36 @@ void lowerMember(ref AstIndex nodeIndex, MemberExprNode* node, ref TypeCheckStat
 			AstIndex effectiveMember = node.member(c).get_effective_node(c);
 			// parentheses-less method call
 			AstIndex callIndex;
-			createMethodCall(callIndex, node.loc, node.aggregate, effectiveMember, node.memberId(c), state);
+			createMethodCall(callIndex, node, effectiveMember, state);
 			nodeIndex = callIndex;
+			return;
+		case MemberSubType.struct_templ_method:
+			AstIndex callee = node.member(c).get_effective_node(c);
+			AstNodes types;
+			callee = get_template_instance(callee, node.loc, types, state);
+
+			if (callee == CommonAstNodes.node_error) {
+				node.type = CommonAstNodes.type_error;
+				return;
+			}
+
+			AstIndex callIndex = c.appendAst!CallExprNode(node.loc, AstIndex(), node.parentScope, callee);
+			auto call = callIndex.get!CallExprNode(c);
+			call.state = AstNodeState.name_resolve_done;
+			nodeIndex = callIndex;
+
+			auto method = callee.get!FunctionDeclNode(c);
+			auto signature = method.signature.get!FunctionSignatureNode(c);
+			AstIndex aggregate = node.aggregate;
+			if (method.isMember) lowerThisArgument(signature, aggregate, node.loc, c);
+			call.args.putFront(c.arrayArena, aggregate);
+
+			// type check call
+			type_check_func_call(call, signature, node.memberId(c), state);
 			return;
 		default: break;
 	}
+
 	if (node.needsDeref) {
 		TypeNode* objType = node.aggregate.get_type(c);
 		auto baseType = objType.as_ptr.base.get_type(c);
@@ -418,7 +448,6 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 			return result;
 		case static_struct_member, struct_method:
 			c.unreachable("Not implemented");
-			assert(false);
 		case enum_member:
 			IrIndex result = m.member(c).get!EnumMemberDecl(c).gen_init_value_enum_member(c);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
@@ -439,6 +468,5 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 			}
 		default:
 			c.internal_error(m.loc, "Unexpected node type %s", m.astType);
-			assert(false);
 	}
 }

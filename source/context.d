@@ -35,14 +35,8 @@ enum IceBehavior : ubyte {
 	breakpoint
 }
 
-debug (ASSERTF) {
-	enum PRETTY_ASSERT = true;
-} else {
-	version (assert) {
-		enum PRETTY_ASSERT = true;
-	} else {
-		enum PRETTY_ASSERT = false;
-	}
+debug {
+	version = PRETTY_ASSERT;
 }
 
 enum TargetOs : ubyte {
@@ -307,7 +301,7 @@ struct CompilationContext
 		hasErrors = true;
 	}
 
-	void unrecoverable_error(Args...)(TokenIndex tokIdx, string format, Args args)
+	noreturn unrecoverable_error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
 		size_t startLen = sink.data.length;
 		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, &this));
@@ -326,15 +320,14 @@ struct CompilationContext
 	{
 		if (cond) return;
 
-		static if (PRETTY_ASSERT)
+		version(PRETTY_ASSERT)
 		{
 			size_t startLen = sink.data.length;
 			sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
 			sink.putfln(fmt, args);
 			errorSink.put(sink.data[startLen..$]);
 			hasErrors = true;
-			handleICE;
-			throw new CompilationException(true, file, line);
+			handleICE(file, line);
 		}
 		else assert(false);
 	}
@@ -343,7 +336,7 @@ struct CompilationContext
 	{
 		if (cond) return;
 
-		static if (PRETTY_ASSERT)
+		version(PRETTY_ASSERT)
 		{
 			size_t startLen = sink.data.length;
 			sink.putf("%s(%s): %s: ICE: Assertion failure: ", file, line, FmtSrcLoc(tokIdx, &this));
@@ -351,24 +344,23 @@ struct CompilationContext
 			print_analysis_stack;
 			errorSink.put(sink.data[startLen..$]);
 			hasErrors = true;
-			handleICE;
-			throw new CompilationException(true, file, line);
+			handleICE(file, line);
 		}
 		else assert(false);
 	}
 
-	void unreachable(string file = __MODULE__, int line = __LINE__)
+	noreturn unreachable(string file = __MODULE__, int line = __LINE__)
 	{
-		static if (PRETTY_ASSERT)
+		version(PRETTY_ASSERT)
 		{
 			internal_error_impl("Unreachable", file, line);
 		}
 		else assert(false);
 	}
 
-	void internal_error(Args...)(TokenIndex tokIdx, string format, Args args, string file = __MODULE__, int line = __LINE__)
+	noreturn internal_error(Args...)(TokenIndex tokIdx, string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
-		static if (PRETTY_ASSERT)
+		version(PRETTY_ASSERT)
 		{
 			size_t startLen = sink.data.length;
 			sink.putf("%s: ", FmtSrcLoc(tokIdx, &this));
@@ -378,9 +370,9 @@ struct CompilationContext
 		else assert(false);
 	}
 
-	void internal_error(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
+	noreturn internal_error(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
-		static if (PRETTY_ASSERT)
+		version(PRETTY_ASSERT)
 		{
 			internal_error_impl(format, file, line, args);
 		}
@@ -425,15 +417,14 @@ struct CompilationContext
 		}
 	}
 
-	private void internal_error_impl(Args...)(string format, string file, int line, Args args)
+	private noreturn internal_error_impl(Args...)(string format, string file, int line, Args args)
 	{
 		size_t startLen = sink.data.length;
 		sink.putf("ICE(%s:%s): ", file, line);
 		sink.putfln(format, args);
 		errorSink.put(sink.data[startLen..$]);
 		hasErrors = true;
-		handleICE;
-		throw new CompilationException(true, file, line);
+		handleICE(file, line);
 	}
 
 	void todo(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
@@ -444,18 +435,18 @@ struct CompilationContext
 		}
 	}
 
-	private void handleICE()
+	private noreturn handleICE(string file, int line)
 	{
 		final switch(iceBehavior)
 		{
-			case IceBehavior.exception: return;
+			case IceBehavior.exception: throw new CompilationException(true, file, line);
 			case IceBehavior.error: assert(false);
 			case IceBehavior.breakpoint:
 				writeln(sink.text);
 				stdout.flush;
 				version(D_InlineAsm_X86_64) {
 					asm nothrow @nogc { int 3; } // breakpoint
-					break;
+					assert(false);
 				} else version(LDC) {
 					import ldc.intrinsics: llvm_debugtrap;
 					llvm_debugtrap();

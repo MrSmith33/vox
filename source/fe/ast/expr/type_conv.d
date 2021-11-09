@@ -106,7 +106,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 		result = eval_type_conv(t, rval, c);
 	}
 	else final switch (t.convKind) with(TypeConvResKind) {
-		case fail: c.internal_error(t.loc, "IR gen of failed cast"); assert(false);
+		case fail: c.internal_error(t.loc, "IR gen of failed cast");
 		case no_e, no_i: result = rval; break;
 		case ii_e, ii_i, override_expr_type_e, override_expr_type_i:
 			if (targetType.isBool) {
@@ -181,7 +181,7 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 	uint typeSizeTo = c.types.typeSize(typeTo);
 
 	final switch (node.convKind) with(TypeConvResKind) {
-		case fail: c.internal_error(node.loc, "eval of failed cast"); assert(false);
+		case fail: c.internal_error(node.loc, "eval of failed cast");
 		case no_e, no_i: result = rval; break;
 		case ii_e, ii_i, override_expr_type_e, override_expr_type_i:
 			if (rval.isConstantZero) {
@@ -235,5 +235,4 @@ void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLab
 		//result = builder.emitInstr1(IrOpcode.o_conv, to, rval);
 		c.internal_error(t.loc, "%s to %s", childExpr.type.printer(c), t.type.printer(c));
 	}
-	c.unreachable;
 }
