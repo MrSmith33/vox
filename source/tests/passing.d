@@ -4920,3 +4920,16 @@ immutable test230 = q{--- test230
 	// call through alias
 	// call member functions through pointer
 };
+
+
+@TestInfo(&tester231)
+immutable test231 = q{--- test231
+	/// sign extension of 64-bit constants
+	i64 run() {
+		return -1;
+	}
+};
+void tester231(ref TestContext ctx) {
+	auto run = ctx.getFunctionPtr!(long)("run");
+	assert(run() == -1);
+}

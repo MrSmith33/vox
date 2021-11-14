@@ -790,8 +790,13 @@ struct CodeEmitter
 							case size64:
 								if (con.payloadSize(src) == size64)
 									gen.movq(dstReg, Imm64(con.i64));
-								else
-									gen.movd(dstReg, Imm32(con.i32));
+								else {
+									if (src.isSignedConstant) {
+										gen.movq(dstReg, Imm32(con.i32)); // sign-extend 32bit constant to 64bit register
+									} else {
+										gen.movd(dstReg, Imm32(con.i32)); // zero-extend 32bit constant to 64bit register
+									}
+								}
 								break;
 							case size128, size256, size512:
 								context.internal_error("Not implemented: const_to_reg %s %s", dst, src);
