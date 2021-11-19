@@ -266,7 +266,7 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 void set_instance_id(AstIndex instance_index, AstNodes instance_args, CompilationContext* c)
 {
 	Identifier* id = &instance_index.get_node_id(c);
-	TextSink* sink = &c.idMap.tempBuf;
+	TextSink* sink = &c.tempBuf;
 	sink.clear;
 	sink.put(c.idString(*id));
 	sink.put("[");

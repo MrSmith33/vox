@@ -1,4 +1,4 @@
-/// Copyright: Copyright (c) 2017-2019 Andrey Penechko.
+/// Copyright: Copyright (c) 2021 Andrey Penechko.
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
 module fe.ast.ast_index;
@@ -57,25 +57,4 @@ struct AstIndex
 	IsSigned isSigned(CompilationContext* c) { return get_type(c).isSigned; }
 	bool isFloat(CompilationContext* c) { return get_type(c).isFloat; }
 	bool isMetaType(CompilationContext* c) { return get_type(c).isMetaType; }
-}
-
-
-AstNodePrinter printer(AstIndex nodeIndex, CompilationContext* context)
-{
-	return AstNodePrinter(nodeIndex, context);
-}
-
-struct AstNodePrinter
-{
-	AstIndex nodeIndex;
-	CompilationContext* context;
-
-	void toString(scope void delegate(const(char)[]) sink) {
-		if (!nodeIndex) {
-			sink("<null>");
-			return;
-		}
-		AstNode* node = context.getAstNode(nodeIndex);
-		if (node.isType) node.as_type(context).printType(sink, context);
-	}
 }

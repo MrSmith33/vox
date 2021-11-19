@@ -70,6 +70,8 @@ struct CompilationContext
 	ArrayArena arrayArena;
 	/// Identifier interning/deduplication
 	IdentifierMap idMap;
+	// TODO: replace with arena. This one uses GC
+	TextSink tempBuf;
 
 	/// Buffer for intra-pass temporary data
 	Arena!uint tempBuffer;

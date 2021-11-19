@@ -13,206 +13,33 @@ import std.stdio;
 
 import all;
 
-alias TT = TokenType;
-enum TokenType : ubyte {
-	@("#soi")  SOI,
-	@("#eoi")  EOI,
-	@(null)   INVALID,
 
-	@("&")    AND,
-	@("&&")   AND_AND,
-	@("&=")   AND_EQUAL,
-	@("@")    AT,
-	@("\\")   BACKSLASH,
-	@(":")    COLON,
-	@(",")    COMMA,
-	@(".")    DOT,
-	@("..")   DOT_DOT,
-	@("...")  DOT_DOT_DOT,
-	@("=")    EQUAL,
-	@("==")   EQUAL_EQUAL,
-	@(">")    MORE,
-	@(">=")   MORE_EQUAL,
-	@(">>")   MORE_MORE,
-	@(">>=")  MORE_MORE_EQUAL,
-	@(">>>")  MORE_MORE_MORE,
-	@(">>>=") MORE_MORE_MORE_EQUAL,
-	@("<")    LESS,
-	@("<=")   LESS_EQUAL,
-	@("<<")   LESS_LESS,
-	@("<<=")  LESS_LESS_EQUAL,
-	@("-")    MINUS,
-	@("-=")   MINUS_EQUAL,
-	@("--")   MINUS_MINUS,
-	@("!")    NOT,
-	@("!=")   NOT_EQUAL,
-	@("|")    OR,
-	@("|=")   OR_EQUAL,
-	@("||")   OR_OR,
-	@("%")    PERCENT,
-	@("%=")   PERCENT_EQUAL,
-	@("+")    PLUS,
-	@("+=")   PLUS_EQUAL,
-	@("++")   PLUS_PLUS,
-	@("?")    QUESTION,
-	@(";")    SEMICOLON,
-	@("/")    SLASH,
-	@("/=")   SLASH_EQUAL,
-	@("*")    STAR,
-	@("*=")   STAR_EQUAL,
-	@("~")    TILDE,
-	@("~=")   TILDE_EQUAL,
-	@("^")    XOR,
-	@("^=")   XOR_EQUAL,
-
-	@("(")    LPAREN,
-	@(")")    RPAREN,
-	@("[")    LBRACKET,
-	@("]")    RBRACKET,
-	@("{")    LCURLY,
-	@("}")    RCURLY,
-
-
-	@("#if")      HASH_IF,
-	@("#version") HASH_VERSION,
-	@("#inline")  HASH_INLINE,
-	@("#assert")  HASH_ASSERT,
-	@("#foreach") HASH_FOREACH,
-
-	@("alias")    ALIAS_SYM,
-	@("break")    BREAK_SYM,
-	@("continue") CONTINUE_SYM,
-	@("do")       DO_SYM,
-	@("else")     ELSE_SYM,
-	@("function") FUNCTION_SYM,
-	@("if")       IF_SYM,
-	@("import")   IMPORT_SYM,
-	@("module")   MODULE_SYM,
-	@("return")   RETURN_SYM,
-	@("struct")   STRUCT_SYM,
-	@("union")    UNION_SYM,
-	@("while")    WHILE_SYM,
-	@("for")      FOR_SYM,
-	@("switch")   SWITCH_SYM,
-	@("cast")     CAST,                 // cast(T)
-	@("enum")     ENUM,
-
-	@("#id")      IDENTIFIER,           // [a-zA-Z_] [a-zA-Z_0-9]*
-	@("$id")      CASH_IDENTIFIER,      // $ [a-zA-Z_0-9]*
-
-	// ----------------------------------------
-	// list of basic types. The order is the same as in `enum BasicType`
-
-
-	@("noreturn") TYPE_NORETURN,        // noreturn
-	@("void") TYPE_VOID,                // void
-	@("bool") TYPE_BOOL,                // bool
-	@("null") NULL,                     // null
-	@("i8")   TYPE_I8,                  // i8
-	@("i16")  TYPE_I16,                 // i16
-	@("i32")  TYPE_I32,                 // i32
-	@("i64")  TYPE_I64,                 // i64
-
-	@("u8")   TYPE_U8,                  // u8
-	@("u16")  TYPE_U16,                 // u16
-	@("u32")  TYPE_U32,                 // u32
-	@("u64")  TYPE_U64,                 // u64
-
-	@("f32")  TYPE_F32,                 // f32
-	@("f64")  TYPE_F64,                 // f64
-
-	@("$alias") TYPE_ALIAS,             // $alias
-	@("$type")  TYPE_TYPE,              // $type
-	// ----------------------------------------
-
-	@("isize") TYPE_ISIZE,              // isize
-	@("usize") TYPE_USIZE,              // usize
-
-	@("true")  TRUE_LITERAL,            // true
-	@("false") FALSE_LITERAL,           // false
-	@("#int_dec_lit") INT_DEC_LITERAL,
-	@("#int_hex_lit") INT_HEX_LITERAL,
-	@("#int_bin_lit") INT_BIN_LITERAL,
-	@("#float_dec_lit") FLOAT_DEC_LITERAL,
-	@("#str_lit") STRING_LITERAL,
-	@("#char_lit") CHAR_LITERAL,
-	//@(null) DECIMAL_LITERAL,          // 0|[1-9][0-9_]*
-	//@(null) BINARY_LITERAL,           // ("0b"|"0B")[01_]+
-	//@(null) HEX_LITERAL,              // ("0x"|"0X")[0-9A-Fa-f_]+
-
-	@("#comm") COMMENT,                 // // /*
-}
-
-immutable string[] tokStrings = gatherEnumStrings!TokenType();
-
-enum TokenType TYPE_TOKEN_FIRST = TokenType.TYPE_NORETURN;
-enum TokenType TYPE_TOKEN_LAST = TokenType.TYPE_TYPE;
-
-
-struct Token {
-	TokenType type;
-	TokenIndex index;
-}
-
-struct TokenIndex
+void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
-	uint index = uint.max;
-	alias index this;
-	bool isValid() { return index != uint.max; }
-}
+	foreach (ref SourceFileInfo file; ctx.files.data)
+	{
+		file.firstTokenIndex = TokenIndex(ctx.tokenLocationBuffer.uintLength);
 
-struct SourceFileInfo
-{
-	/// File name. Must be always set.
-	string name;
-	/// If set, then used as a source. Otherwise is read from file `name`
-	const(char)[] content;
-	/// Start of file source code in CompilationContext.sourceBuffer
-	uint start;
-	/// Length of source code
-	uint length;
-	/// Tokens of all files are stored linearly inside CompilationContext.tokenBuffer
-	/// and CompilationContext.tokenLocationBuffer. Token file can be found with binary search
-	TokenIndex firstTokenIndex;
+		Lexer lexer = Lexer(&ctx, ctx.sourceBuffer.data, &ctx.tokenBuffer, &ctx.tokenLocationBuffer);
+		lexer.position = file.start;
 
-	/// Module declaration
-	ModuleDeclNode* mod;
-}
+		lexer.lex();
 
-struct SourceLocation {
-	uint start;
-	uint end;
-	uint line;
-	uint col;
-	const(char)[] getTokenString(const(char)[] input) pure const {
-		return input[start..end];
-	}
-	const(char)[] getTokenString(TokenType type, const(char)[] input) pure const {
-		switch (type) {
-			case TokenType.EOI:
-				return "end of input";
-			default:
-				return input[start..end];
-		}
-	}
-	void toString(scope void delegate(const(char)[]) sink) const {
-		sink.formattedWrite("line %s col %s start %s end %s", line+1, col+1, start, end);
-	}
-}
-
-struct FmtSrcLoc
-{
-	TokenIndex tok;
-	CompilationContext* ctx;
-	void toString(scope void delegate(const(char)[]) sink) {
-		if (tok.index == uint.max) return;
-		auto loc = ctx.tokenLoc(tok);
-		if (tok.index >= ctx.initializedTokenLocBufSize) {
-			SourceFileInfo* fileInfo = ctx.getFileFromToken(tok);
-			sink.formattedWrite("%s:%s:%s", fileInfo.name, loc.line+1, loc.col+1);
+		if (ctx.printLexemes) {
+			writefln("// Lexemes `%s`", file.name);
+			Token tok = Token(TokenType.init, file.firstTokenIndex);
+			do
+			{
+				tok.type = ctx.tokenBuffer[tok.index];
+				auto loc = ctx.tokenLocationBuffer[tok.index];
+				writefln("%s %s, `%s`", tok, loc, loc.getTokenString(ctx.sourceBuffer.data));
+				++tok.index;
+			}
+			while(tok.type != TokenType.EOI);
 		}
 	}
 }
+
 
 /// Start of input
 enum char SOI_CHAR = '\2';
@@ -229,75 +56,12 @@ immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.TRUE_LITERAL
 	TT.TYPE_ISIZE,TT.RETURN_SYM, TT.STRUCT_SYM,TT.UNION_SYM,TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
 	TT.TYPE_VOID,TT.TYPE_NORETURN,TT.WHILE_SYM,TT.FOR_SYM,TT.SWITCH_SYM,TT.CAST,TT.ENUM,TT.NULL];
 
-//                          #        #######  #     #
-//                          #        #         #   #
-//                          #        #          # #
-//                          #        #####       #
-//                          #        #          # #
-//                          #        #         #   #
-//                          ######   #######  #     #
-// -----------------------------------------------------------------------------
-
-void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
-{
-	//ulong numLines;
-	//uint[64] tokensPerLine;
-	//uint lineStartsNeeded;
-	foreach (ref SourceFileInfo file; ctx.files.data)
-	{
-		file.firstTokenIndex = TokenIndex(ctx.tokenLocationBuffer.uintLength);
-
-		Lexer lexer = Lexer(&ctx, ctx.sourceBuffer.data, &ctx.tokenBuffer, &ctx.tokenLocationBuffer);
-		lexer.position = file.start;
-
-		lexer.lex();
-
-		//numLines += lexer.line;
-		//lineStartsNeeded += lexer.lineStartsNeeded;
-
-		if (ctx.printLexemes) {
-			writefln("// Lexemes `%s`", file.name);
-			Token tok = Token(TokenType.init, file.firstTokenIndex);
-			do
-			{
-				tok.type = ctx.tokenBuffer[tok.index];
-				auto loc = ctx.tokenLocationBuffer[tok.index];
-				writefln("%s %s, `%s`", tok, loc, loc.getTokenString(ctx.sourceBuffer.data));
-				++tok.index;
-			}
-			while(tok.type != TokenType.EOI);
-		}
-	}
-	//ulong numTokens = ctx.tokenLocationBuffer.uintLength;
-
-	//writefln("%s tokens, %s lines, %s tokens/line", numTokens, numLines, cast(double)numTokens/numLines);
-	//ulong sum;
-	//ulong numTokensOnBigLines;
-
-	//foreach(i, cell; tokensPerLine) {
-	//	ulong numTokensOnLine = i*cell;
-	//	writefln("% 2s, %s lines, %s tokens, %.0s%%", i, cell, numTokensOnLine, numTokensOnLine*100 / cast(double)numTokens);
-	//	sum += cell;
-	//	if (i > 32)
-	//		numTokensOnBigLines += numTokensOnLine;
-	//}
-	//writefln("total %s", sum);
-	//writefln("lineStartsNeeded %s", lineStartsNeeded);
-	//writefln("now %s, proposal %s", numTokens * 16, lineStartsNeeded * 4);
-	//writefln("big line tokens %s %.0s%%", numTokensOnBigLines, (numTokensOnBigLines * 100 / cast(double)numTokens) );
-	//writefln("total bytes %s", ctx.sourceBuffer.uintLength);
-}
-
 struct Lexer
 {
 	CompilationContext* context;
 	const(char)[] inputChars; // contains data of all files
 	Arena!TokenType* outputTokens;
 	Arena!SourceLocation* outputTokenLocations;
-
-	//uint[64]* tokensPerLine;
-	///uint lineStartTokenIndex;
-	//uint lineStartsNeeded;
 
 	private dchar c; // current symbol
 
@@ -462,10 +226,6 @@ struct Lexer
 
 	private void onNewLine()
 	{
-		//uint numTokens = outputTokens.uintLength - lineStartTokenIndex;
-		//lineStartsNeeded += max(1, divCeil(numTokens, 32));
-		//++(*tokensPerLine)[min(numTokens, 63)];
-		//lineStartTokenIndex = outputTokens.uintLength;
 		++line;
 		column = 0;
 	}

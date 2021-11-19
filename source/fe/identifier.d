@@ -1,8 +1,6 @@
-/**
-Copyright: Copyright (c) 2017-2019 Andrey Penechko.
-License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
-Authors: Andrey Penechko.
-*/
+/// Copyright: Copyright (c) 2017-2019 Andrey Penechko.
+/// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
+/// Authors: Andrey Penechko.
 module fe.identifier;
 
 import std.stdio;
@@ -19,9 +17,6 @@ struct IdentifierMap {
 	Arena!char stringDataBuffer;
 	Arena!(const(char)[]) strings;
 	HashMap!(StringKey, uint, StringKey.init) map;
-
-	// TODO: replace with arena. This one uses GC
-	TextSink tempBuf;
 
 	string get(Identifier id) {
 		if (id.isDefined) return strings[id.index];

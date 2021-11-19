@@ -6,7 +6,7 @@
 module utils.har;
 
 import context : CompilationContext;
-import fe.passes.lexer : SourceFileInfo;
+import fe.ast.source_file : SourceFileInfo;
 
 void parseHar(
 	ref CompilationContext context,

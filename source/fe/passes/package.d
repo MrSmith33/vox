@@ -5,12 +5,11 @@
 /// Front-end
 module fe.passes;
 
-public:
-import fe.passes.ast_to_ir;
-import fe.passes.dump;
-import fe.passes.eval;
-import fe.passes.lexer;
-import fe.passes.names_register;
-import fe.passes.names_resolve;
-import fe.passes.parser;
-import fe.passes.type_check;
+public import fe.passes.ast_to_ir;
+public import fe.passes.dump;
+public import fe.passes.eval;
+public import fe.passes.lexer;
+public import fe.passes.names_register;
+public import fe.passes.names_resolve;
+public import fe.passes.parser;
+public import fe.passes.type_check;
