@@ -3,7 +3,7 @@ Copyright: Copyright (c) 2017-2019 Andrey Penechko.
 License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
-module fe.type_check;
+module fe.passes.type_check;
 
 import std.stdio;
 import std.string : format;

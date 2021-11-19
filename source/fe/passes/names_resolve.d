@@ -6,7 +6,7 @@ Authors: Andrey Penechko.
 
 /// Resolve all symbol references (variable/type/function/enum name uses)
 /// using information collected on previous pass
-module fe.names_resolve;
+module fe.passes.names_resolve;
 
 import std.stdio;
 import std.string : format;

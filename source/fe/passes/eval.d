@@ -4,7 +4,7 @@
 
 /// Constant folding and Compile-time function evaluation (CTFE)
 /// Requires nodes that are evaluated to be type checked
-module fe.eval;
+module fe.passes.eval;
 
 import all;
 

@@ -205,8 +205,8 @@ All `.vx` files will be highlighted and classified as D.
 
 ## Stats
 
-- Impl size: 35k LoC of D, 2.4MB exe
-- Time to compile: 3.5s debug / 45s release
-- Test suite: 60ms for 270 tests
+- Impl size: 36k LoC of D, 3MB exe
+- Time to compile: 4s debug / 45s release
+- Test suite: 75ms for 302 tests
 
 For more in detail description of implementation see [internals.md](internals.md)

@@ -574,15 +574,15 @@ enum IrTypeKind {
   }
   ```
 - `func_t` - points into the type arena (`IrTypeFunction`).
-```D
-struct IrTypeFunction {
-    uint numResults;
-    uint numParameters;
-    CallConvention callConv;
-    ushort syscallNumber;
-    IrIndex[0] payload; // result types followed by parameter types
-}
-```
+  ```D
+  struct IrTypeFunction {
+      uint numResults;
+      uint numParameters;
+      CallConvention callConv;
+      ushort syscallNumber;
+      IrIndex[0] payload; // result types followed by parameter types
+  }
+  ```
 
 ## IR global
 

@@ -9,10 +9,6 @@ module fe;
 
 public:
 import fe.ast;
-import fe.ast_to_ir;
-import fe.basictype;
-import fe.eval;
+import fe.passes;
+
 import fe.identifier;
-import fe.names_register;
-import fe.names_resolve;
-import fe.type_check;

@@ -9,7 +9,7 @@ Authors: Andrey Penechko.
 /// For expressions pratt parser is used
 ///   Copyright (c) 2017, Jean-Marc Bourguet
 ///   https://github.com/bourguet/operator_precedence_parsing/blob/86c11baa737673da521c9cb488fdc3b25d73f0b6/pratt_tdop_parser.py
-module fe.ast.parser;
+module fe.passes.parser;
 
 import std.format : formattedWrite;
 import std.string : format;

@@ -4,7 +4,7 @@ License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 Authors: Andrey Penechko.
 */
 /// Lexer
-module fe.ast.lexer;
+module fe.passes.lexer;
 
 import std.format : formattedWrite;
 import std.string : format;
@@ -240,6 +240,9 @@ immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.TRUE_LITERAL
 
 void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 {
+	//ulong numLines;
+	//uint[64] tokensPerLine;
+	//uint lineStartsNeeded;
 	foreach (ref SourceFileInfo file; ctx.files.data)
 	{
 		file.firstTokenIndex = TokenIndex(ctx.tokenLocationBuffer.uintLength);
@@ -248,6 +251,9 @@ void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 		lexer.position = file.start;
 
 		lexer.lex();
+
+		//numLines += lexer.line;
+		//lineStartsNeeded += lexer.lineStartsNeeded;
 
 		if (ctx.printLexemes) {
 			writefln("// Lexemes `%s`", file.name);
@@ -262,6 +268,24 @@ void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 			while(tok.type != TokenType.EOI);
 		}
 	}
+	//ulong numTokens = ctx.tokenLocationBuffer.uintLength;
+
+	//writefln("%s tokens, %s lines, %s tokens/line", numTokens, numLines, cast(double)numTokens/numLines);
+	//ulong sum;
+	//ulong numTokensOnBigLines;
+
+	//foreach(i, cell; tokensPerLine) {
+	//	ulong numTokensOnLine = i*cell;
+	//	writefln("% 2s, %s lines, %s tokens, %.0s%%", i, cell, numTokensOnLine, numTokensOnLine*100 / cast(double)numTokens);
+	//	sum += cell;
+	//	if (i > 32)
+	//		numTokensOnBigLines += numTokensOnLine;
+	//}
+	//writefln("total %s", sum);
+	//writefln("lineStartsNeeded %s", lineStartsNeeded);
+	//writefln("now %s, proposal %s", numTokens * 16, lineStartsNeeded * 4);
+	//writefln("big line tokens %s %.0s%%", numTokensOnBigLines, (numTokensOnBigLines * 100 / cast(double)numTokens) );
+	//writefln("total bytes %s", ctx.sourceBuffer.uintLength);
 }
 
 struct Lexer
@@ -270,6 +294,10 @@ struct Lexer
 	const(char)[] inputChars; // contains data of all files
 	Arena!TokenType* outputTokens;
 	Arena!SourceLocation* outputTokenLocations;
+
+	//uint[64]* tokensPerLine;
+	///uint lineStartTokenIndex;
+	//uint lineStartsNeeded;
 
 	private dchar c; // current symbol
 
@@ -423,13 +451,21 @@ struct Lexer
 	{
 		nextChar;
 		if (c == '\n') nextChar;
-		++line;
-		column = 0;
+		onNewLine;
 	}
 
 	private void lex_EOLN() // \n
 	{
 		nextChar;
+		onNewLine;
+	}
+
+	private void onNewLine()
+	{
+		//uint numTokens = outputTokens.uintLength - lineStartTokenIndex;
+		//lineStartsNeeded += max(1, divCeil(numTokens, 32));
+		//++(*tokensPerLine)[min(numTokens, 63)];
+		//lineStartTokenIndex = outputTokens.uintLength;
 		++line;
 		column = 0;
 	}

@@ -3,7 +3,7 @@
 /// Authors: Andrey Penechko.
 
 /// Register identifiers in scope tree
-module fe.names_register;
+module fe.passes.names_register;
 
 import std.stdio;
 import std.string : format;

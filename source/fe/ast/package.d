@@ -9,11 +9,9 @@ import std.stdio;
 import all;
 
 public import fe.ast.ast_index;
+public import fe.ast.basictype;
 public import fe.ast.decl;
-public import fe.ast.dump;
 public import fe.ast.expr;
-public import fe.ast.lexer;
-public import fe.ast.parser;
 public import fe.ast.stmt;
 public import fe.ast.type;
 

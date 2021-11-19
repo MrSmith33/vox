@@ -38,6 +38,7 @@
 	- Need to print instance trace for errors inside template instance
 - attributes
 	+ @extern(syscall, <int>)
+	+ @extern(module, <module>)
 	- User Defined Attributes UDAs
 - CTFE
 	+ constant to mem
@@ -56,7 +57,7 @@
 - conditional compilation
 	+ #if
 	+ #foreach
-	- #version
+	+ #version
 	- #debug
 
 + function pointer type <ret> function(<args>)
@@ -71,6 +72,7 @@
 + escape sequences in string/char literals (\n)
 	can be emitted into IrGlobalStorage.initializerBuffer
 	+ in char literals
+	- Replace \r\n with \n inside string literals
 + float double
 	+ windows ABI
 	+ sysv ABI
