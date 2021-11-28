@@ -84,16 +84,16 @@ struct LinkIndex
 }
 
 enum ObjectSymbolFlags : ushort {
-	isMutable = 1 << 0,
-	isAllZero = 1 << 1,
+	isMutable            = 1 << 0,
+	isAllZero            = 1 << 1,
 	needsZeroTermination = 1 << 2,
 	/// If set calls use indirect call form
 	/// symbol represents not a data but pointer to data
-	isIndirect  = 1 << 3,
+	isIndirect           = 1 << 3,
 	/// If true, data can be printed for debug as a string
-	isString    = 1 << 4,
-	/// Marked if transitively used from any root symbol (not yet. TODO)
-	isReferenced      = 1 << 5,
+	isString             = 1 << 4,
+	/// Marked if transitively used from any root symbol (only used for imported symbols atm)
+	isReferenced         = 1 << 5,
 }
 
 enum ObjectSymbolKind : ushort {
@@ -166,6 +166,8 @@ struct ObjectModule
 {
 	///
 	ObjectModuleKind kind;
+	/// Set of ObjectModuleFlags
+	ushort flags;
 	/// Used for referencing dll modules in import table
 	Identifier id;
 	/// Linked list of modules
@@ -173,9 +175,16 @@ struct ObjectModule
 	/// Linked list of symbols
 	LinkIndex firstSymbol;
 
+	void markReferenced() { flags |= ObjectModuleFlags.isReferenced; }
+
 	bool isLocal() { return kind == ObjectModuleKind.isLocal; }
 	bool isImported() { return kind == ObjectModuleKind.isImported; }
 	bool isExternal() { return isLocal || isImported; }
+}
+
+enum ObjectModuleFlags : ushort {
+	/// Marked if transitively used from any root symbol (only used for imported symbols atm)
+	isReferenced = 1 << 0,
 }
 
 @(LinkIndexKind.section)

@@ -24,8 +24,8 @@ enum TokenType TYPE_TOKEN_LAST = TokenType.TYPE_TYPE;
 
 alias TT = TokenType;
 enum TokenType : ubyte {
-	@("#soi")  SOI,
-	@("#eoi")  EOI,
+	@("#soi") SOI,
+	@("#eoi") EOI,
 	@(null)   INVALID,
 
 	@("&")    AND,
@@ -82,29 +82,29 @@ enum TokenType : ubyte {
 	@("}")    RCURLY,
 
 
-	@("#if")      HASH_IF,
-	@("#version") HASH_VERSION,
-	@("#inline")  HASH_INLINE,
-	@("#assert")  HASH_ASSERT,
-	@("#foreach") HASH_FOREACH,
+	@("#if")      HASH_IF,              // #if
+	@("#version") HASH_VERSION,         // #version
+	@("#inline")  HASH_INLINE,          // #inline
+	@("#assert")  HASH_ASSERT,          // #assert
+	@("#foreach") HASH_FOREACH,         // #foreach
 
-	@("alias")    ALIAS_SYM,
-	@("break")    BREAK_SYM,
-	@("continue") CONTINUE_SYM,
-	@("do")       DO_SYM,
-	@("else")     ELSE_SYM,
-	@("function") FUNCTION_SYM,
-	@("if")       IF_SYM,
-	@("import")   IMPORT_SYM,
-	@("module")   MODULE_SYM,
-	@("return")   RETURN_SYM,
-	@("struct")   STRUCT_SYM,
-	@("union")    UNION_SYM,
-	@("while")    WHILE_SYM,
-	@("for")      FOR_SYM,
-	@("switch")   SWITCH_SYM,
-	@("cast")     CAST,                 // cast(T)
-	@("enum")     ENUM,
+	@("alias")    ALIAS_SYM,            // alias
+	@("break")    BREAK_SYM,            // break
+	@("continue") CONTINUE_SYM,         // continue
+	@("do")       DO_SYM,               // do
+	@("else")     ELSE_SYM,             // else
+	@("function") FUNCTION_SYM,         // function
+	@("if")       IF_SYM,               // if
+	@("import")   IMPORT_SYM,           // import
+	@("module")   MODULE_SYM,           // module
+	@("return")   RETURN_SYM,           // return
+	@("struct")   STRUCT_SYM,           // struct
+	@("union")    UNION_SYM,            // union
+	@("while")    WHILE_SYM,            // while
+	@("for")      FOR_SYM,              // for
+	@("switch")   SWITCH_SYM,           // switch
+	@("cast")     CAST,                 // cast
+	@("enum")     ENUM,                 // enum
 
 	@("#id")      IDENTIFIER,           // [a-zA-Z_] [a-zA-Z_0-9]*
 	@("$id")      CASH_IDENTIFIER,      // $ [a-zA-Z_0-9]*
@@ -139,15 +139,12 @@ enum TokenType : ubyte {
 
 	@("true")  TRUE_LITERAL,            // true
 	@("false") FALSE_LITERAL,           // false
-	@("#int_dec_lit") INT_DEC_LITERAL,
-	@("#int_hex_lit") INT_HEX_LITERAL,
-	@("#int_bin_lit") INT_BIN_LITERAL,
+	@("#int_dec_lit") INT_DEC_LITERAL,  // 0|([1-9][0-9_]*)
+	@("#int_hex_lit") INT_HEX_LITERAL,  // ("0x"|"0X")[0-9A-Fa-f_]+
+	@("#int_bin_lit") INT_BIN_LITERAL,  // ("0b"|"0B")[01_]+
 	@("#float_dec_lit") FLOAT_DEC_LITERAL,
 	@("#str_lit") STRING_LITERAL,
 	@("#char_lit") CHAR_LITERAL,
-	//@(null) DECIMAL_LITERAL,          // 0|[1-9][0-9_]*
-	//@(null) BINARY_LITERAL,           // ("0b"|"0B")[01_]+
-	//@(null) HEX_LITERAL,              // ("0x"|"0X")[0-9A-Fa-f_]+
 
 	@("#comm") COMMENT,                 // // /*
 }

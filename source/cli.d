@@ -136,7 +136,7 @@ int runCli(string[] args)
 
 	if (printHelp)
 	{
-		writeln("Usage: vox [tool] [options]... [source|.dll|.har]...");
+		writeln("Usage: vox [tool] [options]... [.vx|.har]...");
 		writeln("   Tools: pdb-dump");
 
 		size_t maxShortLength;

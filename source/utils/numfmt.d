@@ -82,7 +82,6 @@ private int signum(T)(const T x) pure nothrow
 /// Returns number in range of [-30; 30]
 int calcScale10(Num)(Num val)
 {
-	import std.algorithm: clamp;
 	import std.math: abs, round, log10;
 
 	// cast to double is necessary in case of long.min, which overflows integral abs
@@ -114,7 +113,6 @@ int calcScale10(Num)(Num val)
 /// Returns number in range of [0; 100]
 int calcScale2(Num)(Num val)
 {
-	import std.algorithm: clamp;
 	import std.math: abs, round, log2;
 
 	auto lg = log2(abs(val));
