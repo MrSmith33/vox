@@ -177,6 +177,7 @@ void run_ir_to_lir_liveness_and_reg_alloc(ref CompilationContext context, Compil
 	scope(exit) linearScan.freeMem;
 
 	scope(exit) context.tempBuffer.clear;
+	scope(exit) context.currentFunction = null;
 
 	foreach (ref SourceFileInfo file; context.files.data)
 	{
@@ -186,6 +187,7 @@ void run_ir_to_lir_liveness_and_reg_alloc(ref CompilationContext context, Compil
 
 			if (func.isExternal) continue;
 
+			context.currentFunction = func;
 			context.tempBuffer.clear;
 
 

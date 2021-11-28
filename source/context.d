@@ -424,6 +424,11 @@ struct CompilationContext
 		size_t startLen = sink.data.length;
 		sink.putf("ICE(%s:%s): ", file, line);
 		sink.putfln(format, args);
+		if (currentFunction) {
+			sink.putfln("- module %s", ModuleNamePrinter(currentFunction._module.get!ModuleDeclNode(&this), &this));
+			sink.putfln("- function %s", idString(currentFunction.id));
+			sink.putfln("- defined at %s", FmtSrcLoc(currentFunction.loc, &this));
+		}
 		errorSink.put(sink.data[startLen..$]);
 		hasErrors = true;
 		handleICE(file, line);

@@ -132,6 +132,9 @@ struct CodeEmitter
 
 	void compileFunction(FunctionDeclNode* f)
 	{
+		context.currentFunction = f;
+		scope(exit) context.currentFunction = null;
+
 		fun = f;
 		lir = context.getAst!IrFunction(fun.backendData.lirData);
 

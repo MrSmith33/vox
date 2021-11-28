@@ -217,6 +217,9 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 	CompilationContext* c = gen.context;
 	IrBuilder* builder = &gen.builder;
 
+	c.currentFunction = f;
+	scope(exit) c.currentFunction = null;
+
 	f.state = AstNodeState.ir_gen;
 	scope(exit) f.state = AstNodeState.ir_gen_done;
 
