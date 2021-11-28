@@ -4933,3 +4933,66 @@ void tester231(ref TestContext ctx) {
 	auto run = ctx.getFunctionPtr!(long)("run");
 	assert(run() == -1);
 }
+
+
+/*@TestInfo()
+immutable test232 = q{--- test232
+	/// TODO
+	/// Semantic ordering bug. Trying to access NUM's type before it was computed
+	void run() {
+		for(u32 i = 0; i < S.NUM; ++i) {
+		}
+	}
+	struct S {
+		enum NUM = 2;
+	}
+};*/
+
+
+/* @TestInfo()
+immutable test233 = q{--- test233
+	/// TODO
+	/// Semantic ordering bug
+	void run() {
+		A a;
+		a.b.foo();
+	}
+	struct A {
+		B[] b;
+	}
+	struct B[] {
+		void foo(){}
+	}
+};*/
+
+
+@TestInfo()
+immutable test234 = q{--- test234
+	/// IR gen bug. Address of `arr` must be taken and passed as first parameter of `data`. Instead it is passed by value.
+	struct Array
+	{
+		u64* ptr;
+		u64 length;
+		u64[] data() { return ptr[0..length]; }
+	}
+	u64 get(Array arr) {
+		return arr.data[0];
+	}
+};
+
+
+@TestInfo()
+immutable test235 = q{--- test235
+	/// Address of this parameter is taken, which forces it to be allocated on the stack
+	/// Then member assignment doesn't load the stored pointer
+	/// lowerToMember missed `memberNode.flags |= MemberExprFlags.needsDeref;` line
+	/// Without it no deref node was generated
+	struct S {
+		bool b;
+		void method() {
+			b = false;
+			receive(&this);
+		}
+	}
+	void receive(S**){}
+};

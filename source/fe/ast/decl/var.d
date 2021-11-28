@@ -147,11 +147,26 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 	c.assertf(!v.isGlobal, v.loc, "Variable is global");
 
 	IrIndex irType = varType.gen_ir_type(c);
-	if (v.isParameter)
+
+	if (c.buildDebug)
+		v.flags |= VariableFlags.forceMemoryStorage;
+
+	bool needsStackSlot = v.forceMemoryStorage || v.isAddressTaken;
+
+	if (needsStackSlot)
+	{
+		// allocate stack slot
+		IrIndex slot = gen.builder.appendStackSlot(irType, c.types.typeSizeAndAlignment(irType), StackSlotKind.local);
+		v.irValue = ExprValue(slot, ExprValueKind.ptr_to_data, IsLvalue.yes);
+	}
+	else
 	{
 		// allocate new variable
 		v.irValue = ExprValue(gen.builder.newIrVarIndex(irType), ExprValueKind.value, IsLvalue.yes);
+	}
 
+	if (v.isParameter)
+	{
 		ExtraInstrArgs extra = {type : irType};
 		InstrWithResult param = gen.builder.emitInstr!(IrOpcode.parameter)(gen.ir.entryBasicBlock, extra);
 		gen.ir.get!IrInstr_parameter(param.instruction).index(gen.ir) = v.scopeIndex;
@@ -159,23 +174,6 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 	}
 	else
 	{
-		if (c.buildDebug)
-			v.flags |= VariableFlags.forceMemoryStorage;
-
-		bool needsStackSlot = v.forceMemoryStorage || v.isAddressTaken;
-
-		if (needsStackSlot)
-		{
-			// allocate stack slot
-			IrIndex slot = gen.builder.appendStackSlot(irType, c.types.typeSizeAndAlignment(irType), StackSlotKind.local);
-			v.irValue = ExprValue(slot, ExprValueKind.ptr_to_data, IsLvalue.yes);
-		}
-		else
-		{
-			// allocate new variable
-			v.irValue = ExprValue(gen.builder.newIrVarIndex(irType), ExprValueKind.value, IsLvalue.yes);
-		}
-
 		// initialize variable by default or with user-specified value
 		if (v.initializer)
 		{

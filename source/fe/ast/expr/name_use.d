@@ -167,6 +167,7 @@ private void lowerToMember(ref AstIndex nodeIndex, AstIndex entity, NameUseExprN
 		member.flags(c) |= AstFlags.isLvalue;
 	nodeIndex = member;
 	auto memberNode = member.get!MemberExprNode(c);
+	memberNode.flags |= MemberExprFlags.needsDeref;
 	memberNode.state = AstNodeState.name_resolve_done;
 }
 
