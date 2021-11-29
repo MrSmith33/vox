@@ -406,6 +406,17 @@ struct CodeEmitter
 					case Amd64Opcode.movsx_dtoq: gen.movsx_dtoq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
 					case Amd64Opcode.f32_to_f64: gen.cvtss2sd(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
 					case Amd64Opcode.f64_to_f32: gen.cvtsd2ss(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+
+					case Amd64Opcode.i32_to_f32: gen.cvtsid2ss(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.i64_to_f32: gen.cvtsiq2ss(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.i32_to_f64: gen.cvtsid2sd(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.i64_to_f64: gen.cvtsiq2sd(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+
+					case Amd64Opcode.f32_to_i32_trunc: gen.cvttss2sid(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.f32_to_i64_trunc: gen.cvttss2siq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.f64_to_i32_trunc: gen.cvttsd2sid(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+					case Amd64Opcode.f64_to_i64_trunc: gen.cvttsd2siq(indexToRegister(instrHeader.result(lir)), indexToRegister(instrHeader.arg(lir, 0))); break;
+
 					case Amd64Opcode.rep_stos: gen.rep_prefix; gen.stos; break;
 					case Amd64Opcode.divsx:
 						final switch(instrHeader.argSize) {

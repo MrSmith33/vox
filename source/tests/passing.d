@@ -3904,48 +3904,49 @@ immutable test177 = q{--- test177
 	f64 func_f64_zero2() { return 0.0; }
 	f32 func_f32_const() { return 0.5; }
 	f64 func_f64_const() { return 0.5; }
-	//f32 func_f32_const_mult(f32 a) { return cast(f32)(a * 0.5); }
+
+	//f32 func_f32_const_mult(f32 a) { return a * cast(f32)0.5; }
 	//f64 func_f64_const_mult(f64 a) { return a * 0.5; }
 
-	// i8 func_f32_to__i8(f32 a) { return a; } // f32 ->  i8
-	//i16 func_f32_to_i16(f32 a) { return a; } // f32 -> i16
-	//i32 func_f32_to_i32(f32 a) { return a; } // f32 -> i32
-	//i64 func_f32_to_i64(f32 a) { return a; } // f32 -> i64
+	 i8 func_f32_to__i8(f32 a) { return a; } // f32 ->  i8
+	i16 func_f32_to_i16(f32 a) { return a; } // f32 -> i16
+	i32 func_f32_to_i32(f32 a) { return a; } // f32 -> i32
+	i64 func_f32_to_i64(f32 a) { return a; } // f32 -> i64
 
-	// u8 func_f32_to__u8(f32 a) { return a; } // f32 ->  u8
-	//u16 func_f32_to_u16(f32 a) { return a; } // f32 -> u16
-	//u32 func_f32_to_u32(f32 a) { return a; } // f32 -> u32
-	//u64 func_f32_to_u64(f32 a) { return a; } // f32 -> u64
+	 u8 func_f32_to__u8(f32 a) { return a; } // f32 ->  u8
+	u16 func_f32_to_u16(f32 a) { return a; } // f32 -> u16
+	u32 func_f32_to_u32(f32 a) { return a; } // f32 -> u32
+	u64 func_f32_to_u64(f32 a) { return a; } // f32 -> u64 // TODO: more precise conversion
 
-	// i8 func_f64_to__i8(f64 a) { return a; } // f64 ->  i8
-	//i16 func_f64_to_i16(f64 a) { return a; } // f64 -> i16
-	//i32 func_f64_to_i32(f64 a) { return a; } // f64 -> i32
-	//i64 func_f64_to_i64(f64 a) { return a; } // f64 -> i64
+	 i8 func_f64_to__i8(f64 a) { return a; } // f64 ->  i8
+	i16 func_f64_to_i16(f64 a) { return a; } // f64 -> i16
+	i32 func_f64_to_i32(f64 a) { return a; } // f64 -> i32
+	i64 func_f64_to_i64(f64 a) { return a; } // f64 -> i64
 
-	// u8 func_f64_to__u8(f64 a) { return a; } // f64 ->  u8
-	//u16 func_f64_to_u16(f64 a) { return a; } // f64 -> u16
-	//u32 func_f64_to_u32(f64 a) { return a; } // f64 -> u32
-	//u64 func_f64_to_u64(f64 a) { return a; } // f64 -> u64
+	 u8 func_f64_to__u8(f64 a) { return a; } // f64 ->  u8
+	u16 func_f64_to_u16(f64 a) { return a; } // f64 -> u16
+	u32 func_f64_to_u32(f64 a) { return a; } // f64 -> u32
+	u64 func_f64_to_u64(f64 a) { return a; } // f64 -> u64 // TODO: more precise conversion
 
-	//f32 func_ i8_to_f32( i8 a) { return a; } //  i8 -> f32
-	//f32 func_i16_to_f32(i16 a) { return a; } // i16 -> f32
-	//f32 func_i32_to_f32(i32 a) { return a; } // i32 -> f32
-	//f32 func_i64_to_f32(i64 a) { return a; } // i64 -> f32
+	f32 func__i8_to_f32( i8 a) { return a; } //  i8 -> f32
+	f32 func_i16_to_f32(i16 a) { return a; } // i16 -> f32
+	f32 func_i32_to_f32(i32 a) { return a; } // i32 -> f32
+	f32 func_i64_to_f32(i64 a) { return a; } // i64 -> f32
 
-	//f32 func_ u8_to_f32( u8 a) { return a; } //  u8 -> f32
-	//f32 func_u16_to_f32(u16 a) { return a; } // u16 -> f32
-	//f32 func_u32_to_f32(u32 a) { return a; } // u32 -> f32
-	//f32 func_u64_to_f32(u64 a) { return a; } // u64 -> f32
+	f32 func__u8_to_f32( u8 a) { return a; } //  u8 -> f32
+	f32 func_u16_to_f32(u16 a) { return a; } // u16 -> f32
+	f32 func_u32_to_f32(u32 a) { return a; } // u32 -> f32
+	f32 func_u64_to_f32(u64 a) { return a; } // u64 -> f32 // TODO: more precise conversion
 
-	//f64 func_ i8_to_f64( i8 a) { return a; } //  i8 -> f64
-	//f64 func_i16_to_f64(i16 a) { return a; } // i16 -> f64
-	//f64 func_i32_to_f64(i32 a) { return a; } // i32 -> f64
-	//f64 func_i64_to_f64(i64 a) { return a; } // i64 -> f64
+	f64 func__i8_to_f64( i8 a) { return a; } //  i8 -> f64
+	f64 func_i16_to_f64(i16 a) { return a; } // i16 -> f64
+	f64 func_i32_to_f64(i32 a) { return a; } // i32 -> f64
+	f64 func_i64_to_f64(i64 a) { return a; } // i64 -> f64
 
-	//f64 func_ u8_to_f64( u8 a) { return a; } //  u8 -> f64
-	//f64 func_u16_to_f64(u16 a) { return a; } // u16 -> f64
-	//f64 func_u32_to_f64(u32 a) { return a; } // u32 -> f64
-	//f64 func_u64_to_f64(u64 a) { return a; } // u64 -> f64
+	f64 func__u8_to_f64( u8 a) { return a; } //  u8 -> f64
+	f64 func_u16_to_f64(u16 a) { return a; } // u16 -> f64
+	f64 func_u32_to_f64(u32 a) { return a; } // u32 -> f64
+	f64 func_u64_to_f64(u64 a) { return a; } // u64 -> f64 // TODO: more precise conversion
 };
 void tester177(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(double,  float)("func_f32_to_f64")(42.54f) == 42.54f.force);
@@ -3957,8 +3958,45 @@ void tester177(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(double)("func_f64_zero2")() == 0);
 	assert(ctx.getFunctionPtr!(float)("func_f32_const")() == 0.5f.force);
 	assert(ctx.getFunctionPtr!(double)("func_f64_const")() == 0.5);
+
 	//assert(ctx.getFunctionPtr!(float, float)("func_f32_const_mult")(1) == 0.5f.force);
 	//assert(ctx.getFunctionPtr!(double, double)("func_f64_const_mult")(1) == 0.5);
+
+	assert(ctx.getFunctionPtr!(  byte,  float)("func_f32_to__i8")(-127.6f.force) == -127);
+	assert(ctx.getFunctionPtr!( short,  float)("func_f32_to_i16")(-127.6f.force) == -127);
+	assert(ctx.getFunctionPtr!(   int,  float)("func_f32_to_i32")(-127.6f.force) == -127);
+	assert(ctx.getFunctionPtr!(  long,  float)("func_f32_to_i64")(-127.6f.force) == -127);
+	assert(ctx.getFunctionPtr!( ubyte,  float)("func_f32_to__u8")(255.6f.force) == 255);
+	assert(ctx.getFunctionPtr!(ushort,  float)("func_f32_to_u16")(255.6f.force) == 255);
+	assert(ctx.getFunctionPtr!(  uint,  float)("func_f32_to_u32")(255.6f.force) == 255);
+	assert(ctx.getFunctionPtr!( ulong,  float)("func_f32_to_u64")(255.6f.force) == 255);
+
+	assert(ctx.getFunctionPtr!(  byte, double)("func_f64_to__i8")(-127.6.force) == -127);
+	assert(ctx.getFunctionPtr!( short, double)("func_f64_to_i16")(-127.6.force) == -127);
+	assert(ctx.getFunctionPtr!(   int, double)("func_f64_to_i32")(-127.6.force) == -127);
+	assert(ctx.getFunctionPtr!(  long, double)("func_f64_to_i64")(-127.6.force) == -127);
+	assert(ctx.getFunctionPtr!( ubyte, double)("func_f64_to__u8")(255.6.force) == 255);
+	assert(ctx.getFunctionPtr!(ushort, double)("func_f64_to_u16")(255.6.force) == 255);
+	assert(ctx.getFunctionPtr!(  uint, double)("func_f64_to_u32")(255.6.force) == 255);
+	assert(ctx.getFunctionPtr!( ulong, double)("func_f64_to_u64")(255.6.force) == 255);
+
+	assert(ctx.getFunctionPtr!( float,   byte)("func__i8_to_f32")(-127) == -127.0f.force);
+	assert(ctx.getFunctionPtr!( float,  short)("func_i16_to_f32")(-127) == -127.0f.force);
+	assert(ctx.getFunctionPtr!( float,    int)("func_i32_to_f32")(-127) == -127.0f.force);
+	assert(ctx.getFunctionPtr!( float,   long)("func_i64_to_f32")(-127) == -127.0f.force);
+	assert(ctx.getFunctionPtr!( float,  ubyte)("func__u8_to_f32")(127) == 127.0f.force);
+	assert(ctx.getFunctionPtr!( float, ushort)("func_u16_to_f32")(127) == 127.0f.force);
+	assert(ctx.getFunctionPtr!( float,   uint)("func_u32_to_f32")(127) == 127.0f.force);
+	assert(ctx.getFunctionPtr!( float,  ulong)("func_u64_to_f32")(127) == 127.0f.force);
+
+	assert(ctx.getFunctionPtr!(double,   byte)("func__i8_to_f64")(-127) == -127.0);
+	assert(ctx.getFunctionPtr!(double,  short)("func_i16_to_f64")(-127) == -127.0);
+	assert(ctx.getFunctionPtr!(double,    int)("func_i32_to_f64")(-127) == -127.0);
+	assert(ctx.getFunctionPtr!(double,   long)("func_i64_to_f64")(-127) == -127.0);
+	assert(ctx.getFunctionPtr!(double,  ubyte)("func__u8_to_f64")(127) == 127.0);
+	assert(ctx.getFunctionPtr!(double, ushort)("func_u16_to_f64")(127) == 127.0);
+	assert(ctx.getFunctionPtr!(double,   uint)("func_u32_to_f64")(127) == 127.0);
+	assert(ctx.getFunctionPtr!(double,  ulong)("func_u64_to_f64")(127) == 127.0);
 }
 
 
@@ -4909,6 +4947,10 @@ immutable test230 = q{--- test230
 
 		funcT[];
 		funcT[]();
+
+		// s.funcT; // TODO
+		// s.funcT(); // TODO
+		// s.funcT[](); // TODO
 	}
 
 	void func() {}

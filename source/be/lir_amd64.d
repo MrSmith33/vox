@@ -440,6 +440,20 @@ enum Amd64Opcode : ushort {
 	@_ii(1,IFLG.hasResult) f32_to_f64,
 	@_ii(1,IFLG.hasResult) f64_to_f32,
 
+	@_ii(1,IFLG.hasResult) i32_to_f32,
+	@_ii(1,IFLG.hasResult) i64_to_f32,
+	@_ii(1,IFLG.hasResult) i32_to_f64,
+	@_ii(1,IFLG.hasResult) i64_to_f64,
+	@_ii(1,IFLG.hasResult) f32_to_i32_trunc,
+	@_ii(1,IFLG.hasResult) f32_to_i64_trunc,
+	@_ii(1,IFLG.hasResult) f64_to_i32_trunc,
+	@_ii(1,IFLG.hasResult) f64_to_i64_trunc,
+
+	@_ii(1,IFLG.hasResult) f32_to_i32_round,
+	@_ii(1,IFLG.hasResult) f32_to_i64_round,
+	@_ii(1,IFLG.hasResult) f64_to_i32_round,
+	@_ii(1,IFLG.hasResult) f64_to_i64_round,
+
 	@_ii(2) xchg, // xchg mr/mr
 
 	@_ii(1,IFLG.hasResult|IFLG.isResultInDst) not,

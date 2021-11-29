@@ -726,10 +726,10 @@ struct CodeGen_x86_64
 	void cvtss2sid(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2D), dst, src); }
 	void cvtss2siq(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
 	void cvtss2siq(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
-	void cvtsi2ssd(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2A), dst, src); }
-	void cvtsi2ssd(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2A), dst, src); }
-	void cvtsi2ssq(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
-	void cvtsi2ssq(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsid2ss(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsid2ss(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsiq2ss(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsiq2ss(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
 	void cvttss2sid(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2C), dst, src); }
 	void cvttss2sid(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2C), dst, src); }
 	void cvttss2siq(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), dst, src); }
@@ -737,12 +737,22 @@ struct CodeGen_x86_64
 
 	void cvtsd2ss(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5A), dst, src); }
 	void cvtsd2ss(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x5A), dst, src); }
-	void cvtsd2si(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2D), dst, src); }
-	void cvtsd2si(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2D), dst, src); }
-	void cvtsi2sd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2A), dst, src); }
-	void cvtsi2sd(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2A), dst, src); }
-	void cvttsd2si(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2C), dst, src); }
-	void cvttsd2si(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2C), dst, src); }
+
+	void cvtsd2sid(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2D), dst, src); }
+	void cvtsd2sid(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2D), dst, src); }
+	void cvtsd2siq(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
+	void cvtsd2siq(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
+
+	void cvtsid2sd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsid2sd(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsiq2sd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsiq2sd(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
+
+	void cvttsd2sid(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2C), dst, src); }
+	void cvttsd2sid(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2C), dst, src); }
+	void cvttsd2siq(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), dst, src); }
+	void cvttsd2siq(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), dst, src); }
+
 	void rep_prefix() { encoder.prefix(0xF3); }
 	void stos() { encoder.putInstrNullary(OP1(0xAA)); }
 
