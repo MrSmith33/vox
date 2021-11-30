@@ -316,8 +316,8 @@ struct Encoder
 		else if (src_mem.hasDisp8) sink_put(src_mem.disp8);                     // disp8
 	}
 	void putInstrBinaryRegMemImm(ubyte flags, O, I)(O opcode, Register reg, MemAddress src_mem, I src_imm) if (isAnyOpcode!O && isAnyImm!I) {
-		static if (flags & EncFlg.OP_SIZE) sink_put(LegacyPrefix.OPERAND_SIZE);// 16 bit operand prefix
-		putRexByte_XB!flags(src_mem.indexReg, src_mem.baseReg);                 // REX
+		static if (flags & EncFlg.OP_SIZE) sink_put(LegacyPrefix.OPERAND_SIZE); // 16 bit operand prefix
+		putRexByte_RXB!flags(reg, src_mem.indexReg, src_mem.baseReg);           // REX
 		sink_put(opcode);                                                       // Opcode
 		sink_put(src_mem.modRmByte(reg));                                       // ModR/M
 		if (src_mem.hasSibByte)	   sink_put(src_mem.sibByte);                   // SIB
@@ -462,21 +462,6 @@ struct CodeGen_x86_64
 			static if (__traits(compiles, mixin(s~"q(dst)"))) { case ArgType.QWORD: mixin(s~"q(dst);"); break; }
 			default: assert(false, format("Cannot encode %s(%s, ArgType.%s)", s, dst, argType));
 		}
-	}
-
-	void beginFunction() {
-		// Copies parameters from registers to shadow space
-		// Pushes registers to be preserved on stack
-		// Allocates room on stack for local variables
-		// Sets a frame pointer (so frame pointer is set AFTER local variables!) if needed
-		pushq(Register.BP);
-		movq(Register.BP, Register.SP);
-		// Allocates space needed to store volatile registers that must be preserved in function calls
-		// Allocates shadow space for called functions.
-	}
-	void endFunction() {
-		popq(Register.BP);
-		ret();
 	}
 
 	mixin binaryInstr_RMtoR_RtoRM!("add", [0x00, 0x01], [0x02, 0x03]);
@@ -635,38 +620,38 @@ struct CodeGen_x86_64
 	void int3() { encoder.putInstrNullary(OP1(0xCC)); }
 	void syscall() { encoder.putInstrNullary(OP2(0x0F, 0x05)); }
 
-	void andps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x54), dst, src); }
+	void andps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x54), src, dst); }
 	void andps(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x54), dst, src); }
-	void andpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x54), dst, src); }
+	void andpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x54), src, dst); }
 	void andpd(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x54), dst, src); }
-	void orps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x56), dst, src); }
+	void orps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x56), src, dst); }
 	void orps(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x56), dst, src); }
-	void orpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x56), dst, src); }
+	void orpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x56), src, dst); }
 	void orpd(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x56), dst, src); }
-	void xorps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x57), dst, src); }
+	void xorps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x57), src, dst); }
 	void xorps(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x57), dst, src); }
-	void xorpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x57), dst, src); }
+	void xorpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x57), src, dst); }
 	void xorpd(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x57), dst, src); }
-	void addps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x58), dst, src); }
+	void addps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x58), src, dst); }
 	void addps(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x58), dst, src); }
-	void addpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x58), dst, src); }
+	void addpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x58), src, dst); }
 	void addpd(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x58), dst, src); }
-	void mulps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x59), dst, src); }
+	void mulps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x59), src, dst); }
 	void mulps(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x59), dst, src); }
-	void mulpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x59), dst, src); }
+	void mulpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x59), src, dst); }
 	void mulpd(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x59), dst, src); }
-	void subps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5C), dst, src); }
+	void subps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5C), src, dst); }
 	void subps(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x5C), dst, src); }
-	void subpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x5C), dst, src); }
+	void subpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x5C), src, dst); }
 	void subpd(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x5C), dst, src); }
-	void divps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5E), dst, src); }
+	void divps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5E), src, dst); }
 	void divps(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x5E), dst, src); }
-	void divpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x5E), dst, src); }
+	void divpd(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x5E), src, dst); }
 	void divpd(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x5E), dst, src); }
 
-	void cmpss(Register dst, Register src, Imm8 pred) { encoder.prefix(0xF3); encoder.putInstrBinaryRegRegImm!(0)(OP2(0x0F, 0xC2), dst, src, pred); }
+	void cmpss(Register dst, Register src, Imm8 pred) { encoder.prefix(0xF3); encoder.putInstrBinaryRegRegImm!(0)(OP2(0x0F, 0xC2), src, dst, pred); }
 	void cmpss(Register dst, MemAddress src, Imm8 pred) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMemImm!(0)(OP2(0x0F, 0xC2), dst, src, pred); }
-	void cmpsd(Register dst, Register src, Imm8 pred) { encoder.prefix(0xF2); encoder.putInstrBinaryRegRegImm!(0)(OP2(0x0F, 0xC2), dst, src, pred); }
+	void cmpsd(Register dst, Register src, Imm8 pred) { encoder.prefix(0xF2); encoder.putInstrBinaryRegRegImm!(0)(OP2(0x0F, 0xC2), src, dst, pred); }
 	void cmpsd(Register dst, MemAddress src, Imm8 pred) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMemImm!(0)(OP2(0x0F, 0xC2), dst, src, pred); }
 
 	void ucomiss(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2E), src, dst); }
@@ -691,66 +676,66 @@ struct CodeGen_x86_64
 	void divsd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5E), src, dst); }
 	void divsd(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x5E), dst, src); }
 
-	void movss(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x10), dst, src); }
+	void movss(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x10), src, dst); }
 	void movss(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x10), dst, src); }
 	void movss(MemAddress dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x11), src, dst); }
 
-	void movsd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x10), dst, src); }
+	void movsd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x10), src, dst); }
 	void movsd(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x10), dst, src); }
 	void movsd(MemAddress dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x11), src, dst); }
 
-	void movaps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x28), dst, src); }
+	void movaps(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x28), src, dst); }
 	void movaps(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x28), dst, src); }
 	void movaps(MemAddress dst, Register src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x29), src, dst); }
 
-	void movups(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x10), dst, src); }
+	void movups(Register dst, Register src) { encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x10), src, dst); }
 	void movups(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x10), dst, src); }
 	void movups(MemAddress dst, Register src) { encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x11), src, dst); }
 
 	// x stands for xmm
 	void movd_xr(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x6E), src, dst); }
 	void movd_xr(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x6E), dst, src); }
-
-	void movd_rx(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x7E), src, dst); }
-	void movd_rx(MemAddress dst, Register src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x7E), src, dst); }
-
 	void movq_xr(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x6E), src, dst); }
 	void movq_xr(Register dst, MemAddress src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x6E), dst, src); }
 
-	void movq_rx(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x7E), src, dst); }
+	void movd_rx(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE)(OP2(0x0F, 0x7E), dst, src); }
+	void movd_rx(MemAddress dst, Register src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE)(OP2(0x0F, 0x7E), src, dst); }
+	void movq_rx(Register dst, Register src) { encoder.putInstrBinaryRegReg!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x7E), dst, src); }
 	void movq_rx(MemAddress dst, Register src) { encoder.putInstrBinaryRegMem!(EncFlg.OP_SIZE|EncFlg.REXW_FORCE)(OP2(0x0F, 0x7E), src, dst); }
 
-	void cvtss2sd(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5A), dst, src); }
+	void cvtss2sd(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5A), src, dst); }
 	void cvtss2sd(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x5A), dst, src); }
-	void cvtss2sid(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2D), dst, src); }
-	void cvtss2sid(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2D), dst, src); }
-	void cvtss2siq(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
-	void cvtss2siq(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
-	void cvtsid2ss(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2A), dst, src); }
-	void cvtsid2ss(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2A), dst, src); }
-	void cvtsiq2ss(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
-	void cvtsiq2ss(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
-	void cvttss2sid(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2C), dst, src); }
-	void cvttss2sid(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2C), dst, src); }
-	void cvttss2siq(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), dst, src); }
-	void cvttss2siq(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), dst, src); }
-
-	void cvtsd2ss(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5A), dst, src); }
+	void cvtsd2ss(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x5A), src, dst); }
 	void cvtsd2ss(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x5A), dst, src); }
 
-	void cvtsd2sid(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2D), dst, src); }
+	void cvtss2sid(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2D), src, dst); }
+	void cvtss2sid(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2D), dst, src); }
+	void cvtss2siq(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), src, dst); }
+	void cvtss2siq(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
+
+	void cvtsid2ss(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2A), src, dst); }
+	void cvtsid2ss(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsiq2ss(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), src, dst); }
+	void cvtsiq2ss(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
+
+	void cvttss2sid(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2C), src, dst); }
+	void cvttss2sid(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2C), dst, src); }
+	void cvttss2siq(Register dst, Register src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), src, dst); }
+	void cvttss2siq(Register dst, MemAddress src) { encoder.prefix(0xF3); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), dst, src); }
+
+	void cvtsd2sid(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2D), src, dst); }
 	void cvtsd2sid(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2D), dst, src); }
-	void cvtsd2siq(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
+	void cvtsd2siq(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), src, dst); }
 	void cvtsd2siq(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2D), dst, src); }
 
-	void cvtsid2sd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsid2sd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2A), src, dst); }
 	void cvtsid2sd(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2A), dst, src); }
-	void cvtsiq2sd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
+	void cvtsiq2sd(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), src, dst); }
 	void cvtsiq2sd(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2A), dst, src); }
 
-	void cvttsd2sid(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2C), dst, src); }
+	void cvttsd2sid(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(0)(OP2(0x0F, 0x2C), src, dst); }
 	void cvttsd2sid(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(0)(OP2(0x0F, 0x2C), dst, src); }
-	void cvttsd2siq(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), dst, src); }
+	void cvttsd2siq(Register dst, Register src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegReg!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), src, dst); }
 	void cvttsd2siq(Register dst, MemAddress src) { encoder.prefix(0xF2); encoder.putInstrBinaryRegMem!(EncFlg.REXW_FORCE)(OP2(0x0F, 0x2C), dst, src); }
 
 	void rep_prefix() { encoder.prefix(0xF3); }

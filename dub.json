@@ -1,29 +1,23 @@
 {
     "name": "vox",
 
-    "sourcePaths":
-    [
-        "source"
-    ],
+    "description": "Vox language compiler",
+    "authors": ["Andrey Penechko"],
+    "license" : "BSL-1.0",
 
-    "excludedSourceFiles":
-    [
-        "source/be/asmtest/*.d"
-    ],
+    "sourcePaths": ["source"],
 
-    "configurations":
-    [
+    "configurations": [
         {
             "name": "library",
             "targetType": "library",
-            "excludedSourceFiles":
-            [
+            "excludedSourceFiles": [
                 "source/main.d",
                 "source/cli.d",
                 "source/bench.d",
                 "source/tester.d",
                 "source/tests/*.d"
-            ],
+            ]
         },
         {
             "name": "cli",

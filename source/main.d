@@ -1,34 +1,48 @@
-/// Copyright: Copyright (c) 2017-2020 Andrey Penechko.
+/// Copyright: Copyright (c) 2017-2021 Andrey Penechko.
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
 module main;
 
-import std.stdio;
-import bench;
-import cli;
-import tester;
-
 version = standalone;
 //version = cli;
 //version = bench;
+//version = asmtest;
 //version = devtest;
 //version = test;
 
 version(standalone) int main(string[] args)
 {
-	scope(exit) stdout.flush;
-	version(cli) return runCli(args);
-	else version(bench) {
-		return runBench(args);
-		//return benchSpeed();
+	scope(exit) {
+		import std.stdio;
+		stdout.flush;
 	}
-	else version(devtest) return runDevTests();
-	else version(test) return runAllTests(StopOnFirstFail.no);
-	else return 0;
+
+	version(cli) {
+		import cli;
+		return runCli(args);
+	} else version(bench) {
+		import bench;
+		return runBench(args);
+	} else version(asmtest) {
+		import be.amd64asm_tests;
+		return testAmd64Asm();
+	} else version(devtest) {
+		import tester;
+		return runDevTests();
+	} else version(test) {
+		import tester;
+		return runAllTests(StopOnFirstFail.no);
+	} else return 0;
 }
 
 unittest
 {
-	int numFailedTests = runAllTests(StopOnFirstFail.no);
+	import tester;
+	import be.amd64asm_tests;
+
+	int numFailedTests = 0;
+	numFailedTests += runAllTests(StopOnFirstFail.no);
+	numFailedTests += testAmd64Asm();
+
 	assert(numFailedTests == 0);
 }

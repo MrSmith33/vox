@@ -1,11 +1,11 @@
-/doc/webassembly
-/asm
+.dub
 .vs
 .vscode
 *.code-workspace
 *.pdb
 *.ilk
 *.obj
+*.lib
 *.o
 *.exe
 *.lst

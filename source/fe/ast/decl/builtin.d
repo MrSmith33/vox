@@ -4,6 +4,7 @@
 module fe.ast.decl.builtin;
 
 import all;
+import utils : gatherEnumStrings;
 
 // The order is the same as in CommonAstNodes enum
 enum BuiltinId : ubyte {
