@@ -735,3 +735,14 @@ immutable fail68 = q{--- fail68
 --- <error>
 fail68:5:2: Error: declaration `foo` is already defined at fail68:3:3
 };
+
+
+@TestInfo()
+immutable fail69 = q{--- fail69
+	bool run(u8* s) {
+		u8 c;
+		return (c = *s++) != '\0';
+	}
+--- <error>
+fail69:3:21: Error: Cannot compare `void` and `u8`
+};

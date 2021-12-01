@@ -433,7 +433,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 			if (autoconvToCommonType(b.left, b.right, c))
 				resType = CommonAstNodes.type_bool;
 			else
-				c.error(b.left.get_node(c).loc, "Cannot compare `%s` and `%s`",
+				c.error(b.loc, "Cannot compare `%s` and `%s`",
 					leftType.typeName(c),
 					rightType.typeName(c));
 			break;
@@ -528,6 +528,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
 					leftType.typeName(c), binOpStrings[b.op],
 					rightType.typeName(c));
+			resType = CommonAstNodes.type_void;
 			break;
 
 		case BITWISE_AND_ASSIGN, BITWISE_OR_ASSIGN, REMAINDER_ASSIGN,
@@ -537,6 +538,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
 					leftType.typeName(c), binOpStrings[b.op],
 					rightType.typeName(c));
+			resType = CommonAstNodes.type_void;
 			break;
 
 		case ASSIGN:
@@ -545,6 +547,7 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 				c.error(b.loc, "Cannot perform `%s` %s `%s` operation",
 					leftType.typeName(c), binOpStrings[b.op],
 					rightType.typeName(c));
+			resType = CommonAstNodes.type_void;
 			break;
 
 		default:
