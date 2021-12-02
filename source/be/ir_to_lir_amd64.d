@@ -22,14 +22,14 @@ void pass_ir_to_lir_amd64(CompilationContext* context, IrBuilder* builder, Modul
 	lirData.name = irData.name;
 
 	builder.beginLir(lirData, irData, context);
-	processFunc(context, builder, irData, lirData);
+	processFunc(context, builder, mod, irData, lirData);
 	builder.finalizeIr;
 
 	if (context.validateIr) validateIrFunction(context, lirData, "IR -> LIR");
 	if (context.printLir && context.printDumpOf(func)) dumpFunction(context, lirData, "IR -> LIR");
 }
 
-void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir, IrFunction* lir)
+void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode* mod, IrFunction* ir, IrFunction* lir)
 {
 	string funName = context.idString(ir.name);
 	//writefln("IR to LIR %s", funName);
@@ -85,10 +85,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 	// Legalizes complex arguments into a separate instruction
 	IrIndex getFixedLegalIndex(IrIndex index, IrIndex lirBlockIndex)
 	{
-		assert(index.isDefined);
-		assert(!(index.isBasicBlock || index.isPhi || index.isInstruction), format("%s", index));
 		final switch (index.kind) with(IrValueKind) {
-			case none, array, instruction, basicBlock, phi, type, variable: assert(false);
+			case none, array, instruction, basicBlock, phi, type, variable: context.internal_error("getFixedLegalIndex %s", index.kind);
 			case physicalRegister:
 			case constantAggregate:
 			case constantZero:
@@ -455,16 +453,51 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 
 			// for movsx/movzx
 			// arg is not fixed
-			IrIndex emit_nonfinal(alias I)(IrIndex arg, IrIndex resType) {
+			IrIndex emit_nonfinal(alias I)(IrIndex resType, IrIndex arg) {
 				arg = getFixedLegalIndex(arg, lirBlockIndex);
 				ExtraInstrArgs extra = { addUsers : false, type : resType };
 				return builder.emitInstr!I(lirBlockIndex, extra, arg).result;
 			}
 
-			// arg is fixed
-			void emit_final(alias I)(IrIndex arg, IrIndex resType) {
-				ExtraInstrArgs extra = { addUsers : false, type : resType };
-				InstrWithResult res = builder.emitInstr!I(lirBlockIndex, extra, arg);
+			IrIndex legalizeFloatArg(IrIndex arg, IrIndex type) {
+				switch (arg.kind) {
+					case IrValueKind.constant:
+						IrIndex globalIndex = context.globals.add();
+						IrGlobal* global = context.globals.get(globalIndex);
+						global.type = context.types.appendPtr(type);
+
+						ObjectSymbol sym = {
+							kind : ObjectSymbolKind.isLocal,
+							sectionIndex : context.builtinSections[ObjectSectionType.ro_data],
+							moduleIndex : mod.objectSymIndex,
+							flags : ObjectSymbolFlags.isFloat,
+							id : context.idMap.getOrRegNoDup(context, ":float"),
+						};
+						global.objectSymIndex = context.objSymTab.addSymbol(sym);
+
+						ObjectSymbol* globalSym = context.objSymTab.getSymbol(global.objectSymIndex);
+
+						SizeAndAlignment valueSizealign = context.types.typeSizeAndAlignment(type);
+						ubyte[] buffer = context.globals.allocateInitializer(valueSizealign.size);
+						constantToMem(buffer, arg, context);
+						//writefln("%s %s", arg, buffer);
+						globalSym.setInitializer(buffer);
+
+						ExtraInstrArgs extra = { addUsers : false, type : type, argSize : instrHeader.argSize };
+						return builder.emitInstr!(Amd64Opcode.load)(lirBlockIndex, extra, globalIndex).result;
+
+					case IrValueKind.constantZero:
+						ExtraInstrArgs extra = { addUsers : false, type : type, argSize : instrHeader.argSize };
+						return builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, arg).result;
+
+					default: return getFixedLegalIndex(arg, lirBlockIndex);
+				}
+			}
+
+			// args are fixed
+			void emit_final(alias I)(IrIndex resType, IrIndex[] args...) {
+				ExtraInstrArgs extra = { addUsers : false, type : resType, argSize : instrHeader.argSize };
+				InstrWithResult res = builder.emitInstr!I(lirBlockIndex, extra, args);
 				IrIndex result = instrHeader.result(ir);
 				recordIndex(result, res.result);
 			}
@@ -517,10 +550,22 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 				case IrOpcode.or: emitLirInstr!(Amd64Opcode.or); break;
 				case IrOpcode.xor: emitLirInstr!(Amd64Opcode.xor); break;
 
-				case IrOpcode.fadd: emitLirInstr!(Amd64Opcode.fadd); break;
-				case IrOpcode.fsub: emitLirInstr!(Amd64Opcode.fsub); break;
-				case IrOpcode.fmul: emitLirInstr!(Amd64Opcode.fmul); break;
-				case IrOpcode.fdiv: emitLirInstr!(Amd64Opcode.fdiv); break;
+				case IrOpcode.fadd:
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
+					emit_final!(Amd64Opcode.fadd)(type, legalizeFloatArg(instrHeader.arg(ir, 0), type), legalizeFloatArg(instrHeader.arg(ir, 1), type));
+					break;
+				case IrOpcode.fsub:
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
+					emit_final!(Amd64Opcode.fsub)(type, legalizeFloatArg(instrHeader.arg(ir, 0), type), legalizeFloatArg(instrHeader.arg(ir, 1), type));
+					break;
+				case IrOpcode.fmul:
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
+					emit_final!(Amd64Opcode.fmul)(type, legalizeFloatArg(instrHeader.arg(ir, 0), type), legalizeFloatArg(instrHeader.arg(ir, 1), type));
+					break;
+				case IrOpcode.fdiv:
+					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
+					emit_final!(Amd64Opcode.fdiv)(type, legalizeFloatArg(instrHeader.arg(ir, 0), type), legalizeFloatArg(instrHeader.arg(ir, 1), type));
+					break;
 
 				case IrOpcode.udiv, IrOpcode.sdiv, IrOpcode.urem, IrOpcode.srem:
 					//   v1 = div v2, v3
@@ -738,7 +783,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					break;
 
 				case IrOpcode.uitofp:
-					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrIndex arg0 = instrHeader.arg(ir, 0);
+					IrIndex typeFrom = getValueType(arg0, ir, context);
 					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
 					uint typeSizeFrom = context.types.typeSize(typeFrom);
 					uint typeSizeTo = context.types.typeSize(typeTo);
@@ -747,16 +793,16 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					case 4:
 						switch(typeSizeFrom) {
 						case 1:
-							IrIndex u32 = emit_nonfinal!(Amd64Opcode.movzx_btod)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-							emit_final!(Amd64Opcode.i32_to_f32)(u32, typeTo);
+							IrIndex u32 = emit_nonfinal!(Amd64Opcode.movzx_btod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							emit_final!(Amd64Opcode.i32_to_f32)(typeTo, u32);
 							break switch_instr;
 						case 2:
-							IrIndex u32 = emit_nonfinal!(Amd64Opcode.movzx_wtod)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-							emit_final!(Amd64Opcode.i32_to_f32)(u32, typeTo);
+							IrIndex u32 = emit_nonfinal!(Amd64Opcode.movzx_wtod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							emit_final!(Amd64Opcode.i32_to_f32)(typeTo, u32);
 							break switch_instr;
 						case 4:
-							IrIndex i64 = emit_nonfinal!(Amd64Opcode.mov)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i64));
-							emit_final!(Amd64Opcode.i64_to_f32)(i64, typeTo);
+							IrIndex i64 = emit_nonfinal!(Amd64Opcode.mov)(makeBasicTypeIndex(IrValueType.i64), arg0);
+							emit_final!(Amd64Opcode.i64_to_f32)(typeTo, i64);
 							break switch_instr;
 						case 8: emitLirInstr!(Amd64Opcode.i64_to_f32); break switch_instr; // u64 -> f32
 						default: context.internal_error("Unexpected source type size %s", typeSizeFrom);
@@ -765,16 +811,16 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					case 8:
 						switch(typeSizeFrom) {
 						case 1:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movzx_btod)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-							emit_final!(Amd64Opcode.i32_to_f64)(i32, typeTo);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movzx_btod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							emit_final!(Amd64Opcode.i32_to_f64)(typeTo, i32);
 							break switch_instr;
 						case 2:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movzx_wtod)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-							emit_final!(Amd64Opcode.i32_to_f64)(i32, typeTo);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movzx_wtod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							emit_final!(Amd64Opcode.i32_to_f64)(typeTo, i32);
 							break switch_instr;
 						case 4:
-							IrIndex i64 = emit_nonfinal!(Amd64Opcode.mov)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i64));
-							emit_final!(Amd64Opcode.i64_to_f64)(i64, typeTo);
+							IrIndex i64 = emit_nonfinal!(Amd64Opcode.mov)(makeBasicTypeIndex(IrValueType.i64), arg0);
+							emit_final!(Amd64Opcode.i64_to_f64)(typeTo, i64);
 							break switch_instr;
 						case 8: emitLirInstr!(Amd64Opcode.i64_to_f64); break switch_instr; // u64 -> f64
 						default: context.internal_error("Unexpected source type size %s", typeSizeFrom);
@@ -783,7 +829,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					}
 
 				case IrOpcode.sitofp:
-					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrIndex arg0 = instrHeader.arg(ir, 0);
+					IrIndex typeFrom = getValueType(arg0, ir, context);
 					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
 					uint typeSizeFrom = context.types.typeSize(typeFrom);
 					uint typeSizeTo = context.types.typeSize(typeTo);
@@ -792,12 +839,12 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					case 4:
 						switch(typeSizeFrom) {
 						case 1:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_btod)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-							emit_final!(Amd64Opcode.i32_to_f32)(i32, typeTo);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_btod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							emit_final!(Amd64Opcode.i32_to_f32)(typeTo, i32);
 							break switch_instr;
 						case 2:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_wtod)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-							emit_final!(Amd64Opcode.i32_to_f32)(i32, typeTo);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_wtod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							emit_final!(Amd64Opcode.i32_to_f32)(typeTo, i32);
 							break switch_instr;
 						case 4: emitLirInstr!(Amd64Opcode.i32_to_f32); break switch_instr;
 						case 8: emitLirInstr!(Amd64Opcode.i64_to_f32); break switch_instr;
@@ -807,12 +854,12 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					case 8:
 						switch(typeSizeFrom) {
 						case 1:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_btod)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-							emit_final!(Amd64Opcode.i32_to_f64)(i32, typeTo);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_btod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							emit_final!(Amd64Opcode.i32_to_f64)(typeTo, i32);
 							break switch_instr;
 						case 2:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_wtod)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-							emit_final!(Amd64Opcode.i32_to_f64)(i32, typeTo);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_wtod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							emit_final!(Amd64Opcode.i32_to_f64)(typeTo, i32);
 							break switch_instr;
 						case 4: emitLirInstr!(Amd64Opcode.i32_to_f64); break switch_instr;
 						case 8: emitLirInstr!(Amd64Opcode.i64_to_f64); break switch_instr;
@@ -822,7 +869,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					}
 
 				case IrOpcode.fptoui:
-					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrIndex arg0 = instrHeader.arg(ir, 0);
+					IrIndex typeFrom = getValueType(arg0, ir, context);
 					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
 					uint typeSizeFrom = context.types.typeSize(typeFrom);
 					uint typeSizeTo = context.types.typeSize(typeTo);
@@ -832,8 +880,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						switch(typeSizeTo) {
 							case 1:
 							case 2:
-								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f32_to_i32_trunc)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-								emit_final!(Amd64Opcode.mov)(i32, typeTo);
+								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f32_to_i32_trunc)(makeBasicTypeIndex(IrValueType.i32), arg0);
+								emit_final!(Amd64Opcode.mov)(typeTo, i32);
 								break switch_instr;
 							case 4: emitLirInstr!(Amd64Opcode.f32_to_i64_trunc); break switch_instr; // f32 -> u32
 							case 8: emitLirInstr!(Amd64Opcode.f32_to_i64_trunc); break switch_instr; // f32 -> u64
@@ -844,12 +892,12 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						switch(typeSizeTo) {
 							case 1:
 							case 2:
-								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f64_to_i32_trunc)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-								emit_final!(Amd64Opcode.mov)(i32, typeTo);
+								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f64_to_i32_trunc)(makeBasicTypeIndex(IrValueType.i32), arg0);
+								emit_final!(Amd64Opcode.mov)(typeTo, i32);
 								break switch_instr;
 							case 4:
-								IrIndex i64 = emit_nonfinal!(Amd64Opcode.f64_to_i64_trunc)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i64));
-								emit_final!(Amd64Opcode.mov)(i64, typeTo);
+								IrIndex i64 = emit_nonfinal!(Amd64Opcode.f64_to_i64_trunc)(makeBasicTypeIndex(IrValueType.i64), arg0);
+								emit_final!(Amd64Opcode.mov)(typeTo, i64);
 								break switch_instr;
 							case 8: emitLirInstr!(Amd64Opcode.f64_to_i64_trunc); break switch_instr; // f64 -> u64
 							default: context.internal_error("Unexpected source type size %s", typeSizeTo);
@@ -858,7 +906,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 					}
 
 				case IrOpcode.fptosi:
-					IrIndex typeFrom = getValueType(instrHeader.arg(ir, 0), ir, context);
+					IrIndex arg0 = instrHeader.arg(ir, 0);
+					IrIndex typeFrom = getValueType(arg0, ir, context);
 					IrIndex typeTo = ir.getVirtReg(instrHeader.result(ir)).type;
 					uint typeSizeFrom = context.types.typeSize(typeFrom);
 					uint typeSizeTo = context.types.typeSize(typeTo);
@@ -868,8 +917,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						switch(typeSizeTo) {
 							case 1:
 							case 2:
-								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f32_to_i32_trunc)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-								emit_final!(Amd64Opcode.mov)(i32, typeTo);
+								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f32_to_i32_trunc)(makeBasicTypeIndex(IrValueType.i32), arg0);
+								emit_final!(Amd64Opcode.mov)(typeTo, i32);
 								break switch_instr;
 							case 4: emitLirInstr!(Amd64Opcode.f32_to_i32_trunc); break switch_instr;
 							case 8: emitLirInstr!(Amd64Opcode.f32_to_i64_trunc); break switch_instr;
@@ -880,8 +929,8 @@ void processFunc(CompilationContext* context, IrBuilder* builder, IrFunction* ir
 						switch(typeSizeTo) {
 							case 1:
 							case 2:
-								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f64_to_i32_trunc)(instrHeader.arg(ir, 0), makeBasicTypeIndex(IrValueType.i32));
-								emit_final!(Amd64Opcode.mov)(i32, typeTo);
+								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f64_to_i32_trunc)(makeBasicTypeIndex(IrValueType.i32), arg0);
+								emit_final!(Amd64Opcode.mov)(typeTo, i32);
 								break switch_instr;
 							case 4: emitLirInstr!(Amd64Opcode.f64_to_i32_trunc); break switch_instr;
 							case 8: emitLirInstr!(Amd64Opcode.f64_to_i64_trunc); break switch_instr;

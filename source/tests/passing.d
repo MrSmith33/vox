@@ -3905,8 +3905,11 @@ immutable test177 = q{--- test177
 	f32 func_f32_const() { return 0.5; }
 	f64 func_f64_const() { return 0.5; }
 
-	//f32 func_f32_const_mult(f32 a) { return a * cast(f32)0.5; }
-	//f64 func_f64_const_mult(f64 a) { return a * 0.5; }
+	f32 func_f32_const_mult(f32 a) { return a * cast(f32)0.5; }
+	f64 func_f64_const_mult(f64 a) { return a * 0.5; }
+
+	f32 func_const_f32_mult(f32 a) { return cast(f32)0.5 * a; }
+	f64 func_const_f64_mult(f64 a) { return 0.5 * a; }
 
 	 i8 func_f32_to__i8(f32 a) { return a; } // f32 ->  i8
 	i16 func_f32_to_i16(f32 a) { return a; } // f32 -> i16
@@ -3959,8 +3962,11 @@ void tester177(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(float)("func_f32_const")() == 0.5f.force);
 	assert(ctx.getFunctionPtr!(double)("func_f64_const")() == 0.5);
 
-	//assert(ctx.getFunctionPtr!(float, float)("func_f32_const_mult")(1) == 0.5f.force);
-	//assert(ctx.getFunctionPtr!(double, double)("func_f64_const_mult")(1) == 0.5);
+	assert(ctx.getFunctionPtr!(float, float)("func_f32_const_mult")(1) == 0.5f.force);
+	assert(ctx.getFunctionPtr!(double, double)("func_f64_const_mult")(1) == 0.5);
+
+	assert(ctx.getFunctionPtr!(float, float)("func_const_f32_mult")(1) == 0.5f.force);
+	assert(ctx.getFunctionPtr!(double, double)("func_const_f64_mult")(1) == 0.5);
 
 	assert(ctx.getFunctionPtr!(  byte,  float)("func_f32_to__i8")(-127.6f.force) == -127);
 	assert(ctx.getFunctionPtr!( short,  float)("func_f32_to_i16")(-127.6f.force) == -127);

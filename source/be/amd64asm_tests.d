@@ -2,7 +2,7 @@ module be.amd64asm_tests;
 
 import std.stdio;
 
-import utils;
+import utils : Arena, currTime, scaledNumberFmt;
 import be.amd64asm;
 
 struct CodegenTester

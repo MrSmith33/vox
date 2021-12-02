@@ -173,10 +173,15 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 	c.assertf(rval.isSomeConstant, node.loc, "Must be constant");
 	IrIndex result;
 
+	TypeNode* sourceType = node.expr.get_expr(c).type.get_type(c);
+	if (sourceType.astType == AstType.decl_enum) {
+		sourceType = sourceType.as_enum.memberType.get_type(c);
+	}
 	TypeNode* targetType = node.type.get_type(c);
 	if (targetType.astType == AstType.decl_enum) {
 		targetType = targetType.as_enum.memberType.get_type(c);
 	}
+	IrIndex typeFrom = sourceType.gen_ir_type(c);
 	IrIndex typeTo = targetType.gen_ir_type(c);
 	uint typeSizeTo = c.types.typeSize(typeTo);
 
@@ -194,7 +199,24 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 			assert(false, "TODO");
 
 		case ff_e, ff_i:
-			assert(false, "TODO");
+			c.assertf(typeFrom.isTypeFloat, "from %s", typeFrom);
+			c.assertf(typeTo.isTypeFloat, "from %s", typeTo);
+			switch(typeFrom.basicType) {
+				case IrValueType.f32:
+					c.assertf(typeTo.basicType == IrValueType.f32, "from f32 to %s", typeTo);
+					IrConstant con;
+					con.f64 = cast(double)c.constants.get(rval).f32;
+					result = c.constants.add(con.u64, IsSigned.no, IrArgSize.size64);
+					break;
+				case IrValueType.f64:
+					c.assertf(typeTo.basicType == IrValueType.f32, "from f64 to %s", typeTo);
+					IrConstant con;
+					con.f32 = cast(float)c.constants.get(rval).f64;
+					result = c.constants.add(con.u32, IsSigned.no, IrArgSize.size32);
+					break;
+				default: c.unreachable;
+			}
+			break;
 
 		case fi_e, fi_i:
 			assert(false, "TODO");

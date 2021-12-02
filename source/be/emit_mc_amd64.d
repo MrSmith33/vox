@@ -16,18 +16,22 @@ void pass_emit_mc_amd64(ref CompilationContext context, CompilePassPerModule[] s
 {
 	auto emitter = CodeEmitter(&context);
 
-	fillStaticDataSections(&context);
-
-	if (context.printStaticData) {
-		writefln("// Data: addr 0x%X, %s bytes",
-			context.staticDataBuffer.bufPtr,
-			context.staticDataBuffer.length);
-		printHex(context.staticDataBuffer.data, 16);
-	}
-
 	// emit code
 	foreach (ref SourceFileInfo file; context.files.data) {
 		emitter.compileModule(file.mod);
+	}
+
+	fillStaticDataSections(&context);
+
+	if (context.printStaticData) {
+		writefln("// RW data: addr 0x%X, %s bytes",
+			context.staticDataBuffer.bufPtr,
+			context.staticDataBuffer.length);
+		printHex(context.staticDataBuffer.data, 16);
+		writefln("// RO data: addr 0x%X, %s bytes",
+			context.roStaticDataBuffer.bufPtr,
+			context.roStaticDataBuffer.length);
+		printHex(context.roStaticDataBuffer.data, 16);
 	}
 }
 
@@ -211,8 +215,8 @@ struct CodeEmitter
 	{
 		ObjectSymbol* funcSym = context.objSymTab.getSymbol(fun.backendData.objectSymIndex);
 		ptrdiff_t diff = gen.pc - funcSym.dataPtr;
-		assert(diff >= 0, "Negative buffer position");
-		assert(diff <= uint.max, "Function is bigger than uint.max");
+		context.assertf(diff >= 0, "Negative buffer position");
+		context.assertf(diff <= uint.max, "Function is bigger than uint.max");
 		return cast(uint)diff;
 	}
 
@@ -258,7 +262,7 @@ struct CodeEmitter
 						gen.xchg(dst, src, cast(ArgType)arg0.physRegSize);
 						break;
 					case Amd64Opcode.load:
-						genLoad(instrHeader.result(lir), instrHeader.arg(lir, 0), instrHeader.argSize);
+						genLoad(instrHeader.result(lir), instrHeader.arg(lir, 0));
 						break;
 					case Amd64Opcode.store:
 						genStore(instrHeader.arg(lir, 0), instrHeader.arg(lir, 1), instrHeader.argSize);
@@ -351,45 +355,45 @@ struct CodeEmitter
 					case Amd64Opcode.fadd:
 						IrIndex arg0 = instrHeader.arg(lir, 0);
 						IrIndex arg1 = instrHeader.arg(lir, 1);
-						assert(arg0.physRegClass == AMD64_REG_CLASS.XMM);
-						assert(arg1.physRegClass == AMD64_REG_CLASS.XMM);
+						context.assertf(arg0.physRegClass == AMD64_REG_CLASS.XMM, "fadd reg class %s != XMM", arg0.physRegClass);
+						context.assertf(arg1.physRegClass == AMD64_REG_CLASS.XMM, "fadd reg class %s != XMM", arg1.physRegClass);
 						final switch(instrHeader.argSize) with(IrArgSize) {
 							case size32: gen.addss(indexToRegister(arg0), indexToRegister(arg1)); break;
 							case size64: gen.addsd(indexToRegister(arg0), indexToRegister(arg1)); break;
-							case size8, size16, size128, size256, size512: assert(false);
+							case size8, size16, size128, size256, size512: context.internal_error("fadd %s", instrHeader.argSize);
 						}
 						break;
 					case Amd64Opcode.fsub:
 						IrIndex arg0 = instrHeader.arg(lir, 0);
 						IrIndex arg1 = instrHeader.arg(lir, 1);
-						assert(arg0.physRegClass == AMD64_REG_CLASS.XMM);
-						assert(arg1.physRegClass == AMD64_REG_CLASS.XMM);
+						context.assertf(arg0.physRegClass == AMD64_REG_CLASS.XMM, "fsub reg class %s != XMM", arg0.physRegClass);
+						context.assertf(arg1.physRegClass == AMD64_REG_CLASS.XMM, "fsub reg class %s != XMM", arg1.physRegClass);
 						final switch(instrHeader.argSize) with(IrArgSize) {
 							case size32: gen.subss(indexToRegister(arg0), indexToRegister(arg1)); break;
 							case size64: gen.subsd(indexToRegister(arg0), indexToRegister(arg1)); break;
-							case size8, size16, size128, size256, size512: assert(false);
+							case size8, size16, size128, size256, size512: context.internal_error("fsub %s", instrHeader.argSize);
 						}
 						break;
 					case Amd64Opcode.fdiv:
 						IrIndex arg0 = instrHeader.arg(lir, 0);
 						IrIndex arg1 = instrHeader.arg(lir, 1);
-						assert(arg0.physRegClass == AMD64_REG_CLASS.XMM);
-						assert(arg1.physRegClass == AMD64_REG_CLASS.XMM);
+						context.assertf(arg0.physRegClass == AMD64_REG_CLASS.XMM, "fdiv reg class %s != XMM", arg0.physRegClass);
+						context.assertf(arg1.physRegClass == AMD64_REG_CLASS.XMM, "fdiv reg class %s != XMM", arg1.physRegClass);
 						final switch(instrHeader.argSize) with(IrArgSize) {
 							case size32: gen.divss(indexToRegister(arg0), indexToRegister(arg1)); break;
 							case size64: gen.divsd(indexToRegister(arg0), indexToRegister(arg1)); break;
-							case size8, size16, size128, size256, size512: assert(false);
+							case size8, size16, size128, size256, size512: context.internal_error("fdiv %s", instrHeader.argSize);
 						}
 						break;
 					case Amd64Opcode.fmul:
 						IrIndex arg0 = instrHeader.arg(lir, 0);
 						IrIndex arg1 = instrHeader.arg(lir, 1);
-						assert(arg0.physRegClass == AMD64_REG_CLASS.XMM);
-						assert(arg1.physRegClass == AMD64_REG_CLASS.XMM);
+						context.assertf(arg0.physRegClass == AMD64_REG_CLASS.XMM, "fmul reg class %s != XMM", arg0.physRegClass);
+						context.assertf(arg1.physRegClass == AMD64_REG_CLASS.XMM, "fmul reg class %s != XMM", arg1.physRegClass);
 						final switch(instrHeader.argSize) with(IrArgSize) {
 							case size32: gen.mulss(indexToRegister(arg0), indexToRegister(arg1)); break;
 							case size64: gen.mulsd(indexToRegister(arg0), indexToRegister(arg1)); break;
-							case size8, size16, size128, size256, size512: assert(false);
+							case size8, size16, size128, size256, size512: context.internal_error("fmul %s", instrHeader.argSize);
 						}
 						break;
 
@@ -424,7 +428,7 @@ struct CodeEmitter
 							case IrArgSize.size16: gen.cwd; break;
 							case IrArgSize.size32: gen.cdq; break;
 							case IrArgSize.size64: gen.cqo; break;
-							case IrArgSize.size128, IrArgSize.size256, IrArgSize.size512: assert(false);
+							case IrArgSize.size128, IrArgSize.size256, IrArgSize.size512: context.internal_error("divsx %s", instrHeader.argSize);
 						}
 						break;
 					case Amd64Opcode.shl:
@@ -538,7 +542,7 @@ struct CodeEmitter
 							final switch(instrHeader.argSize) with(IrArgSize) {
 								case size32: gen.ucomiss(indexToRegister(arg0), indexToRegister(arg1)); break;
 								case size64: gen.ucomisd(indexToRegister(arg0), indexToRegister(arg1)); break;
-								case size8, size16, size128, size256, size512: assert(false);
+								case size8, size16, size128, size256, size512: context.internal_error("divsx %s", instrHeader.argSize);
 							}
 						} else {
 							genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(IrArgSize)instrHeader.argSize, instrIndex);
@@ -581,7 +585,7 @@ struct CodeEmitter
 							final switch(instrHeader.argSize) with(IrArgSize) {
 								case size32: gen.ucomiss(indexToRegister(arg0), indexToRegister(arg1)); break;
 								case size64: gen.ucomisd(indexToRegister(arg0), indexToRegister(arg1)); break;
-								case size8, size16, size128, size256, size512: assert(false);
+								case size8, size16, size128, size256, size512: context.internal_error("divsx %s", instrHeader.argSize);
 							}
 						} else {
 							genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(IrArgSize)instrHeader.argSize, instrIndex);
@@ -726,7 +730,7 @@ struct CodeEmitter
 
 		final switch (src.kind) with(IrValueKind)
 		{
-			case none, array, instruction, basicBlock, phi, type, virtualRegister, variable, func, constantAggregate: assert(false);
+			case none, array, instruction, basicBlock, phi, type, virtualRegister, variable, func, constantAggregate: context.internal_error("divsx src %s", src.kind);
 			case constantZero:
 			case constant:
 				IrConstant con = context.constants.get(src);
@@ -840,7 +844,7 @@ struct CodeEmitter
 								context.roStaticDataBuffer.put(con.i64);
 								gen.movq_xr(dstReg, memAddrRipDisp32(0));
 								break;
-							case size8, size16, size128, size256, size512: assert(false);
+							case size8, size16, size128, size256, size512: context.internal_error("genMove XMM <- const %s", argSize);
 						}
 						addRefTo(symIndex);
 					}
@@ -924,7 +928,7 @@ struct CodeEmitter
 				case size32: gen.movd_xr(dstReg, srcMem); break;
 				case size64: gen.movq_xr(dstReg, srcMem); break;
 				case size128: gen.movups(dstReg, srcMem); break;
-				case size8, size16, size256, size512: assert(false);
+				case size8, size16, size256, size512: context.internal_error("doMemToReg %s", argSize);
 			}
 		} else {
 			gen.mov(dstReg, srcMem, cast(ArgType)argSize);
@@ -934,8 +938,9 @@ struct CodeEmitter
 	/// Generate move from src operand to dst operand. argType describes the size of operands.
 	// If src is phys reg then it is used as address base.
 	// dst must be phys reg
-	void genLoad(IrIndex dst, IrIndex src, IrArgSize argSize)
+	void genLoad(IrIndex dst, IrIndex src)
 	{
+		IrArgSize argSize = cast(IrArgSize)dst.physRegSize;
 		bool valid = dst.isPhysReg && (src.isPhysReg || src.isStackSlot || src.isGlobal);
 		context.assertf(valid, "Invalid load %s -> %s", src.kind, dst.kind);
 
@@ -967,7 +972,7 @@ struct CodeEmitter
 					case size32: gen.movd_rx(dstMem, srcReg); break;
 					case size64: gen.movq_rx(dstMem, srcReg); break;
 					case size128: gen.movups(dstMem, srcReg); break;
-					case size8, size16, size256, size512: assert(false);
+					case size8, size16, size256, size512: context.internal_error("doRegToMem %s", argSize);
 				}
 			} else {
 				Register srcReg = indexToRegister(src);
@@ -984,7 +989,7 @@ struct CodeEmitter
 					context.assertf(dataSize != IrArgSize.size64, "Constant is too big");
 					gen.movq(dstMem, Imm32(con.i32));
 					break;
-				case size128, size256, size512: assert(false);
+				case size128, size256, size512: context.internal_error("doConToMem %s", argSize);
 			}
 		}
 

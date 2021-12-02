@@ -92,8 +92,10 @@ enum ObjectSymbolFlags : ushort {
 	isIndirect           = 1 << 3,
 	/// If true, data can be printed for debug as a string
 	isString             = 1 << 4,
+	/// If true, data can be printed for debug as a float
+	isFloat              = 1 << 5,
 	/// Marked if transitively used from any root symbol (only used for imported symbols atm)
-	isReferenced         = 1 << 5,
+	isReferenced         = 1 << 6,
 }
 
 enum ObjectSymbolKind : ushort {

@@ -134,8 +134,7 @@ TypeConvResKind type_conv_basic(BasicTypeNode* node, AstIndex typeBIndex, ref As
 					}
 					return res;
 				case AstType.literal_float:
-					if (res.canConvertImplicitly) return TypeConvResKind.override_expr_type_i;
-					if (typeB.isFloat) return TypeConvResKind.override_expr_type_i;
+					if (typeB.isFloat) return TypeConvResKind.ff_i;
 					return res;
 				default: return res;
 			}

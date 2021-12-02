@@ -85,12 +85,13 @@
 	+ load/store/push
 	+ pass/receive floats on stack
 	+ f32 <-> f64 casts
-	- int <-> float casts
+	+ int <-> float casts
+		- CTFE
 	+ regalloc needs to only work with current register class
-	- constants
+	+ constants
 		+ zero
 		+ non-zero
-		- constants as instruction arguments need to be lowered to movs
+		+ constants as instruction arguments need to be lowered to movs
 	- constant folding
 	- CTFE
 	- xchg
