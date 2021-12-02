@@ -14,6 +14,7 @@ import all;
 struct MoveSolver
 {
 	CompilationContext* context;
+	IrFunction* ir;
 
 	ValueInfo[] stackSlots;
 	ValueInfo[NUM_REGS_PER_CLASS][NUM_REG_CLASSES] registers;
@@ -29,6 +30,7 @@ struct MoveSolver
 	// after each `placeMovesBeforeInstr` call they need to be in init state for reuse
 	void setup(IrFunction* ir)
 	{
+		this.ir = ir; // for errors
 		savedBufLength = context.tempBuffer.length;
 		stackSlots = context.allocateTempArray!ValueInfo(ir.numStackSlots);
 		writtenNodesPtr = cast(IrIndex*)context.tempBuffer.nextPtr;
@@ -79,7 +81,7 @@ struct MoveSolver
 		}
 
 		context.assertf(toIndex.isPhysReg || toIndex.isStackSlot, "toIndex is %s", toIndex.kind);
-		context.assertf(!to.readFrom.isDefined, "Second write to %s detected", toIndex);
+		context.assertf(!to.readFrom.isDefined, "Second write to %s detected", IrIndexDump(toIndex, context, ir));
 
 		to.onWrite(fromIndex, toIndex, argSize);
 		to.arrayPos = numWrittenNodes;
@@ -232,7 +234,18 @@ struct MoveSolver
 
 				version(RAPrint_resolve) writefln("xchg from %s to %s %s", *from, *to, toIndex);
 
-				IrIndex instr = builder.emitInstr!(Amd64Opcode.xchg)(ExtraInstrArgs(), fromIndex, from.readFrom);
+				// For now assume both are physical registers
+				IrIndex reg0 = fromIndex;
+				IrIndex reg1 = from.readFrom;
+				context.assertf(reg0.isPhysReg, "%s is not phys reg", reg0);
+				context.assertf(reg1.isPhysReg, "%s is not phys reg", reg1);
+
+				// In case one register is bigger that the other, make them of equal size, so that code emitter doesn't complain
+				uint physRegSize = max(reg0.physRegSize, reg1.physRegSize);
+				reg0.physRegSize = physRegSize;
+				reg1.physRegSize = physRegSize;
+
+				IrIndex instr = builder.emitInstr!(Amd64Opcode.xchg)(ExtraInstrArgs(), reg0, reg1);
 				builder.insertBeforeInstr(beforeInstr, instr);
 
 				if (from.readFrom == toIndex) {

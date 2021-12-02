@@ -5044,3 +5044,114 @@ immutable test235 = q{--- test235
 	}
 	void receive(S**){}
 };
+
+
+/*@TestInfo()
+immutable test236 = q{--- test236
+	// Bug #27. be.reg_alloc.move_solver(82): ICE: Assertion failure: Second write to r0<c0 s2> detected
+	// First DCE removes some instructions. This leads to some phi functions not having any users.
+	// This makes liveness analysis emit empty range for those vregs ([102; 102) and [144; 144) for example).
+	// Then register allocator allocates two intervals to the same register, because
+	// overlap of [144; 144) and [144; 148) is not detected and they are both allocated to eax.
+	// Then move solver sees 2 writes to the same register and reports an error.
+
+	f64 to_f64(u8* s) {
+		f64 a = 0.0;
+		i32 c;
+		i32 e = 0;
+		c = *s++; // This expression will give use the "illegal hardware instruction" issue if I un-comment it
+		while (c != '\0' && is_digit(c)) {
+			a = a * 10.0 + (c - '0');
+		}
+
+		if (c == '.') {
+			c = *s++; // However, the same expression doesn't give the error here
+			while (c != '\0' && is_digit(c)) {
+				a = a * 10.0 + (c - '0');
+				e = e - 1;
+				c = *s++; // And here too!
+			}
+		}
+
+		if (c == 'e' || c == 'E') {
+			i32 sign = 1;
+			i32 i = 0;
+			c = *s++;
+			if (c == '+') c = *s++;
+			else if (c == '-') {
+				c = *s++;
+				sign = -1;
+			}
+
+			while (is_digit(c)) {
+				i = i * 10 + (c - '0');
+				c = *s++;
+			}
+			e += i*sign;
+		}
+		return a;
+	}
+
+	bool is_digit(i32 c) {
+		return c >= '0' && c <= '9';
+	}
+};*/
+
+
+@TestInfo()
+immutable test237 = q{--- test237
+	// Bug #27. be.emit_mc_amd64(257): ICE: Assertion failure: reg size mismatch 2 != 3
+	f64 to_f64(u8* s) {
+		f64 a = 0.0;
+		i32 c;
+		i32 e = 0;
+
+		c = *s++; // This expression will give use the "illegal hardware instruction" issue if I un-comment it
+		while (c != '\0' && is_digit(c)) {
+			a = a * 10.0 + (c - '0');
+		}
+
+		if (c == '.') {
+			c = *s++; // However, the same expression doesn't give the error here
+			while (c != '\0' && is_digit(c)) {
+				a = a * 10.0 + (c - '0');
+				e = e - 1;
+				c = *s++; // And here too!
+			}
+		}
+
+		if (c == 'e' || c == 'E') {
+			i32 sign = 1;
+			i32 i = 0;
+			c = *s++;
+			if (c == '+') c = *s++;
+			else if (c == '-') {
+				c = *s++;
+				sign = -1;
+			}
+
+			while (is_digit(c)) {
+			  i = i * 10 + (c - '0');
+			  c = *s++;
+			}
+			e += i*sign;
+		}
+
+		while (e > 0) {
+			a *= 10.0;
+			e--;
+		}
+
+		while (e < 0) {
+			a *= 0.1;
+			e++;
+		}
+
+		return a;
+	}
+
+	bool is_digit(i32 c) {
+		return c >= '0' && c <= '9';
+	}
+};
+
