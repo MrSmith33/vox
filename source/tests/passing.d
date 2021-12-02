@@ -5156,3 +5156,19 @@ immutable test237 = q{--- test237
 	}
 };
 
+
+@TestInfo()
+immutable test238 = q{--- test238
+	/// Bug #28. Missing handling of globals, functions in move solver
+	u8* retGlobal(i32 num) {
+		if (num == 0) return "0";
+		return "1";
+	}
+	void function() regFunc(i32 num) {
+		if (num == 0) return &fun1;
+		return &fun2;
+	}
+	void fun1(){}
+	void fun2(){}
+};
+

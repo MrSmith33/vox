@@ -57,10 +57,10 @@ struct MoveSolver
 	}
 
 	ref ValueInfo getInfo(IrIndex index) return {
-		switch(index.kind) {
-			case IrValueKind.constant, IrValueKind.constantZero: return anyConstant;
-			case IrValueKind.stackSlot: return stackSlots[index.storageUintIndex];
-			case IrValueKind.physicalRegister:  return registers[index.physRegClass][index.physRegIndex];
+		switch(index.kind) with(IrValueKind) {
+			case constant, constantZero, global, func: return anyConstant;
+			case stackSlot: return stackSlots[index.storageUintIndex];
+			case physicalRegister:  return registers[index.physRegClass][index.physRegIndex];
 			default: context.internal_error("getInfo(%s)", index);
 		}
 	}
