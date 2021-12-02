@@ -141,10 +141,6 @@ Debug CLI build:
 Release CLI build:
     `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -i main.d -of=../test_work_dir/vox.exe`
 
-Pretty asserts with stack traces are disabled in non-debug builds by default.
-* Add `--d-debug=PRETTY_ASSERT` flag to enable pretty asserts in ldc release build.
-* Add `-debug=PRETTY_ASSERT` flag to enable pretty asserts in dmd release build.
-
 # Using Commandline interface
 
 ## Getting help

@@ -35,10 +35,6 @@ enum IceBehavior : ubyte {
 	breakpoint
 }
 
-debug {
-	version = PRETTY_ASSERT;
-}
-
 enum TargetOs : ubyte {
 	windows,
 	linux,
@@ -322,63 +318,47 @@ struct CompilationContext
 	{
 		if (cond) return;
 
-		version(PRETTY_ASSERT)
-		{
-			size_t startLen = sink.data.length;
-			sink.putf("%s(%s): ICE: Assertion failure: ", file, line);
-			sink.putfln(fmt, args);
-			errorSink.put(sink.data[startLen..$]);
-			hasErrors = true;
-			handleICE(file, line);
-		}
-		else assert(false);
+		auto ice_state = begin_ice(file, line);
+
+		sink.putf("Assertion failure: ");
+		sink.putfln(fmt, args);
+
+		end_ice(ice_state);
 	}
 
 	void assertf(Args...)(bool cond, TokenIndex tokIdx, string fmt, Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		if (cond) return;
 
-		version(PRETTY_ASSERT)
-		{
-			size_t startLen = sink.data.length;
-			sink.putf("%s(%s): %s: ICE: Assertion failure: ", file, line, FmtSrcLoc(tokIdx, &this));
-			sink.putfln(fmt, args);
-			print_analysis_stack;
-			errorSink.put(sink.data[startLen..$]);
-			hasErrors = true;
-			handleICE(file, line);
-		}
-		else assert(false);
+		auto ice_state = begin_ice(file, line);
+
+		sink.putf("Assertion failure: ");
+		sink.putfln(fmt, args);
+
+		end_ice(ice_state, tokIdx);
 	}
 
 	noreturn unreachable(string file = __MODULE__, int line = __LINE__)
 	{
-		version(PRETTY_ASSERT)
-		{
-			internal_error_impl("Unreachable", file, line);
-		}
-		else assert(false);
+		auto ice_state = begin_ice(file, line);
+		sink.putfln("Unreachable");
+		end_ice(ice_state);
 	}
 
 	noreturn internal_error(Args...)(TokenIndex tokIdx, string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
-		version(PRETTY_ASSERT)
-		{
-			size_t startLen = sink.data.length;
-			sink.putf("%s: ", FmtSrcLoc(tokIdx, &this));
-			errorSink.put(sink.data[startLen..$]);
-			internal_error_impl(format, file, line, args);
-		}
-		else assert(false);
+		auto ice_state = begin_ice(file, line);
+		sink.putf("Internal error: ");
+		sink.putfln(format, args);
+		end_ice(ice_state, tokIdx);
 	}
 
 	noreturn internal_error(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
-		version(PRETTY_ASSERT)
-		{
-			internal_error_impl(format, file, line, args);
-		}
-		else assert(false);
+		auto ice_state = begin_ice(file, line);
+		sink.putf("Internal error: ");
+		sink.putfln(format, args);
+		end_ice(ice_state);
 	}
 
 	noreturn circular_dependency(AstIndex nodeIndex, CalculatedProperty prop, string file = __MODULE__, int line = __LINE__)
@@ -402,10 +382,50 @@ struct CompilationContext
 		throw new CompilationException(false, file, line);
 	}
 
-	void print_analysis_stack()
+	private static struct IceState {
+		size_t startLen;
+		string file;
+		int line;
+	}
+
+	private IceState begin_ice(string file, int line)
 	{
-		AnalysedNode top;
-		if (!analisysStack.empty) top = analisysStack.back;
+		stdout.flush;
+
+		size_t startLen = sink.data.length;
+		sink.putf("ICE(%s:%s): ", file, line);
+		return IceState(startLen, file, line);
+	}
+
+	private noreturn end_ice(IceState state, TokenIndex tokIdx = TokenIndex.init)
+	{
+		print_location(tokIdx);
+		errorSink.put(sink.data[state.startLen..$]);
+		hasErrors = true;
+		handleICE(state.file, state.line);
+	}
+
+	private void print_location(TokenIndex tokIdx = TokenIndex.init)
+	{
+		if (tokIdx.isValid) {
+			sink.putfln("- token %s", FmtSrcLoc(tokIdx, &this));
+		}
+		if (currentFunction) {
+			sink.putfln("- module `%s`", ModuleNamePrinter(currentFunction._module.get!ModuleDeclNode(&this), &this));
+			sink.putfln("- function `%s`", idString(currentFunction.id));
+			sink.putfln("  - defined at %s", FmtSrcLoc(currentFunction.loc, &this));
+		}
+		print_analysis_stack;
+	}
+
+	private void print_analysis_stack()
+	{
+		if (analisysStack.empty) return;
+
+		sink.putfln("Stack:");
+
+		AnalysedNode top = analisysStack.back;
+
 		while(!analisysStack.empty)
 		{
 			AnalysedNode currentItem = analisysStack.back;
@@ -417,21 +437,6 @@ struct CompilationContext
 			sink.putln;
 			analisysStack.unput(1);
 		}
-	}
-
-	private noreturn internal_error_impl(Args...)(string format, string file, int line, Args args)
-	{
-		size_t startLen = sink.data.length;
-		sink.putf("ICE(%s:%s): ", file, line);
-		sink.putfln(format, args);
-		if (currentFunction) {
-			sink.putfln("- module %s", ModuleNamePrinter(currentFunction._module.get!ModuleDeclNode(&this), &this));
-			sink.putfln("- function %s", idString(currentFunction.id));
-			sink.putfln("- defined at %s", FmtSrcLoc(currentFunction.loc, &this));
-		}
-		errorSink.put(sink.data[startLen..$]);
-		hasErrors = true;
-		handleICE(file, line);
 	}
 
 	void todo(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)

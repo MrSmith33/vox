@@ -273,7 +273,7 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 		// currentBlock must be finished with retVal
 		if (!ir.getBlock(currentBlock).isFinished)
 		{
-			c.error(f.loc,
+			c.unrecoverable_error(f.loc,
 				"function `%s` has no return statement, but is expected to return a value of type %s",
 				c.idString(f.id), signature.returnType.typeName(c));
 		}

@@ -255,7 +255,7 @@ struct CodeEmitter
 						context.assertf(arg1.isPhysReg, "%s is not phys reg", arg1);
 						context.assertf(arg0.isPhysReg, "%s is not phys reg", arg0);
 						context.assertf(arg0.physRegSize == arg1.physRegSize,
-							"reg size mismatch %s != %s", arg0.physRegSize, arg1.physRegSize);
+							"%s:%s reg size mismatch %s != %s", lirBlockIndex, instrIndex, arg0.physRegSize, arg1.physRegSize);
 						context.assertf(arg0.physRegClass == arg1.physRegClass && arg0.physRegClass == AMD64_REG_CLASS.GPR, "Only GPR xchg is implemented");
 						Register dst = indexToRegister(arg0);
 						Register src = indexToRegister(arg1);
