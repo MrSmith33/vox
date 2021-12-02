@@ -319,10 +319,7 @@ struct CompilationContext
 		if (cond) return;
 
 		auto ice_state = begin_ice(file, line);
-
-		sink.putf("Assertion failure: ");
 		sink.putfln(fmt, args);
-
 		end_ice(ice_state);
 	}
 
@@ -331,10 +328,7 @@ struct CompilationContext
 		if (cond) return;
 
 		auto ice_state = begin_ice(file, line);
-
-		sink.putf("Assertion failure: ");
 		sink.putfln(fmt, args);
-
 		end_ice(ice_state, tokIdx);
 	}
 
@@ -348,7 +342,6 @@ struct CompilationContext
 	noreturn internal_error(Args...)(TokenIndex tokIdx, string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		auto ice_state = begin_ice(file, line);
-		sink.putf("Internal error: ");
 		sink.putfln(format, args);
 		end_ice(ice_state, tokIdx);
 	}
@@ -356,7 +349,6 @@ struct CompilationContext
 	noreturn internal_error(Args...)(string format, Args args, string file = __MODULE__, int line = __LINE__)
 	{
 		auto ice_state = begin_ice(file, line);
-		sink.putf("Internal error: ");
 		sink.putfln(format, args);
 		end_ice(ice_state);
 	}
@@ -393,7 +385,7 @@ struct CompilationContext
 		stdout.flush;
 
 		size_t startLen = sink.data.length;
-		sink.putf("ICE(%s:%s): ", file, line);
+		sink.putf("%s:%s: ICE: ", file, line);
 		return IceState(startLen, file, line);
 	}
 

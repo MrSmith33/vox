@@ -335,6 +335,39 @@ struct IrFuncStorage
 	}
 }
 
+// phi iterators are aware of this
+// only safe to delete current phi while iterating
+void removePhi(CompilationContext* context, IrFunction* ir, IrIndex phiIndex)
+{
+	version(IrPrint) writefln("[IR] remove phi %s", phiIndex);
+	IrPhi* phi = ir.getPhi(phiIndex);
+	IrBasicBlock* block = ir.getBlock(phi.blockIndex);
+	version(IrPrint) {
+		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
+			writefln("[IR]   %s = %s", phi.result, phiIndex);
+		}
+	}
+	// TODO: free list of phis
+	if (block.firstPhi == phiIndex) block.firstPhi = phi.nextPhi;
+	if (phi.nextPhi.isDefined) ir.getPhi(phi.nextPhi).prevPhi = phi.prevPhi;
+	if (phi.prevPhi.isDefined) ir.getPhi(phi.prevPhi).nextPhi = phi.nextPhi;
+	version(IrPrint) writefln("[IR] after remove phi %s", phiIndex);
+	version(IrPrint) {
+		foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
+			writefln("[IR]   %s = %s", phi.result, phiIndex);
+		}
+	}
+
+	// mark as removed
+	phi.blockIndex = IrIndex();
+
+	// remove args
+	foreach(IrIndex arg; phi.args(ir)) {
+		removeUser(context, ir, phiIndex, arg);
+	}
+	phi.args.free(ir);
+}
+
 // instruction iterators are aware of this
 // only safe to delete current instruction while iterating
 void removeInstruction(IrFunction* ir, IrIndex instrIndex)

@@ -168,6 +168,14 @@ void func_pass_remove_dead_code(CompilationContext* context, IrFunction* ir, IrI
 	auto funcInstrInfos = allInstrInfos[ir.instructionSet];
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocksReverse)
 	{
+		foreach (IrIndex phiIndex, ref IrPhi phi; block.phis(ir))
+		{
+			if (ir.getVirtReg(phi.result).users.length == 0) {
+				removePhi(context, ir, phiIndex);
+				//writefln("removed dead %s", phiIndex);
+			}
+		}
+
 		foreach(IrIndex instrIndex, ref IrInstrHeader instrHeader; block.instructionsReverse(ir))
 		{
 			if (funcInstrInfos[instrHeader.op].hasSideEffects) continue;
@@ -184,7 +192,7 @@ void func_pass_remove_dead_code(CompilationContext* context, IrFunction* ir, IrI
 				removeUser(context, ir, instrIndex, arg);
 			}
 			removeInstruction(ir, instrIndex);
-			//writefln("remove dead %s", instrIndex);
+			//writefln("removed dead %s", instrIndex);
 		}
 	}
 }

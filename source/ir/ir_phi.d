@@ -12,7 +12,7 @@ import all;
 @(IrValueKind.phi)
 struct IrPhi
 {
-	IrIndex blockIndex;
+	IrIndex blockIndex; // null if removed
 	IrIndex result;
 	IrIndex var;
 	IrIndex nextPhi;

@@ -5046,9 +5046,10 @@ immutable test235 = q{--- test235
 };
 
 
-/*@TestInfo()
+@TestInfo()
 immutable test236 = q{--- test236
-	// Bug #27. be.reg_alloc.move_solver(82): ICE: Assertion failure: Second write to r0<c0 s2> detected
+	// Bug #27. be.reg_alloc.move_solver(82): ICE: Assertion failure: Second write to rax detected
+
 	// First DCE removes some instructions. This leads to some phi functions not having any users.
 	// This makes liveness analysis emit empty range for those vregs ([102; 102) and [144; 144) for example).
 	// Then register allocator allocates two intervals to the same register, because
@@ -5095,7 +5096,7 @@ immutable test236 = q{--- test236
 	bool is_digit(i32 c) {
 		return c >= '0' && c <= '9';
 	}
-};*/
+};
 
 
 @TestInfo()

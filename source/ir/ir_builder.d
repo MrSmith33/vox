@@ -863,37 +863,6 @@ struct IrBuilder
 		return phiIndex;
 	}
 
-	private void removePhi(IrIndex phiIndex)
-	{
-		version(IrPrint) writefln("[IR] remove phi %s", phiIndex);
-		IrPhi* phi = ir.getPhi(phiIndex);
-		IrBasicBlock* block = ir.getBlock(phi.blockIndex);
-		version(IrPrint) {
-			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
-				writefln("[IR]   %s = %s", phi.result, phiIndex);
-			}
-		}
-		// TODO: free list of phis
-		if (block.firstPhi == phiIndex) block.firstPhi = phi.nextPhi;
-		if (phi.nextPhi.isDefined) ir.getPhi(phi.nextPhi).prevPhi = phi.prevPhi;
-		if (phi.prevPhi.isDefined) ir.getPhi(phi.prevPhi).nextPhi = phi.nextPhi;
-		version(IrPrint) writefln("[IR] after remove phi %s", phiIndex);
-		version(IrPrint) {
-			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(ir)) {
-				writefln("[IR]   %s = %s", phi.result, phiIndex);
-			}
-		}
-
-		// mark as removed
-		phi.blockIndex = IrIndex();
-
-		// remove args
-		foreach(IrIndex arg; phi.args(ir)) {
-			removeUser(context, ir, phiIndex, arg);
-		}
-		phi.args.free(ir);
-	}
-
 	// Algorithm 2: Implementation of global value numbering
 	/// Returns the last value of the variable in basic block
 	private IrIndex readVariableRecursive(IrIndex blockIndex, IrIndex variable) {
@@ -1017,7 +986,7 @@ struct IrBuilder
 			updatePhiVarDefs(blockIndex, maybePhiVar, phiResultIndex, same);
 		}
 
-		removePhi(phiIndex);
+		removePhi(context, ir, phiIndex);
 
 		// Try to recursively remove all phi users, which might have become trivial
 		foreach (index, uint numUses; users.range(ir))

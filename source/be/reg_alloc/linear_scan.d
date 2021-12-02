@@ -839,6 +839,12 @@ struct LinearScan
 
 				case phi:
 					IrPhi* irPhi = lir.getPhi(vreg.definition);
+
+					// Skip phi functions with no users to avoid multiple writes to the same register.
+					if (lir.getVirtReg(irPhi.result).users.length == 0) {
+						break; // do not replace phi result without users, so we can detect and skip those in resolveEdge
+					}
+
 					uint pos = live.linearIndices.basicBlock(irPhi.blockIndex);
 					IrIndex reg = live.getRegFor(vregIndex, pos);
 					irPhi.result = reg;
@@ -1065,6 +1071,15 @@ struct LinearScan
 		foreach (IrIndex phiIndex, ref IrPhi phi; succBlock.phis(lir))
 		{
 			version(RAPrint_resolve) writef("    phi %s res %s", phiIndex, IrIndexDump(phi.result, context, lir));
+
+			// Skip phi functions with no users to avoid multiple writes to the same register.
+			// We do not replace results for userless phis in fixInstructionResults
+			if (phi.result.isVirtReg) {
+				auto numUsers = lir.getVirtReg(phi.result).users.length;
+				context.assertf(numUsers == 0, "phi is expected to have 0 users, but has %s users", numUsers);
+				continue;
+			}
+
 			IrIndex[] preds = lir.getBlock(phi.blockIndex).predecessors.data(lir);
 			foreach (size_t arg_i, ref IrIndex arg; phi.args(lir))
 			{
