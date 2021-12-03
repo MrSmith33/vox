@@ -390,7 +390,7 @@ __gshared CallConv sysv64_syscall_call_conv = CallConv
 	amd64_reg.bp, // frame pointer
 	amd64_reg.sp, // stack pointer
 
-	0,
+	4,
 	0,
 );
 
