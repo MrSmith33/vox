@@ -110,13 +110,7 @@ void ir_gen_module_func(ref IrGenState gen, ModuleDeclNode* m)
 		ir_gen_function(gen, func);
 
 		IrFunction* irData = c.getAst!IrFunction(func.backendData.irData);
-
-		// can be null if function is external
-		if (irData)
-		{
-			m.irModule.addFunction(c, irData);
-			if (c.validateIr) validateIrFunction(c, irData, "IR gen");
-			if (c.printIr && c.printDumpOf(func)) dumpFunction(c, irData, "IR gen");
-		}
+		// irData can be null if function is external
+		if (irData) m.irModule.addFunction(c, irData);
 	}
 }

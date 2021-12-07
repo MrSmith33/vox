@@ -496,6 +496,10 @@ Condition[] IrBinCondToAmd64Condition = [
 	Condition.GE, // sge
 	Condition.L,  // slt
 	Condition.LE, // sle
+	Condition.A,  // fgt
+	Condition.AE, // fge
+	Condition.B,  // flt
+	Condition.BE, // fle
 ];
 
 Condition[] IrUnCondToAmd64Condition = [
@@ -541,10 +545,9 @@ void dumpLirAmd64Index(scope void delegate(const(char)[]) sink, ref CompilationC
 		case basicBlock: sink.formattedWrite("@%s", i.storageUintIndex); break;
 		case constant:
 			final switch(i.constantKind) with(IrConstantKind) {
-				case intUnsignedSmall: sink.formattedWrite("%s", i.constantIndex); break;
-				case intSignedSmall: sink.formattedWrite("%s", (cast(int)i.constantIndex << 8) >> 8); break;
-				case intUnsignedBig: sink.formattedWrite("%s", context.constants.get(i).u64); break;
-				case intSignedBig: sink.formattedWrite("%s", context.constants.get(i).i64); break;
+				case smallZx: sink.formattedWrite("%s", i.constantIndex); break;
+				case smallSx: sink.formattedWrite("%s", (cast(int)i.constantIndex << 8) >> 8); break;
+				case big: sink.formattedWrite("%s", context.constants.get(i).i64); break;
 			}
 			break;
 		case constantAggregate: sink.formattedWrite("cagg%s", i.storageUintIndex); break;

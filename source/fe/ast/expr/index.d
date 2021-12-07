@@ -187,8 +187,8 @@ ExprValue ir_gen_index(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStm
 	ExprValue arrayLvalue = ir_gen_expr(gen, node.array, curBlock, afterIndex);
 	curBlock = afterIndex.blockIndex;
 
-	IrIndex aggregateIndex = c.constants.ZERO;
-	IrIndex slicePtrIndex = c.constants.ONE;
+	IrIndex aggregateIndex = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+	IrIndex slicePtrIndex = c.constants.add(makeIrType(IrBasicType.i32), 1);
 
 	ExpressionNode* arrayExpr = node.array.get_expr(c);
 	switch (arrayExpr.type.get_type(c).astType) with(AstType)

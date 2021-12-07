@@ -90,36 +90,36 @@ T min[T](T a, T b) {
 - Voxel engine that uses Vox as a scripting language: [Voxelman 2](https://github.com/MrSmith33/voxelman2)
 - Example of JIT compilation for amd64 from D code:
 
-<details>
-  <summary>code</summary>
+  <details>
+    <summary>code</summary>
+    
+  ```D
+  // Source code
+  string source = q{
+      void test(i32* array, i32 index, i32 value) {
+          array[index] = value;
+      }
+  };
   
-```D
-// Source code
-string source = q{
-    void test(i32* array, i32 index, i32 value) {
-        array[index] = value;
-    }
-};
-
-// Error handling is omitted
-Driver driver;
-driver.initialize(jitPasses);
-scope(exit) driver.releaseMemory;
-driver.beginCompilation();
-driver.addModule(SourceFileInfo("test", source));
-driver.compile();
-driver.markCodeAsExecutable();
-
-// Get function pointer
-auto testFun = driver.context.getFunctionPtr!(void, int*, int, int)("test");
-
-// Use compiled function
-int[2] val = [42, 56];
-testFun(val.ptr, 1, 10);
-assert(val[1] == 10);
-```
+  // Error handling is omitted
+  Driver driver;
+  driver.initialize(jitPasses);
+  scope(exit) driver.releaseMemory;
+  driver.beginCompilation();
+  driver.addModule(SourceFileInfo("test", source));
+  driver.compile();
+  driver.markCodeAsExecutable();
   
-</details>
+  // Get function pointer
+  auto testFun = driver.context.getFunctionPtr!(void, int*, int, int)("test");
+  
+  // Use compiled function
+  int[2] val = [42, 56];
+  testFun(val.ptr, 1, 10);
+  assert(val[1] == 10);
+  ```
+    
+  </details>
 
 ## Running & testing
 

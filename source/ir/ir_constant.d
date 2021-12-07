@@ -11,14 +11,12 @@ import all;
 
 ///
 enum IrConstantKind : ubyte {
-	/// Unsigned integer constant. Up to 24 bits. Stored directly in IrIndex.
-	intUnsignedSmall,
-	/// Signed integer constant. Up to 24 bits. Stored directly in IrIndex.
-	intSignedSmall,
-	/// Unsigned integer constant. Stored in constants buffer.
-	intUnsignedBig,
-	/// Signed integer constant. Stored in constants buffer.
-	intSignedBig,
+	/// Sign-extended integer constant. Up to 24 bits. Stored directly in IrIndex.
+	smallSx,
+	/// Zero-extended integer constant. Up to 24 bits. Stored directly in IrIndex.
+	smallZx,
+	/// integer or float constant. Stored in constants buffer. Stores precise type.
+	big,
 }
 
 /// Stores numeric constant data
@@ -26,41 +24,54 @@ enum IrConstantKind : ubyte {
 @(IrValueKind.constant)
 struct IrConstant
 {
-	this(long value) {
-		this.i64 = value;
+	this(IrIndex type, ulong value) {
+		this.type = type;
+		this.u64 = value;
 	}
 
-	static IrIndex type(IrIndex index) {
-		final switch(index.constantSize) with(IrArgSize) {
-			case size8: return makeBasicTypeIndex(IrValueType.i8);
-			case size16: return makeBasicTypeIndex(IrValueType.i16);
-			case size32: return makeBasicTypeIndex(IrValueType.i32);
-			case size64: return makeBasicTypeIndex(IrValueType.i64);
-			case size128, size256, size512: assert(false, "Sizes bigger than 64 are not stored in IrConstant");
-		}
+	this(float value) {
+		this.type = makeIrType(IrBasicType.f32);
+		this.f32 = value;
 	}
 
-	IrArgSize payloadSize(IrIndex index) {
-		if (index.isSignedConstant)
-			return argSizeIntSigned(i64);
-		else
-			return argSizeIntUnsigned(i64);
+	this(double value) {
+		this.type = makeIrType(IrBasicType.f64);
+		this.f64 = value;
 	}
 
-	union {
-		bool i1;
-		byte i8;
-		short i16;
-		int i32;
+	bool intFitsIn32Bits() {
+		return u32 == u64 || i32 == i64;
+	}
+
+	IrConstVal value;
+	IrIndex type;
+
+	alias value this;
+}
+
+union IrConstVal {
+	ulong u64;
+	long i64;
+	bool i1;
+	byte i8;
+	ubyte u8;
+	short i16;
+	ushort u16;
+	int i32;
+	struct {
 		uint u32;
-		long i64;
-		ulong u64;
-		float f32;
-		double f64;
+		uint u32_top;
 	}
+	float f32;
+	double f64;
 }
 
 enum IsSigned : bool {
+	no = false,
+	yes = true,
+}
+
+enum IsSignExtended : bool {
 	no = false,
 	yes = true,
 }
@@ -89,51 +100,56 @@ struct IrConstantStorage
 	Arena!uint aggregateBuffer;
 
 	///
-	IrIndex add(ulong value, IsSigned signed)
+	IrIndex add(float value)
 	{
-		if (signed)
-			return add(value, signed, argSizeIntSigned(value));
-		else
-			return add(value, signed, argSizeIntUnsigned(value));
+		if (value == 0) return makeIrType(IrBasicType.f32).zeroConstantOfType;
+		IrIndex result;
+		result.kind = IrValueKind.constant;
+		result.constantIndex = cast(uint)buffer.length;
+		result.constantKind = IrConstantKind.big;
+		buffer.put(IrConstant(value));
+		return result;
 	}
 
-	IrIndex add(ulong value, IsSigned signed, IrArgSize constantSize)
+	IrIndex add(double value)
 	{
+		if (value == 0) return makeIrType(IrBasicType.f64).zeroConstantOfType;
 		IrIndex result;
-
-		if (value == 0) {
-			final switch(constantSize) with(IrArgSize) {
-				case size8: return makeBasicTypeIndex(IrValueType.i8).zeroConstantOfType;
-				case size16: return makeBasicTypeIndex(IrValueType.i16).zeroConstantOfType;
-				case size32: return makeBasicTypeIndex(IrValueType.i32).zeroConstantOfType;
-				case size64: return makeBasicTypeIndex(IrValueType.i64).zeroConstantOfType;
-				case size128, size256, size512: assert(false, "Sizes bigger than 64 are not stored in IrConstant");
-			}
-		}
-
-		if (signed) {
-			bool fitsInSmallInt = ((value << 40) >> 40) == value;
-			if (fitsInSmallInt) {
-				result.constantIndex = cast(uint)(value & MASK_24_BITS);
-				result.constantKind = IrConstantKind.intSignedSmall;
-			} else {
-				result.constantIndex = cast(uint)buffer.length;
-				result.constantKind = IrConstantKind.intSignedBig;
-				buffer.put(IrConstant(value));
-			}
-		} else {
-			bool fitsInSmallInt = (value & MASK_24_BITS) == value;
-			if (fitsInSmallInt) {
-				result.constantIndex = cast(uint)(value & MASK_24_BITS);
-				result.constantKind = IrConstantKind.intUnsignedSmall;
-			} else {
-				result.constantIndex = cast(uint)buffer.length;
-				result.constantKind = IrConstantKind.intUnsignedBig;
-				buffer.put(IrConstant(value));
-			}
-		}
-		result.constantSize = constantSize;
 		result.kind = IrValueKind.constant;
+		result.constantIndex = cast(uint)buffer.length;
+		result.constantKind = IrConstantKind.big;
+		buffer.put(IrConstant(value));
+		return result;
+	}
+
+	///
+	IrIndex add(IrIndex type, long value)
+	{
+		if (value == 0) return type.zeroConstantOfType;
+
+		IrIndex result;
+		result.kind = IrValueKind.constant;
+
+		if (type.isTypeInteger) {
+			bool fitsInSmallIntWithSx = ((value << 40) >> 40) == value;
+			if (fitsInSmallIntWithSx) {
+				result.constantSize = cast(IrArgSize)(type.typeIndex - IrBasicType.i8);
+				result.constantIndex = cast(uint)(value & MASK_24_BITS);
+				result.constantKind = IrConstantKind.smallSx;
+				return result;
+			}
+
+			bool fitsInSmallIntWithZx = (value & MASK_24_BITS) == value;
+			if (fitsInSmallIntWithZx) {
+				result.constantSize = cast(IrArgSize)(type.typeIndex - IrBasicType.i8);
+				result.constantIndex = cast(uint)(value & MASK_24_BITS);
+				result.constantKind = IrConstantKind.smallZx;
+				return result;
+			}
+		}
+		result.constantIndex = cast(uint)buffer.length;
+		result.constantKind = IrConstantKind.big;
+		buffer.put(IrConstant(type, value));
 		return result;
 	}
 
@@ -192,9 +208,9 @@ struct IrConstantStorage
 		if (index.kind == IrValueKind.constant)
 		{
 			final switch(index.constantKind) with(IrConstantKind) {
-				case intUnsignedSmall: return IrConstant(index.constantIndex);
-				case intSignedSmall: return IrConstant((cast(int)index.constantIndex << 8) >> 8);
-				case intUnsignedBig, intSignedBig:
+				case smallZx: return IrConstant(makeIrType(cast(IrBasicType)(IrBasicType.i8 + index.constantSize)), index.constantIndex);
+				case smallSx: return IrConstant(makeIrType(cast(IrBasicType)(IrBasicType.i8 + index.constantSize)), (cast(int)index.constantIndex << 8) >> 8);
+				case big:
 					assert(index.constantIndex < buffer.length,
 						format("Not in bounds: index.constantIndex(%s) < buffer.length(%s)",
 							index.constantIndex, buffer.length));
@@ -203,25 +219,16 @@ struct IrConstantStorage
 		}
 		else if (index.kind == IrValueKind.constantZero)
 		{
-			return IrConstant(0);
+			return IrConstant(index.typeOfConstantZero, 0);
 		}
 		else
 			assert(false, format("Not a constant (%s)", index));
 	}
-
-	enum IrIndex ZERO = IrIndex.fromUint(IrValueKind.constantZero << 28 | IrTypeKind.basic << 24 | IrValueType.i8);
-	enum IrIndex ONE = makeConst(1, IrConstantKind.intSignedSmall);
-}
-
-private IrIndex makeConst(uint val, IrConstantKind kind) {
-	IrIndex result;
-	result.storageUintIndex = val | kind << 24;
-	result.kind = IrValueKind.constant;
-	return result;
 }
 
 /// Stores constant into buffer
 alias UnknownValueHandler = void delegate(ubyte[] buffer, IrIndex index, CompilationContext* c);
+
 void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, UnknownValueHandler handler = null)
 {
 	if (index.isConstant)
@@ -230,15 +237,15 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 		switch(buffer.length)
 		{
 			case 1:
-				if (index.constantSize > IrArgSize.size8) goto default;
+				if (c.types.typeSize(con.type) > 1) goto default;
 				buffer[0] = con.i8;
 				break;
 			case 2:
-				if (index.constantSize > IrArgSize.size16) goto default;
+				if (c.types.typeSize(con.type) > 2) goto default;
 				*(cast(short*)buffer.ptr) = con.i16;
 				break;
 			case 4:
-				if (index.constantSize > IrArgSize.size32) goto default;
+				if (c.types.typeSize(con.type) > 4) goto default;
 				*(cast(int*)buffer.ptr) = con.i32;
 				break;
 			case 8:
@@ -246,7 +253,7 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 				break;
 			default:
 				c.internal_error("Cannot store constant %s of size %s, into memory of size %s bytes",
-					con.i64, index.constantSize, buffer.length);
+					con.i64, c.types.typeSize(con.type), buffer.length);
 		}
 	}
 	else if (index.isConstantZero)
@@ -299,42 +306,29 @@ void constantToMem(ubyte[] buffer, IrIndex index, CompilationContext* c, Unknown
 	}
 }
 
-IrIndex memToConstant(ubyte[] buffer, IrIndex type, CompilationContext* c, IsSigned signed)
+IrIndex memToConstant(ubyte[] buffer, IrIndex type, CompilationContext* c)
 {
-	c.assertf(type.isTypeBasic, "%s", type);
-
-	ulong value;
-	IrArgSize constSize;
-	switch(type.typeIndex)
+	switch(type.basicType(c))
 	{
-		case IrValueType.i8:
+		case IrBasicType.i8:
 			c.assertf(1 == buffer.length,
 				"Cannot load i8 constant from memory of size %s bytes", buffer.length);
-			value = *(cast(byte*)buffer.ptr);
-			constSize = IrArgSize.size8;
-			break;
-		case IrValueType.i16:
+			return c.constants.add(type, *(cast(byte*)buffer.ptr));
+		case IrBasicType.i16:
 			c.assertf(2 == buffer.length,
 				"Cannot load i8 constant from memory of size %s bytes", buffer.length);
-			value = *(cast(short*)buffer.ptr);
-			constSize = IrArgSize.size16;
-			break;
-		case IrValueType.i32:
+			return c.constants.add(type, *(cast(short*)buffer.ptr));
+		case IrBasicType.i32:
 			c.assertf(4 == buffer.length,
 				"Cannot load i8 constant from memory of size %s bytes", buffer.length);
-			value = *(cast(int*)buffer.ptr);
-			constSize = IrArgSize.size32;
-			break;
-		case IrValueType.i64:
+			return c.constants.add(type, *(cast(int*)buffer.ptr));
+		case IrBasicType.i64:
 			c.assertf(8 == buffer.length,
 				"Cannot load i8 constant from memory of size %s bytes", buffer.length);
-			value = *(cast(long*)buffer.ptr);
-			constSize = IrArgSize.size64;
-			break;
+			return c.constants.add(type, *(cast(long*)buffer.ptr));
 		default:
-			c.internal_error("memToConstant %s", cast(IrValueType)type.typeIndex);
+			c.internal_error("memToConstant %s", cast(IrBasicType)type.typeIndex);
 	}
-	return c.constants.add(value, signed, constSize);
 }
 
 // vm may be null, in which case only constants can be parsed

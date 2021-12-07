@@ -72,7 +72,7 @@ IrIndex gen_ir_type_slice(SliceTypeNode* t, CompilationContext* context)
 	IrTypeStruct* structType = &context.types.get!IrTypeStruct(t.irType);
 	IrIndex baseType = t.base.gen_ir_type(context);
 	// length
-	structType.members[0] = IrTypeStructMember(makeBasicTypeIndex(IrValueType.i64), 0);
+	structType.members[0] = IrTypeStructMember(makeIrType(IrBasicType.i64), 0);
 	// ptr
 	structType.members[1] = IrTypeStructMember(context.types.appendPtr(baseType), POINTER_SIZE);
 	structType.sizealign = t.sizealign;

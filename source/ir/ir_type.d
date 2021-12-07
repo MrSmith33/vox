@@ -10,9 +10,8 @@ import std.format : format;
 import std.traits : getUDAs;
 import all;
 
-/// Integers are both signed two-complement and unsigned
-// TODO: rename to IrBasicType
-enum IrValueType : ubyte
+/// Integers are two-complement of unknown signedness
+enum IrBasicType : ubyte
 {
 	noreturn_t,
 	void_t,
@@ -25,10 +24,10 @@ enum IrValueType : ubyte
 }
 
 enum CovertionKind : ubyte {
-	itoi,
-	itof,
-	ftoi,
-	ftof,
+	itoi, // int to int
+	itof, // int to float
+	ftoi, // float to int
+	ftof, // float to float
 }
 
 ///
@@ -50,7 +49,7 @@ struct SizeAndAlignment {
 }
 
 ///
-IrIndex makeBasicTypeIndex(IrValueType t) {
+IrIndex makeIrType(IrBasicType t) pure {
 	IrIndex result;
 	result.kind = IrValueKind.type;
 	result.typeKind = IrTypeKind.basic;
@@ -251,15 +250,15 @@ struct IrTypeStorage
 		assert(type.isType, format("not a type (%s)", type));
 		final switch (type.typeKind) {
 			case IrTypeKind.basic:
-			final switch (cast(IrValueType)type.typeIndex) {
-				case IrValueType.noreturn_t: return SizeAndAlignment(0, 0);
-				case IrValueType.void_t: return SizeAndAlignment(0, 0);
-				case IrValueType.i8: return SizeAndAlignment(1, 0);
-				case IrValueType.i16: return SizeAndAlignment(2, 1);
-				case IrValueType.i32: return SizeAndAlignment(4, 2);
-				case IrValueType.i64: return SizeAndAlignment(8, 3);
-				case IrValueType.f32: return SizeAndAlignment(4, 2);
-				case IrValueType.f64: return SizeAndAlignment(8, 3);
+			final switch (cast(IrBasicType)type.typeIndex) {
+				case IrBasicType.noreturn_t: return SizeAndAlignment(0, 0);
+				case IrBasicType.void_t: return SizeAndAlignment(0, 0);
+				case IrBasicType.i8: return SizeAndAlignment(1, 0);
+				case IrBasicType.i16: return SizeAndAlignment(2, 1);
+				case IrBasicType.i32: return SizeAndAlignment(4, 2);
+				case IrBasicType.i64: return SizeAndAlignment(8, 3);
+				case IrBasicType.f32: return SizeAndAlignment(4, 2);
+				case IrBasicType.f64: return SizeAndAlignment(8, 3);
 			}
 			case IrTypeKind.pointer:
 				return SizeAndAlignment(8, 3);
@@ -322,7 +321,7 @@ struct IrTypeStorage
 	{
 		auto func = &get!IrTypeFunction(funcSigType);
 		if (func.numResults == 0)
-			return makeBasicTypeIndex(IrValueType.void_t);
+			return makeIrType(IrBasicType.void_t);
 		c.assertf(func.numResults == 1, "getFuncSignatureReturnType on func with %s results", func.numResults);
 		return func.resultTypes[0];
 	}
@@ -401,7 +400,7 @@ IrIndex getValueType(IrIndex value, IrFunction* ir, CompilationContext* c)
 	switch(value.kind) with(IrValueKind)
 	{
 		case constant:
-			return c.constants.get(value).type(value);
+			return c.constants.get(value).type;
 		case constantAggregate:
 			return c.constants.getAggregate(value).type;
 		case constantZero:

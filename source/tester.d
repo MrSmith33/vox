@@ -25,13 +25,14 @@ int runDevTests()
 	driver.context.validateIr = true;
 	driver.context.printTraceOnError = true;
 	driver.context.printTodos = true;
+	//driver.context.disableDCE = true;
 	//driver.context.runTesters = false;
 	//driver.context.debugRegAlloc = true;
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
 	//driver.context.targetOs = TargetOs.linux;
 	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
-	//driver.context.setDumpFilter("fun");
+	//test.printFilter = "i32_to_str";
 
 	scope(exit) {
 		//driver.context.printMemSize;
@@ -116,6 +117,7 @@ int runAllTests(StopOnFirstFail stopOnFirstFail)
 				writefln("%s/%s test `%s` %s", indexOffset+i+1, numTests, test.testName, res);
 				failed = true;
 				if (stopOnFirstFail) writeln("Stopping on first fail");
+				writeln;
 			}
 			else
 			{
@@ -181,6 +183,7 @@ struct Test
 	string harData;
 	void function(ref TestContext) tester;
 	HostSymbol[] hostSymbols;
+	string printFilter;
 }
 
 Test makeTest(alias test)() {
@@ -259,6 +262,9 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 
 		// setup modules
 		driver.beginCompilation();
+
+		if (curTest.printFilter.length) driver.context.setDumpFilter(curTest.printFilter);
+
 		driver.addHostSymbols(curTest.hostSymbols);
 
 		void onHarFile(SourceFileInfo fileInfo)

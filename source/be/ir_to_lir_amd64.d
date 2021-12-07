@@ -93,13 +93,14 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 				return index;
 			case constant:
 				final switch(index.constantKind) with(IrConstantKind) {
-					case intUnsignedSmall, intSignedSmall: return index;
-					case intUnsignedBig, intSignedBig:
-						if (context.constants.get(index).payloadSize(index) == IrArgSize.size64)
-							break;
+					case smallZx, smallSx: return index;
+					case big:
+						auto con = context.constants.get(index);
+						if (con.type.isTypeFloat) break;
+						if (con.type.isTypeInteger && !con.intFitsIn32Bits) break;
 						return index;
 				}
-				goto case;
+				goto case; // big constant
 			case global:
 			case stackSlot:
 			case func:
@@ -125,7 +126,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 			InstrWithResult movInstr = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, lirPtr);
 			ptr = movInstr.result;
 		} else {
-			IrIndex offsetIndex = context.constants.add(offset, IsSigned.no);
+			IrIndex offsetIndex = context.constants.add(makeIrType(IrBasicType.i32), offset);
 			ExtraInstrArgs extra = { addUsers : false, type : ptrType };
 			InstrWithResult addressInstr = builder.emitInstr!(Amd64Opcode.add)(lirBlockIndex, extra, lirPtr, offsetIndex);
 			ptr = addressInstr.result;
@@ -148,9 +149,9 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 		IrIndex sizeReg = IrIndex(amd64_reg.cx, IrArgSize.size64);
 		IrIndex ptrReg = IrIndex(amd64_reg.di, IrArgSize.size64);
 		// data
-		makeMov(dataReg, context.constants.add(0, IsSigned.no), IrArgSize.size64, lirBlockIndex);
+		makeMov(dataReg, context.constants.addZeroConstant(makeIrType(IrBasicType.i64)), IrArgSize.size64, lirBlockIndex);
 		// size
-		makeMov(sizeReg, context.constants.add(numBytes, IsSigned.no), IrArgSize.size64, lirBlockIndex);
+		makeMov(sizeReg, context.constants.add(makeIrType(IrBasicType.i64), numBytes), IrArgSize.size64, lirBlockIndex);
 		// ptr
 		makeMov(ptrReg, lirPtr, IrArgSize.size64, lirBlockIndex);
 
@@ -183,18 +184,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 					break;
 				}
 
-				IrIndex rvalue = getFixedIndex(irValue);
-				bool isBigConstant = rvalue.isConstant && context.constants.get(rvalue).payloadSize(rvalue) == IrArgSize.size64;
-
-				/// Cannot obtain address and store it in another address in one step
-				if (rvalue.isGlobal || rvalue.isStackSlot || isBigConstant || rvalue.isFunction)
-				{
-					// copy to temp register
-					ExtraInstrArgs extra = { addUsers : false, type : srcType };
-					InstrWithResult movInstr = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, rvalue);
-					rvalue = movInstr.result;
-				}
-
+				IrIndex rvalue = getFixedLegalIndex(irValue, lirBlockIndex);
 				ExtraInstrArgs extra = { addUsers : false, argSize : argSize };
 				IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
 				builder.emitInstr!(Amd64Opcode.store)(lirBlockIndex, extra, ptr, rvalue);
@@ -354,12 +344,11 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 		uint typeSize = context.types.typeSize(valType);
 
 		uint offset = 0;
-		IrValueType elemValType = IrValueType.i64; // i64, i32, i16, i8
+		IrIndex elemType = makeIrType(IrBasicType.i64); // i64, i32, i16, i8
 		IrArgSize elemArgSize = IrArgSize.size64; // size64, size32, size16, size8
 		uint elemSize = 8; // 8, 4, 2, 1
 		while (elemSize > 0)
 		{
-			IrIndex elemType = makeBasicTypeIndex(elemValType);
 			IrIndex elemPtrType = context.types.appendPtr(elemType);
 			while (typeSize >= elemSize)
 			{
@@ -372,7 +361,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 				typeSize -= elemSize;
 			}
 			elemSize /= 2;
-			--elemValType;
+			elemType.typeIndex = elemType.typeIndex - 1;
 			--elemArgSize;
 		}
 	}
@@ -602,7 +591,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 						builder.emitInstr!(Amd64Opcode.divsx)(lirBlockIndex, extra2);
 					} else {
 						// zero top half of dividend
-						makeMov(dividendTop, context.constants.add(0, IsSigned.no), IrArgSize.size32, lirBlockIndex);
+						makeMov(dividendTop, context.constants.addZeroConstant(makeIrType(IrBasicType.i32)), IrArgSize.size32, lirBlockIndex);
 					}
 
 					// choose result
@@ -793,15 +782,15 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 					case 4:
 						switch(typeSizeFrom) {
 						case 1:
-							IrIndex u32 = emit_nonfinal!(Amd64Opcode.movzx_btod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							IrIndex u32 = emit_nonfinal!(Amd64Opcode.movzx_btod)(makeIrType(IrBasicType.i32), arg0);
 							emit_final!(Amd64Opcode.i32_to_f32)(typeTo, u32);
 							break switch_instr;
 						case 2:
-							IrIndex u32 = emit_nonfinal!(Amd64Opcode.movzx_wtod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							IrIndex u32 = emit_nonfinal!(Amd64Opcode.movzx_wtod)(makeIrType(IrBasicType.i32), arg0);
 							emit_final!(Amd64Opcode.i32_to_f32)(typeTo, u32);
 							break switch_instr;
 						case 4:
-							IrIndex i64 = emit_nonfinal!(Amd64Opcode.mov)(makeBasicTypeIndex(IrValueType.i64), arg0);
+							IrIndex i64 = emit_nonfinal!(Amd64Opcode.mov)(makeIrType(IrBasicType.i64), arg0);
 							emit_final!(Amd64Opcode.i64_to_f32)(typeTo, i64);
 							break switch_instr;
 						case 8: emitLirInstr!(Amd64Opcode.i64_to_f32); break switch_instr; // u64 -> f32
@@ -811,15 +800,15 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 					case 8:
 						switch(typeSizeFrom) {
 						case 1:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movzx_btod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movzx_btod)(makeIrType(IrBasicType.i32), arg0);
 							emit_final!(Amd64Opcode.i32_to_f64)(typeTo, i32);
 							break switch_instr;
 						case 2:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movzx_wtod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movzx_wtod)(makeIrType(IrBasicType.i32), arg0);
 							emit_final!(Amd64Opcode.i32_to_f64)(typeTo, i32);
 							break switch_instr;
 						case 4:
-							IrIndex i64 = emit_nonfinal!(Amd64Opcode.mov)(makeBasicTypeIndex(IrValueType.i64), arg0);
+							IrIndex i64 = emit_nonfinal!(Amd64Opcode.mov)(makeIrType(IrBasicType.i64), arg0);
 							emit_final!(Amd64Opcode.i64_to_f64)(typeTo, i64);
 							break switch_instr;
 						case 8: emitLirInstr!(Amd64Opcode.i64_to_f64); break switch_instr; // u64 -> f64
@@ -839,11 +828,11 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 					case 4:
 						switch(typeSizeFrom) {
 						case 1:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_btod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_btod)(makeIrType(IrBasicType.i32), arg0);
 							emit_final!(Amd64Opcode.i32_to_f32)(typeTo, i32);
 							break switch_instr;
 						case 2:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_wtod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_wtod)(makeIrType(IrBasicType.i32), arg0);
 							emit_final!(Amd64Opcode.i32_to_f32)(typeTo, i32);
 							break switch_instr;
 						case 4: emitLirInstr!(Amd64Opcode.i32_to_f32); break switch_instr;
@@ -854,11 +843,11 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 					case 8:
 						switch(typeSizeFrom) {
 						case 1:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_btod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_btod)(makeIrType(IrBasicType.i32), arg0);
 							emit_final!(Amd64Opcode.i32_to_f64)(typeTo, i32);
 							break switch_instr;
 						case 2:
-							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_wtod)(makeBasicTypeIndex(IrValueType.i32), arg0);
+							IrIndex i32 = emit_nonfinal!(Amd64Opcode.movsx_wtod)(makeIrType(IrBasicType.i32), arg0);
 							emit_final!(Amd64Opcode.i32_to_f64)(typeTo, i32);
 							break switch_instr;
 						case 4: emitLirInstr!(Amd64Opcode.i32_to_f64); break switch_instr;
@@ -880,7 +869,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 						switch(typeSizeTo) {
 							case 1:
 							case 2:
-								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f32_to_i32_trunc)(makeBasicTypeIndex(IrValueType.i32), arg0);
+								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f32_to_i32_trunc)(makeIrType(IrBasicType.i32), arg0);
 								emit_final!(Amd64Opcode.mov)(typeTo, i32);
 								break switch_instr;
 							case 4: emitLirInstr!(Amd64Opcode.f32_to_i64_trunc); break switch_instr; // f32 -> u32
@@ -892,11 +881,11 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 						switch(typeSizeTo) {
 							case 1:
 							case 2:
-								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f64_to_i32_trunc)(makeBasicTypeIndex(IrValueType.i32), arg0);
+								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f64_to_i32_trunc)(makeIrType(IrBasicType.i32), arg0);
 								emit_final!(Amd64Opcode.mov)(typeTo, i32);
 								break switch_instr;
 							case 4:
-								IrIndex i64 = emit_nonfinal!(Amd64Opcode.f64_to_i64_trunc)(makeBasicTypeIndex(IrValueType.i64), arg0);
+								IrIndex i64 = emit_nonfinal!(Amd64Opcode.f64_to_i64_trunc)(makeIrType(IrBasicType.i64), arg0);
 								emit_final!(Amd64Opcode.mov)(typeTo, i64);
 								break switch_instr;
 							case 8: emitLirInstr!(Amd64Opcode.f64_to_i64_trunc); break switch_instr; // f64 -> u64
@@ -917,7 +906,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 						switch(typeSizeTo) {
 							case 1:
 							case 2:
-								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f32_to_i32_trunc)(makeBasicTypeIndex(IrValueType.i32), arg0);
+								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f32_to_i32_trunc)(makeIrType(IrBasicType.i32), arg0);
 								emit_final!(Amd64Opcode.mov)(typeTo, i32);
 								break switch_instr;
 							case 4: emitLirInstr!(Amd64Opcode.f32_to_i32_trunc); break switch_instr;
@@ -929,7 +918,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 						switch(typeSizeTo) {
 							case 1:
 							case 2:
-								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f64_to_i32_trunc)(makeBasicTypeIndex(IrValueType.i32), arg0);
+								IrIndex i32 = emit_nonfinal!(Amd64Opcode.f64_to_i32_trunc)(makeIrType(IrBasicType.i32), arg0);
 								emit_final!(Amd64Opcode.mov)(typeTo, i32);
 								break switch_instr;
 							case 4: emitLirInstr!(Amd64Opcode.f64_to_i32_trunc); break switch_instr;

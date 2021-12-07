@@ -51,7 +51,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 		case literal_bool: return ir_gen_literal_bool(context, cast(BoolLiteralExprNode*)node);
 
 		case type_basic, type_ptr, type_slice, type_static_array, decl_function, decl_struct:
-			return context.constants.add(nodeIndex.storageIndex, IsSigned.no, IrArgSize.size32);
+			return context.constants.add(makeIrType(IrBasicType.i32), nodeIndex.storageIndex);
 		default:
 			context.internal_error(node.loc, "Cannot evaluate static expression %s", node.astType);
 	}
@@ -69,8 +69,7 @@ AstIndex eval_static_expr_alias(AstIndex nodeIndex, CompilationContext* c)
 	if (!val.isSomeConstant)
 		c.internal_error(node.loc, "Cannot obtain $alias from %s", val);
 	IrConstant con = c.constants.get(val);
-	if (con.payloadSize(val) > IrArgSize.size32)
-		c.internal_error(node.loc, "Cannot obtain $alias from %s, too big", val);
+	c.assertf(con.type == makeIrType(IrBasicType.i32), node.loc, "Cannot obtain $alias from %s", val);
 	return AstIndex(con.i32);
 }
 
@@ -84,8 +83,7 @@ AstIndex eval_static_expr_type(AstIndex nodeIndex, CompilationContext* c)
 	if (!val.isSomeConstant)
 		c.internal_error(node.loc, "Cannot obtain $type from %s", val);
 	IrConstant con = c.constants.get(val);
-	if (con.payloadSize(val) > IrArgSize.size32)
-		c.internal_error(node.loc, "Cannot obtain $type from %s, too big", val);
+	c.assertf(con.type == makeIrType(IrBasicType.i32), node.loc, "Cannot obtain $type from %s", val);
 	return AstIndex(con.i32);
 }
 
@@ -104,7 +102,7 @@ IrIndex eval_static_expr_member(MemberExprNode* node, CompilationContext* c)
 			return eval_builtin_member(node.member(c).get!BuiltinNode(c).builtin, node.aggregate, node.loc, c);
 		case alias_array_length:
 			auto ctParam = node.aggregate.get_effective_node(c).get!AliasArrayDeclNode(c);
-			return c.constants.add(ctParam.items.length, IsSigned.no, IrArgSize.size64);
+			return c.constants.add(makeIrType(IrBasicType.i64), ctParam.items.length);
 		default:
 			AstIndex nodeIndex = get_ast_index(node, c);
 			c.unrecoverable_error(node.loc,
@@ -122,16 +120,16 @@ IrIndex eval_builtin_member(BuiltinId builtin, AstIndex obj, TokenIndex loc, Com
 	{
 		case int_min:
 			auto b = objType.get!BasicTypeNode(c);
-			return c.constants.add(b.minValue, b.isSigned, objType.get_type(c).argSize(c));
+			return c.constants.add(gen_ir_type_basic(b, c), b.minValue);
 		case int_max:
 			auto b = objType.get!BasicTypeNode(c);
-			return c.constants.add(b.maxValue, b.isSigned, objType.get_type(c).argSize(c));
+			return c.constants.add(gen_ir_type_basic(b, c), b.maxValue);
 		case array_length:
 			require_type_check(objType, c);
-			return c.constants.add(objType.get!StaticArrayTypeNode(c).length, IsSigned.no, IrArgSize.size64);
+			return c.constants.add(makeIrType(IrBasicType.i64), objType.get!StaticArrayTypeNode(c).length);
 		case type_sizeof:
 			SizeAndAlignment sizealign = objType.require_type_size(c);
-			return c.constants.add(sizealign.size, IsSigned.no, IrArgSize.size64);
+			return c.constants.add(makeIrType(IrBasicType.i64), sizealign.size);
 		default:
 			c.unrecoverable_error(loc,
 				"Cannot access .%s member of %s while in CTFE",
@@ -146,17 +144,17 @@ IrIndex eval_static_expr_bin_op(BinaryExprNode* node, CompilationContext* c)
 		case BinOp.LOGIC_AND:
 			IrIndex leftVal = eval_static_expr(node.left, c);
 			IrConstant leftCon = c.constants.get(leftVal);
-			if (!leftCon.i64) return c.constants.add(0, IsSigned.no, IrArgSize.size8);
+			if (!leftCon.i64) return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
 			return eval_static_expr(node.right, c);
 		case BinOp.LOGIC_OR:
 			IrIndex leftVal = eval_static_expr(node.left, c);
 			IrConstant leftCon = c.constants.get(leftVal);
-			if (leftCon.i64) return c.constants.add(1, IsSigned.no, IrArgSize.size8);
+			if (leftCon.i64) return c.constants.add(makeIrType(IrBasicType.i8), 1);
 			return eval_static_expr(node.right, c);
 		default:
 			IrIndex leftVal = eval_static_expr(node.left, c);
 			IrIndex rightVal = eval_static_expr(node.right, c);
-			return calcBinOp(node.op, leftVal, rightVal, node.type.typeArgSize(c), c);
+			return calcBinOp(node.op, leftVal, rightVal, c);
 	}
 }
 
@@ -192,7 +190,7 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 			}
 		default:
 			IrIndex childVal = eval_static_expr(node.child, c);
-			return calcUnOp(node.op, childVal, node.type.typeArgSize(c), c);
+			return calcUnOp(node.op, childVal, c);
 	}
 }
 
@@ -337,7 +335,7 @@ IrIndex eval_call(CallExprNode* node, AstIndex callee, CompilationContext* c)
 	vm.run(returnMem);
 
 	ubyte[] returnSlice = vmBuffer[returnMem.offset..returnMem.offset+returnMem.length];
-	IrIndex result = memToConstant(returnSlice, retType, c, signature.returnType.isSigned(c));
+	IrIndex result = memToConstant(returnSlice, retType, c);
 	vm.popFrame;
 	c.popVmStack(returnMem);
 
@@ -351,33 +349,33 @@ IrIndex eval_call_builtin(TokenIndex loc, IrVm* vm, AstIndex callee, IrIndex[] a
 			c.unrecoverable_error(loc, "%s", stringFromIrValue(vm, args[0], c));
 		case CommonAstNodes.is_slice.storageIndex:
 			AstIndex nodeIndex = astIndexFromIrValue(vm, args[0], c);
-			if (nodeIndex.isUndefined) return c.constants.ZERO;
+			if (nodeIndex.isUndefined) return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
 			AstNode* node = c.getAstNode(nodeIndex);
-			if (node.astType != AstType.type_slice) return c.constants.ZERO;
-			return c.constants.add(1, IsSigned.no, IrArgSize.size8);
+			if (node.astType != AstType.type_slice) return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
+			return c.constants.add(makeIrType(IrBasicType.i8), 1);
 		case CommonAstNodes.is_integer.storageIndex:
 			AstIndex nodeIndex = astIndexFromIrValue(vm, args[0], c);
-			if (nodeIndex.isUndefined) return c.constants.ZERO;
+			if (nodeIndex.isUndefined) return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
 			AstNode* node = c.getAstNode(nodeIndex);
-			if (node.astType != AstType.type_basic) return c.constants.ZERO;
-			return c.constants.add(cast(ubyte)node.as!BasicTypeNode(c).isInteger, IsSigned.no, IrArgSize.size8);
+			if (node.astType != AstType.type_basic) return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
+			return c.constants.add(makeIrType(IrBasicType.i8), cast(ubyte)node.as!BasicTypeNode(c).isInteger);
 		case CommonAstNodes.is_pointer.storageIndex:
 			AstIndex nodeIndex = astIndexFromIrValue(vm, args[0], c);
-			if (nodeIndex.isUndefined) return c.constants.ZERO;
-			return c.constants.add(nodeIndex.astType(c) == AstType.type_ptr, IsSigned.no, IrArgSize.size8);
+			if (nodeIndex.isUndefined) return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
+			return c.constants.add(makeIrType(IrBasicType.i8), nodeIndex.astType(c) == AstType.type_ptr);
 		case CommonAstNodes.base_of.storageIndex:
 			AstIndex nodeIndex = astIndexFromIrValue(vm, args[0], c);
-			if (nodeIndex.isUndefined) return c.constants.ZERO;
+			if (nodeIndex.isUndefined) return c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
 			AstNode* node = c.getAstNode(nodeIndex);
 			AstIndex baseType;
 			switch(node.astType) {
 				case AstType.type_ptr: baseType = node.as!PtrTypeNode(c).base; break;
 				case AstType.type_slice: baseType = node.as!SliceTypeNode(c).base; break;
 				case AstType.type_static_array: baseType = node.as!StaticArrayTypeNode(c).base; break;
-				default: return c.constants.ZERO;
+				default: return c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
 			}
 			baseType = baseType.get_effective_node(c);
-			return c.constants.add(baseType.storageIndex, IsSigned.no, IrArgSize.size32);
+			return c.constants.add(makeIrType(IrBasicType.i32), baseType.storageIndex);
 		default:
 			c.internal_error("Unknown builtin function %s", c.idString(callee.get_node_id(c)));
 	}

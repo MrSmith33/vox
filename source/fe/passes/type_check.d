@@ -45,9 +45,9 @@ void require_type_check(ref AstIndex nodeIndex, CompilationContext* context, IsN
 }
 
 // Assumes IsNested.yes
-void require_type_check(ref AstNodes items, ref TypeCheckState state)
+void require_type_check(ref AstNodes items, ref TypeCheckState state, IsNested isNested = IsNested.yes)
 {
-	foreach(ref AstIndex item; items) require_type_check(item, state);
+	foreach(ref AstIndex item; items) require_type_check(item, state, isNested);
 }
 
 /// Annotates all expression nodes with their type

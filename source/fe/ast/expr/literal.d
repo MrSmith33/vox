@@ -54,7 +54,7 @@ void type_check_literal_int(IntLiteralExprNode* node, ref TypeCheckState state)
 IrIndex ir_gen_literal_int(CompilationContext* context, IntLiteralExprNode* n)
 {
 	CompilationContext* c = context;
-	return c.constants.add(n.value, n.isSigned, n.type.typeArgSize(c));
+	return c.constants.add(n.type.gen_ir_type(c), n.value);
 }
 
 
@@ -82,20 +82,10 @@ void type_check_literal_float(FloatLiteralExprNode* node, ref TypeCheckState sta
 IrIndex ir_gen_literal_float(CompilationContext* context, FloatLiteralExprNode* node)
 {
 	if (node.type == CommonAstNodes.type_f32) {
-		union U32 {
-			float f;
-			uint u;
-		}
-		U32 u = U32(node.value);
-		return context.constants.add(u.u, IsSigned.no, IrArgSize.size32);
+		return context.constants.add(float(node.value));
 	} else {
 		assert(node.type == CommonAstNodes.type_f64);
-		union U64 {
-			double f;
-			ulong u;
-		}
-		U64 u = U64(node.value);
-		return context.constants.add(u.u, IsSigned.no, IrArgSize.size64);
+		return context.constants.add(double(node.value));
 	}
 }
 
@@ -121,11 +111,11 @@ IrIndex ir_gen_literal_null(CompilationContext* context, NullLiteralExprNode* n)
 {
 	CompilationContext* c = context;
 	if (n.type.get_type(c).isPointer) {
-		return c.constants.add(0, IsSigned.no, SIZET_SIZE);
+		return c.constants.addZeroConstant(makeIrType(IrBasicType.i64));
 	} else if (n.type.get_type(c).isSlice) {
 		return c.constants.addZeroConstant(n.type.gen_ir_type(c));
 	} else if (n.type.get_type(c).isTypeofNull) {
-		return c.constants.add(0, IsSigned.no, SIZET_SIZE);
+		return c.constants.addZeroConstant(makeIrType(IrBasicType.i64));
 	} else c.internal_error(n.loc, "%s", n.type.printer(c));
 }
 
@@ -152,10 +142,7 @@ void type_check_literal_bool(BoolLiteralExprNode* node, ref TypeCheckState state
 IrIndex ir_gen_literal_bool(CompilationContext* context, BoolLiteralExprNode* n)
 {
 	CompilationContext* c = context;
-	if (n.value)
-		return c.constants.add(1, IsSigned.no, n.type.typeArgSize(c));
-	else
-		return c.constants.add(0, IsSigned.no, n.type.typeArgSize(c));
+	return c.constants.add(makeIrType(IrBasicType.i8), (n.value != 0));
 }
 
 void ir_gen_branch_literal_bool(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, BoolLiteralExprNode* n)

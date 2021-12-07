@@ -1812,7 +1812,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			// dont create empty global for empty string. Globalsare required to have non-zero length
 			if (value.length == 0)
 			{
-				irValue = p.context.constants.add(0, IsSigned.no, IrArgSize.size64); // null ptr
+				irValue = p.context.constants.addZeroConstant(makeIrType(IrBasicType.i64)); // null ptr
 			}
 			else
 			{
@@ -1832,7 +1832,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 				ObjectSymbol* globalSym = p.context.objSymTab.getSymbol(global.objectSymIndex);
 				globalSym.setInitializer(cast(ubyte[])value);
 			}
-			IrIndex irValueLength = p.context.constants.add(value.length, IsSigned.no, IrArgSize.size64);
+			IrIndex irValueLength = p.context.constants.add(makeIrType(IrBasicType.i64), value.length);
 			irValue = p.context.constants.addAggrecateConstant(type.gen_ir_type(p.context), irValueLength, irValue);
 
 			return p.make!StringLiteralExprNode(token.index, type, irValue, value);
@@ -2019,7 +2019,7 @@ AstIndex leftStarOp(ref Parser p, PreferType preferType, Token token, int rbp, A
 
 	// otherwise it is multiplication
 	AstIndex right = p.expr(PreferType.no, rbp);
-	BinOp op = BinOp.MULT;
+	BinOp op = BinOp.GENERIC_MUL;
 	return p.makeExpr!BinaryExprNode(token.index, op, left, right);
 }
 
@@ -2034,21 +2034,21 @@ AstIndex leftBinaryOp(ref Parser p, PreferType preferType, Token token, int rbp,
 		case OR_OR: op = BinOp.LOGIC_OR; break;                   // ||
 		case EQUAL_EQUAL: op = BinOp.EQUAL; break;                // ==
 		case NOT_EQUAL: op = BinOp.NOT_EQUAL; break;              // !=
-		case MORE: op = BinOp.GREATER; break;                     // >
-		case MORE_EQUAL: op = BinOp.GREATER_EQUAL; break;         // >=
-		case LESS: op = BinOp.LESS; break;                        // <
-		case LESS_EQUAL: op = BinOp.LESS_EQUAL; break;            // <=
+		case MORE: op = BinOp.GENERIC_GREATER; break;             // >
+		case MORE_EQUAL: op = BinOp.GENERIC_GREATER_EQUAL; break; // >=
+		case LESS: op = BinOp.GENERIC_LESS; break;                // <
+		case LESS_EQUAL: op = BinOp.GENERIC_LESS_EQUAL; break;    // <=
 
 		// arithmetic ops
 		case AND: op = BinOp.BITWISE_AND; break;                  // &
 		case OR: op = BinOp.BITWISE_OR; break;                    // |
-		case PERCENT: op = BinOp.REMAINDER; break;                // %
+		case PERCENT: op = BinOp.GENERIC_INT_REM; break;          // %
 		case LESS_LESS: op = BinOp.SHL; break;                    // <<
 		case MORE_MORE: op = BinOp.ASHR; break;                   // >>
 		case MORE_MORE_MORE: op = BinOp.SHR; break;               // >>>
-		case MINUS: op = BinOp.MINUS; break;                      // -
-		case PLUS: op = BinOp.PLUS; break;                        // +
-		case SLASH: op = BinOp.DIV; break;                        // /
+		case MINUS: op = BinOp.GENERIC_MINUS; break;              // -
+		case PLUS: op = BinOp.GENERIC_PLUS; break;                // +
+		case SLASH: op = BinOp.GENERIC_DIV; break;                // /
 		case XOR: op = BinOp.XOR; break;                          // ^
 
 		default:
@@ -2067,14 +2067,14 @@ AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp,
 		case EQUAL: op = BinOp.ASSIGN; break;                     // =
 		case AND_EQUAL: op = BinOp.BITWISE_AND_ASSIGN; break;     // &=
 		case OR_EQUAL: op = BinOp.BITWISE_OR_ASSIGN; break;       // |=
-		case PERCENT_EQUAL: op = BinOp.REMAINDER_ASSIGN; break;   // %=
+		case PERCENT_EQUAL: op = BinOp.GENERIC_INT_REM_ASSIGN; break; // %=
 		case LESS_LESS_EQUAL: op = BinOp.SHL_ASSIGN; break;       // <<=
 		case MORE_MORE_EQUAL: op = BinOp.ASHR_ASSIGN; break;      // >>=
 		case MORE_MORE_MORE_EQUAL: op = BinOp.SHR_ASSIGN; break;  // >>>=
-		case MINUS_EQUAL: op = BinOp.MINUS_ASSIGN; break;         // -=
-		case PLUS_EQUAL: op = BinOp.PLUS_ASSIGN; break;           // +=
-		case SLASH_EQUAL: op = BinOp.DIV_ASSIGN; break;           // /=
-		case STAR_EQUAL: op = BinOp.MULT_ASSIGN; break;           // *=
+		case MINUS_EQUAL: op = BinOp.GENERIC_MINUS_ASSIGN; break; // -=
+		case PLUS_EQUAL: op = BinOp.GENERIC_PLUS_ASSIGN; break;   // +=
+		case SLASH_EQUAL: op = BinOp.GENERIC_DIV_ASSIGN; break;   // /=
+		case STAR_EQUAL: op = BinOp.GENERIC_MUL_ASSIGN; break;    // *=
 		case XOR_EQUAL: op = BinOp.XOR_ASSIGN; break;             // ^=
 		default:
 			p.context.internal_error(token.index, "parse leftAssignOp %s", token.type);

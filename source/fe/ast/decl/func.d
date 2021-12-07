@@ -214,22 +214,25 @@ void type_check_func(FunctionDeclNode* node, ref TypeCheckState state)
 // ModuleDeclNode.functions are processed sequentially. No nesting can occur.
 void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 {
+	if (f.state >= AstNodeState.ir_gen_done) return; // already generated
+
 	CompilationContext* c = gen.context;
 	IrBuilder* builder = &gen.builder;
 
 	c.currentFunction = f;
 	scope(exit) c.currentFunction = null;
 
+
 	f.state = AstNodeState.ir_gen;
 	scope(exit) f.state = AstNodeState.ir_gen_done;
-
-	// function type must be generated even if it is external
-	auto signature = f.signature.get!FunctionSignatureNode(c);
-	IrIndex type = f.signature.gen_ir_type(c);
 
 
 	// Do not generate body for the external functions
 	if (f.isExternal) return;
+
+	// function type must be generated even if it is external
+	auto signature = f.signature.get!FunctionSignatureNode(c);
+	IrIndex type = f.signature.gen_ir_type(c);
 
 	gen.fun = f;
 	scope(exit) gen.fun = null;
@@ -302,4 +305,7 @@ void ir_gen_function(ref IrGenState gen, FunctionDeclNode* f)
 	builder.sealBlock(ir.exitBasicBlock);
 
 	builder.finalizeIr;
+
+	if (c.validateIr) validateIrFunction(c, ir, "IR gen");
+	if (c.printIr && c.printDumpOf(f)) dumpFunction(c, ir, "IR gen");
 }

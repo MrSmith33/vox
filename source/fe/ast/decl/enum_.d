@@ -93,7 +93,7 @@ void type_check_enum(EnumDeclaration* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
 	require_type_check(node.memberType, state);
-	require_type_check(node.declarations, state);
+	require_type_check(node.declarations, state, IsNested.no);
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -128,11 +128,18 @@ struct EnumMemberDecl
 }
 
 IrIndex gen_init_value_enum_member(EnumMemberDecl* node, CompilationContext* c) {
-	if (node.initValue.isDefined) return node.initValue;
-	if (node.calculatingInitVal) {
-		c.push_analized_node(AnalysedNode(c.getAstNodeIndex(node), CalculatedProperty.init_value));
-		c.circular_dependency;
+	final switch(node.getPropertyState(NodeProperty.init_value)) {
+		case PropertyState.not_calculated: break;
+		case PropertyState.calculating: c.circular_dependency(c.getAstNodeIndex(node), CalculatedProperty.init_value);
+		case PropertyState.calculated: return node.initValue;
 	}
+
+	node.setPropertyState(NodeProperty.init_value, PropertyState.calculating);
+	scope(exit) node.setPropertyState(NodeProperty.init_value, PropertyState.calculated);
+
+	c.push_analized_node(AnalysedNode(c.getAstNodeIndex(node), CalculatedProperty.init_value));
+	scope(success) c.pop_analized_node;
+
 	if (node.initializer) {
 		if (node.type) {
 			auto type = node.type.get_node(c);

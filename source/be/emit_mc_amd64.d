@@ -542,7 +542,7 @@ struct CodeEmitter
 							final switch(instrHeader.argSize) with(IrArgSize) {
 								case size32: gen.ucomiss(indexToRegister(arg0), indexToRegister(arg1)); break;
 								case size64: gen.ucomisd(indexToRegister(arg0), indexToRegister(arg1)); break;
-								case size8, size16, size128, size256, size512: context.internal_error("divsx %s", instrHeader.argSize);
+								case size8, size16, size128, size256, size512: context.internal_error("bin_branch %s", instrHeader.argSize);
 							}
 						} else {
 							genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(IrArgSize)instrHeader.argSize, instrIndex);
@@ -555,7 +555,7 @@ struct CodeEmitter
 					case Amd64Opcode.un_branch:
 						if (instrHeader.arg(lir, 0).isSimpleConstant)
 						{
-							IrConstant con = context.constants.get(instrHeader.arg(lir, 0)).i64;
+							IrConstant con = context.constants.get(instrHeader.arg(lir, 0));
 							if (con.i64 && instrHeader.cond == IrUnaryCondition.not_zero ||
 								(!con.i64) && instrHeader.cond == IrUnaryCondition.zero)
 								genJumpToSuccessors(lirBlock, 0);
@@ -582,13 +582,13 @@ struct CodeEmitter
 						Condition cond = IrBinCondToAmd64Condition[instrHeader.cond];
 						if (arg0.physRegClass == AMD64_REG_CLASS.XMM) {
 							assert(arg1.physRegClass == AMD64_REG_CLASS.XMM);
-							final switch(instrHeader.argSize) with(IrArgSize) {
-								case size32: gen.ucomiss(indexToRegister(arg0), indexToRegister(arg1)); break;
-								case size64: gen.ucomisd(indexToRegister(arg0), indexToRegister(arg1)); break;
-								case size8, size16, size128, size256, size512: context.internal_error("divsx %s", instrHeader.argSize);
+							switch(arg0.physRegSize) {
+								case IrArgSize.size32: gen.ucomiss(indexToRegister(arg0), indexToRegister(arg1)); break;
+								case IrArgSize.size64: gen.ucomisd(indexToRegister(arg0), indexToRegister(arg1)); break;
+								default: context.internal_error("set_binary_cond %s", arg0.physRegSize);
 							}
 						} else {
-							genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(IrArgSize)instrHeader.argSize, instrIndex);
+							genRegular(arg0, arg1, AMD64OpRegular.cmp, cast(IrArgSize)arg0.physRegSize, instrIndex);
 						}
 						Register dst = indexToRegister(instrHeader.result(lir));
 						gen.setcc(cond, dst);
@@ -726,7 +726,7 @@ struct CodeEmitter
 
 		param.dstKind = AsmArgKind.REG;
 
-		//writefln("%s.%s %s %s", op, argType, dst.kind, src.kind);
+		//writefln("%s.%s %s %s", op, param.argType, dst.kind, src.kind);
 
 		final switch (src.kind) with(IrValueKind)
 		{
@@ -806,10 +806,10 @@ struct CodeEmitter
 							case size16: gen.movw(dstReg, Imm16(con.i16)); break;
 							case size32: gen.movd(dstReg, Imm32(con.i32)); break;
 							case size64:
-								if (con.payloadSize(src) == size64)
+								if (!con.intFitsIn32Bits)
 									gen.movq(dstReg, Imm64(con.i64));
 								else {
-									if (src.isSignedConstant) {
+									if (con.u32_top == uint.max) {
 										gen.movq(dstReg, Imm32(con.i32)); // sign-extend 32bit constant to 64bit register
 									} else {
 										gen.movd(dstReg, Imm32(con.i32)); // zero-extend 32bit constant to 64bit register
@@ -985,8 +985,7 @@ struct CodeEmitter
 				case size16: gen.movw(dstMem, Imm16(con.i16)); break;
 				case size32: gen.movd(dstMem, Imm32(con.i32)); break;
 				case size64:
-					IrArgSize dataSize = con.payloadSize(src);
-					context.assertf(dataSize != IrArgSize.size64, "Constant is too big");
+					context.assertf(con.intFitsIn32Bits, "Constant 0x%X is too big", con.i64);
 					gen.movq(dstMem, Imm32(con.i32));
 					break;
 				case size128, size256, size512: context.internal_error("doConToMem %s", argSize);

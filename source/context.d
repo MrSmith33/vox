@@ -942,9 +942,9 @@ struct CompilationContext
 		makeBuiltin(CommonAstNodes.builtin_sizeof, CommonIds.id_sizeof, BuiltinId.type_sizeof);
 		// CommonAstNodes end
 
-		i8PtrType = types.appendPtr(makeBasicTypeIndex(IrValueType.i8));
-		i64PtrType = types.appendPtr(makeBasicTypeIndex(IrValueType.i64));
-		v128Type = types.appendArray(makeBasicTypeIndex(IrValueType.i8), 16);
+		i8PtrType = types.appendPtr(makeIrType(IrBasicType.i8));
+		i64PtrType = types.appendPtr(makeIrType(IrBasicType.i64));
+		v128Type = types.appendArray(makeIrType(IrBasicType.i8), 16);
 
 		initializedAstBufSize = astBuffer.length;
 		initializedIrTypeBufSize = types.buffer.length;

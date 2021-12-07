@@ -92,7 +92,7 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 					if (staticForeachNode.keyId.isDefined) {
 						AstIndex keyNode = c.appendAst!EnumMemberDecl(staticForeachNode.loc);
 						auto enumMemberNode = keyNode.get!EnumMemberDecl(c);
-						enumMemberNode.initValue = c.constants.add(idx, IsSigned.no, IrArgSize.size64);
+						enumMemberNode.initValue = c.constants.add(makeIrType(IrBasicType.i64), idx);
 						enumMemberNode.id = staticForeachNode.keyId;
 						enumMemberNode.type = CommonAstNodes.type_u64;
 						enumMemberNode.state = AstNodeState.type_check_done;

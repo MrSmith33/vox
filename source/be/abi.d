@@ -295,7 +295,7 @@ InMemory classify_value_impl(CompilationContext* c, IrIndex paramType, ref AbiCl
 	AbiClass basic_class;
 	final switch (paramType.typeKind) with(IrTypeKind) {
 		case basic:
-			final switch(paramType.basicType) with(IrValueType) {
+			final switch(paramType.basicType(c)) with(IrBasicType) {
 				case noreturn_t: basic_class = AbiClass.no_class; break;
 				case void_t: basic_class = AbiClass.no_class; break;
 				case i8:     basic_class = AbiClass.integer; break;
@@ -669,7 +669,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				// align stack to 16 bytes
 				// TODO: SysV ABI needs 32byte alignment if __m256 is passed
 				stackReserve += padding;
-				IrIndex paddingSize = c.constants.add(padding, IsSigned.no);
+				IrIndex paddingSize = c.constants.add(makeIrType(IrBasicType.i32), padding);
 				builder.emitInstrBefore!(IrOpcode.grow_stack)(instrIndex, ExtraInstrArgs(), paddingSize);
 			}
 
@@ -704,7 +704,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 						// this must be multiple of 8
 						uint allocSize = paramData.stackSizealign.size;
 						if (allocSize > 0) {
-							IrIndex paddingSize = c.constants.add(allocSize, IsSigned.no);
+							IrIndex paddingSize = c.constants.add(makeIrType(IrBasicType.i32), allocSize);
 							builder.emitInstrBefore!(IrOpcode.grow_stack)(instrIndex, ExtraInstrArgs(), paddingSize);
 						}
 
@@ -760,7 +760,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 
 		if (callConv.hasShadowSpace)
 		{	// Allocate shadow space for 4 physical registers
-			IrIndex const_32 = c.constants.add(32, IsSigned.no);
+			IrIndex const_32 = c.constants.add(makeIrType(IrBasicType.i32), 32);
 			auto growStackInstr = builder.emitInstr!(IrOpcode.grow_stack)(ExtraInstrArgs(), const_32);
 			builder.insertBeforeInstr(instrIndex, growStackInstr);
 			ir.getInstr(instrIndex).extendFixedArgRange = true;
@@ -811,7 +811,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 					instrHeader.op = IrOpcode.syscall;
 					IrIndex syscallRegister = IrIndex(callee_state.abi.syscallRegister, ArgType.DWORD);
 					ExtraInstrArgs extra = { result : syscallRegister };
-					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, c.constants.add(callee_state.type.syscallNumber, IsSigned.no));
+					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, c.constants.add(makeIrType(IrBasicType.i32), callee_state.type.syscallNumber));
 					// We leave callee here, so that liveness analysis can get calling convention
 				}
 			} else {
@@ -846,7 +846,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			// Deallocate stack after call
 			if (stackReserve > 0)
 			{
-				IrIndex conReservedBytes = c.constants.add(stackReserve, IsSigned.no);
+				IrIndex conReservedBytes = c.constants.add(makeIrType(IrBasicType.i32), stackReserve);
 				auto shrinkStackInstr = builder.emitInstr!(IrOpcode.shrink_stack)(ExtraInstrArgs(), conReservedBytes);
 				builder.insertAfterInstr(lastInstr, shrinkStackInstr);
 				lastInstr = shrinkStackInstr; // insert next instr after this one
@@ -954,11 +954,11 @@ IrIndex receiveMultiValue(IrIndex beforeInstr, PhysReg[2] regs, IrIndex result, 
 	auto sizealign = builder.context.types.typeSizeAndAlignment(type);
 	IrIndex reg2 = IrIndex(regs[1], ArgType.QWORD);
 
-	ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
+	ExtraInstrArgs extra1 = { type : makeIrType(IrBasicType.i64) };
 	auto move1 = builder.emitInstr!(IrOpcode.move)(extra1, reg1);
 	builder.insertBeforeInstr(beforeInstr, move1.instruction);
 
-	ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64) };
+	ExtraInstrArgs extra2 = { type : makeIrType(IrBasicType.i64) };
 	auto move2 = builder.emitInstr!(IrOpcode.move)(extra2, reg2);
 	builder.insertBeforeInstr(beforeInstr, move2.instruction);
 
@@ -985,7 +985,7 @@ IrIndex[2] simplifyConstant128(IrIndex insertBefore, IrIndex value, ref IrBuilde
 {
 	IrIndex[2] vals;
 	if (value.isConstantZero) {
-		vals[] = c.constants.ZERO;
+		vals[] = c.constants.addZeroConstant(makeIrType(IrBasicType.i64));
 	} else if (value.isConstantAggregate) {
 		IrAggregateConstant* con = &c.constants.getAggregate(value);
 		union Repr {
@@ -1002,14 +1002,14 @@ IrIndex[2] simplifyConstant128(IrIndex insertBefore, IrIndex value, ref IrBuilde
 			}
 		}
 		constantToMem(repr.buf[], value, c, &onGlobal);
-		if (vals[0].isUndefined) vals[0] = c.constants.add(repr.items[0], IsSigned.no, IrArgSize.size64);
-		if (vals[1].isUndefined) vals[1] = c.constants.add(repr.items[1], IsSigned.no, IrArgSize.size64);
+		if (vals[0].isUndefined) vals[0] = c.constants.add(makeIrType(IrBasicType.i64), repr.items[0]);
+		if (vals[1].isUndefined) vals[1] = c.constants.add(makeIrType(IrBasicType.i64), repr.items[1]);
 	} else {
-		ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
-		vals[0] = builder.emitInstrBefore!(IrOpcode.get_aggregate_slice)(insertBefore, extra1, value, c.constants.ZERO).result;
+		ExtraInstrArgs extra1 = { type : makeIrType(IrBasicType.i64) };
+		vals[0] = builder.emitInstrBefore!(IrOpcode.get_aggregate_slice)(insertBefore, extra1, value, c.constants.addZeroConstant(makeIrType(IrBasicType.i32))).result;
 
-		ExtraInstrArgs extra2 = { type : makeBasicTypeIndex(IrValueType.i64) };
-		vals[1] = builder.emitInstrBefore!(IrOpcode.get_aggregate_slice)(insertBefore, extra2, value, c.constants.add(8, IsSigned.no)).result;
+		ExtraInstrArgs extra2 = { type : makeIrType(IrBasicType.i64) };
+		vals[1] = builder.emitInstrBefore!(IrOpcode.get_aggregate_slice)(insertBefore, extra2, value, c.constants.add(makeIrType(IrBasicType.i32), 8)).result;
 	}
 	return vals;
 }

@@ -442,7 +442,7 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 			TypeNode* objType = m.aggregate.get_type(c);
 			currentBlock = afterAggr.blockIndex;
 
-			IrIndex memberIndex = c.constants.add(m.memberIndex(c), IsSigned.no);
+			IrIndex memberIndex = c.constants.add(makeIrType(IrBasicType.i32), m.memberIndex(c));
 			ExprValue result = aggr.member(gen, m.loc, currentBlock, memberIndex);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return result;
@@ -460,7 +460,8 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 					IrLabel afterAggr = IrLabel(currentBlock);
 					ExprValue aggr = ir_gen_expr(gen, m.aggregate, currentBlock, afterAggr);
 					currentBlock = afterAggr.blockIndex;
-					IrIndex ptr = buildGEPEx(gen, m.loc, currentBlock, aggr, c.constants.ZERO, c.constants.ZERO);
+					IrIndex ZERO = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+					IrIndex ptr = buildGEPEx(gen, m.loc, currentBlock, aggr, ZERO, ZERO);
 					gen.builder.addJumpToLabel(currentBlock, nextStmt);
 					return ExprValue(ptr);
 				default:

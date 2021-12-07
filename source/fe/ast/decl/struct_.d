@@ -127,7 +127,7 @@ IrIndex gen_init_value_struct(StructDeclNode* node, CompilationContext* c)
 		IrIndex memberValue = memberVar.gen_init_value_var(c);
 		if (!memberValue.isConstantZero) allZeroes = false;
 		if (node.isUnion) {
-			args[0] = c.constants.ZERO; // member index
+			args[0] = c.constants.addZeroConstant(structType); // member index
 			args[1] = memberValue; // value
 			break;
 		}

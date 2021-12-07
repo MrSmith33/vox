@@ -1099,15 +1099,14 @@ void tester52(ref TestContext ctx) {
 @TestInfo(&tester53)
 immutable test53 = q{--- test53
 	// Test constant folding
-	enum i32 i32_min = -2147483648;
 	i32 add() { return 1 + 3; }
 	i32 sub() { return 3 - 1; }
 	i32 mul() { return 3 * 2; }
 	i32 div() { return 7 / 2; }
 	i32 rem() { return 7 % 2; }
 	i32 shl() { return 1 << 2; }
-	i32 shr() { return i32_min >>> 2; }
-	i32 sar() { return i32_min >> 2; }
+	i32 shr() { return i32.min >>> 2; }
+	i32 sar() { return i32.min >> 2; }
 	i32 or () { return 0b0011 | 0b0101; }
 	i32 xor() { return 0b0011 ^ 0b0101; }
 	i32 and() { return 0b0011 & 0b0101; }
@@ -4631,7 +4630,7 @@ void tester211(ref TestContext ctx) {
 }
 
 
-@TestInfo()
+/*@TestInfo()
 immutable test212 = q{--- test212
 	// Forward reference for variable init value -> enum init value -> enum member init value
 	VkQueryType queryType;
@@ -4639,7 +4638,7 @@ immutable test212 = q{--- test212
 		VK_QUERY_TYPE_OCCLUSION = 0,
 	}
 };
-
+*/
 
 /*@TestInfo()
 immutable test213 = q{--- test213
@@ -5172,3 +5171,13 @@ immutable test238 = q{--- test238
 	void fun2(){}
 };
 
+/*
+@TestInfo()
+immutable test239 = q{--- test239
+	// circular dependency on enum type
+	VkSharingMode mode = VkSharingMode.VK_SHARING_MODE_CONCURRENT;
+	enum VkSharingMode {
+		VK_SHARING_MODE_CONCURRENT = 1,
+		VK_SHARING_MODE_END_RANGE  = VK_SHARING_MODE_CONCURRENT,
+	}
+};*/

@@ -1212,7 +1212,7 @@ struct LinearScan
 			IrIndex slotType;
 			switch(size) with(IrArgSize) {
 				case size64:
-					slotType = makeBasicTypeIndex(IrValueType.i64);
+					slotType = makeIrType(IrBasicType.i64);
 					break;
 				case size128:
 					slotType = context.v128Type;
@@ -1235,7 +1235,7 @@ struct LinearScan
 
 	IrIndex getScratchSpillSlot() {
 		if (scratchSpillSlot.isUndefined) {
-			scratchSpillSlot = builder.appendStackSlot(makeBasicTypeIndex(IrValueType.i64), context.types.typeSizeAndAlignment(makeBasicTypeIndex(IrValueType.i64)), StackSlotKind.local);
+			scratchSpillSlot = builder.appendStackSlot(makeIrType(IrBasicType.i64), context.types.typeSizeAndAlignment(makeIrType(IrBasicType.i64)), StackSlotKind.local);
 		}
 		return scratchSpillSlot;
 	}

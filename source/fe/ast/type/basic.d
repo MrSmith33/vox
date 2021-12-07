@@ -28,22 +28,21 @@ struct BasicTypeNode {
 	{
 		switch(basicType)
 		{
-			case BasicType.t_error: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
-			case BasicType.t_bool: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
-			case BasicType.t_u8: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
-			case BasicType.t_i8: return c.constants.add(0, IsSigned.no, IrArgSize.size8);
-			case BasicType.t_i16: return c.constants.add(0, IsSigned.no, IrArgSize.size16);
-			case BasicType.t_u16: return c.constants.add(0, IsSigned.no, IrArgSize.size16);
-			case BasicType.t_i32: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
-			case BasicType.t_u32: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
-			case BasicType.t_i64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
-			case BasicType.t_u64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
-			case BasicType.t_f32: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
-			case BasicType.t_f64: return c.constants.add(0, IsSigned.no, IrArgSize.size64);
-			case BasicType.t_alias: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
-			case BasicType.t_type: return c.constants.add(0, IsSigned.no, IrArgSize.size32);
-			default:
-				c.internal_error(loc, "Cannot convert %s to IrIndex", basicType);
+			case BasicType.t_error: return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
+			case BasicType.t_bool:  return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
+			case BasicType.t_u8:    return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
+			case BasicType.t_i8:    return c.constants.addZeroConstant(makeIrType(IrBasicType.i8));
+			case BasicType.t_i16:   return c.constants.addZeroConstant(makeIrType(IrBasicType.i16));
+			case BasicType.t_u16:   return c.constants.addZeroConstant(makeIrType(IrBasicType.i16));
+			case BasicType.t_i32:   return c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+			case BasicType.t_u32:   return c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+			case BasicType.t_i64:   return c.constants.addZeroConstant(makeIrType(IrBasicType.i64));
+			case BasicType.t_u64:   return c.constants.addZeroConstant(makeIrType(IrBasicType.i64));
+			case BasicType.t_f32:   return c.constants.addZeroConstant(makeIrType(IrBasicType.f32));
+			case BasicType.t_f64:   return c.constants.addZeroConstant(makeIrType(IrBasicType.f64));
+			case BasicType.t_alias: return c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+			case BasicType.t_type:  return c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+			default: c.internal_error(loc, "Cannot convert %s to IrIndex", basicType);
 		}
 	}
 }
@@ -67,22 +66,22 @@ IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 {
 	switch(t.basicType)
 	{
-		case BasicType.t_noreturn: return makeBasicTypeIndex(IrValueType.noreturn_t);
-		case BasicType.t_void: return makeBasicTypeIndex(IrValueType.void_t);
-		case BasicType.t_bool: return makeBasicTypeIndex(IrValueType.i8);
-		case BasicType.t_null: return makeBasicTypeIndex(IrValueType.i64);
-		case BasicType.t_u8: return makeBasicTypeIndex(IrValueType.i8);
-		case BasicType.t_i8: return makeBasicTypeIndex(IrValueType.i8);
-		case BasicType.t_i16: return makeBasicTypeIndex(IrValueType.i16);
-		case BasicType.t_u16: return makeBasicTypeIndex(IrValueType.i16);
-		case BasicType.t_i32: return makeBasicTypeIndex(IrValueType.i32);
-		case BasicType.t_u32: return makeBasicTypeIndex(IrValueType.i32);
-		case BasicType.t_i64: return makeBasicTypeIndex(IrValueType.i64);
-		case BasicType.t_u64: return makeBasicTypeIndex(IrValueType.i64);
-		case BasicType.t_f32: return makeBasicTypeIndex(IrValueType.f32);
-		case BasicType.t_f64: return makeBasicTypeIndex(IrValueType.f64);
-		case BasicType.t_alias: return makeBasicTypeIndex(IrValueType.i32);
-		case BasicType.t_type: return makeBasicTypeIndex(IrValueType.i32);
+		case BasicType.t_noreturn: return makeIrType(IrBasicType.noreturn_t);
+		case BasicType.t_void: return makeIrType(IrBasicType.void_t);
+		case BasicType.t_bool: return makeIrType(IrBasicType.i8);
+		case BasicType.t_null: return makeIrType(IrBasicType.i64);
+		case BasicType.t_u8: return makeIrType(IrBasicType.i8);
+		case BasicType.t_i8: return makeIrType(IrBasicType.i8);
+		case BasicType.t_i16: return makeIrType(IrBasicType.i16);
+		case BasicType.t_u16: return makeIrType(IrBasicType.i16);
+		case BasicType.t_i32: return makeIrType(IrBasicType.i32);
+		case BasicType.t_u32: return makeIrType(IrBasicType.i32);
+		case BasicType.t_i64: return makeIrType(IrBasicType.i64);
+		case BasicType.t_u64: return makeIrType(IrBasicType.i64);
+		case BasicType.t_f32: return makeIrType(IrBasicType.f32);
+		case BasicType.t_f64: return makeIrType(IrBasicType.f64);
+		case BasicType.t_alias: return makeIrType(IrBasicType.i32);
+		case BasicType.t_type: return makeIrType(IrBasicType.i32);
 		default:
 			context.internal_error(t.loc, "Cannot convert %s to IrIndex", t.basicType);
 	}
@@ -153,9 +152,6 @@ TypeConvResKind type_conv_basic(BasicTypeNode* node, AstIndex typeBIndex, ref As
 		default: return TypeConvResKind.fail;
 	}
 }
-
-
-enum IrArgSize SIZET_SIZE = IrArgSize.size64;
 
 // The order is the same as in TokenType enum
 // The order is the same as in CommonAstNodes enum

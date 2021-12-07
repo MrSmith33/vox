@@ -50,5 +50,6 @@ enum NodeProperty : ubyte {
 	type,
 	ir_header,
 	ir_body,
+	init_value,
 }
 static assert(NodeProperty.max <= 15, "Max number of properties per uint is 16 (2 bits per property)");

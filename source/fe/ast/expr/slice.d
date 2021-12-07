@@ -92,8 +92,8 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 	ExprValue arrayLvalue = ir_gen_expr(gen, node.array, curBlock, afterArray);
 	curBlock = afterArray.blockIndex;
 
-	IrIndex aggregateIndex = c.constants.ZERO;
-	IrIndex slicePtrIndex = c.constants.ONE;
+	IrIndex aggregateIndex = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+	IrIndex slicePtrIndex = c.constants.add(makeIrType(IrBasicType.i32), 1);
 
 	AstType astType = arrayExpr.type.get_type(c).astType;
 	IrIndex ptr; // pointer to first element
@@ -111,7 +111,8 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 				break;
 			case type_static_array:
 				// need to convert [n x T]* into T* for static arrays
-				ptr = buildGEP(gen, node.loc, curBlock, ptr, c.constants.ZERO, c.constants.ZERO);
+				IrIndex ZERO = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+				ptr = buildGEP(gen, node.loc, curBlock, ptr, ZERO, ZERO);
 				break;
 			case type_slice:
 				ExprValue ptrLvalue = arrayLvalue.member(gen, node.loc, curBlock, slicePtrIndex);
@@ -129,7 +130,8 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 				ptr = buildGEP(gen, node.loc, curBlock, arrayLvalue.irValue, fromIndexRvalue);
 				break;
 			case type_static_array:
-				ptr = buildGEP(gen, node.loc, curBlock, arrayLvalue.irValue, c.constants.ZERO, fromIndexRvalue);
+				IrIndex ZERO = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+				ptr = buildGEP(gen, node.loc, curBlock, arrayLvalue.irValue, ZERO, fromIndexRvalue);
 				break;
 			case type_slice:
 				ExprValue ptrLvalue = arrayLvalue.member(gen, node.loc, curBlock, slicePtrIndex);
@@ -140,7 +142,7 @@ ExprValue ir_gen_expr_slice(ref IrGenState gen, IrIndex curBlock, ref IrLabel ne
 		}
 
 		ExtraInstrArgs extra1 = {
-			type : makeBasicTypeIndex(IrValueType.i64),
+			type : makeIrType(IrBasicType.i64),
 			argSize : IrArgSize.size64
 		};
 		length = gen.builder.emitInstr!(IrOpcode.sub)(curBlock, extra1, toIndexRvalue, fromIndexRvalue).result;

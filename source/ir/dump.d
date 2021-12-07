@@ -508,12 +508,20 @@ void dumpIrIndex(scope void delegate(const(char)[]) sink, ref CompilationContext
 		case instruction: sink.formattedWrite("i.%s", index.storageUintIndex); break;
 		case basicBlock: sink.formattedWrite("@%s", index.storageUintIndex); break;
 		case constant:
-			final switch(index.constantKind) with(IrConstantKind) {
-				case intUnsignedSmall: sink.formattedWrite("%s", index.constantIndex); break;
-				case intSignedSmall: sink.formattedWrite("%s", (cast(int)index.constantIndex << 8) >> 8); break;
-				case intUnsignedBig: sink.formattedWrite("%s", context.constants.get(index).u64); break;
-				case intSignedBig: sink.formattedWrite("%s", context.constants.get(index).i64); break;
+			auto con = context.constants.get(index);
+			if (con.type.isTypeBasic) {
+				switch (con.type.basicType(&context)) {
+					case IrBasicType.i8:  sink.formattedWrite("%s",  con.i8);  break;
+					case IrBasicType.i16: sink.formattedWrite("%s", con.i16); break;
+					case IrBasicType.i32: sink.formattedWrite("%s", con.i32); break;
+					case IrBasicType.i64: sink.formattedWrite("%s", con.i64); break;
+					case IrBasicType.f32: sink.formattedWrite("%s", con.f32); break;
+					case IrBasicType.f64: sink.formattedWrite("%s", con.f64); break;
+					default: sink.formattedWrite("%s", con.i64); break;
+				}
+				break;
 			}
+			sink.formattedWrite("%s", con.i64);
 			break;
 		case constantAggregate:
 			sink("{");
@@ -562,7 +570,7 @@ void dumpIrType(scope void delegate(const(char)[]) sink, ref CompilationContext 
 	}
 	final switch(type.typeKind) with(IrTypeKind) {
 		case basic:
-			final switch(cast(IrValueType)type.typeIndex) with(IrValueType) {
+			final switch(cast(IrBasicType)type.typeIndex) with(IrBasicType) {
 				case noreturn_t: sink("noreturn"); break;
 				case void_t: sink("void"); break;
 				case i8: sink("i8"); break;

@@ -262,7 +262,7 @@ ExprValue ir_gen_name_use(ref IrGenState gen, IrIndex currentBlock, ref IrLabel 
 	c.assertf(node.entity.isDefined, node.loc, "name null %s %s", node.isSymResolved, node.state);
 
 	if (node.type == CommonAstNodes.type_alias) {
-		return ExprValue(c.constants.add(node.entity.storageIndex, IsSigned.no, IrArgSize.size32));
+		return ExprValue(c.constants.add(makeIrType(IrBasicType.i32), node.entity.storageIndex));
 	} else {
 		return ir_gen_expr(gen, node.entity, currentBlock, nextStmt);
 	}

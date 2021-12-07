@@ -71,7 +71,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 					"Cannot convert expression of type `%s` to `%s`",
 					t.expr.get_expr_type(c).printer(c),
 					t.type.printer(c));
-		IrIndex result = c.constants.add(aliasedNode.storageIndex, IsSigned.no, IrArgSize.size32);
+		IrIndex result = c.constants.add(makeIrType(IrBasicType.i32), aliasedNode.storageIndex);
 		gen.builder.addJumpToLabel(currentBlock, nextStmt);
 		return ExprValue(result);
 	}
@@ -159,7 +159,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 			break;
 
 		case string_literal_to_u8_ptr:
-			result = c.constants.getAggregateMember(rval, c.constants.ONE, c);
+			result = c.constants.getAggregateMember(rval, c.constants.add(makeIrType(IrBasicType.i32), 1), c);
 			break;
 		case array_literal_to_slice:
 			assert(false, to!string(t.convKind));
@@ -170,8 +170,7 @@ ExprValue ir_gen_expr_type_conv(ref IrGenState gen, IrIndex currentBlock, ref Ir
 
 IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext* c)
 {
-	c.assertf(rval.isSomeConstant, node.loc, "Must be constant");
-	IrIndex result;
+	c.assertf(rval.isSomeConstant, node.loc, "%s must be a constant", rval);
 
 	TypeNode* sourceType = node.expr.get_expr(c).type.get_type(c);
 	if (sourceType.astType == AstType.decl_enum) {
@@ -187,49 +186,52 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 
 	final switch (node.convKind) with(TypeConvResKind) {
 		case fail: c.internal_error(node.loc, "eval of failed cast");
-		case no_e, no_i: result = rval; break;
+		case no_e, no_i: return rval;
 		case ii_e, ii_i, override_expr_type_e, override_expr_type_i:
 			if (rval.isConstantZero) {
 				return typeTo.zeroConstantOfType;
 			}
-			result = rval;
-			result.constantSize = sizeToIrArgSize(typeSizeTo, c);
-			break;
+			auto con = c.constants.get(rval);
+			if (typeTo.isTypeBasic) {
+				IrBasicType basicType = typeTo.basicType(c);
+				switch(basicType) with(IrBasicType) {
+					case i8:  return c.constants.add(typeTo, con.i64 & 0xFF);
+					case i16: return c.constants.add(typeTo, con.i64 & 0xFFFF);
+					case i32: return c.constants.add(typeTo, con.i64 & 0xFFFF_FFFF);
+					case i64: return c.constants.add(typeTo, con.i64);
+					default: c.internal_error("Invalid constant type %s", basicType);
+				}
+			}
+			return c.constants.add(typeTo, con.i64); // ptr
+
 		case if_e, if_i:
-			assert(false, "TODO");
+			c.internal_error("TODO %s", node.convKind);
 
 		case ff_e, ff_i:
 			c.assertf(typeFrom.isTypeFloat, "from %s", typeFrom);
 			c.assertf(typeTo.isTypeFloat, "from %s", typeTo);
-			switch(typeFrom.basicType) {
-				case IrValueType.f32:
-					c.assertf(typeTo.basicType == IrValueType.f32, "from f32 to %s", typeTo);
-					IrConstant con;
-					con.f64 = cast(double)c.constants.get(rval).f32;
-					result = c.constants.add(con.u64, IsSigned.no, IrArgSize.size64);
-					break;
-				case IrValueType.f64:
-					c.assertf(typeTo.basicType == IrValueType.f32, "from f64 to %s", typeTo);
-					IrConstant con;
-					con.f32 = cast(float)c.constants.get(rval).f64;
-					result = c.constants.add(con.u32, IsSigned.no, IrArgSize.size32);
-					break;
+			switch(typeFrom.basicType(c)) {
+				case IrBasicType.f32:
+					c.assertf(typeTo.basicType(c) == IrBasicType.f64, "from f32 to %s", typeTo);
+					double f64 = cast(double)c.constants.get(rval).f32;
+					return c.constants.add(f64);
+				case IrBasicType.f64:
+					c.assertf(typeTo.basicType(c) == IrBasicType.f32, "from f64 to %s", typeTo);
+					float f32 = cast(float)c.constants.get(rval).f64;
+					return c.constants.add(f32);
 				default: c.unreachable;
 			}
-			break;
 
 		case fi_e, fi_i:
-			assert(false, "TODO");
+			c.internal_error("TODO %s", node.convKind);
 
 		case string_literal_to_u8_ptr:
-			result = c.constants.getAggregateMember(rval, c.constants.ONE, c);
-			break;
+			IrIndex ONE = c.constants.add(makeIrType(IrBasicType.i32), 1);
+			return c.constants.getAggregateMember(rval, ONE, c);
 
 		case array_literal_to_slice:
-			assert(false, to!string(node.convKind));
-			assert(false, "TODO");
+			c.internal_error("TODO %s", node.convKind);
 	}
-	return result;
 }
 
 void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLabel trueExit, ref IrLabel falseExit, TypeConvExprNode* t)
@@ -244,10 +246,10 @@ void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLab
 	IrIndex from = childExpr.type.gen_ir_type(c);
 
 	if (rval.isSimpleConstant ||
-		from == makeBasicTypeIndex(IrValueType.i8) ||
-		from == makeBasicTypeIndex(IrValueType.i16) ||
-		from == makeBasicTypeIndex(IrValueType.i32) ||
-		from == makeBasicTypeIndex(IrValueType.i64))
+		from == makeIrType(IrBasicType.i8) ||
+		from == makeIrType(IrBasicType.i16) ||
+		from == makeIrType(IrBasicType.i32) ||
+		from == makeIrType(IrBasicType.i64))
 	{
 		addUnaryBranch(gen, rval, currentBlock, trueExit, falseExit);
 		return;

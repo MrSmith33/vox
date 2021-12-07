@@ -71,7 +71,7 @@ struct IrIndex
 		// used when kind == IrValueKind.type || kind == IrValueKind.constantZero
 		// types are stored in 8-byte chunked buffer
 		mixin(bitfields!(
-			// if typeKind is basic, then typeIndex contains IrValueType
+			// if typeKind is basic, then typeIndex contains IrBasicType
 			uint,        "typeIndex", TYPE_INDEX_BITS, // may be 0 for defined index
 			IrTypeKind,  "typeKind",                4, // type kind
 			IrValueKind, "",                        4  // index kind
@@ -110,10 +110,9 @@ struct IrIndex
 			case basicBlock: sink.formattedWrite("@%s", storageUintIndex); break;
 			case constant:
 				final switch(constantKind) with(IrConstantKind) {
-					case intUnsignedSmall: sink.formattedWrite("%s", constantIndex); break;
-					case intSignedSmall: sink.formattedWrite("%s", (cast(int)constantIndex << 8) >> 8); break;
-					case intUnsignedBig: sink.formattedWrite("cu.%s", constantIndex); break;
-					case intSignedBig: sink.formattedWrite("cs.%s", constantIndex); break;
+					case smallZx: sink.formattedWrite("%s", constantIndex); break;
+					case smallSx: sink.formattedWrite("%s", (cast(int)constantIndex << 8) >> 8); break;
+					case big: sink.formattedWrite("cu.%s", constantIndex); break;
 				}
 				break;
 
@@ -181,24 +180,21 @@ struct IrIndex
 	}
 	bool isTypeFunction() { return kind == IrValueKind.type && typeKind == IrTypeKind.func_t; }
 	bool isTypeVoid() {
-		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrValueType.void_t;
+		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrBasicType.void_t;
 	}
 	bool isTypeNoreturn() {
-		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrValueType.noreturn_t;
+		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && typeIndex == IrBasicType.noreturn_t;
 	}
 	bool isTypeFloat() {
-		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && (typeIndex == IrValueType.f32 || typeIndex == IrValueType.f64);
+		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && (typeIndex == IrBasicType.f32 || typeIndex == IrBasicType.f64);
 	}
-	IrValueType basicType() {
-		assert(kind == IrValueKind.type);
-		assert(typeKind == IrTypeKind.basic);
-		return cast(IrValueType)typeIndex;
+	bool isTypeInteger() {
+		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && (typeIndex >= IrBasicType.i8 && typeIndex <= IrBasicType.i64);
 	}
-
-	bool isSignedConstant() {
-		return kind == IrValueKind.constant &&
-			(constantKind == IrConstantKind.intSignedSmall ||
-			constantKind == IrConstantKind.intSignedBig);
+	IrBasicType basicType(CompilationContext* c) {
+		c.assertf(kind == IrValueKind.type, "%s != IrValueKind.type", kind);
+		c.assertf(typeKind == IrTypeKind.basic, "%s != IrTypeKind.basic", typeKind);
+		return cast(IrBasicType)typeIndex;
 	}
 
 	IrIndex typeOfConstantZero() {

@@ -389,7 +389,7 @@ struct IrBuilder
 		context.assertf(user.isDefined && used.isDefined, "%s addUser(%s, %s)",
 			context.idString(ir.name), user, used);
 		final switch (used.kind) with(IrValueKind) {
-			case none: assert(false, "addUser none");
+			case none: context.internal_error("addUser %s %s", user, used);
 			case array: assert(false, "addUser array");
 			case instruction: assert(false, "addUser instruction");
 			case basicBlock: break; // allowed. As argument of jmp jcc

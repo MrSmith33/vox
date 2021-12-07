@@ -317,6 +317,16 @@ IrArgSize sizeToIrArgSize(uint typeSize, CompilationContext* context) {
 	}
 }
 
+IrIndex sizeToIntType(uint typeSize, CompilationContext* context) {
+	switch (typeSize) {
+		case 1: return makeIrType(IrBasicType.i8);
+		case 2: return makeIrType(IrBasicType.i16);
+		case 4: return makeIrType(IrBasicType.i32);
+		case 8: return makeIrType(IrBasicType.i64);
+		default: context.internal_error("Unhandled size %s", typeSize);
+	}
+}
+
 IrArgSize typeToIrArgSize(IrIndex type, CompilationContext* context) {
 	uint typeSize = context.types.typeSize(type);
 	return sizeToIrArgSize(typeSize, context);
@@ -417,10 +427,15 @@ enum IrBinaryCondition : ubyte {
 	sge,
 	slt,
 	sle,
+
+	fgt,
+	fge,
+	flt,
+	fle,
 }
 
-string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", "u>", "u>=", "u<", "u<=", "s>", "s>=", "s<", "s<="];
-string[] binaryCondStringsEscapedForDot = cast(string[IrBinaryCondition.max+1])[`==`, `!=`, `u\>`, `u\>=`, `u\<`, `u\<=`, `s\>`, `s\>=`, `s\<`, `s\<=`];
+string[] binaryCondStrings = cast(string[IrBinaryCondition.max+1])["==", "!=", "u>", "u>=", "u<", "u<=", "s>", "s>=", "s<", "s<=", "f>", "f>=", "f<", "f<="];
+string[] binaryCondStringsEscapedForDot = cast(string[IrBinaryCondition.max+1])[`==`, `!=`, `u\>`, `u\>=`, `u\<`, `u\<=`, `s\>`, `s\>=`, `s\<`, `s\<=`, `f\>`, `f\>=`, `f\<`, `f\<=`];
 
 bool evalBinCondition(ref CompilationContext context, IrBinaryCondition cond, IrIndex conLeft, IrIndex conRight)
 {
@@ -440,6 +455,11 @@ bool evalBinCondition(ref CompilationContext context, IrBinaryCondition cond, Ir
 		case sge: return left.i64 >= right.i64;
 		case slt: return left.i64 <  right.i64;
 		case sle: return left.i64 <= right.i64;
+
+		case fgt: if (left.type == makeIrType(IrBasicType.f64)) return left.f64 >  right.f64; return left.f32 >  right.f32;
+		case fge: if (left.type == makeIrType(IrBasicType.f64)) return left.f64 >= right.f64; return left.f32 >= right.f32;
+		case flt: if (left.type == makeIrType(IrBasicType.f64)) return left.f64 <  right.f64; return left.f32 <  right.f32;
+		case fle: if (left.type == makeIrType(IrBasicType.f64)) return left.f64 <= right.f64; return left.f32 <= right.f32;
 	}
 }
 
@@ -459,6 +479,11 @@ IrBinaryCondition invertBinaryCond(IrBinaryCondition cond)
 		case sge: return slt;
 		case slt: return sge;
 		case sle: return sgt;
+
+		case fgt: return fle;
+		case fge: return flt;
+		case flt: return fge;
+		case fle: return fgt;
 	}
 }
 

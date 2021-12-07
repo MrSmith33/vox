@@ -89,19 +89,20 @@ struct IrVm
 	void run(IrVmSlotInfo outputMem)
 	{
 		++c.numCtfeRuns;
-		// skip first block as it only contains IrOpcode.parameter instructions
-		IrIndex curBlock = func.getBlock(func.entryBasicBlock).successors[0, func];
-		IrIndex prevBlock = func.entryBasicBlock;
+		IrIndex curBlock = func.entryBasicBlock;
+		IrIndex prevBlock;
 		IrBasicBlock* block = func.getBlock(curBlock);
 
 		block_loop:
 		while (true)
 		{
-			uint predIndex = block.predecessors.findFirst(func, prevBlock);
-			foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(func))
-			{
-				IrIndex phiArg = phi.args[predIndex, func];
-				copyToVreg(phi.result, phiArg);
+			if (prevBlock.isDefined) {
+				uint predIndex = block.predecessors.findFirst(func, prevBlock);
+				foreach(IrIndex phiIndex, ref IrPhi phi; block.phis(func))
+				{
+					IrIndex phiArg = phi.args[predIndex, func];
+					copyToVreg(phi.result, phiArg);
+				}
 			}
 
 			instr_loop:
@@ -140,34 +141,34 @@ struct IrVm
 					case IrOpcode.ashr: binop!">>"(instrHeader); break;
 
 					case IrOpcode.not:
-						long a = readInt(instrHeader.arg(func, 0));
+						long a = readValue(instrHeader.arg(func, 0)).i64;
 						long result = !a;
 						writeInt(instrHeader.result(func), result);
 						break;
 
 					case IrOpcode.neg:
-						long a = readInt(instrHeader.arg(func, 0));
+						long a = readValue(instrHeader.arg(func, 0)).i64;
 						long result = -a;
 						writeInt(instrHeader.result(func), result);
 						break;
 
 					case IrOpcode.conv:
-						long result = readInt(instrHeader.arg(func, 0));
+						long result = readValue(instrHeader.arg(func, 0)).i64;
 						writeInt(instrHeader.result(func), result);
 						break;
 
 					case IrOpcode.zext:
-						long result = readInt(instrHeader.arg(func, 0));
+						long result = readValue(instrHeader.arg(func, 0)).i64;
 						writeInt(instrHeader.result(func), result);
 						break;
 
 					case IrOpcode.sext:
-						long result = readInt(instrHeader.arg(func, 0));
+						long result = readValue(instrHeader.arg(func, 0)).i64;
 						writeInt(instrHeader.result(func), result);
 						break;
 
 					case IrOpcode.trunc:
-						long result = readInt(instrHeader.arg(func, 0));
+						long result = readValue(instrHeader.arg(func, 0)).i64;
 						writeInt(instrHeader.result(func), result);
 						break;
 
@@ -183,24 +184,118 @@ struct IrVm
 						break;
 
 					case IrOpcode.branch_binary:
-						long a = readInt(instrHeader.arg(func, 0));
-						long b = readInt(instrHeader.arg(func, 1));
+						IrIndex type = getValueType(instrHeader.arg(func, 0), func, c);
+						IrConstVal a = readValue(instrHeader.arg(func, 0));
+						IrConstVal b = readValue(instrHeader.arg(func, 1));
 						//writefln("br %s %s : %s %s", a, b, block.successors[0, func], block.successors[1, func]);
 						bool result;
 						final switch(cast(IrBinaryCondition)instrHeader.cond)
 						{
-							case IrBinaryCondition.eq:  result = a == b; break;
-							case IrBinaryCondition.ne:  result = a != b; break;
+							case IrBinaryCondition.eq:  result = a.u64 == b.u64; break;
+							case IrBinaryCondition.ne:  result = a.u64 != b.u64; break;
 
-							case IrBinaryCondition.ugt: result = cast(ulong)a >  cast(ulong)b; break;
-							case IrBinaryCondition.uge: result = cast(ulong)a >= cast(ulong)b; break;
-							case IrBinaryCondition.ult: result = cast(ulong)a <  cast(ulong)b; break;
-							case IrBinaryCondition.ule: result = cast(ulong)a <= cast(ulong)b; break;
+							case IrBinaryCondition.ugt:
+								switch(type.basicType(c)) {
+									case IrBasicType.i8:  result = a.u8  > b.u8;  break;
+									case IrBasicType.i16: result = a.u16 > b.u16; break;
+									case IrBasicType.i32: result = a.u32 > b.u32; break;
+									case IrBasicType.i64: result = a.u64 > b.u64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.uge:
+								switch(type.basicType(c)) {
+									case IrBasicType.i8:  result = a.u8  >= b.u8;  break;
+									case IrBasicType.i16: result = a.u16 >= b.u16; break;
+									case IrBasicType.i32: result = a.u32 >= b.u32; break;
+									case IrBasicType.i64: result = a.u64 >= b.u64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.ult:
+								switch(type.basicType(c)) {
+									case IrBasicType.i8:  result = a.u8  < b.u8;  break;
+									case IrBasicType.i16: result = a.u16 < b.u16; break;
+									case IrBasicType.i32: result = a.u32 < b.u32; break;
+									case IrBasicType.i64: result = a.u64 < b.u64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.ule:
+								switch(type.basicType(c)) {
+									case IrBasicType.i8:  result = a.u8  <= b.u8;  break;
+									case IrBasicType.i16: result = a.u16 <= b.u16; break;
+									case IrBasicType.i32: result = a.u32 <= b.u32; break;
+									case IrBasicType.i64: result = a.u64 <= b.u64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
 
-							case IrBinaryCondition.sgt: result = cast(long)a >  cast(long)b; break;
-							case IrBinaryCondition.sge: result = cast(long)a >= cast(long)b; break;
-							case IrBinaryCondition.slt: result = cast(long)a <  cast(long)b; break;
-							case IrBinaryCondition.sle: result = cast(long)a <= cast(long)b; break;
+							case IrBinaryCondition.sgt:
+								switch(type.basicType(c)) {
+									case IrBasicType.i8:  result = a.i8  > b.i8;  break;
+									case IrBasicType.i16: result = a.i16 > b.i16; break;
+									case IrBasicType.i32: result = a.i32 > b.i32; break;
+									case IrBasicType.i64: result = a.i64 > b.i64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.sge:
+								switch(type.basicType(c)) {
+									case IrBasicType.i8:  result = a.i8  >= b.i8;  break;
+									case IrBasicType.i16: result = a.i16 >= b.i16; break;
+									case IrBasicType.i32: result = a.i32 >= b.i32; break;
+									case IrBasicType.i64: result = a.i64 >= b.i64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.slt:
+								switch(type.basicType(c)) {
+									case IrBasicType.i8:  result = a.i8  < b.i8;  break;
+									case IrBasicType.i16: result = a.i16 < b.i16; break;
+									case IrBasicType.i32: result = a.i32 < b.i32; break;
+									case IrBasicType.i64: result = a.i64 < b.i64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.sle:
+								switch(type.basicType(c)) {
+									case IrBasicType.i8:  result = a.i8  <= b.i8;  break;
+									case IrBasicType.i16: result = a.i16 <= b.i16; break;
+									case IrBasicType.i32: result = a.i32 <= b.i32; break;
+									case IrBasicType.i64: result = a.i64 <= b.i64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+
+							case IrBinaryCondition.fgt:
+								switch(type.basicType(c)) {
+									case IrBasicType.f32: result = a.f32 > b.f32; break;
+									case IrBasicType.f64: result = a.f64 > b.f64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.fge:
+								switch(type.basicType(c)) {
+									case IrBasicType.f32: result = a.f32 >= b.f32; break;
+									case IrBasicType.f64: result = a.f64 >= b.f64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.flt:
+								switch(type.basicType(c)) {
+									case IrBasicType.f32: result = a.f32 < b.f32; break;
+									case IrBasicType.f64: result = a.f64 < b.f64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
+							case IrBinaryCondition.fle:
+								switch(type.basicType(c)) {
+									case IrBasicType.f32: result = a.f32 <= b.f32; break;
+									case IrBasicType.f64: result = a.f64 <= b.f64; break;
+									default: c.internal_error("%s", type.basicType(c));
+								}
+								break;
 						}
 						prevBlock = curBlock;
 						if (result)
@@ -212,7 +307,7 @@ struct IrVm
 						break instr_loop;
 
 					case IrOpcode.branch_unary:
-						long a = readInt(instrHeader.arg(func, 0));
+						long a = readValue(instrHeader.arg(func, 0)).i64;
 						//writefln("br %s : %s %s", a, block.successors[0, func], block.successors[1, func]);
 						bool result;
 						final switch(cast(IrUnaryCondition)instrHeader.cond)
@@ -276,30 +371,30 @@ struct IrVm
 
 	void binop(string op)(ref IrInstrHeader instrHeader)
 	{
-		long a = readInt(instrHeader.arg(func, 0));
-		long b = readInt(instrHeader.arg(func, 1));
+		long a = readValue(instrHeader.arg(func, 0)).i64;
+		long b = readValue(instrHeader.arg(func, 1)).i64;
 		mixin(`long result = a `~op~` b;`);
 		writeInt(instrHeader.result(func), result);
 	}
 
-	long readInt(IrIndex index)
+	IrConstVal readValue(IrIndex index)
 	{
 		switch (index.kind) with(IrValueKind) {
-			case constant, constantZero: return c.constants.get(index).i64;
-			case virtualRegister: return readInt(vregSlot(index));
-			default: c.internal_error("readInt %s", index);
+			case constant, constantZero: return c.constants.get(index).value;
+			case virtualRegister: return readValue(vregSlot(index));
+			default: c.internal_error("readValue %s", index);
 		}
 	}
 
-	long readInt(IrVmSlotInfo mem)
+	IrConstVal readValue(IrVmSlotInfo mem)
 	{
 		switch(mem.length)
 		{
-			case 1: return *cast( byte*)slotToSlice(mem).ptr;
-			case 2: return *cast(short*)slotToSlice(mem).ptr;
-			case 4: return *cast(  int*)slotToSlice(mem).ptr;
-			case 8: return *cast( long*)slotToSlice(mem).ptr;
-			default: c.internal_error("readInt %s", mem);
+			case 1: return IrConstVal(*cast( ubyte*)slotToSlice(mem).ptr);
+			case 2: return IrConstVal(*cast(ushort*)slotToSlice(mem).ptr);
+			case 4: return IrConstVal(*cast(  uint*)slotToSlice(mem).ptr);
+			case 8: return IrConstVal(*cast( ulong*)slotToSlice(mem).ptr);
+			default: c.internal_error("readValue %s", mem);
 		}
 	}
 
@@ -309,8 +404,8 @@ struct IrVm
 		IrIndex ptrMemType = c.types.getPointerBaseType(ptrType);
 		uint targetSize = c.types.typeSize(ptrMemType);
 		switch (ptr.kind) with(IrValueKind) {
-			case constant, constantZero: return IrVmSlotInfo(c.constants.get(ptr).i32, targetSize);
-			case virtualRegister: return IrVmSlotInfo(cast(uint)readInt(vregSlot(ptr)), targetSize);
+			case constant, constantZero: return IrVmSlotInfo(c.constants.get(ptr).u32, targetSize);
+			case virtualRegister: return IrVmSlotInfo(readValue(vregSlot(ptr)).u32, targetSize);
 			case stackSlot: return stackSlotSlot(ptr);
 			default: c.internal_error("ptrToSlice %s", ptr);
 		}

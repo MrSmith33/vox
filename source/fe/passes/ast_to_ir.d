@@ -139,7 +139,7 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 			return ExprValue(irValue);
 		}
 		case decl_struct, type_basic, type_ptr, type_slice, type_static_array: {
-			IrIndex irValue = gen.context.constants.add(astIndex.storageIndex, IsSigned.no, IrArgSize.size32);
+			IrIndex irValue = gen.context.constants.add(makeIrType(IrBasicType.i32), astIndex.storageIndex);
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return ExprValue(irValue);
 		}
@@ -237,6 +237,7 @@ IrIndex makeBoolValue(ref IrGenState gen, ExpressionNode* n, IrIndex currentBloc
 	ir_gen_branch(gen, c.getAstNodeIndex(n), currentBlock, trueLabel, falseLabel);
 
 	IrIndex value;
+	IrIndex irType = n.type.gen_ir_type(c);
 
 	if (trueLabel.numPredecessors != 0)
 	{
@@ -253,17 +254,17 @@ IrIndex makeBoolValue(ref IrGenState gen, ExpressionNode* n, IrIndex currentBloc
 			nextBlock = nextLabel.blockIndex;
 			builder.sealBlock(nextBlock);
 
-			IrIndex phiIndex = builder.addPhi(nextBlock, n.type.gen_ir_type(c), IrIndex.init);
-			IrIndex trueValue = c.constants.add(1, IsSigned.no, n.type.typeArgSize(c));
+			IrIndex phiIndex = builder.addPhi(nextBlock, irType, IrIndex.init);
+			IrIndex trueValue = c.constants.add(irType, 1);
 			builder.addPhiArg(phiIndex, trueValue);
-			IrIndex falseValue = c.constants.add(0, IsSigned.no, n.type.typeArgSize(c));
+			IrIndex falseValue = c.constants.addZeroConstant(irType);
 			builder.addPhiArg(phiIndex, falseValue);
 			value = builder.ir.getPhi(phiIndex).result;
 		}
 		else // only true block exists
 		{
 			nextBlock = trueBlock;
-			value = c.constants.add(1, IsSigned.no, n.type.typeArgSize(c));
+			value = c.constants.add(irType, 1);
 		}
 	}
 	else if (falseLabel.numPredecessors != 0) // only false block exists
@@ -271,7 +272,7 @@ IrIndex makeBoolValue(ref IrGenState gen, ExpressionNode* n, IrIndex currentBloc
 		nextBlock = falseLabel.blockIndex;
 		builder.sealBlock(nextBlock);
 
-		value = c.constants.add(0, IsSigned.no, n.type.typeArgSize(c));
+		value = c.constants.addZeroConstant(irType);
 	}
 
 	builder.addJumpToLabel(nextBlock, nextStmt);
@@ -418,7 +419,8 @@ struct ExprValue
 				IrIndex aggrType = gen.ir.getValueType(c, aggr);
 				switch (aggrType.typeKind) {
 					case IrTypeKind.pointer:
-						IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, source.indices[]);
+						IrIndex ZERO = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+						IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, ZERO, source.indices[]);
 						if (source.isLvalue) {
 							return ExprValue(ptr).load(gen, loc, currentBlock);
 						} else {
@@ -474,7 +476,8 @@ struct ExprValue
 				//writefln("Store %s", IrIndexDump(aggrType, c, gen.ir));
 				switch (aggrType.typeKind) {
 					case IrTypeKind.pointer:
-						IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, c.constants.ZERO, destination.indices[]);
+						IrIndex ZERO = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+						IrIndex ptr = buildGEP(gen, loc, currentBlock, aggr, ZERO, destination.indices[]);
 						gen.builder.emitInstr!(IrOpcode.store)(currentBlock, ExtraInstrArgs(), ptr, value);
 						break;
 					case IrTypeKind.struct_t:
@@ -547,7 +550,8 @@ struct ExprValue
 
 		switch (aggrType.typeKind) {
 			case IrTypeKind.pointer:
-				return ExprValue(buildGEP(gen, loc, currentBlock, aggr.irValue, c.constants.ZERO, index), ExprValueKind.ptr_to_data, IsLvalue.yes);
+				IrIndex ZERO = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+				return ExprValue(buildGEP(gen, loc, currentBlock, aggr.irValue, ZERO, index), ExprValueKind.ptr_to_data, IsLvalue.yes);
 			case IrTypeKind.struct_t: {
 				IrIndex aggrVal = aggr.irValue;
 
@@ -587,7 +591,8 @@ IrIndex buildGEPEx(ref IrGenState gen, TokenIndex loc, IrIndex currentBlock, Exp
 			IrIndex aggrType = gen.ir.getValueType(c, aggrPtr);
 			switch (aggrType.typeKind) {
 				case IrTypeKind.pointer:
-					aggrPtr = buildGEP(gen, loc, currentBlock, aggrPtr, c.constants.ZERO, aggrPtrExpr.indices[]);
+					IrIndex ZERO = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+					aggrPtr = buildGEP(gen, loc, currentBlock, aggrPtr, ZERO, aggrPtrExpr.indices[]);
 					break;
 
 				default: c.internal_error("aggrType.typeKind == %s", aggrType.typeKind);

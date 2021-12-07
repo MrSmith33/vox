@@ -182,11 +182,11 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
 
-			IrIndex increment = c.constants.ONE; // integers increment by 1
+			IrIndex increment = c.constants.add(makeIrType(IrBasicType.i32), 1); // integers increment by 1
 			TypeNode* childType = childExpr.type.get_type(c);
 			if (childType.isPointer) { // pointers increment by size of element
 				uint size = childType.as_ptr.base.require_type_size(c).size;
-				increment = c.constants.add(size, IsSigned.no);
+				increment = c.constants.add(makeIrType(IrBasicType.i32), size);
 			}
 
 			IrArgSize argSize = childType.argSize(c);
@@ -222,9 +222,10 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			currentBlock = afterChild.blockIndex;
 
 			// pointer to first element
-			IrIndex ptr = buildGEPEx(gen, u.loc, currentBlock, lval, c.constants.ZERO, c.constants.ZERO);
+			IrIndex ZERO = c.constants.addZeroConstant(makeIrType(IrBasicType.i32));
+			IrIndex ptr = buildGEPEx(gen, u.loc, currentBlock, lval, ZERO, ZERO);
 			// array length
-			IrIndex length = c.constants.add(childExpr.type.get_type(c).as_static_array.length, IsSigned.no, IrArgSize.size64);
+			IrIndex length = c.constants.add(makeIrType(IrBasicType.i64), childExpr.type.get_type(c).as_static_array.length);
 
 			// combine into slice {u64, T*}
 			IrIndex resType = u.type.gen_ir_type(c);
@@ -264,14 +265,23 @@ enum UnOp : ubyte {
 	staticArrayToSlice,
 }
 
-IrIndex calcUnOp(UnOp op, IrIndex child, IrArgSize argSize, CompilationContext* c)
+IrIndex calcUnOp(UnOp op, IrIndex child, CompilationContext* c)
 {
 	IrConstant childCon = c.constants.get(child);
 
 	switch(op)
 	{
 		case UnOp.bitwiseNot:
-			return c.constants.add(~childCon.i64, cast(IsSigned)child.isSignedConstant, argSize);
+			IrBasicType basicType = childCon.type.basicType(c);
+			ulong result;
+			switch(basicType) with(IrBasicType) {
+				case i8:  result = cast(ubyte) (~childCon.u32); break;
+				case i16: result = cast(ushort)(~childCon.u32); break;
+				case i32: result = cast(uint)  (~childCon.u32); break;
+				case i64: result = cast(ulong) (~childCon.u64); break;
+				default: c.internal_error("Invalid constant type %s", basicType);
+			}
+			return c.constants.add(childCon.type, result);
 
 		default:
 			c.internal_error("Opcode `%s` is not implemented", op);

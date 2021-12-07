@@ -77,7 +77,7 @@ IrIndex simplifyConstant(IrIndex index, CompilationContext* c)
 	}
 
 	constantToMem(data.buffer[0..typeSize], index, c);
-	return c.constants.add(data.bufferValue, IsSigned.no, sizeToIrArgSize(typeSize, c));
+	return c.constants.add(sizeToIntType(typeSize, c), data.bufferValue);
 }
 
 IrIndex genAddressOffset(IrIndex ptr, uint offset, IrIndex ptrType, IrIndex beforeInstr, ref IrBuilder builder) {
@@ -86,7 +86,7 @@ IrIndex genAddressOffset(IrIndex ptr, uint offset, IrIndex ptrType, IrIndex befo
 		InstrWithResult movInstr = builder.emitInstrBefore!(IrOpcode.move)(beforeInstr, extra, ptr);
 		return movInstr.result;
 	} else {
-		IrIndex offsetIndex = builder.context.constants.add(offset, IsSigned.no);
+		IrIndex offsetIndex = builder.context.constants.add(makeIrType(IrBasicType.i64), offset);
 		ExtraInstrArgs extra = { type : ptrType };
 		InstrWithResult addressInstr = builder.emitInstrBefore!(IrOpcode.add)(beforeInstr, extra, ptr, offsetIndex);
 		return addressInstr.result;
@@ -260,7 +260,6 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					IrIndex[] args = instrHeader.args(ir);
 					IrIndex aggrType = getValueType(args[0], ir, c);
 					uint targetTypeSize = c.types.typeSize(aggrType);
-					IrArgSize argSize = sizeToIrArgSize(targetTypeSize, c);
 					IrTypeStructMember member = c.types.getAggregateMember(aggrType, c, args[2..$]);
 					IrIndex memberType = member.type;
 					uint memberSize = c.types.typeSize(memberType);
@@ -293,6 +292,9 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 					}
 					else
 					{
+						IrArgSize argSize = sizeToIrArgSize(targetTypeSize, c);
+						IrIndex intType = sizeToIntType(targetTypeSize, c);
+
 						ulong aggregateMask = bitmask(targetTypeSize * 8);
 						ulong headerMask = bitmask((memberSize + member.offset) * 8);
 						ulong rightMask = bitmask(member.offset * 8);
@@ -313,7 +315,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						}
 
 						bool isBigConstant = argSizeIntUnsigned(holeMask) == IrArgSize.size64;
-						IrIndex constIndex = c.constants.add(holeMask, IsSigned.no, argSize);
+						IrIndex constIndex = c.constants.add(intType, holeMask);
 
 						if (isBigConstant)
 						{
@@ -340,7 +342,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						// shift
 						if (bit_offset != 0)
 						{
-							IrIndex rightArg = c.constants.add(bit_offset, IsSigned.no);
+							IrIndex rightArg = c.constants.add(intType, bit_offset);
 							ExtraInstrArgs extra1 = { argSize : argSize, type : memberType };
 							memberValue = builder.emitInstrBefore!(IrOpcode.shl)(instrIndex, extra1, memberValue, rightArg).result;
 						}
@@ -360,6 +362,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 					IrIndex[] args = instrHeader.args(ir);
 					IrIndex sourceType = getValueType(args[0], ir, c);
+					uint sourceSize = c.types.typeSize(sourceType);
 					IrTypeStructMember member = c.types.getAggregateMember(sourceType, c, args[1..$]);
 					IrIndex resultType = member.type;
 					uint resultSize = c.types.typeSize(resultType);
@@ -376,12 +379,13 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 
 					if (sourceType.fitsIntoRegister(c))
 					{
+						IrIndex intType = sizeToIntType(sourceSize, c);
 						// do simple variant where all indices are constant
 						IrIndex value = args[0];
 						if (member.offset > 0)
 						{
 							// shift right
-							IrIndex rightArg = c.constants.add(member.offset * 8, IsSigned.no);
+							IrIndex rightArg = c.constants.add(intType, member.offset * 8);
 							ExtraInstrArgs extra = { argSize : getTypeArgSize(sourceType, c), type : sourceType };
 							value = builder.emitInstrBefore!(IrOpcode.lshr)(instrIndex, extra, value, rightArg).result;
 						}
@@ -390,7 +394,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						if (!resultType.fitsIntoRegister(c))
 						{
 							// and
-							IrIndex mask = c.constants.add((1 << (resultSize * 8)) - 1, IsSigned.no);
+							IrIndex mask = c.constants.add(intType, (1 << (resultSize * 8)) - 1);
 							ExtraInstrArgs extra = { type : member.type };
 							value = builder.emitInstrBefore!(IrOpcode.and)(instrIndex, extra, value, mask).result;
 						}
@@ -439,7 +443,7 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						addr = addressInstr.result;
 					}
 
-					ExtraInstrArgs extra2 = { argSize : IrArgSize.size64, type : makeBasicTypeIndex(IrValueType.i64) };
+					ExtraInstrArgs extra2 = { argSize : IrArgSize.size64, type : makeIrType(IrBasicType.i64) };
 					InstrWithResult loadInstr = builder.emitInstrBefore!(IrOpcode.load)(instrIndex, extra2, addr);
 
 					instrHeader.numArgs = 1;
@@ -556,6 +560,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 
 	uint targetTypeSize = c.types.typeSize(type);
 	IrArgSize argSize = sizeToIrArgSize(targetTypeSize, c);
+	c.assertf(targetTypeSize <= 8, "aggregate is too big (%s) expected <= 8 bytes", targetTypeSize);
 	c.assertf(instrHeader.numArgs <= 8, "too much args %s", instrHeader.numArgs);
 	ulong constant = 0;
 	// how many non-constants are prepared in argBuffer
@@ -580,7 +585,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 			argBuffer[numBufferedValues] = value;
 		else
 		{
-			IrIndex rightArg = c.constants.add(bit_offset, IsSigned.no);
+			IrIndex rightArg = c.constants.add(makeIrType(IrBasicType.i8), bit_offset);
 			ExtraInstrArgs extra1 = { argSize : argSize, type : type };
 			IrIndex shiftRes = builder.emitInstrBefore!(IrOpcode.shl)(instrIndex, extra1, value, rightArg).result;
 			argBuffer[numBufferedValues] = shiftRes;
@@ -627,27 +632,19 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 		default: assert(false);
 	}
 
-	IrIndex constIndex = c.constants.add(constant, IsSigned.no, argSize);
+	IrIndex targetIntType = sizeToIntType(targetTypeSize, c);
+	IrIndex constIndex = c.constants.add(targetIntType, constant);
 	IrIndex result;
 	if (numBufferedValues == 1)
 	{
 		if (constant == 0)
 		{
-			result = argBuffer[0];
+			result = argBuffer[0]; // only non-constant data
 		}
 		else
 		{
-			bool isBigConstant = c.constants.get(constIndex).payloadSize(constIndex) == IrArgSize.size64;
-
-			if (isBigConstant)
-			{
-				// copy to temp register
-				ExtraInstrArgs extra = { argSize : argSize, type : type };
-				constIndex = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, constIndex).result;
-			}
-
 			ExtraInstrArgs extra3 = { argSize : argSize, type : type };
-			result = builder.emitInstrBefore!(IrOpcode.or)(instrIndex, extra3, argBuffer[0], constIndex).result;
+			result = builder.emitInstrBefore!(IrOpcode.or)(instrIndex, extra3, argBuffer[0], constIndex).result; // both
 		}
 	}
 	else
@@ -691,7 +688,7 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 			builder.insertBeforeInstr(instrIndex, instr.instruction);
 			return instr.result;
 		} else {
-			IrIndex offset = context.constants.add(offsetVal, IsSigned.yes);
+			IrIndex offset = context.constants.add(makeIrType(IrBasicType.i64), offsetVal);
 
 			ExtraInstrArgs extra = { type : resultType };
 			InstrWithResult addressInstr = builder.emitInstr!(IrOpcode.add)(extra, basePtr, offset);
@@ -703,11 +700,11 @@ void lowerGEP(CompilationContext* context, ref IrBuilder builder, IrIndex instrI
 
 	IrIndex buildIndex(IrIndex basePtr, IrIndex index, uint elemSize, IrIndex resultType)
 	{
-		IrIndex scale = context.constants.add(elemSize, IsSigned.no);
+		IrIndex scale = context.constants.add(makeIrType(IrBasicType.i64), elemSize);
 		IrIndex indexVal = index;
 
 		if (elemSize > 1) {
-			ExtraInstrArgs extra1 = { type : makeBasicTypeIndex(IrValueType.i64) };
+			ExtraInstrArgs extra1 = { type : makeIrType(IrBasicType.i64) };
 			InstrWithResult offsetInstr = builder.emitInstr!(IrOpcode.umul)(extra1, index, scale);
 			builder.insertBeforeInstr(instrIndex, offsetInstr.instruction);
 			indexVal = offsetInstr.result;
