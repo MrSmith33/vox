@@ -801,34 +801,47 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 				assert(nextIndex == regsUsed);
 			}
 
-			if (regsUsed + 1 <= instrHeader.numArgs) { // include callee
-				// reuse instruction
-				instrHeader.numArgs = cast(ubyte)(regsUsed + 1); // include callee
-
-				fillRegs(instrHeader.args(ir)[1..$]); // fill with regs
-
+			if (regsUsed + 1 <= instrHeader.numArgs) { // +1 includes callee
 				if (callee_state.abi.useSyscall) {
-					instrHeader.op = IrOpcode.syscall;
+					// Put syscall number into the correct register
 					IrIndex syscallRegister = IrIndex(callee_state.abi.syscallRegister, ArgType.DWORD);
 					ExtraInstrArgs extra = { result : syscallRegister };
 					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, c.constants.add(makeIrType(IrBasicType.i32), callee_state.type.syscallNumber));
-					// We leave callee here, so that liveness analysis can get calling convention
+
+					// We need bigger instruction for syscall because of extra syscallRegister at the end
+					ExtraInstrArgs callExtra = { extraArgSlots : cast(ubyte)(regsUsed + 1) };
+					if (instrHeader.hasResult) callExtra.result = instrHeader.result(ir);
+
+					// We leave callee argument in here, so that liveness analysis can get calling convention info
+					IrIndex newCallInstr = builder.emitInstr!(IrOpcode.syscall)(callExtra, instrHeader.arg(ir, 0)).instruction;
+					IrInstrHeader* callHeader = ir.getInstr(newCallInstr);
+					fillRegs(callHeader.args(ir)[1..$-1]); // fill with regs
+
+					// Since we did the mov to the syscallRegister after all other movs, syscallRegister needs to be passed at the end of the list
+					// to preserve the order invariant for the liveness analysis
+					callHeader.args(ir)[$-1] = syscallRegister;
+
+					replaceInstruction(ir, instrIndex, newCallInstr);
+					instrIndex = newCallInstr;
+				} else {
+					// reuse instruction
+					instrHeader.numArgs = cast(ubyte)(regsUsed + 1); // include callee
+
+					fillRegs(instrHeader.args(ir)[1..$]); // fill with regs
 				}
 			} else {
-				// make bigger instruction
-				ExtraInstrArgs extra = {
-					extraArgSlots : regsUsed
-				};
-				if (instrHeader.hasResult)
-					extra.result = instrHeader.result(ir);
-				IrIndex newCallInstr;
-				assert(!callee_state.abi.useSyscall); // Syscalls are not allowed to introduce extra parameters
-				newCallInstr = builder.emitInstr!(IrOpcode.call)(extra, instrHeader.arg(ir, 0)).instruction;
-				IrInstrHeader* callHeader = ir.getInstr(newCallInstr);
+				assert(!callee_state.abi.useSyscall); // Syscalls are handled in the other case
 
+				// make bigger instruction
+				ExtraInstrArgs callExtra = { extraArgSlots : regsUsed };
+				if (instrHeader.hasResult) callExtra.result = instrHeader.result(ir);
+
+				IrIndex newCallInstr = builder.emitInstr!(IrOpcode.call)(callExtra, instrHeader.arg(ir, 0)).instruction;
+				IrInstrHeader* callHeader = ir.getInstr(newCallInstr);
 				fillRegs(callHeader.args(ir)[1..$]); // fill with regs
 
 				replaceInstruction(ir, instrIndex, newCallInstr);
+				instrIndex = newCallInstr;
 			}
 		}
 
