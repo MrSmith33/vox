@@ -118,34 +118,26 @@ struct EnumMemberDecl
 	Identifier id;
 	ushort scopeIndex;
 	IrIndex initValue; // cached value of initializer, calculated in type check
-
-	private enum Flags : ushort
-	{
-		calculatingInitVal = AstFlags.userFlag
-	}
-
-	bool calculatingInitVal() { return cast(bool)(flags & Flags.calculatingInitVal); }
 }
 
 IrIndex gen_init_value_enum_member(EnumMemberDecl* node, CompilationContext* c) {
 	final switch(node.getPropertyState(NodeProperty.init_value)) {
 		case PropertyState.not_calculated: break;
-		case PropertyState.calculating: c.circular_dependency(c.getAstNodeIndex(node), CalculatedProperty.init_value);
+		case PropertyState.calculating: c.circular_dependency;
 		case PropertyState.calculated: return node.initValue;
 	}
 
-	node.setPropertyState(NodeProperty.init_value, PropertyState.calculating);
-	scope(exit) node.setPropertyState(NodeProperty.init_value, PropertyState.calculated);
-
-	c.push_analized_node(AnalysedNode(c.getAstNodeIndex(node), CalculatedProperty.init_value));
-	scope(success) c.pop_analized_node;
+	c.begin_node_property_calculation(node, NodeProperty.init_value);
+	scope(exit) c.end_node_property_calculation(node, NodeProperty.init_value);
 
 	if (node.initializer) {
 		if (node.type) {
 			auto type = node.type.get_node(c);
+
 			if (type.astType == AstType.decl_enum) {
 				require_type_check(type.as!EnumDeclaration(c).memberType, c, IsNested.no);
 			} else require_type_check(node.type, c);
+
 			require_type_check_expr(node.type, node.initializer, c);
 			//writefln("  autoconvTo %s", printer(node.type, c));
 			TypeConvResKind res = checkTypeConversion(node.initializer.get_expr_type(c), node.type, node.initializer, c);
@@ -217,6 +209,6 @@ void type_check_enum_member(EnumMemberDecl* node, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
 	node.state = AstNodeState.type_check;
-	node.gen_init_value_enum_member(c);
+	gen_init_value_enum_member(node, c);
 	node.state = AstNodeState.type_check_done;
 }

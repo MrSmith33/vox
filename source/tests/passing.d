@@ -4630,7 +4630,7 @@ void tester211(ref TestContext ctx) {
 }
 
 
-/*@TestInfo()
+@TestInfo()
 immutable test212 = q{--- test212
 	// Forward reference for variable init value -> enum init value -> enum member init value
 	VkQueryType queryType;
@@ -4638,7 +4638,7 @@ immutable test212 = q{--- test212
 		VK_QUERY_TYPE_OCCLUSION = 0,
 	}
 };
-*/
+
 
 /*@TestInfo()
 immutable test213 = q{--- test213
@@ -5171,7 +5171,7 @@ immutable test238 = q{--- test238
 	void fun2(){}
 };
 
-/*
+
 @TestInfo()
 immutable test239 = q{--- test239
 	// circular dependency on enum type
@@ -5180,4 +5180,14 @@ immutable test239 = q{--- test239
 		VK_SHARING_MODE_CONCURRENT = 1,
 		VK_SHARING_MODE_END_RANGE  = VK_SHARING_MODE_CONCURRENT,
 	}
-};*/
+};
+
+
+@TestInfo()
+immutable test240 = q{--- test240
+	// Recursive type
+	struct S {
+		S[] nested1;
+		S* nested2;
+	}
+};

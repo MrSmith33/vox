@@ -183,13 +183,12 @@ void type_calc_name_use(ref AstIndex nodeIndex, NameUseExprNode* node, ref TypeC
 
 	final switch(node.getPropertyState(NodeProperty.type)) {
 		case PropertyState.not_calculated: break;
-		case PropertyState.calculating:
-			c.circular_dependency(nodeIndex, CalculatedProperty.type);
+		case PropertyState.calculating: c.circular_dependency;
 		case PropertyState.calculated: return;
 	}
 
-	node.setPropertyState(NodeProperty.type, PropertyState.calculating);
-	scope(exit) node.setPropertyState(NodeProperty.type, PropertyState.calculated);
+	c.begin_node_property_calculation(node, NodeProperty.type);
+	scope(exit) c.end_node_property_calculation(node, NodeProperty.type);
 
 	AstIndex parentType;
 	if (state.parentType.isDefined)

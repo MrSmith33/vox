@@ -260,13 +260,15 @@ void gen_ir_header_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 {
 	final switch(node.getPropertyState(NodeProperty.ir_header)) {
 		case PropertyState.not_calculated: break;
-		case PropertyState.calculating: assert(false);
+		case PropertyState.calculating: c.circular_dependency;
 		case PropertyState.calculated: return;
 	}
 
+	c.begin_node_property_calculation(node, NodeProperty.ir_header);
+	scope(exit) c.end_node_property_calculation(node, NodeProperty.ir_header);
+
 	uint numResults = node.returnType.isTypeVoid ? 0 : 1;
 	node.irType = c.types.appendFuncSignature(numResults, node.parameters.length, node.callConvention);
-	node.setPropertyState(NodeProperty.ir_header, PropertyState.calculated);
 }
 
 // depends on ir_header
@@ -275,14 +277,16 @@ IrIndex gen_ir_type_func_sig(FunctionSignatureNode* node, CompilationContext* c)
 {
 	final switch(node.getPropertyState(NodeProperty.ir_body)) {
 		case PropertyState.not_calculated: break;
-		case PropertyState.calculating: assert(false);
+		case PropertyState.calculating: c.circular_dependency;
 		case PropertyState.calculated: return node.irType;
 	}
 
+	// dependencies
 	gen_ir_header_func_sig(node, c);
 
-	node.setPropertyState(NodeProperty.ir_body, PropertyState.calculating);
-	scope(exit) node.setPropertyState(NodeProperty.ir_body, PropertyState.calculated);
+	c.begin_node_property_calculation(node, NodeProperty.ir_body);
+	scope(exit) c.end_node_property_calculation(node, NodeProperty.ir_body);
+
 
 	auto funcType = &c.types.get!IrTypeFunction(node.irType);
 

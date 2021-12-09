@@ -279,50 +279,29 @@ bool same_type(AstIndex _t1, AstIndex _t2, CompilationContext* c) {
 	}
 }
 
-IrIndex gen_ir_type(AstIndex nodeIndex, CompilationContext* c)
-{
-	return gen_ir_type(c.getAst!TypeNode(nodeIndex), c);
+/// If AllowHeaderOnly is true and `ir_body` is `calculating` then it will return just the ir_header.
+/// Otherwise if ir_body is not_calculated, gen_ir_type will calculate it
+enum AllowHeaderOnly : bool {
+	no = false,
+	yes = true,
 }
 
-IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* c)
+IrIndex gen_ir_type(AstIndex nodeIndex, CompilationContext* c, AllowHeaderOnly allow_header_only = AllowHeaderOnly.no)
 {
-	AstIndex nodeIndex = c.getAstNodeIndex(typeNode);
+	return gen_ir_type(c.getAst!TypeNode(nodeIndex), c, allow_header_only);
+}
 
-	switch(typeNode.state) with(AstNodeState)
-	{
-		case name_register_self, name_register_nested, name_resolve:
-			c.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.ir_gen));
-			c.circular_dependency;
-		case type_check: break;
-		case name_register_self_done:
-			require_name_register(nodeIndex, c);
-			c.throwOnErrors;
-			goto case;
-		case name_register_nested_done:
-			require_name_resolve(nodeIndex, c);
-			c.throwOnErrors;
-			goto case;
-		case name_resolve_done:
-			// perform type checking of forward referenced node
-			require_type_check(nodeIndex, c);
-			c.throwOnErrors;
-			break;
-		case type_check_done: break; // all requirement are done
-		default: c.internal_error(typeNode.loc, "Node %s in %s state", typeNode.astType, typeNode.state);
-	}
-
-	c.push_analized_node(AnalysedNode(nodeIndex, CalculatedProperty.ir_gen));
-	scope(success) c.pop_analized_node;
-
+IrIndex gen_ir_type(TypeNode* typeNode, CompilationContext* c, AllowHeaderOnly allow_header_only = AllowHeaderOnly.no)
+{
 	switch (typeNode.astType)
 	{
 		case AstType.type_basic: return gen_ir_type_basic(typeNode.as_basic, c);
 		case AstType.type_ptr: return gen_ir_type_ptr(typeNode.as_ptr, c);
 		case AstType.type_static_array: return gen_ir_type_static_array(typeNode.as_static_array, c);
 		case AstType.type_slice: return gen_ir_type_slice(typeNode.as_slice, c);
-		case AstType.decl_struct: return gen_ir_type_struct(typeNode.as_struct, c);
+		case AstType.decl_struct: return gen_ir_type_struct(typeNode.as_struct, c, allow_header_only);
 		case AstType.type_func_sig: return gen_ir_type_func_sig(typeNode.as_func_sig, c);
-		case AstType.expr_name_use: return gen_ir_type(typeNode.as_name_use.entity.get_node_type(c), c);
+		case AstType.expr_name_use: return gen_ir_type(typeNode.as_name_use.entity.get_node_type(c), c, allow_header_only);
 		case AstType.decl_enum: return gen_ir_type_enum(typeNode.as_enum, c);
 		default:
 			c.internal_error(typeNode.loc, "Cannot convert `%s` to ir type", typeNode.astType);

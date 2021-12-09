@@ -353,7 +353,31 @@ struct CompilationContext
 		end_ice(ice_state);
 	}
 
-	noreturn circular_dependency(AstIndex nodeIndex, CalculatedProperty prop, string file = __MODULE__, int line = __LINE__)
+	void begin_node_property_calculation(T)(T* node, NodeProperty prop)
+		if (hasAstNodeType!T)
+	{
+		AstIndex nodeIndex = getAstNodeIndex(node);
+		node.setPropertyState(prop, PropertyState.calculating);
+		push_analized_node(AnalysedNode(nodeIndex, prop));
+	}
+
+	void end_node_property_calculation(T)(T* node, NodeProperty prop)
+		if (hasAstNodeType!T)
+	{
+		node.setPropertyState(prop, PropertyState.calculated);
+		pop_analized_node;
+	}
+
+	void push_analized_node(AnalysedNode item) {
+		analisysStack.put(arrayArena, item);
+	}
+
+	void pop_analized_node() {
+		assertf(!analisysStack.empty, "Excessive popping detected");
+		analisysStack.unput(1);
+	}
+
+	noreturn circular_dependency(AstIndex nodeIndex, NodeProperty prop, string file = __MODULE__, int line = __LINE__)
 	{
 		push_analized_node(AnalysedNode(nodeIndex, prop));
 		circular_dependency(file, line);
@@ -463,15 +487,6 @@ struct CompilationContext
 	void throwOnErrors(string file = __MODULE__, int line = __LINE__)
 	{
 		if (hasErrors) throw new CompilationException(false, file, line);
-	}
-
-	void push_analized_node(AnalysedNode item) {
-		analisysStack.put(arrayArena, item);
-	}
-
-	void pop_analized_node() {
-		assertf(!analisysStack.empty, "Excessive popping detected");
-		analisysStack.unput(1);
 	}
 
 	IrVmSlotInfo pushVmStack(uint numBytes)
@@ -1014,19 +1029,7 @@ struct CompilationContext
 struct AnalysedNode
 {
 	AstIndex nodeIndex;
-	CalculatedProperty prop;
-}
-
-enum CalculatedProperty : ubyte {
-	name_register_self,
-	name_register_nested,
-	name_resolve,
-	type_check,
-	ir_type_header,
-	ir_gen,
-	type,
-	type_size,
-	init_value,
+	NodeProperty prop;
 }
 
 // How many 4 byte slots are required to store node in astBuffer

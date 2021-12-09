@@ -16,9 +16,8 @@ struct StaticArrayTypeNode {
 	IrIndex irType;
 	IrIndex defaultVal;
 	SizeAndAlignment sizealign(CompilationContext* c) {
-		c.assertf(state >= AstNodeState.type_check_done, loc, "size is unknown in %s state. Must be semantically analized", state);
-		SizeAndAlignment elemInfo = base.require_type_size(c);
-		return SizeAndAlignment(elemInfo.size * length, elemInfo.alignmentPower);
+		gen_ir_type_static_array(&this, c);
+		return c.types.typeSizeAndAlignment(irType);
 	}
 }
 
@@ -52,8 +51,7 @@ void type_check_static_array(StaticArrayTypeNode* node, ref TypeCheckState state
 
 	node.state = AstNodeState.type_check;
 	require_type_check(node.base, state);
-	IrIndex val = eval_static_expr(node.length_expr, c);
-	node.length = c.constants.get(val).i64.to!uint;
+	calc_length_static_array(node, c);
 	node.state = AstNodeState.type_check_done;
 }
 
@@ -99,10 +97,40 @@ IrIndex gen_init_value_static_array(StaticArrayTypeNode* node, CompilationContex
 	return node.defaultVal;
 }
 
-IrIndex gen_ir_type_static_array(StaticArrayTypeNode* t, CompilationContext* context)
+uint calc_length_static_array(StaticArrayTypeNode* node, CompilationContext* c)
+{
+	final switch(node.getPropertyState(NodeProperty.init_value)) {
+		case PropertyState.not_calculated: break;
+		case PropertyState.calculating: c.circular_dependency;
+		case PropertyState.calculated: return node.length;
+	}
+
+	c.begin_node_property_calculation(node, NodeProperty.init_value);
+	scope(exit) c.end_node_property_calculation(node, NodeProperty.init_value);
+
+	IrIndex val = eval_static_expr(node.length_expr, c);
+	node.length = c.constants.get(val).i64.to!uint;
+
+	return node.length;
+}
+
+IrIndex gen_ir_type_static_array(StaticArrayTypeNode* node, CompilationContext* c)
 	out(res; res.isTypeArray, "Not a array type")
 {
-	if (t.irType.isDefined) return t.irType;
-	t.irType = context.types.appendArray(t.base.gen_ir_type(context), t.length);
-	return t.irType;
+	final switch(node.getPropertyState(NodeProperty.ir_body)) {
+		case PropertyState.not_calculated: break;
+		case PropertyState.calculating: c.circular_dependency;
+		case PropertyState.calculated: return node.irType;
+	}
+
+	// dependencies
+	uint array_length = calc_length_static_array(node, c);
+	IrIndex baseType = node.base.gen_ir_type(c);
+
+	c.begin_node_property_calculation(node, NodeProperty.ir_body);
+	scope(exit) c.end_node_property_calculation(node, NodeProperty.ir_body);
+
+	node.irType = c.types.appendArray(baseType, array_length);
+
+	return node.irType;
 }

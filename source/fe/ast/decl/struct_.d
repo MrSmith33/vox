@@ -48,7 +48,7 @@ struct StructDeclNode {
 	bool isCtfeOnly() { return cast(bool)(flags & StructFlags.isCtfeOnly); }
 	bool isUnion() { return cast(bool)(flags & StructFlags.isUnion); }
 	SizeAndAlignment sizealign(CompilationContext* c) {
-		c.assertf(state >= AstNodeState.type_check_done, loc, "size is unknown in %s state. Must be semantically analized", state);
+		gen_ir_type_struct(&this, c);
 		IrTypeStruct* structType = &c.types.get!IrTypeStruct(irType);
 		return structType.sizealign;
 	}
@@ -142,28 +142,56 @@ IrIndex gen_init_value_struct(StructDeclNode* node, CompilationContext* c)
 	return node.defaultVal;
 }
 
-IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* c)
-	out(res; res.isTypeStruct, "Not a struct type")
+void gen_ir_header_struct(StructDeclNode* node, CompilationContext* c)
 {
-	if (s.irType.isDefined) return s.irType;
+	final switch(node.getPropertyState(NodeProperty.ir_header)) {
+		case PropertyState.not_calculated: break;
+		case PropertyState.calculating: c.circular_dependency;
+		case PropertyState.calculated: return;
+	}
+
+	c.begin_node_property_calculation(node, NodeProperty.ir_header);
+	scope(exit) c.end_node_property_calculation(node, NodeProperty.ir_header);
 
 	uint numFields = 0;
-	foreach(AstIndex memberIndex; s.declarations)
+	foreach(AstIndex memberIndex; node.declarations)
 	{
 		AstNode* member = c.getAstNode(memberIndex);
 		if (member.astType == AstType.decl_var)
 			++numFields;
 	}
 
-	s.irType = c.types.appendStruct(numFields, s.isUnion);
-	IrTypeStruct* structType = &c.types.get!IrTypeStruct(s.irType);
+	node.irType = c.types.appendStruct(numFields, node.isUnion);
+}
+
+
+IrIndex gen_ir_type_struct(StructDeclNode* node, CompilationContext* c, AllowHeaderOnly allow_header_only = AllowHeaderOnly.no)
+	out(res; res.isTypeStruct, "Not a struct type")
+{
+	final switch(node.getPropertyState(NodeProperty.ir_body)) {
+		case PropertyState.not_calculated: break;
+		case PropertyState.calculating:
+			if (allow_header_only) return node.irType;
+			c.circular_dependency;
+		case PropertyState.calculated: return node.irType;
+	}
+
+	// dependencies
+	gen_ir_header_struct(node, c);
+
+	c.begin_node_property_calculation(node, NodeProperty.ir_body);
+	scope(exit) c.end_node_property_calculation(node, NodeProperty.ir_body);
+
+
+	IrTypeStruct* structType = &c.types.get!IrTypeStruct(node.irType);
 	IrTypeStructMember[] members = structType.members;
 
 	uint memberIndex;
 	uint memberOffset;
 	uint maxMemberSize;
 	ubyte maxAlignmentPower = 0;
-	foreach(AstIndex memberAstIndex; s.declarations)
+
+	foreach(AstIndex memberAstIndex; node.declarations)
 	{
 		AstNode* member = c.getAstNode(memberAstIndex);
 		if (member.astType == AstType.decl_var)
@@ -173,7 +201,7 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* c)
 			SizeAndAlignment memberInfo = c.types.typeSizeAndAlignment(type);
 			maxAlignmentPower = max(maxAlignmentPower, memberInfo.alignmentPower);
 			memberOffset = alignValue!uint(memberOffset, 1 << memberInfo.alignmentPower);
-			if (s.isUnion)
+			if (node.isUnion)
 				members[memberIndex++] = IrTypeStructMember(type, 0);
 			else
 				members[memberIndex++] = IrTypeStructMember(type, memberOffset);
@@ -181,19 +209,21 @@ IrIndex gen_ir_type_struct(StructDeclNode* s, CompilationContext* c)
 			maxMemberSize = max(maxMemberSize, memberInfo.size);
 
 			if (var.type.isMetaType(c)) {
-				s.flags |= StructFlags.isCtfeOnly;
+				node.flags |= StructFlags.isCtfeOnly;
 			}
 		} else if (member.astType == AstType.decl_function) {
 			if (member.as!(FunctionDeclNode)(c).isCtfeOnly(c)) {
-				s.flags |= StructFlags.isCtfeOnly;
+				node.flags |= StructFlags.isCtfeOnly;
 			}
 		}
 	}
 
 	memberOffset = alignValue!uint(memberOffset, 1 << maxAlignmentPower);
-	if (s.isUnion)
+
+	if (node.isUnion)
 		structType.sizealign = SizeAndAlignment(maxMemberSize, maxAlignmentPower);
 	else
 		structType.sizealign = SizeAndAlignment(memberOffset, maxAlignmentPower);
-	return s.irType;
+
+	return node.irType;
 }

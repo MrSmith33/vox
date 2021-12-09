@@ -97,6 +97,7 @@ IrIndex gen_ir_type_ptr(PtrTypeNode* t, CompilationContext* context)
 	out(res; res.isTypePointer, "Not a pointer type")
 {
 	if (t.irType.isDefined) return t.irType;
-	t.irType = context.types.appendPtr(t.base.gen_ir_type(context));
+	IrIndex baseType = t.base.gen_ir_type(context, AllowHeaderOnly.yes);
+	t.irType = context.types.appendPtr(baseType);
 	return t.irType;
 }
