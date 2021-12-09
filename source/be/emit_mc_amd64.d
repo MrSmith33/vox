@@ -146,7 +146,7 @@ struct CodeEmitter
 		funcSym.dataPtr = gen.pc;
 		funcSym.sectionOffset = cast(ulong)(gen.pc - context.codeBuffer.bufPtr);
 
-		if (fun.id == CommonIds.id_main)
+		if (context.buildType == BuildType.exe && fun.id == CommonIds.id_main)
 		{
 			if (context.entryPoint !is null)
 			{
@@ -154,6 +154,15 @@ struct CodeEmitter
 			}
 
 			context.entryPoint = fun;
+
+			if (context.targetOs == TargetOs.linux) {
+				// On Linux entry point is aligned to 16 bytes, but we assume 16 byte alignment + 8 bytes from call istruction
+				// section 3.4.1 of AMD64 ABI 1.0 says:
+				//  `rsp`: The stack pointer holds the address of the byte with lowest address which is part of
+				//         the stack. It is guaranteed to be 16-byte aligned at process entry
+				// https://stackoverflow.com/questions/26866723/main-and-stack-alignment
+				gen.subq(Register.SP, Imm8(8));
+			}
 		}
 
 		stackPointer = IrIndex(lir.getCallConv(context).stackPointer, ArgType.QWORD);

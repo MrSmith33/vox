@@ -941,3 +941,17 @@ failing.vx:2:3: Error: undefined identifier `bar`
 Test runner also supports building executables, which I use to test executable generation. I only have 2 tests that produce an executable, because it is much slower than doing everything in memory.
 
 At the time of writing I have 270 test, all of which take ~60ms. Of which 2 executable tests take ~10ms. This is on Windows. So on average 5ms per executable test, which compiles, writes executable file, runs the executable. And 0.19ms per JIT test, which doesn't perform any IO. Together with compiling compiler from scratch it takes me 3.6s to compile and run compiler with whole test suite. So, iteration time is quite nice.
+
+
+# Linux quirks
+
+Calling convention of regular function on x86-64 specifies that stack is aligned to 16/32/64 bytes before the call, and call instruction pushes the 8 byte return address. It is not the case with the entry point. It is always aligned to 16 bytes.
+
+See section 3.4.1 of `System V Application Binary Interface AMD64 Architecture Processor Supplement`.
+
+It says the following:
+
+```
+%rsp: The stack pointer holds the address of the byte with lowest address which is part of
+      the stack. It is guaranteed to be 16-byte aligned at process entry.
+```

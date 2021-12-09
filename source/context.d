@@ -134,6 +134,7 @@ struct CompilationContext
 	string outputFilename = "out.exe";
 
 	/// Set when BuildType.exe is used
+	/// Set in CodeEmitter.compileFunction
 	FunctionDeclNode* entryPoint;
 
 	// build settings
