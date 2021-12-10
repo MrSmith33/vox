@@ -5191,3 +5191,136 @@ immutable test240 = q{--- test240
 		S* nested2;
 	}
 };
+
+
+@TestInfo(&tester241)
+immutable test241 = q{--- test241
+	// Compile-time int <-> float
+	f32  i8_to_f32() { return cast(f32)cast( i8)-100; }
+	f32 i16_to_f32() { return cast(f32)cast(i16)-100; }
+	f32 i32_to_f32() { return cast(f32)cast(i32)-100; }
+	f32 i64_to_f32() { return cast(f32)cast(i64)-100; }
+
+	f32  u8_to_f32() { return cast(f32)cast( u8)100; }
+	f32 u16_to_f32() { return cast(f32)cast(u16)100; }
+	f32 u32_to_f32() { return cast(f32)cast(u32)100; }
+	f32 u64_to_f32() { return cast(f32)cast(u64)100; }
+
+	f64  i8_to_f64() { return cast(f64)cast( i8)-100; }
+	f64 i16_to_f64() { return cast(f64)cast(i16)-100; }
+	f64 i32_to_f64() { return cast(f64)cast(i32)-100; }
+	f64 i64_to_f64() { return cast(f64)cast(i64)-100; }
+
+	f64  u8_to_f64() { return cast(f64)cast( u8)100; }
+	f64 u16_to_f64() { return cast(f64)cast(u16)100; }
+	f64 u32_to_f64() { return cast(f64)cast(u32)100; }
+	f64 u64_to_f64() { return cast(f64)cast(u64)100; }
+
+
+	 i8 f32_to__i8() { return cast( i8)cast(f32)-100.5; }
+	i16 f32_to_i16() { return cast(i16)cast(f32)-100.5; }
+	i32 f32_to_i32() { return cast(i32)cast(f32)-100.5; }
+	i64 f32_to_i64() { return cast(i64)cast(f32)-100.5; }
+
+	 u8 f32_to__u8() { return cast( u8)cast(f32)100.5; }
+	u16 f32_to_u16() { return cast(u16)cast(f32)100.5; }
+	u32 f32_to_u32() { return cast(u32)cast(f32)100.5; }
+	u64 f32_to_u64() { return cast(u64)cast(f32)100.5; }
+
+	 i8 f64_to__i8() { return cast( i8)cast(f64)-100.5; }
+	i16 f64_to_i16() { return cast(i16)cast(f64)-100.5; }
+	i32 f64_to_i32() { return cast(i32)cast(f64)-100.5; }
+	i64 f64_to_i64() { return cast(i64)cast(f64)-100.5; }
+
+	 u8 f64_to__u8() { return cast( u8)cast(f64)100.5; }
+	u16 f64_to_u16() { return cast(u16)cast(f64)100.5; }
+	u32 f64_to_u32() { return cast(u32)cast(f64)100.5; }
+	u64 f64_to_u64() { return cast(u64)cast(f64)100.5; }
+};
+void tester241(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!( float)( "i8_to_f32")() == -100);
+	assert(ctx.getFunctionPtr!( float)("i16_to_f32")() == -100);
+	assert(ctx.getFunctionPtr!( float)("i32_to_f32")() == -100);
+	assert(ctx.getFunctionPtr!( float)("i64_to_f32")() == -100);
+
+	assert(ctx.getFunctionPtr!( float)( "u8_to_f32")() == 100);
+	assert(ctx.getFunctionPtr!( float)("u16_to_f32")() == 100);
+	assert(ctx.getFunctionPtr!( float)("u32_to_f32")() == 100);
+	assert(ctx.getFunctionPtr!( float)("u64_to_f32")() == 100);
+
+	assert(ctx.getFunctionPtr!(double)( "i8_to_f64")() == -100);
+	assert(ctx.getFunctionPtr!(double)("i16_to_f64")() == -100);
+	assert(ctx.getFunctionPtr!(double)("i32_to_f64")() == -100);
+	assert(ctx.getFunctionPtr!(double)("i64_to_f64")() == -100);
+
+	assert(ctx.getFunctionPtr!(double)( "u8_to_f64")() == 100);
+	assert(ctx.getFunctionPtr!(double)("u16_to_f64")() == 100);
+	assert(ctx.getFunctionPtr!(double)("u32_to_f64")() == 100);
+	assert(ctx.getFunctionPtr!(double)("u64_to_f64")() == 100);
+
+	assert(ctx.getFunctionPtr!(  byte)("f32_to__i8")() == -100);
+	assert(ctx.getFunctionPtr!( short)("f32_to_i16")() == -100);
+	assert(ctx.getFunctionPtr!(   int)("f32_to_i32")() == -100);
+	assert(ctx.getFunctionPtr!(  long)("f32_to_i64")() == -100);
+
+	assert(ctx.getFunctionPtr!( ubyte)("f32_to__u8")() == 100);
+	assert(ctx.getFunctionPtr!(ushort)("f32_to_u16")() == 100);
+	assert(ctx.getFunctionPtr!(  uint)("f32_to_u32")() == 100);
+	assert(ctx.getFunctionPtr!( ulong)("f32_to_u64")() == 100);
+
+	assert(ctx.getFunctionPtr!(  byte)("f64_to__i8")() == -100);
+	assert(ctx.getFunctionPtr!( short)("f64_to_i16")() == -100);
+	assert(ctx.getFunctionPtr!(   int)("f64_to_i32")() == -100);
+	assert(ctx.getFunctionPtr!(  long)("f64_to_i64")() == -100);
+
+	assert(ctx.getFunctionPtr!( ubyte)("f64_to__u8")() == 100);
+	assert(ctx.getFunctionPtr!(ushort)("f64_to_u16")() == 100);
+	assert(ctx.getFunctionPtr!(  uint)("f64_to_u32")() == 100);
+	assert(ctx.getFunctionPtr!( ulong)("f64_to_u64")() == 100);
+}
+
+
+@TestInfo(&tester242)
+immutable test242 = q{--- test242
+	// Compile-time float op float
+	bool f32_gt()  { return cast(f32)100.0 >  cast(f32)50.0; }
+	bool f32_ge()  { return cast(f32)100.0 >= cast(f32)50.0; }
+	bool f32_lt()  { return cast(f32)100.0 <  cast(f32)50.0; }
+	bool f32_le()  { return cast(f32)100.0 <= cast(f32)50.0; }
+
+	f32 f32_add() { return cast(f32)100.0 + cast(f32)100.0; }
+	f32 f32_sub() { return cast(f32)100.0 - cast(f32)100.0; }
+	f32 f32_mul() { return cast(f32)100.0 * cast(f32)100.0; }
+	f32 f32_div() { return cast(f32)100.0 / cast(f32)100.0; }
+
+	bool f64_gt()  { return cast(f64)100.0 >  cast(f64)50.0; }
+	bool f64_ge()  { return cast(f64)100.0 >= cast(f64)50.0; }
+	bool f64_lt()  { return cast(f64)100.0 <  cast(f64)50.0; }
+	bool f64_le()  { return cast(f64)100.0 <= cast(f64)50.0; }
+
+	f64 f64_add() { return cast(f64)100.0 + cast(f64)100.0; }
+	f64 f64_sub() { return cast(f64)100.0 - cast(f64)100.0; }
+	f64 f64_mul() { return cast(f64)100.0 * cast(f64)100.0; }
+	f64 f64_div() { return cast(f64)100.0 / cast(f64)100.0; }
+};
+void tester242(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(bool)("f32_gt")() == true);
+	assert(ctx.getFunctionPtr!(bool)("f32_ge")() == true);
+	assert(ctx.getFunctionPtr!(bool)("f32_lt")() == false);
+	assert(ctx.getFunctionPtr!(bool)("f32_le")() == false);
+
+	assert(ctx.getFunctionPtr!(float)("f32_add")() == 100 + 100);
+	assert(ctx.getFunctionPtr!(float)("f32_sub")() == 100 - 100);
+	assert(ctx.getFunctionPtr!(float)("f32_mul")() == 100 * 100);
+	assert(ctx.getFunctionPtr!(float)("f32_div")() == 100 / 100);
+
+	assert(ctx.getFunctionPtr!(bool)("f64_gt")() == true);
+	assert(ctx.getFunctionPtr!(bool)("f64_ge")() == true);
+	assert(ctx.getFunctionPtr!(bool)("f64_lt")() == false);
+	assert(ctx.getFunctionPtr!(bool)("f64_le")() == false);
+
+	assert(ctx.getFunctionPtr!(double)("f64_add")() == 100 + 100);
+	assert(ctx.getFunctionPtr!(double)("f64_sub")() == 100 - 100);
+	assert(ctx.getFunctionPtr!(double)("f64_mul")() == 100 * 100);
+	assert(ctx.getFunctionPtr!(double)("f64_div")() == 100 / 100);
+}

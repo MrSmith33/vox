@@ -205,7 +205,42 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 			return c.constants.add(typeTo, con.i64); // ptr
 
 		case if_e, if_i:
-			c.internal_error("TODO %s", node.convKind);
+			c.assertf(typeFrom.isTypeInteger, "from %s", typeFrom);
+			c.assertf(typeTo.isTypeFloat, "from %s", typeTo);
+			auto con = c.constants.get(rval);
+			if (sourceType.as_basic.isSigned) {
+				IrBasicType basicTypeFrom = typeFrom.basicType(c);
+				long val;
+				switch(basicTypeFrom) with(IrBasicType) {
+					case i8:  val = con.i8;  break;
+					case i16: val = con.i16; break;
+					case i32: val = con.i32; break;
+					case i64: val = con.i64; break;
+					default: c.internal_error("Invalid constant type %s", basicTypeFrom);
+				}
+				IrBasicType basicTypeTo = typeTo.basicType(c);
+				switch(basicTypeTo) {
+					case IrBasicType.f32: return c.constants.add(cast(float)val);
+					case IrBasicType.f64: return c.constants.add(cast(double)val);
+					default: c.internal_error("Invalid target type %s", basicTypeTo);
+				}
+			} else {
+				IrBasicType basicTypeFrom = typeFrom.basicType(c);
+				ulong val;
+				switch(basicTypeFrom) with(IrBasicType) {
+					case i8:  val = con.u8;  break;
+					case i16: val = con.u16; break;
+					case i32: val = con.u32; break;
+					case i64: val = con.u64; break;
+					default: c.internal_error("Invalid constant type %s", basicTypeFrom);
+				}
+				IrBasicType basicTypeTo = typeTo.basicType(c);
+				switch(basicTypeTo) {
+					case IrBasicType.f32: return c.constants.add(cast(float)val);
+					case IrBasicType.f64: return c.constants.add(cast(double)val);
+					default: c.internal_error("Invalid target type %s", basicTypeTo);
+				}
+			}
 
 		case ff_e, ff_i:
 			c.assertf(typeFrom.isTypeFloat, "from %s", typeFrom);
@@ -223,7 +258,35 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 			}
 
 		case fi_e, fi_i:
-			c.internal_error("TODO %s", node.convKind);
+			c.assertf(typeFrom.isTypeFloat, "from %s", typeFrom);
+			c.assertf(typeTo.isTypeInteger, "from %s", typeTo);
+			auto con = c.constants.get(rval);
+			IrBasicType basicTypeFrom = typeFrom.basicType(c);
+			double val;
+			switch(basicTypeFrom) {
+				case IrBasicType.f32: val = con.f32; break;
+				case IrBasicType.f64: val = con.f64; break;
+				default: c.internal_error("Invalid target type %s", basicTypeFrom);
+			}
+			if (targetType.as_basic.isSigned) {
+				IrBasicType basicTypeTo = typeTo.basicType(c);
+				switch(basicTypeTo) with(IrBasicType) {
+					case i8:  return c.constants.add(typeTo, cast(byte)val);
+					case i16: return c.constants.add(typeTo, cast(short)val);
+					case i32: return c.constants.add(typeTo, cast(int)val);
+					case i64: return c.constants.add(typeTo, cast(long)val);
+					default: c.internal_error("Invalid constant type %s", basicTypeTo);
+				}
+			} else {
+				IrBasicType basicTypeTo = typeTo.basicType(c);
+				switch(basicTypeTo) with(IrBasicType) {
+					case i8:  return c.constants.add(typeTo, cast(ubyte)val);
+					case i16: return c.constants.add(typeTo, cast(ushort)val);
+					case i32: return c.constants.add(typeTo, cast(uint)val);
+					case i64: return c.constants.add(typeTo, cast(ulong)val);
+					default: c.internal_error("Invalid constant type %s", basicTypeTo);
+				}
+			}
 
 		case string_literal_to_u8_ptr:
 			IrIndex ONE = c.constants.add(makeIrType(IrBasicType.i32), 1);
