@@ -809,8 +809,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 					builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, c.constants.add(makeIrType(IrBasicType.i32), callee_state.type.syscallNumber));
 
 					// We need bigger instruction for syscall because of extra syscallRegister at the end
-					ExtraInstrArgs callExtra = { extraArgSlots : cast(ubyte)(regsUsed + 1) };
-					if (instrHeader.hasResult) callExtra.result = instrHeader.result(ir);
+					ExtraInstrArgs callExtra = { hasResult : instrHeader.hasResult, result : instrHeader.tryGetResult(ir), extraArgSlots : cast(ubyte)(regsUsed + 1) };
 
 					// We leave callee argument in here, so that liveness analysis can get calling convention info
 					IrIndex newCallInstr = builder.emitInstr!(IrOpcode.syscall)(callExtra, instrHeader.arg(ir, 0)).instruction;
@@ -824,7 +823,7 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 					replaceInstruction(ir, instrIndex, newCallInstr);
 					instrIndex = newCallInstr;
 				} else {
-					// reuse instruction
+					// Reuse instruction
 					instrHeader.numArgs = cast(ubyte)(regsUsed + 1); // include callee
 
 					fillRegs(instrHeader.args(ir)[1..$]); // fill with regs
@@ -832,10 +831,8 @@ void func_pass_lower_abi(CompilationContext* c, IrFunction* ir, IrIndex funcInde
 			} else {
 				assert(!callee_state.abi.useSyscall); // Syscalls are handled in the other case
 
-				// make bigger instruction
-				ExtraInstrArgs callExtra = { extraArgSlots : regsUsed };
-				if (instrHeader.hasResult) callExtra.result = instrHeader.result(ir);
-
+				// Make bigger instruction
+				ExtraInstrArgs callExtra = { hasResult : instrHeader.hasResult, result : instrHeader.tryGetResult(ir), extraArgSlots : regsUsed };
 				IrIndex newCallInstr = builder.emitInstr!(IrOpcode.call)(callExtra, instrHeader.arg(ir, 0)).instruction;
 				IrInstrHeader* callHeader = ir.getInstr(newCallInstr);
 				fillRegs(callHeader.args(ir)[1..$]); // fill with regs
