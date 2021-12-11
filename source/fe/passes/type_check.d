@@ -204,7 +204,8 @@ struct CommonTypeResult {
 	TypeConvResKind kindB;
 }
 
-CommonTypeResult calcCommonType(AstIndex indexA, AstIndex indexB, CompilationContext* c)
+// leftExpr, rightExpr can be null
+CommonTypeResult calcCommonType(AstIndex indexA, AstIndex indexB, AstIndex leftExpr, AstIndex rightExpr, CompilationContext* c)
 	out(res; res.commonType.isDefined)
 {
 	if (same_type(indexA, indexB, c)) return CommonTypeResult(indexA, TypeConvResKind.no_i, TypeConvResKind.no_i);
@@ -220,7 +221,7 @@ CommonTypeResult calcCommonType(AstIndex indexA, AstIndex indexB, CompilationCon
 	restart_enum:
 
 	switch (typeA.astType) with(AstType) {
-		case type_basic: return common_type_basic(typeA.as_basic, indexB, c);
+		case type_basic: return common_type_basic(typeA.as_basic, indexB, leftExpr, rightExpr, c);
 		case type_slice: return CommonTypeResult(CommonAstNodes.type_error);
 		case type_ptr: return common_type_ptr(typeA.as_ptr, indexB, c);
 		case decl_enum:
@@ -267,7 +268,7 @@ bool autoconvToCommonType(ref AstIndex leftIndex, ref AstIndex rightIndex, Compi
 {
 	AstIndex leftType = leftIndex.get_expr_type(c);
 	AstIndex rightType = rightIndex.get_expr_type(c);
-	CommonTypeResult res = calcCommonType(leftType, rightType, c);
+	CommonTypeResult res = calcCommonType(leftType, rightType, leftIndex, rightIndex, c);
 	//writefln("autoconvToCommonType %s %s %s", printer(leftType, c), printer(rightType, c), res);
 	if (res.commonType == CommonAstNodes.type_error) return false;
 	insertCast(leftIndex, res.commonType, res.kindA, c);

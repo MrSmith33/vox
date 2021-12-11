@@ -192,17 +192,41 @@ IrIndex eval_type_conv(TypeConvExprNode* node, IrIndex rval, CompilationContext*
 				return typeTo.zeroConstantOfType;
 			}
 			auto con = c.constants.get(rval);
-			if (typeTo.isTypeBasic) {
-				IrBasicType basicType = typeTo.basicType(c);
-				switch(basicType) with(IrBasicType) {
-					case i8:  return c.constants.add(typeTo, con.i64 & 0xFF);
-					case i16: return c.constants.add(typeTo, con.i64 & 0xFFFF);
-					case i32: return c.constants.add(typeTo, con.i64 & 0xFFFF_FFFF);
-					case i64: return c.constants.add(typeTo, con.i64);
-					default: c.internal_error("Invalid constant type %s", basicType);
+			if (sourceType.isSigned && targetType.isSigned) {
+				if (typeTo.isTypeBasic) {
+					IrBasicType basicType = typeTo.basicType(c);
+					switch(basicType) with(IrBasicType) {
+						case i8:  return c.constants.add(typeTo, con.i8);
+						case i16: return c.constants.add(typeTo, con.i16);
+						case i32: return c.constants.add(typeTo, con.i32);
+						case i64: return c.constants.add(typeTo, con.i64);
+						default: c.internal_error("Invalid constant type %s", basicType);
+					}
+				}
+			} else {
+				ulong original = con.u64; // if ptr
+				if (typeFrom.isTypeBasic) {
+					IrBasicType basicType = typeFrom.basicType(c);
+					switch(basicType) with(IrBasicType) {
+						case i8:  original = con.u8;  break;
+						case i16: original = con.u16; break;
+						case i32: original = con.u32; break;
+						case i64: original = con.u64; break;
+						default: c.internal_error("Invalid constant type %s", basicType);
+					}
+				}
+				if (typeTo.isTypeBasic) {
+					IrBasicType basicType = typeTo.basicType(c);
+					switch(basicType) with(IrBasicType) {
+						case i8:  return c.constants.add(typeTo, original);
+						case i16: return c.constants.add(typeTo, original);
+						case i32: return c.constants.add(typeTo, original);
+						case i64: return c.constants.add(typeTo, original);
+						default: c.internal_error("Invalid constant type %s", basicType);
+					}
 				}
 			}
-			return c.constants.add(typeTo, con.i64); // ptr
+			return c.constants.add(typeTo, con.i64); // ptr (unsigned)
 
 		case if_e, if_i:
 			c.assertf(typeFrom.isTypeInteger, "from %s", typeFrom);

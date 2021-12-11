@@ -17,7 +17,7 @@ import std.string : stripLeft, strip;
 
 int runDevTests()
 {
-	Test test = makeTest!(test230);
+	Test test = makeTest!(test243);
 
 	Driver driver;
 	driver.initialize(jitPasses);
@@ -327,6 +327,7 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 		writefln("Compiled in %ss", scaledNumberFmt(time2-time1));
 
 	if (!driver.context.runTesters) return TestResult.success;
+	if (driver.context.targetOs != driver.context.hostOS) return TestResult.success;
 
 	final switch (driver.context.buildType)
 	{

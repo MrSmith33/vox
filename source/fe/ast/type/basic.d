@@ -87,7 +87,8 @@ IrIndex gen_ir_type_basic(BasicTypeNode* t, CompilationContext* context)
 	}
 }
 
-CommonTypeResult common_type_basic(BasicTypeNode* node, AstIndex typeBIndex, CompilationContext* c)
+// leftExpr, rightExpr can be null
+CommonTypeResult common_type_basic(BasicTypeNode* node, AstIndex typeBIndex, AstIndex leftExpr, AstIndex rightExpr, CompilationContext* c)
 {
 	BasicType basicA = node.basicType;
 	TypeNode* typeB = typeBIndex.get_type(c);
@@ -98,7 +99,44 @@ CommonTypeResult common_type_basic(BasicTypeNode* node, AstIndex typeBIndex, Com
 			BasicType commonType = commonBasicType[basicA][basicB];
 			TypeConvResKind kindA = basicConversionKind[basicA][commonType];
 			TypeConvResKind kindB = basicConversionKind[basicB][commonType];
-			return CommonTypeResult(c.basicTypeNodes(commonType), kindA, kindB);
+			auto res = CommonTypeResult(c.basicTypeNodes(commonType), kindA, kindB);
+
+			if (leftExpr.isDefined && rightExpr.isDefined) {
+				auto leftExprNode = leftExpr.get_node(c);
+				auto rightExprNode = rightExpr.get_node(c);
+				if (leftExprNode.astType == AstType.literal_int && rightExprNode.astType == AstType.literal_int) {
+					return res;
+				}
+				if (leftExprNode.astType == AstType.literal_int) {
+					if (typeB.isInteger)
+					{
+						ubyte toSize = integerSize(basicB);
+						auto lit = leftExprNode.as!IntLiteralExprNode(c);
+						if (lit.isSigned) {
+							if (numSignedBytesForInt(lit.value) <= toSize)
+								return CommonTypeResult(c.basicTypeNodes(basicB), TypeConvResKind.override_expr_type_i, TypeConvResKind.no_i);
+						} else {
+							if (numUnsignedBytesForInt(lit.value) <= toSize)
+								return CommonTypeResult(c.basicTypeNodes(basicB), TypeConvResKind.override_expr_type_i, TypeConvResKind.no_i);
+						}
+					}
+				}
+				if (rightExprNode.astType == AstType.literal_int) {
+					if (node.isInteger)
+					{
+						ubyte toSize = integerSize(basicA);
+						auto lit = rightExprNode.as!IntLiteralExprNode(c);
+						if (lit.isSigned) {
+							if (numSignedBytesForInt(lit.value) <= toSize)
+								return CommonTypeResult(c.basicTypeNodes(basicA), TypeConvResKind.no_i, TypeConvResKind.override_expr_type_i);
+						} else {
+							if (numUnsignedBytesForInt(lit.value) <= toSize)
+								return CommonTypeResult(c.basicTypeNodes(basicA), TypeConvResKind.no_i, TypeConvResKind.override_expr_type_i);
+						}
+					}
+				}
+			}
+			return res;
 		case type_ptr:
 			if (basicA == BasicType.t_null) {
 				return CommonTypeResult(typeBIndex, TypeConvResKind.override_expr_type_i, TypeConvResKind.no_i);

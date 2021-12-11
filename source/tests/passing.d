@@ -2479,6 +2479,36 @@ immutable test103 = q{--- test103
 
 @TestInfo(&tester104)
 immutable test104 = q{--- test104
+	// cast int to int
+	i16 fold__i8_to_i16_sext() { return cast(i16)cast( i8)-1; } // sext   i8 -> i16
+	i32 fold__i8_to_i32_sext() { return cast(i32)cast( i8)-1; } // sext   i8 -> i32
+	i32 fold_i16_to_i32_sext() { return cast(i32)cast(i16)-1; } // sext  i16 -> i32
+	i64 fold__i8_to_i64_sext() { return cast(i64)cast( i8)-1; } // sext   i8 -> i64
+	i64 fold_i16_to_i64_sext() { return cast(i64)cast(i16)-1; } // sext  i16 -> i64
+	i64 fold_i32_to_i64_sext() { return cast(i64)cast(i32)-1; } // sext  i32 -> i64
+
+	i16 fold__u8_to_i16_zext() { return cast(i16)cast( u8)u8.max;  } // zext   u8 -> i16
+	i32 fold__u8_to_i32_zext() { return cast(i32)cast( u8)u8.max;  } // zext   u8 -> i32
+	i32 fold_u16_to_i32_zext() { return cast(i32)cast(u16)u16.max; } // zext  u16 -> i32
+	i64 fold__u8_to_i64_zext() { return cast(i64)cast( u8)u8.max;  } // zext   u8 -> i64
+	i64 fold_u16_to_i64_zext() { return cast(i64)cast(u16)u16.max; } // zext  u16 -> i64
+	i64 fold_u32_to_i64_zext() { return cast(i64)cast(u32)u32.max; } // zext  u32 -> i64
+
+	u16 fold__u8_to_u16_zext() { return cast(u16)cast( u8)u8.max;  } // zext   u8 -> u16
+	u32 fold__u8_to_u32_zext() { return cast(u32)cast( u8)u8.max;  } // zext   u8 -> u32
+	u32 fold_u16_to_u32_zext() { return cast(u32)cast(u16)u16.max; } // zext  u16 -> u32
+	u64 fold__u8_to_u64_zext() { return cast(u64)cast( u8)u8.max;  } // zext   u8 -> u64
+	u64 fold_u16_to_u64_zext() { return cast(u64)cast(u16)u16.max; } // zext  u16 -> u64
+	u64 fold_u32_to_u64_zext() { return cast(u64)cast(u32)u32.max; } // zext  u32 -> u64
+
+	u16 fold__i8_to_u16_zext() { return cast(u16)i8.min;  } // zext   i8 -> u16 TODO: these should error without cast
+	u32 fold__i8_to_u32_zext() { return cast(u32)i8.min;  } // zext   i8 -> u32 TODO: these should error without cast
+	u32 fold_i16_to_u32_zext() { return cast(u32)i16.min; } // zext  i16 -> u32 TODO: these should error without cast
+	u64 fold__i8_to_u64_zext() { return cast(u64)i8.min;  } // zext   i8 -> u64 TODO: these should error without cast
+	u64 fold_i16_to_u64_zext() { return cast(u64)i16.min; } // zext  i16 -> u64 TODO: these should error without cast
+	u64 fold_i32_to_u64_zext() { return cast(u64)i32.min; } // zext  i32 -> u64 TODO: these should error without cast
+
+
 	i16 func__i8_to_i16( i8 a) { return a; } // sext   i8 -> i16
 	i32 func__i8_to_i32( i8 a) { return a; } // sext   i8 -> i32
 	i32 func_i16_to_i32(i16 a) { return a; } // sext  i16 -> i32
@@ -2508,6 +2538,36 @@ immutable test104 = q{--- test104
 	u64 func_i32_to_u64(i32 a) { return cast(u64)a; } // zext  i32 -> u64 TODO: these should error without cast
 };
 void tester104(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(short)("fold__i8_to_i16_sext")() == short(-1));
+	assert(ctx.getFunctionPtr!(  int)("fold__i8_to_i32_sext")() ==   int(-1));
+	assert(ctx.getFunctionPtr!(  int)("fold_i16_to_i32_sext")() ==   int(-1));
+	assert(ctx.getFunctionPtr!( long)("fold__i8_to_i64_sext")() ==  long(-1));
+	assert(ctx.getFunctionPtr!( long)("fold_i16_to_i64_sext")() ==  long(-1));
+	assert(ctx.getFunctionPtr!( long)("fold_i32_to_i64_sext")() ==  long(-1));
+
+	assert(ctx.getFunctionPtr!(short)("fold__u8_to_i16_zext")() ==  ubyte.max);
+	assert(ctx.getFunctionPtr!(  int)("fold__u8_to_i32_zext")() ==  ubyte.max);
+	assert(ctx.getFunctionPtr!(  int)("fold_u16_to_i32_zext")() == ushort.max);
+	assert(ctx.getFunctionPtr!( long)("fold__u8_to_i64_zext")() ==  ubyte.max);
+	assert(ctx.getFunctionPtr!( long)("fold_u16_to_i64_zext")() == ushort.max);
+	assert(ctx.getFunctionPtr!( long)("fold_u32_to_i64_zext")() ==   uint.max);
+
+	assert(ctx.getFunctionPtr!(ushort)("fold__u8_to_u16_zext")() ==  ubyte.max);
+	assert(ctx.getFunctionPtr!(  uint)("fold__u8_to_u32_zext")() ==  ubyte.max);
+	assert(ctx.getFunctionPtr!(  uint)("fold_u16_to_u32_zext")() == ushort.max);
+	assert(ctx.getFunctionPtr!( ulong)("fold__u8_to_u64_zext")() ==  ubyte.max);
+	assert(ctx.getFunctionPtr!( ulong)("fold_u16_to_u64_zext")() == ushort.max);
+	assert(ctx.getFunctionPtr!( ulong)("fold_u32_to_u64_zext")() ==   uint.max);
+
+	//writefln("%08X", ctx.getFunctionPtr!(ushort)("fold__i8_to_u16_zext")());
+	assert(ctx.getFunctionPtr!(ushort)("fold__i8_to_u16_zext")() ==  ubyte(0x0000_0080));
+	assert(ctx.getFunctionPtr!(  uint)("fold__i8_to_u32_zext")() ==  ubyte(0x0000_0080));
+	assert(ctx.getFunctionPtr!(  uint)("fold_i16_to_u32_zext")() == ushort(0x0000_8000));
+	assert(ctx.getFunctionPtr!( ulong)("fold__i8_to_u64_zext")() ==  ubyte(0x0000_0080));
+	assert(ctx.getFunctionPtr!( ulong)("fold_i16_to_u64_zext")() == ushort(0x0000_8000));
+	assert(ctx.getFunctionPtr!( ulong)("fold_i32_to_u64_zext")() ==   uint(0x8000_0000));
+
+
 	assert(ctx.getFunctionPtr!(short,   byte)("func__i8_to_i16")(  byte(-1)) == short(-1));
 	assert(ctx.getFunctionPtr!(  int,   byte)("func__i8_to_i32")(  byte(-1)) ==   int(-1));
 	assert(ctx.getFunctionPtr!(  int,  short)("func_i16_to_i32")( short(-1)) ==   int(-1));
@@ -3613,7 +3673,7 @@ immutable test165 = q{--- test165
 @TestInfo()
 immutable test166 = q{--- test166
 	// Access variadic variable
-	u8 fun[Args...](Args... args) {
+	i32 fun[Args...](Args... args) {
 		return args[0];
 	}
 	#assert(fun(42) == 42);
@@ -3623,7 +3683,7 @@ immutable test166 = q{--- test166
 @TestInfo()
 immutable test167 = q{--- test167
 	// Access variadic variable
-	u8 fun[Args...](Args... args) {
+	i32 fun[Args...](Args... args) {
 		alias arg0 = args[0];
 		alias T0 = Args[0];
 		T0 result = arg0;
@@ -5391,3 +5451,19 @@ void tester243(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!( ulong, ulong, ulong)("rem_u64_var")(32, 10) == 32 % 10);
 }
 
+
+@TestInfo()
+immutable test244 = q{--- test244
+	// small int literals are implicitly i32
+	// but they should auto-cast if necessary
+
+	i8  lit_i8()  { return 1; }
+	i16 lit_i16() { return 1; }
+	i32 lit_i32() { return 1; }
+	i64 lit_i64() { return 1; }
+
+	u8  lit_u8()  { return 1; }
+	u16 lit_u16() { return 1; }
+	u32 lit_u32() { return 1; }
+	u64 lit_u64() { return 1; }
+};

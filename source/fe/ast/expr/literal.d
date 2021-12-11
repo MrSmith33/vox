@@ -44,10 +44,15 @@ void print_literal_int(IntLiteralExprNode* node, ref AstPrintState state)
 void type_check_literal_int(IntLiteralExprNode* node, ref TypeCheckState state)
 {
 	node.state = AstNodeState.type_check;
-	if (node.isSigned)
-		node.type = state.context.basicTypeNodes(minSignedIntType(node.value));
-	else
-		node.type = state.context.basicTypeNodes(minUnsignedIntType(node.value));
+	if (node.isSigned) {
+		BasicType t = minSignedIntType(node.value);
+		t = max(t, BasicType.t_i32);
+		node.type = state.context.basicTypeNodes(t);
+	} else {
+		BasicType t = minUnsignedIntType(node.value);
+		if (cast(uint)(node.value & 0x7FFF_FFFF) == node.value) t = BasicType.t_i32;
+		node.type = state.context.basicTypeNodes(t);
+	}
 	node.state = AstNodeState.type_check_done;
 }
 

@@ -466,7 +466,7 @@ immutable fail43 = q{--- fail43
 		accept_e9(42);
 	}
 --- <error>
-fail43:4:13: Error: Argument 1, must have type e9, not u8
+fail43:4:13: Error: Argument 1, must have type e9, not i32
 };
 
 // packages
@@ -744,5 +744,5 @@ immutable fail69 = q{--- fail69
 		return (c = *s++) != '\0';
 	}
 --- <error>
-fail69:3:21: Error: Cannot compare `void` and `u8`
+fail69:3:21: Error: Cannot compare `void` and `i32`
 };
