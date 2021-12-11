@@ -563,31 +563,61 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 					//   zx/sx dx:ax
 					//   ax = div ax, dx, v3
 					//   mov v1, ax
+					// since 8 bit division doesn't follow dx:ax pattern and uses ax instead, we use bigger division there
 
 					bool isSigned = instrHeader.op == IrOpcode.sdiv || instrHeader.op == IrOpcode.srem;
 					bool isDivision = instrHeader.op == IrOpcode.udiv || instrHeader.op == IrOpcode.sdiv;
 
+					IrIndex dividendBottom;
+
+					IrArgSize argSize = instrHeader.argSize;
+					switch(argSize) with(IrArgSize)
+					{
+						case size8:
+							// we transform 8 bit div/rem into 16 bit, so we don't need to deal with ah register
+							argSize = size16;
+							dividendBottom = IrIndex(amd64_reg.ax, argSize);
+							ExtraInstrArgs extra = { addUsers : false, result : dividendBottom };
+							if (isSigned) builder.emitInstr!(Amd64Opcode.movsx_btod)(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)));
+							else builder.emitInstr!(Amd64Opcode.movzx_btod)(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)));
+							break;
+						case size16:
+						case size32:
+						case size64:
+							// copy bottom half of dividend
+							dividendBottom = IrIndex(amd64_reg.ax, argSize);
+							makeMov(dividendBottom, getFixedIndex(instrHeader.arg(ir, 0)), argSize, lirBlockIndex);
+							break;
+						default: context.internal_error("%s:%s: Invalid target size %s", funName, instrIndex, argSize);
+					}
+
+
 					// divisor must be in register
 					IrIndex divisor = instrHeader.arg(ir, 1);
-					if (instrHeader.arg(ir, 1).isConstant) {
+					if (divisor.isSimpleConstant) {
+						auto con = context.constants.get(divisor);
+						if (instrHeader.argSize == IrArgSize.size8) {
+							divisor = context.constants.add(makeIrType(IrBasicType.i16), con.i16);
+						}
 						ExtraInstrArgs extra = { addUsers : false, type : getValueType(divisor, ir, context) };
 						divisor = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra, divisor).result;
 					}
-					else fixIndex(divisor);
+					else
+					{
+						fixIndex(divisor);
+						if (instrHeader.argSize == IrArgSize.size8) {
+							ExtraInstrArgs extra = { addUsers : false, type : makeIrType(IrBasicType.i16) };
+							if (isSigned) divisor = builder.emitInstr!(Amd64Opcode.movsx_btod)(lirBlockIndex, extra, divisor).result;
+							else divisor = builder.emitInstr!(Amd64Opcode.movzx_btod)(lirBlockIndex, extra, divisor).result;
+						}
+					}
 
-					IrIndex dividendTop = IrIndex(amd64_reg.dx, instrHeader.argSize);
-
-					// copy bottom half of dividend
-					IrIndex dividendBottom = IrIndex(amd64_reg.ax, instrHeader.argSize);
-					makeMov(dividendBottom, getFixedIndex(instrHeader.arg(ir, 0)), instrHeader.argSize, lirBlockIndex);
+					IrIndex dividendTop = IrIndex(amd64_reg.dx, argSize);
 
 					if (isSigned) {
-						// if dividend is 8bit we use movsx and only change ax
-						// if it is bigger we use cwd/cdq/cqo that affects dx too
-						// TODO: for now always say that we modify dx even if we dont (8bit arg doesn't touch dx, only ax)
-						IrIndex divsxResult = IrIndex(amd64_reg.dx, instrHeader.argSize);
+						IrIndex divsxResult = IrIndex(amd64_reg.dx, argSize);
 						// sign-extend top half of dividend
-						ExtraInstrArgs extra2 = { argSize : instrHeader.argSize, result : divsxResult };
+						ExtraInstrArgs extra2 = { argSize : argSize, result : divsxResult };
 						builder.emitInstr!(Amd64Opcode.divsx)(lirBlockIndex, extra2);
 					} else {
 						// zero top half of dividend
@@ -601,14 +631,17 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 					}
 
 					// divide
-					ExtraInstrArgs extra3 = { addUsers : false, argSize : instrHeader.argSize, result : resultReg };
+					ExtraInstrArgs extra3 = { addUsers : false, argSize : argSize, result : resultReg };
 					InstrWithResult res;
 					if (isSigned)
 						res = builder.emitInstr!(Amd64Opcode.idiv)(lirBlockIndex, extra3, dividendBottom, dividendTop, divisor);
 					else
 						res = builder.emitInstr!(Amd64Opcode.div)(lirBlockIndex, extra3, dividendBottom, dividendTop, divisor);
 
-					// copy result (quotient)
+					// fix size for size8
+					resultReg.physRegSize = instrHeader.argSize;
+
+					// copy result (quotient) with truncation in case of 8/16 bits
 					ExtraInstrArgs extra4 = { addUsers : false, argSize : instrHeader.argSize, type : ir.getVirtReg(instrHeader.result(ir)).type };
 					InstrWithResult movResult = builder.emitInstr!(Amd64Opcode.mov)(lirBlockIndex, extra4, resultReg);
 					recordIndex(instrHeader.result(ir), movResult.result);

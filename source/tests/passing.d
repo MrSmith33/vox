@@ -5282,7 +5282,7 @@ void tester241(ref TestContext ctx) {
 
 @TestInfo(&tester242)
 immutable test242 = q{--- test242
-	// Compile-time float op float
+	// Compile-time binary float ops
 	bool f32_gt()  { return cast(f32)100.0 >  cast(f32)50.0; }
 	bool f32_ge()  { return cast(f32)100.0 >= cast(f32)50.0; }
 	bool f32_lt()  { return cast(f32)100.0 <  cast(f32)50.0; }
@@ -5324,3 +5324,70 @@ void tester242(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(double)("f64_mul")() == 100 * 100);
 	assert(ctx.getFunctionPtr!(double)("f64_div")() == 100 / 100);
 }
+
+
+@TestInfo(&tester243)
+immutable test243 = q{--- test243
+	// remainder
+	i8  rem_i8__fold() { return cast(i8) -32 % 10; }
+	i16 rem_i16_fold() { return cast(i16)-32 % 10; }
+	i32 rem_i32_fold() { return cast(i32)-32 % 10; }
+	i64 rem_i64_fold() { return cast(i64)-32 % 10; }
+
+	u8  rem_u8__fold() { return cast(u8) 32 % 10; }
+	u16 rem_u16_fold() { return cast(u16)32 % 10; }
+	u32 rem_u32_fold() { return cast(u32)32 % 10; }
+	u64 rem_u64_fold() { return cast(u64)32 % 10; }
+
+	i8  rem_i8__con(i8  a) { return a % 10; }
+	i16 rem_i16_con(i16 a) { return a % 10; }
+	i32 rem_i32_con(i32 a) { return a % 10; }
+	i64 rem_i64_con(i64 a) { return a % 10; }
+
+	u8  rem_u8__con(u8  a) { return a % 10; }
+	u16 rem_u16_con(u16 a) { return a % 10; }
+	u32 rem_u32_con(u32 a) { return a % 10; }
+	u64 rem_u64_con(u64 a) { return a % 10; }
+
+	i8  rem_i8__var(i8  a, i8  b) { return a % b; }
+	i16 rem_i16_var(i16 a, i16 b) { return a % b; }
+	i32 rem_i32_var(i32 a, i32 b) { return a % b; }
+	i64 rem_i64_var(i64 a, i64 b) { return a % b; }
+
+	u8  rem_u8__var(u8  a, u8  b) { return a % b; }
+	u16 rem_u16_var(u16 a, u16 b) { return a % b; }
+	u32 rem_u32_var(u32 a, u32 b) { return a % b; }
+	u64 rem_u64_var(u64 a, u64 b) { return a % b; }
+};
+void tester243(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(  byte)("rem_i8__fold")() == -32 % 10);
+	assert(ctx.getFunctionPtr!( short)("rem_i16_fold")() == -32 % 10);
+	assert(ctx.getFunctionPtr!(   int)("rem_i32_fold")() == -32 % 10);
+	assert(ctx.getFunctionPtr!(  long)("rem_i64_fold")() == -32 % 10);
+
+	assert(ctx.getFunctionPtr!( ubyte)("rem_u8__fold")() == 32 % 10);
+	assert(ctx.getFunctionPtr!(ushort)("rem_u16_fold")() == 32 % 10);
+	assert(ctx.getFunctionPtr!(  uint)("rem_u32_fold")() == 32 % 10);
+	assert(ctx.getFunctionPtr!( ulong)("rem_u64_fold")() == 32 % 10);
+
+	assert(ctx.getFunctionPtr!(  byte,  byte)("rem_i8__con")(-32) == -32 % 10);
+	assert(ctx.getFunctionPtr!( short, short)("rem_i16_con")(-32) == -32 % 10);
+	assert(ctx.getFunctionPtr!(   int,   int)("rem_i32_con")(-32) == -32 % 10);
+	assert(ctx.getFunctionPtr!(  long,  long)("rem_i64_con")(-32) == -32 % 10);
+
+	assert(ctx.getFunctionPtr!( ubyte, ubyte)("rem_u8__con")(32) == 32 % 10);
+	assert(ctx.getFunctionPtr!(ushort,ushort)("rem_u16_con")(32) == 32 % 10);
+	assert(ctx.getFunctionPtr!(  uint,  uint)("rem_u32_con")(32) == 32 % 10);
+	assert(ctx.getFunctionPtr!( ulong, ulong)("rem_u64_con")(32) == 32 % 10);
+
+	assert(ctx.getFunctionPtr!(  byte,  byte,  byte)("rem_i8__var")(-32, 10) == -32 % 10);
+	assert(ctx.getFunctionPtr!( short, short, short)("rem_i16_var")(-32, 10) == -32 % 10);
+	assert(ctx.getFunctionPtr!(   int,   int,   int)("rem_i32_var")(-32, 10) == -32 % 10);
+	assert(ctx.getFunctionPtr!(  long,  long,  long)("rem_i64_var")(-32, 10) == -32 % 10);
+
+	assert(ctx.getFunctionPtr!( ubyte, ubyte, ubyte)("rem_u8__var")(32, 10) == 32 % 10);
+	assert(ctx.getFunctionPtr!(ushort,ushort,ushort)("rem_u16_var")(32, 10) == 32 % 10);
+	assert(ctx.getFunctionPtr!(  uint,  uint,  uint)("rem_u32_var")(32, 10) == 32 % 10);
+	assert(ctx.getFunctionPtr!( ulong, ulong, ulong)("rem_u64_var")(32, 10) == 32 % 10);
+}
+
