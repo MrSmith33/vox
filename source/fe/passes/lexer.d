@@ -251,7 +251,7 @@ struct Lexer
 		return single_tok;
 	}
 
-	private void lexError(Args...)(TT type, string format, Args args) {
+	private noreturn lexError(Args...)(TT type, string format, Args args) {
 		outputTokens.put(type);
 		set_loc();
 		TokenIndex lastToken = TokenIndex(cast(uint)outputTokens.length-1);
@@ -275,7 +275,6 @@ struct Lexer
 				{
 					case EOI_CHAR:
 						lexError(TT.COMMENT, "Unterminated multiline comment");
-						return TT.INVALID;
 
 					case '\n': lex_EOLN(); continue;
 					case '\r': lex_EOLR(); continue;
@@ -305,7 +304,6 @@ struct Lexer
 			{
 				case EOI_CHAR:
 					lexError(TT.STRING_LITERAL, "Unexpected end of input inside string literal");
-					return TT.INVALID;
 
 				case '\\':
 					nextChar;
@@ -369,7 +367,6 @@ struct Lexer
 		{
 			case EOI_CHAR:
 				lexError(TT.CHAR_LITERAL, "Unexpected end of input inside char literal");
-				return TT.INVALID;
 
 			case '\\':
 				nextChar;
@@ -387,7 +384,6 @@ struct Lexer
 			return TT.CHAR_LITERAL;
 		} else {
 			lexError(TT.CHAR_LITERAL, "Invalid char literal");
-			return TT.INVALID;
 		}
 	}
 
@@ -399,12 +395,14 @@ struct Lexer
 		{
 			nextChar;
 			consumeHexadecimal();
+			if (c == 'i' || c == 'u') skipIntSuffix;
 			return TT.INT_HEX_LITERAL;
 		}
 		else if (c == 'b' || c == 'B')
 		{
 			nextChar;
 			consumeBinary();
+			if (c == 'i' || c == 'u') skipIntSuffix;
 			return TT.INT_BIN_LITERAL;
 		}
 		else
@@ -455,7 +453,6 @@ struct Lexer
 			default: break;
 		}
 		lexError(TT.INVALID, "Invalid # identifier");
-		return TT.INVALID;
 	}
 
 	private TokenType lex_LETTER() // a-zA-Z_
@@ -565,6 +562,14 @@ struct Lexer
 
 		bool isFloat = false;
 
+		if (c == 'f') {
+			skipFloatSuffix;
+			return TT.FLOAT_DEC_LITERAL;
+		} else if (c == 'i' || c == 'u') {
+			skipIntSuffix;
+			return TT.INT_DEC_LITERAL;
+		}
+
 		// check for "." followed by decimal
 		if (c == '.') {
 			nextChar; // skip .
@@ -584,11 +589,63 @@ struct Lexer
 			if (!isNumFirst(c)) lexError(TT.INVALID, "Invalid char after exponent of float literal. Expected digit, got '%s'", c);
 			// skip exponent
 			while (isNumSecond(c)) nextChar;
+			if (c == 'f') skipFloatSuffix;
+			return TT.FLOAT_DEC_LITERAL;
+		} else if (c == 'f') {
+			skipFloatSuffix;
 			return TT.FLOAT_DEC_LITERAL;
 		}
 
 		if (isFloat) return TT.FLOAT_DEC_LITERAL;
 		return TT.INT_DEC_LITERAL;
+	}
+
+	private void skipFloatSuffix() {
+		// f32/f64
+		nextChar; // skip f
+		if (c == '3') {
+			nextChar; // skip 3
+			if (c == '2') {
+				nextChar; // skip 2
+			} else lexError(TT.INVALID, "Invalid char after `f3` of float literal. Expected f32 or f64 suffix, got '%s'", c);
+		} else if (c == '6') {
+			nextChar; // skip 3
+			if (c == '4') {
+				nextChar; // skip 4
+			} else lexError(TT.INVALID, "Invalid char after `f6` of float literal. Expected f32 or f64 suffix, got '%s'", c);
+		}
+		else lexError(TT.INVALID, "Invalid char after `f` of float literal. Expected f32 or f64 suffix, got '%s'", c);
+	}
+
+	private void skipIntSuffix() {
+		// i8/i16/i32/i64/u8/u16/u32/u64
+		dchar intChar = c;
+		nextChar; // skip i/u
+		switch(c)
+		{
+			case '1':
+				nextChar; // skip 1
+				if (c == '6') {
+					nextChar; // skip 6
+					return;
+				} else lexError(TT.INVALID, "Invalid char after `%1$s1` of int literal. Expected %1$s16 suffix, got '%1$s1%s'", intChar, c);
+			case '3':
+				nextChar; // skip 3
+				if (c == '2') {
+					nextChar; // skip 2
+					return;
+				} else lexError(TT.INVALID, "Invalid char after `%1$s3` of int literal. Expected %1$s32 suffix, got '%1$s3%s'", intChar, c);
+			case '6':
+				nextChar; // skip 6
+				if (c == '4') {
+					nextChar; // skip 4
+					return;
+				} else lexError(TT.INVALID, "Invalid char after `%1$s6` of int literal. Expected %1$s64 suffix, got '%1$s6%s'", intChar, c);
+			case '8':
+				nextChar; // skip 8
+				return;
+			default: lexError(TT.INVALID, "Invalid char after `%1$s` of int literal. Expected %1$s8/%1$s16/%1$s32/%1$s64 suffix, got '%1$s%s'", intChar, c);
+		}
 	}
 
 	private uint consumeHexadecimal()

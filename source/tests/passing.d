@@ -5467,3 +5467,44 @@ immutable test244 = q{--- test244
 	u32 lit_u32() { return 1; }
 	u64 lit_u64() { return 1; }
 };
+
+
+@TestInfo()
+immutable test245 = r"--- test245
+	// literal type suffix
+
+	f32 lit_f32a() { return 1f32; }
+	f64 lit_f64a() { return 1f64; }
+	f32 lit_f32b() { return 1.0f32; }
+	f64 lit_f64b() { return 1.0f64; }
+
+	i8  lit_i8_() { return 1i8; }
+	i16 lit_i16() { return 1i16; }
+	i32 lit_i32() { return 1i32; }
+	i64 lit_i64() { return 1i64; }
+
+	u8  lit_u8_() { return 1u8; }
+	u16 lit_u16() { return 1u16; }
+	u32 lit_u32() { return 1u32; }
+	u64 lit_u64() { return 1u64; }
+
+	i8  lit_i8_b() { return 0b1i8; }
+	i16 lit_i16b() { return 0b1i16; }
+	i32 lit_i32b() { return 0b1i32; }
+	i64 lit_i64b() { return 0b1i64; }
+
+	u8  lit_u8_b() { return 0b1u8; }
+	u16 lit_u16b() { return 0b1u16; }
+	u32 lit_u32b() { return 0b1u32; }
+	u64 lit_u64b() { return 0b1u64; }
+
+	i8  lit_i8_x() { return 0x1i8; }
+	i16 lit_i16x() { return 0x1i16; }
+	i32 lit_i32x() { return 0x1i32; }
+	i64 lit_i64x() { return 0x1i64; }
+
+	u8  lit_u8_x() { return 0x1u8; }
+	u16 lit_u16x() { return 0x1u16; }
+	u32 lit_u32x() { return 0x1u32; }
+	u64 lit_u64x() { return 0x1u64; }
+";

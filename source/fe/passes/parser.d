@@ -1775,9 +1775,27 @@ private TokenLookups cexp_parser()
 
 // Null Denotations -- tokens that take nothing on the left
 
+AstIndex parseIntLiteralType(string suffix, TokenIndex tok, CompilationContext* c) {
+	if (suffix.length == 0) return AstIndex();
+	switch(suffix) {
+		case "i8":  return CommonAstNodes.type_i8;
+		case "i16": return CommonAstNodes.type_i16;
+		case "i32": return CommonAstNodes.type_i32;
+		case "i64": return CommonAstNodes.type_i64;
+		case "u8":  return CommonAstNodes.type_u8;
+		case "u16": return CommonAstNodes.type_u16;
+		case "u32": return CommonAstNodes.type_u32;
+		case "u64": return CommonAstNodes.type_u64;
+		default: c.internal_error(tok, "Unexpected type suffix `%s`", suffix);
+	}
+}
+
 // id, int_literal, string_literal
 AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) {
-	import std.algorithm.iteration : filter;
+	import std.algorithm : filter;
+	import std.range : walkLength;
+	import std.conv : parse;
+	import std.typecons : Yes;
 	switch(token.type) with(TokenType)
 	{
 		case IDENTIFIER:
@@ -1843,20 +1861,37 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			return p.makeExpr!IntLiteralExprNode(token.index, cast(uint)charVal);
 		case INT_DEC_LITERAL:
 			string value = cast(string)p.context.getTokenString(token.index);
-			long intValue = value.filter!(c => c != '_').to!ulong;
-			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
+			auto filtered = value.filter!(c => c != '_');
+			auto result = filtered.parse!(ulong, typeof(filtered), Yes.doCount);
+			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, p.context);
+			return p.context.appendAst!IntLiteralExprNode(token.index, type, result.data);
 		case INT_HEX_LITERAL:
 			string value = cast(string)p.context.getTokenString(token.index);
-			long intValue = value[2..$].filter!(c => c != '_').to!ulong(16); // skip 0x, 0X
-			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
+			auto filtered = value[2..$].filter!(c => c != '_');
+			auto result = filtered.parse!(ulong, typeof(filtered), Yes.doCount)(16); // skip 0x, 0X
+			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, p.context);
+			return p.context.appendAst!IntLiteralExprNode(token.index, type, result.data);
 		case INT_BIN_LITERAL:
 			string value = cast(string)p.context.getTokenString(token.index);
-			long intValue = value[2..$].filter!(c => c != '_').to!ulong(2); // skip 0b, 0B
-			return p.makeExpr!IntLiteralExprNode(token.index, intValue);
+			auto filtered = value[2..$].filter!(c => c != '_');
+			auto result = filtered.parse!(ulong, typeof(filtered), Yes.doCount)(2); // skip 0b, 0B
+			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, p.context);
+			return p.context.appendAst!IntLiteralExprNode(token.index, type, result.data);
 		case FLOAT_DEC_LITERAL:
 			string value = cast(string)p.context.getTokenString(token.index);
-			double floatValue = value.filter!(c => c != '_').to!double;
-			return p.makeExpr!FloatLiteralExprNode(token.index, floatValue);
+			auto filtered = value.filter!(c => c != '_');
+			auto result = filtered.parse!(double, typeof(filtered), Yes.doCount);
+			AstIndex type;
+			if (!filtered.empty) {
+				string suffix = value[$-filtered.walkLength..$];
+				if (suffix == "f32")
+					type = CommonAstNodes.type_f32;
+				else {
+					p.context.assertf(suffix == "f64", token.index, "Unexpected type suffix `%s`", suffix);
+					type = CommonAstNodes.type_f64;
+				}
+			}
+			return p.context.appendAst!FloatLiteralExprNode(token.index, type, result.data);
 		case TYPE_NORETURN, TYPE_VOID, TYPE_BOOL,
 			TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64, TYPE_U8, TYPE_U16, TYPE_U32, TYPE_U64,
 			TYPE_F32, TYPE_F64,
