@@ -201,8 +201,13 @@ struct ObjectSection
 	/// Points to the data of this section. Used to perform fixups
 	/// Length of initialized data is in `buffer.length`
 	Arena!ubyte* buffer;
-	/// Length of zero-initialized data (not included into `length`)
+	/// Length of zero-initialized data (not included into `initDataLength`, but included into `totalLength`)
 	uint zeroDataLength;
+	/// Length of initialized data
+	ulong initDataLength() {
+		if (!buffer) return 0;
+		return buffer.length;
+	}
 	///
 	ulong totalLength() {
 		if (!buffer) return zeroDataLength;
@@ -326,29 +331,39 @@ struct ObjectSymbolTable
 		return cast(T*)(&buffer.bufPtr[index.bufferIndex]);
 	}
 
-	void dump(CompilationContext* context)
+	void dump(CompilationContext* c)
 	{
 		LinkIndex modIndex = firstModule;
 		while (modIndex.isDefined)
 		{
 			ObjectModule* mod = getModule(modIndex);
-			writefln("%s %s", modIndex, context.idString(mod.id));
+			writefln("%s %s", modIndex, c.idString(mod.id));
 
 			LinkIndex symIndex = mod.firstSymbol;
 			while (symIndex.isDefined)
 			{
 				ObjectSymbol* sym = getSymbol(symIndex);
-				writef("  %s %s %s bytes", symIndex, context.idString(sym.id), sym.length);
+				ObjectSection* section = getSection(sym.sectionIndex);
+
+				writef("  %s %s %s bytes", symIndex, c.idString(sym.id), sym.length);
 				if (sym.isAllZero) write(" zeroinit");
+				if (sym.needsZeroTermination) write(" zeroterm");
 				if (sym.isString)
 					writefln(` "%s"`, (cast(char*)(sym.dataPtr))[0..sym.length]);
 				else writeln;
+
+				writefln("    address: 0x%08X", section.sectionAddress + sym.sectionOffset);
+				writefln("    section: 0x%08X %s", section.sectionAddress, c.idString(section.id));
+				writefln("    data: %s bytes", sym.length);
+				if (sym.dataPtr) {
+					printHex(sym.dataPtr[0..sym.length], 16, PrintAscii.no, "      ");
+				}
 
 				LinkIndex symRefIndex = sym.firstRef;
 				while (symRefIndex.isDefined)
 				{
 					ObjectSymbolReference* symRef = getReference(symRefIndex);
-					writefln("    %s -> %s: off 0x%X extra %s %s",
+					writefln("    %s -> %s: off 0x%08X extra %s %s",
 						symRefIndex, symRef.referencedSymbol, symRef.refOffset,
 						symRef.extraOffset, symRef.refKind);
 					symRefIndex = symRef.nextReference;

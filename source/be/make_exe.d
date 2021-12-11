@@ -577,18 +577,30 @@ struct Elf64Executable
 
 		foreach(i, ObjectSection* section; sections) {
 			Elf64ProgramHeader* segment = &segments[i];
-			memoryOffset = alignValue(memoryOffset, section.alignment);
-			section.sectionAddress = memoryOffset;
-			segment.vaddr = memoryOffset;
-			fileOffset = alignValue(fileOffset, section.alignment);
-			segment.offset = fileOffset;
 			segment.alignment = section.alignment;
 
-			segment.filesz = section.buffer.length;
-			segment.memsz = section.buffer.length;
-
+			// Memory offset
+			// A.1. align the data in memory
+			memoryOffset = alignValue(memoryOffset, section.alignment); // add padding
+			segment.vaddr = memoryOffset;
+			section.sectionAddress = memoryOffset;
+			// Memory size
+			// A.2. then add the data (including zero-initialized data)
+			segment.memsz = section.totalLength;
 			memoryOffset += section.totalLength;
-			fileOffset += section.totalLength;
+
+			if (section.initDataLength > 0)
+			{
+				// File offset
+				// We don't want to add padding to the file if there will be no data
+				// B.1. align the data in the file
+				fileOffset = alignValue(fileOffset, section.alignment); // add padding
+				segment.offset = fileOffset;
+				// File size
+				// B.2. then set the in-memory size (only initialized data)
+				segment.filesz = section.initDataLength;
+				fileOffset += section.initDataLength;
+			}
 		}
 	}
 
