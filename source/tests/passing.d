@@ -5508,3 +5508,25 @@ immutable test245 = r"--- test245
 	u32 lit_u32x() { return 0x1u32; }
 	u64 lit_u64x() { return 0x1u64; }
 ";
+
+
+@TestInfo(&tester246)
+immutable test246 = q{--- test246
+	struct MonoTime {
+		i64 ticks;
+		Duration sub(MonoTime other) {
+			return Duration(ticks - other.ticks);
+		}
+	}
+	struct Duration {
+		i64 ticks;
+	}
+	i64 run(i64 a, i64 b) {
+		MonoTime ma = MonoTime(a);
+		MonoTime mb = MonoTime(b);
+		return ma.sub(mb).ticks;
+	}
+};
+void tester246(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(long, long, long)("run")(100, 40) == 60);
+}

@@ -400,8 +400,13 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 						}
 						else
 						{
-							ExtraInstrArgs extra = { argSize : sizeToIrArgSize(resultSize, c), type : member.type };
-							value = builder.emitInstrBefore!(IrOpcode.trunc)(instrIndex, extra, value).result;
+							if (resultSize == sourceSize) {
+								ExtraInstrArgs extra = { type : member.type };
+								value = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra, value).result;
+							} else {
+								ExtraInstrArgs extra = { argSize : sizeToIrArgSize(resultSize, c), type : member.type };
+								value = builder.emitInstrBefore!(IrOpcode.trunc)(instrIndex, extra, value).result;
+							}
 						}
 
 						vregInfos[instrHeader.result(ir).storageUintIndex] = LowerVreg(value, LowerAggregateAs.value);
@@ -640,6 +645,10 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 		if (constant == 0)
 		{
 			result = argBuffer[0]; // only non-constant data
+			if (!c.types.isSameType(getValueType(result, ir, c), type)) {
+				ExtraInstrArgs extra3 = { type : type };
+				result = builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra3, result).result; // bitcast
+			}
 		}
 		else
 		{
