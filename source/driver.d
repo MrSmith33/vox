@@ -30,7 +30,7 @@ struct Driver
 		passes = passes_;
 
 		// IrIndex can address 2^28 * 4 bytes = 1GB
-		size_t BYTES_TO_RESERVE = GiB*185;
+		size_t BYTES_TO_RESERVE = GiB*186;
 		arenaPool.reserve(BYTES_TO_RESERVE);
 		//writefln("arenaPool %X .. %X", arenaPool.buffer.ptr, arenaPool.buffer.ptr+arenaPool.buffer.length);
 
@@ -46,6 +46,7 @@ struct Driver
 		context.tokenBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.tokenLocationBuffer.setBuffer(arenaPool.take(GiB), 0);
 		context.binaryBuffer.setBuffer(arenaPool.take(GiB), 0);
+		context.bundleBuffer.setBuffer(arenaPool.take(GiB), 0);
 
 		context.irStorage.instrHeaderBuffer.setBuffer(arenaPool.take(8*GiB), 0);
 		context.irStorage.instrPayloadBuffer.setBuffer(arenaPool.take(8*GiB), 0);

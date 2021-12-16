@@ -5,62 +5,7 @@ module passes;
 
 import all;
 
-void pass_source(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
-{
-	size_t start = ctx.sourceBuffer.length;
-	foreach(ref file; ctx.files.data)
-	{
-		if (file.content)
-		{
-			ctx.sourceBuffer.put(SOI_CHAR);
-			ctx.sourceBuffer.put(file.content);
-			ctx.sourceBuffer.put(EOI_CHAR);
-
-			file.length = cast(uint)(file.content.length + 2);
-			file.start = cast(uint)start;
-			start += file.length;
-		}
-		else
-		{
-			import std.file : exists;
-			import std.path : absolutePath;
-			import std.stdio : File;
-
-			if (!exists(file.name))
-			{
-				ctx.error("File `%s` not found", absolutePath(file.name));
-				return;
-			}
-
-			ctx.sourceBuffer.put(SOI_CHAR);
-			auto f = File(file.name, "r");
-			size_t fileLength = f.size;
-			char[] sourceBuffer = ctx.sourceBuffer.voidPut(fileLength);
-			if (fileLength) {
-				// rawRead doesn't support reading into empty sourceBuffer
-				char[] result = f.rawRead(sourceBuffer);
-				ctx.assertf(result.length == fileLength,
-					"File read failed due to mismatch. File size is %s bytes, while read %s bytes",
-					fileLength, result.length);
-			}
-			f.close();
-			ctx.sourceBuffer.put(EOI_CHAR);
-
-			file.content = cast(string)sourceBuffer;
-			file.length = cast(uint)(fileLength + 2);
-			file.start = cast(uint)start;
-			start += file.length;
-		}
-
-		if (ctx.printSource) {
-			import std.stdio : writeln, writefln;
-			writefln("// Source `%s`", file.name);
-			writeln(file.content);
-		}
-	}
-}
-
-void pass_write_exe(ref CompilationContext context, CompilePassPerModule[] subPasses)
+void pass_write_binary(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
 	import std.file : write;
 	write(context.outputFilename, context.binaryBuffer.data);
@@ -72,8 +17,14 @@ void pass_write_exe(ref CompilationContext context, CompilePassPerModule[] subPa
 	}
 }
 
+void write_bundle(ref CompilationContext context)
+{
+	import std.file : write;
+	write(context.outputFilename, context.bundleBuffer.data);
+}
+
 immutable CompilePassGlobal[] frontendPasses = [
-	global_pass("Read source", &pass_source),
+	global_pass("Read source", &pass_read_source),
 	global_pass("Lex", &pass_lexer),
 	global_pass("Parse", &pass_parser),
 	global_pass("Register names", &pass_names_register),
@@ -111,12 +62,13 @@ immutable CompilePassGlobal[] extraJitPasses = [
 
 immutable CompilePassGlobal[] extraExePasses = [
 	CompilePassGlobal("Link executable", &pass_create_executable),
-	CompilePassGlobal("Write executable", &pass_write_exe),
+	CompilePassGlobal("Write binary", &pass_write_binary),
 ];
 
 CompilePassGlobal[] frontendOnlyPasses = frontendPasses;
 CompilePassGlobal[] jitPasses = commonPasses ~ extraJitPasses;
 CompilePassGlobal[] exePasses = commonPasses ~ extraExePasses;
+CompilePassGlobal[] bundlePasses = commonPasses ~ extraExePasses[0..$-1];
 
 void run_global_pass(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {

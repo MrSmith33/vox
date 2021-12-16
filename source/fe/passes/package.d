@@ -12,4 +12,5 @@ public import fe.passes.lexer;
 public import fe.passes.names_register;
 public import fe.passes.names_resolve;
 public import fe.passes.parser;
+public import fe.passes.read_source;
 public import fe.passes.type_check;

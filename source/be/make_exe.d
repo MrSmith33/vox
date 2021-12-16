@@ -566,8 +566,8 @@ struct Elf64Executable
 
 			segmentBuf.put(segment);
 			sectionBuf.put(section);
-
 		}
+
 		segments = segmentBuf.data;
 		sections = sectionBuf.data;
 

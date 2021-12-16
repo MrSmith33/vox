@@ -6,6 +6,7 @@ Authors: Andrey Penechko.
 module utils.arena;
 
 import std.stdio;
+import std.traits : isDynamicArray;
 
 ///
 struct Arena(T)
@@ -99,7 +100,7 @@ struct Arena(T)
 
 	static if (is(T == ubyte))
 	{
-		void put(V)(auto ref V value) {
+		void put(V)(auto ref V value) if (!isDynamicArray!V) {
 			ubyte[] ptr = voidPut(V.sizeof);
 			ptr[] = *cast(ubyte[V.sizeof]*)&value;
 		}

@@ -104,8 +104,10 @@ struct CompilationContext
 	/// Symbols, sections and references
 	ObjectSymbolTable objSymTab;
 
-	/// Buffer for executable generation
+	/// Buffer for output file generation (.exe)
 	Arena!ubyte binaryBuffer;
+	/// Buffer for output file generation (.har)
+	Arena!ubyte bundleBuffer;
 
 	// Stores astBuffer.length after initialize() call
 	// to be reset on beginCompilation()
@@ -218,6 +220,9 @@ struct CompilationContext
 	bool disableDCE = false;
 	// Disables inlining
 	bool disableInline = false;
+
+	// Don't output any files, but instead create a .har file containing all input files
+	bool bundleInputs;
 
 	Identifier printOnlyFun;
 	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegNoDup(&this, name); }
@@ -859,6 +864,7 @@ struct CompilationContext
 		printArena(objSymTab.buffer, "symbols");
 		printArena(codeBuffer, "machine code");
 		printArena(binaryBuffer, "binary");
+		printArena(bundleBuffer, "bundle");
 
 		sink.putfln("  %-16s%-6iB    %-6iB   %-6iB",
 			"  Total",
@@ -980,6 +986,7 @@ struct CompilationContext
 		tokenBuffer.length = initializedTokenLocBufSize; // same size as tok loc buf
 		tokenLocationBuffer.length = initializedTokenLocBufSize;
 		binaryBuffer.clear;
+		bundleBuffer.clear;
 		irStorage.instrHeaderBuffer.clear;
 		irStorage.instrPayloadBuffer.clear;
 		irStorage.instrNextBuffer.clear;

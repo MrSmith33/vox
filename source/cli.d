@@ -54,7 +54,7 @@ int runCli(string[] args)
 		{
 			case "pdb-dump":
 				if (args.length == 1) {
-					writeln("Usage: tiny_jit pdb-dump file.pdb");
+					writeln("Usage: vox pdb-dump file.pdb");
 					return 1;
 				}
 				string filename = absolutePath(args[2]);
@@ -73,6 +73,7 @@ int runCli(string[] args)
 	}
 
 	// Regular compiler invocation
+	retry_parse_opts:
 	try
 	{
 		// GC
@@ -82,6 +83,7 @@ int runCli(string[] args)
 			"target", targetHelp, &outputTarget,
 			"subsystem", "Select windows subsystem. [CUI(default), GUI]", &subSystem,
 			"check-only", "Disable backend passes, leaving only error checking", &checkOnly,
+			"bundle", "Emit .har file containing all of the input files and CLI arguments. No other output will be generated", &driver.context.bundleInputs,
 
 			"no-dce", "Disable Dead Code Elimination", &driver.context.disableDCE,
 			"no-inline", "Disable Inlining", &driver.context.disableInline,
@@ -107,37 +109,38 @@ int runCli(string[] args)
 			"print-filter", "Print only info about <function name>.", &filterFuncName,
 			"print-error-trace", "Print stack trace for every error", &driver.context.printTraceOnError,
 		);
-
-		final switch (subSystem) {
-			case WindowsSubsystemCli.CUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_CUI; break;
-			case WindowsSubsystemCli.GUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI; break;
-		}
-
-		switch(outputTarget) {
-			case "windows-x64": driver.context.targetOs = TargetOs.windows; break;
-			case "linux-x64":   driver.context.targetOs = TargetOs.linux;   break;
-			case "macos-x64":   driver.context.targetOs = TargetOs.macos;   break;
-			//case "linux-arm64": driver.context.targetOs = TargetOs.linux; driver.context.targetArch = TargetArch.arm64; break;
-			default:
-				writefln("Unknown target: %s", outputTarget);
-				printHelp = true;
-		}
-
-		args = args[1..$]; // skip program name
-
-		if (args.length < 1) printHelp = true;
-		if (optResult.helpWanted) printHelp = true;
 	}
 	catch(GetOptException e)
 	{
+		import std.algorithm.mutation : remove;
+
 		writeln(e.msg);
 		printHelp = true;
+		args = args.remove(1);
+		goto retry_parse_opts;
 	}
+
+	switch(outputTarget) {
+		case "windows-x64": driver.context.targetOs = TargetOs.windows; break;
+		case "linux-x64":   driver.context.targetOs = TargetOs.linux;   break;
+		case "macos-x64":   driver.context.targetOs = TargetOs.macos;   break;
+		//case "linux-arm64": driver.context.targetOs = TargetOs.linux; driver.context.targetArch = TargetArch.arm64; break;
+		default:
+			writefln("Unknown target: %s", outputTarget);
+			printHelp = true;
+	}
+
+	if (args.length < 2) printHelp = true;
+	if (args.length > 0) args = args[1..$]; // skip program name
+
+	if (optResult.helpWanted) printHelp = true;
 
 	if (printHelp)
 	{
 		writeln("Usage: vox [tool] [options]... [.vx|.har]...");
-		writeln("   Tools: pdb-dump");
+		writeln(" tools:");
+		writeln("   pdb-dump - dumps the contents of a .pdb file");
+		writeln(" options:");
 
 		size_t maxShortLength;
 		size_t maxLongLength;
@@ -155,14 +158,21 @@ int runCli(string[] args)
 		return 0;
 	}
 
+	final switch (subSystem) {
+		case WindowsSubsystemCli.CUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_CUI; break;
+		case WindowsSubsystemCli.GUI: driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI; break;
+	}
+
 	string[] filenames = args;
 
 	auto passes = exePasses;
-	// Disable backend
+	// Disable backend for check-only
 	if (checkOnly) passes = frontendOnlyPasses;
+	if (driver.context.bundleInputs) passes = bundlePasses;
+
+	driver.context.buildType = BuildType.exe;
 
 	driver.initialize(passes);
-	driver.context.buildType = BuildType.exe;
 	driver.beginCompilation();
 
 	if (outputFilename) driver.context.outputFilename = outputFilename;
@@ -171,8 +181,11 @@ int runCli(string[] args)
 		if (driver.context.targetOs == TargetOs.windows) ext = ".exe";
 		driver.context.outputFilename = filenames[0].baseName.setExtension(ext); // GC
 	}
+	if (driver.context.bundleInputs) {
+		driver.context.outputFilename = driver.context.outputFilename.setExtension(".har");
+	}
 
-	if (filterFuncName) driver.context.printOnlyFun = driver.context.idMap.getOrRegNoDup(&driver.context, filterFuncName);
+	if (filterFuncName) driver.context.setDumpFilter(filterFuncName);
 
 	auto times = PerPassTimeMeasurements(1, driver.passes);
 	auto endInitTime = currTime;
@@ -196,12 +209,26 @@ int runCli(string[] args)
 					char[] harData = file.rawRead(sourceBuffer);
 					file.close();
 
-					driver.addHar(filename, harData);
+					void onHarFile(SourceFileInfo fileInfo)
+					{
+						if (fileInfo.name == "<args>") {
+							// skip
+						} else {
+							driver.addModule(fileInfo);
+						}
+					}
+
+					parseHar(driver.context, filename, harData, &onHarFile);
 					break;
 				default:
 					driver.addModule(SourceFileInfo(filename));
 					break;
 			}
+		}
+
+		scope(exit) {
+			// In case of an error write the output
+			if (driver.context.bundleInputs) write_bundle(driver.context);
 		}
 
 		driver.compile();
