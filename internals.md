@@ -813,6 +813,133 @@ else // input: "r1 = op r2 r2"
 }
 ```
 
+# Complete example
+
+Source code:
+
+```D
+@extern(module, "host")
+void print(i32); // external
+void fibonacci() {
+    i32 lo = 0;
+    i32 hi = 1;
+    while (hi < 10000) {
+        hi = hi + lo;
+        lo = hi - lo;
+        print(lo);
+    }
+}
+```
+
+Initial IR generated from the AST:
+```Rust
+func fibonacci() 576 bytes ir:"IR" pass:"IR gen" {
+ |  @0
+1|    jmp @2
+ |  @2 in(@0)
+2|    jmp @3
+ |  @3 in(@2, @4)
+ |    v1 i32 = phi1(@2 i32 0, @4 i32 v3) users [i.4, i.5]
+ |    v0 i32 = phi0(@2 i32 1, @4 i32 v2) users [i.3, i.4]
+3|    if i32 v0 s< i32 10000 then @4 else @5
+ |  @4 in(@3)
+4|    v2 i32 = add i32 v0, i32 v1 users [i.5, phi0]
+5|    v3 i32 = sub i32 v2, i32 v1 users [i.6, phi1]
+6|    call print, i32 v3
+7|    jmp @3
+ |  @5 in(@3)
+8|    jmp @1
+ |  @1 in(@5)
+0|    return
+}
+```
+
+LIR created by instruction selection pass from IR:
+```Rust
+func fibonacci() 656 bytes ir:"LIR Amd64" pass:"IR -> LIR" {
+  |  @0
+ 0|    jmp @2
+  |  @2 in(@0)
+ 1|    jmp @3
+  |  @3 in(@2, @4)
+  |    v1 i32 = phi1(@2 i32 1, @4 i32 v2) users [i2, i3]
+  |    v0 i32 = phi0(@2 i32 0, @4 i32 v3) users [i3, i4]
+ 2|    if i32 v1 s>= i32 10000 then @5 else @4
+  |  @4 in(@3)
+ 3|    v2 i32 = add i32 v1, i32 v0 users [i4, phi1]
+ 4|    v3 i32 = sub i32 v2, i32 v0 users [i5, phi0]
+ 5|    ecx = mov i32 v3
+ 6|    rsp = sub rsp, i32 32
+ 7|    call print, rcx
+ 8|    rsp = add rsp, i32 32
+ 9|    jmp @3
+  |  @5 in(@3)
+10|    jmp @1
+  |  @1 in(@5)
+11|    ret
+}
+```
+
+LIR after register allocation:
+```Rust
+func fibonacci() 896 bytes ir:"LIR Amd64" pass:"RA" {
+  |  @0
+20|    store i64* s1, rbp
+18|    store i64* s0, rbx
+ 0|    jmp @2
+  |  @2 in(@0)
+14|    eax = mov i32 0
+15|    ecx = mov i32 1
+ 1|    jmp @3
+  |  @3 in(@2, @4)
+ 2|    if ecx s>= i32 10000 then @5 else @4
+  |  @4 in(@3)
+12|    ebx = mov ecx
+ 3|    ebx = add ebx, eax
+13|    ebp = mov ebx
+ 4|    ebp = sub ebp, eax
+ 5|    ecx = mov ebp
+ 6|    rsp = sub rsp, i32 32
+ 7|    call print, rcx
+ 8|    rsp = add rsp, i32 32
+16|    eax = mov ebp
+17|    ecx = mov ebx
+ 9|    jmp @3
+  |  @5 in(@3)
+10|    jmp @1
+  |  @1 in(@5)
+19|    rbx = load i64* s0
+21|    rbp = load i64* s1
+11|    ret
+}
+```
+
+Final x64 machine code:
+```x86asm
+sub    rsp,0x18
+mov    QWORD PTR [rsp+0x0],rbp
+mov    QWORD PTR [rsp+0x8],rbx
+xor    eax,eax
+mov    ecx,0x1
+cmp    ecx,0x2710
+jge    0x42
+mov    ebx,ecx
+add    ebx,eax
+mov    ebp,ebx
+sub    ebp,eax
+mov    ecx,ebp
+sub    rsp,0x20
+call   QWORD PTR [rip+0x0]
+add    rsp,0x20
+mov    eax,ebp
+mov    ecx,ebx
+jmp    0x15
+mov    rbx,QWORD PTR [rsp+0x8]
+mov    rbp,QWORD PTR [rsp+0x0]
+add    rsp,0x18
+ret 
+```
+
 # Testing
 
 Tests in Vox are defined in the source code via string literals annotated with `TestInfo` value. Test runner then iterates all definitions in test modules and gets those that marked with `@TestInfo`.
@@ -940,7 +1067,7 @@ failing.vx:2:3: Error: undefined identifier `bar`
 
 Test runner also supports building executables, which I use to test executable generation. I only have 2 tests that produce an executable, because it is much slower than doing everything in memory.
 
-At the time of writing I have 270 test, all of which take ~60ms. Of which 2 executable tests take ~10ms. This is on Windows. So on average 5ms per executable test, which compiles, writes executable file, runs the executable. And 0.19ms per JIT test, which doesn't perform any IO. Together with compiling compiler from scratch it takes me 3.6s to compile and run compiler with whole test suite. So, iteration time is quite nice.
+At the time of writing I have 310 tests, all of which take ~90ms. Of which 2 executable tests take ~10ms. This is on Windows. So on average 5ms per executable test, which compiles, writes executable file, runs the executable. And 0.19ms per JIT test, which doesn't perform any IO. Together with compiling compiler from scratch it takes me 3.6s to compile and run compiler with whole test suite. So, iteration time is quite nice.
 
 
 # Linux quirks
