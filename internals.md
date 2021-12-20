@@ -880,6 +880,51 @@ func fibonacci() 656 bytes ir:"LIR Amd64" pass:"IR -> LIR" {
 }
 ```
 
+LIR showing live intervals:
+```Rust
+func fibonacci() 656 bytes ir:"LIR Amd64" pass:"Live" {
+                                #      0|   |  @0 SF.
+                                #      2|  0|    jmp @2
+                                #      4|   |  @2 SF. in(@0)
+                                #      6|  1|    jmp @3
+                                #      8|   |  @3 SFL in(@2, @4)
+                                #|DU   8|   |    v1 i32 = phi1(@2 i32 1, @4 i32 v2) users [i2, i3]
+                                #D| U  8|   |    v0 i32 = phi0(@2 i32 0, @4 i32 v3) users [i3, i4]
+                                #|U   10|  2|    if i32 v1 s>= i32 10000 then @5 else @4
+                                #++   12|   |  @4 SF. in(@3)
+                                #UUD  14|  3|    v2 i32 = add i32 v1, i32 v0 users [i4, phi1]
+                                #U UD 16|  4|    v3 i32 = sub i32 v2, i32 v0 users [i5, phi0]
+ |  |                           #  |U 18|  5|    ecx = mov i32 v3
+ |  |                           #  || 20|  6|    rsp = sub rsp, i32 32
+||| |   ||||    ||||||          #  || 22|  7|    call print, rcx
+    |                           #  || 24|  8|    rsp = add rsp, i32 32
+    |                           #  || 26|  9|    jmp @3
+                                #  ^^ 28|   |  @5 SF. in(@3)
+                                #     30| 10|    jmp @1
+                                #     32|   |  @1 SF. in(@5)
+                                #     34| 11|    ret
+}
+intervals fibonacci
+  p  0 rax [rax]: [22; 23)
+  p  1 rcx [rcx]: [18; 23)
+  p  2 rdx [rdx]: [22; 23)
+  p  4 rsp [rsp]: [18; 26)
+  p  8 r8 [r8]: [22; 23)
+  p  9 r9 [r9]: [22; 23)
+  p 10 r10 [r10]: [22; 23)
+  p 11 r11 [r11]: [22; 23)
+  p 16 xmm0q [xmm0q]: [22; 23)
+  p 17 xmm1q [xmm1q]: [22; 23)
+  p 18 xmm2q [xmm2q]: [22; 23)
+  p 19 xmm3q [xmm3q]: [22; 23)
+  p 20 xmm4q [xmm4q]: [22; 23)
+  p 21 xmm5q [xmm5q]: [22; 23)
+  v 32 v0 [no reg]: [8; 17) (14 instr) (16 instr)
+  v 33 v1 [no reg]: [8; 14) (10 instr) (14 instr)
+  v 34 v2 [no reg]: [14; 28) (14 instr) (16 instr) (28 phi)
+  v 35 v3 [no reg]: [16; 28) (16 instr) (18 instr) (28 phi)
+```
+
 LIR after register allocation:
 ```Rust
 func fibonacci() 896 bytes ir:"LIR Amd64" pass:"RA" {
@@ -912,6 +957,11 @@ func fibonacci() 896 bytes ir:"LIR Amd64" pass:"RA" {
 21|    rbp = load i64* s1
 11|    ret
 }
+intervals fibonacci
+  v 32 v0 [eax]: [8; 17) (14 instr) (16 instr)
+  v 33 v1 [ecx]: [8; 14) (10 instr) (14 instr)
+  v 34 v2 [ebx]: [14; 28) (14 instr) (16 instr) (28 phi)
+  v 35 v3 [ebp]: [16; 28) (16 instr) (18 instr) (28 phi)
 ```
 
 Final x64 machine code:
