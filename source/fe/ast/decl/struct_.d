@@ -124,6 +124,7 @@ IrIndex gen_init_value_struct(StructDeclNode* node, CompilationContext* c)
 		AstNode* memberVarNode = member.get_node(c);
 		if (memberVarNode.astType != AstType.decl_var) continue;
 		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
+		if (!memberVar.isMember) continue;
 		IrIndex memberValue = memberVar.gen_init_value_var(c);
 		if (!memberValue.isConstantZero) allZeroes = false;
 		if (node.isUnion) {
@@ -157,8 +158,9 @@ void gen_ir_header_struct(StructDeclNode* node, CompilationContext* c)
 	foreach(AstIndex memberIndex; node.declarations)
 	{
 		AstNode* member = c.getAstNode(memberIndex);
-		if (member.astType == AstType.decl_var)
-			++numFields;
+		if (member.astType != AstType.decl_var) continue;
+		if (!member.isMember) continue;
+		++numFields;
 	}
 
 	node.irType = c.types.appendStruct(numFields, node.isUnion);
@@ -196,6 +198,7 @@ IrIndex gen_ir_type_struct(StructDeclNode* node, CompilationContext* c, AllowHea
 		AstNode* member = c.getAstNode(memberAstIndex);
 		if (member.astType == AstType.decl_var)
 		{
+			if (!member.isMember) continue;
 			auto var = member.as!(VariableDeclNode)(c);
 			IrIndex type = var.type.gen_ir_type(c);
 			SizeAndAlignment memberInfo = c.types.typeSizeAndAlignment(type);

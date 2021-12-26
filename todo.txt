@@ -67,6 +67,20 @@
 - overloading
 - named parameters
 
+- @static
+	+ @static variables in the function body
+	+ @static variables in the struct
+		+ don't add them to the IR type
+		+ access via type name `S.staticMember`
+		+ access via instance `s.staticMember`
+		+ access from method `staticMember`
+		+ access from method through this `this.staticMember`
+	- @static functions
+		- Call through instance `s.staticMethod()`
+		- Call through type name `S.staticMethod()`
+		- forbid access from @static methods to non-@static members
+	+ forbid @static parameters
+
 - char literal / type
 	+ literal (for now generates int literal expression)
 + escape sequences in string/char literals (\n)

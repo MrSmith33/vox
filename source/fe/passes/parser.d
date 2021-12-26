@@ -88,31 +88,53 @@ void pass_parser(ref CompilationContext ctx, CompilePassPerModule[] subPasses) {
 // Attribute stack has the following structure at runtime
 //
 // - uneffective attributes (0 or more)
-// - effective attributes   (0 or more)
+// - broadcasted attributes (0 or more)
 // - immediate attributes   (0 or more) top of the stack
 //
 // when a new attribute is parsed it is added to the top of the attribute stack
 //
-struct AttribState
+struct BroadcastedAttribState
+{
+	// Number of attributes on the top of `attributeStack`, but below immediate attributes,
+	// that will be applied to the next declaration
+	// after application they will remain on the stack
+	ushort numBroadcastedAttributes;
+
+	// one bit per attribute in BuiltinFlagAttrib set
+	// will be added to the next declaration
+	// and will remain until the end of the scope
+	ushort broadcastedFlagAttributes;
+}
+
+struct ImmediateAttribState
 {
 	// Number of attributes on the top of `attributeStack`, that
-	// will be applied to the following declaration
-	// they will remain on the stack without dropping them from the stack
-	ushort numEffectiveAttributes;
-	// Number of attributes introduced by the current scope
-	// numScopeAttributes <= numEffectiveAttributes
-	ushort numScopeAttributes;
-	// Number of attributes on the top of `attributeStack`, that
-	// will be added to the following declaration
+	// will be added to the next declaration
 	// and will be dropped from the stack
-	// numImmediateAttributes <= numScopeAttributes
-	// numImmediateAttributes <= numEffectiveAttributes
 	ushort numImmediateAttributes;
+
+	// one bit per attribute in BuiltinFlagAttrib set
+	// will be added to the next declaration
+	// and will be zeroed
+	ushort immediateFlagAttributes;
+}
+
+struct AttribState
+{
+	BroadcastedAttribState broadcasted;
+	ImmediateAttribState immediate;
+
+	ushort numEffectiveAttributes() { return cast(ushort)(broadcasted.numBroadcastedAttributes + immediate.numImmediateAttributes); }
+	ushort effectiveFlagAttributes() { return broadcasted.broadcastedFlagAttributes | immediate.immediateFlagAttributes; }
+
+	bool isStaticDecl() {
+		return cast(bool)(effectiveFlagAttributes & BuiltinFlagAttrib.isStatic);
+	}
 }
 
 struct ScopeTempData
 {
-	AttribState prev;
+	BroadcastedAttribState prevBroadcasted;
 	bool isNonScope;
 }
 
@@ -134,11 +156,30 @@ struct Parser
 	// Attributes affecting next declaration
 	AstNodes attributeStack;
 
-	// TODO: for now only immediate attributes are implemented
 	// Allocates AttributeInfo in AST arena, so it will be before next AST node allocated.
 	// returns 0 or AstFlags.hasAttributes flag. Must be added to node flags.
 	ushort createAttributeInfo() {
-		if (attribState.numEffectiveAttributes == 0) return 0;
+		ushort declFlags;
+		//writefln("%s %s", attribState.immediateFlagAttributes, attribState.broadcastedFlagAttributes);
+		if (attribState.isStaticDecl) {
+			declFlags |= AstFlags.isGlobal;
+		} else {
+			switch (declarationOwner.astType(context)) {
+				case AstType.decl_struct:
+					declFlags |= AstFlags.isMember;
+					break;
+				case AstType.decl_module:
+					declFlags |= AstFlags.isGlobal;
+					break;
+				default: break;
+			}
+		}
+
+		attribState.immediate.immediateFlagAttributes = 0;
+
+		if (attribState.numEffectiveAttributes == 0) return declFlags;
+
+		declFlags |= AstFlags.hasAttributes;
 
 		AstNodes attributes;
 		attributes.voidPut(context.arrayArena, attribState.numEffectiveAttributes);
@@ -151,13 +192,11 @@ struct Parser
 			attribFlags |= calcAttribFlags(attrib, context);
 		}
 
-		attributeStack.unput(attribState.numImmediateAttributes);
-		attribState.numEffectiveAttributes -= attribState.numImmediateAttributes;
-		attribState.numScopeAttributes -= attribState.numImmediateAttributes;
-		attribState.numImmediateAttributes = 0;
+		attributeStack.unput(attribState.immediate.numImmediateAttributes);
+		attribState.immediate.numImmediateAttributes = 0;
 
 		context.appendAst!AttributeInfo(attributes, attribFlags);
-		return AstFlags.hasAttributes;
+		return declFlags;
 	}
 
 	SourceLocation loc() {
@@ -247,7 +286,10 @@ struct Parser
 	ScopeTempData pushScope(string name, ScopeKind kind)
 	{
 		ScopeTempData temp;
-		temp.prev = attribState;
+		temp.prevBroadcasted = attribState.broadcasted;
+
+		context.assertf(attribState.immediate == ImmediateAttribState.init,
+			"No immediate attributes should remain before new scope");
 
 		if (kind == ScopeKind.no_scope)
 		{
@@ -255,12 +297,12 @@ struct Parser
 			temp.isNonScope = true;
 
 			// Outer effective attributes are effective inside no_scope scopes
-			attribState = AttribState(attribState.numEffectiveAttributes, 0, 0);
+			attribState = AttribState(attribState.broadcasted);
 		}
 		else
 		{
 			// Outer attributes are not visible inside
-			attribState = AttribState(0, 0, 0);
+			attribState = AttribState.init;
 
 			AstIndex newScopeIndex = context.appendAst!Scope;
 			Scope* newScope = context.getAst!Scope(newScopeIndex);
@@ -277,15 +319,23 @@ struct Parser
 
 	void popScope(ScopeTempData temp)
 	{
+		context.assertf(attribState.immediate == ImmediateAttribState.init,
+			"No immediate attributes should remain at the end of the scope");
+
+		// How many attributes were introduced in the current scope compared to previous
+		ushort numScopeAttributes = 0;
+		if (attribState.broadcasted.numBroadcastedAttributes > temp.prevBroadcasted.numBroadcastedAttributes)
+			numScopeAttributes = cast(ushort)(attribState.broadcasted.numBroadcastedAttributes - temp.prevBroadcasted.numBroadcastedAttributes);
+
 		// mark the rest of effective nodes as broadcasted
-		auto offset = attributeStack.length - attribState.numScopeAttributes;
-		foreach(i; 0..attribState.numScopeAttributes) {
+		auto offset = attributeStack.length - numScopeAttributes;
+		foreach(i; 0..numScopeAttributes) {
 			AstIndex attrib = attributeStack[offset + i];
 			attrib.flags(context) |= AnyAttributeFlags.isBroadcasted;
 		}
 
 		// drop broadcasted attributes introduced by this scope at the end of the scope
-		attributeStack.unput(attribState.numScopeAttributes);
+		attributeStack.unput(numScopeAttributes);
 
 		if (temp.isNonScope)
 		{
@@ -296,7 +346,7 @@ struct Parser
 			currentScopeIndex = currentScopeIndex.get_scope(context).parentScope;
 		}
 
-		attribState = temp.prev;
+		attribState = AttribState(temp.prevBroadcasted);
 	}
 
 	// ------------------------------ PARSING ----------------------------------
@@ -383,6 +433,22 @@ struct Parser
 		assert(false);
 	}
 
+	void parse_single_attribute(TokenIndex start)
+	{
+		Identifier attributeId = expectIdentifier("@");
+
+		switch(attributeId.index) {
+			case CommonIds.id_extern.index:
+				parse_extern_attribute(start);
+				break;
+			case CommonIds.id_static.index:
+				attribState.immediate.immediateFlagAttributes |= BuiltinFlagAttrib.isStatic;
+				break;
+			default:
+				context.unrecoverable_error(start, "Unknown built-in attribute `%s`", context.idString(attributeId));
+		}
+	}
+
 	// parses all attributes and one or more declarations that it is attached too
 	void parse_attribute(ref AstNodes declarations)
 	{
@@ -390,16 +456,7 @@ struct Parser
 		{
 			TokenIndex start = tok.index;
 			nextToken; // skip @
-
-			Identifier attributeId = expectIdentifier("@");
-
-			switch(attributeId.index) {
-				case CommonIds.id_extern.index:
-					parse_extern_attribute(start);
-					break;
-				default:
-					context.unrecoverable_error(start, "Unknown built-in attribute `%s`", context.idString(attributeId));
-			}
+			parse_single_attribute(start);
 
 			switch(tok.type)
 			{
@@ -409,7 +466,11 @@ struct Parser
 				nextToken; // skip :
 				// Mark all immediate attributes as scoped attributes.
 				// They will be effective until the end of current scope, then the will be popped by popScope
-				attribState.numImmediateAttributes = 0;
+				attribState.broadcasted.numBroadcastedAttributes += attribState.immediate.numImmediateAttributes;
+				attribState.immediate.numImmediateAttributes = 0;
+				// Mark all immediate flag attributes as scoped attributes.
+				attribState.broadcasted.broadcastedFlagAttributes |= attribState.immediate.immediateFlagAttributes;
+				attribState.immediate.immediateFlagAttributes = 0;
 				// next comes another attribute or declaration
 				if (tok.type == TokenType.AT) break; // next attribute
 				goto default;
@@ -430,19 +491,24 @@ struct Parser
 				// }
 
 				// number of attributes
-				ushort numScopeBlockAttributes = attribState.numImmediateAttributes;
+				ushort numImmediateAttributes = attribState.immediate.numImmediateAttributes;
+				// save immediate flag attributes
+				auto immediateFlagAttributes = attribState.immediate.immediateFlagAttributes;
 
 				// remove attributes from current scope
-				attribState.numImmediateAttributes -= numScopeBlockAttributes;
-				attribState.numScopeAttributes -= numScopeBlockAttributes;
-				attribState.numEffectiveAttributes -= numScopeBlockAttributes;
+				attribState.immediate.numImmediateAttributes = 0;
+
+				// remove flag attributes from current scope
+				attribState.immediate.immediateFlagAttributes = 0;
 
 				// enter the scope
 				ScopeTempData scope_temp = pushScope("@{}", ScopeKind.no_scope);
 
+				// restore flag attributes, but now they are in the nested scope
+				attribState.immediate.immediateFlagAttributes = immediateFlagAttributes;
+
 				// add them as @: attributes
-				attribState.numScopeAttributes += numScopeBlockAttributes;
-				attribState.numEffectiveAttributes += numScopeBlockAttributes;
+				attribState.broadcasted.numBroadcastedAttributes += numImmediateAttributes;
 
 				// declarations
 				parse_declarations(declarations, TokenType.RCURLY);
@@ -495,9 +561,7 @@ struct Parser
 		}
 
 		expectAndConsume(TokenType.RPAREN, "@extern(...");
-		++attribState.numImmediateAttributes;
-		++attribState.numScopeAttributes;
-		++attribState.numEffectiveAttributes;
+		++attribState.immediate.numImmediateAttributes;
 		attributeStack.put(context.arrayArena, attribute);
 	}
 
@@ -580,33 +644,6 @@ struct Parser
 			if (consume_terminator) expectAndConsume(var_terminator);
 			// leave ";" or "," for parent to decide
 			AstIndex varIndex = makeDecl!VariableDeclNode(start, currentScopeIndex, typeIndex, initializerIndex, declarationId);
-			auto var = varIndex.get!VariableDeclNode(context);
-			ushort varFlags;
-			switch (declarationOwner.astType(context))
-			{
-				case AstType.decl_struct:
-					varFlags |= AstFlags.isMember;
-					break;
-				case AstType.decl_module:
-					varFlags |= AstFlags.isGlobal;
-					// register global variable, type is not set yet
-					IrIndex globalIndex = context.globals.add();
-					IrGlobal* global = context.globals.get(globalIndex);
-					var.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
-
-					ObjectSymbol sym = {
-						kind : ObjectSymbolKind.isLocal,
-						sectionIndex : context.builtinSections[ObjectSectionType.rw_data],
-						moduleIndex : currentModule.objectSymIndex,
-						flags : ObjectSymbolFlags.isMutable,
-						id : var.id,
-					};
-
-					global.objectSymIndex = context.objSymTab.addSymbol(sym);
-					break;
-				default: break;
-			}
-			var.flags |= varFlags;
 			return varIndex;
 		}
 		else if (tok.type == TokenType.LBRACKET) // <func_declaration> ::= <type> <id> "[" <template_params> "]" "(" <param_list> ")" (<block_statement> / ';')
@@ -636,70 +673,68 @@ struct Parser
 		AstNodes params;
 		ushort funcFlags;
 
+		// no attributes go to the function node or to the parameters or to the body
+		auto tempAttribState = attribState;
+		attribState = AttribState.init;
+
+		AstIndex funcIndex = makeDecl!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), currentScopeIndex, AstIndex(), declarationId);
+		auto func = funcIndex.get!FunctionDeclNode(context);
+
+		AstIndex prevOwner = declarationOwner;
+		declarationOwner = funcIndex;
+		scope(exit) declarationOwner = prevOwner;
+
 		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
 		ScopeTempData scope_temp = pushScope(context.idString(declarationId), ScopeKind.local);
 		scope(exit) popScope(scope_temp);
 
+		// restore attributes for signature to consume
+		attribState = tempAttribState;
+
 		// add this pointer parameter
-		switch (declarationOwner.astType(context))
+		if (!attribState.isStaticDecl && prevOwner.astType(context) == AstType.decl_struct)
 		{
-			case AstType.decl_struct:
-				funcFlags |= AstFlags.isMember;
+			AstIndex structName = make!NameUseExprNode(start, currentScopeIndex, prevOwner.get!StructDeclNode(context).id);
+			NameUseExprNode* name = structName.get_name_use(context);
+			name.resolve(prevOwner, context);
+			name.flags |= AstFlags.isType;
+			name.state = AstNodeState.name_resolve_done;
+			AstIndex thisType = make!PtrTypeNode(start, CommonAstNodes.type_type, structName);
 
-				AstIndex structName = make!NameUseExprNode(start, currentScopeIndex, declarationOwner.get!StructDeclNode(context).id);
-				NameUseExprNode* name = structName.get_name_use(context);
-				name.resolve(declarationOwner, context);
-				name.flags |= AstFlags.isType;
-				name.state = AstNodeState.name_resolve_done;
-				AstIndex thisType = make!PtrTypeNode(start, CommonAstNodes.type_type, structName);
-
-				// parameter
-				AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, CommonIds.id_this, ushort(0));
-				VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
-				paramNode.flags |= VariableFlags.isParameter;
-				params.put(context.arrayArena, param);
-				break;
-			case AstType.decl_module:
-				funcFlags |= AstFlags.isGlobal;
-				break;
-			default: break;
+			// parameter
+			AstIndex param = make!VariableDeclNode(start, currentScopeIndex, thisType, AstIndex.init, CommonIds.id_this, ushort(0));
+			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
+			paramNode.flags |= VariableFlags.isParameter;
+			params.put(context.arrayArena, param);
 		}
-
-		// restore attributes earlier, so signature receives attributes
-		attribState = scope_temp.prev;
 
 		CallConvention callConvention = context.defaultCallConvention;
 		AstIndex signature = makeDecl!FunctionSignatureNode(start, typeIndex, params, callConvention);
 
-		// store values back;
-		scope_temp.prev = attribState;
+		// store remaining state back
+		scope_temp.prevBroadcasted = attribState.broadcasted;
 		// no attributes go to the parameters and body
-		attribState = AttribState(0, 0, 0);
+		attribState = AttribState.init;
 
 		parseParameters(signature, NeedRegNames.yes); // functions need to register their param names
-		AstIndex func = makeDecl!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
+		func.signature = signature;
 
-		currentScopeIndex.get_scope(context).owner = func;
+		currentScopeIndex.get_scope(context).owner = funcIndex;
 
 		if (tok.type == TokenType.HASH_INLINE)
 		{
 			nextToken; // skip #inline
-			funcFlags |= FuncDeclFlags.isInline;
+			func.flags |= FuncDeclFlags.isInline;
 		}
 
 		if (tok.type != TokenType.SEMICOLON)
 		{
-			AstIndex prevOwner = declarationOwner;
-			declarationOwner = func;
-			scope(exit) declarationOwner = prevOwner;
-			func.get!FunctionDeclNode(context).block_stmt = block_stmt();
+			func.block_stmt = block_stmt();
 			signature.flags(context) |= FuncSignatureFlags.attachedToFunctionWithBody;
 		}
 		else expectAndConsume(TokenType.SEMICOLON); // external function
 
-		func.get!FunctionDeclNode(context).flags |= funcFlags;
-
-		return func;
+		return funcIndex;
 	}
 
 	enum NeedRegNames : bool { no, yes }
@@ -758,6 +793,7 @@ struct Parser
 
 			AstIndex param = makeDecl!VariableDeclNode(paramStart, currentScopeIndex, paramType, defaultValue, paramId);
 			VariableDeclNode* paramNode = param.get!VariableDeclNode(context);
+			if (paramNode.isGlobal) context.error(paramNode.loc, "Parameters cannot be @static");
 			paramNode.flags |= flags;
 			paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
 			if (nameReg == NeedRegNames.no)
@@ -861,7 +897,7 @@ struct Parser
 			scope(exit) popScope(scope_temp);
 
 			// restore attributes earlier, so signature receives attributes
-			attribState = scope_temp.prev;
+			attribState = AttribState(scope_temp.prevBroadcasted);
 
 			AstIndex structIndex = makeDecl!StructDeclNode(start, parentScope, memberScope, structId);
 			StructDeclNode* s = structIndex.get!StructDeclNode(context);
@@ -870,9 +906,9 @@ struct Parser
 			currentScopeIndex.get_scope(context).owner = structIndex;
 
 			// store values back;
-			scope_temp.prev = attribState;
+			scope_temp.prevBroadcasted = attribState.broadcasted;
 			// no attributes go to the body
-			attribState = AttribState(0, 0, 0);
+			attribState = AttribState.init;
 
 			expectAndConsume(TokenType.LCURLY);
 			{
@@ -1496,6 +1532,9 @@ struct Parser
 			case TokenType.LCURLY:  /* "{" { <statement> } "}" */
 				items.put(context.arrayArena, block_stmt());
 				return;
+			case TokenType.AT:
+				parse_attribute(items);
+				return;
 			default:
 			{
 				// expression or var/func declaration
@@ -1741,7 +1780,8 @@ private TokenLookups cexp_parser()
 	//infixL(310, &leftBinaryOp, "->");
 
 	// 29 -- binds to everything except function call, indexing, postfix ops
-	prefix(290, &nullPrefixOp, ["+", "-", "!", "~", "*", "&", "++", "--"]);
+	prefix(290, &nullPrefixOp, ["+", "-", "!", "~", "*", "&", "++", "--", "@"]);
+	prefix(290, &nullPrefixAttribute, ["@"]);
 	prefix(290, &nullCast, "cast");
 
 	infixL(250, &leftFunctionOp, ["function"]);
@@ -1899,6 +1939,19 @@ AstIndex nullParen(ref Parser p, PreferType preferType, Token token, int rbp) {
 	p.expectAndConsume(TokenType.RPAREN);
 	//r.flags |= NFLG.parenthesis; // NOTE: needed if ternary operator is needed
 	return r;
+}
+
+AstIndex nullPrefixAttribute(ref Parser p, PreferType preferType, Token token, int rbp) {
+	if (!preferType) p.context.unrecoverable_error(token.index, "Unexpected attribute");
+	while(true) {
+		p.parse_single_attribute(p.tok.index);
+		if (p.tok.type == TokenType.AT) {
+			p.nextToken; // skip @
+			continue;
+		}
+		break;
+	}
+	return p.expr(preferType, rbp);
 }
 
 // Prefix operator

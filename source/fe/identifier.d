@@ -102,10 +102,11 @@ enum CommonIds : Identifier
 	@("message") id_message = Identifier(6),
 	@("type")    id_type    = Identifier(7),
 	@("extern")  id_extern  = Identifier(8),
-	@("syscall") id_syscall = Identifier(9),
-	@("module")  id_module  = Identifier(10),
-	@("host")    id_host    = Identifier(11),
-	@("main")    id_main    = Identifier(12),
+	@("static")  id_static  = Identifier(9),
+	@("syscall") id_syscall = Identifier(10),
+	@("module")  id_module  = Identifier(11),
+	@("host")    id_host    = Identifier(12),
+	@("main")    id_main    = Identifier(13),
 
 	// Built-in function identifiers
 	@("$compileError") cash_compile_error = Identifier(id_main.index + 1),

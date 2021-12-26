@@ -143,8 +143,15 @@ IrIndex gen_init_value_var(VariableDeclNode* node, CompilationContext* c)
 void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt, VariableDeclNode* v)
 {
 	CompilationContext* c = gen.context;
+
+	if (v.isGlobal)
+	{
+		ir_gen_decl_var(gen, v);
+		gen.builder.addJumpToLabel(curBlock, nextStmt);
+		return;
+	}
+
 	TypeNode* varType = c.getAstType(v.type).foldAliases(c);
-	c.assertf(!v.isGlobal, v.loc, "Variable is global");
 
 	IrIndex irType = varType.gen_ir_type(c);
 
@@ -198,12 +205,27 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 	CompilationContext* c = gen.context;
 	if (v.isGlobal)
 	{
-		IrIndex globalIndex = v.getIrIndex(c);
+		if (v.irValue.irValue.isDefined) return;
+
+		// register global variable, type is not set yet
+		IrIndex globalIndex = c.globals.add();
+		IrGlobal* global = c.globals.get(globalIndex);
+		v.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
+
+		AstIndex moduleIndex = find_innermost_owner(v.parentScope, AstType.decl_module, c);
+
+		ObjectSymbol sym = {
+			kind : ObjectSymbolKind.isLocal,
+			sectionIndex : c.builtinSections[ObjectSectionType.rw_data],
+			moduleIndex : moduleIndex.get!ModuleDeclNode(c).objectSymIndex,
+			flags : ObjectSymbolFlags.isMutable,
+			id : v.id,
+		};
+
+		global.objectSymIndex = c.objSymTab.addSymbol(sym);
 
 		TypeNode* varType = c.getAstType(v.type).foldAliases(c);
 		IrIndex irType = varType.gen_ir_type(c);
-
-		IrGlobal* global = c.globals.get(globalIndex);
 		global.type = c.types.appendPtr(irType);
 
 		SizeAndAlignment valueSizealign = c.types.typeSizeAndAlignment(irType);

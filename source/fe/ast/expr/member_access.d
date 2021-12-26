@@ -350,7 +350,10 @@ LookupResult lookupStructMember(ref AstIndex nodeIndex, MemberExprNode* node, St
 
 		case AstType.decl_var:
 			auto memberVar = entity.get!VariableDeclNode(c);
-			node.resolve(MemberSubType.struct_member, entity, memberVar.scopeIndex, c);
+			if (memberVar.isMember)
+				node.resolve(MemberSubType.struct_member, entity, memberVar.scopeIndex, c);
+			else
+				node.resolve(MemberSubType.static_struct_member, entity, memberVar.scopeIndex, c);
 			node.type = entity.get_node_type(c);
 			return LookupResult.success;
 
@@ -446,7 +449,13 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 			ExprValue result = aggr.member(gen, m.loc, currentBlock, memberIndex);
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return result;
-		case static_struct_member, struct_method:
+		case static_struct_member:
+			auto v = m.member(c).get!VariableDeclNode(c);
+			ir_gen_decl_var(gen, v);
+			ExprValue result = v.irValue;
+			gen.builder.addJumpToLabel(currentBlock, nextStmt);
+			return result;
+		case struct_method:
 			c.unreachable("Not implemented");
 		case enum_member:
 			IrIndex result = m.member(c).get!EnumMemberDecl(c).gen_init_value_enum_member(c);

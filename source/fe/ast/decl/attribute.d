@@ -45,6 +45,10 @@ enum AttribInfoFlags : uint {
 	isExternal = 1 <<  0, // set if AttributeInfo contains some @extern attribute
 }
 
+enum BuiltinFlagAttrib : ushort {
+	isStatic = 1 <<  0, // @static
+}
+
 enum BuiltinAttribSubType : ubyte {
 	extern_syscall,
 	extern_module

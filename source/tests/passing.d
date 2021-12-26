@@ -5591,3 +5591,87 @@ void tester249(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(SliceString)("getModuleName")() == "test249_2");
 }
 
+
+@TestInfo(&tester250)
+immutable test250 = q{--- test250.vx
+	// @static variables inside functions and structs
+	u64 incAndReturn1() {
+		@static u64 var = 42;
+		++var;
+		return var;
+	}
+	// broadcasted variant
+	u64 incAndReturn2() {
+		@static:
+		u64 var1 = 10;
+		u64 var2 = 42;
+		++var1;
+		++var2;
+		return var1 + var2;
+	}
+
+	struct S {
+		@static u64 structVar = 50;
+		u64 incAndReturn1() {
+			++structVar;
+			return structVar;
+		}
+		u64 incAndReturn2() {
+			++this.structVar;
+			return this.structVar;
+		}
+		@static u64 incAndReturnStatic() {
+			++structVar;
+			return structVar;
+		}
+	}
+	// @static struct member
+	u64 incAndReturn3() {
+		++S.structVar;
+		return S.structVar;
+	}
+	// through variable
+	u64 incAndReturn4() {
+		S s;
+		++s.structVar;
+		return s.structVar;
+	}
+	// through method of instance
+	u64 incAndReturn5() {
+		S s;
+		return s.incAndReturn1();
+	}
+	// through method of instance through this
+	u64 incAndReturn6() {
+		S s;
+		return s.incAndReturn2();
+	}
+};
+void tester250(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn1")() == 43);
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn1")() == 44);
+
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn2")() == 11 + 43);
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn2")() == 12 + 44);
+
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn3")() == 51);
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn3")() == 52);
+
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn4")() == 53);
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn4")() == 54);
+
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn5")() == 55);
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn5")() == 56);
+
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn6")() == 57);
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn6")() == 58);
+}
+
+
+@TestInfo()
+immutable test251 = q{--- test251.vx
+	// Forbid @static on parameters
+	void fun(@static u64 param) {}
+--- <error>
+test251.vx:2:11: Error: Parameters cannot be @static
+};
