@@ -147,6 +147,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 		case literal_null: type_check_literal_null(cast(NullLiteralExprNode*)node, state); break;
 		case literal_bool: type_check_literal_bool(cast(BoolLiteralExprNode*)node, state); break;
 		case literal_array: type_check_literal_array(cast(ArrayLiteralExprNode*)node, state); break;
+		case literal_special: assert(false);
 
 		case type_basic: assert(false);
 		case type_func_sig: type_check_func_sig(cast(FunctionSignatureNode*)node, state); break;

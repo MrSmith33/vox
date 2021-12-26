@@ -266,6 +266,7 @@ struct Parser
 			Scope* newScope = context.getAst!Scope(newScopeIndex);
 			newScope.debugName = name;
 			newScope.kind = kind;
+			newScope.owner = declarationOwner;
 
 			newScope.parentScope = currentScopeIndex;
 			currentScopeIndex = newScopeIndex;
@@ -678,6 +679,8 @@ struct Parser
 		parseParameters(signature, NeedRegNames.yes); // functions need to register their param names
 		AstIndex func = makeDecl!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), parentScope, signature, declarationId);
 
+		currentScopeIndex.get_scope(context).owner = func;
+
 		if (tok.type == TokenType.HASH_INLINE)
 		{
 			nextToken; // skip #inline
@@ -864,6 +867,8 @@ struct Parser
 			StructDeclNode* s = structIndex.get!StructDeclNode(context);
 			s.flags |= structFlags;
 
+			currentScopeIndex.get_scope(context).owner = structIndex;
+
 			// store values back;
 			scope_temp.prev = attribState;
 			// no attributes go to the body
@@ -1009,6 +1014,7 @@ struct Parser
 				ScopeTempData scope_temp = pushScope(context.idString(enumId), ScopeKind.member);
 				AstIndex memberScope = currentScopeIndex;
 				AstIndex enumIndex = makeDecl!EnumDeclaration(start, AstIndex.init, memberScope, AstNodes.init, memberType, enumId);
+				currentScopeIndex.get_scope(context).owner = enumIndex;
 				auto enumNode = enumIndex.get!EnumDeclaration(context);
 				AstNodes members = tryParseEnumBody(enumIndex);
 				popScope(scope_temp);
@@ -1026,6 +1032,7 @@ struct Parser
 				ScopeTempData scope_temp = pushScope(context.idString(enumId), ScopeKind.member);
 				AstIndex memberScope = currentScopeIndex;
 				AstIndex enumIndex = makeDecl!EnumDeclaration(start, AstIndex.init, memberScope, AstNodes.init, memberType, enumId);
+				currentScopeIndex.get_scope(context).owner = enumIndex;
 				auto enumNode = enumIndex.get!EnumDeclaration(context);
 				AstNodes members = parse_enum_body(enumIndex);
 				popScope(scope_temp);
@@ -1767,6 +1774,7 @@ private TokenLookups cexp_parser()
 		"f32", "f64",
 		"$alias", "$type",
 		"true", "false",
+		"#special_kw",
 		"#int_dec_lit", "#int_bin_lit", "#int_hex_lit", "#float_dec_lit", "#str_lit", "#char_lit"]
 	);
 	nilfix(0, &null_error_parser, [")", "]", ":", "#eoi", ";"]);
@@ -1796,6 +1804,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 	import std.range : walkLength;
 	import std.conv : parse;
 	import std.typecons : Yes;
+	CompilationContext* c = p.context;
 	switch(token.type) with(TokenType)
 	{
 		case IDENTIFIER:
@@ -1808,8 +1817,16 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 				uint builtinIndex = id.index - commonId_builtin_func_first;
 				return builtinFuncsArray[builtinIndex];
 			}
-			p.context.error(token.index, "Invalid $ identifier %s", p.context.idString(id));
+			c.error(token.index, "Invalid $ identifier %s", c.idString(id));
 			return p.make!NameUseExprNode(token.index, p.currentScopeIndex, id);
+		case SPECIAL_KW:
+			Identifier id = p.makeIdentifier(token.index);
+			c.assertf(id.index >= commonId_special_keyword_first && id.index <= commonId_special_keyword_last,
+				"Invalid special keyword %s", c.idString(id));
+			uint keywordIndex = id.index - commonId_special_keyword_first;
+			SpecialKeyword kw = cast(SpecialKeyword)keywordIndex;
+			IrIndex irValue = eval_literal_special(kw, token.index, p.currentScopeIndex, c);
+			return c.appendAst!SpecialLiteralExprNode(token.index, irValue, kw);
 		case NULL:
 			return p.makeExpr!NullLiteralExprNode(token.index);
 		case TRUE_LITERAL:
@@ -1818,67 +1835,40 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			return p.makeExpr!BoolLiteralExprNode(token.index, false);
 		case STRING_LITERAL:
 			// omit " at the start and end of token
-			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
+			string value = cast(string)c.getTokenString(token.index)[1..$-1];
 
 			// handle escape sequences and copy string to RO buffer.
-			value = handleEscapedString(p.context.roStaticDataBuffer, value);
-			p.context.roStaticDataBuffer.put(0); // add zero terminator
+			value = handleEscapedString(c.roStaticDataBuffer, value);
+			c.roStaticDataBuffer.put(0); // add zero terminator
 
 			AstIndex type = CommonAstNodes.type_u8Slice;
-
-			IrIndex irValue;
-			// dont create empty global for empty string. Globalsare required to have non-zero length
-			if (value.length == 0)
-			{
-				irValue = p.context.constants.addZeroConstant(makeIrType(IrBasicType.i64)); // null ptr
-			}
-			else
-			{
-				irValue = p.context.globals.add();
-				IrGlobal* global = p.context.globals.get(irValue);
-				global.type = CommonAstNodes.type_u8Ptr.gen_ir_type(p.context);
-
-				ObjectSymbol sym = {
-					kind : ObjectSymbolKind.isLocal,
-					sectionIndex : p.context.builtinSections[ObjectSectionType.ro_data],
-					moduleIndex : p.currentModule.objectSymIndex,
-					flags : ObjectSymbolFlags.needsZeroTermination | ObjectSymbolFlags.isString,
-					id : p.context.idMap.getOrRegNoDup(p.context, ":string"),
-				};
-				global.objectSymIndex = p.context.objSymTab.addSymbol(sym);
-
-				ObjectSymbol* globalSym = p.context.objSymTab.getSymbol(global.objectSymIndex);
-				globalSym.setInitializer(cast(ubyte[])value);
-			}
-			IrIndex irValueLength = p.context.constants.add(makeIrType(IrBasicType.i64), value.length);
-			irValue = p.context.constants.addAggrecateConstant(type.gen_ir_type(p.context), irValueLength, irValue);
-
+			IrIndex irValue = makeStringLiteralIrConstant(value, p.currentModule.objectSymIndex, c);
 			return p.make!StringLiteralExprNode(token.index, type, irValue, value);
 		case CHAR_LITERAL:
 			// omit ' at the start and end of token
-			string value = cast(string)p.context.getTokenString(token.index)[1..$-1];
+			string value = cast(string)c.getTokenString(token.index)[1..$-1];
 			dchar charVal = getCharValue(value);
 			return p.makeExpr!IntLiteralExprNode(token.index, cast(uint)charVal);
 		case INT_DEC_LITERAL:
-			string value = cast(string)p.context.getTokenString(token.index);
+			string value = cast(string)c.getTokenString(token.index);
 			auto filtered = value.filter!(c => c != '_');
 			auto result = filtered.parse!(ulong, typeof(filtered), Yes.doCount);
-			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, p.context);
-			return p.context.appendAst!IntLiteralExprNode(token.index, type, result.data);
+			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, c);
+			return c.appendAst!IntLiteralExprNode(token.index, type, result.data);
 		case INT_HEX_LITERAL:
-			string value = cast(string)p.context.getTokenString(token.index);
+			string value = cast(string)c.getTokenString(token.index);
 			auto filtered = value[2..$].filter!(c => c != '_');
 			auto result = filtered.parse!(ulong, typeof(filtered), Yes.doCount)(16); // skip 0x, 0X
-			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, p.context);
-			return p.context.appendAst!IntLiteralExprNode(token.index, type, result.data);
+			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, c);
+			return c.appendAst!IntLiteralExprNode(token.index, type, result.data);
 		case INT_BIN_LITERAL:
-			string value = cast(string)p.context.getTokenString(token.index);
+			string value = cast(string)c.getTokenString(token.index);
 			auto filtered = value[2..$].filter!(c => c != '_');
 			auto result = filtered.parse!(ulong, typeof(filtered), Yes.doCount)(2); // skip 0b, 0B
-			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, p.context);
-			return p.context.appendAst!IntLiteralExprNode(token.index, type, result.data);
+			AstIndex type = parseIntLiteralType(value[$-filtered.walkLength..$], token.index, c);
+			return c.appendAst!IntLiteralExprNode(token.index, type, result.data);
 		case FLOAT_DEC_LITERAL:
-			string value = cast(string)p.context.getTokenString(token.index);
+			string value = cast(string)c.getTokenString(token.index);
 			auto filtered = value.filter!(c => c != '_');
 			auto result = filtered.parse!(double, typeof(filtered), Yes.doCount);
 			AstIndex type;
@@ -1887,19 +1877,19 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 				if (suffix == "f32")
 					type = CommonAstNodes.type_f32;
 				else {
-					p.context.assertf(suffix == "f64", token.index, "Unexpected type suffix `%s`", suffix);
+					c.assertf(suffix == "f64", token.index, "Unexpected type suffix `%s`", suffix);
 					type = CommonAstNodes.type_f64;
 				}
 			}
-			return p.context.appendAst!FloatLiteralExprNode(token.index, type, result.data);
+			return c.appendAst!FloatLiteralExprNode(token.index, type, result.data);
 		case TYPE_NORETURN, TYPE_VOID, TYPE_BOOL,
 			TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64, TYPE_U8, TYPE_U16, TYPE_U32, TYPE_U64,
 			TYPE_F32, TYPE_F64,
 			TYPE_ALIAS, TYPE_TYPE:
 			BasicType t = token.type.tokenTypeToBasicType;
-			return p.context.basicTypeNodes(t);
+			return c.basicTypeNodes(t);
 		default:
-			p.context.internal_error("nullLiteral %s", token.type);
+			c.internal_error("nullLiteral %s", token.type);
 	}
 }
 

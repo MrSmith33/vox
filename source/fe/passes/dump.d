@@ -96,6 +96,7 @@ void print_ast(AstIndex nodeIndex, ref AstPrintState state)
 		case literal_null: print_literal_null(cast(NullLiteralExprNode*)node, state); break;
 		case literal_bool: print_literal_bool(cast(BoolLiteralExprNode*)node, state); break;
 		case literal_array: print_literal_array(cast(ArrayLiteralExprNode*)node, state); break;
+		case literal_special: print_literal_special(cast(SpecialLiteralExprNode*)node, state); break;
 
 		case type_basic: print_type_basic(cast(BasicTypeNode*)node, state); break;
 		case type_func_sig: print_func_sig(cast(FunctionSignatureNode*)node, state); break;

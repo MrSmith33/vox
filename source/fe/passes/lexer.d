@@ -200,7 +200,7 @@ struct Lexer
 				case '\\': nextChar; return TT.BACKSLASH;
 				case ']' : nextChar; return TT.RBRACKET;
 				case '^' : nextChar; return lex_multi_equal2(TT.XOR, TT.XOR_EQUAL);
-				case '_' : nextChar; consumeId(); return TT.IDENTIFIER;
+				case '_' : return lex_LETTER();
 				case 'a' : ..case 'z': return lex_LETTER();
 				case '{' : nextChar; return TT.LCURLY;
 				case '|' : nextChar; return lex_multi_equal2_3('|', TT.OR, TT.OR_EQUAL, TT.OR_OR);
@@ -459,6 +459,18 @@ struct Lexer
 	{
 		switch (c)
 		{
+			case '_':
+				nextChar; // skip _
+				if (c != '_') break;
+				nextChar; // skip _
+				if (c == 'F') {
+					nextChar; // skip F
+					if (match("ILE__")) return TT.SPECIAL_KW; // __FILE__
+					if (match("UNCTION_NAME__")) return TT.SPECIAL_KW; // __FUNCTION_NAME__
+				}
+				if (c == 'L' && match("LINE__")) return TT.SPECIAL_KW; // __LINE__
+				if (c == 'M' && match("MODULE_NAME__")) return TT.SPECIAL_KW; // __MODULE_NAME__
+				break;
 			case 'a':
 				if (match("alias")) { return TT.ALIAS_SYM; } break;
 			case 'b':

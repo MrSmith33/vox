@@ -137,17 +137,18 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 			{
 				assert(decl.astType == AstType.decl_static_version);
 				auto versionNode = condNode.as!StaticVersionDeclNode(c);
+				Identifier versionId = versionNode.versionId;
 				bool isEnabled = false;
 
 				// Is built-in version identifier
-				if (versionNode.versionId.index >= commonId_version_id_first && versionNode.versionId.index <= commonId_version_id_last)
+				if (versionId.index >= commonId_version_id_first && versionId.index <= commonId_version_id_last)
 				{
-					uint versionIndex = versionNode.versionId.index - commonId_version_id_first;
+					uint versionIndex = versionId.index - commonId_version_id_first;
 					isEnabled = (c.enabledVersionIdentifiers & (1 << versionIndex)) != 0;
 				}
 				else
 				{
-					c.error(decl.loc, "Only built-in versions are supported, not %s", c.idString(versionNode.versionId));
+					c.error(decl.loc, "Only built-in versions are supported, not %s", c.idString(versionId));
 				}
 
 				itemsToInsert = isEnabled ? versionNode.thenItems : versionNode.elseItems;

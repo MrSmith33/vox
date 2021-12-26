@@ -5530,3 +5530,39 @@ immutable test246 = q{--- test246
 void tester246(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(long, long, long)("run")(100, 40) == 60);
 }
+
+/*
+@TestInfo(&tester247)
+immutable test247 = q{--- test247
+	struct MonoTime {
+		i64 ticks;
+		Duration sub(MonoTime other) {
+			return Duration(ticks - other.ticks);
+		}
+	}
+	struct Duration {
+		i64 ticks;
+	}
+	i64 run(i64 a, i64 b) {
+		return MonoTime(a).sub(MonoTime(b)).ticks;
+	}
+};
+void tester247(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(long, long, long)("run")(100, 40) == 60);
+}*/
+
+
+@TestInfo(&tester248)
+immutable test248 = q{--- test248.vx
+	// special keywords
+	u64 getLine() { return __LINE__; }
+	u8[] getFile() { return __FILE__; }
+	u8[] getFunctionName() { return __FUNCTION_NAME__; }
+	u8[] getModuleName() { return __MODULE_NAME__; }
+};
+void tester248(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("getLine")() == 2);
+	assert(ctx.getFunctionPtr!(SliceString)("getFile")() == "test248.vx");
+	assert(ctx.getFunctionPtr!(SliceString)("getFunctionName")() == "getFunctionName");
+	assert(ctx.getFunctionPtr!(SliceString)("getModuleName")() == "test248");
+}

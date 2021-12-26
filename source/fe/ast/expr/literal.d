@@ -168,6 +168,36 @@ struct StringLiteralExprNode {
 	string value;
 }
 
+IrIndex makeStringLiteralIrConstant(string data, LinkIndex moduleSymIndex, CompilationContext* c)
+{
+	IrIndex irValue;
+	// dont create empty global for empty string. Globals are required to have non-zero length
+	if (data.length == 0)
+	{
+		irValue = c.constants.addZeroConstant(makeIrType(IrBasicType.i64)); // null ptr
+	}
+	else
+	{
+		irValue = c.globals.add();
+		IrGlobal* global = c.globals.get(irValue);
+		global.type = CommonAstNodes.type_u8Ptr.gen_ir_type(c);
+
+		ObjectSymbol sym = {
+			kind : ObjectSymbolKind.isLocal,
+			sectionIndex : c.builtinSections[ObjectSectionType.ro_data],
+			moduleIndex : moduleSymIndex,
+			flags : ObjectSymbolFlags.needsZeroTermination | ObjectSymbolFlags.isString,
+			id : c.idMap.getOrRegNoDup(c, ":string"),
+		};
+		global.objectSymIndex = c.objSymTab.addSymbol(sym);
+
+		ObjectSymbol* globalSym = c.objSymTab.getSymbol(global.objectSymIndex);
+		globalSym.setInitializer(cast(ubyte[])data);
+	}
+	IrIndex irValueLength = c.constants.add(makeIrType(IrBasicType.i64), data.length);
+	return c.constants.addAggrecateConstant(CommonAstNodes.type_u8Slice.gen_ir_type(c), irValueLength, irValue);
+}
+
 void print_literal_string(StringLiteralExprNode* node, ref AstPrintState state)
 {
 	state.print("LITERAL string ", node.type.printer(state.context), " ", node.value);
@@ -203,4 +233,66 @@ void type_check_literal_array(ArrayLiteralExprNode* node, ref TypeCheckState sta
 	node.state = AstNodeState.type_check;
 	require_type_check(node.items, state);
 	node.state = AstNodeState.type_check_done;
+}
+
+
+
+AstIndex[SpecialKeyword.max+1] specialKeywordType = [
+	SpecialKeyword.file          : CommonAstNodes.type_u8Slice,
+	SpecialKeyword.line          : CommonAstNodes.type_u64,
+	SpecialKeyword.function_name : CommonAstNodes.type_u8Slice,
+	SpecialKeyword.module_name   : CommonAstNodes.type_u8Slice,
+];
+
+string[SpecialKeyword.max+1] specialKeywordName = [
+	"__FILE__",
+	"__LINE__",
+	"__FUNCTION_NAME__",
+	"__MODULE_NAME__",
+];
+
+/// __FILE__, __LINE__, __FUNCTION_NAME__, __MODULE_NAME__
+@(AstType.literal_special)
+struct SpecialLiteralExprNode {
+	mixin ExpressionNodeData!(AstType.literal_special, 0, AstNodeState.type_check_done);
+	IrIndex irValue;
+
+	this(TokenIndex loc, IrIndex irValue, SpecialKeyword subType)
+	{
+		this.loc = loc;
+		this.astType = AstType.literal_special;
+		this.state = AstNodeState.type_check_done;
+		this.subType = subType;
+		this.irValue = irValue;
+		this.type = specialKeywordType[subType];
+	}
+}
+
+IrIndex eval_literal_special(SpecialKeyword kw, TokenIndex tok, AstIndex parentScope, CompilationContext* c) {
+	final switch(kw) with(SpecialKeyword) {
+		case file:
+			ModuleDeclNode* mod = c.getModuleFromToken(tok);
+			return c.get_file_name_constant(c.getAstNodeIndex(mod));
+		case line:
+			SourceLocation loc = c.tokenLoc(tok);
+			return c.constants.add(makeIrType(IrBasicType.i64), loc.line+1);
+		case function_name:
+			AstIndex owner = find_innermost_owner(parentScope, AstType.decl_function, c);
+			if (owner.isUndefined) return c.constants.addZeroConstant(CommonAstNodes.type_u8Slice.gen_ir_type(c));
+			return c.get_function_name_constant(owner);
+		case module_name:
+			AstIndex owner = find_innermost_owner(parentScope, AstType.decl_module, c);
+			c.assertf(owner.isDefined, "Can't find the module");
+			return c.get_module_name_constant(owner);
+	}
+}
+
+void print_literal_special(SpecialLiteralExprNode* node, ref AstPrintState state)
+{
+	state.print("LITERAL ", specialKeywordName[node.subType], " ", node.type.printer(state.context));
+}
+
+IrIndex ir_gen_literal_special(CompilationContext* context, SpecialLiteralExprNode* n)
+{
+	return n.irValue;
 }

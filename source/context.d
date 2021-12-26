@@ -96,6 +96,8 @@ struct CompilationContext
 	/// Buffer for import section when in exe mode
 	Arena!ubyte importBuffer;
 
+	HashMap!(ExtraNodeProperty, uint, ExtraNodeProperty.init) extraProperties;
+
 	/// External modules that are provided by driver or created at runtime from @extern(module) dll functions
 	HashMap!(Identifier, LinkIndex, Identifier.init) externalModules;
 	/// Symbols provided by the environment (host symbols must be provided prior to compilation)
@@ -812,6 +814,40 @@ struct CompilationContext
 		return cast(JittedFunc)funcSym.dataPtr;
 	}
 
+	IrIndex get_file_name_constant(AstIndex mod) {
+		auto node = mod.get!ModuleDeclNode(&this);
+		bool wasCreated;
+		auto key = ExtraNodeProperty(ExtraProperty.fileName, mod.storageIndex);
+		uint* value = extraProperties.getOrCreate(arrayArena, key, wasCreated);
+		if (wasCreated) {
+			IrIndex val = makeStringLiteralIrConstant(node.fileName(&this), node.objectSymIndex, &this);
+			*value = val.asUint;
+		}
+		return IrIndex.fromUint(*value);
+	}
+	IrIndex get_function_name_constant(AstIndex func) {
+		auto node = func.get!FunctionDeclNode(&this);
+		bool wasCreated;
+		auto key = ExtraNodeProperty(ExtraProperty.nodeName, func.storageIndex);
+		uint* value = extraProperties.getOrCreate(arrayArena, key, wasCreated);
+		if (wasCreated) {
+			IrIndex val = makeStringLiteralIrConstant(idString(node.id), node._module.get!ModuleDeclNode(&this).objectSymIndex, &this);
+			*value = val.asUint;
+		}
+		return IrIndex.fromUint(*value);
+	}
+	IrIndex get_module_name_constant(AstIndex mod) {
+		auto node = mod.get!ModuleDeclNode(&this);
+		bool wasCreated;
+		auto key = ExtraNodeProperty(ExtraProperty.nodeName, mod.storageIndex);
+		uint* value = extraProperties.getOrCreate(arrayArena, key, wasCreated);
+		if (wasCreated) {
+			IrIndex val = makeStringLiteralIrConstant(idString(node.id), node.objectSymIndex, &this);
+			*value = val.asUint;
+		}
+		return IrIndex.fromUint(*value);
+	}
+
 	void printMemSize() {
 		TextSink sink;
 		printMemSize(sink);
@@ -1019,6 +1055,8 @@ struct CompilationContext
 		analisysStack = analisysStack.init;
 		currentFunction = null;
 
+		extraProperties = extraProperties.init;
+
 		externalModules = externalModules.init;
 		externalSymbols = externalSymbols.init;
 
@@ -1032,6 +1070,18 @@ struct CompilationContext
 		createBuiltinFunctions(&this);
 		setVersionIds(&this);
 	}
+}
+
+enum ExtraProperty : uint {
+	fileName, // __FILE__
+	nodeName, // __FUNCTION_NAME__, __MODULE_NAME__
+	nodeFqn, // __FUNCTION_FQN__, __MODULE_FQN__
+}
+
+struct ExtraNodeProperty
+{
+	ExtraProperty prop;
+	uint node;
 }
 
 struct AnalysedNode

@@ -105,7 +105,7 @@ struct CloneState
 	AstIndex cloned_from;
 	AstIndex cloned_to;
 
-	/// We want to redirect references to this scope into `instance_scope`
+	/// We want to redirect all references from `template_parent_scope` to `instance_scope`
 	AstIndex template_parent_scope;
 	/// Scope where template was instantiated. Contains template arguments
 	AstIndex instance_scope;
@@ -134,8 +134,9 @@ struct CloneState
 		{
 			//writefln("fix %s -> %s", _scope, AstIndex(_scope.storageIndex + offset));
 			_scope.storageIndex += offset;
-			fixScope(_scope.get_scope(context).parentScope);
-			// Scope.symbols/imports dont need fixing, because no symbols are registered at this point
+
+			Scope* s = _scope.get_scope(context);
+			post_clone_scope(s, this);
 		}
 		else if (_scope == template_parent_scope)
 		{
@@ -369,6 +370,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case literal_null: break;
 		case literal_bool: break;
 		case literal_array: break;
+		case literal_special: break;
 
 		case type_basic: break;
 		case type_func_sig: post_clone_func_sig(cast(FunctionSignatureNode*)node, state); break;

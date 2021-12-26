@@ -118,6 +118,7 @@ void require_name_resolve(ref AstIndex nodeIndex, ref NameResolveState state)
 		case literal_null: assert(false);
 		case literal_bool: assert(false);
 		case literal_array: assert(false);
+		case literal_special: assert(false);
 
 		case type_basic: assert(false);
 		case type_func_sig: name_resolve_func_sig(cast(FunctionSignatureNode*)node, state); break;

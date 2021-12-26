@@ -114,16 +114,32 @@ enum CommonIds : Identifier
 	@("$isPointer") cash_is_pointer = Identifier(id_main.index + 4),
 	@("$baseOf") cash_base_of = Identifier(id_main.index + 5),
 
+	// Special keywords
+	@("__FILE__")          kw_file          = Identifier(cash_base_of.index + 1),
+	@("__LINE__")          kw_line          = Identifier(cash_base_of.index + 2),
+	@("__FUNCTION_NAME__") kw_function_name = Identifier(cash_base_of.index + 3),
+	@("__MODULE_NAME__")   kw_module_name   = Identifier(cash_base_of.index + 4),
+
 	// Conditional compilation identifiers
-	@("windows")  id_windows = Identifier(cash_base_of.index + 1),
-	@("linux")    id_linux   = Identifier(cash_base_of.index + 2),
-	@("macos")    id_macos   = Identifier(cash_base_of.index + 3),
+	@("windows")  id_windows = Identifier(kw_module_name.index + 1),
+	@("linux")    id_linux   = Identifier(kw_module_name.index + 2),
+	@("macos")    id_macos   = Identifier(kw_module_name.index + 3),
 }
 
 enum uint commonId_builtin_func_first = CommonIds.cash_compile_error.index;
 enum uint commonId_builtin_func_last  = CommonIds.cash_base_of.index;
+enum uint commonId_special_keyword_first = CommonIds.kw_file.index;
+enum uint commonId_special_keyword_last  = CommonIds.kw_module_name.index;
 enum uint commonId_version_id_first = CommonIds.id_windows.index;
 enum uint commonId_version_id_last  = CommonIds.id_macos.index;
+
+
+enum SpecialKeyword : ubyte {
+	file,          // __FILE__
+	line,          // __LINE__
+	function_name, // __FUNCTION_NAME__
+	module_name,   // __MODULE_NAME__
+}
 
 enum VersionId : ubyte {
 	id_windows,

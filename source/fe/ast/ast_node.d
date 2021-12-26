@@ -225,7 +225,7 @@ AstIndex get_node_type(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
 		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return nodeIndex;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_type(c);
-		case error, literal_null, literal_bool, literal_int, literal_float, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_null, literal_bool, literal_int, literal_float, literal_string, literal_array, literal_special, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return node.as!ExpressionNode(c).type.get_node_type(c);
 
 		default: assert(false, format("get_node_type used on %s", node.astType));
@@ -249,7 +249,7 @@ AstIndex get_node_alias(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return CommonAstNodes.type_alias;
 		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return CommonAstNodes.type_type;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_node_alias(c);
-		case error, literal_null, literal_bool, literal_int, literal_float, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_null, literal_bool, literal_int, literal_float, literal_string, literal_array, literal_special, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return CommonAstNodes.type_alias;
 
 		default: assert(false, format("get_node_alias used on %s", node.astType));
@@ -274,7 +274,7 @@ AstIndex get_expr_type(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return node.as!EnumMemberDecl(c).type.get_node_type(c);
 		case type_basic, type_func_sig, type_ptr, type_slice, type_static_array: return CommonAstNodes.type_type;
 		case expr_name_use: return node.as!NameUseExprNode(c).type;
-		case error, literal_null, literal_bool, literal_int, literal_float, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_null, literal_bool, literal_int, literal_float, literal_string, literal_array, literal_special, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return node.as!ExpressionNode(c).type.get_node_type(c);
 
 		default: assert(false, format("get_expr_type used on %s", node.astType));
@@ -301,7 +301,7 @@ AstIndex get_effective_node(AstIndex nodeIndex, CompilationContext* c)
 		case decl_enum_member: return nodeIndex;
 		case type_basic, type_ptr, type_slice, type_static_array: return nodeIndex;
 		case expr_name_use: return node.as!NameUseExprNode(c).entity.get_effective_node(c);
-		case error, literal_int, literal_float, literal_string, literal_array, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
+		case error, literal_int, literal_float, literal_string, literal_array, literal_special, expr_call, expr_index, expr_slice, expr_bin_op, expr_un_op, expr_type_conv, expr_member:
 			return nodeIndex;
 
 		default: assert(false, format("get_effective_node used on %s", node.astType));
@@ -334,6 +334,7 @@ string get_node_kind_name(AstIndex nodeIndex, CompilationContext* c)
 		case literal_float: return "float literal";
 		case literal_string: return "string literal";
 		case literal_array: return "array literal";
+		case literal_special: return "special literal";
 		case expr_call: return "call expression";
 		case expr_index: return "index expression";
 		case expr_slice: return "slice expression";
@@ -343,5 +344,40 @@ string get_node_kind_name(AstIndex nodeIndex, CompilationContext* c)
 		case expr_member: return "member access expression";
 
 		default: return node.astType.to!string;
+	}
+}
+
+AstIndex find_innermost_owner(AstIndex parentScope, AstType ownerType, CompilationContext* c)
+{
+	c.assertf(ownerType == AstType.decl_struct ||
+		ownerType == AstType.decl_module ||
+		ownerType == AstType.decl_function,
+		"Invalid owner type requested (%s)", ownerType);
+
+	while(true)
+	{
+		c.assertf(parentScope.isDefined, "Undefined scope");
+
+		AstIndex owner = parentScope.get_scope(c).owner;
+		c.assertf(parentScope.isDefined, "Undefined owner");
+
+		AstNode* ownerNode = owner.get_node(c);
+
+		if (ownerNode.astType == ownerType) return owner;
+
+		switch(ownerNode.astType) {
+			case AstType.decl_module:
+				return AstIndex(0); // didn't find the requested owner
+
+			case AstType.decl_struct:
+				parentScope = ownerNode.as!StructDeclNode(c).parentScope;
+				continue;
+
+			case AstType.decl_function:
+				parentScope = ownerNode.as!FunctionDeclNode(c).parentScope;
+				continue;
+
+			default: c.internal_error("Invalid owner type found (%s)", ownerNode.astType);
+		}
 	}
 }

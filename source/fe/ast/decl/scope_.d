@@ -21,6 +21,8 @@ struct Scope
 	AstNodes imports;
 	///
 	AstIndex parentScope;
+	/// This node is owner of all the definitions inside of this scope
+	AstIndex owner;
 	///
 	ScopeKind kind;
 	///
@@ -38,6 +40,13 @@ struct Scope
 		}
 		symbols.put(c.arrayArena, id, nodeIndex);
 	}
+}
+
+void post_clone_scope(Scope* node, ref CloneState state)
+{
+	// Scope.symbols/imports dont need fixing, because no symbols are registered at this point
+	state.fixScope(node.parentScope);
+	state.fixAstIndex(node.owner);
 }
 
 mixin template ScopeDeclNodeData(AstType _astType, int default_flags = 0, AstNodeState _init_state = AstNodeState.parse_done) {

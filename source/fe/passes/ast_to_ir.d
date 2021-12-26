@@ -138,6 +138,11 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return ExprValue(irValue);
 		}
+		case literal_special: {
+			IrIndex irValue = ir_gen_literal_special(gen.context, cast(SpecialLiteralExprNode*)n);
+			gen.builder.addJumpToLabel(curBlock, nextStmt);
+			return ExprValue(irValue);
+		}
 		case decl_struct, type_basic, type_ptr, type_slice, type_static_array: {
 			IrIndex irValue = gen.context.constants.add(makeIrType(IrBasicType.i32), astIndex.storageIndex);
 			gen.builder.addJumpToLabel(curBlock, nextStmt);

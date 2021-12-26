@@ -89,7 +89,7 @@ Because Vox supports conditional compilation in the form of `#if` and `#foreach`
 
 First we request self registration of nodes. This process yields a linked list of all nodes implementing conditional compilation. Then we walk the conditional nodes and expand them in-place. Right after insertion we recursively repeat the first step.
 
-At the end we have all conditional nodes deleted and/or replaces with some of their children. All of the nodes in the sequence were self registered, and no nested nodes were registered yet.
+At the end we have all conditional nodes deleted and replaced with some of their children. All of the nodes in the sequence were self registered, and no nested nodes were registered yet.
 
 Then we walk all the nodes in array and request registering of their children.
 
@@ -965,7 +965,7 @@ intervals fibonacci
 ```
 
 Final x64 machine code:
-```x86asm
+```Rust
 sub    rsp,0x18
 mov    QWORD PTR [rsp+0x0],rbp
 mov    QWORD PTR [rsp+0x8],rbx
@@ -979,7 +979,7 @@ mov    ebp,ebx
 sub    ebp,eax
 mov    ecx,ebp
 sub    rsp,0x20
-call   QWORD PTR [rip+0x0]
+call   QWORD PTR [rip+0x0] // call print
 add    rsp,0x20
 mov    eax,ebp
 mov    ecx,ebx

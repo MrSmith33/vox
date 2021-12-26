@@ -106,6 +106,8 @@ enum TokenType : ubyte {
 	@("cast")     CAST,                 // cast
 	@("enum")     ENUM,                 // enum
 
+	@("#special_kw") SPECIAL_KW,        // __FILE__, __LINE__, __FUNCTION_NAME__, __MODULE_NAME__
+
 	@("#id")      IDENTIFIER,           // [a-zA-Z_] [a-zA-Z_0-9]*
 	@("$id")      CASH_IDENTIFIER,      // $ [a-zA-Z_0-9]*
 
