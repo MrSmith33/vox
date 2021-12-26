@@ -5566,3 +5566,28 @@ void tester248(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(SliceString)("getFunctionName")() == "getFunctionName");
 	assert(ctx.getFunctionPtr!(SliceString)("getModuleName")() == "test248");
 }
+
+
+@TestInfo(&tester249)
+immutable test249 = q{
+--- test249_1.vx
+	// special keywords as a default argument
+	u64  funLine(u64 line = __LINE__) { return line; }
+	u8[] funFile(u8[] file = __FILE__) { return file; }
+	u8[] funFunctionName(u8[] func = __FUNCTION_NAME__) { return func; }
+	u8[] funModuleName(u8[] mod = __MODULE_NAME__) { return mod; }
+--- test249_2.vx
+	import test249_1;
+
+	u64 getLine() { return funLine; }
+	u8[] getFile() { return funFile; }
+	u8[] getFunctionName() { return funFunctionName; }
+	u8[] getModuleName() { return funModuleName; }
+};
+void tester249(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("getLine")() == 3);
+	assert(ctx.getFunctionPtr!(SliceString)("getFile")() == "test249_2.vx");
+	assert(ctx.getFunctionPtr!(SliceString)("getFunctionName")() == "getFunctionName");
+	assert(ctx.getFunctionPtr!(SliceString)("getModuleName")() == "test249_2");
+}
+

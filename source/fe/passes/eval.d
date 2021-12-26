@@ -49,6 +49,7 @@ IrIndex eval_static_expr(AstIndex nodeIndex, CompilationContext* context)
 		case literal_string: return ir_gen_literal_string(context, cast(StringLiteralExprNode*)node);
 		case literal_null: return ir_gen_literal_null(context, cast(NullLiteralExprNode*)node);
 		case literal_bool: return ir_gen_literal_bool(context, cast(BoolLiteralExprNode*)node);
+		case literal_special: return ir_gen_literal_special(context, cast(SpecialLiteralExprNode*)node);
 
 		case type_basic, type_ptr, type_slice, type_static_array, decl_function, decl_struct:
 			return context.constants.add(makeIrType(IrBasicType.i32), nodeIndex.storageIndex);

@@ -435,7 +435,12 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 		// eval default argument values
 		VariableDeclNode* param = c.getAst!VariableDeclNode(params[i]);
 		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
-		node.argsValues[i+1] = param.gen_init_value_var(c);
+		AstNode* initializer = param.initializer.get_node(c);
+		if (initializer.astType == AstType.literal_special) {
+			node.argsValues[i+1] = eval_literal_special(cast(SpecialKeyword)initializer.subType, node.loc, node.parentScope, c);
+		} else {
+			node.argsValues[i+1] = param.gen_init_value_var(c);
+		}
 	}
 }
 
