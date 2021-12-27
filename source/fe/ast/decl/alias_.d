@@ -12,7 +12,7 @@ import all;
 struct AliasDeclNode
 {
 	mixin AstNodeData!(AstType.decl_alias);
-	AstIndex parentScope;
+	ScopeIndex parentScope;
 	Identifier id;
 	AstIndex initializer;
 }

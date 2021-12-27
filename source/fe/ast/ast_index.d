@@ -25,19 +25,6 @@ struct AstIndex
 	TypeNode* get_type(CompilationContext* c) { return c.getAstType(get_node_type(this, c)); }
 	NameUseExprNode* get_name_use(CompilationContext* c) { return c.getAst!NameUseExprNode(this); }
 
-	Scope* get_scope(CompilationContext* c) { return c.getAstScope(this); }
-	// null scope index is treated as empty scope and results in null AstIndex
-	AstIndex lookup_scope(Identifier id, CompilationContext* c) {
-		if (isUndefined) return AstIndex.init;
-		Scope* sc = c.getAstScope(this);
-		return sc.symbols.get(id, AstIndex.init);
-	}
-	void insert_scope(Identifier id, AstIndex nodeIndex, CompilationContext* c) {
-		Scope* sc = c.getAstScope(this);
-		assert(isDefined, "scope is undefined");
-		sc.insert(id, nodeIndex, c);
-	}
-
 	ref TokenIndex loc(CompilationContext* c) { return c.getAstNode(this).loc; }
 	ref AstType astType(CompilationContext* c) { return c.getAstNode(this).astType; }
 	AstNodeState state(CompilationContext* c) { return c.getAstNode(this).state; }

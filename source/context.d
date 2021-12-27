@@ -585,7 +585,19 @@ struct CompilationContext
 		return AstIndex(cast(uint)diff);
 	}
 
-	Scope* getAstScope(AstIndex index) { return getAst!Scope(index); }
+	ScopeIndex appendScope() {
+		uint resIndex = astBuffer.uintLength;
+		Scope* obj = cast(Scope*)astBuffer.nextPtr;
+		enum size_t numAllocatedSlots = divCeil(Scope.sizeof, uint.sizeof);
+		astBuffer.voidPut(numAllocatedSlots);
+		*obj = Scope.init;
+		return ScopeIndex(resIndex);
+	}
+
+	Scope* getAstScope(ScopeIndex index) {
+		if (!index) return null;
+		return cast(Scope*)(&astBuffer.bufPtr[index.storageIndex]);
+	}
 	AstNode* getAstNode(AstIndex index) { return getAst!AstNode(index); }
 	TypeNode* getAstType(AstIndex index) {
 		assertf(index.isDefined, "getAstType: null index");
@@ -1215,7 +1227,7 @@ void createBuiltinFunctions(CompilationContext* c)
 	void addParam(AstIndex type, Identifier id, AstIndex defaultValue = AstIndex())
 	{
 		ushort paramIndex = cast(ushort)params.length;
-		AstIndex param = c.appendAst!VariableDeclNode(TokenIndex(), AstIndex(), type, defaultValue, id);
+		AstIndex param = c.appendAst!VariableDeclNode(TokenIndex(), ScopeIndex(), type, defaultValue, id);
 		auto paramNode = param.get!VariableDeclNode(c);
 		paramNode.flags |= VariableFlags.isParameter;
 		paramNode.scopeIndex = paramIndex;
@@ -1232,7 +1244,7 @@ void createBuiltinFunctions(CompilationContext* c)
 		params = AstNodes.init;
 		numDefaultParams = 0;
 
-		AstIndex func = c.appendAst!FunctionDeclNode(TokenIndex(), AstIndex(), AstIndex(), signature, id);
+		AstIndex func = c.appendAst!FunctionDeclNode(TokenIndex(), AstIndex(), ScopeIndex(), signature, id);
 		auto funcNode = func.get!FunctionDeclNode(c);
 		funcNode.state = AstNodeState.type_check_done;
 		funcNode.flags |= FuncDeclFlags.isBuiltin;

@@ -347,7 +347,7 @@ string get_node_kind_name(AstIndex nodeIndex, CompilationContext* c)
 	}
 }
 
-AstIndex find_innermost_owner(AstIndex parentScope, AstType ownerType, CompilationContext* c)
+AstIndex find_innermost_owner(ScopeIndex parentScope, AstType ownerType, CompilationContext* c)
 {
 	c.assertf(ownerType == AstType.decl_struct ||
 		ownerType == AstType.decl_module ||

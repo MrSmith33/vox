@@ -81,11 +81,11 @@ private long require_name_register_self_sub_array(ref AstNodes items, uint from,
 				foreach(idx, AstIndex item; aliasArray.items)
 				{
 					// Create scope for key/value vars
-					AstIndex instance_scope = c.appendAst!Scope;
-					Scope* newScope = c.getAst!Scope(instance_scope);
+					ScopeIndex instance_scope = c.appendScope;
+					Scope* newScope = c.getAstScope(instance_scope);
 					newScope.parentScope = staticForeachNode.parentScope;
 					newScope.debugName = "#foreach instance";
-					newScope.kind = newScope.parentScope.get!Scope(c).kind;
+					newScope.kind = newScope.parentScope.get_scope(c).kind;
 
 					CloneState cloneState = clone_node(staticForeachNode.body_start, staticForeachNode.after_body, instance_scope, c);
 

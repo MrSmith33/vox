@@ -146,7 +146,7 @@ struct Parser
 	/// For member functions
 	/// module, struct or function
 	AstIndex declarationOwner;
-	AstIndex currentScopeIndex;
+	ScopeIndex currentScopeIndex;
 
 	// Current token
 	Token tok;
@@ -304,8 +304,8 @@ struct Parser
 			// Outer attributes are not visible inside
 			attribState = AttribState.init;
 
-			AstIndex newScopeIndex = context.appendAst!Scope;
-			Scope* newScope = context.getAst!Scope(newScopeIndex);
+			ScopeIndex newScopeIndex = context.appendScope;
+			Scope* newScope = context.getAstScope(newScopeIndex);
 			newScope.debugName = name;
 			newScope.kind = kind;
 			newScope.owner = declarationOwner;
@@ -684,7 +684,7 @@ struct Parser
 		declarationOwner = funcIndex;
 		scope(exit) declarationOwner = prevOwner;
 
-		AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
+		ScopeIndex parentScope = currentScopeIndex; // need to get parent before push scope
 		ScopeTempData scope_temp = pushScope(context.idString(declarationId), ScopeKind.local);
 		scope(exit) popScope(scope_temp);
 
@@ -885,13 +885,13 @@ struct Parser
 			if (tok.type == TokenType.SEMICOLON)
 			{
 				nextToken; // skip semicolon
-				AstIndex structIndex = makeDecl!StructDeclNode(start, currentScopeIndex, AstIndex(), structId);
+				AstIndex structIndex = makeDecl!StructDeclNode(start, currentScopeIndex, ScopeIndex(), structId);
 				StructDeclNode* s = structIndex.get!StructDeclNode(context);
 				s.flags |= structFlags | StructFlags.isOpaque;
 				return structIndex;
 			}
 
-			AstIndex structIndex = makeDecl!StructDeclNode(start, currentScopeIndex, AstIndex(), structId);
+			AstIndex structIndex = makeDecl!StructDeclNode(start, currentScopeIndex, ScopeIndex(), structId);
 			StructDeclNode* s = structIndex.get!StructDeclNode(context);
 			s.flags |= structFlags;
 
@@ -1018,7 +1018,7 @@ struct Parser
 			{
 				nextToken; // skip ";"
 				Identifier enumId = makeIdentifier(id);
-				AstIndex memberScope; // no scope
+				ScopeIndex memberScope; // no scope
 
 				return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, AstNodes(), intType, enumId);
 			}
@@ -1041,8 +1041,8 @@ struct Parser
 				Identifier enumId = makeIdentifier(id);
 				AstIndex memberType = parseColonType;
 				ScopeTempData scope_temp = pushScope(context.idString(enumId), ScopeKind.member);
-				AstIndex memberScope = currentScopeIndex;
-				AstIndex enumIndex = makeDecl!EnumDeclaration(start, AstIndex.init, memberScope, AstNodes.init, memberType, enumId);
+				ScopeIndex memberScope = currentScopeIndex;
+				AstIndex enumIndex = makeDecl!EnumDeclaration(start, ScopeIndex.init, memberScope, AstNodes.init, memberType, enumId);
 				currentScopeIndex.get_scope(context).owner = enumIndex;
 				auto enumNode = enumIndex.get!EnumDeclaration(context);
 				AstNodes members = tryParseEnumBody(enumIndex);
@@ -1059,8 +1059,8 @@ struct Parser
 				Identifier enumId = makeIdentifier(id);
 				AstIndex memberType = intType;
 				ScopeTempData scope_temp = pushScope(context.idString(enumId), ScopeKind.member);
-				AstIndex memberScope = currentScopeIndex;
-				AstIndex enumIndex = makeDecl!EnumDeclaration(start, AstIndex.init, memberScope, AstNodes.init, memberType, enumId);
+				ScopeIndex memberScope = currentScopeIndex;
+				AstIndex enumIndex = makeDecl!EnumDeclaration(start, ScopeIndex.init, memberScope, AstNodes.init, memberType, enumId);
 				currentScopeIndex.get_scope(context).owner = enumIndex;
 				auto enumNode = enumIndex.get!EnumDeclaration(context);
 				AstNodes members = parse_enum_body(enumIndex);
@@ -1081,7 +1081,7 @@ struct Parser
 		{
 			AstIndex memberType = parseColonType;
 			AstNodes members = parse_enum_body(memberType);
-			AstIndex memberScope; // no scope
+			ScopeIndex memberScope; // no scope
 
 			// enum : i32 { e6 }
 			return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, memberType);
@@ -1090,7 +1090,7 @@ struct Parser
 		{
 			AstIndex memberType = intType;
 			AstNodes members = parse_enum_body(memberType);
-			AstIndex memberScope; // no scope
+			ScopeIndex memberScope; // no scope
 
 			// enum { e5 }
 			return makeDecl!EnumDeclaration(start, currentScopeIndex, memberScope, members, memberType);

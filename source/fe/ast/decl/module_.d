@@ -15,7 +15,7 @@ struct ModuleIndex
 @(AstType.decl_module)
 struct ModuleDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_module, 0, AstNodeState.name_register_self_done);
-	AstIndex memberScope;
+	ScopeIndex memberScope;
 	/// Linear list of all functions of a module (including nested and methods and externals)
 	/// Order may be different from declaration order, because conditionaly compiled functions are added later
 	AstNodes functions;

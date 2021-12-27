@@ -17,7 +17,7 @@ import all;
 @(AstType.expr_call)
 struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
-	AstIndex parentScope; // needed to resolve `this` pointer in member access
+	ScopeIndex parentScope; // needed to resolve `this` pointer in member access
 	AstIndex callee;
 	AstNodes args;
 	IrIndex[] argsValues;

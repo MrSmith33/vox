@@ -26,13 +26,13 @@ enum StructFlags : ushort
 @(AstType.decl_struct)
 struct StructDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_struct, AstFlags.isType);
-	AstIndex parentScope;
-	AstIndex memberScope; // null if no body
+	ScopeIndex parentScope;
+	ScopeIndex memberScope; // null if no body
 	Identifier id;
 	IrIndex irType;
 	IrIndex defaultVal;
 
-	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, Identifier id)
+	this(TokenIndex loc, ScopeIndex parentScope, ScopeIndex memberScope, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_struct;

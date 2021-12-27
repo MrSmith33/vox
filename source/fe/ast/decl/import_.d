@@ -10,7 +10,7 @@ import all;
 struct ImportDeclNode
 {
 	mixin AstNodeData!(AstType.decl_import);
-	AstIndex parentScope;
+	ScopeIndex parentScope;
 	Array!Identifier ids;
 }
 

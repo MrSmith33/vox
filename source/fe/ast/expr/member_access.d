@@ -28,7 +28,7 @@ enum MemberExprFlags : ushort {
 struct MemberExprNode {
 	mixin ExpressionNodeData!(AstType.expr_member);
 
-	AstIndex parentScope; // set in parser
+	ScopeIndex parentScope; // set in parser
 	AstIndex aggregate;
 	union
 	{
@@ -67,7 +67,7 @@ struct MemberExprNode {
 		return isSymResolved ? _member.get_node_id(c) : _memberId;
 	}
 
-	this(TokenIndex loc, AstIndex parentScope, AstIndex aggregate, Identifier memberId, AstIndex type = AstIndex.init)
+	this(TokenIndex loc, ScopeIndex parentScope, AstIndex aggregate, Identifier memberId, AstIndex type = AstIndex.init)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_member;
@@ -79,7 +79,7 @@ struct MemberExprNode {
 	}
 
 	// produce already resolved node
-	this(TokenIndex loc, AstIndex parentScope, AstIndex aggregate, AstIndex member, uint memberIndex, MemberSubType subType)
+	this(TokenIndex loc, ScopeIndex parentScope, AstIndex aggregate, AstIndex member, uint memberIndex, MemberSubType subType)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_member;

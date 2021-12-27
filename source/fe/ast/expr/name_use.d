@@ -23,7 +23,7 @@ enum NameUseSubType : ubyte {
 @(AstType.expr_name_use)
 struct NameUseExprNode {
 	mixin ExpressionNodeData!(AstType.expr_name_use);
-	AstIndex parentScope;
+	ScopeIndex parentScope;
 	union
 	{
 		private AstIndex _entity; // used when resolved, node contains Identifier internally
@@ -33,7 +33,7 @@ struct NameUseExprNode {
 	bool isSymResolved() { return cast(bool)(flags & NameUseFlags.isSymResolved); }
 	bool forbidParenthesesFreeCall() { return cast(bool)(flags & NameUseFlags.forbidParenthesesFreeCall); }
 
-	this(TokenIndex loc, AstIndex parentScope, Identifier id, AstIndex type = AstIndex.init)
+	this(TokenIndex loc, ScopeIndex parentScope, Identifier id, AstIndex type = AstIndex.init)
 	{
 		this.loc = loc;
 		this.astType = AstType.expr_name_use;

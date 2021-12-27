@@ -12,6 +12,31 @@ enum ScopeKind : ubyte {
 	global, // module
 }
 
+struct ScopeIndex
+{
+	uint storageIndex;
+	bool isDefined() const { return storageIndex != 0; }
+	bool isUndefined() const { return storageIndex == 0; }
+
+	bool opCast(T : bool)() const {
+		return storageIndex != 0;
+	}
+
+	Scope* get_scope(CompilationContext* c) { return c.getAstScope(this); }
+
+	// null scope index is treated as empty scope and results in null AstIndex
+	AstIndex lookup_scope(Identifier id, CompilationContext* c) {
+		if (isUndefined) return AstIndex.init;
+		Scope* sc = c.getAstScope(this);
+		return sc.symbols.get(id, AstIndex.init);
+	}
+	void insert_scope(Identifier id, AstIndex nodeIndex, CompilationContext* c) {
+		Scope* sc = c.getAstScope(this);
+		assert(isDefined, "scope is undefined");
+		sc.insert(id, nodeIndex, c);
+	}
+}
+
 ///
 struct Scope
 {
@@ -20,7 +45,7 @@ struct Scope
 	/// Imported modules
 	AstNodes imports;
 	///
-	AstIndex parentScope;
+	ScopeIndex parentScope;
 	/// This node is owner of all the definitions inside of this scope
 	AstIndex owner;
 	///

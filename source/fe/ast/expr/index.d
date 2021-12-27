@@ -9,7 +9,7 @@ import all;
 @(AstType.expr_index)
 struct IndexExprNode {
 	mixin ExpressionNodeData!(AstType.expr_index);
-	AstIndex parentScope; // needed to resolve `this` pointer in member access
+	ScopeIndex parentScope; // needed to resolve `this` pointer in member access
 	AstIndex array;
 	AstNodes indices;
 }

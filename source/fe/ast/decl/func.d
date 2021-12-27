@@ -35,7 +35,7 @@ struct FunctionBackendData
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function);
 	AstIndex _module;
-	AstIndex parentScope;
+	ScopeIndex parentScope;
 	AstIndex signature; // FunctionSignatureNode
 	AstIndex block_stmt; // null if external
 	Identifier id;
@@ -47,7 +47,7 @@ struct FunctionDeclNode {
 		return signature.get!FunctionSignatureNode(c).isCtfeOnly;
 	}
 
-	this(TokenIndex loc, AstIndex _module, AstIndex parentScope, AstIndex signature, Identifier id)
+	this(TokenIndex loc, AstIndex _module, ScopeIndex parentScope, AstIndex signature, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_function;

@@ -268,7 +268,7 @@ struct SpecialLiteralExprNode {
 	}
 }
 
-IrIndex eval_literal_special(SpecialKeyword kw, TokenIndex tok, AstIndex parentScope, CompilationContext* c) {
+IrIndex eval_literal_special(SpecialKeyword kw, TokenIndex tok, ScopeIndex parentScope, CompilationContext* c) {
 	final switch(kw) with(SpecialKeyword) {
 		case file:
 			ModuleDeclNode* mod = c.getModuleFromToken(tok);

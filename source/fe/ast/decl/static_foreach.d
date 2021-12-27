@@ -10,7 +10,7 @@ import all;
 struct StaticForeachDeclNode
 {
 	mixin ConditionalDeclNodeData!(AstType.decl_static_foreach);
-	AstIndex parentScope;
+	ScopeIndex parentScope;
 	Identifier keyId; // optional
 	Identifier valueId;
 	/// What will be iterated

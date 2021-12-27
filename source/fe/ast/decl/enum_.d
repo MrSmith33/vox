@@ -10,8 +10,8 @@ import fe.ast.ast_index;
 struct EnumDeclaration
 {
 	mixin ScopeDeclNodeData!(AstType.decl_enum, AstFlags.isType);
-	AstIndex parentScope;
-	AstIndex memberScope;
+	ScopeIndex parentScope;
+	ScopeIndex memberScope;
 	AstIndex memberType;
 	Identifier id;
 
@@ -20,7 +20,7 @@ struct EnumDeclaration
 		isAnonymous = AstFlags.userFlag
 	}
 
-	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, AstNodes members, AstIndex memberType, Identifier id)
+	this(TokenIndex loc, ScopeIndex parentScope, ScopeIndex memberScope, AstNodes members, AstIndex memberType, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
@@ -33,7 +33,7 @@ struct EnumDeclaration
 	}
 
 	/// Anonymous / not a type
-	this(TokenIndex loc, AstIndex parentScope, AstIndex memberScope, AstNodes members, AstIndex memberType)
+	this(TokenIndex loc, ScopeIndex parentScope, ScopeIndex memberScope, AstNodes members, AstIndex memberType)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_enum;
@@ -112,7 +112,7 @@ IrIndex gen_init_value_enum(EnumDeclaration* node, CompilationContext* c)
 struct EnumMemberDecl
 {
 	mixin AstNodeData!(AstType.decl_enum_member);
-	AstIndex parentScope;
+	ScopeIndex parentScope;
 	AstIndex type;
 	AstIndex initializer;
 	Identifier id;

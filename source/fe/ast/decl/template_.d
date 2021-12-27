@@ -14,7 +14,7 @@ struct TemplateDeclNode
 {
 	mixin AstNodeData!(AstType.decl_template);
 	/// For template name register
-	AstIndex parentScope;
+	ScopeIndex parentScope;
 	/// Template parameters
 	AstNodes parameters;
 	/// Templated AST node (currently function or struct)
@@ -106,9 +106,9 @@ struct CloneState
 	AstIndex cloned_to;
 
 	/// We want to redirect all references from `template_parent_scope` to `instance_scope`
-	AstIndex template_parent_scope;
+	ScopeIndex template_parent_scope;
 	/// Scope where template was instantiated. Contains template arguments
-	AstIndex instance_scope;
+	ScopeIndex instance_scope;
 
 	void fixAstIndex(ref AstIndex nodeIndex)
 	{
@@ -127,7 +127,7 @@ struct CloneState
 			fixAstIndex(index);
 	}
 
-	void fixScope(ref AstIndex _scope)
+	void fixScope(ref ScopeIndex _scope)
 	{
 		// null is automatically out of bounds
 		if (_scope.storageIndex >= cloned_from.storageIndex && _scope.storageIndex < cloned_to.storageIndex)
@@ -216,11 +216,11 @@ AstIndex get_template_instance(AstIndex templateIndex, TokenIndex start, AstNode
 	++c.numTemplateInstantiations;
 
 	// Create scope for arguments
-	AstIndex instance_scope = c.appendAst!Scope;
-	Scope* newScope = c.getAst!Scope(instance_scope);
+	ScopeIndex instance_scope = c.appendScope;
+	Scope* newScope = c.getAstScope(instance_scope);
 	newScope.parentScope = templ.parentScope;
 	newScope.debugName = "template instance";
-	newScope.kind = newScope.parentScope.get!Scope(c).kind;
+	newScope.kind = newScope.parentScope.get_scope(c).kind;
 
 	// Register template instance arguments
 	foreach(size_t i; 0..templ.numParamsBeforeVariadic)
@@ -285,7 +285,7 @@ void set_instance_id(AstIndex instance_index, AstNodes instance_args, Compilatio
 /// node_start..after_node is the range of slots to be copied
 /// instance_scope is the scope created around AST subtree copy
 /// All nodes need to fixed via CloneState through indices pointing inside cloned tree
-CloneState clone_node(AstIndex node_start, AstIndex after_node, AstIndex instance_scope, CompilationContext* c)
+CloneState clone_node(AstIndex node_start, AstIndex after_node, ScopeIndex instance_scope, CompilationContext* c)
 {
 	c.assertf(after_node.storageIndex > node_start.storageIndex, "%s > %s", node_start, after_node);
 	AstIndex slots_start = AstIndex(c.astBuffer.uintLength);
