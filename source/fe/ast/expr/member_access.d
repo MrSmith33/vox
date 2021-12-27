@@ -194,6 +194,7 @@ void createMethodCall(ref AstIndex callIndex, MemberExprNode* memberNode, AstInd
 void lowerThisArgument(FunctionSignatureNode* signature, ref AstIndex aggregate, TokenIndex loc, CompilationContext* c)
 {
 	auto thisType = signature.parameters[0].get_node_type(c); // Struct*
+	c.assertf(thisType.isDefined, "null");
 	auto structType = thisType.get!PtrTypeNode(c).base.get_node_type(c); // Struct
 	if (aggregate.get_node_type(c) == structType) // rewrite Struct as Struct*
 	{

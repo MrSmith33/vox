@@ -120,8 +120,10 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 
 				auto signature = calleeType.as_func_sig;
 				assert(signature);
-				lowerThisArgument(signature, memberNode.aggregate, memberNode.loc, c);
-				node.args.putFront(c.arrayArena, memberNode.aggregate);
+				if (memberNode.member(c).get_node(c).isMember) {
+					lowerThisArgument(signature, memberNode.aggregate, memberNode.loc, c);
+					node.args.putFront(c.arrayArena, memberNode.aggregate);
+				}
 				return type_check_func_call(node, signature, memberNode.memberId(c), state);
 			}
 

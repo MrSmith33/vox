@@ -5620,10 +5620,6 @@ immutable test250 = q{--- test250.vx
 			++this.structVar;
 			return this.structVar;
 		}
-		@static u64 incAndReturnStatic() {
-			++structVar;
-			return structVar;
-		}
 	}
 	// @static struct member
 	u64 incAndReturn3() {
@@ -5674,4 +5670,49 @@ immutable test251 = q{--- test251.vx
 	void fun(@static u64 param) {}
 --- <error>
 test251.vx:2:11: Error: Parameters cannot be @static
+};
+
+
+@TestInfo(&tester252)
+immutable test252 = q{--- test252.vx
+	// @static methods
+	struct S {
+		@static u64 structVar = 50;
+		@static u64 incAndReturnStatic() {
+			++structVar;
+			return structVar;
+		}
+	}
+	// through static method
+	u64 incAndReturn1() {
+		return S.incAndReturnStatic();
+	}
+	// through static method via instance
+	u64 incAndReturn2() {
+		S s;
+		return s.incAndReturnStatic();
+	}
+	// check that access to non-static members from static method is forbidden
+};
+void tester252(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn1")() == 51);
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn1")() == 52);
+
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn2")() == 53);
+	assert(ctx.getFunctionPtr!(ulong)("incAndReturn2")() == 54);
+}
+
+
+@TestInfo()
+immutable test253 = q{--- test253.vx
+	// Forbid access to non-@static member from @static method
+	// @static methods
+	struct S {
+		u64 structVar = 50;
+		@static void useNonstatic() {
+			++structVar;
+		}
+	}
+--- <error>
+test253.vx:6:6: Error: undefined identifier `this`
 };

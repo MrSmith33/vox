@@ -673,12 +673,20 @@ struct Parser
 		AstNodes params;
 		ushort funcFlags;
 
-		// no attributes go to the function node or to the parameters or to the body
-		auto tempAttribState = attribState;
-		attribState = AttribState.init;
+		// make all attributes apply to both function and the signature
+		auto beforeAttribState = attribState;
+
+		// make all attributes broadcasted, so that they are not removed when function is created
+		attribState.broadcasted.numBroadcastedAttributes += attribState.immediate.numImmediateAttributes;
+		attribState.immediate.numImmediateAttributes = 0;
+		attribState.broadcasted.broadcastedFlagAttributes |= attribState.immediate.immediateFlagAttributes;
+		attribState.immediate.immediateFlagAttributes = 0;
 
 		AstIndex funcIndex = makeDecl!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), currentScopeIndex, AstIndex(), declarationId);
 		auto func = funcIndex.get!FunctionDeclNode(context);
+
+		// no attributes go to the function body or to the parameters
+		attribState = AttribState.init;
 
 		AstIndex prevOwner = declarationOwner;
 		declarationOwner = funcIndex;
@@ -688,11 +696,8 @@ struct Parser
 		ScopeTempData scope_temp = pushScope(context.idString(declarationId), ScopeKind.local);
 		scope(exit) popScope(scope_temp);
 
-		// restore attributes for signature to consume
-		attribState = tempAttribState;
-
 		// add this pointer parameter
-		if (!attribState.isStaticDecl && prevOwner.astType(context) == AstType.decl_struct)
+		if (func.isMember)
 		{
 			AstIndex structName = make!NameUseExprNode(start, currentScopeIndex, prevOwner.get!StructDeclNode(context).id);
 			NameUseExprNode* name = structName.get_name_use(context);
@@ -707,6 +712,9 @@ struct Parser
 			paramNode.flags |= VariableFlags.isParameter;
 			params.put(context.arrayArena, param);
 		}
+
+		// restore attributes for signature to consume
+		attribState = beforeAttribState;
 
 		CallConvention callConvention = context.defaultCallConvention;
 		AstIndex signature = makeDecl!FunctionSignatureNode(start, typeIndex, params, callConvention);

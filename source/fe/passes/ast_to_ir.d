@@ -153,7 +153,13 @@ ExprValue ir_gen_expr(ref IrGenState gen, AstIndex astIndex, IrIndex curBlock, r
 			return ExprValue(n.as!EnumMemberDecl(c).gen_init_value_enum_member(c));
 		}
 		case decl_var: {
-			ExprValue result = n.as!VariableDeclNode(c).irValue;
+			auto v = n.as!VariableDeclNode(c);
+			if (v.isGlobal)
+			{
+				ir_gen_decl_var(c, v);
+			}
+			c.assertf(v.irValue.irValue.isDefined, "Value is undefined");
+			ExprValue result = v.irValue;
 			gen.builder.addJumpToLabel(curBlock, nextStmt);
 			return result;
 		}
