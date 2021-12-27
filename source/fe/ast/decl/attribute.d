@@ -116,6 +116,15 @@ struct AttributeFlagPrinter {
 
 void type_check_builtin_attribute(BuiltinAttribNode* node, ref TypeCheckState state)
 {
+	final switch(node.getPropertyState(NodeProperty.type_check)) {
+		case PropertyState.not_calculated: break;
+		case PropertyState.calculating: state.context.circular_dependency;
+		case PropertyState.calculated: return;
+	}
+
+	state.context.begin_node_property_calculation(node, NodeProperty.type_check);
+	scope(exit) state.context.end_node_property_calculation(node, NodeProperty.type_check);
+
 	if (node.subType == BuiltinAttribSubType.extern_syscall && node.isBroadcasted)
 	{
 		// forbid broadcasting @extern(syscall) as it makes no sense, since it carries data, which should be different for each function

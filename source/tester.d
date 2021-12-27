@@ -10,7 +10,7 @@ import tests.passing;
 import tests.failing;
 import tests.exe;
 import tests.reg_alloc;
-public import all : HostSymbol, Slice, SliceString;
+public import all : HostSymbol, Slice, SliceString, TargetOs;
 
 public import std.format : formattedWrite, format;
 import std.string : stripLeft, strip;
@@ -30,8 +30,9 @@ int runDevTests()
 	//driver.context.debugRegAlloc = true;
 	//driver.context.buildType = BuildType.exe;
 	//driver.passes = exePasses;
-	//driver.context.targetOs = TargetOs.linux;
 	//driver.context.windowsSubsystem = WindowsSubsystem.WINDOWS_GUI;
+
+	//test.targetOs = TargetOs.linux;
 	//test.printFilter = "i32_to_str";
 
 	scope(exit) {
@@ -58,6 +59,7 @@ int runDevTests()
 	//driver.context.printStackLayout = true;
 	//driver.context.printStaticData = true;
 	//driver.context.printCodeHex = true;
+	//driver.context.printSymbols = true;
 	//driver.context.printTimings = true;
 
 	TestResult res = tryRunSingleTest(driver, dumpSettings, DumpTest.yes, test);
@@ -183,24 +185,33 @@ struct Test
 	string harData;
 	void function(ref TestContext) tester;
 	HostSymbol[] hostSymbols;
+	TargetOs targetOs = CompilationContext.hostOS;
 	string printFilter;
 }
 
 Test makeTest(alias test)() {
 	static assert (__traits(getAttributes, test).length > 0);
-	TestInfo info = __traits(getAttributes, test)[0];
-	return Test(__traits(identifier, test), test, info.tester, info.hostSymbols);
+	TestInfo info;
+	TargetOs target;
+	foreach (attr; __traits(getAttributes, test)) {
+		static if (is (typeof(attr) == TestInfo)) {
+			info = attr;
+		} else static if (is (typeof(attr) == TargetOs)) {
+			target = attr;
+		}
+	}
+	return Test(__traits(identifier, test), test, info.tester, info.hostSymbols, target);
 }
 
 Test[] collectTests(alias M)()
 {
 	Test[] tests;
-	import std.traits;
+	import std.traits : hasUDA;
 	foreach(m; __traits(allMembers, M))
 	{
 		alias member = __traits(getMember, M, m);
-		static if (is(typeof(member) == immutable string)) {
-			static if (__traits(getAttributes, member).length > 0) {
+		static if (hasUDA!(member, TestInfo)) {
+			static if (is(typeof(member) == immutable string)) {
 				tests ~= makeTest!member;
 			}
 		}
@@ -264,6 +275,8 @@ TestResult runSingleTest(ref Driver driver, ref FuncDumpSettings dumpSettings, D
 		driver.beginCompilation();
 
 		if (curTest.printFilter.length) driver.context.setDumpFilter(curTest.printFilter);
+
+		driver.context.targetOs = curTest.targetOs;
 
 		driver.addHostSymbols(curTest.hostSymbols);
 

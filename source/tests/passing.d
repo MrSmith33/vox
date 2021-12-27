@@ -3774,8 +3774,8 @@ test171:2:38: Error: Cannot have two expanded parameters
 //};
 
 
-version(linux)
 @TestInfo()
+@(TargetOs.linux)
 immutable test173 = q{--- test173
 	// Extern attribute
 	@extern(syscall, 60)
@@ -3786,8 +3786,8 @@ immutable test173 = q{--- test173
 };
 
 
-version(linux)
 @TestInfo()
+@(TargetOs.linux)
 immutable test174 = q{--- test174
 	// 2 Extern attributes
 	@extern(syscall, 60)

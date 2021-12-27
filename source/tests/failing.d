@@ -414,8 +414,8 @@ fail38:3:16: Error: function is not a type
 };
 
 
-version(linux)
 @TestInfo()
+@(TargetOs.linux)
 immutable fail39 = q{--- fail39
 	// 2 Extern syscall attributes
 	@extern(syscall, 60)
@@ -426,8 +426,8 @@ fail39:3:2: Error: Duplicate @extern attribute
 };
 
 
-version(Windows)
 @TestInfo()
+@(TargetOs.windows)
 immutable fail40 = q{--- fail40
 	// Should fail on Windows target
 	@extern(syscall, 60)
@@ -648,8 +648,8 @@ fail60:3:2: Error: External function cannot have a body
 };
 
 
-version(linux)
 @TestInfo()
+@(TargetOs.linux)
 immutable fail61 = q{--- fail61
 	// 2 Extern attributes
 	@extern(module, "kernel32")
@@ -660,8 +660,8 @@ fail61:3:2: Error: Duplicate @extern attribute
 };
 
 
-version(linux)
 @TestInfo()
+@(TargetOs.linux)
 immutable fail62 = q{--- fail62
 	// Trying to define extern syscall function
 	@extern(syscall, 50)
@@ -673,8 +673,8 @@ fail62:3:2: Error: External function cannot have a body
 };
 
 
-version(linux)
 @TestInfo()
+@(TargetOs.linux)
 immutable fail63 = q{--- fail63
 	/// Broadcasting @extern(syscall) is forbidden
 	@extern(syscall, 0):

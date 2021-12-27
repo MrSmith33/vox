@@ -12,8 +12,6 @@ import all;
 
 void pass_link_jit(ref CompilationContext context, CompilePassPerModule[] subPasses)
 {
-	if (context.printSymbols) context.objSymTab.dump(&context);
-
 	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.rw_data]).sectionAddress = cast(ulong)context.staticDataBuffer.bufPtr;
 	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.ro_data]).sectionAddress = cast(ulong)context.roStaticDataBuffer.bufPtr;
 	context.objSymTab.getSection(context.builtinSections[ObjectSectionType.imports]).sectionAddress = cast(ulong)context.importBuffer.bufPtr;
@@ -22,4 +20,6 @@ void pass_link_jit(ref CompilationContext context, CompilePassPerModule[] subPas
 	foreach (ref SourceFileInfo file; context.files.data) {
 		linkModule(context, file.mod.objectSymIndex);
 	}
+
+	if (context.printSymbols) context.objSymTab.dump(&context);
 }

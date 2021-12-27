@@ -143,12 +143,12 @@ void make_pe_exe(CompilationContext* context)
 		fillImports(importMapping, context);
 	}
 
-	if (context.printSymbols) context.objSymTab.dump(context);
-
 	// fix all references between symbols
 	foreach (ref SourceFileInfo file; context.files.data) {
 		linkModule(*context, file.mod.objectSymIndex);
 	}
+
+	if (context.printSymbols) context.objSymTab.dump(context);
 
 	if (context.entryPoint is null)
 	{
