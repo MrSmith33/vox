@@ -451,7 +451,7 @@ ExprValue ir_gen_member(ref IrGenState gen, IrIndex currentBlock, ref IrLabel ne
 			return result;
 		case static_struct_member:
 			auto v = m.member(c).get!VariableDeclNode(c);
-			ir_gen_decl_var(gen, v);
+			ir_gen_decl_var(c, v);
 			ExprValue result = v.irValue;
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return result;

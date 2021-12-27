@@ -44,7 +44,7 @@ void ir_gen_decl(ref IrGenState gen, AstIndex nodeIndex)
 	switch(n.astType) with(AstType)
 	{
 		case decl_enum, decl_enum_member, decl_function, decl_struct, decl_import, decl_alias, decl_template, decl_static_assert: break;
-		case decl_var: ir_gen_decl_var(gen, cast(VariableDeclNode*)n); break;
+		case decl_var: ir_gen_decl_var(c, cast(VariableDeclNode*)n); break;
 		default:
 			c.internal_error(n.loc, "ir_gen_decl %s in %s state", n.astType, n.state);
 	}

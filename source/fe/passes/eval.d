@@ -172,15 +172,16 @@ IrIndex eval_static_expr_un_op(UnaryExprNode* node, CompilationContext* c)
 
 					switch (entity.astType)
 					{
-						// TODO: force IR gen for global var when address is taken
 						case AstType.decl_function:
 							// type is not pointer to function sig, but sig itself
 							return entity.as!FunctionDeclNode(c).getIrIndex(c);
 						case AstType.decl_var:
 							// must be global
 							auto v = entity.as!VariableDeclNode(c);
-							if (v.isGlobal)
+							if (v.isGlobal) {
+								ir_gen_decl_var(c, v);
 								return v.getIrIndex(c);
+							}
 							else
 								c.unrecoverable_error(node.loc, "Can only take address of global variable while in CTFE");
 						default:

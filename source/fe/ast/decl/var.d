@@ -34,6 +34,7 @@ struct VariableDeclNode
 	IrIndex getIrIndex(CompilationContext* c)
 	{
 		c.assertf(isGlobal, "Must be used for globals only");
+		c.assertf(irValue.irValue.isDefined, "Value is undefined");
 		return irValue.irValue;
 	}
 }
@@ -146,7 +147,7 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 
 	if (v.isGlobal)
 	{
-		ir_gen_decl_var(gen, v);
+		ir_gen_decl_var(c, v);
 		gen.builder.addJumpToLabel(curBlock, nextStmt);
 		return;
 	}
@@ -200,31 +201,30 @@ void ir_gen_local_var(ref IrGenState gen, IrIndex curBlock, ref IrLabel nextStmt
 	gen.builder.addJumpToLabel(curBlock, nextStmt);
 }
 
-void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
+void ir_gen_decl_var(CompilationContext* c, VariableDeclNode* node)
 {
-	CompilationContext* c = gen.context;
-	if (v.isGlobal)
+	if (node.isGlobal)
 	{
-		if (v.irValue.irValue.isDefined) return;
+		if (node.irValue.irValue.isDefined) return;
 
 		// register global variable, type is not set yet
 		IrIndex globalIndex = c.globals.add();
 		IrGlobal* global = c.globals.get(globalIndex);
-		v.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
+		node.irValue = ExprValue(globalIndex, ExprValueKind.ptr_to_data, IsLvalue.yes);
 
-		AstIndex moduleIndex = find_innermost_owner(v.parentScope, AstType.decl_module, c);
+		AstIndex moduleIndex = find_innermost_owner(node.parentScope, AstType.decl_module, c);
 
 		ObjectSymbol sym = {
 			kind : ObjectSymbolKind.isLocal,
 			sectionIndex : c.builtinSections[ObjectSectionType.rw_data],
 			moduleIndex : moduleIndex.get!ModuleDeclNode(c).objectSymIndex,
 			flags : ObjectSymbolFlags.isMutable,
-			id : v.id,
+			id : node.id,
 		};
 
 		global.objectSymIndex = c.objSymTab.addSymbol(sym);
 
-		TypeNode* varType = c.getAstType(v.type).foldAliases(c);
+		TypeNode* varType = c.getAstType(node.type).foldAliases(c);
 		IrIndex irType = varType.gen_ir_type(c);
 		global.type = c.types.appendPtr(irType);
 
@@ -235,7 +235,8 @@ void ir_gen_decl_var(ref IrGenState gen, VariableDeclNode* v)
 		globalSym.length = valueSizealign.size;
 		globalSym.alignmentPower = valueSizealign.alignmentPower;
 
-		IrIndex initializer = v.defaultVal;
+		IrIndex initializer = node.defaultVal;
+
 		if (initializer.isConstantZero)
 		{
 			globalSym.flags |= ObjectSymbolFlags.isAllZero;
