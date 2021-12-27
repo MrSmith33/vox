@@ -5716,3 +5716,9 @@ immutable test253 = q{--- test253.vx
 --- <error>
 test253.vx:6:6: Error: undefined identifier `this`
 };
+
+
+@TestInfo()
+immutable test254 = q{--- test254.vx
+	alias PFN_vkAllocationFunction = void* function(void* pUserData);
+};

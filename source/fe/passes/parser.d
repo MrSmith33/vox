@@ -2062,8 +2062,11 @@ AstIndex leftOpDot(ref Parser p, PreferType preferType, Token token, int rbp, As
 
 AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rbp, AstIndex returnType, ref int nbp) {
 	CallConvention callConvention = p.context.defaultCallConvention;
-	auto sig = p.make!FunctionSignatureNode(token.index, returnType, AstNodes.init, callConvention);
+	auto sig = p.makeDecl!FunctionSignatureNode(token.index, returnType, AstNodes.init, callConvention);
+	AstIndex prevOwner = p.declarationOwner; // change the owner, so that parameters are inferred as local
+	p.declarationOwner = sig;
 	p.parseParameters(sig, p.NeedRegNames.no); // function types don't need to register their param names
+	p.declarationOwner = prevOwner;
 	// we don't have to register parameter names, since we have no body
 	sig.setState(p.context, AstNodeState.name_register_nested_done);
 	return p.make!PtrTypeNode(token.index, CommonAstNodes.type_type, sig);
