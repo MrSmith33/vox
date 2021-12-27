@@ -27,7 +27,7 @@ enum StructFlags : ushort
 struct StructDeclNode {
 	mixin ScopeDeclNodeData!(AstType.decl_struct, AstFlags.isType);
 	AstIndex parentScope;
-	AstIndex memberScope;
+	AstIndex memberScope; // null if no body
 	Identifier id;
 	IrIndex irType;
 	IrIndex defaultVal;

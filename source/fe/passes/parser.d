@@ -891,22 +891,15 @@ struct Parser
 				return structIndex;
 			}
 
-			AstIndex parentScope = currentScopeIndex; // need to get parent before push scope
-			ScopeTempData scope_temp = pushScope(context.idString(structId), ScopeKind.member);
-			AstIndex memberScope = currentScopeIndex;
-			scope(exit) popScope(scope_temp);
-
-			// restore attributes earlier, so signature receives attributes
-			attribState = AttribState(scope_temp.prevBroadcasted);
-
-			AstIndex structIndex = makeDecl!StructDeclNode(start, parentScope, memberScope, structId);
+			AstIndex structIndex = makeDecl!StructDeclNode(start, currentScopeIndex, AstIndex(), structId);
 			StructDeclNode* s = structIndex.get!StructDeclNode(context);
 			s.flags |= structFlags;
 
-			currentScopeIndex.get_scope(context).owner = structIndex;
+			ScopeTempData scope_temp = pushScope(context.idString(structId), ScopeKind.member);
+			scope(exit) popScope(scope_temp);
 
-			// store values back;
-			scope_temp.prevBroadcasted = attribState.broadcasted;
+			s.memberScope = currentScopeIndex;
+
 			// no attributes go to the body
 			attribState = AttribState.init;
 
