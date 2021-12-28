@@ -10,7 +10,12 @@ import all;
 ///
 enum StackSlotKind : ubyte {
 	local,
-	spillSlot, // same allocation as local
+	// same allocation as local
+	// used in register allocator
+	// during move solving it denotes that stack slot is used as an address
+	spillSlot,
+	// Slot for callee saved register
+	regSaveSlot,
 	parameter,
 	argument
 }
@@ -29,4 +34,5 @@ struct StackSlot
 	IrIndex type;
 	void addUser() { ++numUses; }
 	bool isParameter() { return kind == StackSlotKind.parameter; }
+	bool isRegSaveSlot() { return kind == StackSlotKind.regSaveSlot; }
 }

@@ -55,11 +55,11 @@ struct IrFunction
 	///
 	IrInstructionSet instructionSet;
 
-	/// How much bytes we need to allocate in prolog and deallocate in epilog
+	/// How many bytes we need to allocate in prolog and deallocate in epilog
 	int stackFrameSize;
 	// number of calls in the function
 	// collected in abi lowering pass
-	// if 0 or 1, we can merge stack allocation with function's stack
+	// if 0 or 1, we can merge stack allocation with function's stack (TODO)
 	// if 0, we can omit stack alignment
 	uint numCalls;
 

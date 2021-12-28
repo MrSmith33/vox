@@ -54,9 +54,6 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 
 	auto lir = context.getAst!IrFunction(func.backendData.lirData);
 
-	// Do not allocate stack for leaf functions with no slots
-	if (lir.numStackSlots == 0 && lir.numCalls == 0) return;
-
 	CallConv* callConv = lir.getCallConv(context);
 	IrIndex baseReg = IrIndex(callConv.stackPointer, ArgType.QWORD);
 
@@ -88,11 +85,14 @@ void pass_stack_layout(CompilationContext* context, FunctionDeclNode* func)
 		// param2    1              \                /
 		// param1    0  rbp + 2     / numParams = 2 / this address is aligned to 16 bytes
 		// ret addr     rbp + 1
-		// rbp      <-- rbp + 0
+		// rbp      <-- rbp + 0     frame pointer
+		// saved r0
+		// saved r1
+		// opt pad
 		// local1    2  rbp - 1     \
 		// local2    3  rbp - 2     / numLocals = 2
 		// --
-		baseReg = IrIndex(callConv.framePointer, ArgType.QWORD);
+		// baseReg = IrIndex(callConv.framePointer, ArgType.QWORD); // TODO: offset must be relative to frame pointer
 		// frame pointer is stored together with locals
 		lir.stackFrameSize += STACK_ITEM_SIZE;
 	}

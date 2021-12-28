@@ -187,6 +187,14 @@ struct CodeEmitter
 
 	void compileFuncProlog()
 	{
+		uint reservedBytes = lir.stackFrameSize;
+
+		// frame pointer is stored with a push, so don't allocate space for it
+		if (context.useFramePointer) {
+			context.assertf(reservedBytes >= STACK_ITEM_SIZE, "bug");
+			reservedBytes -= STACK_ITEM_SIZE;
+		}
+
 		// Establish frame pointer
 		if (context.useFramePointer)
 		{
@@ -194,7 +202,6 @@ struct CodeEmitter
 			gen.movq(Register.BP, Register.SP);
 		}
 
-		uint reservedBytes = lir.stackFrameSize;
 		if (reservedBytes) // Reserve space for locals
 		{
 			if (reservedBytes > byte.max) gen.subq(Register.SP, Imm32(reservedBytes));
@@ -205,6 +212,13 @@ struct CodeEmitter
 	void compileFuncEpilog()
 	{
 		uint reservedBytes = lir.stackFrameSize;
+
+		// frame pointer is stored with a push, so don't allocate space for it
+		if (context.useFramePointer) {
+			context.assertf(reservedBytes >= STACK_ITEM_SIZE, "bug");
+			reservedBytes -= STACK_ITEM_SIZE;
+		}
+
 		if (reservedBytes)
 		{
 			if (reservedBytes > byte.max) gen.addq(Register.SP, Imm32(reservedBytes));

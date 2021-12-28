@@ -71,7 +71,7 @@ struct PhysRegisters
 	RegisterState[NUM_TOTAL_REGS] registers;
 	uint[NUM_TOTAL_REGS] usePos;
 	uint[NUM_TOTAL_REGS] blockPos;
-	//bitmask per class
+	// bitmask per class
 	FullRegSet volatileRegs;
 	FullRegSet calleeSavedRegs;
 	FullRegSet usedRegs;
@@ -91,8 +91,10 @@ struct PhysRegisters
 		} else {
 			volatileRegs = callConv.volatileRegs;
 			calleeSavedRegs = callConv.calleeSaved;
-			//if (!c.useFramePointer)
-			//	calleeSavedRegs |= callConv.framePointer; // add frame pointer to register pool
+			if (c.useFramePointer) {
+				// make frame pointer not allocatable
+				calleeSavedRegs.disable(callConv.framePointer);
+			}
 		}
 		usedRegs = FullRegSet.init;
 		registers = typeof(registers).init;
@@ -1219,7 +1221,7 @@ struct LinearScan
 					break;
 				default: context.internal_error("Size not implemented %s", size);
 			}
-			IrIndex slot = builder.appendStackSlot(slotType, context.types.typeSizeAndAlignment(slotType), StackSlotKind.local);
+			IrIndex slot = builder.appendStackSlot(slotType, context.types.typeSizeAndAlignment(slotType), StackSlotKind.regSaveSlot);
 
 			// save register
 			ExtraInstrArgs extra1 = { argSize : size };

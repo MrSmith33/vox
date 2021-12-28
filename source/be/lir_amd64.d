@@ -88,6 +88,14 @@ struct FullRegSet {
 		return result;
 	}
 
+	FullRegSet opUnary(string op)()
+		if (op == "~")
+	{
+		FullRegSet result = this;
+		result.classes = ~result.classes[];
+		return result;
+	}
+
 	FullRegSet opBinary(string op)(FullRegSet rhs)
 		if (op == "|" || op == "^" || op == "&")
 	{
@@ -116,6 +124,11 @@ struct FullRegSet {
 		if (op == "|" || op == "^" || op == "&")
 	{
 		mixin("classes[rhs.regClass].bits "~op~"= 1 << rhs.regIndex;");
+	}
+
+	void disable(PhysReg rhs)
+	{
+		classes[rhs.regClass].bits &= ~(1 << rhs.regIndex);
 	}
 
 	FullRegSet lowest(int n) {
@@ -259,10 +272,10 @@ struct CallConv
 	FullRegSet calleeSaved;
 	// Size of the register preserved by the callee
 	IrArgSize[] calleeSavedSizePerClass;
-	/// Not included into allocatableRegs
+	/// Included into calleeSaved
 	/// Can be used as frame pointer when
 	/// frame pointer is enabled for the function, or
-	/// can be used as allocatable register if not
+	/// can be used as allocatable register if not (in which case it is considered as callee saved)
 	PhysReg framePointer;
 	PhysReg stackPointer;
 
@@ -303,8 +316,8 @@ __gshared CallConv win64_call_conv = CallConv
 	[amd64_reg.xmm0, amd64_reg.xmm1, amd64_reg.xmm2, amd64_reg.xmm3],
 
 	// volatile regs, zero cost allocation
-	// ax cx dx r8 r9 r10 r11
-	// xmm0 xmm1 xmm2 xmm3 xmm4 xmm5
+	//   ax cx dx r8 r9 r10 r11
+	//   xmm0 xmm1 xmm2 xmm3 xmm4 xmm5
 	FullRegSet([
 		//            1111 11
 		//            5432 1098 7654 3210
@@ -369,8 +382,8 @@ __gshared CallConv sysv64_syscall_call_conv = CallConv
 
 	// volatile regs, zero cost allocation
 	// cx and r11 are clobbered by syscall
-	  // ax cx dx si di r8 r9 r10 r11
-	  // xmm0 xmm1 xmm2 xmm3 xmm4 xmm5 xmm6 xmm7
+	//   ax cx dx si di r8 r9 r10 r11
+	//   xmm0 xmm1 xmm2 xmm3 xmm4 xmm5 xmm6 xmm7
 	FullRegSet([
 		//            1111 11
 		//            5432 1098 7654 3210
