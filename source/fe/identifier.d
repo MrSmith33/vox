@@ -86,7 +86,8 @@ struct IdentifierMap {
 		foreach (size_t i, string memberName; __traits(allMembers, CommonIds))
 		{
 			string name = __traits(getAttributes, __traits(getMember, CommonIds, memberName))[0];
-			getOrRegNoDup(c, name);
+			Identifier id = getOrRegNoDup(c, name);
+			assert(id == __traits(getMember, CommonIds, memberName));
 		}
 	}
 }

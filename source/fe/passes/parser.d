@@ -473,7 +473,7 @@ struct Parser
 				attribState.immediate.immediateFlagAttributes = 0;
 				// next comes another attribute or declaration
 				if (tok.type == TokenType.AT) break; // next attribute
-				goto default;
+				return; // back to declaration/statement parsing
 			case TokenType.LCURLY:
 				nextToken; // skip {
 				// all attributes before {} will be applied to all declarations in {}

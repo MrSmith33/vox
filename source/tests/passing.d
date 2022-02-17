@@ -4926,6 +4926,13 @@ immutable test227 = q{--- test227
 };
 
 
+@TestInfo()
+immutable test227_1 = q{--- test227_1
+	/// No definitions after @:
+	@extern(module, "modB"):
+};
+
+
 /* // TODO:
 immutable
 	/// Feature: `@attr:`
