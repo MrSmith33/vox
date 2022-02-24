@@ -1,7 +1,7 @@
 /// Copyright: Copyright (c) 2021 Andrey Penechko.
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
-module fe.ast_node_type;
+module fe.ast.ast_node_type;
 
 enum AstType : ubyte
 {
