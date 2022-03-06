@@ -60,7 +60,7 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: ${{matrix.PLATFORM}}
-          path: ./source/vox-${{matrix.PLATFORM}}.zip
+          path: ./bin/vox-${{matrix.PLATFORM}}.zip
   build-debug:
     name: Build debug
     needs: [test]
@@ -95,7 +95,7 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: ${{matrix.PLATFORM}}-dbg
-          path: ./source/vox-${{matrix.PLATFORM}}-dbg.zip
+          path: ./bin/vox-${{matrix.PLATFORM}}-dbg.zip
 
   upload:
     name: Upload build
