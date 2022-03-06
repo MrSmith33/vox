@@ -3,21 +3,34 @@
 /// Authors: Andrey Penechko.
 module tester;
 
-import all;
+import vox.all;
 import tests.aggregates;
 import tests.ctfe;
 import tests.passing;
 import tests.failing;
 import tests.exe;
 import tests.reg_alloc;
-public import all : HostSymbol, Slice, SliceString, TargetOs;
+public import vox.all : HostSymbol, Slice, SliceString, TargetOs;
 
 public import std.format : formattedWrite, format;
 import std.string : stripLeft, strip;
 
+// test entry point when compiling with -unittest or dub test
+unittest
+{
+	import tester;
+	import tests.amd64asm;
+
+	int numFailedTests = 0;
+	numFailedTests += runAllTests(StopOnFirstFail.no);
+	numFailedTests += testAmd64Asm();
+
+	assert(numFailedTests == 0);
+}
+
 int runDevTests()
 {
-	Test test = makeTest!(test243);
+	Test test = makeTest!(test227_1);
 
 	Driver driver;
 	driver.initialize(jitPasses);

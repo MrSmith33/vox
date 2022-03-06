@@ -1,0 +1,37 @@
+name "vox"
+description "Vox language compiler"
+authors "Andrey Penechko"
+license "BSL-1.0"
+
+configuration "library" {
+	targetType "library"
+	excludedSourceFiles "source/bench.d" "source/cli.d" "source/main.d" "source/tester.d" "source/tests/*"
+}
+
+// Command line interface of the Vox compiler
+configuration "cli" {
+	targetType "executable"
+	versions "cli"
+}
+
+configuration "bench" {
+	targetType "executable"
+	versions "bench"
+}
+
+// Runs single test from test suite
+configuration "devtest" {
+	targetType "executable"
+	versions "devtest"
+}
+
+// Runs test suite
+configuration "test" {
+	targetType "executable"
+	versions "test"
+}
+
+// Runs all unittest blocks + test suite
+configuration "unittest" {
+	excludedSourceFiles "source/main.d"
+}

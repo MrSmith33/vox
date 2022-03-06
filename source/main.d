@@ -8,7 +8,7 @@ version = standalone;
 //version = bench;
 //version = asmtest;
 //version = devtest;
-//version = test;
+version = test;
 
 version(standalone) int main(string[] args)
 {
@@ -24,7 +24,7 @@ version(standalone) int main(string[] args)
 		import bench;
 		return runBench(args);
 	} else version(asmtest) {
-		import be.amd64asm_tests;
+		import tests.amd64asm_tests;
 		return testAmd64Asm();
 	} else version(devtest) {
 		import tester;
@@ -33,16 +33,4 @@ version(standalone) int main(string[] args)
 		import tester;
 		return runAllTests(StopOnFirstFail.no);
 	} else return 0;
-}
-
-unittest
-{
-	import tester;
-	import be.amd64asm_tests;
-
-	int numFailedTests = 0;
-	numFailedTests += runAllTests(StopOnFirstFail.no);
-	numFailedTests += testAmd64Asm();
-
-	assert(numFailedTests == 0);
 }

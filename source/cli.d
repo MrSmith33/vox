@@ -8,7 +8,7 @@ module cli;
 import std.stdio;
 import std.file : exists;
 import std.path : absolutePath, extension, baseName, setExtension;
-import all;
+import vox.all;
 
 enum WindowsSubsystemCli : ushort {
 	CUI,
@@ -63,7 +63,7 @@ int runCli(string[] args)
 					writefln("File `%s` not found", absolutePath(filename));
 					return 1;
 				}
-				import be.debug_info.pdb;
+				import vox.be.debug_info.pdb;
 				PdbReader.fromFile(filename);
 				return 0;
 
