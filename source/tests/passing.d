@@ -5729,3 +5729,19 @@ test253.vx:6:6: Error: undefined identifier `this`
 immutable test254 = q{--- test254.vx
 	alias PFN_vkAllocationFunction = void* function(void* pUserData);
 };
+
+
+@TestInfo()
+immutable test255 = q{--- test255.vx
+	// Issue 40
+	// Incorrect aggregate lowering
+	// Was checking for isConstant, which ignored zero constants
+	struct Color { u8 r; u8 g; u8 b; u8 a; }
+
+	void draw() {
+		for(u64 i = 0; i < 4; i++){
+			u8 a = cast(u8) i;
+			Color c = Color(255, 0, 0, a);
+		}
+	}
+};

@@ -608,7 +608,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 
 	void insertAt(IrIndex value, uint offset, uint size)
 	{
-		if (value.isConstant) {
+		if (value.isSimpleConstant) {
 			constant |= c.constants.get(value).i64 << (offset * 8);
 		} else {
 			insertNonConstant(value, offset * 8, size);
