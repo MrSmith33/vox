@@ -211,7 +211,7 @@ void lir_func_pass_simplify(ref CompilationContext context, ref IrFunction ir)
 					// replace 'mov reg, 0' with xor reg reg
 					IrIndex dst = instrHeader.result;
 					IrIndex src = instrHeader.args[0];
-					if (src.isConstant && context.constants.get(src).i64 == 0)
+					if (src.isSimpleConstant && context.constants.get(src).i64 == 0)
 					{
 
 					}

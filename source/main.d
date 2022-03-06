@@ -8,7 +8,7 @@ version = standalone;
 //version = bench;
 //version = asmtest;
 //version = devtest;
-version = test;
+//version = test;
 
 version(standalone) int main(string[] args)
 {

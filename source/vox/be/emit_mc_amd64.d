@@ -320,7 +320,7 @@ struct CodeEmitter
 						}
 
 						if (arg0 == stackPointer) {
-							if (arg1.isConstant) {
+							if (arg1.isSimpleConstant) {
 								stackPointerExtraOffset -= context.constants.get(arg1).i64;
 							} else {
 								dumpFunction(context, lir, "Code gen");
@@ -333,7 +333,7 @@ struct CodeEmitter
 						IrIndex arg1 = instrHeader.arg(lir, 1);
 						genRegular(arg0, arg1, AMD64OpRegular.sub, cast(IrArgSize)arg0.physRegSize, instrIndex);
 						if (arg0 == stackPointer) {
-							if (arg1.isConstant) {
+							if (arg1.isSimpleConstant) {
 								stackPointerExtraOffset += context.constants.get(arg1).i64;
 							} else {
 								dumpFunction(context, lir, "Code gen");
@@ -457,7 +457,7 @@ struct CodeEmitter
 					case Amd64Opcode.shl:
 						Register dst = indexToRegister(instrHeader.arg(lir, 0));
 						IrIndex src = instrHeader.arg(lir, 1);
-						if (src.isConstant) {
+						if (src.isSimpleConstant) {
 							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
 								gen.shl1(dst, cast(ArgType)instrHeader.argSize);
@@ -470,7 +470,7 @@ struct CodeEmitter
 					case Amd64Opcode.shr:
 						Register dst = indexToRegister(instrHeader.arg(lir, 0));
 						IrIndex src = instrHeader.arg(lir, 1);
-						if (src.isConstant) {
+						if (src.isSimpleConstant) {
 							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
 								gen.shr1(dst, cast(ArgType)instrHeader.argSize);
@@ -483,7 +483,7 @@ struct CodeEmitter
 					case Amd64Opcode.sar:
 						Register dst = indexToRegister(instrHeader.arg(lir, 0));
 						IrIndex src = instrHeader.arg(lir, 1);
-						if (src.isConstant) {
+						if (src.isSimpleConstant) {
 							IrConstant con = context.constants.get(instrHeader.arg(lir, 1));
 							if (con.i8 == 1)
 								gen.sar1(dst, cast(ArgType)instrHeader.argSize);

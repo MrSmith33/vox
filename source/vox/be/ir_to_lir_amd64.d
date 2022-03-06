@@ -649,7 +649,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 
 				case IrOpcode.shl, IrOpcode.lshr, IrOpcode.ashr:
 					IrIndex rightArg;
-					if (instrHeader.arg(ir, 1).isConstant)
+					if (instrHeader.arg(ir, 1).isSimpleConstant)
 						rightArg = instrHeader.arg(ir, 1);
 					else
 					{
