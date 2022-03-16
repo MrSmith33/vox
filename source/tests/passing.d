@@ -5745,3 +5745,12 @@ immutable test255 = q{--- test255.vx
 		}
 	}
 };
+
+
+@TestInfo()
+immutable test256 = `--- test256.vx
+	// Logical not CTFE
+	enum VAL = true;
+
+	#if(!VAL) struct A {}
+`;

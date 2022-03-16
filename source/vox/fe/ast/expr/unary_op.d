@@ -283,6 +283,11 @@ IrIndex calcUnOp(UnOp op, IrIndex child, CompilationContext* c)
 			}
 			return c.constants.add(childCon.type, result);
 
+		case UnOp.logicalNot:
+			assert(childCon.type.isTypeBasic);
+			assert(childCon.type.typeIndex == IrBasicType.i8);
+			return c.constants.add(childCon.type, !childCon.i1);
+
 		default:
 			c.internal_error("Opcode `%s` is not implemented", op);
 	}
