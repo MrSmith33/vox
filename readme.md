@@ -133,14 +133,26 @@ In `main.d` uncomment one of the following lines:
 and run with: `source> dmd -m64 -i main.d && main`
 
 Benchmarking:
-    `ldc2 -d-version=bench -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d && main`
+
+`ldc2 -d-version=bench -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -i main.d && main`
 
 Debug CLI build:
-    `dmd -i -g -m64 -version=cli main.d -of=../test_work_dir/vox.exe`
+
+`dmd -i -g -m64 -version=cli main.d -of=vox.exe`
     
 Release CLI build:
-    `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -i main.d -of=../test_work_dir/vox.exe`
 
+`ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -i main.d -of=vox.exe`
+
+Compiling with Profile Guided Optimization:
+
+```
+ldc2 -d-version=test -m64 -release -fprofile-instr-generate -mcpu=native -i main.d -of=vox_instrumented.exe
+vox_instrumented
+ldc-profdata merge default.profraw -output vox.profdata
+ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -fprofile-instr-use=vox.profdata -i main.d -of=vox.exe
+```
+  
 # Using Commandline interface
 
 ## Getting help

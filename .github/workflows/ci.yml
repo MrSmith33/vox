@@ -7,7 +7,7 @@ on:
   release: # test + build + release
     types: [ published ]
 env:
-  DC: ldc-1.28.0
+  DC: ldc-1.28.1
 
 defaults:
   run:
@@ -56,7 +56,10 @@ jobs:
         run: |
           mkdir -p bin
           cd source
-          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -of=../bin/${{matrix.EXE}} -i main.d
+          ldc2 -d-version=test -m64 -release -fprofile-instr-generate -mcpu=native -i main.d -of=vox_instrumented.exe
+          ./vox_instrumented.exe
+          ldc-profdata merge default.profraw -output vox.profdata
+          ldc2 -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -fprofile-instr-use=vox.profdata -of=../bin/${{matrix.EXE}} -i main.d
           cd ../bin
           7z a -mx9 vox-${{matrix.PLATFORM}}.zip ${{matrix.EXE}}
       - uses: actions/upload-artifact@v2
@@ -90,7 +93,10 @@ jobs:
         run: |
           mkdir -p bin
           cd source
-          ldc2 -m64 -O3 --d-debug -g -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -of=../bin/${{matrix.EXE}} -i main.d
+          ldc2 -d-version=test -m64 -release -fprofile-instr-generate -mcpu=native -i main.d -of=vox_instrumented.exe
+          ./vox_instrumented.exe
+          ldc-profdata merge default.profraw -output vox.profdata
+          ldc2 -m64 -O3 --d-debug -g -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -fprofile-instr-use=vox.profdata -of=../bin/${{matrix.EXE}} -i main.d
           cd ../bin
           7z a -mx9 vox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.EXE}} ${{matrix.DBG_FILE}}
       - uses: actions/upload-artifact@v2
