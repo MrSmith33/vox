@@ -17,6 +17,24 @@
   - [External functions](#external-functions)
   - [Calls](#calls)
 - [Attributes](#attributes)
+  - [Built-in attributes](#built-in-attributes)
+  - [User-defined attributes](#user-defined-attributes)
+- [Metaprogramming](#metaprogramming)
+  - [Compile-time assert `#assert`](#compile-time-assert-assert)
+  - [Conditional compilation](#conditional-compilation)
+    - [\#if](#if)
+    - [\#version](#version)
+      - [Predefined versions](#predefined-versions)
+    - [\#foreach](#foreach)
+  - [Templates](#templates)
+    - [Function templates](#function-templates)
+    - [Struct templates](#struct-templates)
+  - [Meta types \(NEI\)](#meta-types-nei)
+    - [$alias](#alias)
+    - [$type](#type)
+    - [Builtin functions for working with meta types](#builtin-functions-for-working-with-meta-types)
+    - [Using meta types in CTFE](#using-meta-types-in-ctfe)
+  - [CTFE-only functions](#ctfe-only-functions)
   - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
 
 <!-- /MarkdownTOC -->
@@ -259,6 +277,7 @@ Attributes can be specified in one of 3 forms
 @attr1 decl1; // 1. Directly attached attribute. Applies only to decl1
 
 @attr2: // 2. 
+```
 
 1. Direct attachment
 
@@ -420,7 +439,7 @@ Attributes can be specified in one of 3 forms
 ## Compile-time assert `#assert`
 
 ```D
-    #assert(<condition>, <message>);
+#assert(<condition>, <message>);
 ```
 
 When condition evaluates to false triggers compilation error with provided message.
@@ -435,32 +454,32 @@ Static if evaluates `<expr>` at compile time, and `<expr>` is true `#if` is repl
 `#if` can appear both as a declaration inside declaration scope (module or struct) and inside function body as a statement.
 
 Syntax:
-  ```D
-  #if(<expr>) <then_stmt>
-  #if(<expr>) <then_stmt> else <else_stmt>
+```D
+#if(<expr>) <then_stmt>
+#if(<expr>) <then_stmt> else <else_stmt>
   ```
 
 Examples:
-  ```D
-  enum debug_cond = true;
-  
-  #if(debug_cond) { // Module scope
-      i32 debug_counter = 0; // Conditionally declared global variable
-  }
-  
-  struct S {
-      #if(debug_cond) // Struct scope
-          u8[] debug_buffer; // Conditionally declared struct member
-  }
-  
-  void fun()
-  {
-      // Condition inside function body
-      #if(debug_cond) print("debug mode");
-      else #if(debug_cond2) print("debug mode 2"); // When chaining #if must be used each time.
-      else print("no debug mode");
-  }
-  ```
+```D
+enum debug_cond = true;
+
+#if(debug_cond) { // Module scope
+    i32 debug_counter = 0; // Conditionally declared global variable
+}
+
+struct S {
+    #if(debug_cond) // Struct scope
+        u8[] debug_buffer; // Conditionally declared struct member
+}
+
+void fun()
+{
+    // Condition inside function body
+    #if(debug_cond) print("debug mode");
+    else #if(debug_cond2) print("debug mode 2"); // When chaining #if must be used each time.
+    else print("no debug mode");
+}
+```
 
 ### \#version
 * Behaves in the same way as `#if`, but instead of an expression accepts one of the predefined identifiers. If the version identifier is defined it will evaluate to `true`.
@@ -604,43 +623,43 @@ $type some_type = 42; // Error: 42 is not a type
 ### Builtin functions for working with meta types
 
 ```D
-    bool $isType($alias a)
-    bool $isValue($alias a)
-    bool $isVariable($alias a)
-    bool $isCode($alias a)
-    bool $isFunction($alias a)
-    bool $isStruct($alias a)
-    bool $isTemplate($alias a)
-    bool $isTemplateInstance($alias a)
-    bool $isInstanceOf($alias a, $alias template)
-    bool $isEnum($alias a)
-    
-    bool $isStruct($type type)
-    bool $isInteger($type type)
-    bool $isFloating($type type)
-    
-    bool $isSlice($type type)
-    #assert($isSlice(i8[]));
-    
-    bool $isSliceOf($type slice, $type elemType)
-    #assert($isSliceOf(i8[], i8));
-    
-    $type baseOf($type type);
-    #assert($baseOf(i8*) == i8);
-    #assert($baseOf(i8[]) == i8);
-    #assert($baseOf(i8[10]) == i8);
-    
-    bool $isArray($type type)
-    bool $isArrayOf($type array, $type elemType)
-    
-    u8[] $getIdentifier($alias a)
-    
-    // If type is struct returns all declarations inside struct including:
-    // functions, variables, enums, aliases, struct declarations etc.
-    // If type is enum returns all enum members
-    $alias[] $getMembers($type type)
-    $alias[] $getStructMembersVariables($type type)
-    $alias[] $getStructMembersMethods($type type)
+bool $isType($alias a)
+bool $isValue($alias a)
+bool $isVariable($alias a)
+bool $isCode($alias a)
+bool $isFunction($alias a)
+bool $isStruct($alias a)
+bool $isTemplate($alias a)
+bool $isTemplateInstance($alias a)
+bool $isInstanceOf($alias a, $alias template)
+bool $isEnum($alias a)
+
+bool $isStruct($type type)
+bool $isInteger($type type)
+bool $isFloating($type type)
+
+bool $isSlice($type type)
+#assert($isSlice(i8[]));
+
+bool $isSliceOf($type slice, $type elemType)
+#assert($isSliceOf(i8[], i8));
+
+$type baseOf($type type);
+#assert($baseOf(i8*) == i8);
+#assert($baseOf(i8[]) == i8);
+#assert($baseOf(i8[10]) == i8);
+
+bool $isArray($type type)
+bool $isArrayOf($type array, $type elemType)
+
+u8[] $getIdentifier($alias a)
+
+// If type is struct returns all declarations inside struct including:
+// functions, variables, enums, aliases, struct declarations etc.
+// If type is enum returns all enum members
+$alias[] $getMembers($type type)
+$alias[] $getStructMembersVariables($type type)
+$alias[] $getStructMembersMethods($type type)
 ```
 
 ### Using meta types in CTFE
@@ -648,18 +667,18 @@ $type some_type = 42; // Error: 42 is not a type
 Defining custom predicates on types:
 
 ```D
-    bool isInteger($type type) {
-        return type == u8
-            || type == i8
-            || type == u16
-            || type == i16
-            || type == u32
-            || type == i32
-            || type == u64
-            || type == i64;
-    }
-    #assert(isInteger(i32));
-    #assert(!isInteger(bool));
+bool isInteger($type type) {
+    return type == u8
+        || type == i8
+        || type == u16
+        || type == i16
+        || type == u32
+        || type == i32
+        || type == u64
+        || type == i64;
+}
+#assert(isInteger(i32));
+#assert(!isInteger(bool));
 ```
 
 Selecting function depending on argument type:
