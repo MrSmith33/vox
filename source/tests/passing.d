@@ -5838,3 +5838,12 @@ test261.vx:4:35: Error: `e` has no member `offsetof`
 test261.vx:5:37: Error: `e` has no member `offsetof`
 test261.vx:6:35: Error: `u8` has no member `offsetof`
 };
+
+
+@TestInfo()
+immutable test262 = q{--- test262.vx
+	// bug Type [2 x {i32, i32, i32, i32}] of size 32 cannot be stored in a register
+	// caused by generating load instead of load_aggregate for arrays
+	struct Color { i32 r; i32 g; i32 b; i32 a; }
+	Color[2] get() { Color[2] c; return c; }
+};

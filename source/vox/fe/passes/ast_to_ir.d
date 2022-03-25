@@ -382,7 +382,7 @@ struct ExprValue
 				// those are already a pointer
 				IrIndex resultType = c.types.getPointerBaseType(gen.ir.getValueType(c, source));
 				ExtraInstrArgs extra = {type : resultType};
-				if (resultType.isTypeStruct)
+				if (resultType.isTypeAggregate)
 					return gen.builder.emitInstr!(IrOpcode.load_aggregate)(currentBlock, extra, source).result;
 				else
 				{
