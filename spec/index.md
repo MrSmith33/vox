@@ -435,32 +435,32 @@ Static if evaluates `<expr>` at compile time, and `<expr>` is true `#if` is repl
 `#if` can appear both as a declaration inside declaration scope (module or struct) and inside function body as a statement.
 
 Syntax:
-```D
-    #if(<expr>) <then_stmt>
-    #if(<expr>) <then_stmt> else <else_stmt>
-```
+  ```D
+  #if(<expr>) <then_stmt>
+  #if(<expr>) <then_stmt> else <else_stmt>
+  ```
 
 Examples:
-```D
-    enum debug_cond = true;
-    
-    #if(debug_cond) { // Module scope
-        i32 debug_counter = 0; // Conditionally declared global variable
-    }
-    
-    struct S {
-        #if(debug_cond) // Struct scope
-            u8[] debug_buffer; // Conditionally declared struct member
-    }
-    
-    void fun()
-    {
-        // Condition inside function body
-        #if(debug_cond) print("debug mode");
-        else #if(debug_cond2) print("debug mode 2"); // When chaining #if must be used each time.
-        else print("no debug mode");
-    }
-```
+  ```D
+  enum debug_cond = true;
+  
+  #if(debug_cond) { // Module scope
+      i32 debug_counter = 0; // Conditionally declared global variable
+  }
+  
+  struct S {
+      #if(debug_cond) // Struct scope
+          u8[] debug_buffer; // Conditionally declared struct member
+  }
+  
+  void fun()
+  {
+      // Condition inside function body
+      #if(debug_cond) print("debug mode");
+      else #if(debug_cond2) print("debug mode 2"); // When chaining #if must be used each time.
+      else print("no debug mode");
+  }
+  ```
 
 ### \#version
 * Behaves in the same way as `#if`, but instead of an expression accepts one of the predefined identifiers. If the version identifier is defined it will evaluate to `true`.
