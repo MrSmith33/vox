@@ -131,6 +131,14 @@ IrIndex eval_builtin_member(BuiltinId builtin, AstIndex obj, TokenIndex loc, Com
 		case type_sizeof:
 			SizeAndAlignment sizealign = objType.require_type_size(c);
 			return c.constants.add(makeIrType(IrBasicType.i64), sizealign.size);
+		case type_offsetof:
+			auto member = obj.get!MemberExprNode(c);
+			IrIndex irType = member.aggregate.gen_ir_type(c);
+			c.assertf(irType.isTypeStruct, "%s", irType);
+			IrTypeStructMember[] members = c.types.get!IrTypeStruct(irType).members;
+			uint memberIndex = member.memberIndex(c);
+			c.assertf(members.length > memberIndex, "member index (%s) out of bounds (%s)", memberIndex, members.length);
+			return c.constants.add(makeIrType(IrBasicType.i64), members[memberIndex].offset, );
 		default:
 			c.unrecoverable_error(loc,
 				"Cannot access .%s member of %s while in CTFE",

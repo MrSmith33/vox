@@ -5754,3 +5754,87 @@ immutable test256 = `--- test256.vx
 
 	#if(!VAL) struct A {}
 `;
+
+@TestInfo(&tester257)
+immutable test257 = q{--- test257.vx
+	// offsetof
+	struct Color { u8 r; u8 g; u8 b; u8 a; }
+
+	u64 offsetof_r() { return Color.r.offsetof; }
+	u64 offsetof_g() { return Color.g.offsetof; }
+	u64 offsetof_b() { return Color.b.offsetof; }
+	u64 offsetof_a() { return Color.a.offsetof; }
+};
+void tester257(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("offsetof_r")() == 0);
+	assert(ctx.getFunctionPtr!(ulong)("offsetof_g")() == 1);
+	assert(ctx.getFunctionPtr!(ulong)("offsetof_b")() == 2);
+	assert(ctx.getFunctionPtr!(ulong)("offsetof_a")() == 3);
+}
+
+
+@TestInfo()
+immutable test258 = q{--- test258.vx
+	// offsetof only applies to `type.member`, not `instance.member`
+	struct Color { u8 r; u8 g; u8 b; u8 a; }
+
+	u64 offsetof_a(Color c) { return c.offsetof; }
+--- <error>
+test258.vx:4:36: Error: `Color` has no member `offsetof`
+};
+
+
+@TestInfo()
+immutable test259 = q{--- test259.vx
+	// offsetof should not work on non-struct types
+	enum a;
+	enum b {m}
+	enum test_1 = a.offsetof;
+	enum test_2 = u8.offsetof;
+	enum test_3 = b.m.offsetof;
+--- <error>
+test259.vx:4:17: Error: `a` has no member `offsetof`
+test259.vx:5:18: Error: `u8` has no member `offsetof`
+test259.vx:6:19: Error: `b` has no member `offsetof`
+};
+
+
+@TestInfo(&tester260)
+immutable test260 = q{--- test260.vx
+	// offsetof with non-static members
+	struct Color {
+		u8 r;
+		enum e;
+		u8 g;
+		alias e1 = e;
+		u8 b;
+		u8 a;
+	}
+
+	u64 offsetof_r() { return Color.r.offsetof; }
+	u64 offsetof_g() { return Color.g.offsetof; }
+	u64 offsetof_b() { return Color.b.offsetof; }
+	u64 offsetof_a() { return Color.a.offsetof; }
+	//u64 offsetof_e() { return Color.e.offsetof; }
+};
+void tester260(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(ulong)("offsetof_r")() == 0);
+	assert(ctx.getFunctionPtr!(ulong)("offsetof_g")() == 1);
+	assert(ctx.getFunctionPtr!(ulong)("offsetof_b")() == 2);
+	assert(ctx.getFunctionPtr!(ulong)("offsetof_a")() == 3);
+}
+
+
+@TestInfo()
+immutable test261 = q{--- test261.vx
+	// offsetof only applies to non-static memebers
+	struct Color { enum e; alias e1 = e; @static u8 g; }
+
+	u64 offsetof_e() { return Color.e.offsetof; }
+	u64 offsetof_e1() { return Color.e1.offsetof; }
+	u64 offsetof_g() { return Color.g.offsetof; }
+--- <error>
+test261.vx:4:35: Error: `e` has no member `offsetof`
+test261.vx:5:37: Error: `e` has no member `offsetof`
+test261.vx:6:35: Error: `u8` has no member `offsetof`
+};

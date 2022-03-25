@@ -14,7 +14,8 @@ enum BuiltinId : ubyte {
 	@("ptr")    slice_ptr,
 	@("length") array_length,
 	@("ptr")    array_ptr,
-	@("sizeof") type_sizeof
+	@("sizeof") type_sizeof,
+	@("offsetof") type_offsetof,
 }
 
 immutable string[] builtinIdStrings = gatherEnumStrings!BuiltinId();

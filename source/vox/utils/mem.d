@@ -73,7 +73,7 @@ version(Posix)
 }
 else version(Windows)
 {
-	import core.sys.windows.windows :
+	import vox.utils.windows :
 		FlushInstructionCache, GetLastError, GetCurrentProcess,
 		VirtualAlloc, VirtualFree, VirtualProtect,
 		MEM_COMMIT, PAGE_READWRITE, PAGE_READONLY, MEM_RELEASE, PAGE_EXECUTE_READWRITE, MEM_RESERVE, PAGE_EXECUTE;
@@ -137,8 +137,8 @@ else version(Windows)
 	void testAdresses()
 	{
 		import std.stdio;
-		import std.windows.syserror;
-		import core.sys.windows.windows;
+		import std.windows.syserror : sysErrorString;
+		import vox.utils.windows : VirtualAlloc, VirtualFree, GetLastError, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE;
 		size_t successful;
 		size_t failed;
 		size_t bytes = PAGE_SIZE * 1024;

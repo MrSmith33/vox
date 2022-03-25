@@ -139,7 +139,7 @@ Benchmarking:
 Debug CLI build:
 
 `dmd -i -g -m64 -version=cli main.d -of=vox.exe`
-    
+
 Release CLI build:
 
 `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -i main.d -of=vox.exe`
@@ -152,7 +152,7 @@ vox_instrumented
 ldc-profdata merge default.profraw -output vox.profdata
 ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -fprofile-instr-use=vox.profdata -i main.d -of=vox.exe
 ```
-  
+
 # Using Commandline interface
 
 ## Getting help

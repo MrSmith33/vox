@@ -127,7 +127,7 @@ struct Arena(T)
 		}
 
 		version(Windows) {
-			import core.sys.windows.windows : VirtualAlloc, MEM_COMMIT, PAGE_READWRITE;
+			import vox.utils.windows : VirtualAlloc, MEM_COMMIT, PAGE_READWRITE;
 			void* result = VirtualAlloc(cast(ubyte*)bufPtr + _committedBytes, bytesToCommit, MEM_COMMIT, PAGE_READWRITE);
 			if (result is null) assert(false, "Cannot commit more bytes");
 		} else version(Posix) {

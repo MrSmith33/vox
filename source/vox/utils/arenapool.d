@@ -35,7 +35,7 @@ struct ArenaPool
 			ubyte* ptr = cast(ubyte*)mmap(null, reservedBytes, PROT_READ | PROT_WRITE, flags, -1, 0);
 			assert(ptr != MAP_FAILED, format("mmap failed, errno %s, %s: requested %s bytes", errno, strerror(errno).fromStringz, size));
 		} else version(Windows) {
-			import core.sys.windows.windows : VirtualAlloc, MEM_RESERVE, PAGE_NOACCESS;
+			import vox.utils.windows : VirtualAlloc, MEM_RESERVE, PAGE_NOACCESS;
 			ubyte* ptr = cast(ubyte*)VirtualAlloc(null, reservedBytes, MEM_RESERVE, PAGE_NOACCESS);
 			assert(ptr !is null, format("VirtualAlloc failed: requested %s bytes", size));
 		}
@@ -56,7 +56,7 @@ struct ArenaPool
 			int res = munmap(buffer.ptr, buffer.length);
 			assert(res == 0, format("munmap(%X, %s) failed, %s, %s", buffer.ptr, buffer.length, errno, strerror(errno).fromStringz));
 		} else version(Windows) {
-			import core.sys.windows.windows : VirtualFree, MEM_DECOMMIT;
+			import vox.utils.windows : VirtualFree, MEM_DECOMMIT;
 			int res = VirtualFree(buffer.ptr, buffer.length, MEM_DECOMMIT);
 			assert(res != 0, "VirtualFree failed");
 		}

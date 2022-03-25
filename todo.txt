@@ -80,6 +80,7 @@
 		+ Call through type name `S.staticMethod()`
 		+ forbid access from @static methods to non-@static members
 	+ forbid @static parameters
+	- Calling static methods via `Type.method` syntax
 
 - char literal / type
 	+ literal (for now generates int literal expression)
@@ -176,6 +177,13 @@ o dll linking
 	- enum type
 - constant folding << >> >>> shifts needs to know type of left operand to mask the shift size
 - Check that constants on either side of every instruction is correctly lowered to mov/load when needed
+
+[Built-ins]
++ sizeof
+- offsetof
+	+ works on non-static members
+	+ errors on non-static members such as enum, alias, static memeber
+	- incorrect error for method and static method
 
 
 [CLI]

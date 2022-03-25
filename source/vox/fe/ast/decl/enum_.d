@@ -154,7 +154,9 @@ IrIndex gen_init_value_enum_member(EnumMemberDecl* node, CompilationContext* c) 
 		} else {
 			require_type_check(node.initializer, c);
 			node.type = get_expr_type(node.initializer, c);
-			node.initValue = eval_static_expr(node.initializer, c);
+			if (node.type != CommonAstNodes.type_error) {
+				node.initValue = eval_static_expr(node.initializer, c);
+			}
 		}
 	}
 	return node.initValue;

@@ -95,6 +95,7 @@ struct TypeNode
 		return astType == AstType.type_basic &&
 		(as_basic.isAlias || as_basic.isType); }
 	bool isAlias() { return astType == AstType.type_basic && as_basic.isAlias; }
+	bool isTypeType() { return astType == AstType.type_basic && as_basic.isType; }
 	bool isEnum() { return astType == AstType.decl_enum; }
 
 	IsSigned isSigned() {

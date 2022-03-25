@@ -1010,6 +1010,7 @@ struct CompilationContext
 		makeBuiltin(CommonAstNodes.builtin_array_length, CommonIds.id_length, BuiltinId.array_length);
 		makeBuiltin(CommonAstNodes.builtin_array_ptr, CommonIds.id_ptr, BuiltinId.array_ptr);
 		makeBuiltin(CommonAstNodes.builtin_sizeof, CommonIds.id_sizeof, BuiltinId.type_sizeof);
+		makeBuiltin(CommonAstNodes.builtin_offsetof, CommonIds.id_offsetof, BuiltinId.type_offsetof);
 		// CommonAstNodes end
 
 		i8PtrType = types.appendPtr(makeIrType(IrBasicType.i8));
@@ -1162,10 +1163,11 @@ enum CommonAstNodes : AstIndex
 	builtin_array_length     = AstIndex(first_builtin_member.storageIndex + 4*slotsPerNode!BuiltinNode),
 	builtin_array_ptr        = AstIndex(first_builtin_member.storageIndex + 5*slotsPerNode!BuiltinNode),
 	builtin_sizeof           = AstIndex(first_builtin_member.storageIndex + 6*slotsPerNode!BuiltinNode),
+	builtin_offsetof         = AstIndex(first_builtin_member.storageIndex + 7*slotsPerNode!BuiltinNode),
 	// builtin nodes end
 
 	// builtin functions
-	first_builtin_func       = AstIndex(first_builtin_member.storageIndex + 7*slotsPerNode!BuiltinNode + slotsPerNode!VariableDeclNode + slotsPerNode!FunctionSignatureNode),
+	first_builtin_func       = AstIndex(first_builtin_member.storageIndex + 8*slotsPerNode!BuiltinNode + slotsPerNode!VariableDeclNode + slotsPerNode!FunctionSignatureNode),
 
 	compile_error            = AstIndex(first_builtin_func.storageIndex + 0*BUILTIN_FUNC_SLOTS),
 	is_slice                 = AstIndex(first_builtin_func.storageIndex + 1*BUILTIN_FUNC_SLOTS),
@@ -1201,6 +1203,7 @@ private immutable AstIndex[BuiltinId.max + 1] builtinsArray = [
 	CommonAstNodes.builtin_array_length,
 	CommonAstNodes.builtin_array_ptr,
 	CommonAstNodes.builtin_sizeof,
+	CommonAstNodes.builtin_offsetof,
 ];
 immutable AstIndex[5] builtinFuncsArray = [
 	CommonAstNodes.compile_error,

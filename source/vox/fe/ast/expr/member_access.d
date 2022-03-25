@@ -168,7 +168,7 @@ LookupResult tryUFCSCall(ref AstIndex callIndex, MemberExprNode* memberNode, ref
 		return LookupResult.success;
 	}
 
-	c.internal_error(memberNode.loc, "call of %s is not supported", ufcsAstType);
+	return LookupResult.failure;
 }
 
 void createMethodCall(ref AstIndex callIndex, MemberExprNode* memberNode, AstIndex member, ref TypeCheckState state)
@@ -231,6 +231,25 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 		expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.type_sizeof), 0, c);
 		expr.type = CommonAstNodes.type_u64;
 		return LookupResult.success;
+	}
+
+	if (memberId == CommonIds.id_offsetof)
+	{
+		if (expr.aggregate.astType(c) == AstType.expr_member)
+		{
+			auto innerMember = expr.aggregate.get!MemberExprNode(c);
+			TypeNode* objType2 = innerMember.aggregate.get_type(c);
+			if (objType2.isStruct)
+			{
+				if (cast(MemberSubType)innerMember.subType == MemberSubType.struct_member)
+				{
+					expr.resolve(MemberSubType.builtin_member, c.builtinNodes(BuiltinId.type_offsetof), 0, c);
+					expr.type = CommonAstNodes.type_u64;
+					return LookupResult.success;
+				}
+			}
+		}
+		return LookupResult.error;
 	}
 
 	// Allow member access for pointers to structs
@@ -366,7 +385,12 @@ LookupResult lookupStructMember(ref AstIndex nodeIndex, MemberExprNode* node, St
 		case AstType.decl_enum:
 			node.resolve(MemberSubType.static_struct_member, entity, 0, c);
 			node.type = entity.get_node_type(c);
-			c.internal_error("member enums are not implemented");
+			return LookupResult.success;
+
+		case AstType.decl_alias:
+			node.resolve(MemberSubType.static_struct_member, entity, 0, c);
+			node.type = entity.get_node_type(c);
+			return LookupResult.success;
 
 		case AstType.decl_enum_member:
 			node.resolve(MemberSubType.enum_member, entity, 0, c);

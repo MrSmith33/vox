@@ -3,16 +3,19 @@
 <!-- MarkdownTOC autolink="true" markdown_preview="github" -->
 
 - [Types](#types)
-    - [Basic types](#basic-types)
-    - [Enums](#enums)
-    - [Pointers](#pointers)
-    - [Slices](#slices)
-    - [Static arrays](#static-arrays)
-    - [Structs](#structs)
-    - [Function type](#function-type)
+  - [Basic types](#basic-types)
+  - [Enums](#enums)
+  - [Pointers](#pointers)
+  - [Slices](#slices)
+  - [Static arrays](#static-arrays)
+  - [Structs](#structs)
+  - [Function type](#function-type)
+- [Properties](#properties)
+  - [.sizeof property](#sizeof-property)
+  - [.offsetof property](#offsetof-property)
 - [Functions](#functions)
-    - [External functions](#external-functions)
-    - [Calls](#calls)
+  - [External functions](#external-functions)
+  - [Calls](#calls)
 - [Attributes](#attributes)
 - [assert\(, \);](#assert-)
 - [if\(\)](#if)
@@ -25,7 +28,7 @@
 - [assert\($baseOf(i8\[10\]\) == i8);](#assertbaseofi810--i8)
 - [assert\(isInteger(i32\));](#assertisintegeri32)
 - [assert\(!isInteger(bool\));](#assertisintegerbool)
-    - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
+  - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
 
 <!-- /MarkdownTOC -->
 
@@ -168,6 +171,45 @@ i32 user() {
     return callFunc(&sum, 10, 40);
 }
 ```
+
+# Properties
+
+## .sizeof property
+
+Can be applied to any type. Returns number of bytes the type takes in memory.
+
+```D
+struct Color {
+    u8 r;
+    u8 g;
+    u8 b;
+    u8 a;
+}
+
+Color.sizeof // yields 4
+i32.sizeof // yields 4
+u8.sizeof // yields 1
+u8[].sizeof // yields 16 (on 64 bit system)
+```
+
+## .offsetof property
+
+Can be used on non-static member variables of struct/union types.
+
+```D
+struct Color {
+    u8 r;
+    u8 g;
+    u8 b;
+    u8 a;
+}
+
+Color.r.offsetof // yields 0
+Color.g.offsetof // yields 1
+Color.b.offsetof // yields 2
+Color.a.offsetof // yields 3
+```
+
 
 # Functions
 
