@@ -149,19 +149,18 @@ CommonTypeResult common_type_basic(BasicTypeNode* node, AstIndex typeBIndex, Ast
 TypeConvResKind type_conv_basic(BasicTypeNode* node, AstIndex typeBIndex, ref AstIndex expr, CompilationContext* c)
 {
 	BasicType fromTypeBasic = node.basicType;
-	TypeNode* typeB = typeBIndex.get_type(c);
+	TypeNode* typeTo = typeBIndex.get_type(c);
 
-	switch(typeB.astType) with(AstType)
+	switch(typeTo.astType) with(AstType)
 	{
 		case type_basic:
-			auto res = basicConversionKind[fromTypeBasic][typeB.as_basic.basicType];
+			auto res = basicConversionKind[fromTypeBasic][typeTo.as_basic.basicType];
 			auto exprNode = expr.get_node(c);
 			switch(exprNode.astType) {
 				case AstType.literal_int:
-					if (res.canConvertImplicitly) return TypeConvResKind.override_expr_type_i;
-					if (typeB.isInteger)
+					if (typeTo.isInteger)
 					{
-						ubyte toSize = integerSize(typeB.as_basic.basicType);
+						ubyte toSize = integerSize(typeTo.as_basic.basicType);
 						auto lit = exprNode.as!IntLiteralExprNode(c);
 						if (lit.isSigned) {
 							if (numSignedBytesForInt(lit.value) <= toSize) return TypeConvResKind.override_expr_type_i;
@@ -171,7 +170,7 @@ TypeConvResKind type_conv_basic(BasicTypeNode* node, AstIndex typeBIndex, ref As
 					}
 					return res;
 				case AstType.literal_float:
-					if (typeB.isFloat) return TypeConvResKind.ff_i;
+					if (typeTo.isFloat) return TypeConvResKind.ff_i;
 					return res;
 				default: return res;
 			}
@@ -183,9 +182,9 @@ TypeConvResKind type_conv_basic(BasicTypeNode* node, AstIndex typeBIndex, ref As
 			if (fromTypeBasic == BasicType.t_null) return TypeConvResKind.override_expr_type_i;
 			return TypeConvResKind.fail;
 		case decl_enum:
-			auto res1 = type_conv_basic(node, typeB.as_enum.memberType, expr, c);
+			auto res1 = type_conv_basic(node, typeTo.as_enum.memberType, expr, c);
 			auto res2 = res1.allowExplicitOnly;
-			//writefln("type_conv_basic %s %s %s %s", fromTypeBasic, printer(typeB.as_enum.memberType, c), res1, res2);
+			//writefln("type_conv_basic %s %s %s %s", fromTypeBasic, printer(typeTo.as_enum.memberType, c), res1, res2);
 			return res2;
 		default: return TypeConvResKind.fail;
 	}

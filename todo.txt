@@ -108,6 +108,7 @@
 		+ non-zero
 		+ constants as instruction arguments need to be lowered to movs
 	+ constant folding
+	+ int literal to initialize float
 	- CTFE
 	- xchg
 	+ save/restore of callee saved xmm registers need to have proper size
@@ -140,6 +141,8 @@
 		+ ptr[a..b] -> slice(b-a, ptr+a)
 	- slice assign: slice[] = 42; and slice[] = slice2;
 	+ static array to slice (implicit conversion, slicing)
+	- static array to slice (explicit conversion with [], slicing)
+	- void[] -> T[]
 - context format/writefln
 
 - foreach

@@ -5847,3 +5847,21 @@ immutable test262 = q{--- test262.vx
 	struct Color { i32 r; i32 g; i32 b; i32 a; }
 	Color[2] get() { Color[2] c; return c; }
 };
+
+
+@TestInfo(&tester266)
+immutable test266 = q{--- test266.vx
+	// using int literals to initialize floats
+	f32 get_f32() {
+		f32 val = 1;
+		return val;
+	}
+	f64 get_f64() {
+		f64 val = 1;
+		return val;
+	}
+};
+void tester266(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(float)("get_f32")() == 1.0f);
+	assert(ctx.getFunctionPtr!(double)("get_f64")() == 1.0);
+}
