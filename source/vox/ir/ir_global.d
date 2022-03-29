@@ -42,6 +42,59 @@ struct IrGlobalStorage
 	Arena!IrGlobal buffer;
 	Arena!ubyte initializerBuffer;
 
+	private IrIndex f32_sign_bit_constant;
+	private IrIndex f64_sign_bit_constant;
+
+	IrIndex get_or_add_f32_sign_bit_constant(CompilationContext* c) {
+		if (f32_sign_bit_constant.isDefined) return f32_sign_bit_constant;
+
+		IrIndex type = makeIrType(IrBasicType.f32);
+		ubyte[16] buf;
+		(cast(uint[])buf[])[] = 0x80000000;
+
+		f32_sign_bit_constant = add_float_sign_bit_constant(type, buf[], c);
+
+		return f32_sign_bit_constant;
+	}
+
+	IrIndex get_or_add_f64_sign_bit_constant(CompilationContext* c) {
+		if (f64_sign_bit_constant.isDefined) return f64_sign_bit_constant;
+
+		IrIndex type = makeIrType(IrBasicType.f64);
+		ubyte[16] buf;
+		(cast(ulong[])buf[])[] = 0x8000000000000000;
+
+		f64_sign_bit_constant = add_float_sign_bit_constant(type, buf[], c);
+
+		return f64_sign_bit_constant;
+	}
+
+	// Creates a bit pattern constant that is used to flip a bit sign of xmm register
+	private IrIndex add_float_sign_bit_constant(IrIndex type, ubyte[] initializer, CompilationContext* c) {
+		IrIndex globalIndex = add();
+		IrGlobal* global = get(globalIndex);
+		global.type = c.types.appendPtr(type);
+
+		ObjectSymbol sym = {
+			kind : ObjectSymbolKind.isLocal,
+			sectionIndex : c.builtinSections[ObjectSectionType.ro_data],
+			moduleIndex : c.builtinModuleIndex,
+			flags : ObjectSymbolFlags.isFloat,
+			id : c.idMap.getOrRegNoDup(c, ":float"),
+		};
+		global.objectSymIndex = c.objSymTab.addSymbol(sym);
+
+		ObjectSymbol* globalSym = c.objSymTab.getSymbol(global.objectSymIndex);
+		globalSym.alignmentPower = 4;
+
+		SizeAndAlignment valueSizealign = c.types.typeSizeAndAlignment(type);
+		ubyte[] buffer = c.globals.allocateInitializer(16);
+		buffer[] = initializer;
+		globalSym.setInitializer(buffer);
+
+		return globalIndex;
+	}
+
 	///
 	IrIndex add()
 	{

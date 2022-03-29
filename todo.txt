@@ -92,6 +92,9 @@
 	+ windows ABI
 	+ sysv ABI
 	+ +-*/
+		+ var op var
+		- const op var
+	+ unary minus
 	+ < > <= >= == !=
 	+ passing xmm args
 	+ mixed type args

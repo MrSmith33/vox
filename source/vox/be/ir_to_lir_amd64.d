@@ -535,6 +535,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 				case IrOpcode.umul, IrOpcode.smul: emitLirInstr!(Amd64Opcode.imul); break;
 				case IrOpcode.not: emitLirInstr!(Amd64Opcode.not); break;
 				case IrOpcode.neg: emitLirInstr!(Amd64Opcode.neg); break;
+				case IrOpcode.fneg: emitLirInstr!(Amd64Opcode.fneg); break;
 				case IrOpcode.and: emitLirInstr!(Amd64Opcode.and); break;
 				case IrOpcode.or: emitLirInstr!(Amd64Opcode.or); break;
 				case IrOpcode.xor: emitLirInstr!(Amd64Opcode.xor); break;

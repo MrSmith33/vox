@@ -472,6 +472,8 @@ enum Amd64Opcode : ushort {
 	@_ii(1,IFLG.hasResult|IFLG.isResultInDst) not,
 	@_ii(1,IFLG.hasResult|IFLG.isResultInDst) neg,
 
+	@_ii(1,IFLG.hasResult|IFLG.isResultInDst) fneg,
+
 	@_ii(2) cmp,
 	@_ii(1) test,
 

@@ -108,8 +108,13 @@ void type_check_unary_op(UnaryExprNode* node, ref TypeCheckState state)
 			autoconvToBool(node.child, c);
 			node.type = CommonAstNodes.type_bool;
 			break;
-		case minus:
+		case GENERIC_MINUS:
 			node.type = child.type;
+			TypeNode* nodeType = node.type.get_type(c);
+			if (nodeType.isFloat)
+				node.op = UnOp.FLT_MINUS;
+			else
+				node.op = UnOp.INT_MINUS;
 			break;
 		case preIncrement, postIncrement, preDecrement, postDecrement:
 			child.flags |= AstFlags.isLvalue;
@@ -162,13 +167,17 @@ ExprValue ir_gen_expr_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrL
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return ExprValue(result);
 
-		case minus:
+		case FLT_MINUS, INT_MINUS:
 			IrLabel afterChild = IrLabel(currentBlock);
 			ExprValue lval = ir_gen_expr(gen, u.child, currentBlock, afterChild);
 			currentBlock = afterChild.blockIndex;
 			IrIndex rval = lval.rvalue(gen, u.loc, currentBlock);
 			ExtraInstrArgs extra = {type : u.type.gen_ir_type(c), argSize : u.type.typeArgSize(c) };
-			IrIndex result = gen.builder.emitInstr!(IrOpcode.neg)(currentBlock, extra, rval).result;
+			IrIndex result;
+			if (u.op == FLT_MINUS)
+				result = gen.builder.emitInstr!(IrOpcode.fneg)(currentBlock, extra, rval).result;
+			else
+				result = gen.builder.emitInstr!(IrOpcode.neg)(currentBlock, extra, rval).result;
 			gen.builder.addJumpToLabel(currentBlock, nextStmt);
 			return ExprValue(result);
 
@@ -253,7 +262,10 @@ void ir_gen_branch_unary_op(ref IrGenState gen, IrIndex currentBlock, ref IrLabe
 
 enum UnOp : ubyte {
 	plus, // +
-	minus, // -
+	GENERIC_MINUS, // -
+	INT_MINUS,
+	FLT_MINUS,
+
 	logicalNot, // !
 	bitwiseNot, // ~
 	deref, // *

@@ -1972,7 +1972,7 @@ AstIndex nullPrefixOp(ref Parser p, PreferType preferType, Token token, int rbp)
 				(cast(FloatLiteralExprNode*)rightNode).negate(token.index, *p.context);
 				return right;
 			}
-			op = UnOp.minus;
+			op = UnOp.GENERIC_MINUS;
 			break;
 		case NOT: op = UnOp.logicalNot; break;
 		case TILDE: op = UnOp.bitwiseNot; break;

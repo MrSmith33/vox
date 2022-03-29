@@ -501,6 +501,25 @@ struct CodeEmitter
 						Register dst = indexToRegister(instrHeader.arg(lir, 0));
 						gen.neg(dst, cast(ArgType)instrHeader.arg(lir, 0).physRegSize);
 						break;
+					case Amd64Opcode.fneg:
+						IrIndex arg0 = instrHeader.arg(lir, 0);
+						context.assertf(arg0.physRegClass == AMD64_REG_CLASS.XMM, "incorrect class %s, xmm expected", arg0.physRegClass);
+						switch(arg0.physRegSize) {
+							case IrArgSize.size32:
+								MemAddress addr = memAddrRipDisp32(0);
+								gen.xorps(indexToRegister(arg0), addr);
+								IrIndex sign_bit_global = context.globals.get_or_add_f32_sign_bit_constant(context);
+								addRefTo(sign_bit_global);
+								break;
+							case IrArgSize.size64:
+								MemAddress addr = memAddrRipDisp32(0);
+								gen.xorpd(indexToRegister(arg0), addr);
+								IrIndex sign_bit_global = context.globals.get_or_add_f64_sign_bit_constant(context);
+								addRefTo(sign_bit_global);
+								break;
+							default: context.internal_error("fneg %s", arg0.physRegSize);
+						}
+						break;
 					case Amd64Opcode.call:
 						IrIndex calleeIndex = instrHeader.arg(lir, 0);
 

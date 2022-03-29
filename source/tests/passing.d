@@ -3811,8 +3811,20 @@ immutable test174 = q{--- test174
 };
 
 
-@TestInfo(&tester175)
-immutable test175 = q{--- test175
+@TestInfo(&tester_float_1)
+immutable test_float_1 = q{--- test_float_1.vx
+	// floats negation
+	f32 neg_f32(f32 n) { return -n; }
+	f64 neg_f64(f64 n) { return -n; }
+};
+void tester_float_1(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(float, float)("neg_f32")(2) == -2);
+	assert(ctx.getFunctionPtr!(double, double)("neg_f64")(2) == -2);
+}
+
+
+@TestInfo(&tester_float_2)
+immutable test_float_2 = q{--- test_float_2
 	// floats: arithmetics and comparisons
 	f32 f32_add(f32 a, f32 b) { return a + b; }
 	f64 f64_add(f64 a, f64 b) { return a + b; }
@@ -3835,7 +3847,7 @@ immutable test175 = q{--- test175
 	bool f32_ge(f32 a, f32 b) { return a >= b; }
 	bool f64_ge(f64 a, f64 b) { return a >= b; }
 };
-void tester175(ref TestContext ctx) {
+void tester_float_2(ref TestContext ctx) {
 	auto f32_add = ctx.getFunctionPtr!(float, float, float)("f32_add");
 	assert(f32_add(42, 100) == 42f + 100f);
 	auto f64_add = ctx.getFunctionPtr!(double, double, double)("f64_add");
@@ -3923,9 +3935,43 @@ void tester175(ref TestContext ctx) {
 	assert(f64_ge(-100, -42) == (-100.0 >= -42.0));
 }
 
+/*
+@TestInfo(&tester_float_3)
+immutable test_float_3 = q{--- test_float_3.vx
+	// floats compare with literal
+	bool f32_lt_l(f32 b) { return 0  < b; }
+	bool f64_lt_l(f64 b) { return 0  < b; }
+	bool f32_le_l(f32 b) { return 0 <= b; }
+	bool f64_le_l(f64 b) { return 0 <= b; }
+	bool f32_eq_l(f32 b) { return 0 == b; }
+	bool f64_eq_l(f64 b) { return 0 == b; }
+	bool f32_ne_l(f32 b) { return 0 != b; }
+	bool f64_ne_l(f64 b) { return 0 != b; }
+	bool f32_gt_l(f32 b) { return 0  > b; }
+	bool f64_gt_l(f64 b) { return 0  > b; }
+	bool f32_ge_l(f32 b) { return 0 >= b; }
+	bool f64_ge_l(f64 b) { return 0 >= b; }
 
-@TestInfo(&tester176)
-immutable test176 = q{--- test176
+	bool f32_lt_r(f32 a) { return a  < 0; }
+	bool f64_lt_r(f64 a) { return a  < 0; }
+	bool f32_le_r(f32 a) { return a <= 0; }
+	bool f64_le_r(f64 a) { return a <= 0; }
+	bool f32_eq_r(f32 a) { return a == 0; }
+	bool f64_eq_r(f64 a) { return a == 0; }
+	bool f32_ne_r(f32 a) { return a != 0; }
+	bool f64_ne_r(f64 a) { return a != 0; }
+	bool f32_gt_r(f32 a) { return a  > 0; }
+	bool f64_gt_r(f64 a) { return a  > 0; }
+	bool f32_ge_r(f32 a) { return a >= 0; }
+	bool f64_ge_r(f64 a) { return a >= 0; }
+};
+void tester_float_3(ref TestContext ctx) {
+
+}*/
+
+
+@TestInfo(&tester_float_4)
+immutable test_float_4 = q{--- test_float_4
 	// floats: argument passing via stack and registers
 	f32 f32_add(f32 p1, f32 p2, f32 p3, f32 p4, f32 p5, f32 p6, f32 p7, f32 p8, f32 p9) {
 		return p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
@@ -3940,7 +3986,7 @@ immutable test176 = q{--- test176
 		return f64_add(p1, p2, p3, p4, p5, p6, p7, p8, p9);
 	}
 };
-void tester176(ref TestContext ctx) {
+void tester_float_4(ref TestContext ctx) {
 	auto f32_add = ctx.getFunctionPtr!(float, float, float, float, float, float, float, float, float, float)("f32_add");
 	assert(f32_add(1, 2, 3, 4, 5, 6, 7, 8, 9) == 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9);
 	auto f64_add = ctx.getFunctionPtr!(double, double, double, double, double, double, double, double, double, double)("f64_add");

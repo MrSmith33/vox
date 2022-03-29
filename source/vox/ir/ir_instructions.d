@@ -226,6 +226,10 @@ enum IrOpcode : ushort
 	/// Args: iNN a
 	/// Returns -a
 	@_ii(1, IFLG.hasResult) neg,
+	/// Float negation
+	/// Args: fNN a
+	/// Returns -a
+	@_ii(1, IFLG.hasResult) fneg,
 
 	/// Args: source value, target size is represented with argSize field
 	/// Currently is used as bitcast. Need clearer semantics
