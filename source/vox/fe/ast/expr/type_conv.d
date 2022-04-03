@@ -336,7 +336,8 @@ void ir_gen_branch_type_conv(ref IrGenState gen, IrIndex currentBlock, ref IrLab
 		from == makeIrType(IrBasicType.i8) ||
 		from == makeIrType(IrBasicType.i16) ||
 		from == makeIrType(IrBasicType.i32) ||
-		from == makeIrType(IrBasicType.i64))
+		from == makeIrType(IrBasicType.i64) ||
+		from.isTypePointer)
 	{
 		addUnaryBranch(gen, rval, currentBlock, trueExit, falseExit);
 		return;

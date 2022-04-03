@@ -5916,12 +5916,50 @@ void tester266(ref TestContext ctx) {
 @TestInfo(&tester267)
 immutable test267 = q{--- test267.vx
 	// implicit conversion of pointer to bool
+	bool null_to_bool() {
+		return null;
+	}
 	bool ptr_to_bool(void* ptr) {
 		return ptr;
+	}
+	bool u8_ptr_to_bool(u8* ptr) {
+		return ptr;
+	}
+	struct Handle_dummy; alias Handle = Handle_dummy*;
+	bool struct_ptr_to_bool(Handle ptr) {
+		return ptr;
+	}
+	u8 null_branch() {
+		if(null) return 42;
+		return 12;
+	}
+	u8 ptr_branch(void* ptr) {
+		if(ptr) return 42;
+		return 12;
+	}
+	u8 u8_ptr_branch(u8* ptr) {
+		if(ptr) return 42;
+		return 12;
+	}
+	u8 struct_ptr_branch(Handle ptr) {
+		if(ptr) return 42;
+		return 12;
 	}
 };
 void tester267(ref TestContext ctx) {
 	ubyte var;
+	assert(ctx.getFunctionPtr!(bool)("null_to_bool")() == false);
 	assert(ctx.getFunctionPtr!(bool, void*)("ptr_to_bool")(null) == false);
 	assert(ctx.getFunctionPtr!(bool, void*)("ptr_to_bool")(&var) == true);
+	assert(ctx.getFunctionPtr!(bool, void*)("u8_ptr_to_bool")(null) == false);
+	assert(ctx.getFunctionPtr!(bool, void*)("u8_ptr_to_bool")(&var) == true);
+	assert(ctx.getFunctionPtr!(bool, void*)("struct_ptr_to_bool")(null) == false);
+	assert(ctx.getFunctionPtr!(bool, void*)("struct_ptr_to_bool")(&var) == true);
+	assert(ctx.getFunctionPtr!(ubyte)("null_branch")() == 12);
+	assert(ctx.getFunctionPtr!(ubyte, void*)("ptr_branch")(null) == 12);
+	assert(ctx.getFunctionPtr!(ubyte, void*)("ptr_branch")(&var) == 42);
+	assert(ctx.getFunctionPtr!(ubyte, void*)("u8_ptr_branch")(null) == 12);
+	assert(ctx.getFunctionPtr!(ubyte, void*)("u8_ptr_branch")(&var) == 42);
+	assert(ctx.getFunctionPtr!(ubyte, void*)("struct_ptr_branch")(null) == 12);
+	assert(ctx.getFunctionPtr!(ubyte, void*)("struct_ptr_branch")(&var) == 42);
 }

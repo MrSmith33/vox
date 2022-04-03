@@ -743,7 +743,7 @@ void dumpSwitch(ref InstrPrintInfo p)
 
 void dumpUnBranch(ref InstrPrintInfo p)
 {
-	p.sink.putf("    if %s", unaryCondStrings[p.instrHeader.cond]);
+	p.sink.putf("    if%s", unaryCondStrings[p.instrHeader.cond]);
 	dumpArg(p.instrHeader.arg(p.ir, 0), p);
 	p.sink.put(" then ");
 	dumpBranchTargets(p);
