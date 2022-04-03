@@ -837,6 +837,8 @@ struct CodeEmitter
 						AsmOpParam param = AsmOpParam(AsmArgKind.REG, AsmArgKind.REG, AMD64OpRegular.xor, cast(ArgType)IrArgSize.size32);
 						gen.encodeRegular(argDst, argSrc, param);
 					} else if (dst.physRegClass == AMD64_REG_CLASS.XMM) {
+						// TODO: replace with pxor
+						// See: https://stackoverflow.com/questions/33666617/what-is-the-best-way-to-set-a-register-to-zero-in-x86-assembly-xor-mov-or-and
 						gen.xorps(dstReg, dstReg);
 					}
 				}

@@ -36,10 +36,7 @@
 	- #parameter(#type type, string name, type default_value, #alias[] attributes)
 	- #function(string name, #type return_type, #parameter[] parameters, #alias[] attributes)
 	- Need to print instance trace for errors inside template instance
-- attributes
-	+ @extern(syscall, <int>)
-	+ @extern(module, <module>)
-	- User Defined Attributes UDAs
+
 - CTFE
 	+ constant to mem
 	- mem to constant
@@ -60,13 +57,13 @@
 	+ #version
 	- #debug
 
-+ function pointer type <ret> function(<args>)
-	+ call by pointer
-	+ take address of function
-	- check member variable func ptr
 - overloading
 - named parameters
 
+[Attributes]
++ @extern(syscall, <int>)
++ @extern(module, <module>)
+- User Defined Attributes UDAs
 + @static
 	+ @static variables in the function body
 	+ @static variables in the struct
@@ -82,6 +79,30 @@
 	+ forbid @static parameters
 	- Calling static methods via `Type.method` syntax
 
+[Types]
++ integers
+	+ + -
+	+ pointer arithmetics
+		+ add/sub int to ptr
+		+ sub pointer of the same type
+		+ compare pointers
+		+ pre/post increment/decrement ptr
+	+ unary -
+	+ * / %
+	+ <<, >>, >>>
+	+ ~ | & ^
+	+ op=
+	+ v++ v-- ++v --v
+	- check conversions to bool
+- pointers
+	+ taking address
+	+ dereferencing
+	+ indexing
+	+ implicit conversion to bool
++ function pointer type <ret> function(<args>)
+	+ call by pointer
+	+ take address of function
+	- check member variable func ptr
 - char literal / type
 	+ literal (for now generates int literal expression)
 + escape sequences in string/char literals (\n)
@@ -116,6 +137,7 @@
 	- xchg
 	+ save/restore of callee saved xmm registers need to have proper size
 	- scratch spill slot is hardcoded to 64bits (maybe it is a good idea to take max of all sizes that is being put into the thing and update the size of the slot)
+	- check how conversions to bool work
 + union
 - struct
 	+ struct methods
@@ -131,7 +153,6 @@
 	+ detect all zero members and emit constantZero
 	+ separate func_pass_lower_aggregates pass
 	- empty structs need to be 1 byte in size
-+ pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 - array literal
 - slices (need better structs)
 	+ assign string literal
@@ -145,18 +166,23 @@
 	- slice assign: slice[] = 42; and slice[] = slice2;
 	+ static array to slice (implicit conversion, slicing)
 	- static array to slice (explicit conversion with [], slicing)
-	- void[] -> T[]
+	- casting between slice types
+		- void[] -> T[]
+	- check conversion to bool
+- ref 
+	- ref parameters
+	- ref in foreach
+	- this is ref in methods (it is ptr atm)
+
 - context format/writefln
++ pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
 
 - foreach
 	- over slice
 	- over static array
 	- over numeric range a..b
 	- over D style range
-- ref 
-	- ref parameters
-	- ref in foreach
-	- this is ref in methods (it is ptr atm)
+
 - member alias
 + switch
 	- exhaustive switch (aka final switch)
@@ -320,6 +346,8 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 - For stack to stack moves in move solver we always spill scratch register. Check if there is free register available.
 + Spilling into xmm registers
 - For syscalls we need to extend eax liveness range. It requires either having eax as an argument of syscall, or always pass function type in the instruction.
+- Add validation for the results of register allocator
+- Instead of rewriting all uses to point to physical register introduce a special IrValueKind to denote an allocated virtual register. Then each virtual register will have an array of locations, each use uses one of the locations. Locations can also track the range of instructions that they cover. This info can later be used for debug info. Maybe spill stack slots can also point to virtual register location.
 
 
 [Old / Done]
@@ -348,19 +376,6 @@ x don't store self-reference arguments in phi functions (we cannot alter order o
 + for loop
 + function signature IR type (needed to allow changing signature for ABI handling in IR to LIR pass)
 + multiple exported functions per test
-+ integer arithmetic operators
-	+ + -
-	+ pointer arithmetics
-		+ add/sub int to ptr
-		+ sub pointer of the same type
-		+ compare pointers
-		+ pre/post increment/decrement ptr
-	+ unary -
-	+ * / %
-	+ <<, >>, >>>
-	+ ~ | & ^
-	+ op=
-	+ v++ v-- ++v --v
 + true, false
 + || && !
 	+ ||

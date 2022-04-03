@@ -5911,3 +5911,17 @@ void tester266(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(float)("get_f32")() == 1.0f);
 	assert(ctx.getFunctionPtr!(double)("get_f64")() == 1.0);
 }
+
+
+@TestInfo(&tester267)
+immutable test267 = q{--- test267.vx
+	// implicit conversion of pointer to bool
+	bool ptr_to_bool(void* ptr) {
+		return ptr;
+	}
+};
+void tester267(ref TestContext ctx) {
+	ubyte var;
+	assert(ctx.getFunctionPtr!(bool, void*)("ptr_to_bool")(null) == false);
+	assert(ctx.getFunctionPtr!(bool, void*)("ptr_to_bool")(&var) == true);
+}

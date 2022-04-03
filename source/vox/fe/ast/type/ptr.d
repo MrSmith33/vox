@@ -85,6 +85,7 @@ TypeConvResKind type_conv_ptr(PtrTypeNode* node, AstIndex typeBIndex, ref AstInd
 		case type_basic:
 			auto toBasic = typeB.as_basic.basicType;
 			if (toBasic.isInteger) return TypeConvResKind.ii_e;
+			if (toBasic.isBoolean) return TypeConvResKind.ii_i;
 			return TypeConvResKind.fail;
 		case type_ptr:
 			if (typeB.as_ptr.base == CommonAstNodes.type_void) return TypeConvResKind.ii_i;

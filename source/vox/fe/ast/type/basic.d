@@ -104,10 +104,10 @@ CommonTypeResult common_type_basic(BasicTypeNode* node, AstIndex typeBIndex, Ast
 			if (leftExpr.isDefined && rightExpr.isDefined) {
 				auto leftExprNode = leftExpr.get_node(c);
 				auto rightExprNode = rightExpr.get_node(c);
-				if (leftExprNode.astType == AstType.literal_int && rightExprNode.astType == AstType.literal_int) {
-					return res;
-				}
-				if (leftExprNode.astType == AstType.literal_int) {
+				if (leftExprNode.astType == AstType.literal_int)
+				{
+					if (rightExprNode.astType == AstType.literal_int) return res;
+
 					if (typeB.isInteger)
 					{
 						ubyte toSize = integerSize(basicB);
@@ -238,6 +238,9 @@ bool isUnsignedInteger(BasicType b) {
 }
 bool isFloat(BasicType b) {
 	return b == BasicType.t_f32 || b == BasicType.t_f64;
+}
+bool isBoolean(BasicType b) {
+	return b == BasicType.t_bool;
 }
 
 // 0b_000_0
