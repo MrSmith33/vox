@@ -365,7 +365,7 @@ struct Parser
 
 		ScopeTempData scope_temp = pushScope("Module", ScopeKind.global);
 			mod.memberScope = currentScopeIndex;
-			parse_module();
+			parse_module_decl();
 			parse_declarations(mod.declarations, TokenType.EOI);
 		popScope(scope_temp);
 	}
@@ -378,7 +378,7 @@ struct Parser
 		}
 	}
 
-	void parse_declaration(ref AstNodes declarations) // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
+	void parse_declaration(ref AstNodes items) // <declaration> ::= <func_declaration> / <var_declaration> / <struct_declaration>
 	{
 		version(print_parse) auto s1 = scop("parse_declaration %s", loc);
 
@@ -386,40 +386,43 @@ struct Parser
 		{
 			case ALIAS_SYM: // <alias_decl> ::= "alias" <id> "=" <expr> ";"
 				AstIndex declIndex = parse_alias();
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 			case STRUCT_SYM, UNION_SYM: // <struct_declaration> ::= "struct" <id> "{" <declaration>* "}"
 				AstIndex declIndex = parse_struct();
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 			case ENUM:
 				AstIndex declIndex = parse_enum();
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 			case IMPORT_SYM:
 				AstIndex declIndex = parse_import();
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 			case MODULE_SYM:
 				context.error(tok.index, "Module declaration can only occur as first declaration of the module");
 				skipPast(TokenType.SEMICOLON);
 				AstIndex declIndex = context.getAstNodeIndex(currentModule);
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 			case HASH_IF, HASH_VERSION:
 				AstIndex declIndex = parse_hash_if();
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 			case HASH_ASSERT:
 				AstIndex declIndex = parse_hash_assert();
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 			case HASH_FOREACH:
 				AstIndex declIndex = parse_hash_foreach();
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 			case AT:
-				parse_attribute(declarations);
+				parse_attribute(items);
+				return;
+			case TYPE_AUTO:
+				parse_auto_decl(items);
 				return;
 			default: // <func_declaration> / <var_declaration>
 				TokenIndex start = tok.index;
@@ -427,7 +430,7 @@ struct Parser
 				AstIndex typeIndex = expr(PreferType.yes, 0);
 				AstIndex nodeIndex = parse_var_func_declaration_after_type(start, body_start, typeIndex, ConsumeTerminator.yes, TokenType.SEMICOLON);
 				AstIndex declIndex = nodeIndex;
-				declarations.put(context.arrayArena, declIndex);
+				items.put(context.arrayArena, declIndex);
 				return;
 		}
 		assert(false);
@@ -634,7 +637,6 @@ struct Parser
 			// <var_decl> = <type> <identifier> ("=" <expression>)? ";"
 			nextToken; // skip "="
 			initializerIndex = expr(PreferType.no);
-			AstNode* initializerNode = context.getAstNode(initializerIndex);
 		}
 
 		if (tok.type == TokenType.SEMICOLON || tok.type == TokenType.COMMA) // <var_declaration> ::= <type> <id> (";" / ",")
@@ -643,7 +645,7 @@ struct Parser
 			version(print_parse) auto s3 = scop("<var_declaration> %s", start);
 			if (consume_terminator) expectAndConsume(var_terminator);
 			// leave ";" or "," for parent to decide
-			AstIndex varIndex = makeDecl!VariableDeclNode(start, currentScopeIndex, typeIndex, initializerIndex, declarationId);
+			AstIndex varIndex = makeDecl!VariableDeclNode(idPos, currentScopeIndex, typeIndex, initializerIndex, declarationId);
 			return varIndex;
 		}
 		else if (tok.type == TokenType.LBRACKET) // <func_declaration> ::= <type> <id> "[" <template_params> "]" "(" <param_list> ")" (<block_statement> / ';')
@@ -652,14 +654,14 @@ struct Parser
 			AstNodes template_params;
 			ushort numParamsBeforeVariadic;
 			parse_template_parameters(template_params, numParamsBeforeVariadic);
-			AstIndex body = parse_func(start, typeIndex, declarationId);
+			AstIndex body = parse_func(idPos, typeIndex, declarationId);
 			AstIndex after_body = AstIndex(context.astBuffer.uintLength);
-			return makeDecl!TemplateDeclNode(start, currentScopeIndex, template_params, body, body_start, after_body, declarationId, numParamsBeforeVariadic);
+			return makeDecl!TemplateDeclNode(idPos, currentScopeIndex, template_params, body, body_start, after_body, declarationId, numParamsBeforeVariadic);
 		}
 		else if (tok.type == TokenType.LPAREN) // <func_declaration> ::= <type> <id> "(" <param_list> ")" (<block_statement> / ';')
 		{
 			// function
-			return parse_func(start, typeIndex, declarationId);
+			return parse_func(idPos, typeIndex, declarationId);
 		}
 		else
 		{
@@ -1140,7 +1142,7 @@ struct Parser
 		return makeDecl!ImportDeclNode(start, currentScopeIndex, ids);
 	}
 
-	void parse_module()
+	void parse_module_decl()
 	{
 		TokenIndex start = tok.index;
 		AstIndex parentPackage = CommonAstNodes.node_root_package;
@@ -1536,6 +1538,9 @@ struct Parser
 			case TokenType.AT:
 				parse_attribute(items);
 				return;
+			case TokenType.TYPE_AUTO:
+				parse_auto_decl(items);
+				return;
 			default:
 			{
 				// expression or var/func declaration
@@ -1546,6 +1551,30 @@ struct Parser
 				return;
 			}
 		}
+	}
+
+	void parse_auto_decl(ref AstNodes items)
+	{
+		TokenIndex start = tok.index;
+		AstIndex body_start = AstIndex(context.astBuffer.uintLength);
+		nextToken; // skip auto
+		AstIndex declIndex = parse_var_func_declaration_after_type(start, body_start, CommonAstNodes.type_auto, ConsumeTerminator.yes, TokenType.SEMICOLON);
+		AstNode* declNode = declIndex.get_node(context);
+		switch(declNode.astType)
+		{
+			case AstType.decl_var:
+				if (declNode.as!VariableDeclNode(context).initializer.isUndefined) {
+					context.error(declNode.loc, "variables declared as `auto` must have an initializer");
+				}
+				break;
+			case AstType.decl_template:
+			case AstType.decl_function:
+				context.error(declNode.loc, "functions cannot return `auto`");
+				break;
+			default:
+				context.internal_error(declNode.loc, "auto declaration of %s", declNode.astType);
+		}
+		items.put(context.arrayArena, declIndex);
 	}
 
 	AstIndex parse_for() // "for" "(" <init>,... ";" <cond> ";" <increment> ")" <statement>
@@ -1809,7 +1838,7 @@ private TokenLookups cexp_parser()
 	// 0 precedence -- never used
 	nilfix(0, &nullLiteral, [
 		"#id", "$id",
-		"noreturn","void", "bool", "null",
+		"auto", "noreturn","void", "bool", "null",
 		"i8", "i16", "i32", "i64",
 		"u8", "u16", "u32", "u64",
 		"f32", "f64",
@@ -1923,6 +1952,10 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 				}
 			}
 			return c.appendAst!FloatLiteralExprNode(token.index, type, result.data);
+		case TYPE_AUTO:
+			c.error(token.index, "`auto` can only be used to declare varible in a function body");
+			BasicType t = token.type.tokenTypeToBasicType;
+			return c.basicTypeNodes(t);
 		case TYPE_NORETURN, TYPE_VOID, TYPE_BOOL,
 			TYPE_I8, TYPE_I16, TYPE_I32, TYPE_I64, TYPE_U8, TYPE_U16, TYPE_U32, TYPE_U64,
 			TYPE_F32, TYPE_F64,

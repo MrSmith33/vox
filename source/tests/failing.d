@@ -182,10 +182,10 @@ immutable fail17 = q{
 		return op_local;
 	}
 --- <error>
-fail17:3:2: Error: cannot declare variable `op_global` of opaque type `Opaque`
-fail17:4:2: Error: function cannot return opaque type `Opaque`
+fail17:3:9: Error: cannot declare variable `op_global` of opaque type `Opaque`
+fail17:4:9: Error: function cannot return opaque type `Opaque`
 fail17:4:19: Error: cannot declare parameter of opaque type `Opaque`
-fail17:5:3: Error: cannot declare variable `op_local` of opaque type `Opaque`
+fail17:5:10: Error: cannot declare variable `op_local` of opaque type `Opaque`
 };
 
 @TestInfo()
@@ -644,7 +644,7 @@ immutable fail60 = q{--- fail60
 		return 10;
 	}
 --- <error>
-fail60:3:2: Error: External function cannot have a body
+fail60:3:5: Error: External function cannot have a body
 };
 
 
@@ -669,7 +669,7 @@ immutable fail62 = q{--- fail62
 		return 10;
 	}
 --- <error>
-fail62:3:2: Error: External function cannot have a body
+fail62:3:5: Error: External function cannot have a body
 };
 
 
@@ -701,7 +701,7 @@ immutable fail65 = q{--- fail65
 	/// Error for external function without @extern annotation
 	void external();
 --- <error>
-fail65:2:2: Error: External function `external` must be annotated with @extern attribute
+fail65:2:7: Error: External function `external` must be annotated with @extern attribute
 };
 
 
@@ -711,7 +711,7 @@ immutable fail66 = q{--- fail66
 	@extern(module, "non_existing")
 	void external();
 --- <error>
-fail66:3:2: Error: Cannot find external symbol `external` in host module `non_existing`. No such module defined
+fail66:3:7: Error: Cannot find external symbol `external` in host module `non_existing`. No such module defined
 };
 
 
@@ -721,7 +721,7 @@ immutable fail67 = q{--- fail67
 	@extern(module, "host")
 	void external();
 --- <error>
-fail67:3:2: Error: Cannot find external symbol `external` in host module `host`
+fail67:3:7: Error: Cannot find external symbol `external` in host module `host`
 };
 
 
@@ -733,7 +733,7 @@ immutable fail68 = q{--- fail68
 	}
 	void foo(){}
 --- <error>
-fail68:5:2: Error: declaration `foo` is already defined at fail68:3:3
+fail68:5:7: Error: declaration `foo` is already defined at fail68:3:8
 };
 
 

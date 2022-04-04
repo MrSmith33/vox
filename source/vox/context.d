@@ -960,6 +960,7 @@ struct CompilationContext
 
 		// type nodes
 		makeBasic(CommonAstNodes.type_error, 0, 0, 0, 0, BasicType.t_error);
+		makeBasic(CommonAstNodes.type_auto, 0, 0, 0, 0, BasicType.t_auto);
 		makeBasic(CommonAstNodes.type_noreturn, 0, 0, 0, 0, BasicType.t_noreturn);
 		makeBasic(CommonAstNodes.type_void,  0, 0, 0, 0, BasicType.t_void);
 		makeBasic(CommonAstNodes.type_bool,  1, 0, 0, 1, BasicType.t_bool , BasicTypeFlag.isBoolean);
@@ -1123,29 +1124,30 @@ enum CommonAstNodes : AstIndex
 	// The order is the same as in TokenType enum
 	// The order is the same as in BasicType enum
 	type_error               = AstIndex(first_type.storageIndex +  0*NumBasicTypeNodeSlots),
-	type_noreturn            = AstIndex(first_type.storageIndex +  1*NumBasicTypeNodeSlots),
-	type_void                = AstIndex(first_type.storageIndex +  2*NumBasicTypeNodeSlots),
-	type_bool                = AstIndex(first_type.storageIndex +  3*NumBasicTypeNodeSlots),
-	type_null                = AstIndex(first_type.storageIndex +  4*NumBasicTypeNodeSlots),
+	type_auto                = AstIndex(first_type.storageIndex +  1*NumBasicTypeNodeSlots),
+	type_noreturn            = AstIndex(first_type.storageIndex +  2*NumBasicTypeNodeSlots),
+	type_void                = AstIndex(first_type.storageIndex +  3*NumBasicTypeNodeSlots),
+	type_bool                = AstIndex(first_type.storageIndex +  4*NumBasicTypeNodeSlots),
+	type_null                = AstIndex(first_type.storageIndex +  5*NumBasicTypeNodeSlots),
 
-	type_i8                  = AstIndex(first_type.storageIndex +  5*NumBasicTypeNodeSlots),
-	type_i16                 = AstIndex(first_type.storageIndex +  6*NumBasicTypeNodeSlots),
-	type_i32                 = AstIndex(first_type.storageIndex +  7*NumBasicTypeNodeSlots),
-	type_i64                 = AstIndex(first_type.storageIndex +  8*NumBasicTypeNodeSlots),
+	type_i8                  = AstIndex(first_type.storageIndex +  6*NumBasicTypeNodeSlots),
+	type_i16                 = AstIndex(first_type.storageIndex +  7*NumBasicTypeNodeSlots),
+	type_i32                 = AstIndex(first_type.storageIndex +  8*NumBasicTypeNodeSlots),
+	type_i64                 = AstIndex(first_type.storageIndex +  9*NumBasicTypeNodeSlots),
 
-	type_u8                  = AstIndex(first_type.storageIndex +  9*NumBasicTypeNodeSlots),
-	type_u16                 = AstIndex(first_type.storageIndex + 10*NumBasicTypeNodeSlots),
-	type_u32                 = AstIndex(first_type.storageIndex + 11*NumBasicTypeNodeSlots),
-	type_u64                 = AstIndex(first_type.storageIndex + 12*NumBasicTypeNodeSlots),
+	type_u8                  = AstIndex(first_type.storageIndex + 10*NumBasicTypeNodeSlots),
+	type_u16                 = AstIndex(first_type.storageIndex + 11*NumBasicTypeNodeSlots),
+	type_u32                 = AstIndex(first_type.storageIndex + 12*NumBasicTypeNodeSlots),
+	type_u64                 = AstIndex(first_type.storageIndex + 13*NumBasicTypeNodeSlots),
 
-	type_f32                 = AstIndex(first_type.storageIndex + 13*NumBasicTypeNodeSlots),
-	type_f64                 = AstIndex(first_type.storageIndex + 14*NumBasicTypeNodeSlots),
+	type_f32                 = AstIndex(first_type.storageIndex + 14*NumBasicTypeNodeSlots),
+	type_f64                 = AstIndex(first_type.storageIndex + 15*NumBasicTypeNodeSlots),
 
-	type_alias               = AstIndex(first_type.storageIndex + 15*NumBasicTypeNodeSlots),
-	type_type                = AstIndex(first_type.storageIndex + 16*NumBasicTypeNodeSlots),
+	type_alias               = AstIndex(first_type.storageIndex + 16*NumBasicTypeNodeSlots),
+	type_type                = AstIndex(first_type.storageIndex + 17*NumBasicTypeNodeSlots),
 	// basic type nodes end
 
-	first_compound           = AstIndex(first_type.storageIndex + 17*NumBasicTypeNodeSlots),
+	first_compound           = AstIndex(first_type.storageIndex + 18*NumBasicTypeNodeSlots),
 
 	// common custom types
 	type_u8Ptr               = AstIndex(first_compound.storageIndex),
@@ -1178,6 +1180,7 @@ enum CommonAstNodes : AstIndex
 
 private immutable AstIndex[BasicType.max + 1] basicTypesArray = [
 	CommonAstNodes.type_error,
+	CommonAstNodes.type_auto,
 	CommonAstNodes.type_noreturn,
 	CommonAstNodes.type_void,
 	CommonAstNodes.type_bool,

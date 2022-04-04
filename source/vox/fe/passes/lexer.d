@@ -46,11 +46,11 @@ enum char SOI_CHAR = '\2';
 /// End of input
 enum char EOI_CHAR = '\3';
 
-immutable string[] keyword_strings = ["bool","true","false","alias","break","continue","do","else",
+immutable string[] keyword_strings = ["auto","bool","true","false","alias","break","continue","do","else",
 	"function","f32","f64","i16","i32","i64","i8","if","import","module","isize","return","struct","union","u16","u32",
 	"u64","u8","usize","void","noreturn","while","for","switch","cast","enum","null"];
 enum NUM_KEYWORDS = keyword_strings.length;
-immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_BOOL,TT.TRUE_LITERAL,TT.FALSE_LITERAL,
+immutable TokenType[NUM_KEYWORDS] keyword_tokens = [TT.TYPE_AUTO,TT.TYPE_BOOL,TT.TRUE_LITERAL,TT.FALSE_LITERAL,
 	TT.ALIAS_SYM, TT.BREAK_SYM,TT.CONTINUE_SYM,TT.DO_SYM,TT.ELSE_SYM,TT.FUNCTION_SYM,TT.TYPE_F32,
 	TT.TYPE_F64,TT.TYPE_I16, TT.TYPE_I32,TT.TYPE_I64,TT.TYPE_I8,TT.IF_SYM,TT.IMPORT_SYM,TT.MODULE_SYM,
 	TT.TYPE_ISIZE,TT.RETURN_SYM, TT.STRUCT_SYM,TT.UNION_SYM,TT.TYPE_U16,TT.TYPE_U32,TT.TYPE_U64,TT.TYPE_U8,TT.TYPE_USIZE,
@@ -472,7 +472,10 @@ struct Lexer
 				if (c == 'M' && match("MODULE_NAME__")) return TT.SPECIAL_KW; // __MODULE_NAME__
 				break;
 			case 'a':
-				if (match("alias")) { return TT.ALIAS_SYM; } break;
+				nextChar; // skip a
+				if (match("lias")) { return TT.ALIAS_SYM; }
+				if (match("uto")) { return TT.TYPE_AUTO; }
+				break;
 			case 'b':
 				nextChar;
 				if (c == 'o' && match("ool")) { return TT.TYPE_BOOL; }

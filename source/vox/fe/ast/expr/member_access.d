@@ -211,7 +211,7 @@ LookupResult lookupMember(ref AstIndex nodeIndex, MemberExprNode* expr, ref Type
 	if (expr.isSymResolved) {
 		require_type_check(expr.aggregate, c, IsNested.no);
 		if (expr.type.isUndefined)
-			expr.type = expr._member.get_node_type(c);
+			expr.type = expr._member.get_expr_type(c);
 		return LookupResult.success;
 	}
 

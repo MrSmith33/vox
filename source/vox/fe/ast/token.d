@@ -114,7 +114,7 @@ enum TokenType : ubyte {
 	// ----------------------------------------
 	// list of basic types. The order is the same as in `enum BasicType`
 
-
+	@("auto") TYPE_AUTO,                // auto
 	@("noreturn") TYPE_NORETURN,        // noreturn
 	@("void") TYPE_VOID,                // void
 	@("bool") TYPE_BOOL,                // bool

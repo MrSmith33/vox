@@ -5963,3 +5963,70 @@ void tester267(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(ubyte, void*)("struct_ptr_branch")(null) == 12);
 	assert(ctx.getFunctionPtr!(ubyte, void*)("struct_ptr_branch")(&var) == 42);
 }
+
+
+@TestInfo()
+immutable test268 = `--- test268.vx
+	// auto for variable declarations in function body
+	struct S {}
+	enum E { e = 1 }
+	void fun() {
+		auto val_i8  = 1_i8;
+		auto val_i16 = 1_i16;
+		auto val_i32 = 1_i32;
+		auto val_i64 = 1_i64;
+		auto val_u8  = 1_u8;
+		auto val_u16 = 1_u16;
+		auto val_u32 = 1_u32;
+		auto val_u64 = 1_u64;
+		auto val_f32 = 1_f32;
+		auto val_f64 = 1_f64;
+		auto val_bool = true;
+		auto val_null = null;
+		auto val_S = S();
+		auto val_E = E.e;
+		auto val_type = u8;
+	}
+	auto val_i8  = 1_i8;
+	auto val_i16 = 1_i16;
+	auto val_i32 = 1_i32;
+	auto val_i64 = 1_i64;
+	auto val_u8  = 1_u8;
+	auto val_u16 = 1_u16;
+	auto val_u32 = 1_u32;
+	auto val_u64 = 1_u64;
+	auto val_f32 = 1_f32;
+	auto val_f64 = 1_f64;
+	auto val_bool = true;
+	auto val_null = null;
+	auto val_S = S();
+	auto val_E = E.e;
+	auto val_type = u8;
+`;
+
+
+@TestInfo()
+immutable test269 = q{--- test269.vx
+	// functions returning auto
+	auto fun() {}
+--- <error>
+test269.vx:2:7: Error: functions cannot return `auto`
+};
+
+
+@TestInfo()
+immutable test270 = q{--- test270.vx
+	// functions returning auto
+	auto fun[T]() {}
+--- <error>
+test270.vx:2:7: Error: functions cannot return `auto`
+};
+
+
+@TestInfo()
+immutable test271 = q{--- test271.vx
+	// auto variables requiring initializer
+	auto var;
+--- <error>
+test271.vx:2:7: Error: variables declared as `auto` must have an initializer
+};

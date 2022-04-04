@@ -80,6 +80,8 @@
 	- Calling static methods via `Type.method` syntax
 
 [Types]
+- auto
+	+ auto for variables in a function
 + integers
 	+ + -
 	+ pointer arithmetics

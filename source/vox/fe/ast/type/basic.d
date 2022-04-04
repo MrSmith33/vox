@@ -190,10 +190,10 @@ TypeConvResKind type_conv_basic(BasicTypeNode* node, AstIndex typeBIndex, ref As
 	}
 }
 
-// The order is the same as in TokenType enum
-// The order is the same as in CommonAstNodes enum
+// The order is the same as in TokenType enum, CommonAstNodes enum, basicTypesArray, basicTypeNames
 enum BasicType : ubyte {
 	t_error,
+	t_auto,
 	t_noreturn,
 	t_void,
 	t_bool,
@@ -279,50 +279,52 @@ TypeConvResKind allowExplicitOnly(TypeConvResKind kind) {
 
 // usage basicConversionKind[from][to]
 immutable TypeConvResKind[BasicType.max + 1][BasicType.max + 1] basicConversionKind = (){ with(TypeConvResKind){ return [
-	//err noret void bool null   i8  i16  i32  i64   u8  u16  u32  u64  f32  f64 $alias $type  // to
-	[no_i, no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i, no_i, no_i], // from error
-	[no_i, fail,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i, fail, fail], // from noreturn
-	[no_i, fail,no_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, fail, fail], // from void
-	[no_i, fail,fail,no_i,fail,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,if_i,if_i, fail, fail], // from bool
-	[no_i, fail,fail,ii_i,no_i,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,fail,fail, fail, fail], // from null
-	[no_i, fail,fail,ii_i,fail,no_i,ii_i,ii_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i8
-	[no_i, fail,fail,ii_i,fail,ii_e,no_i,ii_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i16
-	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,no_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i32
-	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,ii_e,no_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i64
-	[no_i, fail,fail,ii_i,fail,ii_e,ii_i,ii_i,ii_i,no_i,ii_i,ii_i,ii_i,if_i,if_i, fail, fail], // from u8
-	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,ii_i,ii_i,ii_e,no_i,ii_i,ii_i,if_i,if_i, fail, fail], // from u16
-	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,ii_e,ii_i,ii_e,ii_e,no_i,ii_i,if_i,if_i, fail, fail], // from u32
-	[no_i, fail,fail,ii_i,fail,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,no_i,if_i,if_i, fail, fail], // from u64
-	[no_i, fail,fail,ii_i,fail,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,no_i,ff_i, fail, fail], // from f32
-	[no_i, fail,fail,ii_i,fail,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,ff_e,no_i, fail, fail], // from f64
-	[no_i, fail,fail,ii_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, no_i, fail], // from $alias
-	[no_i, fail,fail,ii_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, ii_i, no_i], // from $type
+	//err auto nret void bool null   i8  i16  i32  i64   u8  u16  u32  u64  f32  f64 $alias $type  // to
+	[no_i,fail,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i, no_i, no_i], // from error
+	[fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, fail, fail], // from auto
+	[no_i,fail,fail,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i,no_i, fail, fail], // from noreturn
+	[no_i,fail,fail,no_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, fail, fail], // from void
+	[no_i,fail,fail,fail,no_i,fail,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,ii_i,if_i,if_i, fail, fail], // from bool
+	[no_i,fail,fail,fail,ii_i,no_i,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,fail,fail, fail, fail], // from null
+	[no_i,fail,fail,fail,ii_i,fail,no_i,ii_i,ii_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i8
+	[no_i,fail,fail,fail,ii_i,fail,ii_e,no_i,ii_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i16
+	[no_i,fail,fail,fail,ii_i,fail,ii_e,ii_e,no_i,ii_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i32
+	[no_i,fail,fail,fail,ii_i,fail,ii_e,ii_e,ii_e,no_i,ii_e,ii_e,ii_e,ii_e,if_i,if_i, fail, fail], // from i64
+	[no_i,fail,fail,fail,ii_i,fail,ii_e,ii_i,ii_i,ii_i,no_i,ii_i,ii_i,ii_i,if_i,if_i, fail, fail], // from u8
+	[no_i,fail,fail,fail,ii_i,fail,ii_e,ii_e,ii_i,ii_i,ii_e,no_i,ii_i,ii_i,if_i,if_i, fail, fail], // from u16
+	[no_i,fail,fail,fail,ii_i,fail,ii_e,ii_e,ii_e,ii_i,ii_e,ii_e,no_i,ii_i,if_i,if_i, fail, fail], // from u32
+	[no_i,fail,fail,fail,ii_i,fail,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,ii_e,no_i,if_i,if_i, fail, fail], // from u64
+	[no_i,fail,fail,fail,ii_i,fail,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,no_i,ff_i, fail, fail], // from f32
+	[no_i,fail,fail,fail,ii_i,fail,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,fi_i,ff_e,no_i, fail, fail], // from f64
+	[no_i,fail,fail,fail,ii_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, no_i, fail], // from $alias
+	[no_i,fail,fail,fail,ii_i,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail,fail, ii_i, no_i], // from $type
 ]; }
 }();
 
 immutable BasicType[BasicType.max + 1][BasicType.max + 1] commonBasicType = (){ with(BasicType){ return [
-	// error  noreturn    void     bool     null       i8      i16      i32      i64       u8      u16      u32      u64      f32      f64   $alias    $type
-	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // error
-	[t_error,t_noreturn,t_error,t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // noreturn
-	[t_error, t_error, t_void,  t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_alias, t_type ], // void
-	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_alias, t_type ], // bool
-	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_alias, t_type ], // null
-	[t_error, t_error, t_error, t_error, t_error, t_i8,    t_i16,   t_i32,   t_i64,   t_i8,    t_i16,   t_i32,   t_i64,   t_f32,   t_f64,   t_alias, t_type ], // i8
-	[t_error, t_error, t_error, t_error, t_error, t_i16,   t_i16,   t_i32,   t_i64,   t_i16,   t_i16,   t_i32,   t_i64,   t_f32,   t_f64,   t_alias, t_type ], // i16
-	[t_error, t_error, t_error, t_error, t_error, t_i32,   t_i32,   t_i32,   t_i64,   t_i32,   t_i32,   t_i32,   t_i64,   t_f32,   t_f64,   t_alias, t_type ], // i32
-	[t_error, t_error, t_error, t_error, t_error, t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_f32,   t_f64,   t_alias, t_type ], // i64
-	[t_error, t_error, t_error, t_error, t_error, t_i8,    t_i16,   t_i32,   t_i64,   t_u8,    t_u16,   t_u32,   t_u64,   t_f32,   t_f64,   t_alias, t_type ], // u8
-	[t_error, t_error, t_error, t_error, t_error, t_i16,   t_i16,   t_i32,   t_i64,   t_u16,   t_u16,   t_u32,   t_u64,   t_f32,   t_f64,   t_alias, t_type ], // u16
-	[t_error, t_error, t_error, t_error, t_error, t_i32,   t_i32,   t_i32,   t_i64,   t_u32,   t_u32,   t_u32,   t_u64,   t_f32,   t_f64,   t_alias, t_type ], // u32
-	[t_error, t_error, t_error, t_error, t_error, t_i64,   t_i64,   t_i64,   t_i64,   t_u64,   t_u64,   t_u64,   t_u64,   t_f32,   t_f64,   t_alias, t_type ], // u64
-	[t_error, t_error, t_error, t_error, t_error, t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f64,   t_alias, t_type ], // f32
-	[t_error, t_error, t_error, t_error, t_error, t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_alias, t_type ], // f64
-	[t_error, t_error, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias], // $alias
-	[t_error, t_error, t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_alias, t_type ], // $type
+	// error     auto  noreturn    void     bool     null       i8      i16      i32      i64       u8      u16      u32      u64      f32      f64   $alias    $type
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // error
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // auto
+	[t_error, t_error,t_noreturn,t_error,t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error], // noreturn
+	[t_error, t_error, t_error, t_void,  t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_alias, t_type ], // void
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_alias, t_type ], // bool
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_error, t_alias, t_type ], // null
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_i8,    t_i16,   t_i32,   t_i64,   t_i8,    t_i16,   t_i32,   t_i64,   t_f32,   t_f64,   t_alias, t_type ], // i8
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_i16,   t_i16,   t_i32,   t_i64,   t_i16,   t_i16,   t_i32,   t_i64,   t_f32,   t_f64,   t_alias, t_type ], // i16
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_i32,   t_i32,   t_i32,   t_i64,   t_i32,   t_i32,   t_i32,   t_i64,   t_f32,   t_f64,   t_alias, t_type ], // i32
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_i64,   t_f32,   t_f64,   t_alias, t_type ], // i64
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_i8,    t_i16,   t_i32,   t_i64,   t_u8,    t_u16,   t_u32,   t_u64,   t_f32,   t_f64,   t_alias, t_type ], // u8
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_i16,   t_i16,   t_i32,   t_i64,   t_u16,   t_u16,   t_u32,   t_u64,   t_f32,   t_f64,   t_alias, t_type ], // u16
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_i32,   t_i32,   t_i32,   t_i64,   t_u32,   t_u32,   t_u32,   t_u64,   t_f32,   t_f64,   t_alias, t_type ], // u32
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_i64,   t_i64,   t_i64,   t_i64,   t_u64,   t_u64,   t_u64,   t_u64,   t_f32,   t_f64,   t_alias, t_type ], // u64
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f32,   t_f64,   t_alias, t_type ], // f32
+	[t_error, t_error, t_error, t_error, t_error, t_error, t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_f64,   t_alias, t_type ], // f64
+	[t_error, t_error, t_error, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias, t_alias], // $alias
+	[t_error, t_error, t_error, t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_type,  t_alias, t_type ], // $type
 ]; }
 }();
 
-string[BasicType.max + 1] basicTypeNames = ["error", "noreturn", "void", "bool", "typeof(null)", "i8", "i16", "i32",
+string[BasicType.max + 1] basicTypeNames = ["error", "auto", "noreturn", "void", "bool", "typeof(null)", "i8", "i16", "i32",
 "i64", "u8", "u16", "u32", "u64", "f32", "f64", "$alias", "$type"];
 
 bool isBasicTypeToken(TokenType tt) {
