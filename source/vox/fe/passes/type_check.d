@@ -137,6 +137,7 @@ void require_type_check(ref AstIndex nodeIndex, ref TypeCheckState state, IsNest
 		case expr_bin_op: type_check_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: type_check_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: type_check_call(nodeIndex, cast(CallExprNode*)node, state); break;
+		case expr_named_argument: type_check_named_argument(cast(NamedArgumenExprNode*)node, state); break;
 		case expr_index: type_check_index(nodeIndex, cast(IndexExprNode*)node, state); break;
 		case expr_slice: type_check_expr_slice(cast(SliceExprNode*)node, state); break;
 		case expr_type_conv: type_check_type_conv(cast(TypeConvExprNode*)node, state); break;

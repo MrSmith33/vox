@@ -57,8 +57,19 @@
 	+ #version
 	- #debug
 
-- overloading
-- named parameters
+- named arguments for functions and struct/union construction
+	https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1030.md
+	+ basic function call with named args
+	- stuct/union initializer with named arguments
+		- avoid picking static members of structs
+	+ anonymous parameters should not be named in the call
+	- interaction with variadic arguments
+	+ interaction with default arguments
+	- through function pointer
+	- named template arguments
+
+[Functions]
+- overloading (Odin has explicit overloading)
 
 [Attributes]
 + @extern(syscall, <int>)
@@ -78,6 +89,7 @@
 		+ forbid access from @static methods to non-@static members
 	+ forbid @static parameters
 	- Calling static methods via `Type.method` syntax
+	- struct constructor must ignore static members
 
 [Types]
 - auto
@@ -96,6 +108,8 @@
 	+ op=
 	+ v++ v-- ++v --v
 	- check conversions to bool
++ void
+	+ returning expression of type void from void function
 - pointers
 	+ taking address
 	+ dereferencing

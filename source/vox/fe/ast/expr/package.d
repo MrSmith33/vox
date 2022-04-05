@@ -9,6 +9,7 @@ public import vox.fe.ast.expr.index;
 public import vox.fe.ast.expr.literal;
 public import vox.fe.ast.expr.member_access;
 public import vox.fe.ast.expr.name_use;
+public import vox.fe.ast.expr.named_argument;
 public import vox.fe.ast.expr.slice;
 public import vox.fe.ast.expr.type_conv;
 public import vox.fe.ast.expr.unary_op;

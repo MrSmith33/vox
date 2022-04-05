@@ -31,8 +31,8 @@ struct ScopeIndex
 		return sc.symbols.get(id, AstIndex.init);
 	}
 	void insert_scope(Identifier id, AstIndex nodeIndex, CompilationContext* c) {
-		Scope* sc = c.getAstScope(this);
 		assert(isDefined, "scope is undefined");
+		Scope* sc = c.getAstScope(this);
 		sc.insert(id, nodeIndex, c);
 	}
 }

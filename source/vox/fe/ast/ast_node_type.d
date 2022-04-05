@@ -40,6 +40,7 @@ enum AstType : ubyte
 	expr_name_use,
 	expr_member,
 	expr_call,
+	expr_named_argument,
 	expr_index,
 	expr_slice,
 	expr_bin_op,

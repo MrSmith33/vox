@@ -14,6 +14,11 @@ module vox.fe.ast.expr.call;
 
 import vox.all;
 
+enum CallExprFlags : ushort
+{
+	hasNamedArgs = AstFlags.userFlag << 0,
+}
+
 @(AstType.expr_call)
 struct CallExprNode {
 	mixin ExpressionNodeData!(AstType.expr_call);
@@ -21,6 +26,8 @@ struct CallExprNode {
 	AstIndex callee;
 	AstNodes args;
 	IrIndex[] argsValues;
+
+	bool hasNamedArgs() { return cast(bool)(flags & CallExprFlags.hasNamedArgs); }
 }
 
 void print_call(CallExprNode* node, ref AstPrintState state)
@@ -195,6 +202,8 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			if (templ.body.astType(c) != AstType.decl_function) {
 				c.unrecoverable_error(node.loc, "Cannot call template of %s", templ.body.astType(c));
 			}
+
+			c.assertf(!node.hasNamedArgs, node.loc, "Named arguments with variadics are not implemented");
 
 			auto templFunc = templ.body.get!FunctionDeclNode(c);
 			auto templSignature = templFunc.signature.get!FunctionSignatureNode(c);
@@ -376,7 +385,7 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNode
 	return result;
 }
 
-void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, Identifier id, ref TypeCheckState state)
+void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, Identifier funcId, ref TypeCheckState state)
 {
 	CompilationContext* c = state.context;
 
@@ -395,19 +404,19 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 	if (numArgs < numRequiredArgs) {
 		if (numDefaultArgs == 0)
 			c.error(node.loc, "Too few arguments to `%s`, got %s, expected %s",
-				c.idString(id), numArgs, numParams);
+				c.idString(funcId), numArgs, numParams);
 		else
 			c.error(node.loc, "Too few arguments to `%s`, got %s, expected %s-%s",
-				c.idString(id), numArgs, numRequiredArgs, numParams);
+				c.idString(funcId), numArgs, numRequiredArgs, numParams);
 		return;
 	}
 	else if (numArgs > numParams) {
 		if (numDefaultArgs == 0)
 			c.error(node.loc, "Too many arguments to `%s`, got %s, expected %s",
-				c.idString(id), numArgs, numParams);
+				c.idString(funcId), numArgs, numParams);
 		else
 			c.error(node.loc, "Too many arguments to `%s`, got %s, expected %s-%s",
-				c.idString(id), numArgs, numRequiredArgs, numParams);
+				c.idString(funcId), numArgs, numRequiredArgs, numParams);
 
 		return;
 	}
@@ -417,26 +426,90 @@ void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, 
 	// and we need to call gen_init_value_var for default args, which may need to eval
 	node.argsValues = c.allocateTempArray!IrIndex(numParams + 1); // first argument is callee
 
+	// For named arguments
+	Scope* parameterScope;
+	if (node.hasNamedArgs && numParams > 0) {
+		parameterScope = params[0].get!VariableDeclNode(c).parentScope.get_scope(c);
+	}
+
+	uint parameterIndex = 0;
+	bool skipPositionalArgs = false;
+
 	// check arguments
 	// default arguments do not require checking here
 	foreach (i, ref AstIndex arg; node.args)
 	{
-		VariableDeclNode* param = c.getAst!VariableDeclNode(params[i]);
-
 		require_type_check(arg, state);
-		bool success = autoconvTo(arg, param.type, c);
-		if (!success)
-			c.error(arg.loc(c),
-				"Argument %s, must have type %s, not %s", i+1,
-				param.type.printer(c),
-				arg.get_expr_type(c).printer(c));
+
+		AstNode* argNode = arg.get_node(c);
+
+		if (argNode.astType == AstType.expr_named_argument)
+		{
+			NamedArgumenExprNode* namedArg = argNode.as!NamedArgumenExprNode(c);
+			Identifier argId = namedArg.getId(c);
+			AstIndex paramIndex = parameterScope.symbols.get(argId, AstIndex.init);
+			if (paramIndex.isUndefined) {
+				c.error(namedArg.loc, "Function `%s` has no parameter named `%s`", c.idString(funcId), c.idString(argId));
+				// we don't know the index of the next parameter, so we cannot tell which parameter is missing
+				skipPositionalArgs = true;
+				continue;
+			}
+			// restore reporting after we found a correct named parameters, since we know indicies after it
+			skipPositionalArgs = false;
+			VariableDeclNode* param = c.getAst!VariableDeclNode(paramIndex);
+			// remember the index for IR generation
+			namedArg.resolve(param.scopeIndex, c);
+			parameterIndex = param.scopeIndex;
+
+			bool success = autoconvTo(namedArg.expr, param.type, c);
+			if (!success)
+				c.error(namedArg.expr.loc(c),
+					"Named argument %s, must have type %s, not %s", c.idString(argId),
+					param.type.printer(c),
+					namedArg.expr.get_expr_type(c).printer(c));
+			if (node.argsValues[parameterIndex+1] == IrIndex(1, IrValueKind.none)) {
+				c.error(namedArg.loc, "Parameter `%s` provided several times", c.idString(argId));
+			}
+			node.argsValues[parameterIndex+1] = IrIndex(1, IrValueKind.none); // mark argument as set
+		}
+		else
+		{
+			if (skipPositionalArgs) continue;
+
+			if (parameterIndex >= numParams) {
+				c.error(arg.loc(c), "Trying to provide parameter %s, while `%s` has %s parameters", parameterIndex+1, c.idString(funcId), numParams);
+				++parameterIndex;
+				continue;
+			}
+			VariableDeclNode* param = c.getAst!VariableDeclNode(params[parameterIndex]);
+
+			bool success = autoconvTo(arg, param.type, c);
+			if (!success)
+				c.error(arg.loc(c),
+					"Argument %s, must have type %s, not %s", parameterIndex+1,
+					param.type.printer(c),
+					arg.get_expr_type(c).printer(c));
+			if (node.argsValues[parameterIndex+1] == IrIndex(1, IrValueKind.none)) {
+				c.error(argNode.loc, "Parameter `%s` was provided several times", c.idString(param.id));
+			}
+			node.argsValues[parameterIndex+1] = IrIndex(1, IrValueKind.none); // mark argument as set
+		}
+		++parameterIndex;
 	}
 
-	foreach(i; numArgs..numParams)
+	foreach(i; 0..numParams)
 	{
 		// eval default argument values
 		VariableDeclNode* param = c.getAst!VariableDeclNode(params[i]);
-		c.assertf(param.initializer.isDefined, param.loc, "Undefined default arg %s", c.idString(param.id));
+		if (node.argsValues[i+1].isDefined) continue;
+		if (param.initializer.isUndefined) {
+			if (param.isAnonymous)
+				c.error(node.loc, "Missing argument for anonymous parameter %s", i+1);
+			else
+				c.error(node.loc, "Missing argument for parameter %s: `%s`", i+1, c.idString(param.id));
+			continue;
+		}
+
 		AstNode* initializer = param.initializer.get_node(c);
 		if (initializer.astType == AstType.literal_special) {
 			node.argsValues[i+1] = eval_literal_special(cast(SpecialKeyword)initializer.subType, node.loc, node.parentScope, c);
@@ -554,14 +627,30 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 		alwaysInline = calleeFunc.isInline;
 	}
 
+	uint parameterIndex = 0;
+
 	foreach (i, AstIndex arg; n.args)
 	{
-		IrLabel afterArg = IrLabel(currentBlock);
-		ExpressionNode* nodeArg = arg.get_expr(c);
-		ExprValue lval = ir_gen_expr(gen, arg, currentBlock, afterArg);
-		currentBlock = afterArg.blockIndex;
-		n.argsValues[i+1] = lval.rvalue(gen, n.loc, currentBlock); // account for callee in 0th index
-		debug c.assertf(n.argsValues[i+1].isDefined, "Arg %s %s (%s) is undefined", i+1, n.astType, c.tokenLoc(n.loc));
+		AstNode* argNode = arg.get_node(c);
+		if (argNode.astType == AstType.expr_named_argument)
+		{
+			NamedArgumenExprNode* namedArg = argNode.as!NamedArgumenExprNode(c);
+			arg = namedArg.expr;
+			parameterIndex = namedArg.getParamIndex(c);
+			IrLabel afterArg = IrLabel(currentBlock);
+			ExprValue lval = ir_gen_expr(gen, namedArg.expr, currentBlock, afterArg);
+			currentBlock = afterArg.blockIndex;
+			n.argsValues[parameterIndex+1] = lval.rvalue(gen, n.loc, currentBlock); // account for callee in 0th index
+		}
+		else
+		{
+			IrLabel afterArg = IrLabel(currentBlock);
+			ExprValue lval = ir_gen_expr(gen, arg, currentBlock, afterArg);
+			currentBlock = afterArg.blockIndex;
+			n.argsValues[parameterIndex+1] = lval.rvalue(gen, n.loc, currentBlock); // account for callee in 0th index
+		}
+		debug c.assertf(n.argsValues[parameterIndex+1].isDefined, "Arg %s %s (%s) is undefined", parameterIndex+1, n.astType, c.tokenLoc(n.loc));
+		++parameterIndex;
 	}
 
 	// default args are populated in type check

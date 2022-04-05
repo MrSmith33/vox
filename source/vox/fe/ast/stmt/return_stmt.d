@@ -45,21 +45,12 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 	{
 		require_type_check_expr(retTypeIndex, node.expression, state);
 
-		if (isVoidFunc)
-		{
-			c.error(node.expression.get_expr(c).loc,
-				"Cannot return expression of type `%s` from void function",
-				node.expression.get_expr(c).type.typeName(c));
-		}
-		else
-		{
-			bool success = autoconvTo(node.expression, retTypeIndex, c);
-			if (!success)
-				c.error(node.loc,
-					"Cannot implicitly convert expression of type `%s` to `%s`",
-					node.expression.get_expr_type(c).printer(c),
-					retTypeIndex.printer(c));
-		}
+		bool success = autoconvTo(node.expression, retTypeIndex, c);
+		if (!success)
+			c.error(node.loc,
+				"Cannot implicitly convert expression of type `%s` to `%s`",
+				node.expression.get_expr_type(c).printer(c),
+				retTypeIndex.printer(c));
 	}
 	else
 	{
@@ -71,14 +62,19 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 	node.state = AstNodeState.type_check_done;
 }
 
-void ir_gen_return(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, ReturnStmtNode* r)
+void ir_gen_return(ref IrGenState gen, IrIndex currentBlock, ref IrLabel nextStmt, ReturnStmtNode* node)
 {
-	if (r.expression)
+	CompilationContext* c = gen.context;
+	if (node.expression)
 	{
 		IrLabel afterExpr = IrLabel(currentBlock);
-		ExprValue lval = ir_gen_expr(gen, r.expression, currentBlock, afterExpr);
+		ExprValue lval = ir_gen_expr(gen, node.expression, currentBlock, afterExpr);
 		currentBlock = afterExpr.blockIndex;
-		IrIndex rval = lval.rvalue(gen, r.loc, currentBlock);
+		if (node.expression.get_expr_type(c).isVoidType(c)) {
+			gen.builder.addReturn(currentBlock);
+			return;
+		}
+		IrIndex rval = lval.rvalue(gen, node.loc, currentBlock);
 		gen.builder.addReturn(currentBlock, rval);
 	}
 	else gen.builder.addReturn(currentBlock);

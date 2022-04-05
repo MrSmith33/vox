@@ -237,7 +237,7 @@ struct Parser
 	AstIndex make(T, Args...)(TokenIndex start, Args args) {
 		return context.appendAst!T(start, args);
 	}
-	// Will attach declaration if needed
+	// Will attach attributes if present
 	AstIndex makeDecl(T, Args...)(TokenIndex start, Args args) {
 		auto flags = createAttributeInfo;
 		AstIndex declIndex = context.appendAst!T(start, args);
@@ -684,7 +684,7 @@ struct Parser
 		attribState.broadcasted.broadcastedFlagAttributes |= attribState.immediate.immediateFlagAttributes;
 		attribState.immediate.immediateFlagAttributes = 0;
 
-		AstIndex funcIndex = makeDecl!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), currentScopeIndex, AstIndex(), declarationId);
+		AstIndex funcIndex = makeDecl!FunctionDeclNode(start, context.getAstNodeIndex(currentModule), ScopeIndex(), AstIndex(), declarationId);
 		auto func = funcIndex.get!FunctionDeclNode(context);
 
 		// no attributes go to the function body or to the parameters
@@ -694,9 +694,12 @@ struct Parser
 		declarationOwner = funcIndex;
 		scope(exit) declarationOwner = prevOwner;
 
-		ScopeIndex parentScope = currentScopeIndex; // need to get parent before push scope
 		ScopeTempData scope_temp = pushScope(context.idString(declarationId), ScopeKind.local);
 		scope(exit) popScope(scope_temp);
+
+		// set scope for a function
+		ScopeIndex parameterScope = currentScopeIndex;
+		func.parameterScope = parameterScope;
 
 		// add this pointer parameter
 		if (func.isMember)
@@ -782,6 +785,7 @@ struct Parser
 				paramId = expectIdentifier();
 			else // anon parameter
 			{
+				flags |= VariableFlags.isAnonymous;
 				paramId = context.idMap.getOrRegFormatted(context, "__param_%s", paramIndex);
 			}
 
@@ -862,16 +866,45 @@ struct Parser
 		expectAndConsume(TokenType.RBRACKET);
 	}
 
-	void parse_expr_list(ref AstNodes expressions, TokenType terminator)
+	ushort parse_argument_list(ref AstNodes expressions)
 	{
-		while (tok.type != terminator) {
-			// We don't want to grab the comma, e.g. it is NOT a sequence operator.
-			expressions.put(context.arrayArena, expr(PreferType.no, COMMA_PREC));
+		ushort flags;
+		// COMMA_PREC is used in `expr` because we don't want to grab the comma, e.g. it is NOT a sequence operator.
+		while (tok.type != TokenType.RPAREN)
+		{
+			AstIndex exprIndex;
+			if (tok.type == TokenType.IDENTIFIER)
+			{
+				Token idToken = tok;
+				nextToken; // skip id
+				if (tok.type == TokenType.COLON)
+				{
+					flags |= CallExprFlags.hasNamedArgs;
+					// named argument
+					nextToken; // skip :
+					Identifier paramId = makeIdentifier(idToken.index);
+					AstIndex child = expr(PreferType.no, COMMA_PREC);
+					exprIndex = make!NamedArgumenExprNode(idToken.index, paramId, child);
+				}
+				else
+				{
+					// regular expression, undo identifier
+					tok = idToken;
+					exprIndex = expr(PreferType.no, COMMA_PREC);
+				}
+			}
+			else
+			{
+				exprIndex = expr(PreferType.no, COMMA_PREC);
+			}
+			expressions.put(context.arrayArena, exprIndex);
+
 			// allows trailing comma too
 			if (tok.type == TokenType.COMMA)
 				nextToken;
 		}
-		expectAndConsume(terminator);
+		expectAndConsume(TokenType.RPAREN);
+		return flags;
 	}
 
 	// <struct_declaration> ::= "struct" <id> ("[" <template_params> "]")? "{" <declaration>* "}" /
@@ -2207,6 +2240,8 @@ AstIndex leftAssignOp(ref Parser p, PreferType preferType, Token token, int rbp,
 // <expr> "(" <expr_list> ")"
 AstIndex leftFuncCall(ref Parser p, PreferType preferType, Token token, int unused_rbp, AstIndex callee, ref int nbp) {
 	AstNodes args;
-	p.parse_expr_list(args, TokenType.RPAREN);
-	return p.makeExpr!CallExprNode(token.index, p.currentScopeIndex, callee, args);
+	ushort flags = p.parse_argument_list(args);
+	AstIndex callExpr = p.makeExpr!CallExprNode(token.index, p.currentScopeIndex, callee, args);
+	callExpr.flags(p.context) |= flags;
+	return callExpr;
 }

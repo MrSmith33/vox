@@ -281,6 +281,7 @@ void require_name_register(ref AstIndex nodeIndex, ref NameRegisterState state)
 		case expr_bin_op: name_register_nested_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: name_register_nested_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: name_register_nested_call(cast(CallExprNode*)node, state); break;
+		case expr_named_argument: name_register_nested_named_argument(cast(NamedArgumenExprNode*)node, state); break;
 		case expr_index: name_register_nested_index(cast(IndexExprNode*)node, state); break;
 		case expr_slice: name_register_nested_expr_slice(cast(SliceExprNode*)node, state); break;
 		case expr_type_conv: name_register_nested_type_conv(cast(TypeConvExprNode*)node, state); break;

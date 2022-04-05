@@ -35,7 +35,11 @@ struct FunctionBackendData
 struct FunctionDeclNode {
 	mixin AstNodeData!(AstType.decl_function);
 	AstIndex _module;
-	ScopeIndex parentScope;
+	// scopes are in a hierarchy as:
+	// ownerScope
+	// + parameterScope
+	//   + body scope
+	ScopeIndex parameterScope;
 	AstIndex signature; // FunctionSignatureNode
 	AstIndex block_stmt; // null if external
 	Identifier id;
@@ -47,13 +51,13 @@ struct FunctionDeclNode {
 		return signature.get!FunctionSignatureNode(c).isCtfeOnly;
 	}
 
-	this(TokenIndex loc, AstIndex _module, ScopeIndex parentScope, AstIndex signature, Identifier id)
+	this(TokenIndex loc, AstIndex _module, ScopeIndex parameterScope, AstIndex signature, Identifier id)
 	{
 		this.loc = loc;
 		this.astType = AstType.decl_function;
 		this.flags = 0;
 		this._module = _module;
-		this.parentScope = parentScope;
+		this.parameterScope = parameterScope;
 		this.signature = signature;
 		this.id = id;
 	}
@@ -81,7 +85,7 @@ void print_func(FunctionDeclNode* node, ref AstPrintState state)
 
 void post_clone_func(FunctionDeclNode* node, ref CloneState state)
 {
-	state.fixScope(node.parentScope);
+	state.fixScope(node.parameterScope);
 	state.fixAstIndex(node._module);
 	state.fixAstIndex(node.signature);
 	state.fixAstIndex(node.block_stmt);
@@ -97,7 +101,7 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 	if (!node.isTemplateInstance)
 	{
 		// can't be done at parse time because of conditional compilation
-		node.parentScope.insert_scope(node.id, nodeIndex, c);
+		node.parameterScope.get_scope(c).parentScope.insert_scope(node.id, nodeIndex, c);
 	}
 	auto mod = node._module.get!ModuleDeclNode(c);
 	mod.addFunction(nodeIndex, c);

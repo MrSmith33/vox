@@ -6030,3 +6030,109 @@ immutable test271 = q{--- test271.vx
 --- <error>
 test271.vx:2:7: Error: variables declared as `auto` must have an initializer
 };
+
+
+@TestInfo(&tester272)
+immutable test272 = q{--- test272.vx
+	// named arguments
+	i32 func(i32 param1, i32 param2, i32 param3) { return param1 * 40 + param2 * 20 + param3; }
+	i32 call_0() { return func(1, 2, 3); }
+	i32 call_1() { return func(param1: 1, 2, 3); }
+	i32 call_2() { return func(1, param2: 2, 3); }
+	i32 call_3() { return func(1, 2, param3: 3); }
+	i32 call_4() { return func(param1: 1, param2: 2, 3); }
+	i32 call_5() { return func(param2: 2, 3, param1: 1, ); }
+	i32 call_6() { return func(param1: 1, 2, param3: 3); }
+	i32 call_7() { return func(param3: 3, param1: 1, 2); }
+	i32 call_8() { return func(1, param2: 2, param3: 3); }
+	i32 call_9() { return func(1, param3: 3, param2: 2); }
+	i32 call10() { return func(param1: 1, param2: 2, param3: 3); }
+	i32 call11() { return func(param1: 1, param3: 3, param2: 2); }
+	i32 call12() { return func(param2: 2, param1: 1, param3: 3); }
+	i32 call13() { return func(param2: 2, param3: 3, param1: 1); }
+	i32 call14() { return func(param3: 3, param1: 1, param2: 2); }
+	i32 call15() { return func(param3: 3, param2: 2, param1: 1); }
+};
+void tester272(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("call_0")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_1")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_2")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_3")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_4")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_5")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_6")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_7")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_8")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_9")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call10")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call11")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call12")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call13")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call14")() == 83);
+}
+
+@TestInfo()
+immutable test273 = q{--- test273.vx
+	// named arguments, error cases
+	i32 func(i32 param1, i32 param2, i32 param3) { return param1 * 40 + param2 * 20 + param3; }
+	i32 call_1() { return func(param4: 4, 1, 2); } // nonexisting named parameter
+	i32 call_2() { return func(param2: 2, 1, 3); } // setting parameter 4, param1 not set
+	i32 call_3() { return func(param3: 3, 1, 2); } // setting parameter 4 and 5, params 1 and 2 not set
+	i32 call_4() { return func(param1: 1, param1: 1, 2); } // setting parameter 1 twice
+--- <error>
+test273.vx:3:29: Error: Function `func` has no parameter named `param4`
+test273.vx:3:28: Error: Missing argument for parameter 1: `param1`
+test273.vx:3:28: Error: Missing argument for parameter 2: `param2`
+test273.vx:3:28: Error: Missing argument for parameter 3: `param3`
+test273.vx:4:43: Error: Trying to provide parameter 4, while `func` has 3 parameters
+test273.vx:4:28: Error: Missing argument for parameter 1: `param1`
+test273.vx:5:40: Error: Trying to provide parameter 4, while `func` has 3 parameters
+test273.vx:5:43: Error: Trying to provide parameter 5, while `func` has 3 parameters
+test273.vx:5:28: Error: Missing argument for parameter 1: `param1`
+test273.vx:5:28: Error: Missing argument for parameter 2: `param2`
+test273.vx:6:40: Error: Parameter `param1` provided several times
+test273.vx:6:28: Error: Missing argument for parameter 3: `param3`
+};
+
+
+@TestInfo(&tester274)
+immutable test274 = q{--- test274.vx
+	// named arguments with default arguments
+	i32 func(i32 param1, i32 param2, i32 param3 = 3) { return param1 * 40 + param2 * 20 + param3; }
+	i32 call_0() { return func(1, 2); }
+	i32 call_1() { return func(1, 2, 3); }
+	i32 call_2() { return func(param1: 1, 2); }
+	i32 call_3() { return func(1, param2: 2); }
+	i32 call_4() { return func(param1: 1, param2: 2); }
+	i32 call_5() { return func(param2: 2, param1: 1); }
+};
+void tester274(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int)("call_0")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_1")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_2")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_3")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_4")() == 83);
+	assert(ctx.getFunctionPtr!(int)("call_5")() == 83);
+}
+
+
+@TestInfo()
+immutable test275 = q{--- test275.vx
+	// named arguments, anonymous parameters
+	void func(i32) {}
+	void call() { return func(__param_0: 1); }
+--- <error>
+test275.vx:3:28: Error: Function `func` has no parameter named `__param_0`
+test275.vx:3:27: Error: Missing argument for anonymous parameter 1
+};
+
+
+@TestInfo(&tester276)
+immutable test276 = q{--- test276.vx
+	// return void typed expression from void function
+	void func() {}
+	void call() { return func(); }
+};
+void tester276(ref TestContext ctx) {
+	ctx.getFunctionPtr!(void)("call")();
+}

@@ -357,27 +357,17 @@ AstIndex find_innermost_owner(ScopeIndex parentScope, AstType ownerType, Compila
 	while(true)
 	{
 		c.assertf(parentScope.isDefined, "Undefined scope");
+		Scope* sc = parentScope.get_scope(c);
 
-		AstIndex owner = parentScope.get_scope(c).owner;
-		c.assertf(parentScope.isDefined, "Undefined owner");
+		c.assertf(sc.owner.isDefined, "Undefined owner");
+		AstNode* ownerNode = sc.owner.get_node(c);
 
-		AstNode* ownerNode = owner.get_node(c);
+		if (ownerNode.astType == ownerType) return sc.owner;
 
-		if (ownerNode.astType == ownerType) return owner;
+		// module is the top scope
+		// didn't find the requested owner
+		if (ownerNode.astType == AstType.decl_module) return AstIndex(0);
 
-		switch(ownerNode.astType) {
-			case AstType.decl_module:
-				return AstIndex(0); // didn't find the requested owner
-
-			case AstType.decl_struct:
-				parentScope = ownerNode.as!StructDeclNode(c).parentScope;
-				continue;
-
-			case AstType.decl_function:
-				parentScope = ownerNode.as!FunctionDeclNode(c).parentScope;
-				continue;
-
-			default: c.internal_error("Invalid owner type found (%s)", ownerNode.astType);
-		}
+		parentScope = sc.parentScope;
 	}
 }

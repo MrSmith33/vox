@@ -360,6 +360,7 @@ void post_clone(AstIndex nodeIndex, ref CloneState state)
 		case expr_bin_op: post_clone_binary_op(cast(BinaryExprNode*)node, state); break;
 		case expr_un_op: post_clone_unary_op(cast(UnaryExprNode*)node, state); break;
 		case expr_call: post_clone_call(cast(CallExprNode*)node, state); break;
+		case expr_named_argument: post_clone_named_argument(cast(NamedArgumenExprNode*)node, state); break;
 		case expr_index: post_clone_index(cast(IndexExprNode*)node, state); break;
 		case expr_slice: post_clone_expr_slice(cast(SliceExprNode*)node, state); break;
 		case expr_type_conv: post_clone_type_conv(cast(TypeConvExprNode*)node, state); break;

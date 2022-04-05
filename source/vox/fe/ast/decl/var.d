@@ -10,6 +10,7 @@ enum VariableFlags : ushort {
 	isParameter        = AstFlags.userFlag << 1,
 	isVariadicParam    = AstFlags.userFlag << 2,
 	isAddressTaken     = AstFlags.userFlag << 3,
+	isAnonymous        = AstFlags.userFlag << 4,
 }
 
 @(AstType.decl_var)
@@ -30,6 +31,7 @@ struct VariableDeclNode
 	bool isParameter() { return cast(bool)(flags & VariableFlags.isParameter); }
 	bool isVariadicParam() { return cast(bool)(flags & VariableFlags.isVariadicParam); }
 	bool isAddressTaken() { return cast(bool)(flags & VariableFlags.isAddressTaken); }
+	bool isAnonymous() { return cast(bool)(flags & VariableFlags.isAnonymous); }
 
 	IrIndex getIrIndex(CompilationContext* c)
 	{
@@ -56,8 +58,10 @@ void post_clone_var(VariableDeclNode* node, ref CloneState state)
 
 void name_register_self_var(AstIndex nodeIndex, VariableDeclNode* node, ref NameRegisterState state) {
 	node.state = AstNodeState.name_register_self;
-	// registered during expansion in function signature
-	node.parentScope.insert_scope(node.id, nodeIndex, state.context);
+	if (!node.isAnonymous) {
+		// registered during expansion in function signature
+		node.parentScope.insert_scope(node.id, nodeIndex, state.context);
+	}
 	node.state = AstNodeState.name_register_self_done;
 }
 
