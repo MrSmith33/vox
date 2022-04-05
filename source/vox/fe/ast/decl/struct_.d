@@ -47,11 +47,38 @@ struct StructDeclNode {
 	bool isOpaque() { return cast(bool)(flags & StructFlags.isOpaque); }
 	bool isCtfeOnly() { return cast(bool)(flags & StructFlags.isCtfeOnly); }
 	bool isUnion() { return cast(bool)(flags & StructFlags.isUnion); }
+	string structOrUnionString() { return isUnion ? "union" : "struct"; }
 	SizeAndAlignment sizealign(CompilationContext* c) {
 		gen_ir_type_struct(&this, c);
 		IrTypeStruct* structType = &c.types.get!IrTypeStruct(irType);
 		return structType.sizealign;
 	}
+}
+
+struct StructDynMemberIterator
+{
+	StructDeclNode* node;
+	CompilationContext* c;
+
+	int opApply(scope int delegate(uint index, ref AstIndex member) dg)
+	{
+		uint memberIndex;
+		foreach(ref AstIndex decl; node.declarations)
+		{
+			if (!isDynamicStructMember(decl, c)) continue;
+			if (auto res = dg(memberIndex, decl)) return res;
+			++memberIndex;
+		}
+		return 0;
+	}
+}
+
+bool isDynamicStructMember(AstIndex decl, CompilationContext* c) {
+	AstNode* member = decl.get_node(c);
+	if (member.astType != AstType.decl_var) return false;
+	VariableDeclNode* memberVar = member.as!VariableDeclNode(c);
+	if (!memberVar.isMember) return false;
+	return true;
 }
 
 void print_struct(StructDeclNode* node, ref AstPrintState state)
@@ -117,23 +144,21 @@ IrIndex gen_init_value_struct(StructDeclNode* node, CompilationContext* c)
 	IrIndex[] args = c.allocateTempArray!IrIndex(numArgSlots);
 	scope(exit) c.freeTempArray(args);
 
-	uint memberIndex;
 	bool allZeroes = true;
-	foreach(AstIndex member; node.declarations)
+	foreach(uint memberIndex, AstIndex member; StructDynMemberIterator(node, c))
 	{
-		AstNode* memberVarNode = member.get_node(c);
-		if (memberVarNode.astType != AstType.decl_var) continue;
-		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
-		if (!memberVar.isMember) continue;
+		VariableDeclNode* memberVar = member.get!VariableDeclNode(c);
 		IrIndex memberValue = memberVar.gen_init_value_var(c);
 		if (!memberValue.isConstantZero) allZeroes = false;
+
 		if (node.isUnion) {
+			// only initialize first member in default struct initializer
 			args[0] = c.constants.addZeroConstant(structType); // member index
 			args[1] = memberValue; // value
 			break;
 		}
+
 		args[memberIndex] = memberValue;
-		++memberIndex;
 	}
 	if (allZeroes)
 		node.defaultVal = c.constants.addZeroConstant(structType);
@@ -155,11 +180,7 @@ void gen_ir_header_struct(StructDeclNode* node, CompilationContext* c)
 	scope(exit) c.end_node_property_calculation(node, NodeProperty.ir_header);
 
 	uint numFields = 0;
-	foreach(AstIndex memberIndex; node.declarations)
-	{
-		AstNode* member = c.getAstNode(memberIndex);
-		if (member.astType != AstType.decl_var) continue;
-		if (!member.isMember) continue;
+	foreach(uint memberIndex, AstIndex member; StructDynMemberIterator(node, c)) {
 		++numFields;
 	}
 
@@ -198,7 +219,7 @@ IrIndex gen_ir_type_struct(StructDeclNode* node, CompilationContext* c, AllowHea
 		AstNode* member = c.getAstNode(memberAstIndex);
 		if (member.astType == AstType.decl_var)
 		{
-			if (!member.isMember) continue;
+			if (!member.isMember) continue; // skip static members
 			auto var = member.as!(VariableDeclNode)(c);
 			IrIndex type = var.type.gen_ir_type(c);
 			SizeAndAlignment memberInfo = c.types.typeSizeAndAlignment(type);

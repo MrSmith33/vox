@@ -238,7 +238,7 @@ immutable fail21 = q{
 		S s = S("string");
 	}
 --- <error>
-fail21:6:11: Error: Argument 1, must have type u16, not u8[]
+fail21:6:11: Error: argument for member `num`, must have type u16, not u8[]
 };
 
 @TestInfo()

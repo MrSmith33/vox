@@ -60,8 +60,10 @@
 - named arguments for functions and struct/union construction
 	https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1030.md
 	+ basic function call with named args
+	+ avoid picking static members of structs/unions
 	- stuct/union initializer with named arguments
-		- avoid picking static members of structs
+		- struct
+		- union
 	+ anonymous parameters should not be named in the call
 	- interaction with variadic arguments
 	+ interaction with default arguments
@@ -155,6 +157,8 @@
 	- scratch spill slot is hardcoded to 64bits (maybe it is a good idea to take max of all sizes that is being put into the thing and update the size of the slot)
 	- check how conversions to bool work
 + union
+	- more testing of construction and access
+	- named arg construction
 - struct
 	+ struct methods
 		+ access from inside method
@@ -277,6 +281,7 @@ o dll linking
 
 [Error messages]
 - in error on unexpected EOF show unterminated ([{ symbol
+- Better not capitalize all error messages because parametrized messages need to account for it everywhere
 
 
 [Debug info]

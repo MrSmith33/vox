@@ -527,32 +527,88 @@ void type_check_constructor_call(CallExprNode* node, StructDeclNode* s, ref Type
 	uint numStructMembers = c.types.get!IrTypeStruct(structType).numMembers;
 	node.argsValues = c.allocateTempArray!IrIndex(numStructMembers);
 
-	if (s.isUnion && node.args.length > 1) {
-		c.error(node.loc, "Union constructor can only have single argument, not %s", node.args.length);
+	if (s.isUnion) {
+		if (node.args.length > 1)
+			c.error(node.loc, "union constructor must have a single argument, not %s", node.args.length);
+	} else if (node.args.length > numStructMembers) {
+		c.error(node.loc, "cannot initialize struct `%s` with %s arguments, it has %s members",
+			c.idString(s.id), node.args.length, numStructMembers);
 	}
 
-	size_t memberIndex;
-	foreach(AstIndex arg; s.declarations)
+	void checkArgument(VariableDeclNode* memberVar, ref AstIndex arg)
 	{
-		AstNode* member = arg.get_node(c);
-		if (member.astType != AstType.decl_var) continue;
-		VariableDeclNode* memberVar = member.as!VariableDeclNode(c);
-
-		if (node.args.length > memberIndex) { // init from constructor argument
-			require_type_check(node.args[memberIndex], state);
-			AstIndex memberType = memberVar.type;
-			bool success = autoconvTo(node.args[memberIndex], memberType, c);
-			if (!success) {
-				c.error(node.args[memberIndex].loc(c),
-					"Argument %s, must have type %s, not %s", memberIndex+1,
-					memberType.printer(c),
-					node.args[memberIndex].get_expr_type(c).printer(c));
-			}
-		} else { // init with initializer from struct definition
-			node.argsValues[memberIndex] = memberVar.gen_init_value_var(c);
+		AstIndex memberType = memberVar.type;
+		bool success = autoconvTo(arg, memberType, c);
+		if (!success) {
+			c.error(arg.loc(c),
+				"argument for member `%s`, must have type %s, not %s", c.idString(memberVar.id),
+				memberType.printer(c),
+				arg.get_expr_type(c).printer(c));
 		}
+	}
+
+	uint memberIndex;
+	bool reportedMixed;
+
+	// We expect args to be either all positional or all named
+	if (node.hasNamedArgs)
+	{
+		foreach (i, ref AstIndex arg; node.args)
+		{
+			require_type_check(arg, state);
+
+			AstNode* argNode = arg.get_node(c);
+
+			if (argNode.astType != AstType.expr_named_argument) {
+				if (!reportedMixed)
+					c.error(argNode.loc, "named and positional arguments cannot be mixed in struct constructor");
+				reportedMixed = true;
+				continue;
+			}
+
+			NamedArgumenExprNode* namedArg = argNode.as!NamedArgumenExprNode(c);
+			Identifier argId = namedArg.getId(c);
+
+			AstIndex memberNodeIndex = s.memberScope.lookup_scope(argId, c);
+			if (memberNodeIndex.isUndefined) {
+				c.error(namedArg.loc, "%s `%s` has no member named `%s`", s.structOrUnionString, c.idString(s.id), c.idString(argId));
+				continue;
+			}
+
+			if (!isDynamicStructMember(memberNodeIndex, c)) {
+				c.error(namedArg.loc, "cannot initialize %s `%s` of %s `%s`", get_node_kind_name(memberNodeIndex, c), c.idString(argId), s.structOrUnionString, c.idString(s.id));
+				continue;
+			}
+
+			VariableDeclNode* memberVar = memberNodeIndex.get!VariableDeclNode(c);
+			namedArg.resolve(memberVar.scopeIndex, c);
+			checkArgument(memberVar, namedArg.expr);
+		}
+	}
+	else
+	{
+		foreach(uint i, AstIndex member; StructDynMemberIterator(s, c))
+		{
+			if (node.args.length == memberIndex) break;
+
+			VariableDeclNode* memberVar = member.get!VariableDeclNode(c);
+			require_type_check(node.args[memberIndex], state);
+
+			checkArgument(memberVar, node.args[memberIndex]);
+			++memberIndex;
+		}
+	}
+
+	// will iterate the rest of members when positional or all members when named
+	foreach(ref AstIndex member; s.declarations[memberIndex..$])
+	{
+		if (!isDynamicStructMember(member, c)) continue;
+		VariableDeclNode* memberVar = member.get!VariableDeclNode(c);
+		// init with initializer from struct definition
+		node.argsValues[memberIndex] = memberVar.gen_init_value_var(c);
 		++memberIndex;
 	}
+
 	node.type = c.getAstNodeIndex(s);
 }
 
@@ -686,12 +742,12 @@ ExprValue visitCall(ref IrGenState gen, AstIndex signatureIndex, IrIndex callee,
 	}
 }
 
-ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* n)
+ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex currentBlock, ref IrLabel nextStmt, CallExprNode* node)
 {
 	CompilationContext* c = gen.context;
 
-	uint numArgs = n.args.length;
-	uint numMembers = cast(uint)n.argsValues.length;
+	uint numArgs = node.args.length;
+	uint numMembers = cast(uint)node.argsValues.length;
 
 	if (numArgs == 0)
 	{
@@ -700,37 +756,55 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 
 	bool allConstants = true;
 	bool allZeroes = true;
-	uint memberIndex;
-	foreach(AstIndex member; s.declarations)
+
+	if (node.hasNamedArgs)
 	{
-		AstNode* memberVarNode = member.get_node(c);
-		if (memberVarNode.astType != AstType.decl_var) continue;
-		VariableDeclNode* memberVar = memberVarNode.as!VariableDeclNode(c);
+		foreach (i, ref AstIndex arg; node.args)
+		{
+			NamedArgumenExprNode* namedArg = arg.get!NamedArgumenExprNode(c);
 
-		if (numArgs == memberIndex) break; // no more args provided, others are default inited
+			IrLabel afterArg = IrLabel(currentBlock);
+			ExprValue lval = ir_gen_expr(gen, namedArg.expr, currentBlock, afterArg);
+			currentBlock = afterArg.blockIndex;
+			IrIndex memberValue = lval.rvalue(gen, node.loc, currentBlock);
 
-		IrLabel afterArg = IrLabel(currentBlock);
-		ExprValue lval = ir_gen_expr(gen, n.args[memberIndex], currentBlock, afterArg);
-		currentBlock = afterArg.blockIndex;
-		IrIndex memberValue = lval.rvalue(gen, n.loc, currentBlock);
-		if (memberValue.isVirtReg) allConstants = false;
-		if (!memberValue.isConstantZero) allZeroes = false;
-		n.argsValues[memberIndex] = memberValue;
+			if (memberValue.isVirtReg) allConstants = false;
+			if (!memberValue.isConstantZero) allZeroes = false;
+			node.argsValues[namedArg.getParamIndex(c)] = memberValue;
+		}
+	}
+	else
+	{
+		uint memberIndex;
+		foreach(AstIndex member; s.declarations)
+		{
+			if (!isDynamicStructMember(member, c)) continue;
+			if (numArgs == memberIndex) break; // no more positional args provided, others are default inited
 
-		++memberIndex;
+			IrLabel afterArg = IrLabel(currentBlock);
+			ExprValue lval = ir_gen_expr(gen, node.args[memberIndex], currentBlock, afterArg);
+			currentBlock = afterArg.blockIndex;
+			IrIndex memberValue = lval.rvalue(gen, node.loc, currentBlock);
+
+			if (memberValue.isVirtReg) allConstants = false;
+			if (!memberValue.isConstantZero) allZeroes = false;
+			node.argsValues[memberIndex] = memberValue;
+
+			++memberIndex;
+		}
 	}
 
 	// check the rest of args for all zeroes
 	if (allConstants)
 	foreach (uint i; numArgs..numMembers) {
-		if (!n.argsValues[i].isConstantZero) {
+		if (!node.argsValues[i].isConstantZero) {
 			allZeroes = false;
 			break;
 		}
 	}
 
-	if (n.isLvalue) {
-		c.internal_error(n.loc, "Constructor cannot be an l-value");
+	if (node.isLvalue) {
+		c.internal_error(node.loc, "Constructor cannot be an l-value");
 	}
 	assert(s.irType.isDefined);
 
@@ -740,12 +814,12 @@ ExprValue visitConstructor(ref IrGenState gen, StructDeclNode* s, IrIndex curren
 	}
 	else if (allConstants)
 	{
-		return ExprValue(c.constants.addAggrecateConstant(s.irType, n.argsValues));
+		return ExprValue(c.constants.addAggrecateConstant(s.irType, node.argsValues));
 	}
 	else
 	{
 		ExtraInstrArgs extra = { type : s.irType };
-		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, n.argsValues);
+		InstrWithResult res = gen.builder.emitInstr!(IrOpcode.create_aggregate)(currentBlock, extra, node.argsValues);
 		return ExprValue(res.result);
 	}
 }

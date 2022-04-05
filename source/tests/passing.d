@@ -6136,3 +6136,55 @@ immutable test276 = q{--- test276.vx
 void tester276(ref TestContext ctx) {
 	ctx.getFunctionPtr!(void)("call")();
 }
+
+
+@TestInfo(&tester277)
+immutable test277 = q{--- test277.vx
+	// named arguments for structs (named cannot be mixed with positional)
+	struct Color { u8 r = 1; u8 g = 2; u8 b = 3; u8 a; }
+	Color make_0() { return Color(r: 1, g: 2, b: 3, a: 4); }
+	Color make_1() { return Color(r: 1); }
+	Color make_2() { return Color(r: 1, a: 4); }
+	Color make_3() { return Color(a: 4, b: 3, g: 2, r: 1); }
+	//union Union { u32 u; bool b; f32 f; }
+	//Union make_4() { return Union(u: 100); }
+	//Union make_5() { return Union(b: true); }
+	//Union make_6() { return Union(f: 10); }
+};
+void tester277(ref TestContext ctx) {
+	static struct Color { ubyte r; ubyte g; ubyte b; ubyte a; }
+	static struct Union {
+		this(uint u){ this.u = u; }
+		this(bool b){ this.b = b; }
+		this(float f){ this.f = f; }
+		uint u;
+		bool b;
+		float f;
+	}
+	assert(ctx.getFunctionPtr!(Color)("make_0")() == Color(1, 2, 3, 4));
+	assert(ctx.getFunctionPtr!(Color)("make_1")() == Color(1, 2, 3, 0));
+	assert(ctx.getFunctionPtr!(Color)("make_2")() == Color(1, 2, 3, 4));
+	assert(ctx.getFunctionPtr!(Color)("make_3")() == Color(1, 2, 3, 4));
+	//assert(ctx.getFunctionPtr!(Union)("make_4")() == Union(100));
+}
+
+
+@TestInfo()
+immutable test278 = q{--- test278.vx
+	// nnamed arguments for structs, errors
+	struct Color { u8 r = 1; u8 g = 2; u8 b = 3; u8 a; }
+	struct ColorStatic { @static u8 r = 1; u8 g = 2; u8 b = 3; u8 a; }
+	union U { u8 b; f32 f; }
+	Color make_1() { return Color(r: 1, g: 2, b: 3, w: 4); }
+	ColorStatic make_2() { return ColorStatic(r: 1); }
+	Color make_3() { return Color(1, 2, 3, 4, 5); }
+	Color make_4() { return Color(r: 1, 2, 3, 4, 5); }
+	U make_5() { return U(b: 1, f: 1.0); }
+--- <error>
+test278.vx:5:50: Error: struct `Color` has no member named `w`
+test278.vx:6:44: Error: cannot initialize variable `r` of struct `ColorStatic`
+test278.vx:7:31: Error: cannot initialize struct `Color` with 5 arguments, it has 4 members
+test278.vx:8:31: Error: cannot initialize struct `Color` with 5 arguments, it has 4 members
+test278.vx:8:38: Error: named and positional arguments cannot be mixed in struct constructor
+test278.vx:9:23: Error: union constructor must have a single argument, not 2
+};
