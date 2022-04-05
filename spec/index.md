@@ -2,6 +2,11 @@
 
 <!-- MarkdownTOC autolink="true" markdown_preview="github" -->
 
+- [Modules](#modules)
+  - [Module declaration](#module-declaration)
+  - [Import declaration](#import-declaration)
+- [Declarations](#declarations)
+  - [Variable declarations](#variable-declarations)
 - [Types](#types)
   - [Basic types](#basic-types)
   - [Enums](#enums)
@@ -16,6 +21,7 @@
 - [Functions](#functions)
   - [External functions](#external-functions)
   - [Calls](#calls)
+    - [Named arguments](#named-arguments)
 - [Attributes](#attributes)
   - [Built-in attributes](#built-in-attributes)
   - [User-defined attributes](#user-defined-attributes)
@@ -40,6 +46,49 @@
 <!-- /MarkdownTOC -->
 
 `NEI` marks not yet implemented features.
+
+# Modules
+
+## Module declaration
+
+By default module name is the same as the file it is contained in. Module declaration can be used to change the name of the module, as well as put it in a package.
+
+Module declaration must be the first declaration of the file.
+
+File can have only single module declaration.
+
+It must be at the top level of the module file and not within any conditional declaration.
+
+Syntax:
+```D
+module <module_name>;
+```
+
+```D
+// module without packages
+module mod;
+// module inside of single package
+module pack.mod;
+// module inside of 2 packages
+module pack1.pack2.mod;
+```
+
+## Import declaration
+
+Syntax:
+```D
+import <module_name>;
+```
+
+Imports can occur in any scope where declaration is valid (in module, struct, union, function body)
+
+Order of imports within the scope is not significant.
+
+# Declarations
+
+## Variable declarations
+
+`<type> name [ = <initializer>] ;`
 
 # Types
 
@@ -67,7 +116,24 @@
 - `$type`
 - `$value` `NEI`
 
+`_` character can be used to visually group digits of integer and float literals.
+
+Integer and float literals can have a suffix that is the same as the type name. In that case literal will be of the suffix type. `_` can be placed between value and suffix.
+
+```D
+1i8  // 1 of type i8
+1_i8 // same, but more readable
+42_f32
+0xFFFF_u64
+```
+
 `noreturn` implicitly casts to any other type. After calling the function returning `noreturn`, control flow will never return to the caller.
+
+`auto` can be used as a type of variable declarations with initializer in modules, structs, unions or inside function body. Such variables will have its type inferred from the initializer.
+
+```D
+auto var = 1_f32; // var is of type f32
+```
 
 ## Enums
 
@@ -97,9 +163,9 @@ Pointers behave like in C and D.
 
 ```D
 i32 integer;
-i32* pointer = &integer;
-*pointer = 42;
-pointer[0] = 42;
+i32* pointer = &integer; // & takes address of `integer`
+*pointer = 42; // prefix `*` deferences pointer
+pointer[0] = 42; // pointers can be indexed like array
 i32[] slice = pointer[0..1]; // slicing a pointer gives a slice result
 ```
 
@@ -268,6 +334,74 @@ $alias alias_var = func2; // take alias of func2
 $alias alias_var = func2(); // call func2
 $alias alias_var = func2()(); // call return value of func2
 ```
+
+### Named arguments
+
+Vox follows [DIP1030](https://github.com/dlang/DIPs/blob/master/DIPs/accepted/DIP1030.md), but see limitations below.
+
+Named arguments can be used when calling functions or when constructing structs and unions.
+
+Named and positional arguments can be mixed in a single function call.
+
+Named arguments work with default arguments.
+
+```D
+i32 func(i32 param1, i32 param2, i32 param3) { ... }
+// all these calls are equivalent to func(1, 2, 3);
+func(1, 2, 3);
+func(param1: 1, 2, 3);
+func(1, param2: 2, 3);
+func(1, 2, param3: 3);
+func(param1: 1, param2: 2, 3);
+func(param2: 2, 3, param1: 1, );
+func(param1: 1, 2, param3: 3);
+func(param3: 3, param1: 1, 2);
+func(1, param2: 2, param3: 3);
+func(1, param3: 3, param2: 2);
+func(param1: 1, param2: 2, param3: 3);
+func(param1: 1, param3: 3, param2: 2);
+func(param2: 2, param1: 1, param3: 3);
+func(param2: 2, param3: 3, param1: 1);
+func(param3: 3, param1: 1, param2: 2);
+func(param3: 3, param2: 2, param1: 1);
+```
+
+Positional arguments always match the parameter that comes after the previous argument. If positional argument is first, then it matches first parameter.
+
+```D
+void func(i32 param1, i32 param2) { ... }
+// For example: positional argument `3`, that follows named argument `param2: 2`,
+// will try to match third parameter, which doesn't exists
+func(param2: 2, 3);
+```
+
+Arguments are evaluated left-to-right at call site.
+
+This will evaluate `param3`, then `param2`, then `param1`:
+```D
+func(param3: 3, param2: 2, param1: 1);
+```
+
+Same syntax works for struct construction
+```D
+struct Color { u8 r; u8 g; u8 b = 3; u8 a = 4; }
+auto col = Color(r: 1, g: 2, b: 3, a: 4); // Color(1, 2, 3, 4)
+auto col = Color(a: 10); // Same as Color(0, 0, 3, 10)
+```
+
+When named arguments are used to construct a union type, only a single named argument must be used
+```D
+union Union { u32 u; bool b; f32 f; }
+auto u = Union(u: 100);
+auto u = Union(b: true);
+auto u = Union(f: 10);
+```
+
+Limitations:
+* Mixing named and positional argumentsStruct constructors are currently fobidden to . This restriction may be lifted in the future.
+* Calling variadic functions with named arguments is not supported yet.
+* Template arguments do not support named arguments yet.
+* Union named arguments are not fully implemented yet.
 
 # Attributes
 
