@@ -343,8 +343,6 @@ Named arguments can be used when calling functions or when constructing structs 
 
 Named and positional arguments can be mixed in a single function call.
 
-Named arguments work with default arguments.
-
 ```D
 i32 func(i32 param1, i32 param2, i32 param3) { ... }
 // all these calls are equivalent to func(1, 2, 3);
@@ -353,7 +351,7 @@ func(param1: 1, 2, 3);
 func(1, param2: 2, 3);
 func(1, 2, param3: 3);
 func(param1: 1, param2: 2, 3);
-func(param2: 2, 3, param1: 1, );
+func(param2: 2, 3, param1: 1);
 func(param1: 1, 2, param3: 3);
 func(param3: 3, param1: 1, 2);
 func(1, param2: 2, param3: 3);
@@ -366,6 +364,15 @@ func(param3: 3, param1: 1, param2: 2);
 func(param3: 3, param2: 2, param1: 1);
 ```
 
+Named arguments work with default arguments.
+
+```D
+i32 func(i32 param1 = 1, i32 param2 = 2, i32 param3 = 3) { ... }
+// all these calls are equivalent to func(1, 2, 3);
+func(param1: 1);
+func(1, param3: 3);
+```
+
 Positional arguments always match the parameter that comes after the previous argument. If positional argument is first, then it matches first parameter.
 
 ```D
@@ -373,6 +380,7 @@ void func(i32 param1, i32 param2) { ... }
 // For example: positional argument `3`, that follows named argument `param2: 2`,
 // will try to match third parameter, which doesn't exists
 func(param2: 2, 3);
+//              ^ Error: Trying to provide parameter 3, while `func` has 2 parameters
 ```
 
 Arguments are evaluated left-to-right at call site.
