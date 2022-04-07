@@ -31,6 +31,7 @@
 		- #dllimport(id)
 	+ template parameter inference (for function templates) IFTI
 		- only simple types
+		- ifti of member functions needs to account for this parameter, because ifti is done before providing this arg
 	+ variadic template arguments (requires inference)
 	- a way to perform IFTI from user code (pass template args with names and runtime types and get)
 	- #parameter(#type type, string name, type default_value, #alias[] attributes)

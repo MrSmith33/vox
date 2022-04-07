@@ -85,6 +85,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 		return null;
 	}
 
+	bool isError()      { return astType == AstType.error; }
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
 	bool isLvalue()     { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool hasAttributes(){ return cast(bool)(flags & AstFlags.hasAttributes); }

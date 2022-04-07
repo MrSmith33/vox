@@ -205,6 +205,8 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 		case AstType.decl_template:
 			auto templ = callee.get!TemplateDeclNode(c);
 
+			//writefln("%s %s", templ.isMember, templ.body.get_node(c).isMember);
+
 			if (templ.body.astType(c) != AstType.decl_function) {
 				c.unrecoverable_error(node.loc, "Cannot call template of %s", templ.body.astType(c));
 			}
@@ -214,18 +216,30 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 			auto templFunc = templ.body.get!FunctionDeclNode(c);
 			auto templSignature = templFunc.signature.get!FunctionSignatureNode(c);
 
+			if (templ.isMember) {
+				// rewrite as method[](args) as method[](this, args)
+				// let member_access handle everything else
+				AstIndex thisName = c.appendAst!NameUseExprNode(node.loc, node.parentScope, CommonIds.id_this);
+				require_name_resolve(thisName, c);
+				node.args.putFront(c.arrayArena, thisName);
+			}
+
 			bool success;
-			AstNodes types = doIfti(templ, templSignature, node.args, success, state);
+			AstNodes types = doIfti(node.loc, templ, templSignature, node.args, success, state);
 			if (!success)
 				c.unrecoverable_error(node.loc, "Cannot infer template arguments from runtime arguments");
 
 			callee = get_template_instance(callee, node.loc, types, state);
 			node.callee = callee;
+
 			if (callee == CommonAstNodes.node_error) {
 				node.type = CommonAstNodes.type_error;
 				return;
 			}
-			goto case AstType.decl_function;
+
+			auto func = callee.get!FunctionDeclNode(c);
+			auto signature = func.signature.get!FunctionSignatureNode(c);
+			return type_check_func_call(node, signature, func.id, state);
 		default:
 			// unknown / unimplemented case
 			node.type = CommonAstNodes.type_error;
@@ -239,7 +253,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 
 // Returns inferred template parameters
 // args needs to be ref, because type-check needs it to be ref
-AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNodes args, out bool success, ref TypeCheckState state)
+AstNodes doIfti(TokenIndex loc, TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNodes rt_args, out bool success, ref TypeCheckState state)
 {
 	// - run through all provided runtime args
 	// - get type of runtime parameter, if it is template type arg (T or T... here), then
@@ -250,32 +264,80 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNode
 	//     - otherwise find common type between two
 	// - at the end run through all template args, and error if any arg is not inferred.
 
+	// signature has 0 or 1 expanded parameter
+	// template has 0 or 1 variadic parameter
+
 	CompilationContext* c = state.context;
 
 	AstNodes ct_params = templ.parameters;
 	AstNodes rt_params = sig.parameters;
 	auto numRtParams = rt_params.length;
 	auto numCtParams = ct_params.length;
-	auto numRtArgs = args.length;
+	auto numRtArgs = rt_args.length;
 
-	AstNodes result;
+	//writefln("numRtParams %s, numCtParams %s, numRtArgs %s, sig.hasExpandedParam %s, templ.hasVariadic %s",
+	//		numRtParams, numCtParams, numRtArgs, sig.hasExpandedParam, templ.hasVariadic);
+
+	// array of inferred types (TODO: not only types)
+	AstNodes inferredTemplArgs;
 	success = true;
-	if (numCtParams == 0) return result;
+	if (numCtParams == 0) return inferredTemplArgs;
 
 	HashMap!(Identifier, AstIndex, Identifier.init) paramNames;
 
-	result.reserve(c.arrayArena, max(args.length, ct_params.length));
-
-	// only 0 or 1 variadic CT parameters allowed
-	// number of type ct params before variadic ct param
-	bool hasVariadic = templ.numParamsBeforeVariadic < numCtParams;
+	inferredTemplArgs.reserve(c.arrayArena, max(rt_args.length, ct_params.length));
 
 	foreach(uint i; 0..ct_params.length)
 	{
 		auto ctParam = ct_params[i].get!TemplateParamDeclNode(c);
 		paramNames.put(c.arrayArena, ctParam.id, ct_params[i]);
 		if (ctParam.isVariadic) break; // skip variadic and the rest of params
-		result.put(c.arrayArena, AstIndex());
+		inferredTemplArgs.put(c.arrayArena, AstIndex());
+	}
+
+	void reportCorrectExpandedParam(TokenIndex loc, Identifier rt_param_id)
+	{
+		if (templ.hasVariadic) {
+			uint variadicIndex = templ.numParamsBeforeVariadic;
+			auto ctParam = ct_params[variadicIndex].get!TemplateParamDeclNode(c);
+			c.error(loc, "Should be `%s... %s`", c.idString(ctParam.id), c.idString(rt_param_id));
+		}
+	}
+
+	if (templ.hasVariadic)
+		c.assertf(templ.numParamsBeforeVariadic+1 == numCtParams, loc, "TODO: parameters after variadic template parameter");
+
+	if (sig.hasExpandedParam)
+	{
+		if (!templ.hasVariadic) {
+			uint variadicIndex = sig.numParamsBeforeVariadic;
+			auto param = sig.parameters[variadicIndex].get!VariableDeclNode(c);
+			c.unrecoverable_error(param.loc, "Variadic parameters are not implemented");
+		}
+	}
+	else
+	{
+		if (numRtParams != numRtArgs)
+		{
+			foreach(AstIndex idx; rt_params) {
+				VariableDeclNode* rt_param = idx.get!VariableDeclNode(c);
+				AstNode* rt_type = rt_param.type.get_node(c);
+				if (rt_type.astType != AstType.expr_name_use) continue;
+				auto typeName = rt_type.as!NameUseExprNode(c);
+				Identifier typeId = typeName.id(c);
+				AstIndex symIndex = paramNames.get(typeId, AstIndex.init);
+				if (!symIndex) continue;
+				auto ctParam = symIndex.get!TemplateParamDeclNode(c);
+				if (ctParam.isVariadic) {
+					reportCorrectExpandedParam(rt_type.loc, rt_param.id);
+					break;
+				}
+			}
+
+			c.unrecoverable_error(loc,
+				"Cannot infer template parameters. Number of runtime arguments (%s) does not match number of function parameters (%s)",
+				numRtArgs, numRtParams);
+		}
 	}
 
 	void processTemplatedArg(AstIndex argTypeIndex, TemplateParamDeclNode* ctParam)
@@ -284,28 +346,28 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNode
 		//	ctParam.index, c.idString(ctParam.id),
 		//	argTypeIndex.printer(c));
 
-		if (result[ctParam.index].isUndefined)
+		if (inferredTemplArgs[ctParam.index].isUndefined)
 		{
 			// we found first use of template param. Assign type
-			result[ctParam.index] = argTypeIndex;
+			inferredTemplArgs[ctParam.index] = argTypeIndex;
 		}
-		else if (same_type(result[ctParam.index], argTypeIndex, c))
+		else if (same_type(inferredTemplArgs[ctParam.index], argTypeIndex, c))
 		{
 			// ok
 		}
 		else
 		{
 			// calculate common type
-			CommonTypeResult res = calcCommonType(result[ctParam.index], argTypeIndex, AstIndex(), AstIndex(), c);
+			CommonTypeResult res = calcCommonType(inferredTemplArgs[ctParam.index], argTypeIndex, AstIndex(), AstIndex(), c);
 			if (res.commonType.isErrorType) {
-				c.error("Cannot infer template parameter %s, from argument types %s and %s",
+				c.error(loc, "Cannot infer template parameter %s, from argument types %s and %s",
 					c.idString(ctParam.id),
-					result[ctParam.index].printer(c),
+					inferredTemplArgs[ctParam.index].printer(c),
 					argTypeIndex.printer(c),
 					);
 				success = false;
 			}
-			result[ctParam.index] = res.commonType;
+			inferredTemplArgs[ctParam.index] = res.commonType;
 		}
 	}
 
@@ -319,16 +381,16 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNode
 		// group 2
 		foreach(size_t i; group1_size..rt_group12_size)
 		{
-			require_type_check(args[i], state); // do not cache args, because require_type_check may modify it
-			AstIndex argTypeIndex = args[i].get_expr_type(c);
-			result.put(c.arrayArena, argTypeIndex);
+			require_type_check(rt_args[i], state); // do not cache args, because require_type_check may modify it
+			AstIndex argTypeIndex = rt_args[i].get_expr_type(c);
+			inferredTemplArgs.put(c.arrayArena, argTypeIndex);
 		}
 
 		// group 3
 		foreach(size_t i; rt_group12_size..numRtArgs)
 		{
-			require_type_check(args[i], state); // do not cache args, because require_type_check may modify it
-			AstIndex argTypeIndex = args[i].get_expr_type(c);
+			require_type_check(rt_args[i], state); // do not cache args, because require_type_check may modify it
+			AstIndex argTypeIndex = rt_args[i].get_expr_type(c);
 			uint rtParamIndex = cast(uint)(i - rt_group2_size + 1); // 1 skips variadic param
 
 			AstNode* rtType = rt_params[rtParamIndex].get!VariableDeclNode(c).type.get_node(c);
@@ -351,14 +413,18 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNode
 	}
 
 	// group 1
-	foreach(size_t i, ref AstIndex arg; args)
+	foreach(size_t i, ref AstIndex arg; rt_args)
 	{
 		require_type_check(arg, state); // do not cache arg, because require_type_check may modify it
 		AstIndex argTypeIndex = arg.get_expr_type(c);
-		AstNode* rtType = rt_params[i].get!VariableDeclNode(c).type.get_node(c);
-		if (rtType.astType == AstType.expr_name_use)
+		assert(i < numRtParams);
+
+		VariableDeclNode* rt_param = rt_params[i].get!VariableDeclNode(c);
+		AstNode* rt_type = rt_param.type.get_node(c);
+
+		if (rt_type.astType == AstType.expr_name_use)
 		{
-			auto typeName = rtType.as!NameUseExprNode(c);
+			auto typeName = rt_type.as!NameUseExprNode(c);
 			Identifier typeId = typeName.id(c);
 			AstIndex symIndex = paramNames.get(typeId, AstIndex.init);
 			if (symIndex)
@@ -367,28 +433,46 @@ AstNodes doIfti(TemplateDeclNode* templ, FunctionSignatureNode* sig, ref AstNode
 				auto ctParam = symIndex.get!TemplateParamDeclNode(c);
 
 				if (ctParam.isVariadic) {
+					if (!rt_param.isVariadicParam) {
+						reportCorrectExpandedParam(rt_param.loc, rt_param.id);
+						c.unrecoverable_error(rt_param.loc, "Cannot expand non-variadic template parameter %s", c.idString(typeId));
+					}
 					// this and the rest of runtime args are going into CT variadic param
 					processVariadicRtArgs(i);
 					break;
 				}
 
+				if (rt_param.isVariadicParam) {
+					reportCorrectExpandedParam(rt_param.loc, rt_param.id);
+					c.unrecoverable_error(rt_param.loc, "Cannot expand non-variadic template parameter %s", c.idString(typeId));
+				}
+
 				processTemplatedArg(argTypeIndex, ctParam);
 			}
+			else if (rt_param.isVariadicParam)
+			{
+				reportCorrectExpandedParam(rt_param.loc, rt_param.id);
+				c.unrecoverable_error(rt_param.loc, "Cannot expand parameter, type name is not found among template parameters");
+			}
+		}
+		else if (rt_param.isVariadicParam)
+		{
+			reportCorrectExpandedParam(rt_param.loc, rt_param.id);
+			c.unrecoverable_error(rt_param.loc, "Cannot expand parameter");
 		}
 	}
 
 	// check that all parameters before variadic were inferred
-	bool reported;
 	foreach(uint i; 0..templ.numParamsBeforeVariadic) {
-		AstIndex param = result[i];
+		AstIndex param = inferredTemplArgs[i];
 		if (param.isDefined) continue;
 
 		auto ctParam = ct_params[i].get!TemplateParamDeclNode(c);
-		c.error("Cannot infer template parameter %s", c.idString(ctParam.id));
+		c.error(loc, "Cannot infer template parameter %s", c.idString(ctParam.id));
 		success = false;
 	}
 
-	return result;
+	return inferredTemplArgs;
 }
 
 void type_check_func_call(CallExprNode* node, FunctionSignatureNode* signature, Identifier funcId, ref TypeCheckState state)

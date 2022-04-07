@@ -5722,7 +5722,7 @@ immutable test251 = q{--- test251.vx
 	// Forbid @static on parameters
 	void fun(@static u64 param) {}
 --- <error>
-test251.vx:2:11: Error: Parameters cannot be @static
+test251.vx:2:23: Error: Parameters cannot be @static
 };
 
 
@@ -6202,4 +6202,77 @@ immutable test279 = q{--- test279.vx
 	void main() {
 		Vector[i32] numbers = Vector[i32](null, 10, 0);
 	}
+};
+
+
+@TestInfo()
+immutable test280 = q{--- test280.vx
+	// issue 43. Missing check for expand operator on non-templated function
+	void printa(u8[]... data) {}
+--- <error>
+test280.vx:2:22: Error: Variadic arrays are not yet implemented
+};
+
+
+@TestInfo()
+immutable test281 = q{--- test281.vx
+	// issue 44. Missing check for expand operator on templated function without variadic parameter
+	void print[Args](Args... data) {}
+	void run() {
+		print("Hello", ", ", "world!\n");
+	}
+--- <error>
+test281.vx:2:27: Error: Variadic parameters are not implemented
+};
+
+
+@TestInfo()
+immutable test282 = q{--- test282.vx
+	// issue 44
+	void print[Args](Args data) {}
+	void run() {
+		print("Hello", ", ", "world!\n");
+	}
+--- <error>
+test282.vx:4:8: Error: Cannot infer template parameters. Number of runtime arguments (3) does not match number of function parameters (1)
+};
+
+
+@TestInfo()
+immutable test283 = q{--- test283.vx
+	// Templated method with IFTI
+	struct S {
+		void methodCaller() {
+			methodT(42);
+			methodT[](42);
+		}
+		void method(i32 arg) {}
+		void methodT[](i32 arg) {}
+	}
+};
+
+
+@TestInfo()
+immutable test284 = q{--- test284.vx
+	// Check for expand on incorrect template parameter
+	void print[T, Args...](T... data) {}
+	void run() {
+		print("Hello", ", ", "world!\n");
+	}
+--- <error>
+test284.vx:2:30: Error: Should be `Args... data`
+test284.vx:2:30: Error: Cannot expand non-variadic template parameter T
+};
+
+
+@TestInfo()
+immutable test285 = q{--- test285.vx
+	// Use of non-expanded variadic type
+	void print[Args...](Args data) {}
+	void run() {
+		print("Hello", ", ", "world!\n");
+	}
+--- <error>
+test285.vx:2:22: Error: Should be `Args... data`
+test285.vx:4:8: Error: Cannot infer template parameters. Number of runtime arguments (3) does not match number of function parameters (1)
 };

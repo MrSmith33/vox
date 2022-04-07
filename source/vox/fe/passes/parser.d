@@ -782,7 +782,10 @@ struct Parser
 			}
 
 			if (tok.type == TokenType.IDENTIFIER) // named parameter
+			{
+				paramStart = tok.index;
 				paramId = expectIdentifier();
+			}
 			else // anon parameter
 			{
 				flags |= VariableFlags.isAnonymous;
@@ -823,6 +826,7 @@ struct Parser
 		expectAndConsume(TokenType.RPAREN);
 	}
 
+	// 0+ non-variadic params, ? variadic params
 	void parse_template_parameters(ref AstNodes params, out ushort numParamsBeforeVariadic)
 	{
 		expectAndConsume(TokenType.LBRACKET);
@@ -850,6 +854,7 @@ struct Parser
 			}
 			else
 			{
+				// In the future we may allow non-variadic template params after variadic one
 				if (hasVaridic)
 					context.error(param.loc(context),
 						"Cannot have template parameters after variadic parameter (WIP)");

@@ -77,7 +77,21 @@ void expandVariadicParam(FunctionSignatureNode* node, CompilationContext* c)
 	// we are still in name register pass, but we need to get to the alias array
 	require_name_resolve(param.type, c);
 
-	auto types = param.type.get_effective_node(c).get!AliasArrayDeclNode(c);
+	AstNode* typeArray = param.type.get_effective_node(c).get_node(c);
+	if (typeArray.astType != AstType.decl_alias_array)
+	{
+		if (typeArray.isError) return;
+		if (typeArray.astType == AstType.type_slice) {
+			c.unrecoverable_error(param.loc,
+				"Variadic arrays are not yet implemented",
+				typeArray.astType);
+		}
+		c.unrecoverable_error(param.loc,
+			"Expand operator must be applied to variadic template argument, not %s",
+			typeArray.astType);
+	}
+
+	auto types = typeArray.as!AliasArrayDeclNode(c);
 
 	uint numVariadicParams = types.items.length;
 	node.parameters.replaceAt(c.arrayArena, variadicIndex, 1, types.items[]);

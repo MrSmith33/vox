@@ -184,7 +184,7 @@ immutable fail17 = q{
 --- <error>
 fail17:3:9: Error: cannot declare variable `op_global` of opaque type `Opaque`
 fail17:4:9: Error: function cannot return opaque type `Opaque`
-fail17:4:19: Error: cannot declare parameter of opaque type `Opaque`
+fail17:4:26: Error: cannot declare parameter of opaque type `Opaque`
 fail17:5:10: Error: cannot declare variable `op_local` of opaque type `Opaque`
 };
 
@@ -267,7 +267,7 @@ immutable fail24 = q{
 	// Test default argument is expected
 	void test(u32 arg1 = 42, u32 arg2) {}
 --- <error>
-fail24:2:27: Error: Default argument expected for arg2
+fail24:2:31: Error: Default argument expected for arg2
 };
 
 @TestInfo()

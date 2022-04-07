@@ -30,6 +30,8 @@ struct TemplateDeclNode
 	ushort numParamsBeforeVariadic;
 	/// Cached template instances
 	Array!TemplateInstance instances;
+
+	bool hasVariadic() { return numParamsBeforeVariadic < parameters.length; };
 }
 
 struct TemplateInstance
