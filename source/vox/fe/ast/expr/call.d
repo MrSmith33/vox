@@ -76,7 +76,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 	AstNodes templateArgs;
 	AstIndex callee = node.callee.get_effective_node(c);
 
-	switch (callee.astType(c))
+	start: switch (callee.astType(c))
 	{
 		// static function call
 		case AstType.decl_function:
@@ -184,7 +184,7 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 				}
 				node.callee = callee;
 
-				goto case AstType.decl_function;
+				goto start;
 			}
 
 			if (array_ast_type == AstType.expr_member)

@@ -6188,3 +6188,18 @@ test278.vx:8:31: Error: cannot initialize struct `Color` with 5 arguments, it ha
 test278.vx:8:38: Error: named and positional arguments cannot be mixed in struct constructor
 test278.vx:9:23: Error: union constructor must have a single argument, not 2
 };
+
+
+@TestInfo()
+immutable test279 = q{--- test279.vx
+	// issue 42. Call expression of index expression didn't account for different template kinds and always assumed function template
+	struct Vector[T] {
+		T* ptr;
+		u64 capacity;
+		u64 length;
+	}
+
+	void main() {
+		Vector[i32] numbers = Vector[i32](null, 10, 0);
+	}
+};
