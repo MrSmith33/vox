@@ -184,7 +184,13 @@ void type_check_call(ref AstIndex callIndex, CallExprNode* node, ref TypeCheckSt
 				}
 				node.callee = callee;
 
-				goto start;
+				switch(callee.astType(c)) {
+					case AstType.decl_function:
+					case AstType.decl_struct:
+						goto start;
+					default:
+						c.internal_error(node.loc, "Unexpected template type %s", callee.astType(c));
+				}
 			}
 
 			if (array_ast_type == AstType.expr_member)
