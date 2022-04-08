@@ -6276,3 +6276,19 @@ immutable test285 = q{--- test285.vx
 test285.vx:2:22: Error: Should be `Args... data`
 test285.vx:4:8: Error: Cannot infer template parameters. Number of runtime arguments (3) does not match number of function parameters (1)
 };
+
+
+
+@TestInfo()
+immutable test286 = q{--- test286.vx
+	// Report error on out-of-bound access to array
+	void sys_write(void* ptr){}
+	void printa[Args...](Args... data) {
+		sys_write(data[3].ptr);
+	}
+	void main() {
+		printa("Hello", ", ", "world!\n");
+	}
+--- <error>
+test286.vx:4:17: Error: Accessing index 3 of array of length 3
+};

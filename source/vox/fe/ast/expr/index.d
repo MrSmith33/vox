@@ -85,11 +85,19 @@ void name_resolve_index(ref AstIndex nodeIndex, IndexExprNode* node, ref NameRes
 			// replace current node with aliased entity
 			// reuse name_use
 			IrIndex indexVal = eval_static_expr(node.indices[0], c);
-			AstIndex item = effective_array.get!AliasArrayDeclNode(c).items[c.constants.get(indexVal).i64];
-			if (item.get_effective_node(c).isType(c))
-				nameUse.flags |= AstFlags.isType;
-			nameUse.resolve(item, c);
-			nodeIndex = arrayCopy;
+			auto arr = effective_array.get!AliasArrayDeclNode(c);
+			ulong index = c.constants.get(indexVal).i64;
+
+			if (index >= arr.items.length) {
+				c.error(node.loc, "Accessing index %s of array of length %s", index, arr.items.length);
+			} else {
+				AstIndex item = arr.items[index];
+				if (item.get_effective_node(c).isType(c))
+					nameUse.flags |= AstFlags.isType;
+				nameUse.resolve(item, c);
+				nodeIndex = arrayCopy;
+			}
+
 		}
 	}
 	node.state = AstNodeState.name_resolve_done;
