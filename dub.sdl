@@ -5,7 +5,7 @@ license "BSL-1.0"
 
 configuration "library" {
 	targetType "library"
-	excludedSourceFiles "source/bench.d" "source/cli.d" "source/main.d" "source/tester.d" "source/tests/*"
+	excludedSourceFiles "source/c_api.d" "source/bench.d" "source/cli.d" "source/main.d" "source/tester.d" "source/tests/*"
 }
 
 // Command line interface of the Vox compiler

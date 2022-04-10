@@ -144,6 +144,10 @@ Release CLI build:
 
 `ldc2 -d-version=cli -m64 -O3 -release -boundscheck=off -enable-inlining -flto=full -mcpu=native -i main.d -of=vox.exe`
 
+Debug shared library build:
+
+`ldc2 -m64 -shared -g -d-debug -fvisibility=hidden -link-defaultlib-shared=false -i c_api.d -of=libvox.dll`
+
 Compiling with Profile Guided Optimization:
 
 ```
