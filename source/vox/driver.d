@@ -81,7 +81,7 @@ struct Driver
 		context.initialize();
 	}
 
-	void releaseMemory() nothrow
+	void releaseMemory()
 	{
 		arenaPool.decommitAll;
 	}
