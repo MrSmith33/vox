@@ -71,7 +71,7 @@ struct Driver
 			arenaPool.take(12*4*GiB),
 			arenaPool.take(16*GiB));
 
-		context.idMap.strings.setBuffer(arenaPool.take(2*GiB), 0);
+		context.idMap.entries.setBuffer(arenaPool.take(2*GiB), 0);
 		context.idMap.stringDataBuffer.setBuffer(arenaPool.take(2*GiB), 0);
 
 		// all arena sizes must sum up to predefined constant
@@ -81,7 +81,7 @@ struct Driver
 		context.initialize();
 	}
 
-	void releaseMemory()
+	void releaseMemory() nothrow
 	{
 		arenaPool.decommitAll;
 	}
@@ -100,7 +100,7 @@ struct Driver
 		context.files.put(moduleFile);
 		SourceFileInfo* file = &context.files.back();
 
-		Identifier id = context.idMap.getOrRegNoDup(&context, file.name.baseName.stripExtension);
+		Identifier id = context.idMap.getOrReg(&context, file.name.baseName.stripExtension);
 		ObjectModule localModule = {
 			kind : ObjectModuleKind.isLocal,
 			id : id
@@ -108,7 +108,7 @@ struct Driver
 		auto mod = context.appendAst!ModuleDeclNode();
 		file.mod = context.getAst!ModuleDeclNode(mod);
 		file.mod.moduleIndex = ModuleIndex(fileIndex);
-		file.mod.id = id;
+		file.mod.fqn = id;
 		file.mod.objectSymIndex = context.objSymTab.addModule(localModule);
 	}
 
@@ -161,8 +161,8 @@ struct Driver
 
 		foreach (HostSymbol hostSym; hostSymbols)
 		{
-			Identifier symId = context.idMap.getOrRegNoDup(&context, hostSym.symName);
-			context.addHostSymbol(hostModuleIndex, ExternalSymbolId(CommonIds.id_host, symId), hostSym.ptr);
+			Identifier symId = context.idMap.getOrReg(&context, hostSym.symName);
+			context.addHostSymbol(hostModuleIndex, symId, hostSym.ptr);
 		}
 	}
 }

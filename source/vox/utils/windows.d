@@ -3,8 +3,7 @@
 /// Authors: Andrey Penechko.
 module vox.utils.windows;
 
-version(Windows):
-extern(C):
+extern(C) version(Windows) nothrow:
 
 void* VirtualAlloc(void* lpAddress, size_t dwSize, uint flAllocationType, uint flProtect);
 bool VirtualFree(void* lpAddress, size_t dwSize, uint dwFreeType);

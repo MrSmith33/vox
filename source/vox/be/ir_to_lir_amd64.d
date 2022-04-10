@@ -460,7 +460,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 							sectionIndex : context.builtinSections[ObjectSectionType.ro_data],
 							moduleIndex : mod.objectSymIndex,
 							flags : ObjectSymbolFlags.isFloat,
-							id : context.idMap.getOrRegNoDup(context, ":float"),
+							id : context.idMap.getOrReg(context, ":float"),
 						};
 						global.objectSymIndex = context.objSymTab.addSymbol(sym);
 

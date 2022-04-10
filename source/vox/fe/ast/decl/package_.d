@@ -10,8 +10,8 @@ import vox.all;
 @(AstType.decl_package)
 struct PackageDeclNode {
 	mixin AstNodeData!(AstType.decl_package, 0, AstNodeState.ir_gen_done);
-	AstNodeMap declarations; // nested modules/packages
-	Identifier id;
+	AstNodeMap declarations; // nested modules/packages. Key is self name (non-fqn)
+	Identifier fqn;
 	/// Points to PackageDeclNode
 	AstIndex parentPackage = CommonAstNodes.node_root_package;
 
@@ -20,18 +20,25 @@ struct PackageDeclNode {
 	void addModule(TokenIndex loc, Identifier modId, AstIndex modIndex, ref AstIndex conflictingModPack, CompilationContext* c) {
 		bool wasCreated;
 		c.assertf(modIndex.astType(c) == AstType.decl_module, "Must be module");
-		AstIndex value = *declarations.getOrCreate(c.arrayArena, modId, wasCreated, modIndex);
+		AstIndex value = *declarations.getOrCreate(c.arrayArena, modId.getSelf(c), wasCreated, modIndex);
 		if (!wasCreated) {
 			if (conflictingModPack.isUndefined) conflictingModPack = value;
 		}
 	}
 
-	AstIndex getOrCreateSubpackage(TokenIndex loc, Identifier subpackageId, ref AstIndex conflictingModule, CompilationContext* c) {
+	AstIndex lookup(Identifier subpackageId, CompilationContext* c) {
 		AstIndex index = declarations.get(subpackageId, AstIndex.init);
+		assert(index.isModOrPack(c));
+		return index;
+	}
+
+	AstIndex getOrCreateSubpackage(TokenIndex loc, Identifier subpackageId, ref AstIndex conflictingModule, CompilationContext* c) {
+		AstIndex index = declarations.get(subpackageId.getSelf(c), AstIndex.init);
 
 		void makePack() {
 			index = c.appendAst!PackageDeclNode(TokenIndex.init, AstNodeMap.init, subpackageId, c.getAstNodeIndex(&this));
-			declarations.put(c.arrayArena, subpackageId, index);
+			c.modules.put(c.arrayArena, subpackageId, index);
+			declarations.put(c.arrayArena, subpackageId.getSelf(c), index);
 		}
 
 		if (index.isUndefined) makePack(); // create new package
@@ -57,23 +64,6 @@ struct PackageDeclNode {
 	}
 }
 
-void printPackageName(AstIndex p, scope void delegate(const(char)[]) sink, CompilationContext* c) {
-	auto pack = p.get!PackageDeclNode(c);
-	if (!pack.isTopLevel) {
-		printPackageName(pack.parentPackage, sink, c);
-		sink(".");
-	}
-	sink(c.idString(pack.id));
-}
-
-struct PackageNamePrinter {
-	AstIndex pack;
-	CompilationContext* c;
-
-	void toString(scope void delegate(const(char)[]) sink) {
-		printPackageName(pack, sink, c);
-	}
-}
 
 struct PackageFilesPrinter
 {
@@ -99,5 +89,5 @@ struct PackageFilesPrinter
 
 void print_package(PackageDeclNode* node, ref AstPrintState state)
 {
-	state.print("PACKAGE ", PackageNamePrinter(state.context.getAstNodeIndex(node), state.context));
+	state.print("PACKAGE ", node.fqn.pr(state.context));
 }

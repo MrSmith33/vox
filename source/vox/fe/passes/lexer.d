@@ -25,6 +25,8 @@ void pass_lexer(ref CompilationContext ctx, CompilePassPerModule[] subPasses)
 
 		lexer.lex();
 
+		ctx.numLinesLexed += lexer.line;
+
 		if (ctx.printLexemes) {
 			writefln("// Lexemes `%s`", file.name);
 			Token tok = Token(TokenType.init, file.firstTokenIndex);

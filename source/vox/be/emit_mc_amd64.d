@@ -870,7 +870,7 @@ struct CodeEmitter
 							kind : ObjectSymbolKind.isLocal,
 							sectionIndex : roSectionIndex,
 							moduleIndex : funcSym.moduleIndex,
-							id : context.idMap.getOrRegNoDup(context, ":float"),
+							id : context.idMap.getOrReg(context, ":float"),
 						};
 						LinkIndex symIndex = context.objSymTab.addSymbol(sym);
 						ObjectSymbol* globalSym = context.objSymTab.getSymbol(symIndex);

@@ -187,7 +187,7 @@ IrIndex makeStringLiteralIrConstant(string data, LinkIndex moduleSymIndex, Compi
 			sectionIndex : c.builtinSections[ObjectSectionType.ro_data],
 			moduleIndex : moduleSymIndex,
 			flags : ObjectSymbolFlags.needsZeroTermination | ObjectSymbolFlags.isString,
-			id : c.idMap.getOrRegNoDup(c, ":string"),
+			id : c.idMap.getOrReg(c, ":string"),
 		};
 		global.objectSymIndex = c.objSymTab.addSymbol(sym);
 

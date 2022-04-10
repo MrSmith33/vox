@@ -134,9 +134,9 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 
 								if (!symbolIndex.isDefined) {
 									if (c.externalModules.get(modId).isDefined)
-										c.error(node.loc, "Cannot find external symbol `%s` in host module `%s`", c.idString(symId), c.idString(modId));
+										c.error(node.loc, "Cannot find external symbol `%s` in host module `%s`", symId.pr(c), modId.pr(c));
 									else
-										c.error(node.loc, "Cannot find external symbol `%s` in host module `%s`. No such module defined", c.idString(symId), c.idString(modId));
+										c.error(node.loc, "Cannot find external symbol `%s` in host module `%s`. No such module defined", symId.pr(c), modId.pr(c));
 									break;
 								}
 
@@ -145,16 +145,15 @@ void name_register_self_func(AstIndex nodeIndex, FunctionDeclNode* node, ref Nam
 								break;
 
 							case BuildType.exe:
-								// Will create a new module if not found
-								// Dll symbols will be
-								LinkIndex moduleIndex = c.getOrCreateExternalModule(modId, ObjectModuleKind.isImported);
-
 								// When compiling exe, external symbol will point to a shared library
 								LinkIndex symbolIndex = c.externalSymbols.get(externalId);
 
 								if (!symbolIndex.isDefined) {
+									// Will create a new module if not found
+									// Dll symbols will be imported from this module
+									LinkIndex moduleIndex = c.getOrCreateExternalModule(modId, ObjectModuleKind.isImported);
 									// Create symbol if it doesn't exist
-									symbolIndex = c.addDllModuleSymbol(moduleIndex, externalId);
+									symbolIndex = c.addDllModuleSymbol(moduleIndex, symId);
 								}
 
 								node.backendData.objectSymIndex = symbolIndex;

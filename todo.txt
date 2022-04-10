@@ -93,6 +93,7 @@
 	+ forbid @static parameters
 	- Calling static methods via `Type.method` syntax
 	- struct constructor must ignore static members
+- need to decide what to do when attribute is found before a statement that is not a declaration
 
 [Types]
 - auto

@@ -178,7 +178,7 @@ AstIndex lookupScopeIdRecursive(Scope* scop, const Identifier id, TokenIndex fro
 }
 
 // Returns errorNode if not found or error occured
-AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* context)
+AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, CompilationContext* c)
 {
 	while (scop)
 	{
@@ -187,23 +187,17 @@ AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, Compil
 
 		foreach (AstIndex impIndex; scop.imports)
 		{
-			ModuleDeclNode* imp = context.getAst!ModuleDeclNode(impIndex);
+			ModuleDeclNode* imp = c.getAst!ModuleDeclNode(impIndex);
 			// TODO: check that import is higher in ordered scopes
-			AstIndex scopeSym = imp.memberScope.lookup_scope(id, context);
+			AstIndex scopeSym = imp.memberScope.lookup_scope(id, c);
 			if (!scopeSym) continue;
 
 			if (scopeSym && symIndex && scopeSym != symIndex)
 			{
-				string mod1Id = context.idString(symMod.id);
-				string sym1Id = context.idString(symIndex.get_node_id(context));
-
-				string mod2Id = context.idString(imp.id);
-				string sym2Id = context.idString(scopeSym.get_node_id(context));
-
-				context.error(from,
-					"`%s.%s` at %s conflicts with `%s.%s` at %s",
-					mod1Id, sym1Id, FmtSrcLoc(context.getAstNode(symIndex).loc, context),
-					mod2Id, sym2Id, FmtSrcLoc(context.getAstNode(scopeSym).loc, context));
+				c.error(from,
+					"`%s` at %s conflicts with `%s` at %s",
+					symIndex.get_node_id(c).pr(c), FmtSrcLoc(c.getAstNode(symIndex).loc, c),
+					scopeSym.get_node_id(c).pr(c), FmtSrcLoc(c.getAstNode(scopeSym).loc, c));
 				return CommonAstNodes.node_error;
 			}
 
@@ -213,7 +207,7 @@ AstIndex lookupImports(Scope* scop, const Identifier id, TokenIndex from, Compil
 
 		if (symIndex) return symIndex;
 
-		scop = scop.parentScope.get_scope(context);
+		scop = scop.parentScope.get_scope(c);
 	}
 
 	return CommonAstNodes.node_error;

@@ -24,50 +24,32 @@ struct ModuleDeclNode {
 	LinkIndex objectSymIndex;
 	ModuleIndex moduleIndex;
 	/// module identifier. Used by import declaration.
-	Identifier id;
+	Identifier fqn;
 	/// Points to PackageDeclNode
 	AstIndex parentPackage = CommonAstNodes.node_root_package;
 
 	bool isTopLevel() { return parentPackage == CommonAstNodes.node_root_package; }
 
-	void addFunction(AstIndex func, CompilationContext* context) {
-		functions.put(context.arrayArena, func);
+	void addFunction(AstIndex func, CompilationContext* c) {
+		functions.put(c.arrayArena, func);
 	}
 
 	string fileName(CompilationContext* c) {
 		return c.files[moduleIndex.fileIndex].name;
 	}
 
-	FunctionDeclNode* findFunction(string idStr, CompilationContext* context) {
-		Identifier id = context.idMap.find(idStr);
-		if (id.isUndefined) return null;
-		return findFunction(id, context);
-	}
-	FunctionDeclNode* findFunction(Identifier id, CompilationContext* context) {
-		AstIndex sym = memberScope.lookup_scope(id, context);
+	FunctionDeclNode* tryFindFunction(Identifier id, CompilationContext* c) {
+		AstIndex sym = memberScope.lookup_scope(id, c);
 		if (sym.isUndefined) return null;
-		return sym.get!FunctionDeclNode(context);
+		return sym.get!FunctionDeclNode(c);
 	}
 }
 
-
-struct ModuleNamePrinter {
-	ModuleDeclNode* mod;
-	CompilationContext* c;
-
-	void toString(scope void delegate(const(char)[]) sink) {
-		if (!mod.isTopLevel) {
-			printPackageName(mod.parentPackage, sink, c);
-			sink(".");
-		}
-		sink(c.idString(mod.id));
-	}
-}
 
 void print_module(ModuleDeclNode* node, ref AstPrintState state)
 {
 	state.print("MODULE ", state.context.files[node.moduleIndex.fileIndex].name,
-		" ", ModuleNamePrinter(node, state.context));
+		" ", node.fqn.pr(state.context));
 	print_ast(node.declarations, state);
 }
 

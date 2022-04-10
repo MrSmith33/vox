@@ -31,6 +31,7 @@ struct AstIndex
 	void setState(CompilationContext* c, AstNodeState newState) { return c.getAstNode(this).state = newState; }
 	ref ushort flags(CompilationContext* c) { return c.getAstNode(this).flags; }
 
+	bool isModOrPack(CompilationContext* c) { auto t = astType(c); return t == AstType.decl_module || t == AstType.decl_package; }
 	bool isType(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isType); }
 	bool isTypeVoid() { return this == CommonAstNodes.type_void; }
 	bool isLvalue(CompilationContext* c) { return cast(bool)(flags(c) & AstFlags.isLvalue); }

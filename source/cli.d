@@ -27,6 +27,7 @@ int runCli(string[] args)
 
 	bool printTime;
 	bool printMem;
+	bool printStats;
 	bool checkOnly;
 	string outputFilename;
 	string outputTarget = TARGET_OS_STRING[driver.context.hostOS];
@@ -90,6 +91,7 @@ int runCli(string[] args)
 
 			"print-time", "Print time of compilation.", &printTime,
 			"print-mem", "Print memory consumtion.", &printMem,
+			"print-stats", "Print general statistics", &printStats,
 
 			"print-source", "Print source code.", &driver.context.printSource,
 			"print-lexemes", "Print lexemes.", &driver.context.printLexemes,
@@ -261,10 +263,15 @@ int runCli(string[] args)
 
 	if (printMem) write(cast(string)sink.data.data);
 
-	if (printTime)
-	{
-		times.print;
+	if (printStats) {
+		writefln("Lexed %s lines", driver.context.numLinesLexed);
+	}
 
+	if (printTime) {
+		times.print;
+	}
+
+	if (printStats || printTime) {
 		writefln("Finished in %ss, init %ss, release %ss",
 			scaledNumberFmt(duration),
 			scaledNumberFmt(endInitTime-startInitTime),

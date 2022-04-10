@@ -80,7 +80,7 @@ struct IrGlobalStorage
 			sectionIndex : c.builtinSections[ObjectSectionType.ro_data],
 			moduleIndex : c.builtinModuleIndex,
 			flags : ObjectSymbolFlags.isFloat,
-			id : c.idMap.getOrRegNoDup(c, ":float"),
+			id : c.idMap.getOrReg(c, ":float"),
 		};
 		global.objectSymIndex = c.objSymTab.addSymbol(sym);
 

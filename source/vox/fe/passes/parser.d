@@ -271,7 +271,7 @@ struct Parser
 	Identifier makeIdentifier(TokenIndex index)
 	{
 		const(char)[] str = context.getTokenString(index);
-		return context.idMap.getOrRegNoDup(context, str);
+		return context.idMap.getOrReg(context, str);
 	}
 
 	Identifier expectIdentifier(string after = null)
@@ -556,7 +556,7 @@ struct Parser
 				expect(TT.STRING_LITERAL, "@extern(module,");
 				string value = cast(string)context.getTokenString(tok.index);
 				nextToken; // skip lib name
-				Identifier moduleId = context.idMap.getOrRegNoDup(context, value[1..$-1]);
+				Identifier moduleId = context.idMap.getOrReg(context, value[1..$-1]);
 				attribute = make!BuiltinAttribNode(start, BuiltinAttribSubType.extern_module, moduleId.index);
 				break;
 			default:
@@ -1160,11 +1160,11 @@ struct Parser
 		TokenIndex start = tok.index;
 		version(print_parse) auto s = scop("import %s", start);
 		nextToken; // skip "import"
-		Array!Identifier ids;
+		Identifier id;
 
 		while (true) {
-			string after = ids.length == 0 ? "import" : null;
-			ids.put(context.arrayArena, expectIdentifier(after));
+			string after = id.isDefined ? "import" : null;
+			id = context.idMap.getOrRegFqn(context, FullyQualifiedName(id, expectIdentifier(after)));
 
 			if (tok.type == TokenType.DOT) {
 				nextToken; // skip "."
@@ -1177,7 +1177,7 @@ struct Parser
 					context.getTokenString(tok.index));
 			}
 		}
-		return makeDecl!ImportDeclNode(start, currentScopeIndex, ids);
+		return makeDecl!ImportDeclNode(start, currentScopeIndex, id);
 	}
 
 	void parse_module_decl()
@@ -1192,8 +1192,10 @@ struct Parser
 		{
 			nextToken; // skip "module"
 
+			Identifier lastId;
 			while (true) {
-				Identifier lastId = expectIdentifier();
+				Identifier newId = expectIdentifier();
+				lastId = context.idMap.getOrRegFqn(context, FullyQualifiedName(lastId, newId));
 
 				if (tok.type == TokenType.DOT) {
 					nextToken; // skip "."
@@ -1201,7 +1203,7 @@ struct Parser
 					parentPackage = parentPackageNode.getOrCreateSubpackage(start, lastId, conflictingModule, context);
 				} else if (tok.type == TokenType.SEMICOLON) {
 					nextToken; // skip ";"
-					currentModule.id = lastId;
+					currentModule.fqn = lastId;
 					break;
 				} else {
 					context.unrecoverable_error(tok.index,
@@ -1219,15 +1221,15 @@ struct Parser
 
 		currentModule.parentPackage = parentPackage;
 		auto parentPackageNode = parentPackage.get!PackageDeclNode(context);
-		parentPackageNode.addModule(start, currentModule.id, context.getAstNodeIndex(currentModule), conflictingModPack, context);
-
+		parentPackageNode.addModule(start, currentModule.fqn, context.getAstNodeIndex(currentModule), conflictingModPack, context);
+		context.modules.put(context.arrayArena, currentModule.fqn, context.getAstNodeIndex(currentModule));
 		void modConflict(ModuleDeclNode* newMod, ModuleDeclNode* oldMod)
 		{
 			context.error(newMod.loc,
 				"Module `%s` in file %s conflicts with another module `%s` in file %s",
-				ModuleNamePrinter(newMod, context),
+				newMod.fqn.pr(context),
 				context.files[newMod.moduleIndex.fileIndex].name,
-				ModuleNamePrinter(oldMod, context),
+				oldMod.fqn.pr(context),
 				context.files[oldMod.moduleIndex.fileIndex].name, );
 		}
 
@@ -1235,9 +1237,9 @@ struct Parser
 		{
 			context.error(newMod.loc,
 				"Module `%s` in file %s conflicts with package `%s` in files %s",
-				ModuleNamePrinter(newMod, context),
+				newMod.fqn.pr(context),
 				context.files[newMod.moduleIndex.fileIndex].name,
-				PackageNamePrinter(context.getAstNodeIndex(oldPack), context),
+				oldPack.fqn.pr(context),
 				PackageFilesPrinter(oldPack, context));
 		}
 

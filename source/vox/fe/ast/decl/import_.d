@@ -11,24 +11,13 @@ struct ImportDeclNode
 {
 	mixin AstNodeData!(AstType.decl_import);
 	ScopeIndex parentScope;
-	Array!Identifier ids;
+	Identifier id;
 }
 
-struct IdListPrinter
-{
-	Identifier[] ids;
-	CompilationContext* c;
-	void toString(scope void delegate(const(char)[]) sink) {
-		foreach(i, Identifier id; ids) {
-			if (i > 0) sink(".");
-			sink(c.idString(id));
-		}
-	}
-}
 
 void print_import(ImportDeclNode* node, ref AstPrintState state)
 {
-	state.print("IMPORT ", IdListPrinter(node.ids[], state.context));
+	state.print("IMPORT ", node.id.pr(state.context));
 }
 
 void post_clone_import(ImportDeclNode* node, ref CloneState state)
@@ -39,29 +28,25 @@ void post_clone_import(ImportDeclNode* node, ref CloneState state)
 void name_register_self_import(ImportDeclNode* node, ref NameRegisterState state) {
 	CompilationContext* c = state.context;
 	node.state = AstNodeState.name_register_self;
-	auto pack = CommonAstNodes.node_root_package.get!PackageDeclNode(c);
-	foreach(i, Identifier id; node.ids) {
-		AstIndex index = pack.declarations.get(id);
-		if (index.isUndefined) {
-			c.error(node.loc, "Cannot find module `%s`", IdListPrinter(node.ids[], c));
-			break;
-		}
-		if (index.astType(c) == AstType.decl_package) {
-			if (i+1 == node.ids.length) {
-				c.error(node.loc, "Cannot import package `%s`", IdListPrinter(node.ids[], c));
-			} else {
-				pack = index.get!PackageDeclNode(c);
-			}
-		} else {
-			// it is a module
-			if (i+1 == node.ids.length) {
-				// TODO: check that we do not import ourselves
-				node.parentScope.get_scope(c).imports.put(c.arrayArena, index);
-			} else {
-				// otherwise id is incorrect. We found module, but id is not ended yet
-				c.error(node.loc, "Cannot find module `%s`. But there is module with name `%s`", IdListPrinter(node.ids[], c), IdListPrinter(node.ids[0..i+1], c));
+	scope(exit) node.state = AstNodeState.type_check_done;
+
+	AstIndex index = c.modules.get(node.id);
+	if (index.isUndefined) {
+		// check if we can find a module with common prefix. Report as a typo
+		Identifier id = node.id;
+		while(id.hasParent) {
+			id = id.getParent(c);
+			AstIndex index2 = c.modules.get(id);
+			if (index2.isDefined) {
+				c.error(node.loc, "Cannot find module `%s`. But there is module with name `%s`", node.id.pr(c), id.pr(c));
+				return;
 			}
 		}
+		c.error(node.loc, "Cannot find module `%s`", node.id.pr(c));
+	} else if (index.astType(c) == AstType.decl_package) {
+		c.error(node.loc, "Cannot import package `%s`", node.id.pr(c));
+	} else {
+		// TODO: check that we do not import ourselves
+		node.parentScope.get_scope(c).imports.put(c.arrayArena, index);
 	}
-	node.state = AstNodeState.type_check_done;
 }

@@ -86,6 +86,7 @@ mixin template AstNodeData(AstType _astType = AstType.abstract_node, int default
 	}
 
 	bool isError()      { return astType == AstType.error; }
+	bool isModOrPack()  { return astType == AstType.decl_module || astType == AstType.decl_package; }
 	bool isType()       { return cast(bool)(flags & AstFlags.isType); }
 	bool isLvalue()     { return cast(bool)(flags & AstFlags.isLvalue); }
 	bool hasAttributes(){ return cast(bool)(flags & AstFlags.hasAttributes); }
@@ -139,7 +140,7 @@ void print_node_name(ref TextSink sink, AstIndex nodeIndex, CompilationContext* 
 	{
 		case decl_alias: sink.put(c.idString(node.as!AliasDeclNode(c).id)); break;
 		case decl_builtin: sink.put(c.idString(node.as!BuiltinNode(c).id)); break;
-		case decl_module: sink.put(c.idString(node.as!ModuleDeclNode(c).id)); break;
+		case decl_module: sink.formattedWrite("%s", node.as!ModuleDeclNode(c).fqn.pr(c)); break;
 		case decl_struct: sink.put(c.idString(node.as!StructDeclNode(c).id)); break;
 		case decl_function: sink.put(c.idString(node.as!FunctionDeclNode(c).id)); break;
 		case decl_var: sink.put(c.idString(node.as!VariableDeclNode(c).id)); break;
@@ -196,7 +197,7 @@ ref Identifier get_node_id(AstIndex nodeIndex, CompilationContext* c)
 	{
 		case decl_alias: return node.as!AliasDeclNode(c).id;
 		case decl_builtin: return node.as!BuiltinNode(c).id;
-		case decl_module: return node.as!ModuleDeclNode(c).id;
+		case decl_module: return node.as!ModuleDeclNode(c).fqn;
 		case decl_struct: return node.as!StructDeclNode(c).id;
 		case decl_function: return node.as!FunctionDeclNode(c).id;
 		case decl_var: return node.as!VariableDeclNode(c).id;

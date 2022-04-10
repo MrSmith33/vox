@@ -50,6 +50,8 @@ immutable string[] TARGET_OS_STRING = [
 ///
 struct CompilationContext
 {
+	auto c() { pragma(inline, true); return &this; }
+
 	// storage
 
 	/// Source file info storage
@@ -97,6 +99,8 @@ struct CompilationContext
 	Arena!ubyte importBuffer;
 
 	HashMap!(ExtraNodeProperty, uint, ExtraNodeProperty.init) extraProperties;
+	/// Vox modules and packages
+	HashMap!(Identifier, AstIndex, Identifier.init) modules;
 
 	/// External modules that are provided by driver or created at runtime from @extern(module) dll functions
 	HashMap!(Identifier, LinkIndex, Identifier.init) externalModules;
@@ -227,12 +231,13 @@ struct CompilationContext
 	bool bundleInputs;
 
 	Identifier printOnlyFun;
-	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegNoDup(&this, name); }
+	void setDumpFilter(string name) { printOnlyFun = idMap.getOrRegFqn(c, name); }
 
 	// Counters
 	uint numCtfeRuns = 0;
 	uint numTemplateInstanceLookups = 0;
 	uint numTemplateInstantiations = 0;
+	uint numLinesLexed = 0;
 
 	/// Check if printing of this function needed (including if all functions are requested)
 	bool printDumpOf(FunctionDeclNode* fun) {
@@ -261,7 +266,7 @@ struct CompilationContext
 		return tokenLocationBuffer[tokenIndex];
 	}
 
-	///
+	/// Only returns self string
 	string idString(const Identifier id) { return idMap.get(id); }
 
 	AstIndex basicTypeNodes(BasicType basicType) {
@@ -282,7 +287,7 @@ struct CompilationContext
 	void error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
 		size_t startLen = sink.data.length;
-		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, &this));
+		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, c));
 		sink.putfln(format, args);
 		errorSink.put(sink.data[startLen..$]);
 		if (printTraceOnError)
@@ -310,7 +315,7 @@ struct CompilationContext
 	noreturn unrecoverable_error(Args...)(TokenIndex tokIdx, string format, Args args)
 	{
 		size_t startLen = sink.data.length;
-		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, &this));
+		sink.putf("%s: Error: ", FmtSrcLoc(tokIdx, c));
 		sink.putfln(format, args);
 		errorSink.put(sink.data[startLen..$]);
 		if (printTraceOnError)
@@ -432,12 +437,12 @@ struct CompilationContext
 	private void print_location(TokenIndex tokIdx = TokenIndex.init)
 	{
 		if (tokIdx.isValid) {
-			sink.putfln("- token %s", FmtSrcLoc(tokIdx, &this));
+			sink.putfln("- token %s", FmtSrcLoc(tokIdx, c));
 		}
 		if (currentFunction) {
-			sink.putfln("- module `%s`", ModuleNamePrinter(currentFunction._module.get!ModuleDeclNode(&this), &this));
-			sink.putfln("- function `%s`", idString(currentFunction.id));
-			sink.putfln("  - defined at %s", FmtSrcLoc(currentFunction.loc, &this));
+			sink.putfln("- module `%s`", currentFunction._module.get!ModuleDeclNode(c).fqn.pr(c));
+			sink.putfln("- function `%s`", currentFunction.id.pr(c));
+			sink.putfln("  - defined at %s", FmtSrcLoc(currentFunction.loc, c));
 		}
 		print_analysis_stack;
 	}
@@ -453,11 +458,11 @@ struct CompilationContext
 		while(!analisysStack.empty)
 		{
 			AnalysedNode currentItem = analisysStack.back;
-			TokenIndex tokIdx = currentItem.nodeIndex.loc(&this);
+			TokenIndex tokIdx = currentItem.nodeIndex.loc(c);
 			if (currentItem.nodeIndex == top.nodeIndex) sink.put("> ");
 			else sink.put("  ");
-			sink.putf("%s: node.%s %s %s ", FmtSrcLoc(tokIdx, &this), currentItem.nodeIndex.storageIndex, currentItem.prop, currentItem.nodeIndex.astType(&this));
-			print_node_name(sink, currentItem.nodeIndex, &this);
+			sink.putf("%s: node.%s %s %s ", FmtSrcLoc(tokIdx, c), currentItem.nodeIndex.storageIndex, currentItem.prop, currentItem.nodeIndex.astType(c));
+			print_node_name(sink, currentItem.nodeIndex, c);
 			sink.putln;
 			analisysStack.unput(1);
 		}
@@ -655,7 +660,7 @@ struct CompilationContext
 		return externalModuleIndex;
 	}
 
-	void addHostSymbol(LinkIndex hostModuleIndex, ExternalSymbolId externalId, void* symPtr)
+	void addHostSymbol(LinkIndex hostModuleIndex, Identifier symId, void* symPtr)
 	{
 		LinkIndex importedSymbolIndex;
 
@@ -663,7 +668,7 @@ struct CompilationContext
 		{
 			ObjectSymbol importedSymbol = {
 				kind : ObjectSymbolKind.isHost,
-				id : externalId.symId,
+				id : symId,
 				dataPtr : cast(ubyte*)symPtr,
 				sectionOffset : cast(ulong)symPtr,
 				sectionIndex : builtinSections[ObjectSectionType.host],
@@ -680,28 +685,30 @@ struct CompilationContext
 			ObjectSymbol importedSymbol = {
 				kind : ObjectSymbolKind.isHost,
 				flags : ObjectSymbolFlags.isIndirect,
-				id : externalId.symId,
+				id : symId,
 				sectionOffset : sectionOffset,
 				sectionIndex : builtinSections[ObjectSectionType.imports],
 				moduleIndex : hostModuleIndex,
 			};
 			importedSymbolIndex = objSymTab.addSymbol(importedSymbol);
 		}
-		externalSymbols.put(arrayArena, externalId, importedSymbolIndex);
+		Identifier modId = objSymTab.getModule(hostModuleIndex).id;
+		externalSymbols.put(arrayArena, ExternalSymbolId(modId, symId), importedSymbolIndex);
 	}
 
-	LinkIndex addDllModuleSymbol(LinkIndex dllModuleIndex, ExternalSymbolId externalId)
+	LinkIndex addDllModuleSymbol(LinkIndex dllModuleIndex, Identifier symId)
 	{
 		ObjectSymbol importedSymbol = {
 			kind : ObjectSymbolKind.isImported,
 			flags : ObjectSymbolFlags.isIndirect,
-			id : externalId.symId,
+			id : symId,
 			alignmentPower : 3, // pointer size
 			sectionIndex : builtinSections[ObjectSectionType.imports],
 			moduleIndex : dllModuleIndex,
 		};
 		LinkIndex importedSymbolIndex = objSymTab.addSymbol(importedSymbol);
-		externalSymbols.put(arrayArena, externalId, importedSymbolIndex);
+		Identifier modId = objSymTab.getModule(dllModuleIndex).id;
+		externalSymbols.put(arrayArena, ExternalSymbolId(modId, symId), importedSymbolIndex);
 		return importedSymbolIndex;
 	}
 
@@ -709,27 +716,52 @@ struct CompilationContext
 		return getFileFromToken(tokIndex).mod;
 	}
 
-	ModuleDeclNode* findModule(string moduleId)
-	{
-		Identifier id = idMap.find(moduleId);
-		if (id.isUndefined) return null;
-		return findModule(id);
-	}
-
-	ModuleDeclNode* findModule(const Identifier moduleId)
-	{
-		foreach(ref SourceFileInfo file; files.data)
-		{
-			if (file.mod.id == moduleId)
-				return file.mod;
-		}
-		return null;
-	}
-
-	ModuleDeclNode* getModule(ModuleIndex index)
-	{
+	ModuleDeclNode* getModule(ModuleIndex index) {
 		return files[index.fileIndex].mod;
 	}
+
+	FunctionDeclNode* findFunctionImpl(bool err)(Identifier funcId) {
+		static FunctionDeclNode* noMod(Identifier funcId, CompilationContext* c) {
+			static if (err) c.internal_error("Cannot find function `%s`. No module was specified", funcId.pr(c));
+			else return null;
+		}
+
+		static FunctionDeclNode* missingPack(bool isMod, Identifier modId, Identifier funcId, CompilationContext* c) {
+			static if (err) c.internal_error("Cannot find function `%s`. Cannot find %s `%s`",
+				funcId.pr(c),
+				isMod ? "module" : "package",
+				modId.pr(c));
+			else return null;
+		}
+
+		static FunctionDeclNode* wrongType(bool isMod, Identifier modId, Identifier funcId, CompilationContext* c) {
+			static if (err) c.internal_error("Cannot find function `%s`. `%s` is a %s",
+				funcId.pr(c), modId.pr(c),
+				isMod ? "module" : "package");
+			else return null;
+		}
+
+		static FunctionDeclNode* missingFunc(Identifier modId, Identifier funcId, CompilationContext* c) {
+			static if (err) c.internal_error("Cannot find function `%s` in module `%s`",
+				funcId.pr(c), modId.pr(c));
+			else return null;
+		}
+
+		if (!funcId.hasParent) return noMod(funcId, c);
+
+		Identifier parentId = funcId.getParent(c);
+		AstIndex subpackageIndex = modules.get(parentId, AstIndex.init);
+		if (subpackageIndex.isUndefined) return missingPack(true, parentId, funcId, c);
+		auto subpackage_node = subpackageIndex.get_node(c);
+		if (subpackage_node.astType != AstType.decl_module) return wrongType(false, parentId, funcId, c);
+		ModuleDeclNode* mod = subpackage_node.as!ModuleDeclNode(c);
+
+		auto fun = mod.tryFindFunction(funcId.getSelf(c), c);
+		if (fun is null) return missingFunc(parentId, funcId, c);
+		return fun;
+	}
+	alias findFunction = findFunctionImpl!true;
+	alias tryFindFunction = findFunctionImpl!false;
 
 	FunctionDeclNode* getFunction(IrIndex index)
 	{
@@ -738,65 +770,49 @@ struct CompilationContext
 		return getAst!FunctionDeclNode(astIndex);
 	}
 
-	FunctionDeclNode* tryFindFunction(string moduleName, string funcName)
-	{
-		ModuleDeclNode* mod = findModule(moduleName);
-		if (mod is null) return null;
-
-		return mod.findFunction(funcName, &this);
-	}
-
-	FunctionDeclNode* findFunction(string moduleName, string funcName)
-	{
-		ModuleDeclNode* mod = findModule(moduleName);
-		if (mod is null) internal_error("Cannot find module `%s` while searching for `%s.%s`", moduleName, moduleName, funcName);
-
-		auto fun = mod.findFunction(funcName, &this);
-		if (fun is null) internal_error("Cannot find function `%s` inside module `%s`", funcName, moduleName);
-		return fun;
-	}
-
-	void findFunction(string funcName, void delegate(ModuleDeclNode*, FunctionDeclNode*) onFunction)
-	{
-		Identifier funcId = idMap.find(funcName);
-		if (funcId.isUndefined) return;
-
-		foreach (ref SourceFileInfo file; files.data)
-		{
-			FunctionDeclNode* fun = file.mod.findFunction(funcId, &this);
-			if (fun) onFunction(file.mod, fun);
-		}
-	}
-
-	FunctionDeclNode* getFunctionDecl(string funcName)
+	FunctionDeclNode* findUniquelyNamedFunction(Identifier funcId)
 	{
 		FunctionDeclNode* funDecl;
-		foreach (ref SourceFileInfo file; files.data)
-		{
-			FunctionDeclNode* fun = file.mod.findFunction(funcName, &this);
-			if (fun !is null)
+		if (funcId.hasParent) {
+			funDecl = findFunction(funcId);
+		} else {
+			foreach (ref SourceFileInfo file; files.data)
 			{
-				if (funDecl !is null)
-					internal_error("Function %s is found in 2 places", funcName);
-				funDecl = fun;
+				FunctionDeclNode* fun = file.mod.tryFindFunction(funcId, c);
+				if (fun !is null)
+				{
+					if (funDecl !is null)
+						internal_error("Function %s is found in 2 places", funcId.pr(c));
+					funDecl = fun;
+				}
 			}
-		}
 
-		if (funDecl is null)
-			internal_error("Function `%s` is not found in %s modules", funcName, files.length);
+			if (funDecl is null)
+				internal_error("Function `%s` is not found in %s modules", funcId.pr(c), files.length);
+		}
 
 		return funDecl;
 	}
 
-	auto getFunctionPtr(ResultType, ParamTypes...)(string funcName)
+	FunctionDeclNode* tryFindUniquelyNamedFunction(Identifier funcId)
 	{
-		return getFunctionPtr!(ResultType, ParamTypes)(getFunctionDecl(funcName));
-	}
+		FunctionDeclNode* funDecl;
+		if (funcId.hasParent) {
+			return tryFindFunction(funcId);
+		}
 
-	auto getFunctionPtr(ResultType, ParamTypes...)(string moduleName, string funcName)
-	{
-		FunctionDeclNode* func = findFunction(moduleName, funcName);
-		return getFunctionPtr!(ResultType, ParamTypes)(func);
+		foreach (ref SourceFileInfo file; files.data)
+		{
+			FunctionDeclNode* fun = file.mod.tryFindFunction(funcId, c);
+			if (fun !is null)
+			{
+				if (funDecl !is null)
+					internal_error("Function %s is found in 2 places", funcId.pr(c));
+				funDecl = fun;
+			}
+		}
+
+		return funDecl;
 	}
 
 	auto getFunctionPtr(ResultType, ParamTypes...)(FunctionDeclNode* funcDecl)
@@ -805,16 +821,16 @@ struct CompilationContext
 		//assert(funcDecl.returnType.isSameTypeAs!ParamType, "wrong result type");
 
 		auto numRequestedParams = ParamTypes.length;
-		auto numParams = funcDecl.signature.get!FunctionSignatureNode(&this).parameters.length;
+		auto numParams = funcDecl.signature.get!FunctionSignatureNode(c).parameters.length;
 
 		Identifier funcId = funcDecl.id;
 
 		if (numRequestedParams < numParams)
 			internal_error("Insufficient parameters to '%s', got %s, expected %s",
-				idString(funcId), numRequestedParams, numParams);
+				funcId.pr(c), numRequestedParams, numParams);
 		else if (numRequestedParams > numParams)
 			internal_error("Too much parameters to '%s', got %s, expected %s",
-				idString(funcId), numRequestedParams, numParams);
+				funcId.pr(c), numRequestedParams, numParams);
 
 		//foreach(i, ParamType; ParamTypes)
 		//{
@@ -827,34 +843,34 @@ struct CompilationContext
 	}
 
 	IrIndex get_file_name_constant(AstIndex mod) {
-		auto node = mod.get!ModuleDeclNode(&this);
+		auto node = mod.get!ModuleDeclNode(c);
 		bool wasCreated;
 		auto key = ExtraNodeProperty(ExtraProperty.fileName, mod.storageIndex);
 		uint* value = extraProperties.getOrCreate(arrayArena, key, wasCreated);
 		if (wasCreated) {
-			IrIndex val = makeStringLiteralIrConstant(node.fileName(&this), node.objectSymIndex, &this);
+			IrIndex val = makeStringLiteralIrConstant(node.fileName(c), node.objectSymIndex, c);
 			*value = val.asUint;
 		}
 		return IrIndex.fromUint(*value);
 	}
 	IrIndex get_function_name_constant(AstIndex func) {
-		auto node = func.get!FunctionDeclNode(&this);
+		auto node = func.get!FunctionDeclNode(c);
 		bool wasCreated;
 		auto key = ExtraNodeProperty(ExtraProperty.nodeName, func.storageIndex);
 		uint* value = extraProperties.getOrCreate(arrayArena, key, wasCreated);
 		if (wasCreated) {
-			IrIndex val = makeStringLiteralIrConstant(idString(node.id), node._module.get!ModuleDeclNode(&this).objectSymIndex, &this);
+			IrIndex val = makeStringLiteralIrConstant(idString(node.id), node._module.get!ModuleDeclNode(c).objectSymIndex, c);
 			*value = val.asUint;
 		}
 		return IrIndex.fromUint(*value);
 	}
 	IrIndex get_module_name_constant(AstIndex mod) {
-		auto node = mod.get!ModuleDeclNode(&this);
+		auto node = mod.get!ModuleDeclNode(c);
 		bool wasCreated;
 		auto key = ExtraNodeProperty(ExtraProperty.nodeName, mod.storageIndex);
 		uint* value = extraProperties.getOrCreate(arrayArena, key, wasCreated);
 		if (wasCreated) {
-			IrIndex val = makeStringLiteralIrConstant(idString(node.id), node.objectSymIndex, &this);
+			IrIndex val = makeStringLiteralIrConstant(idString(node.fqn), node.objectSymIndex, c);
 			*value = val.asUint;
 		}
 		return IrIndex.fromUint(*value);
@@ -924,7 +940,7 @@ struct CompilationContext
 	void initialize()
 	{
 		// populates idMap with common identifiers like this, length, ptr, min, max, sizeof...
-		idMap.regCommonIds(&this);
+		idMap.regCommonIds(c);
 
 		// Next we create ast node per CommonAstNodes entry. Make sure the order is the same
 
@@ -986,22 +1002,22 @@ struct CompilationContext
 		// custom types
 		auto type_u8Ptr = appendAst!PtrTypeNode(TokenIndex(), CommonAstNodes.type_type, CommonAstNodes.type_u8);
 		assertf(type_u8Ptr == CommonAstNodes.type_u8Ptr, "AstIndex mismatch for type_u8Ptr %s != %s", type_u8Ptr, cast(AstIndex)CommonAstNodes.type_u8Ptr);
-		type_u8Ptr.gen_ir_type(&this); // we need to cache IR types too
+		type_u8Ptr.gen_ir_type(c); // we need to cache IR types too
 
 		auto type_u8Slice = appendAst!SliceTypeNode(TokenIndex(), CommonAstNodes.type_type, CommonAstNodes.type_u8);
 		assertf(type_u8Slice == CommonAstNodes.type_u8Slice, "AstIndex mismatch for type_u8Slice %s != %s", type_u8Slice, cast(AstIndex)CommonAstNodes.type_u8Slice);
-		type_u8Slice.gen_ir_type(&this); // we need to cache IR types too
+		type_u8Slice.gen_ir_type(c); // we need to cache IR types too
 
 		auto type_aliasSlice = appendAst!SliceTypeNode(TokenIndex(), CommonAstNodes.type_type, CommonAstNodes.type_alias);
 		assertf(type_aliasSlice == CommonAstNodes.type_aliasSlice, "AstIndex mismatch for type_aliasSlice %s != %s", type_aliasSlice, cast(AstIndex)CommonAstNodes.type_aliasSlice);
-		type_aliasSlice.gen_ir_type(&this); // we need to cache IR types too
+		type_aliasSlice.gen_ir_type(c); // we need to cache IR types too
 
 		// builtin nodes
 		void makeBuiltin(AstIndex reqIndex, Identifier id, BuiltinId builtin) {
 			AstIndex index = appendAst!BuiltinNode(TokenIndex(), id, builtin);
 			assertf(index == reqIndex,
 				"Result AstIndex of builtin node %s (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
-				idString(id), index, reqIndex);
+				id.pr(c), index, reqIndex);
 		}
 
 		makeBuiltin(CommonAstNodes.builtin_min, CommonIds.id_min, BuiltinId.int_min);
@@ -1063,26 +1079,28 @@ struct CompilationContext
 		sink.clear;
 		errorSink.clear;
 		idMap.stringDataBuffer.clear;
-		idMap.strings.clear;
+		idMap.entries.clear;
 		idMap.map = typeof(idMap.map).init;
+		idMap.fqnMap = typeof(idMap.fqnMap).init;
 
 		analisysStack = analisysStack.init;
 		currentFunction = null;
 
 		extraProperties = extraProperties.init;
+		modules = modules.init;
 
 		externalModules = externalModules.init;
 		externalSymbols = externalSymbols.init;
 
-		auto rootPackage = CommonAstNodes.node_root_package.get!PackageDeclNode(&this);
+		auto rootPackage = CommonAstNodes.node_root_package.get!PackageDeclNode(c);
 		*rootPackage = PackageDeclNode.init;
 
 		// needed because all arrays are cleared
-		idMap.regCommonIds(&this);
+		idMap.regCommonIds(c);
 
-		addSections(&this);
-		createBuiltinFunctions(&this);
-		setVersionIds(&this);
+		addSections(c);
+		createBuiltinFunctions(c);
+		setVersionIds(c);
 	}
 }
 
@@ -1224,7 +1242,7 @@ void createBuiltinFunctions(CompilationContext* c)
 {
 	ObjectModule builtinModule = {
 		kind : ObjectModuleKind.isHost,
-		id : c.idMap.getOrRegNoDup(c, ":builtin")
+		id : c.idMap.getOrReg(c, ":builtin")
 	};
 	c.builtinModuleIndex = c.objSymTab.addModule(builtinModule);
 
@@ -1271,7 +1289,7 @@ void createBuiltinFunctions(CompilationContext* c)
 
 		c.assertf(func == reqIndex,
 			"Result AstIndex of builtin node %s (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",
-			c.idString(id), func, reqIndex);
+			id.pr(c), func, reqIndex);
 	}
 
 	addParam(CommonAstNodes.type_u8Slice, CommonIds.id_message);
@@ -1297,7 +1315,7 @@ void addSections(CompilationContext* c)
 	ObjectSection hostSection = {
 		type : ObjectSectionType.host,
 		alignmentPower : 0,
-		id : c.idMap.getOrRegNoDup(c, ".host")
+		id : c.idMap.getOrReg(c, ".host")
 	};
 	c.builtinSections[ObjectSectionType.host] = c.objSymTab.addSection(hostSection);
 
@@ -1305,7 +1323,7 @@ void addSections(CompilationContext* c)
 		type : ObjectSectionType.imports,
 		flags : ObjectSectionFlags.read | ObjectSectionFlags.write,
 		alignmentPower : 12, // 4096
-		id : c.idMap.getOrRegNoDup(c, ".idata"),
+		id : c.idMap.getOrReg(c, ".idata"),
 		buffer : &c.importBuffer,
 	};
 	c.builtinSections[ObjectSectionType.imports] = c.objSymTab.addSection(importSection);
@@ -1314,7 +1332,7 @@ void addSections(CompilationContext* c)
 		type : ObjectSectionType.rw_data,
 		flags : ObjectSectionFlags.read | ObjectSectionFlags.write,
 		alignmentPower : 12, // 4096
-		id : c.idMap.getOrRegNoDup(c, ".data"),
+		id : c.idMap.getOrReg(c, ".data"),
 		buffer : &c.staticDataBuffer,
 	};
 	c.builtinSections[ObjectSectionType.rw_data] = c.objSymTab.addSection(dataSection);
@@ -1323,7 +1341,7 @@ void addSections(CompilationContext* c)
 		type : ObjectSectionType.ro_data,
 		flags : ObjectSectionFlags.read,
 		alignmentPower : 12, // 4096
-		id : c.idMap.getOrRegNoDup(c, ".rdata"),
+		id : c.idMap.getOrReg(c, ".rdata"),
 		buffer : &c.roStaticDataBuffer,
 	};
 	c.builtinSections[ObjectSectionType.ro_data] = c.objSymTab.addSection(rdataSection);
@@ -1332,7 +1350,7 @@ void addSections(CompilationContext* c)
 		type : ObjectSectionType.code,
 		flags : ObjectSectionFlags.execute | ObjectSectionFlags.read,
 		alignmentPower : 12, // 4096
-		id : c.idMap.getOrRegNoDup(c, ".text"),
+		id : c.idMap.getOrReg(c, ".text"),
 		buffer : &c.codeBuffer,
 	};
 	c.builtinSections[ObjectSectionType.code] = c.objSymTab.addSection(textSection);

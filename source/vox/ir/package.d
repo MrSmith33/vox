@@ -33,13 +33,6 @@ public import vox.ir.ir_vm;
 import vox.all;
 
 
-/// Convenience struct for Id + num suffix
-struct IrName
-{
-	Identifier id;
-	uint suffix;
-}
-
 struct IrLabel
 {
 	/// If isAllocated
