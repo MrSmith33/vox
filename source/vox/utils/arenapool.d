@@ -49,7 +49,7 @@ struct ArenaPool
 		return result;
 	}
 
-	void decommitAll() nothrow {
+	void decommitAll() {
 		version(Posix) {
 			import core.sys.posix.sys.mman : munmap;
 			if (buffer.ptr is null) return;
