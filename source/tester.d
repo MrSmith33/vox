@@ -243,7 +243,9 @@ struct TestContext
 	Driver* driver;
 
 	auto getFunctionPtr(ResultType, ParamTypes...)(string funcName) {
-		return driver.context.getFunctionPtr!(ResultType, ParamTypes)(funcName);
+		Identifier funcId = driver.context.idMap.getOrRegFqn(&driver.context, funcName);
+		FunctionDeclNode* func = driver.context.findUniquelyNamedFunction(funcId);
+		return driver.context.getFunctionPtr!(ResultType, ParamTypes)(func);
 	}
 }
 
