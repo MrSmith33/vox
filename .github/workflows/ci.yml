@@ -203,11 +203,11 @@ jobs:
             './linux-x64/vox-linux-x64.zip' \
             './linux-x64/vox-linux-x64-dbg.zip' \
             './linux-x64/libvox-linux-x64.zip' \
-            './linux-x64/libvox-linux-x64.zip-dbg' \
+            './linux-x64/libvox-linux-x64-dbg.zip' \
             './macos-x64/vox-macos-x64.zip' \
             './macos-x64/vox-macos-x64-dbg.zip' \
             './macos-x64/libvox-macos-x64.zip' \
-            './macos-x64/libvox-macos-x64.zip-dbg' \
+            './macos-x64/libvox-macos-x64-dbg.zip' \
             './windows-x64/vox-windows-x64.zip' \
             './windows-x64/vox-windows-x64-dbg.zip' \
             './windows-x64/libvox-windows-x64.zip' \
