@@ -76,11 +76,9 @@ jobs:
         include:
         - os: ubuntu-latest
           DLL: libvox.so
-          LIB: libvox.a
           PLATFORM: linux-x64
         - os: macos-latest
           DLL: libvox.dylib
-          LIB: libvox.a
           PLATFORM: macos-x64
         - os: windows-latest
           DLL: libvox.dll
