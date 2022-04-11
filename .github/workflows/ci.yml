@@ -32,7 +32,6 @@ jobs:
           ./test.exe
   build:
     name: Build
-    needs: [test]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -66,43 +65,8 @@ jobs:
         with:
           name: ${{matrix.PLATFORM}}
           path: ./bin/vox-${{matrix.PLATFORM}}.zip
-  build-shared:
-    name: Build lib
-    needs: [test]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        include:
-        - os: ubuntu-latest
-          DLL: libvox.so
-          PLATFORM: linux-x64
-        - os: macos-latest
-          DLL: libvox.dylib
-          PLATFORM: macos-x64
-        - os: windows-latest
-          DLL: libvox.dll
-          LIB: libvox.lib
-          PLATFORM: windows-x64
-    steps:
-      - uses: actions/checkout@v2
-      - uses: dlang-community/setup-dlang@v1
-        with:
-          compiler: ${{ env.DC }}
-      - name: Build shared lib
-        run: |
-          mkdir -p bin
-          cd source
-          ldc2 -m64 -shared -O3 -release -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -fvisibility=hidden -link-defaultlib-shared=false -i c_api.d -of=../bin/${{matrix.DLL}}
-          cd ../bin
-          7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}}
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{matrix.PLATFORM}}-lib
-          path: ./bin/libvox-${{matrix.PLATFORM}}.zip
   build-debug:
     name: Build debug
-    needs: [test]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -137,7 +101,73 @@ jobs:
         with:
           name: ${{matrix.PLATFORM}}-dbg
           path: ./bin/vox-${{matrix.PLATFORM}}-dbg.zip
-
+  build-shared:
+    name: Build shared
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+        - os: ubuntu-latest
+          DLL: libvox.so
+          PLATFORM: linux-x64
+        - os: macos-latest
+          DLL: libvox.dylib
+          PLATFORM: macos-x64
+        - os: windows-latest
+          DLL: libvox.dll
+          LIB: libvox.lib
+          PLATFORM: windows-x64
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ${{ env.DC }}
+      - name: Build shared lib
+        run: |
+          mkdir -p bin
+          cd source
+          ldc2 -m64 -shared -O3 -release -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -fvisibility=hidden -link-defaultlib-shared=false -i c_api.d -of=../bin/${{matrix.DLL}}
+          cd ../bin
+          7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}}
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{matrix.PLATFORM}}-lib
+          path: ./bin/libvox-${{matrix.PLATFORM}}.zip
+  build-shared-debug:
+    name: Build shared debug
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+        - os: ubuntu-latest
+          DLL: libvox.so
+          PLATFORM: linux-x64
+        - os: macos-latest
+          DLL: libvox.dylib
+          PLATFORM: macos-x64
+        - os: windows-latest
+          DLL: libvox.dll
+          LIB: libvox.lib
+          DBG_FILE: libvox.pdb
+          PLATFORM: windows-x64
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ${{ env.DC }}
+      - name: Build shared lib
+        run: |
+          mkdir -p bin
+          cd source
+          ldc2 -m64 -shared -O3 --d-debug -g -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -fvisibility=hidden -link-defaultlib-shared=false -i c_api.d -of=../bin/${{matrix.DLL}}
+          cd ../bin
+          7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}} ${{matrix.DBG_FILE}}
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{matrix.PLATFORM}}-lib
+          path: ./bin/libvox-${{matrix.PLATFORM}}-dbg.zip
   upload:
     name: Upload build
     if: github.event_name != 'pull_request'
