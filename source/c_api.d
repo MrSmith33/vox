@@ -58,7 +58,7 @@ SliceString vox_id_get_string(VoxCompiler* compiler, Identifier id) {
 // If has no parent returns null
 Identifier vox_id_get_parent(VoxCompiler* compiler, Identifier id) {
 	if (!id.hasParent) return Identifier.init;
-	return id.getParent(compiler.driver.context);
+	return id.getParent(&compiler.driver.context);
 }
 
 LinkIndex vox_get_or_create_external_module(VoxCompiler* compiler, Identifier modId) {
