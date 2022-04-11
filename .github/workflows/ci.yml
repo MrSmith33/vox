@@ -99,7 +99,7 @@ jobs:
           7z a -mx9 vox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.EXE}} ${{matrix.DBG_FILE}}
       - uses: actions/upload-artifact@v2
         with:
-          name: ${{matrix.PLATFORM}}-dbg
+          name: ${{matrix.PLATFORM}}
           path: ./bin/vox-${{matrix.PLATFORM}}-dbg.zip
   build-shared:
     name: Build shared
@@ -132,7 +132,7 @@ jobs:
           7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}}
       - uses: actions/upload-artifact@v2
         with:
-          name: ${{matrix.PLATFORM}}-lib
+          name: ${{matrix.PLATFORM}}
           path: ./bin/libvox-${{matrix.PLATFORM}}.zip
   build-shared-debug:
     name: Build shared debug
@@ -166,13 +166,13 @@ jobs:
           7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}} ${{matrix.DBG_FILE}}
       - uses: actions/upload-artifact@v2
         with:
-          name: ${{matrix.PLATFORM}}-lib
+          name: ${{matrix.PLATFORM}}
           path: ./bin/libvox-${{matrix.PLATFORM}}-dbg.zip
   upload:
     name: Upload build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: [build, build-debug]
+    needs: [build, build-debug, build-shared, build-shared-debug]
     steps:
       # Cloning is needed for `gh release create` to work. It looks repository up in .git folder
       - uses: actions/checkout@v2
@@ -201,12 +201,15 @@ jobs:
           # --clobber Overwrite existing assets of the same name
           gh release upload $tag \
             './linux-x64/vox-linux-x64.zip' \
-            './linux-x64-lib/libvox-linux-x64.zip' \
-            './linux-x64-dbg/vox-linux-x64-dbg.zip' \
+            './linux-x64/vox-linux-x64-dbg.zip' \
+            './linux-x64/libvox-linux-x64.zip' \
+            './linux-x64/libvox-linux-x64.zip-dbg' \
             './macos-x64/vox-macos-x64.zip' \
-            './macos-x64-lib/libvox-macos-x64.zip' \
-            './macos-x64-dbg/vox-macos-x64-dbg.zip' \
+            './macos-x64/vox-macos-x64-dbg.zip' \
+            './macos-x64/libvox-macos-x64.zip' \
+            './macos-x64/libvox-macos-x64.zip-dbg' \
             './windows-x64/vox-windows-x64.zip' \
-            './windows-x64-lib/libvox-windows-x64.zip' \
-            './windows-x64-dbg/vox-windows-x64-dbg.zip' \
+            './windows-x64/vox-windows-x64-dbg.zip' \
+            './windows-x64/libvox-windows-x64.zip' \
+            './windows-x64/libvox-windows-x64-dbg.zip' \
             --clobber
