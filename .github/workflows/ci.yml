@@ -163,7 +163,7 @@ jobs:
           cd source
           ldc2 -m64 -shared -O3 --d-debug -g -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -fvisibility=hidden -link-defaultlib-shared=false -i c_api.d -of=../bin/${{matrix.DLL}}
           cd ../bin
-          7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}} ${{matrix.DBG_FILE}}
+          7z a -mx9 libvox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.DLL}} ${{matrix.LIB}} ${{matrix.DBG_FILE}}
       - uses: actions/upload-artifact@v2
         with:
           name: lib-${{matrix.PLATFORM}}-dbg
