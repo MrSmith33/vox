@@ -76,12 +76,15 @@ jobs:
         include:
         - os: ubuntu-latest
           DLL: libvox.so
+          LIB: libvox.a
           PLATFORM: linux-x64
         - os: macos-latest
           DLL: libvox.dylib
+          LIB: libvox.a
           PLATFORM: macos-x64
         - os: windows-latest
           DLL: libvox.dll
+          LIB: libvox.lib
           PLATFORM: windows-x64
     steps:
       - uses: actions/checkout@v2
@@ -94,10 +97,10 @@ jobs:
           cd source
           ldc2 -m64 -shared -O3 -release -boundscheck=off -enable-inlining -flto=full -linkonce-templates -mcpu=native --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -fvisibility=hidden -link-defaultlib-shared=false -i c_api.d -of=../bin/${{matrix.DLL}}
           cd ../bin
-          7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}}
+          7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}}
       - uses: actions/upload-artifact@v2
         with:
-          name: ${{matrix.PLATFORM}}
+          name: ${{matrix.PLATFORM}}-lib
           path: ./bin/libvox-${{matrix.PLATFORM}}.zip
   build-debug:
     name: Build debug
@@ -170,9 +173,12 @@ jobs:
           # --clobber Overwrite existing assets of the same name
           gh release upload $tag \
             './linux-x64/vox-linux-x64.zip' \
+            './linux-x64-lib/libvox-linux-x64.zip' \
             './linux-x64-dbg/vox-linux-x64-dbg.zip' \
             './macos-x64/vox-macos-x64.zip' \
+            './macos-x64-lib/libvox-macos-x64.zip' \
             './macos-x64-dbg/vox-macos-x64-dbg.zip' \
             './windows-x64/vox-windows-x64.zip' \
+            './windows-x64-lib/libvox-windows-x64.zip' \
             './windows-x64-dbg/vox-windows-x64-dbg.zip' \
             --clobber
