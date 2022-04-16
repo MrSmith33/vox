@@ -221,6 +221,7 @@ IrIndex gen_ir_type_struct(StructDeclNode* node, CompilationContext* c, AllowHea
 		{
 			if (!member.isMember) continue; // skip static members
 			auto var = member.as!(VariableDeclNode)(c);
+			require_type_check(var.type, c, IsNested.no);
 			IrIndex type = var.type.gen_ir_type(c);
 			SizeAndAlignment memberInfo = c.types.typeSizeAndAlignment(type);
 			maxAlignmentPower = max(maxAlignmentPower, memberInfo.alignmentPower);

@@ -6292,3 +6292,16 @@ immutable test286 = q{--- test286.vx
 --- <error>
 test286.vx:4:17: Error: Accessing index 3 of array of length 3
 };
+
+
+@TestInfo()
+immutable test287 = q{--- test287.vx
+	// Forward reference bug. Type of `b` was not type checked
+	struct Array[T] {}
+	struct Ctx {
+		S a;
+	}
+	struct S {
+		Array[i32] b;
+	}
+};
