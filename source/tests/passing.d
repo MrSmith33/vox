@@ -6305,3 +6305,22 @@ immutable test287 = q{--- test287.vx
 		Array[i32] b;
 	}
 };
+
+
+@TestInfo()
+immutable test288 = q{--- test288.vx
+	// Aggregate lowering bug with constant aggregate nested inside non-constant one
+	struct vec3 { f32 x; f32 y; f32 z; }
+	struct Vertex {
+		f32 pos;
+		vec3 color;
+	}
+	Vertex putQuadAt(f32 pos) {
+		return Vertex(pos, vec3(1, 0, 0));
+	}
+};
+void tester288(ref TestContext ctx) {
+	static struct vec3 { float x; float y; float z; }
+	static struct Vertex { float pos; vec3 color; }
+	assert(ctx.getFunctionPtr!(Vertex, float)("putQuadAt")(56.0f) == Vertex(56.0f, vec3(1, 0, 0)));
+}

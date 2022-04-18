@@ -245,7 +245,10 @@ void func_pass_lower_aggregates(CompilationContext* c, IrFunction* ir, IrIndex f
 							}
 							else
 							{
-								builder.emitInstrBefore!(IrOpcode.copy)(instrIndex, ExtraInstrArgs(), ptr, members[i]);
+								if (members[i].isSomeConstant)
+									builder.emitInstrBefore!(IrOpcode.store)(instrIndex, ExtraInstrArgs(), ptr, members[i]);
+								else
+									builder.emitInstrBefore!(IrOpcode.copy)(instrIndex, ExtraInstrArgs(), ptr, members[i]);
 							}
 						}
 						//convertAggregateVregToPointer(instrHeader.result(ir), ir, builder);
