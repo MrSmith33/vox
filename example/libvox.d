@@ -1,6 +1,8 @@
 /// Copyright: Copyright (c) 2022 Andrey Penechko.
 /// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
 /// Authors: Andrey Penechko.
+
+/// C API bindings
 module libvox;
 
 // SliceString that are passed to Vox compiler must remain valid until vox_free

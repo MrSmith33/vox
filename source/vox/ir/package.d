@@ -29,33 +29,3 @@ public import vox.ir.ir_value_kind;
 public import vox.ir.ir_variable;
 public import vox.ir.ir_virt_reg;
 public import vox.ir.ir_vm;
-
-import vox.all;
-
-
-struct IrLabel
-{
-	/// If isAllocated
-	///   blockIndex points to new block
-	/// else
-	///   If numPredecessors == 0, blockIndex points to currentBlock at
-	//      scope start
-	///   If numPredecessors == 1, blockIndex points to first predecessor
-	/// If numPredecessors > 1, blockIndex points to a new block and isAllocated must be true
-	IrIndex blockIndex;
-	///
-	bool isAllocated;
-	///
-	uint numPredecessors;
-}
-
-struct BlockVarPair
-{
-	IrIndex blockId;
-	IrIndex var;
-
-	void toString()(scope void delegate(const(char)[]) sink) const {
-		import std.format : formattedWrite;
-		sink.formattedWrite("(%s %s)", blockId, var);
-	}
-}

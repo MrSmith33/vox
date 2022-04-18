@@ -45,8 +45,8 @@ void vox_begin_compilation(VoxCompiler* compiler) {
 	compiler.driver.beginCompilation();
 }
 
-Identifier vox_id_get_or_reg(VoxCompiler* compiler, SliceString hostModuleName) {
-	return compiler.driver.context.idMap.getOrRegFqn(&compiler.driver.context, cast(string)hostModuleName);
+Identifier vox_id_get_or_reg(VoxCompiler* compiler, SliceString str) {
+	return compiler.driver.context.idMap.getOrRegFqn(&compiler.driver.context, cast(string)str);
 }
 
 // String is owned by the library

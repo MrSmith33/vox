@@ -57,6 +57,34 @@ struct ExtraInstrArgs
 	IrIndex type;
 }
 
+struct IrLabel
+{
+	/// If isAllocated
+	///   blockIndex points to new block
+	/// else
+	///   If numPredecessors == 0, blockIndex points to currentBlock at
+	//      scope start
+	///   If numPredecessors == 1, blockIndex points to first predecessor
+	/// If numPredecessors > 1, blockIndex points to a new block and isAllocated must be true
+	IrIndex blockIndex;
+	///
+	bool isAllocated;
+	///
+	uint numPredecessors;
+}
+
+struct BlockVarPair
+{
+	IrIndex blockId;
+	IrIndex var;
+
+	void toString()(scope void delegate(const(char)[]) sink) const {
+		import std.format : formattedWrite;
+		sink.formattedWrite("(%s %s)", blockId, var);
+	}
+}
+
+
 // papers:
 // 1. Simple and Efficient Construction of Static Single Assignment Form
 struct IrBuilder
@@ -807,9 +835,6 @@ struct IrBuilder
 
 		label.numPredecessors += newPredecessors;
 	}
-
-	private void incBlockRefcount(IrIndex basicBlock) { assert(false); }
-	private void decBlockRefcount(IrIndex basicBlock) { assert(false); }
 
 	/// Creates virtual register to represent result of phi/instruction
 	/// `definition` is phi/instruction that produces a value

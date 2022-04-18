@@ -195,6 +195,11 @@
 	- ref parameters
 	- ref in foreach
 	- this is ref in methods (it is ptr atm)
++ enum
+	- enum with bigger than i32 values doesn't compile
+	- autoincrementing enum member values
+	- enum type
+	- Decide if enums should implicitly convert to bool. There are cases where you don't want that
 
 - context format/writefln
 + pipeline ordering (run all passes per function) will allow to release temporary memory (worse perf if no memory is released)
@@ -225,10 +230,6 @@ o dll linking
 		cons: simple passing allows all module externals to be searched for in passed .dll/.def
 		pros: --optname=modulename:.dll/.def allows for benefit of above options
 	- custom .def-like format (binary, combine all libs description in a single file)
-+ enum
-	- enum with bigger than i32 values doesn't compile
-	- autoincrementing enum member values
-	- enum type
 - constant folding << >> >>> shifts needs to know type of left operand to mask the shift size
 - Check that constants on either side of every instruction is correctly lowered to mov/load when needed
 

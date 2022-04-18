@@ -3,7 +3,7 @@
 [![CI](https://github.com/MrSmith33/vox/workflows/CI/badge.svg?branch=master&event=push)](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
 
 * [Latest CI build](https://github.com/MrSmith33/tiny_jit/releases/tag/CI)
-* [Channel on /r/ProgrammingLanguages discord](https://discord.gg/HpYYhH4) - Projects P-Y -> Vox
+* [Channel on /r/ProgrammingLanguages discord](https://discord.gg/HpYYhH4) - Projects Q-Y -> Vox
 
 # Vox programming language
 
@@ -217,8 +217,9 @@ All `.vx` files will be highlighted and classified as D.
 
 ## Stats
 
-- Impl size: 36k LoC of D, 3MB exe
+- Impl size: 40k LoC of D, 3MB exe
 - Time to compile: 4s debug / 45s release
-- Test suite: 75ms for 302 tests
+- Test suite: 95ms for 361 tests
+- Time to compile 10MLoC of fibonacci: 8s on Windows, 7.5s on Linux
 
 For more in detail description of implementation see [internals.md](internals.md)
