@@ -50,6 +50,8 @@ struct FunctionDeclNode {
 	bool isCtfeOnly(CompilationContext* c) {
 		return signature.get!FunctionSignatureNode(c).isCtfeOnly;
 	}
+	/// External functions have no body
+	bool isExternal() { return block_stmt.isUndefined; }
 
 	this(TokenIndex loc, AstIndex _module, ScopeIndex parameterScope, AstIndex signature, Identifier id)
 	{
@@ -69,9 +71,6 @@ struct FunctionDeclNode {
 		AstIndex index = get_ast_index(&this, c);
 		return IrIndex(index.storageIndex, IrValueKind.func);
 	}
-
-	/// External functions have no body
-	bool isExternal() { return block_stmt.isUndefined; }
 }
 
 void print_func(FunctionDeclNode* node, ref AstPrintState state)

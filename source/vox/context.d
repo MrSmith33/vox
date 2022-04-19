@@ -660,47 +660,67 @@ struct CompilationContext
 		return externalModuleIndex;
 	}
 
-	void addHostSymbol(LinkIndex hostModuleIndex, Identifier symId, void* symPtr)
+	// Automatically choses to use direct referencing or to use import table to access symbol
+	// Adds to external symbol table
+	LinkIndex addHostSymbol(LinkIndex hostModuleIndex, Identifier symId, void* symPtr)
 	{
-		LinkIndex importedSymbolIndex;
-
+		LinkIndex symIndex;
 		if (canReferenceFromCode(symPtr))
-		{
-			ObjectSymbol importedSymbol = {
-				kind : ObjectSymbolKind.isHost,
-				id : symId,
-				dataPtr : cast(ubyte*)symPtr,
-				sectionOffset : cast(ulong)symPtr,
-				sectionIndex : builtinSections[ObjectSectionType.host],
-				moduleIndex : hostModuleIndex,
-			};
-			importedSymbolIndex = objSymTab.addSymbol(importedSymbol);
-		}
+			symIndex = addHostSymbolDirect(hostModuleIndex, symId, symPtr);
 		else
-		{
-			ulong sectionOffset = importBuffer.length;
-			ulong ptr = cast(ulong)symPtr;
-			importBuffer.put(*cast(ubyte[8]*)&ptr);
+			symIndex = addHostSymbolIndirect(hostModuleIndex, symId, symPtr);
 
-			ObjectSymbol importedSymbol = {
-				kind : ObjectSymbolKind.isHost,
-				flags : ObjectSymbolFlags.isIndirect,
-				id : symId,
-				sectionOffset : sectionOffset,
-				sectionIndex : builtinSections[ObjectSectionType.imports],
-				moduleIndex : hostModuleIndex,
-			};
-			importedSymbolIndex = objSymTab.addSymbol(importedSymbol);
-		}
-		Identifier modId = objSymTab.getModule(hostModuleIndex).id;
-		externalSymbols.put(arrayArena, ExternalSymbolId(modId, symId), importedSymbolIndex);
+		registerExternalSymbol(hostModuleIndex, symId, symIndex);
+
+		return symIndex;
+	}
+
+	// Force host symbol to be accessed directly
+	private LinkIndex addHostSymbolDirect(LinkIndex hostModuleIndex, Identifier symId, void* symPtr)
+	{
+		ObjectSymbol sym = {
+			kind : ObjectSymbolKind.isHost,
+			id : symId,
+			dataPtr : cast(ubyte*)symPtr,
+			sectionOffset : cast(ulong)symPtr,
+			sectionIndex : builtinSections[ObjectSectionType.host],
+			moduleIndex : hostModuleIndex,
+		};
+		return objSymTab.addSymbol(sym);
+	}
+
+	// Force host symbol to be accessed through import table
+	private LinkIndex addHostSymbolIndirect(LinkIndex hostModuleIndex, Identifier symId, void* symPtr)
+	{
+		ulong sectionOffset = importBuffer.length;
+		ubyte* dataPtr = importBuffer.nextPtr;
+		size_t ptr = cast(size_t)symPtr;
+		importBuffer.put(*cast(ubyte[size_t.sizeof]*)&ptr);
+
+		ObjectSymbol sym = {
+			kind : ObjectSymbolKind.isHost,
+			flags : ObjectSymbolFlags.isIndirect | ObjectSymbolFlags.isPointer,
+			id : symId,
+			dataPtr : dataPtr,
+			length : size_t.sizeof,
+			sectionOffset : sectionOffset,
+			sectionIndex : builtinSections[ObjectSectionType.imports],
+			moduleIndex : hostModuleIndex,
+		};
+		return objSymTab.addSymbol(sym);
+	}
+
+	private void registerExternalSymbol(LinkIndex moduleIndex, Identifier symId, LinkIndex symIndex)
+	{
+		Identifier modId = objSymTab.getModule(moduleIndex).id;
+		externalSymbols.put(arrayArena, ExternalSymbolId(modId, symId), symIndex);
 	}
 
 	LinkIndex addDllModuleSymbol(LinkIndex dllModuleIndex, Identifier symId)
 	{
 		ObjectSymbol importedSymbol = {
 			kind : ObjectSymbolKind.isImported,
-			flags : ObjectSymbolFlags.isIndirect,
+			flags : ObjectSymbolFlags.isIndirect | ObjectSymbolFlags.isPointer,
 			id : symId,
 			alignmentPower : 3, // pointer size
 			sectionIndex : builtinSections[ObjectSectionType.imports],
@@ -1242,6 +1262,7 @@ void createBuiltinFunctions(CompilationContext* c)
 {
 	ObjectModule builtinModule = {
 		kind : ObjectModuleKind.isHost,
+		flags : ObjectModuleFlags.isVerbose,
 		id : c.idMap.getOrReg(c, ":builtin")
 	};
 	c.builtinModuleIndex = c.objSymTab.addModule(builtinModule);
@@ -1273,19 +1294,7 @@ void createBuiltinFunctions(CompilationContext* c)
 		funcNode.state = AstNodeState.type_check_done;
 		funcNode.flags |= FuncDeclFlags.isBuiltin;
 
-		ulong sectionOffset = c.importBuffer.length;
-		ulong ptr = cast(ulong)&builtin_function_stub;
-		c.importBuffer.put(*cast(ubyte[8]*)&ptr);
-
-		ObjectSymbol sym = {
-			kind : ObjectSymbolKind.isHost,
-			flags : ObjectSymbolFlags.isIndirect,
-			id : id,
-			sectionOffset : sectionOffset,
-			sectionIndex : c.builtinSections[ObjectSectionType.imports],
-			moduleIndex : c.builtinModuleIndex,
-		};
-		funcNode.backendData.objectSymIndex = c.objSymTab.addSymbol(sym);
+		funcNode.backendData.objectSymIndex = c.addHostSymbolIndirect(c.builtinModuleIndex, id, &builtin_function_stub);
 
 		c.assertf(func == reqIndex,
 			"Result AstIndex of builtin node %s (%s) is not equal to required (%s). Creation order must match CommonAstNodes order",

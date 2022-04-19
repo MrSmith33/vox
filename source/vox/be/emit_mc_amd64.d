@@ -907,10 +907,19 @@ struct CodeEmitter
 			// copy address of function into register
 			case MoveType.func_to_reg:
 				context.assertf(dst.physRegClass == AMD64_REG_CLASS.GPR, "func_to_reg %s", dst);
-				// HACK, TODO: 32bit version of reg is incoming, while for ptr 64bits are needed
-				MemAddress addr = memAddrRipDisp32(0);
-				gen.lea(dstReg, addr, cast(ArgType)IrArgSize.size64);
-				addRefTo(src);
+				FunctionDeclNode* func = context.getFunction(src);
+				LinkIndex entityIndex = func.backendData.objectSymIndex;
+				ObjectSymbol* sym = context.objSymTab.getSymbol(entityIndex);
+				if (sym.isIndirect) {
+					// read address from the import section
+					MemAddress addr = memAddrRipDisp32(0);
+					gen.mov(dstReg, addr, cast(ArgType)IrArgSize.size64);
+				} else {
+					// take address of the symbol
+					MemAddress addr = memAddrRipDisp32(0);
+					gen.lea(dstReg, addr, cast(ArgType)IrArgSize.size64);
+				}
+				addRefTo(entityIndex);
 				break;
 
 			case MoveType.reg_to_reg:

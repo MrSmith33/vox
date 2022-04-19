@@ -92,10 +92,12 @@ enum ObjectSymbolFlags : ushort {
 	isIndirect           = 1 << 3,
 	/// If true, data can be printed for debug as a string
 	isString             = 1 << 4,
+	/// If true, data can be printed for debug as an address/pointer
+	isPointer            = 1 << 5,
 	/// If true, data can be printed for debug as a float
-	isFloat              = 1 << 5,
+	isFloat              = 1 << 6,
 	/// Marked if transitively used from any root symbol (only used for imported symbols atm)
-	isReferenced         = 1 << 6,
+	isReferenced         = 1 << 7,
 }
 
 enum ObjectSymbolKind : ushort {
@@ -121,7 +123,7 @@ struct ObjectSymbol
 	Identifier id;
 	/// Points to initializer if it is provided. (Can be null)
 	ubyte* dataPtr;
-	/// Offset from the start of section. Is equal to dataPtr if host symbol
+	/// Offset from the start of section. Can be equal to dataPtr if host symbol
 	ulong sectionOffset;
 	/// Length in bytes. Doesn't include padding and zero termination
 	/// Is set in setInitializer (when has initializer), or manually (when zero inited, or is external host symbol)
@@ -144,6 +146,7 @@ struct ObjectSymbol
 	bool needsZeroTermination() { return cast(bool)(flags & ObjectSymbolFlags.needsZeroTermination); }
 	bool isIndirect() { return cast(bool)(flags & ObjectSymbolFlags.isIndirect); }
 	bool isString() { return cast(bool)(flags & ObjectSymbolFlags.isString); }
+	bool isPointer() { return cast(bool)(flags & ObjectSymbolFlags.isPointer); }
 	bool isReferenced() { return cast(bool)(flags & ObjectSymbolFlags.isReferenced); }
 
 	void setInitializer(ubyte[] data) {
@@ -182,11 +185,16 @@ struct ObjectModule
 	bool isLocal() { return kind == ObjectModuleKind.isLocal; }
 	bool isImported() { return kind == ObjectModuleKind.isImported; }
 	bool isExternal() { return isLocal || isImported; }
+
+	bool isReferenced() { return cast(bool)(flags & ObjectModuleFlags.isReferenced); }
+	bool isVerbose() { return cast(bool)(flags & ObjectModuleFlags.isVerbose); }
 }
 
 enum ObjectModuleFlags : ushort {
 	/// Marked if transitively used from any root symbol (only used for imported symbols atm)
 	isReferenced = 1 << 0,
+	/// Only printed in dump when verbose printing is enabled
+	isVerbose    = 1 << 1,
 }
 
 @(LinkIndexKind.section)
@@ -333,11 +341,15 @@ struct ObjectSymbolTable
 
 	void dump(CompilationContext* c)
 	{
-		LinkIndex modIndex = firstModule;
-		while (modIndex.isDefined)
+		for (LinkIndex modIndex = firstModule; modIndex.isDefined; modIndex = getModule(modIndex).nextModule)
 		{
 			ObjectModule* mod = getModule(modIndex);
 			writefln("%s %s", modIndex, c.idString(mod.id));
+
+			if (mod.isVerbose) {
+				writeln(`  (hidden as isVerbose)`);
+				continue;
+			}
 
 			LinkIndex symIndex = mod.firstSymbol;
 			while (symIndex.isDefined)
@@ -355,6 +367,16 @@ struct ObjectSymbolTable
 				writefln("    address: 0x%08X", section.sectionAddress + sym.sectionOffset);
 				writefln("    section: 0x%08X %s", section.sectionAddress, c.idString(section.id));
 				writefln("    data: %s bytes", sym.length);
+				if (sym.isString) {
+					writefln(`      as string: "%s"`, (cast(char*)(sym.dataPtr))[0..sym.length]);
+				}
+				if (sym.isPointer) {
+					switch(sym.length) {
+						case 4:  writefln(`      as ptr: 0x%X`, *cast(uint*)sym.dataPtr); break;
+						case 8:  writefln(`      as ptr: 0x%X`, *cast(ulong*)sym.dataPtr); break;
+						default: break;
+					}
+				}
 				if (sym.dataPtr) {
 					printHex(sym.dataPtr[0..sym.length], 16, PrintAscii.no, "      ");
 				}
@@ -363,14 +385,13 @@ struct ObjectSymbolTable
 				while (symRefIndex.isDefined)
 				{
 					ObjectSymbolReference* symRef = getReference(symRefIndex);
-					writefln("    %s -> %s: off 0x%08X extra %s %s",
+					writefln("    %s -> %s: off 0x%08X extraOff %s %s",
 						symRefIndex, symRef.referencedSymbol, symRef.refOffset,
 						symRef.extraOffset, symRef.refKind);
 					symRefIndex = symRef.nextReference;
 				}
 				symIndex = sym.nextSymbol;
 			}
-			modIndex = mod.nextModule;
 		}
 	}
 

@@ -6307,7 +6307,7 @@ immutable test287 = q{--- test287.vx
 };
 
 
-@TestInfo()
+@TestInfo(&tester288)
 immutable test288 = q{--- test288.vx
 	// Aggregate lowering bug with constant aggregate nested inside non-constant one
 	struct vec3 { f32 x; f32 y; f32 z; }
@@ -6323,4 +6323,33 @@ void tester288(ref TestContext ctx) {
 	static struct vec3 { float x; float y; float z; }
 	static struct Vertex { float pos; vec3 color; }
 	assert(ctx.getFunctionPtr!(Vertex, float)("putQuadAt")(56.0f) == Vertex(56.0f, vec3(1, 0, 0)));
+}
+
+
+/*
+TODO
+@TestInfo(&tester289)
+immutable test289 = q{--- test289.vx
+	// Aggregate of float type
+	struct vec2 { f32 x; f32 y; }
+	vec2 make(f32 x, f32 y) {
+		return vec2(x, y);
+	}
+};
+void tester289(ref TestContext ctx) {
+	static struct vec2 { float x; float y; }
+	assert(ctx.getFunctionPtr!(vec2, float, float)("make")(56.0f, 30.0f) == vec2(56.0f, 30.0f));
+}*/
+
+
+@TestInfo(&tester290, [HostSymbol("noop", cast(void*)&external_noop)])
+immutable test290 = q{--- test290.vx
+	// Taking address of the external symbol
+	@extern(module, "host") void noop();
+	void* run() {
+		return &noop;
+	}
+};
+void tester290(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(void*)("run")() == &external_noop);
 }
