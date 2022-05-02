@@ -1,8 +1,6 @@
-/**
-Copyright: Copyright (c) 2017-2019 Andrey Penechko.
-License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0).
-Authors: Andrey Penechko.
-*/
+/// Copyright: Copyright (c) 2017-2022 Andrey Penechko
+/// License: $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
+/// Authors: Andrey Penechko
 module cli;
 
 import std.stdio;
@@ -167,9 +165,9 @@ int runCli(string[] args)
 
 	string[] filenames = args;
 
+	// Select passes
 	auto passes = exePasses;
-	// Disable backend for check-only
-	if (checkOnly) passes = frontendOnlyPasses;
+	if (checkOnly) passes = frontendOnlyPasses; // Disable backend for check-only
 	if (driver.context.bundleInputs) passes = bundlePasses;
 
 	driver.context.buildType = BuildType.exe;
@@ -177,6 +175,7 @@ int runCli(string[] args)
 	driver.initialize(passes);
 	driver.beginCompilation();
 
+	// Set outputFilename
 	if (outputFilename) driver.context.outputFilename = outputFilename;
 	else {
 		string ext;
@@ -194,6 +193,7 @@ int runCli(string[] args)
 
 	try
 	{
+		// Add files to the compilation
 		foreach(filename; filenames)
 		{
 			string ext = filename.extension;
