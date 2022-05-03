@@ -35,7 +35,7 @@ struct LiveInterval
 	bool isSplitChild() { return !parent.isNull; }
 	bool isSplit() { return !child.isNull; }
 
-	void toString(scope void delegate(const(char)[]) sink) {
+	void toString(scope void delegate(const(char)[]) sink) const {
 		import std.format : formattedWrite;
 		sink.formattedWrite("int(");
 		if (definition.isDefined) sink.formattedWrite("%s, ", definition);
@@ -283,8 +283,8 @@ struct IntervalIndex
 	uint index = uint.max;
 	alias index this;
 	enum NULL = IntervalIndex(uint.max);
-	bool isNull() { return index == uint.max; }
-	void toString(scope void delegate(const(char)[]) sink) {
+	bool isNull() const { return index == uint.max; }
+	void toString(scope void delegate(const(char)[]) sink) const {
 		import std.format : formattedWrite;
 		if (isNull) sink("it_null");
 		else sink.formattedWrite("it%s", index);
