@@ -56,8 +56,7 @@ void type_check_return(ReturnStmtNode* node, ref TypeCheckState state)
 	{
 		if (!isVoidFunc)
 			c.error(node.loc,
-				"Cannot return void from non-void function",
-				node.expression.get_expr(c).type.typeName(c));
+				"Cannot return void from non-void function");
 	}
 	node.state = AstNodeState.type_check_done;
 }

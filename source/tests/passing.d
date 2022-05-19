@@ -6353,3 +6353,14 @@ immutable test290 = q{--- test290.vx
 void tester290(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(void*)("run")() == &external_noop);
 }
+
+
+@TestInfo()
+immutable test291 = q{--- test291.vx
+	// bug in error report of invalid return type
+	i32 fun(i32 size) {
+		return;
+	}
+--- <error>
+test291.vx:3:3: Error: Cannot return void from non-void function
+};
