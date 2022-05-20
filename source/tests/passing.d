@@ -6398,3 +6398,20 @@ immutable test294 = q{--- test294.vx
 		void function(void* param) fun;
 	}
 };
+
+
+@TestInfo()
+immutable test295 = q{--- test295.vx
+	// IR gen bug in `auto` with array types
+	void fun() {
+		auto arr = getArr();
+		fun2(arr.ptr);
+	}
+
+	void fun2(i32* ptr){}
+
+	i32[3] getArr() {
+		i32[3] res;
+		return res;
+	}
+};

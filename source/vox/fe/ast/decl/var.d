@@ -108,6 +108,7 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 		if (type.isAuto)
 		{
 			node.type = node.initializer.get_expr_type(c);
+			type = node.type.get_type(c);
 		}
 		else
 		{
@@ -115,7 +116,7 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 			if (!res) {
 				c.error(node.loc,
 					"cannot convert initializer of type `%s` to `%s`",
-					node.initializer.get_expr_type(c).printer(c), type.printer(c));
+					node.initializer.get_expr_type(c).printer(c), node.type.printer(c));
 			}
 		}
 	}
