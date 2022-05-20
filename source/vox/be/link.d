@@ -11,35 +11,41 @@ import std.stdio;
 import vox.all;
 import vox.be.pecoff;
 
-void linkModule(ref CompilationContext context, LinkIndex modIndex)
+void linkModule(ref CompilationContext c, LinkIndex modIndex)
 {
-	ObjectModule* mod = context.objSymTab.getModule(modIndex);
-	//writefln("%s %s", modIndex, context.idString(mod.id));
+	ObjectModule* mod = c.objSymTab.getModule(modIndex);
+	//writefln("%s %s", modIndex, c.idString(mod.id));
 
 	LinkIndex symIndex = mod.firstSymbol;
 	while (symIndex.isDefined)
 	{
-		ObjectSymbol* fromSymbol = context.objSymTab.getSymbol(symIndex);
-		ObjectSection* fromSection = context.objSymTab.getSection(fromSymbol.sectionIndex);
+		ObjectSymbol* fromSymbol = c.objSymTab.getSymbol(symIndex);
+		ObjectSection* fromSection = c.objSymTab.getSection(fromSymbol.sectionIndex);
 		ulong fromSymAddr = fromSection.sectionAddress + fromSymbol.sectionOffset;
 
-		//writef("  %s `%s` %X", symIndex, context.idString(fromSymbol.id), fromSymAddr);
+		//writef("  %s `%s` %X", symIndex, c.idString(fromSymbol.id), fromSymAddr);
 		//if (fromSymbol.isString)
 		//	writefln(` "%s"`, (cast(char*)(fromSymbol.dataPtr))[0..fromSymbol.length]);
 		//else writeln;
-		//writefln("    fromSection %s %X", context.idString(fromSection.id), fromSection.buffer.bufPtr);
+		//writefln("    fromSection %s %X", c.idString(fromSection.id), fromSection.buffer.bufPtr);
 
 		LinkIndex symRefIndex = fromSymbol.firstRef;
+
+		// symbols with references must be in the correct section
+		if (symRefIndex.isDefined) {
+			c.assertf(fromSection.buffer.bufPtr + fromSymbol.sectionOffset == fromSymbol.dataPtr, "Symbol.dataPtr does not point to the section buffer");
+		}
+
 		while (symRefIndex.isDefined)
 		{
-			ObjectSymbolReference* symRef = context.objSymTab.getReference(symRefIndex);
+			ObjectSymbolReference* symRef = c.objSymTab.getReference(symRefIndex);
 			//writefln("    %s -> %s: off 0x%X extra %s %s",
 			//	symRefIndex, symRef.referencedSymbol, symRef.refOffset,
 			//	symRef.extraOffset, symRef.refKind);
 
-			ObjectSymbol* toSymbol = context.objSymTab.getSymbol(symRef.referencedSymbol);
-			ObjectSection* toSection = context.objSymTab.getSection(toSymbol.sectionIndex);
-			//writefln("      toSection %s %X", context.idString(toSection.id), toSection.buffer.bufPtr);
+			ObjectSymbol* toSymbol = c.objSymTab.getSymbol(symRef.referencedSymbol);
+			ObjectSection* toSection = c.objSymTab.getSection(toSymbol.sectionIndex);
+			//writefln("      toSection %s %X", c.idString(toSection.id), toSection.buffer.bufPtr);
 
 			// section + symbol offset + reference offset
 			ulong fromAddr = fromSymAddr + symRef.refOffset;
@@ -48,7 +54,7 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 			//writefln("      toAddr %X", toAddr);
 
 			if (toAddr == 0 && toSection.type == ObjectSectionType.host) {
-				context.internal_error("Trying to referece null host symbol %s from %s", context.idString(toSymbol.id), context.idString(fromSymbol.id));
+				c.internal_error("Trying to referece null host symbol %s from %s", c.idString(toSymbol.id), c.idString(fromSymbol.id));
 			}
 
 			void* fixupLocation = cast(void*)(fromSection.buffer.bufPtr + fromSymbol.sectionOffset + symRef.refOffset);
@@ -64,9 +70,9 @@ void linkModule(ref CompilationContext context, LinkIndex modIndex)
 
 				case relative32:
 					ptrdiff_t diff = toAddr - fromAddr;
-					context.assertf(diff >= int.min && diff <= int.max,
+					c.assertf(diff >= int.min && diff <= int.max,
 						"Cannot encode relative 32-bit offset from %s at 0x%X to %s at 0x%X, because offset is bigger than 2GiB (%s) bytes",
-						context.idString(fromSymbol.id), fromAddr, context.idString(toSymbol.id), toAddr, diff);
+						c.idString(fromSymbol.id), fromAddr, c.idString(toSymbol.id), toAddr, diff);
 					int value = cast(int)(toAddr - fromAddr) - symRef.extraOffset;
 					int* fixup = cast(int*)fixupLocation;
 					//writefln("      value %X -> %X", *fixup, value);

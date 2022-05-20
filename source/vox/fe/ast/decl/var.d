@@ -257,7 +257,7 @@ void ir_gen_decl_var(CompilationContext* c, VariableDeclNode* node)
 			ubyte[] buffer = c.globals.allocateInitializer(valueSizealign.size);
 			void onGlobal(ubyte[] subbuffer, IrIndex index, CompilationContext* c)
 			{
-				c.assertf(index.isGlobal, "%s is not a constant", index);
+				c.assertf(index.isGlobal || index.isFunction, "%s is not a constant", index);
 
 				// initialize with 0
 				// generate ObjectSymbolReference for linker to fix
@@ -267,17 +267,13 @@ void ir_gen_decl_var(CompilationContext* c, VariableDeclNode* node)
 				size_t offset = subbuffer.ptr - buffer.ptr;
 				assert(offset <= uint.max);
 
-				IrGlobal* toGlobal = c.globals.get(index);
-				assert(toGlobal.objectSymIndex.isDefined);
-
-				ObjectSymbolReference r = {
-					fromSymbol : global.objectSymIndex,
-					referencedSymbol : toGlobal.objectSymIndex,
-					refOffset : cast(uint)offset,
-					extraOffset : 0,
-					refKind : ObjectSymbolRefKind.absolute64,
-				};
-				c.objSymTab.addReference(r);
+				c.objSymTab.addReferenceTo(
+					c,
+					global.objectSymIndex,
+					index,
+					cast(uint)offset,
+					0,
+					ObjectSymbolRefKind.absolute64);
 			}
 			constantToMem(buffer, initializer, c, &onGlobal);
 			globalSym.setInitializer(buffer);

@@ -122,6 +122,7 @@ struct ObjectSymbol
 	///
 	Identifier id;
 	/// Points to initializer if it is provided. (Can be null)
+	/// when kind == isLocal: If this doesn't point to correct section, data is appended to the section and this pointer is updated
 	ubyte* dataPtr;
 	/// Offset from the start of section. Can be equal to dataPtr if host symbol
 	ulong sectionOffset;
@@ -327,6 +328,35 @@ struct ObjectSymbolTable
 		return result;
 	}
 
+	void addReferenceTo(CompilationContext* c, LinkIndex fromSymbol, IrIndex target, uint refOffset, short extraOffset, ObjectSymbolRefKind refKind)
+	{
+		LinkIndex targetSym;
+		switch (target.kind) with(IrValueKind)
+		{
+			case global:
+				IrGlobal* global = c.globals.get(target);
+				targetSym = global.objectSymIndex;
+				break;
+
+			case func:
+				FunctionDeclNode* func = c.getFunction(target);
+				targetSym = func.backendData.objectSymIndex;
+				break;
+
+			default:
+				c.internal_error("addReferenceTo %s %s %s %s", target, refOffset, extraOffset, refKind);
+		}
+
+		ObjectSymbolReference r = {
+			fromSymbol : fromSymbol,
+			referencedSymbol : targetSym,
+			refOffset : refOffset,
+			extraOffset : extraOffset,
+			refKind : refKind,
+		};
+		addReference(r);
+	}
+
 	alias getSymbol = get!ObjectSymbol;
 	alias getSection = get!ObjectSection;
 	alias getModule = get!ObjectModule;
@@ -385,9 +415,23 @@ struct ObjectSymbolTable
 				while (symRefIndex.isDefined)
 				{
 					ObjectSymbolReference* symRef = getReference(symRefIndex);
-					writefln("    %s -> %s: off 0x%08X extraOff %s %s",
+					writef("    %s -> %s: off 0x%08X extraOff %s %s",
 						symRefIndex, symRef.referencedSymbol, symRef.refOffset,
 						symRef.extraOffset, symRef.refKind);
+					void* fixupLocation = cast(void*)(section.buffer.bufPtr + sym.sectionOffset + symRef.refOffset);
+					final switch(symRef.refKind) with(ObjectSymbolRefKind) {
+						case absolute64:
+							ulong* fixup = cast(ulong*)fixupLocation;
+							writefln(" value 0x%08X", *fixup);
+							break;
+						case relative32:
+							int* fixup = cast(int*)fixupLocation;
+							if (*fixup < 0)
+								writefln(" value 0x%X(-0x%X)", *fixup, -*fixup);
+							else
+								writefln(" value 0x%X", *fixup);
+							break;
+					}
 					symRefIndex = symRef.nextReference;
 				}
 				symIndex = sym.nextSymbol;

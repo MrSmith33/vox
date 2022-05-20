@@ -61,7 +61,7 @@ void fillStaticDataSections(CompilationContext* c)
 
 		// copy data
 		c.assertf(globalSym.dataPtr !is null, "null initializer");
-		symSection.buffer.put(globalSym.initializer);
+		globalSym.dataPtr = symSection.buffer.put(globalSym.initializer).ptr;
 
 		// zero termination
 		if (globalSym.needsZeroTermination) symSection.buffer.put(0);
@@ -691,26 +691,15 @@ struct CodeEmitter
 		}
 	}
 
-	void addRefTo(IrIndex entity, short offset = 4)
+	void addRefTo(IrIndex target, short offset = 4)
 	{
-		LinkIndex entityIndex;
-		switch (entity.kind) with(IrValueKind)
-		{
-			case global:
-				IrGlobal* global = context.globals.get(entity);
-				entityIndex = global.objectSymIndex;
-				break;
-
-			case func:
-				FunctionDeclNode* func = context.getFunction(entity);
-				entityIndex = func.backendData.objectSymIndex;
-				break;
-
-			default:
-				context.internal_error("addRefTo %s %s", entity, offset);
-		}
-
-		addRefTo(entityIndex, offset);
+		context.objSymTab.addReferenceTo(
+			context,
+			fun.backendData.objectSymIndex,
+			target,
+			referenceOffset() - offset,
+			offset,
+			ObjectSymbolRefKind.relative32);
 	}
 
 	void addRefTo(LinkIndex entityIndex, short offset = 4)

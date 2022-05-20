@@ -6364,3 +6364,15 @@ immutable test291 = q{--- test291.vx
 --- <error>
 test291.vx:3:3: Error: Cannot return void from non-void function
 };
+
+
+@TestInfo(&tester292)
+immutable test292 = q{--- test292.vx
+	// Eval function address during global init
+	i32 function(i32 param) fptr = &callback;
+	i32 callback(i32 param){ return param; }
+	i32 run(i32 val) { return fptr(val); }
+};
+void tester292(ref TestContext ctx) {
+	assert(ctx.getFunctionPtr!(int, int)("run")(42) == 42);
+}
