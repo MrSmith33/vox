@@ -6387,3 +6387,14 @@ immutable test293 = q{--- test293.vx
 		fptr(param : 1);
 	}
 };
+
+
+@TestInfo()
+immutable test294 = q{--- test294.vx
+	// Make sure function type parameters are not visible outside
+	struct S
+	{
+		void* param;
+		void function(void* param) fun;
+	}
+};

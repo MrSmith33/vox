@@ -68,7 +68,7 @@
 	+ anonymous parameters should not be named in the call
 	- interaction with variadic arguments
 	+ interaction with default arguments
-	- through function pointer
+	+ through function pointer
 	- named template arguments
 
 [Functions]
@@ -122,6 +122,8 @@
 + function pointer type <ret> function(<args>)
 	+ call by pointer
 	+ take address of function
+	+ parameter names must be registered, so that they can be queried when resolving named arguments
+	+ parameter names should not be visible in outside scope
 	- check member variable func ptr
 - char literal / type
 	+ literal (for now generates int literal expression)

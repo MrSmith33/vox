@@ -2136,7 +2136,10 @@ AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rb
 	auto sig = p.makeDecl!FunctionSignatureNode(token.index, returnType, AstNodes.init, callConvention);
 	AstIndex prevOwner = p.declarationOwner; // change the owner, so that parameters are inferred as local
 	p.declarationOwner = sig;
+	ScopeTempData scope_temp = p.pushScope(null, ScopeKind.local);
+	p.currentScopeIndex.get_scope(p.context).owner = sig;
 	p.parseParameters(sig);
+	p.popScope(scope_temp);
 	p.declarationOwner = prevOwner;
 	// we don't have to register parameter names, since we have no body
 	sig.setState(p.context, AstNodeState.name_register_nested_done);
