@@ -6376,3 +6376,14 @@ immutable test292 = q{--- test292.vx
 void tester292(ref TestContext ctx) {
 	assert(ctx.getFunctionPtr!(int, int)("run")(42) == 42);
 }
+
+
+@TestInfo()
+immutable test293 = q{--- test293.vx
+	// Named arguments of function pointer
+	void function(i32 param) fptr = &callback;
+	void callback(i32){}
+	void fun() {
+		fptr(param : 1);
+	}
+};

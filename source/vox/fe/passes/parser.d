@@ -729,7 +729,7 @@ struct Parser
 		// no attributes go to the parameters and body
 		attribState = AttribState.init;
 
-		parseParameters(signature, NeedRegNames.yes); // functions need to register their param names
+		parseParameters(signature); // functions need to register their param names
 		func.signature = signature;
 
 		currentScopeIndex.get_scope(context).owner = funcIndex;
@@ -750,9 +750,9 @@ struct Parser
 		return funcIndex;
 	}
 
-	enum NeedRegNames : bool { no, yes }
-	// if nameReg is `no` parameters are put in name_register_done state
-	void parseParameters(AstIndex signature, NeedRegNames nameReg)
+	// I previously tried to not register parameters in the scope for function types
+	// but with the introduction of named arguments they now must be registered
+	void parseParameters(AstIndex signature)
 	{
 		auto sig = signature.get!FunctionSignatureNode(context);
 		expectAndConsume(TokenType.LPAREN);
@@ -813,8 +813,6 @@ struct Parser
 			if (paramNode.isGlobal) context.error(paramNode.loc, "Parameters cannot be @static");
 			paramNode.flags |= flags;
 			paramNode.scopeIndex = cast(typeof(paramNode.scopeIndex))paramIndex;
-			if (nameReg == NeedRegNames.no)
-				paramNode.state = AstNodeState.name_register_nested_done;
 
 			sig.parameters.put(context.arrayArena, param);
 			if (tok.type == TokenType.COMMA) nextToken; // skip ","
@@ -2138,7 +2136,7 @@ AstIndex leftFunctionOp(ref Parser p, PreferType preferType, Token token, int rb
 	auto sig = p.makeDecl!FunctionSignatureNode(token.index, returnType, AstNodes.init, callConvention);
 	AstIndex prevOwner = p.declarationOwner; // change the owner, so that parameters are inferred as local
 	p.declarationOwner = sig;
-	p.parseParameters(sig, p.NeedRegNames.no); // function types don't need to register their param names
+	p.parseParameters(sig);
 	p.declarationOwner = prevOwner;
 	// we don't have to register parameter names, since we have no body
 	sig.setState(p.context, AstNodeState.name_register_nested_done);
