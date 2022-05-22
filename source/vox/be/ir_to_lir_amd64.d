@@ -225,7 +225,7 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 								}
 								return;
 
-							case IrOpcode.move, IrOpcode.or:
+							default:
 								// value fits into register, store as is
 								IrIndex rvalue = getFixedIndex(irValue);
 								IrArgSize argSize = typeToIrArgSize(valueType, context);
@@ -233,9 +233,6 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 								IrIndex ptr = genAddressOffset(lirPtr, offset, ptrType, lirBlockIndex);
 								builder.emitInstr!(Amd64Opcode.store)(lirBlockIndex, extra, ptr, rvalue);
 								return;
-
-							default:
-								context.internal_error("%s", cast(IrOpcode)instr.op);
 						}
 						break;
 

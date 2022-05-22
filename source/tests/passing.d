@@ -6415,3 +6415,12 @@ immutable test295 = q{--- test295.vx
 		return res;
 	}
 };
+
+
+@TestInfo()
+immutable test296 = q{--- test296.vx
+	u16vec2 fun(u16 v) {
+		return u16vec2(v, 0);
+	}
+	struct u16vec2 { u16 x; u16 y; }
+};
