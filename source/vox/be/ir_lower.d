@@ -577,6 +577,16 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 
 	IrIndex[2] argBuffer;
 
+	IrIndex toInt(IrIndex value, uint size) {
+		IrIndex type = getValueType(value, ir, c);
+
+		if (!type.isTypeIntegerOrPointer) {
+			ExtraInstrArgs extra1 = { type : sizeToIntType(size, c) };
+			return builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra1, value).result; // bitcast
+		}
+		return value;
+	}
+
 	void insertNonConstant(IrIndex value, uint bit_offset, uint size)
 	{
 		if (size < targetTypeSize) {
@@ -590,12 +600,12 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 
 		// shift
 		if (bit_offset == 0)
-			argBuffer[numBufferedValues] = value;
+			argBuffer[numBufferedValues] = toInt(value, size);
 		else
 		{
 			IrIndex rightArg = c.constants.add(makeIrType(IrBasicType.i8), bit_offset);
 			ExtraInstrArgs extra1 = { argSize : argSize, type : type };
-			IrIndex shiftRes = builder.emitInstrBefore!(IrOpcode.shl)(instrIndex, extra1, value, rightArg).result;
+			IrIndex shiftRes = builder.emitInstrBefore!(IrOpcode.shl)(instrIndex, extra1, toInt(value, size), rightArg).result;
 			argBuffer[numBufferedValues] = shiftRes;
 		}
 		++numBufferedValues;

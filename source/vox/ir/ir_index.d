@@ -191,6 +191,11 @@ struct IrIndex
 	bool isTypeInteger() {
 		return kind == IrValueKind.type && typeKind == IrTypeKind.basic && (typeIndex >= IrBasicType.i8 && typeIndex <= IrBasicType.i64);
 	}
+	bool isTypeIntegerOrPointer() {
+		if (kind != IrValueKind.type) return false;
+		if (typeKind == IrTypeKind.basic && (typeIndex >= IrBasicType.i8 && typeIndex <= IrBasicType.i64)) return true;
+		return typeKind == IrTypeKind.pointer;
+	}
 	IrBasicType basicType(CompilationContext* c) {
 		c.assertf(kind == IrValueKind.type, "%s != IrValueKind.type", kind);
 		c.assertf(typeKind == IrTypeKind.basic, "%s != IrTypeKind.basic", typeKind);

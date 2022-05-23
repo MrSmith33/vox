@@ -6424,3 +6424,21 @@ immutable test296 = q{--- test296.vx
 	}
 	struct u16vec2 { u16 x; u16 y; }
 };
+
+
+@TestInfo(&tester297)
+immutable test297 = q{--- test297.vx
+	// Creation of small aggregates didn't account for floats
+	// Bitcast from non-int types to int must be done prior to bitshifting
+	struct vec2 { f32 x; f32 y; }
+	vec2 add_vec2(vec2 a, vec2 b) {
+		return vec2(
+			a.x + b.x,
+			a.y + b.y,
+		);
+	}
+};
+void tester297(ref TestContext ctx) {
+	static struct vec2 { float x; float y; }
+	assert(ctx.getFunctionPtr!(vec2, vec2, vec2)("add_vec2")(vec2(1, 4), vec2(2, 7)) == vec2(3, 11));
+}
