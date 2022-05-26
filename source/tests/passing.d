@@ -6417,13 +6417,18 @@ immutable test295 = q{--- test295.vx
 };
 
 
-@TestInfo()
+@TestInfo(&tester296)
 immutable test296 = q{--- test296.vx
-	u16vec2 fun(u16 v) {
-		return u16vec2(v, 0);
-	}
+	// Bugs with packing small aggregates in a single register
+	u16vec2 fun0(u16 v) { return u16vec2(v, 0); }
+	u16vec2 fun1(u16 v) { return u16vec2(v, 10); }
 	struct u16vec2 { u16 x; u16 y; }
 };
+void tester296(ref TestContext ctx) {
+	static struct u16vec2 { ushort x; ushort y; }
+	assert(ctx.getFunctionPtr!(u16vec2, ushort)("fun0")(40) == u16vec2(40, 0));
+	assert(ctx.getFunctionPtr!(u16vec2, ushort)("fun1")(40) == u16vec2(40, 10));
+}
 
 
 @TestInfo(&tester297)

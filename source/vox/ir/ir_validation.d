@@ -9,16 +9,16 @@ import vox.all;
 import vox.ir.ir_index;
 
 ///
-void validateIrFunction(CompilationContext* context, IrFunction* ir, string passName = null)
+void validateIrFunction(CompilationContext* c, IrFunction* ir, string passName = null)
 {
-	scope(failure) dumpFunction(context, ir, passName);
+	scope(failure) dumpFunction(c, ir, passName);
 
 	auto funcInstrInfos = allInstrInfos[ir.instructionSet];
 	auto instrValidator = instrValidators[ir.instructionSet];
 
 	// Defined vregs
-	size_t[] definedVregsBitmap = context.allocateTempArray!size_t(cast(uint)divCeil(ir.numVirtualRegisters, size_t.sizeof * 8));
-	scope(exit) context.freeTempArray(cast(uint[])definedVregsBitmap);
+	size_t[] definedVregsBitmap = c.allocateTempArray!size_t(cast(uint)divCeil(ir.numVirtualRegisters, size_t.sizeof * 8));
+	scope(exit) c.freeTempArray(cast(uint[])definedVregsBitmap);
 	definedVregsBitmap[] = 0;
 
 	// Verify defined vregs indices
@@ -27,7 +27,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 		void checkResult(IrIndex definition, IrIndex result) {
 			if (!result.isVirtReg) return;
 			if (result.storageUintIndex > ir.numVirtualRegisters)
-				context.internal_error("Virtual register %s defined in %s %s is out of bounds (> %s)",
+				c.internal_error("Virtual register %s defined in %s %s is out of bounds (> %s)",
 					result, blockIndex, definition, ir.numVirtualRegisters);
 
 			// Mark all reachable vregs as live
@@ -43,30 +43,30 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 
 	// Function must have at least 2 basic blocks
 	if (ir.numBasicBlocks < 2) {
-		context.internal_error("IR must have at least 2 basic blocks, but has %s", ir.numBasicBlocks);
+		c.internal_error("IR must have at least 2 basic blocks, but has %s", ir.numBasicBlocks);
 	}
 
 	// Entry block must have 0 phis and 0 predecessors
-	context.assertf(ir.getBlock(ir.entryBasicBlock).hasPhis == false, "Entry basic block can not have phi functions");
-	context.assertf(ir.getBlock(ir.entryBasicBlock).predecessors.length == 0, "Entry basic block can not have predecessors");
+	c.assertf(ir.getBlock(ir.entryBasicBlock).hasPhis == false, "Entry basic block can not have phi functions");
+	c.assertf(ir.getBlock(ir.entryBasicBlock).predecessors.length == 0, "Entry basic block can not have predecessors");
 
 	foreach (IrIndex blockIndex, ref IrBasicBlock block; ir.blocks)
 	{
-		context.assertf(blockIndex.storageUintIndex < ir.numBasicBlocks, "basic block out of bounds %s", blockIndex);
+		c.assertf(blockIndex.storageUintIndex < ir.numBasicBlocks, "basic block out of bounds %s", blockIndex);
 
 		if (!block.isSealed)
 		{
-			context.internal_error("Unsealed basic block %s", blockIndex);
+			c.internal_error("Unsealed basic block %s", blockIndex);
 		}
 
 		if (!block.isFinished)
 		{
-			context.internal_error("Unfinished basic block %s", blockIndex);
+			c.internal_error("Unfinished basic block %s", blockIndex);
 		}
 
 		IrInstrHeader* firstInstr = ir.getInstr(block.firstInstr);
 		IrInstrHeader* lastInstr = ir.getInstr(block.lastInstr);
-		context.assertf(funcInstrInfos[lastInstr.op].isBlockExit,
+		c.assertf(funcInstrInfos[lastInstr.op].isBlockExit,
 			"Basic block %s does not end with jump, branch or return instruction",
 			blockIndex);
 
@@ -76,18 +76,18 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 			if (!arg.isVirtReg) return;
 
 			if (arg.storageUintIndex > ir.numVirtualRegisters)
-				context.internal_error("Virtual register %s used in %s %s is out of bounds (> %s)",
+				c.internal_error("Virtual register %s used in %s %s is out of bounds (> %s)",
 					arg, blockIndex, argUser, ir.numVirtualRegisters);
 
 			if (!definedVregsBitmap.getBitAt(arg.storageUintIndex))
-				context.internal_error("Undefined virtual register %s is used in %s %s",
+				c.internal_error("Undefined virtual register %s is used in %s %s",
 					arg, blockIndex, argUser);
 
 			IrVirtualRegister* vreg = ir.getVirtReg(arg);
 
 			// Check case when virtual register is in use,
 			// but it's definition point is not set
-			context.assertf(vreg.definition.isDefined,
+			c.assertf(vreg.definition.isDefined,
 				"Virtual register %s, invalid definition (%s)",
 				arg, vreg.definition);
 
@@ -111,11 +111,11 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 			}
 			else
 			{
-				context.internal_error("Virtual register cannot be used by %s", argUser.kind);
+				c.internal_error("Virtual register cannot be used by %s", argUser.kind);
 			}
 
 			// For each use of arg by argUser there must one item in users list of vreg and in args list of user
-			context.assertf(numVregUses == timesUsed,
+			c.assertf(numVregUses == timesUsed,
 				"Virtual register %s appears %s times as argument of %s, but instruction appears as user %s times",
 					arg, timesUsed, argUser, numVregUses);
 		}
@@ -127,12 +127,12 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 			IrVirtualRegister* vreg = ir.getVirtReg(result);
 
 			// Type must be set for every virtual register
-			context.assertf(vreg.type.isType,
+			c.assertf(vreg.type.isType,
 				"Virtual register %s, invalid type (%s)",
 				result, vreg.type);
 
 			// Check that all users of virtual reg point to definition
-			context.assertf(vreg.definition == definition,
+			c.assertf(vreg.definition == definition,
 				"Virtual register %s definition %s doesn't match instruction %s",
 				result, vreg.definition, definition);
 
@@ -161,7 +161,7 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 			}
 
 			// check that phi function is not redundant
-			context.assertf(numUniqueArgs > 1, "%s is redundant", phiIndex);
+			c.assertf(numUniqueArgs > 1, "%s is redundant", phiIndex);
 
 			// TODO: check that all types of args match type of result
 
@@ -171,14 +171,14 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 			size_t numPredecessors = 0;
 			foreach(IrIndex predIndex; block.predecessors.range(ir))
 			{
-				context.assertf(predIndex.storageUintIndex < ir.numBasicBlocks, "basic block out of bounds %s", predIndex);
+				c.assertf(predIndex.storageUintIndex < ir.numBasicBlocks, "basic block out of bounds %s", predIndex);
 				++numPredecessors;
 			}
-			context.assertf(numPredecessors == block.predecessors.length,
+			c.assertf(numPredecessors == block.predecessors.length,
 				"Corrupted list of predecessors %s != %s",
 				numPredecessors, block.predecessors.length);
 
-			context.assertf(numPhiArgs == numPredecessors,
+			c.assertf(numPhiArgs == numPredecessors,
 				"Number of predecessors: %s doesn't match number of phi arguments: %s",
 				numPredecessors, numPhiArgs);
 
@@ -200,16 +200,27 @@ void validateIrFunction(CompilationContext* context, IrFunction* ir, string pass
 
 			if (funcInstrInfos[instrHeader.op].isBlockExit)
 			{
-				context.assertf(block.lastInstr == instrIndex,
+				c.assertf(block.lastInstr == instrIndex,
 					"Basic block %s has %s as last instruction, not branch %s",
 					blockIndex, block.lastInstr, instrIndex);
 
-				context.assertf(ir.nextInstr(instrIndex) == blockIndex,
+				c.assertf(ir.nextInstr(instrIndex) == blockIndex,
 					"Branch %s has %s as next instruction, not basic block %s",
 					instrIndex, ir.nextInstr(instrIndex), blockIndex);
 			}
 
-			instrValidator(context, ir, instrIndex, instrHeader);
+			instrValidator(c, ir, instrIndex, instrHeader);
+
+			if (funcInstrInfos[instrHeader.op].isResultInDst)
+			{
+				IrIndex result = instrHeader.result(ir);
+				IrIndex arg0 = instrHeader.arg(ir, 0);
+				if (result.isPhysReg) {
+					c.assertf(result == arg0,
+						"%s: Result register (%s) must be the same as dst argument (%s)",
+						instrIndex, IrIndexDump(result, c, ir), IrIndexDump(arg0, c, ir));
+				}
+			}
 		}
 	}
 }

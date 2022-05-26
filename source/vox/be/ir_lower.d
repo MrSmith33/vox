@@ -580,7 +580,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 	IrIndex toInt(IrIndex value, uint size) {
 		IrIndex type = getValueType(value, ir, c);
 
-		if (!type.isTypeIntegerOrPointer) {
+		if (type.isTypeFloat) {
 			ExtraInstrArgs extra1 = { type : sizeToIntType(size, c) };
 			return builder.emitInstrBefore!(IrOpcode.move)(instrIndex, extra1, value).result; // bitcast
 		}
@@ -594,6 +594,7 @@ void createSmallAggregate(IrIndex instrIndex, IrIndex type, ref IrInstrHeader in
 			switch(size) { // zero extend 8 and 16 bit args to 32bit
 				case 1: value = builder.emitInstrBefore!(IrOpcode.zext)(instrIndex, extra, value).result; break;
 				case 2: value = builder.emitInstrBefore!(IrOpcode.zext)(instrIndex, extra, value).result; break;
+				case 4: value = builder.emitInstrBefore!(IrOpcode.zext)(instrIndex, extra, value).result; break;
 				default: break;
 			}
 		}
