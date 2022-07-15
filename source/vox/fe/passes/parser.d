@@ -1991,7 +1991,7 @@ AstIndex nullLiteral(ref Parser p, PreferType preferType, Token token, int rbp) 
 			}
 			return c.appendAst!FloatLiteralExprNode(token.index, type, result.data);
 		case TYPE_AUTO:
-			c.error(token.index, "`auto` can only be used to declare varible in a function body");
+			c.error(token.index, "`auto` can only be used to declare local varibles and globals");
 			BasicType t = token.type.tokenTypeToBasicType;
 			return c.basicTypeNodes(t);
 		case TYPE_NORETURN, TYPE_VOID, TYPE_BOOL,

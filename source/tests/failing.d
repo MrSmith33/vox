@@ -182,9 +182,9 @@ immutable fail17 = q{
 		return op_local;
 	}
 --- <error>
-fail17:3:9: Error: cannot declare variable `op_global` of opaque type `Opaque`
+fail17:3:9: Error: cannot declare global `op_global` of opaque type `Opaque`
 fail17:4:9: Error: function cannot return opaque type `Opaque`
-fail17:4:26: Error: cannot declare parameter of opaque type `Opaque`
+fail17:4:26: Error: cannot declare parameter `op_param` of opaque type `Opaque`
 fail17:5:10: Error: cannot declare variable `op_local` of opaque type `Opaque`
 };
 

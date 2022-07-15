@@ -39,6 +39,12 @@ struct VariableDeclNode
 		c.assertf(irValue.irValue.isDefined, "Value is undefined");
 		return irValue.irValue;
 	}
+
+	string varKind() {
+		if (isParameter) return "parameter";
+		if (isGlobal) return "global";
+		return "variable";
+	}
 }
 
 void print_var(VariableDeclNode* node, ref AstPrintState state)
@@ -90,19 +96,6 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 
 	TypeNode* type = node.type.get_type(c);
 
-	if (type.isOpaqueStruct(c)) {
-		if (node.isParameter) {
-			c.error(node.loc,
-				"cannot declare parameter of opaque type `%s`",
-				type.printer(c));
-		} else {
-			c.error(node.loc,
-				"cannot declare variable `%s` of opaque type `%s`",
-				c.idString(node.id),
-				type.printer(c));
-		}
-	}
-
 	if (node.initializer) {
 		require_type_check(node.initializer, state);
 		if (type.isAuto)
@@ -131,6 +124,19 @@ void type_check_var(VariableDeclNode* node, ref TypeCheckState state)
 
 			default: break;
 		}
+	}
+
+	if (type.isOpaqueStruct(c)) {
+		c.error(node.loc,
+			"cannot declare %s `%s` of opaque type `%s`",
+			node.varKind,
+			c.idString(node.id),
+			type.printer(c));
+	} else if (type.isVoid) {
+		c.error(node.loc,
+			"cannot declare %s of type void",
+			node.varKind);
+		return;
 	}
 
 	if (!node.isLocal)

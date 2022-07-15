@@ -6447,3 +6447,32 @@ void tester297(ref TestContext ctx) {
 	static struct vec2 { float x; float y; }
 	assert(ctx.getFunctionPtr!(vec2, vec2, vec2)("add_vec2")(vec2(1, 4), vec2(2, 7)) == vec2(3, 11));
 }
+
+
+@TestInfo()
+immutable test298 = q{--- test298.vx
+	// void variables
+	void global;
+	void fun(void) {
+		void local;
+	}
+--- <error>
+test298.vx:2:7: Error: cannot declare global of type void
+test298.vx:3:11: Error: cannot declare parameter of type void
+test298.vx:4:8: Error: cannot declare variable of type void
+};
+
+
+@TestInfo()
+immutable test299 = q{--- test299.vx
+	// auto variables
+	auto global;
+	auto fun(auto) {
+		auto local;
+	}
+--- <error>
+test299.vx:2:7: Error: variables declared as `auto` must have an initializer
+test299.vx:3:11: Error: `auto` can only be used to declare local varibles and globals
+test299.vx:4:8: Error: variables declared as `auto` must have an initializer
+test299.vx:3:7: Error: functions cannot return `auto`
+};
