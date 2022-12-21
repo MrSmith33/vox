@@ -852,7 +852,7 @@ struct LibMemberHeader
 			cast(ubyte[])EndOfHeader[], cast(ubyte[])END_OF_HEADER_VALUE));
 	}
 
-	ParsedLibMemberHeader parse() const @safe
+	ParsedLibMemberHeader parse() const @safe return
 	{
 		import std.datetime.systime : SysTime;
 		ParsedLibMemberHeader res;
