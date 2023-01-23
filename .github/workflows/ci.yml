@@ -21,7 +21,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dlang-community/setup-dlang@v1
         with:
           compiler: ${{ env.DC }}
@@ -47,7 +47,7 @@ jobs:
           EXE: vox.exe
           PLATFORM: windows-x64
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dlang-community/setup-dlang@v1
         with:
           compiler: ${{ env.DC }}
@@ -82,7 +82,7 @@ jobs:
           DBG_FILE: vox.pdb
           PLATFORM: windows-x64
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dlang-community/setup-dlang@v1
         with:
           compiler: ${{ env.DC }}
@@ -117,7 +117,7 @@ jobs:
           LIB: libvox.lib
           PLATFORM: windows-x64
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dlang-community/setup-dlang@v1
         with:
           compiler: ${{ env.DC }}
@@ -150,7 +150,7 @@ jobs:
           DBG_FILE: libvox.pdb
           PLATFORM: windows-x64
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dlang-community/setup-dlang@v1
         with:
           compiler: ${{ env.DC }}
@@ -171,7 +171,7 @@ jobs:
     needs: [build, build-debug, build-shared, build-shared-debug]
     steps:
       # Cloning is needed for `gh release create` to work. It looks repository up in .git folder
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       # Download build artifacts of other jobs
       - uses: actions/download-artifact@v3
         with:
