@@ -79,7 +79,9 @@ int benchSpeed()
 	driver.compile();
 	driver.markCodeAsExecutable();
 
-	auto fib = driver.context.getFunctionPtr!(int, int)("fibonacci");
+	auto ctx = TestContext(&driver);
+
+	auto fib = ctx.getFunctionPtr!(int, int)("fibonacci");
 
 	auto time1 = currTime;
 	int res;
