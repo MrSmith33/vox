@@ -969,8 +969,18 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 				case IrOpcode.set_binary_cond:
 					IrIndex type = ir.getVirtReg(instrHeader.result(ir)).type;
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize, type : type };
-					InstrWithResult res = builder.emitInstr!(Amd64Opcode.set_binary_cond)(lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
-					recordIndex(instrHeader.result(ir), res.result);
+
+					IrIndex argType = getValueType(instrHeader.arg(ir, 0), ir, context);
+					// if both floats are constants the branch will disappear in backend
+					if (argType.isTypeFloat && !(instrHeader.arg(ir, 0).isSimpleConstant && instrHeader.arg(ir, 1).isSimpleConstant)) {
+						InstrWithResult res = builder.emitInstr!(Amd64Opcode.set_binary_cond)(
+							lirBlockIndex, extra, legalizeFloatArg(instrHeader.arg(ir, 0), argType), legalizeFloatArg(instrHeader.arg(ir, 1), argType));
+						recordIndex(instrHeader.result(ir), res.result);
+					} else {
+						InstrWithResult res = builder.emitInstr!(Amd64Opcode.set_binary_cond)(
+							lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
+						recordIndex(instrHeader.result(ir), res.result);
+					}
 					break;
 
 				case IrOpcode.jump:
@@ -985,8 +995,15 @@ void processFunc(CompilationContext* context, IrBuilder* builder, ModuleDeclNode
 
 				case IrOpcode.branch_binary:
 					ExtraInstrArgs extra = { addUsers : false, cond : instrHeader.cond, argSize : instrHeader.argSize };
-					IrIndex instruction = builder.emitInstr!(Amd64Opcode.bin_branch)(
-						lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
+					IrIndex argType = getValueType(instrHeader.arg(ir, 0), ir, context);
+					// if both floats are constants the branch will disappear in backend
+					if (argType.isTypeFloat && !(instrHeader.arg(ir, 0).isSimpleConstant && instrHeader.arg(ir, 1).isSimpleConstant)) {
+						IrIndex instruction = builder.emitInstr!(Amd64Opcode.bin_branch)(
+							lirBlockIndex, extra, legalizeFloatArg(instrHeader.arg(ir, 0), argType), legalizeFloatArg(instrHeader.arg(ir, 1), argType));
+					} else {
+						IrIndex instruction = builder.emitInstr!(Amd64Opcode.bin_branch)(
+							lirBlockIndex, extra, getFixedIndex(instrHeader.arg(ir, 0)), getFixedIndex(instrHeader.arg(ir, 1)));
+					}
 					break;
 
 				case IrOpcode.ret:

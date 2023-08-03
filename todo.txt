@@ -94,6 +94,7 @@
 	- Calling static methods via `Type.method` syntax
 	- struct constructor must ignore static members
 - need to decide what to do when attribute is found before a statement that is not a declaration
+- check that broadcasted attributes propagate into #version and #if #foreach
 
 [Types]
 - auto
@@ -153,6 +154,11 @@
 		+ zero
 		+ non-zero
 		+ constants as instruction arguments need to be lowered to movs
+		- legalization in all instructions
+			+ fadd, fsub, fdiv, fmul, branch_binary, set_binary_cond
+			- call
+			- unary
+			- test branch legalization
 	+ constant folding
 	+ int literal to initialize float
 	- CTFE

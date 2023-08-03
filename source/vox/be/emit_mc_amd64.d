@@ -580,7 +580,8 @@ struct CodeEmitter
 						}
 
 						if (arg0.physRegClass == AMD64_REG_CLASS.XMM) {
-							assert(arg1.physRegClass == AMD64_REG_CLASS.XMM);
+							context.assertf(arg1.isPhysReg, "%s: arg1.isPhysReg %s", instrIndex, arg1.isPhysReg);
+							context.assertf(arg1.physRegClass == AMD64_REG_CLASS.XMM, "%s: arg1.physRegClass %s", instrIndex, arg1.physRegClass);
 							final switch(instrHeader.argSize) with(IrArgSize) {
 								case size32: gen.ucomiss(indexToRegister(arg0), indexToRegister(arg1)); break;
 								case size64: gen.ucomisd(indexToRegister(arg0), indexToRegister(arg1)); break;

@@ -3935,8 +3935,8 @@ void tester_float_2(ref TestContext ctx) {
 	assert(f64_ge(-100, -42) == (-100.0 >= -42.0));
 }
 
-/*
-@TestInfo(&tester_float_3)
+
+@TestInfo()
 immutable test_float_3 = q{--- test_float_3.vx
 	// floats compare with literal
 	bool f32_lt_l(f32 b) { return 0  < b; }
@@ -3965,9 +3965,6 @@ immutable test_float_3 = q{--- test_float_3.vx
 	bool f32_ge_r(f32 a) { return a >= 0; }
 	bool f64_ge_r(f64 a) { return a >= 0; }
 };
-void tester_float_3(ref TestContext ctx) {
-
-}*/
 
 
 @TestInfo(&tester_float_4)
