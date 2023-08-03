@@ -61,7 +61,7 @@ jobs:
           ldc2 -m64 -O3 -mcpu=x86-64-v3 -release -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -fprofile-instr-use=vox.profdata -of=../bin/${{matrix.EXE}} -i main.d
           cd ../bin
           7z a -mx9 vox-${{matrix.PLATFORM}}.zip ${{matrix.EXE}}
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: ./bin/vox-${{matrix.PLATFORM}}.zip
   build-debug:
@@ -96,7 +96,7 @@ jobs:
           ldc2 -m64 -O3 -mcpu=x86-64-v3 --d-debug -g -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -d-version=cli -fprofile-instr-use=vox.profdata -of=../bin/${{matrix.EXE}} -i main.d
           cd ../bin
           7z a -mx9 vox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.EXE}} ${{matrix.DBG_FILE}}
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: ./bin/vox-${{matrix.PLATFORM}}-dbg.zip
   build-shared:
@@ -128,7 +128,7 @@ jobs:
           ldc2 -m64 -shared -O3 -mcpu=x86-64-v3 -release -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -fvisibility=hidden -link-defaultlib-shared=false -i c_api.d -of=../bin/${{matrix.DLL}}
           cd ../bin
           7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}}
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: ./bin/libvox-${{matrix.PLATFORM}}.zip
   build-shared-debug:
@@ -161,7 +161,7 @@ jobs:
           ldc2 -m64 -shared -O3 -mcpu=x86-64-v3 --d-debug -g -boundscheck=off -enable-inlining -flto=full -linkonce-templates --defaultlib=phobos2-ldc-lto,druntime-ldc-lto -fvisibility=hidden -link-defaultlib-shared=false -i c_api.d -of=../bin/${{matrix.DLL}}
           cd ../bin
           7z a -mx9 libvox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.DLL}} ${{matrix.LIB}} ${{matrix.DBG_FILE}}
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           path: ./bin/libvox-${{matrix.PLATFORM}}-dbg.zip
   upload:
