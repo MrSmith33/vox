@@ -6473,3 +6473,26 @@ test299.vx:3:11: Error: `auto` can only be used to declare local varibles and gl
 test299.vx:4:8: Error: variables declared as `auto` must have an initializer
 test299.vx:3:7: Error: functions cannot return `auto`
 };
+
+@TestInfo(&tester300)
+immutable test300 = q{--- test300
+	// Ptr - num, where num is non-constant
+	// Incorrect code:
+	// mov    eax,edx
+	// neg    eax
+	// add    rax,rcx
+	// ret
+	// Correct code
+	// mov    eax,edx
+	// neg    rax     neg is done on RAX, otherwise result is incorrect
+	// add    rax,rcx
+	// ret
+	// For that `num` is converted to i64 when type is smaller than 64 bit
+	u8* run1(u8* ptr1, u32 num) {
+		return ptr1 - num;
+	}
+};
+void tester300(ref TestContext ctx) {
+	auto run1 = ctx.getFunctionPtr!(size_t, size_t, uint)("run1");
+	assert(run1(42, 10) == 42 - 10);
+}

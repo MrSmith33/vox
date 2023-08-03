@@ -505,7 +505,16 @@ void setResultType(BinaryExprNode* b, CompilationContext* c)
 				}
 			} else if (leftType.isPointer && rightType.isInteger) { // handle ptr - int
 				b.op = BinOp.PTR_PLUS_INT;
-				(cast(IntLiteralExprNode*)b.right.get_node(c)).negate(b.loc, *c);
+				// Rewrite `ptr - int` into `ptr + (-int)`
+				if (b.right.astType(c) == AstType.literal_int) {
+					(cast(IntLiteralExprNode*)b.right.get_node(c)).negate(b.loc, *c);
+				} else {
+					if (rightType.sizealign(c).size < POINTER_SIZE) {
+						insertCast(b.right, CommonAstNodes.type_i64, TypeConvResKind.ii_i, c);
+					}
+					b.right = c.appendAst!UnaryExprNode(b.right.loc(c), CommonAstNodes.type_i64, UnOp.INT_MINUS, b.right);
+					b.right.setState(c, AstNodeState.type_check_done);
+				}
 				resType = leftTypeIndex;
 				break;
 			}
