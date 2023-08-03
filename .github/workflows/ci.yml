@@ -179,7 +179,7 @@ jobs:
           path: bin/
       # Update tag, so that we get proper date and commit on github
       - name: Update CI tag
-        uses: richardsimko/update-tag@master
+        uses: richardsimko/update-tag@v1
         if: github.ref == 'refs/heads/master'
         with:
           tag_name: CI
