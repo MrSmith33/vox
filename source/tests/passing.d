@@ -6496,3 +6496,26 @@ void tester300(ref TestContext ctx) {
 	auto run1 = ctx.getFunctionPtr!(size_t, size_t, uint)("run1");
 	assert(run1(42, 10) == 42 - 10);
 }
+
+
+@TestInfo(&tester301)
+immutable test301 = q{--- test301
+	// Variadic args tuple forward into call
+	u32 run(u32 a, u32 b, u32 c) {
+		return caller(a, b, c);
+	}
+	u32 caller[Args...](Args... args) {
+		return sum(args);
+	}
+	u32 sum[Args...](Args... args) {
+		u32 res = 0;
+		#foreach(i, arg; args) {
+			res += arg;
+		}
+		return res;
+	}
+};
+void tester301(ref TestContext ctx) {
+	auto run = ctx.getFunctionPtr!(uint, uint, uint, uint)("run");
+	assert(run(100, 10, 1) == 111);
+}

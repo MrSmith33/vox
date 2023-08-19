@@ -33,6 +33,8 @@
 		- only simple types
 		- ifti of member functions needs to account for this parameter, because ifti is done before providing this arg
 	+ variadic template arguments (requires inference)
+	- alias tuple auto-expansion / manual expansion.
+		+ auto tuple expansion in function call
 	- a way to perform IFTI from user code (pass template args with names and runtime types and get)
 	- #parameter(#type type, string name, type default_value, #alias[] attributes)
 	- #function(string name, #type return_type, #parameter[] parameters, #alias[] attributes)

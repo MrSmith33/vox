@@ -62,7 +62,23 @@ void name_resolve_call(CallExprNode* node, ref NameResolveState state) {
 	node.state = AstNodeState.name_resolve;
 	require_name_resolve(node.callee, state);
 	require_name_resolve(node.args, state);
+	expandTuples(node.args, state.context);
 	node.state = AstNodeState.name_resolve_done;
+}
+
+void expandTuples(ref AstNodes nodes, CompilationContext* c) {
+	uint length = nodes.length;
+	uint index;
+	while (index < length) {
+		auto node = nodes[index].get_node(c);
+		if (node.astType == AstType.decl_alias_array) {
+			auto aliasArray = node.as!AliasArrayDeclNode(c);
+			nodes.replaceAt(c.arrayArena, index, 1, aliasArray.items[]);
+			length = length - 1 + aliasArray.items.length;
+			continue;
+		}
+		++index;
+	}
 }
 
 // Get type from function declaration
