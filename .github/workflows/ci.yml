@@ -7,7 +7,7 @@ on:
   release: # test + build + release
     types: [ published ]
 env:
-  DC: ldc-1.29.0
+  DC: ldc-1.35.0
 
 defaults:
   run:
@@ -168,7 +168,7 @@ jobs:
     name: Upload build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: [build, build-debug, build-shared, build-shared-debug]
+    needs: [test, build, build-debug, build-shared, build-shared-debug]
     steps:
       # Cloning is needed for `gh release create` to work. It looks repository up in .git folder
       - uses: actions/checkout@v3
