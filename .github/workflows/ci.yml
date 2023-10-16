@@ -7,7 +7,7 @@ on:
   release: # test + build + release
     types: [ published ]
 env:
-  DC: ldc-1.35.0
+  DC: ldc-1.30.0
 
 defaults:
   run:
