@@ -115,7 +115,7 @@ int calcScale2(Num)(Num val)
 {
 	import std.math: abs, round, log2;
 
-	auto lg = log2(abs(val));
+	auto lg = log2(cast(double)abs(val));
 	double absLog = abs(lg);
 
 	int scale = cast(int)(round(absLog/10.0))*10;
