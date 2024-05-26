@@ -3,45 +3,48 @@
 <!-- MarkdownTOC autolink="true" markdown_preview="github" -->
 
 - [Modules](#modules)
-  - [Module declaration](#module-declaration)
-  - [Import declaration](#import-declaration)
+    - [Module declaration](#module-declaration)
+    - [Import declaration](#import-declaration)
 - [Declarations](#declarations)
-  - [Variable declarations](#variable-declarations)
+    - [Variable declarations](#variable-declarations)
 - [Types](#types)
-  - [Basic types](#basic-types)
-  - [Enums](#enums)
-  - [Pointers](#pointers)
-  - [Slices](#slices)
-  - [Static arrays](#static-arrays)
-  - [Structs](#structs)
-  - [Function type](#function-type)
+    - [Basic types](#basic-types)
+    - [Enums](#enums)
+    - [Pointers](#pointers)
+    - [Slices](#slices)
+    - [Static arrays](#static-arrays)
+    - [Structs](#structs)
+    - [Unions](#unions)
+    - [Bitstructs](#bitstructs)
+    - [Anonymous structs/unions/bitstructs](#anonymous-structsunionsbitstructs)
+    - [Function type](#function-type)
 - [Properties](#properties)
-  - [.sizeof property](#sizeof-property)
-  - [.offsetof property](#offsetof-property)
+    - [.sizeof property](#sizeof-property)
+    - [.offsetof property](#offsetof-property)
 - [Functions](#functions)
-  - [External functions](#external-functions)
-  - [Calls](#calls)
-    - [Named arguments](#named-arguments)
+    - [External functions](#external-functions)
+    - [Calls](#calls)
+        - [Named arguments](#named-arguments)
 - [Attributes](#attributes)
-  - [Built-in attributes](#built-in-attributes)
-  - [User-defined attributes](#user-defined-attributes)
+    - [Built-in attributes](#built-in-attributes)
+    - [User-defined attributes](#user-defined-attributes)
 - [Metaprogramming](#metaprogramming)
-  - [Compile-time assert `#assert`](#compile-time-assert-assert)
-  - [Conditional compilation](#conditional-compilation)
-    - [\#if](#if)
-    - [\#version](#version)
-      - [Predefined versions](#predefined-versions)
-    - [\#foreach](#foreach)
-  - [Templates](#templates)
-    - [Function templates](#function-templates)
-    - [Struct templates](#struct-templates)
-  - [Meta types \(NEI\)](#meta-types-nei)
-    - [$alias](#alias)
-    - [$type](#type)
-    - [Builtin functions for working with meta types](#builtin-functions-for-working-with-meta-types)
-    - [Using meta types in CTFE](#using-meta-types-in-ctfe)
-  - [CTFE-only functions](#ctfe-only-functions)
-  - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
+    - [Compile-time assert `#assert`](#compile-time-assert-assert)
+    - [Conditional compilation](#conditional-compilation)
+        - [\#if](#if)
+        - [\#version](#version)
+            - [Predefined versions](#predefined-versions)
+        - [\#foreach](#foreach)
+    - [Templates](#templates)
+        - [Function templates](#function-templates)
+        - [Struct templates](#struct-templates)
+    - [Meta types \(NEI\)](#meta-types-nei)
+        - [$alias](#alias)
+        - [$type](#type)
+        - [Builtin functions for working with meta types](#builtin-functions-for-working-with-meta-types)
+        - [Using meta types in CTFE](#using-meta-types-in-ctfe)
+    - [CTFE-only functions](#ctfe-only-functions)
+    - [Compile Time Function Execution \(CTFE\)](#compile-time-function-execution-ctfe)
 
 <!-- /MarkdownTOC -->
 
@@ -218,6 +221,52 @@ struct <identifier> {
 ```
 
 Struct body can contain any declarations that modules can.
+
+## Unions
+
+Unions are the same as structs, but all members have offset of 0.
+
+## Bitstructs
+
+## Anonymous structs/unions/bitstructs
+
+Structs and unions can contain anonymous structs, unions or, bitstructs.
+
+```d
+struct A {
+    union {
+        struct {}
+        bitstruct {}
+    }
+
+    struct {
+        union {}
+        bitstruct {}
+    }
+}
+```
+Code above is equivalent to
+```d
+struct A {
+    union __anon_union1_t {
+        struct __anon_struct1_t {}
+        __anon_struct1_t __anon_struct1;
+
+        bitstruct __anon_bitstruct1_t {}
+        __anon_bitstruct1_t __anon_bitstruct1;
+    }
+    __anon_union1_t __anon_union1;
+
+    struct __anon_struct2_t {
+        union __anon_union2_t {}
+        __anon_union2_t __anon_union2;
+
+        bitstruct __anon_bitstruct2_t {}
+        __anon_bitstruct2_t __anon_bitstruct2;
+    }
+    __anon_struct2_t __anon_struct2;
+}
+```
 
 ## Function type
 
