@@ -163,7 +163,11 @@ Vox compiler uses basic macro expansion approach, where for each instruction of 
 ## Liveness analysis
 ## Register allocation
 
-Implements linear scan algorithm from `Linear Scan Register Allocation on SSA Form`
+Vox uses linear scan with interval splitting over SSA form. I followed the papers: 
+- `[2002] Linear Scan Register Allocation in the Context of SSA Form and Register Constraints`
+- `[2004] Christian Wimmer. Linear Scan Register Allocation for the Java HotSpot:tm: Client Compiler`
+- `[2005] Optimized Interval Splitting in a Linear Scan Register Allocator`
+- `[2010] Linear Scan Register Allocation on SSA Form`
 
 ## Stack layout
 
