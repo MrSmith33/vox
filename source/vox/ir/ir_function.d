@@ -138,7 +138,6 @@ struct IrFunction
 	void orderBlocks()
 	{
 		IrIndex first;
-		IrIndex firstLink;
 
 		void walk(IrIndex node)
 		{
@@ -149,8 +148,6 @@ struct IrFunction
 					walk(succ);
 			if (first.isDefined)
 				linkSingleBlockBefore(&this, node, first);
-			else
-				firstLink = node;
 			first = node;
 		}
 
