@@ -63,7 +63,8 @@ jobs:
           7z a -mx9 vox-${{matrix.PLATFORM}}.zip ${{matrix.EXE}}
       - uses: actions/upload-artifact@v4
         with:
-          path: ./bin/vox-${{matrix.PLATFORM}}.zip
+          name: artifact-${{matrix.PLATFORM}}
+          path: bin/
   build-debug:
     name: Build CLI debug
     runs-on: ${{ matrix.os }}
@@ -98,7 +99,8 @@ jobs:
           7z a -mx9 vox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.EXE}} ${{matrix.DBG_FILE}}
       - uses: actions/upload-artifact@v4
         with:
-          path: ./bin/vox-${{matrix.PLATFORM}}-dbg.zip
+          name: artifact-vox-${{matrix.PLATFORM}}-dbg
+          path: bin/
   build-shared:
     name: Build shared
     runs-on: ${{ matrix.os }}
@@ -130,7 +132,8 @@ jobs:
           7z a -mx9 libvox-${{matrix.PLATFORM}}.zip ${{matrix.DLL}} ${{matrix.LIB}}
       - uses: actions/upload-artifact@v4
         with:
-          path: ./bin/libvox-${{matrix.PLATFORM}}.zip
+          name: artifact-libvox-${{matrix.PLATFORM}}
+          path: bin/
   build-shared-debug:
     name: Build shared debug
     runs-on: ${{ matrix.os }}
@@ -163,7 +166,8 @@ jobs:
           7z a -mx9 libvox-${{matrix.PLATFORM}}-dbg.zip ${{matrix.DLL}} ${{matrix.LIB}} ${{matrix.DBG_FILE}}
       - uses: actions/upload-artifact@v4
         with:
-          path: ./bin/libvox-${{matrix.PLATFORM}}-dbg.zip
+          name: artifact-libvox-${{matrix.PLATFORM}}-dbg
+          path: bin/
   upload:
     name: Upload build
     if: github.event_name != 'pull_request'
