@@ -179,7 +179,7 @@ jobs:
       # Download build artifacts of other jobs
       - uses: actions/download-artifact@v4
         with:
-          name: artifact-*
+          pattern: artifact-*
           merge-multiple: true
           path: bin/
       # Update tag, so that we get proper date and commit on github
