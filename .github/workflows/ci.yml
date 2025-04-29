@@ -7,7 +7,7 @@ on:
   release: # test + build + release
     types: [ published ]
 env:
-  DC: ldc-1.29.0
+  DC: ldc-1.38.0
 
 defaults:
   run:
@@ -18,7 +18,9 @@ jobs:
     name: Test
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-12, windows-latest]
+        os: [ubuntu-latest, macos-14-large, windows-latest]
+        exclude:
+        - os: macos-14-large
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -35,17 +37,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-12, windows-latest]
+        os: [ubuntu-latest, macos-14-large, windows-latest]
         include:
         - os: ubuntu-latest
           EXE: vox
           PLATFORM: linux-x64
-        - os: macos-12
-          EXE: vox
-          PLATFORM: macos-x64
+        #- os: macos-14-large
+        #  EXE: vox
+        #  PLATFORM: macos-x64
         - os: windows-latest
           EXE: vox.exe
           PLATFORM: windows-x64
+        exclude:
+        - os: macos-14-large
     steps:
       - uses: actions/checkout@v4
       - uses: dlang-community/setup-dlang@v1
@@ -70,18 +74,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-12, windows-latest]
+        os: [ubuntu-latest, macos-14-large, windows-latest]
         include:
         - os: ubuntu-latest
           EXE: vox
           PLATFORM: linux-x64
-        - os: macos-12
-          EXE: vox
-          PLATFORM: macos-x64
+        #- os: macos-14-large
+        #  EXE: vox
+        #  PLATFORM: macos-x64
         - os: windows-latest
           EXE: vox.exe
           DBG_FILE: vox.pdb
           PLATFORM: windows-x64
+        exclude:
+        - os: macos-14-large
     steps:
       - uses: actions/checkout@v4
       - uses: dlang-community/setup-dlang@v1
@@ -106,18 +112,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-12, windows-latest]
+        os: [ubuntu-latest, macos-14-large, windows-latest]
         include:
         - os: ubuntu-latest
           DLL: libvox.so
           PLATFORM: linux-x64
-        - os: macos-12
-          DLL: libvox.dylib
-          PLATFORM: macos-x64
+        #- os: macos-14-large
+        #  DLL: libvox.dylib
+        #  PLATFORM: macos-x64
         - os: windows-latest
           DLL: libvox.dll
           LIB: libvox.lib
           PLATFORM: windows-x64
+        exclude:
+        - os: macos-14-large
     steps:
       - uses: actions/checkout@v4
       - uses: dlang-community/setup-dlang@v1
@@ -139,19 +147,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-12, windows-latest]
+        os: [ubuntu-latest, macos-14-large, windows-latest]
         include:
         - os: ubuntu-latest
           DLL: libvox.so
           PLATFORM: linux-x64
-        - os: macos-12
-          DLL: libvox.dylib
-          PLATFORM: macos-x64
+        #- os: macos-14-large
+        #  DLL: libvox.dylib
+        #  PLATFORM: macos-x64
         - os: windows-latest
           DLL: libvox.dll
           LIB: libvox.lib
           DBG_FILE: libvox.pdb
           PLATFORM: windows-x64
+        exclude:
+        - os: macos-14-large
     steps:
       - uses: actions/checkout@v4
       - uses: dlang-community/setup-dlang@v1
