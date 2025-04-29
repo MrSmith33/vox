@@ -20,10 +20,14 @@ enum IrInstructionSet : ubyte
 immutable string[] instr_set_names = ["IR", "LIR Amd64"];
 static assert(instr_set_names.length == IrInstructionSet.max+1);
 
-immutable InstrInfo[][] allInstrInfos = [
-	irInstrInfos,
-	amd64InstrInfos
-];
+immutable InstrInfo[][2] allInstrInfos;
+
+shared static this() {
+	allInstrInfos = [
+		irInstrInfos,
+		amd64InstrInfos
+	];
+}
 
 struct InstrInfo
 {
